@@ -59,6 +59,9 @@ import {
   Receipt,
   Truck,
   Users,
+  TrendingUp,
+  FileSignature,
+  ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
@@ -162,6 +165,39 @@ const BUSINESS_TYPE_TO_PERSONA: Record<BusinessType, Persona> = {
 };
 
 // ---------------------------------------------------------------------------
+// Note role fork — the "Note Investor" businessType covers THREE distinct
+// jobs, and each maps to its own persona (which drives every persona-gated
+// surface). Without this fork, every note person was set to "note_investor"
+// and the originator + servicer surfaces — their actual jobs — were inert.
+// Only surfaced when businessType === "note_investor"; persisted via the
+// existing PUT /api/me/persona (same endpoint Settings › Persona uses).
+// ---------------------------------------------------------------------------
+
+type NoteRole = "invest" | "originate" | "service";
+
+const NOTE_ROLE_TO_PERSONA: Record<NoteRole, Persona> = {
+  invest: "note_investor",
+  originate: "note_originator",
+  service: "note_servicer",
+};
+
+const NOTE_ROLE_CHOICES: { value: NoteRole; label: string; description: string; icon: typeof Map }[] = [
+  { value: "invest", label: "I buy notes", description: "Acquire existing notes for yield.", icon: TrendingUp },
+  { value: "originate", label: "I create notes", description: "Seller-finance sales into new paper.", icon: FileSignature },
+  { value: "service", label: "I service notes", description: "Collect & service notes for others.", icon: ClipboardCheck },
+];
+
+/**
+ * Resolve the canonical persona from the business type and (for note
+ * investors) the chosen note role. Mirrors the server safety-net so a
+ * dropped PUT still lands the right persona.
+ */
+function resolvePersona(bt: BusinessType, noteRole: NoteRole): Persona {
+  if (bt === "note_investor") return NOTE_ROLE_TO_PERSONA[noteRole];
+  return BUSINESS_TYPE_TO_PERSONA[bt] ?? "land_investor";
+}
+
+// ---------------------------------------------------------------------------
 // Step definitions — 3 steps post-disclosure. Deliberate minimalism.
 // ---------------------------------------------------------------------------
 
@@ -259,6 +295,12 @@ export default function OnboardingV2() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [businessType, setBusinessType] = useState<BusinessType>("land_flipper");
   const [showAllInvestorTypes, setShowAllInvestorTypes] = useState(false);
+  // Note-role fork — only meaningful when businessType === "note_investor".
+  // Drives which persona we persist (invest/originate/service) and how the
+  // data step is framed for that role's actual job.
+  const [noteRole, setNoteRole] = useState<NoteRole>("invest");
+  const isNoteBusiness = businessType === "note_investor";
+  const resolvedPersona = resolvePersona(businessType, noteRole);
 
   // Data-path state (Step 2)
   const [dataPath, setDataPath] = useState<"sample" | "csv" | null>(null);
@@ -331,8 +373,11 @@ export default function OnboardingV2() {
   });
 
   const personaMutation = useMutation({
-    mutationFn: async (bt: BusinessType) => {
-      const persona = BUSINESS_TYPE_TO_PERSONA[bt] ?? "land_investor";
+    // Accepts the already-resolved persona so the note-role fork
+    // (invest/originate/service) lands the right one. The server
+    // /onboarding/complete still derives a businessType-based default as a
+    // safety net if this PUT is dropped.
+    mutationFn: async (persona: Persona) => {
       const res = await apiRequest("PUT", "/api/me/persona", { persona });
       return res.json();
     },
@@ -484,12 +529,18 @@ export default function OnboardingV2() {
       }
       // Fire provision + persona in parallel — both are best-effort;
       // /onboarding/complete will derive persona server-side as safety net.
+      // The note-role fork is folded into resolvedPersona so originators +
+      // servicers land on their own persona, not the generic note_investor.
       await Promise.allSettled([
         provisionMutation.mutateAsync(businessType),
-        personaMutation.mutateAsync(businessType),
+        personaMutation.mutateAsync(resolvedPersona),
         completeStepMutation.mutateAsync({
           stepId: 0,
-          data: { businessType, organizationName: workspaceName },
+          data: {
+            businessType,
+            organizationName: workspaceName,
+            ...(isNoteBusiness ? { noteRole, persona: resolvedPersona } : {}),
+          },
         }),
       ]);
       advanceTo(1);
@@ -560,6 +611,43 @@ export default function OnboardingV2() {
     completeStepMutation.isPending;
 
   const isPendingComplete = completeMutation.isPending;
+
+  // Step 2 copy + entrypoint, tailored to the resolved persona. The note
+  // roles each have a real first job that isn't "load 50 leads" — so we
+  // re-frame the data step and offer a direct link into that job's surface.
+  // Sample data + CSV stay available for everyone as the fast path.
+  const dataStepCopy = (() => {
+    switch (resolvedPersona) {
+      case "note_investor":
+        return {
+          title: <>Bring in <span className="ob2-title-italic">your portfolio.</span></>,
+          sub: "Your job is yield on paper you own. Import the notes you've acquired — payer, balance, rate, and payment — or load sample data first to see the book come alive.",
+          jobLabel: "Import your note portfolio",
+          jobHref: "/notes?action=new",
+        };
+      case "note_originator":
+        return {
+          title: <>Set up <span className="ob2-title-italic">origination.</span></>,
+          sub: "Your job is creating paper. Set your default rate and term, then turn deals into seller-financed notes — or load sample data first to see the pipeline.",
+          jobLabel: "Set origination terms",
+          jobHref: "/settings?tab=tax-compliance",
+        };
+      case "note_servicer":
+        return {
+          title: <>Bring in <span className="ob2-title-italic">your book.</span></>,
+          sub: "Your job is servicing notes for others. Import the serviced book and set your fee & escrow handling — or load sample data first to see delinquency and escrow tracking.",
+          jobLabel: "Import the serviced book",
+          jobHref: "/notes?action=new",
+        };
+      default:
+        return {
+          title: <>See AcreOS <span className="ob2-title-italic">in action.</span></>,
+          sub: "Pax can load 50 realistic leads right now so Today shows you exactly what the product does — Decision Queue, Morning Brief, Cash Strip, all live. Wipe them whenever you're ready.",
+          jobLabel: null as string | null,
+          jobHref: null as string | null,
+        };
+    }
+  })();
 
   // ── Skeleton while disclosure status loads ───────────────────────────────
   if (disclosureLoading) {
@@ -773,6 +861,51 @@ export default function OnboardingV2() {
                     Land Flipper is primary. More verticals can be changed in Settings.
                   </p>
                 </motion.div>
+
+                {/* Note-role fork — the three note jobs need three different
+                    setups. Only shown for "Note Investor"; sets the persona
+                    that drives the rest of the product. */}
+                {isNoteBusiness && (
+                  <motion.div variants={staggerItem} className="ob2-field" data-testid="note-role-fork">
+                    <span className="ob2-label" id="ob2-noterole-label">
+                      How do you work with notes?
+                    </span>
+                    <RadioGroup
+                      value={noteRole}
+                      onValueChange={(v) => setNoteRole(v as NoteRole)}
+                      className="ob2-type-cards"
+                      aria-labelledby="ob2-noterole-label"
+                    >
+                      {NOTE_ROLE_CHOICES.map(({ value, label, description, icon: Icon }) => (
+                        <label
+                          key={value}
+                          htmlFor={`ob2-noterole-${value}`}
+                          className={cn(
+                            "ob2-type-card",
+                            noteRole === value && "ob2-type-card--on",
+                          )}
+                          data-testid={`option-noterole-${value}`}
+                        >
+                          <RadioGroupItem
+                            value={value}
+                            id={`ob2-noterole-${value}`}
+                            className="sr-only"
+                          />
+                          <span className="ob2-type-card-glyph" aria-hidden="true">
+                            <Icon className="w-4 h-4" />
+                          </span>
+                          <span className="ob2-type-card-title">{label}</span>
+                          <span className="ob2-type-card-desc">{description}</span>
+                        </label>
+                      ))}
+                    </RadioGroup>
+                    <p className="ob2-hint">
+                      This tailors your setup — buyers import a portfolio,
+                      originators set rate &amp; term defaults, servicers set
+                      fee &amp; escrow. Changeable later in Settings.
+                    </p>
+                  </motion.div>
+                )}
               </motion.div>
             </div>
 
@@ -813,15 +946,8 @@ export default function OnboardingV2() {
                 Step 2 of {totalSteps}
               </div>
 
-              <h1 className="ob2-title">
-                See AcreOS{" "}
-                <span className="ob2-title-italic">in action.</span>
-              </h1>
-              <p className="ob2-sub">
-                Pax can load 50 realistic leads right now so Today shows you
-                exactly what the product does — Decision Queue, Morning Brief,
-                Cash Strip, all live. Wipe them whenever you're ready.
-              </p>
+              <h1 className="ob2-title">{dataStepCopy.title}</h1>
+              <p className="ob2-sub">{dataStepCopy.sub}</p>
 
               {/* Primary CTA — sample data */}
               <motion.div
@@ -926,6 +1052,18 @@ export default function OnboardingV2() {
                 ) : (
                   /* Secondary text links — intentionally low-weight */
                   <motion.div variants={staggerItem} className="ob2-secondary-links">
+                    {dataStepCopy.jobHref && dataStepCopy.jobLabel && (
+                      <>
+                        <a
+                          href={dataStepCopy.jobHref}
+                          className="ob2-link"
+                          data-testid="link-note-role-job"
+                        >
+                          {dataStepCopy.jobLabel}
+                        </a>
+                        <span className="ob2-link-sep" aria-hidden="true">·</span>
+                      </>
+                    )}
                     <button
                       type="button"
                       className="ob2-link"

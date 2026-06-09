@@ -4,6 +4,10 @@ import { staggerContainer, fadeInUp } from "@/lib/animations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { usePersona } from "@/hooks/use-persona";
+import { usd } from "@/lib/format";
+import type { Note } from "@shared/schema";
 import {
   DollarSign,
   Clock,
@@ -26,6 +30,11 @@ import {
   Layers,
   ClipboardList,
   AlertTriangle,
+  FileSignature,
+  ClipboardCheck,
+  Search,
+  ShieldCheck,
+  Banknote,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -859,9 +868,350 @@ function SubdividerWidgets() {
   );
 }
 
+// ── Persona widget sets (the four investor personas) ───────────────────
+//
+// These widgets are keyed on `users.persona`, NOT businessType — the two
+// underserved note roles (originator, servicer) are personas derived from
+// the "note_investor" businessType and have no businessType of their own.
+// Each persona gets a genuinely distinct widget built from REAL data
+// (/api/notes, /api/leads, /api/properties) with honest-empty when the
+// org has nothing yet. No persona shares another's mock. None of these
+// fabricate a number — empty means empty, with a purposeful CTA.
+
+type PersonaWidgetKind = "land" | "note_invest" | "note_originate" | "note_service";
+
+const PERSONA_WIDGET_LABELS: Record<PersonaWidgetKind, { title: string; icon: React.ReactNode }> = {
+  land: { title: "Sourcing", icon: <Search className="w-4 h-4" /> },
+  note_invest: { title: "Portfolio yield", icon: <TrendingUp className="w-4 h-4" /> },
+  note_originate: { title: "Origination", icon: <FileSignature className="w-4 h-4" /> },
+  note_service: { title: "Servicing", icon: <ClipboardCheck className="w-4 h-4" /> },
+};
+
+function useNotes() {
+  return useQuery<Note[]>({
+    queryKey: ["/api/notes"],
+    queryFn: async () => {
+      const res = await fetch("/api/notes", { credentials: "include" });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+    },
+  });
+}
+
+interface LeadLite { id: number; type?: string | null; status?: string | null }
+interface PropertyLite { id: number; status?: string | null; latitude?: unknown; longitude?: unknown }
+
+/** Sourcing widget (land_investor) — the job is finding parcels + owners. */
+function LandSourcingWidgets() {
+  const { data: properties = [], isLoading: pLoading } = useQuery<PropertyLite[]>({
+    queryKey: ["/api/properties"],
+    queryFn: async () => {
+      const res = await fetch("/api/properties?page=1&pageSize=100", { credentials: "include" });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+    },
+  });
+  const { data: leads = [], isLoading: lLoading } = useQuery<LeadLite[]>({
+    queryKey: ["/api/leads"],
+    queryFn: async () => {
+      const res = await fetch("/api/leads", { credentials: "include" });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+    },
+  });
+
+  if (pLoading || lLoading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
+      </div>
+    );
+  }
+
+  const mapped = properties.filter((p) => p.latitude && p.longitude).length;
+  const prospects = properties.filter((p) =>
+    ["prospect", "due_diligence", "offer_sent", "under_contract"].includes(p.status || ""),
+  ).length;
+  const ownerTargets = leads.filter((l) => l.type === "seller" || !l.type).length;
+
+  if (properties.length === 0 && ownerTargets === 0) {
+    return (
+      <EmptyState
+        icon={Search}
+        headline="Start sourcing parcels"
+        subtitle="Find raw land by county, pull the owner of record, and comp it. Add your first parcels or owner targets to light up this panel."
+        cta={{ label: "Find parcels", href: "/properties", "data-testid": "land-widget-find" }}
+        secondaryCta={{ label: "Owner targets", href: "/leads?type=seller", "data-testid": "land-widget-owners" }}
+        actionIcon={Search}
+      />
+    );
+  }
+
+  return (
+    <motion.div
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+      className="grid grid-cols-1 md:grid-cols-3 gap-4"
+    >
+      <PersonaStat icon={Search} iconClass="text-primary" label="Parcels mapped" value={String(mapped)} sub={`${properties.length} total in pipeline`} />
+      <PersonaStat icon={Filter} iconClass="text-acr-warn" label="In acquisition" value={String(prospects)} sub="prospect → under contract" />
+      <PersonaStat icon={Users} iconClass="text-acr-accent" label="Owner targets" value={String(ownerTargets)} sub="sellers to mail or door-knock" />
+    </motion.div>
+  );
+}
+
+/** Portfolio-yield widget (note_investor) — the job is yield on owned paper. */
+function NoteInvestorWidgets() {
+  const { data: notes = [], isLoading } = useNotes();
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
+      </div>
+    );
+  }
+
+  const active = notes.filter((n) => n.status === "active");
+  if (active.length === 0) {
+    return (
+      <EmptyState
+        icon={TrendingUp}
+        headline="Import your note portfolio"
+        subtitle="Your job is yield, not geography. Import the notes you've acquired — payer, balance, rate, and payment — and AcreOS tracks the book and its yield."
+        cta={{ label: "Import notes", href: "/notes?action=new", "data-testid": "note-invest-import" }}
+        secondaryCta={{ label: "Open the book", href: "/finance", "data-testid": "note-invest-book" }}
+        actionIcon={TrendingUp}
+      />
+    );
+  }
+
+  const outstanding = active.reduce((s, n) => s + Number(n.currentBalance || 0), 0);
+  const monthlyIncome = active.reduce((s, n) => s + Number(n.monthlyPayment || 0), 0);
+  // Balance-weighted average rate — only from notes that carry a rate + balance.
+  let w = 0, acc = 0;
+  active.forEach((n) => {
+    const bal = Number(n.currentBalance || 0);
+    const rate = Number(n.interestRate || 0);
+    if (bal > 0 && rate > 0) { w += bal; acc += bal * rate; }
+  });
+  const wtdRate = w > 0 ? acc / w : null;
+
+  return (
+    <motion.div
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+      className="grid grid-cols-1 md:grid-cols-3 gap-4"
+    >
+      <PersonaStat icon={Wallet} iconClass="text-acr-pos" label="Outstanding" value={usd(outstanding, { noCents: true })} sub={`${active.length} active note${active.length === 1 ? "" : "s"}`} mono />
+      <PersonaStat icon={Banknote} iconClass="text-acr-accent" label="Monthly income" value={usd(monthlyIncome, { noCents: true })} sub="scheduled P&I this cycle" mono />
+      <PersonaStat
+        icon={Percent}
+        iconClass="text-primary"
+        label="Weighted yield"
+        value={wtdRate !== null ? `${wtdRate.toFixed(2)}%` : "—"}
+        sub={wtdRate !== null ? "balance-weighted across book" : "rate not set on notes yet"}
+        mono={wtdRate !== null}
+      />
+    </motion.div>
+  );
+}
+
+/** Origination widget (note_originator) — the job is CREATING paper. */
+function NoteOriginatorWidgets() {
+  const { data: notes = [], isLoading } = useNotes();
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
+      </div>
+    );
+  }
+
+  const active = notes.filter((n) => n.status === "active");
+  if (active.length === 0) {
+    return (
+      <EmptyState
+        icon={FileSignature}
+        headline="Originate your first note"
+        subtitle="Your job is creating paper, not buying it. Set your default rate and term, then turn a deal into a seller-financed note. The pipeline lives on Deals."
+        cta={{ label: "Start an origination", href: "/deals?action=new", "data-testid": "note-orig-start" }}
+        secondaryCta={{ label: "Set terms", href: "/settings?tab=tax-compliance", "data-testid": "note-orig-terms" }}
+        actionIcon={FileSignature}
+      />
+    );
+  }
+
+  const financed = active.reduce((s, n) => s + Number(n.originalPrincipal || n.currentBalance || 0), 0);
+  // Average originated term + rate — only across notes that carry the field.
+  const termNotes = active.filter((n) => Number(n.termMonths || 0) > 0);
+  const avgTerm = termNotes.length > 0
+    ? Math.round(termNotes.reduce((s, n) => s + Number(n.termMonths || 0), 0) / termNotes.length)
+    : null;
+  const rateNotes = active.filter((n) => Number(n.interestRate || 0) > 0);
+  const avgRate = rateNotes.length > 0
+    ? rateNotes.reduce((s, n) => s + Number(n.interestRate || 0), 0) / rateNotes.length
+    : null;
+
+  return (
+    <motion.div
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+      className="grid grid-cols-1 md:grid-cols-3 gap-4"
+    >
+      <PersonaStat icon={FileSignature} iconClass="text-primary" label="Notes originated" value={String(active.length)} sub={`${usd(financed, { noCents: true })} financed`} />
+      <PersonaStat
+        icon={Percent}
+        iconClass="text-acr-pos"
+        label="Avg note rate"
+        value={avgRate !== null ? `${avgRate.toFixed(2)}%` : "—"}
+        sub={avgRate !== null ? "across originations" : "rate not set yet"}
+        mono={avgRate !== null}
+      />
+      <PersonaStat
+        icon={CalendarClock}
+        iconClass="text-acr-accent"
+        label="Avg term"
+        value={avgTerm !== null ? `${avgTerm} mo` : "—"}
+        sub={avgTerm !== null ? "originated note length" : "term not set yet"}
+      />
+    </motion.div>
+  );
+}
+
+/** Servicing widget (note_servicer) — the job is servicing notes for others. */
+function NoteServicerWidgets() {
+  const { data: notes = [], isLoading } = useNotes();
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
+      </div>
+    );
+  }
+
+  const active = notes.filter((n) => n.status === "active");
+  if (active.length === 0) {
+    return (
+      <EmptyState
+        icon={ClipboardCheck}
+        headline="Import the book you service"
+        subtitle="You service notes for others. Import the serviced book, then set your servicing fee and escrow handling. Delinquency and escrow health surface here."
+        cta={{ label: "Import serviced book", href: "/notes?action=new", "data-testid": "note-serv-import" }}
+        secondaryCta={{ label: "Fee & escrow setup", href: "/settings?tab=tax-compliance", "data-testid": "note-serv-config" }}
+        actionIcon={ClipboardCheck}
+      />
+    );
+  }
+
+  // Delinquent = anything not "current" on the delinquency ladder, OR a note
+  // whose nextPaymentDate is already in the past. Real fields only.
+  const now = Date.now();
+  const delinquent = active.filter((n) => {
+    if (n.delinquencyStatus && n.delinquencyStatus !== "current") return true;
+    if (n.nextPaymentDate) {
+      const days = Math.floor((now - new Date(n.nextPaymentDate as any).getTime()) / 86_400_000);
+      return days > 0;
+    }
+    return false;
+  }).length;
+  const monthlyFees = active.reduce((s, n) => s + Number(n.serviceFee || 0), 0);
+  const escrowed = active.filter((n) => n.taxEscrowEnabled).length;
+
+  return (
+    <motion.div
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+    >
+      <PersonaStat icon={ClipboardCheck} iconClass="text-primary" label="Serviced book" value={String(active.length)} sub="active notes serviced" />
+      <PersonaStat
+        icon={AlertTriangle}
+        iconClass={delinquent > 0 ? "text-acr-warn" : "text-acr-pos"}
+        label="Delinquent"
+        value={String(delinquent)}
+        sub={delinquent > 0 ? "past due — needs outreach" : "all current"}
+      />
+      <PersonaStat icon={DollarSign} iconClass="text-acr-pos" label="Servicing fees" value={usd(monthlyFees, { noCents: true })} sub="monthly fee income" mono />
+      <PersonaStat icon={ShieldCheck} iconClass="text-acr-accent" label="Tax escrow" value={`${escrowed}/${active.length}`} sub="notes with escrow on" />
+    </motion.div>
+  );
+}
+
+/** Shared stat tile used by the persona widget sets. */
+function PersonaStat({
+  icon: Icon,
+  iconClass,
+  label,
+  value,
+  sub,
+  mono,
+}: {
+  icon: React.ElementType;
+  iconClass: string;
+  label: string;
+  value: string;
+  sub: string;
+  mono?: boolean;
+}) {
+  return (
+    <motion.div variants={fadeInUp}>
+      <Card className="floating-window h-full">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Icon className={`w-4 h-4 ${iconClass}`} aria-hidden="true" />
+            {label}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className={`text-2xl font-bold ${mono ? "font-mono tabular-nums" : ""}`}>{value}</p>
+          <p className="text-xs text-muted-foreground mt-1">{sub}</p>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────
 
 export function TypeSpecificWidgets({ businessType, organizationId }: TypeSpecificWidgetsProps) {
+  // Persona takes precedence over businessType for the four investor
+  // personas — the note roles have no businessType of their own, and the
+  // land sourcing widget is real-data, not the legacy LAND_MOCK. Everything
+  // else (wholesaler / flipper / landlord / commercial / subdivider) still
+  // resolves by businessType below.
+  const persona = usePersona();
+  const personaKind: PersonaWidgetKind | null =
+    persona === "land_investor" ? "land"
+    : persona === "note_investor" ? "note_invest"
+    : persona === "note_originator" ? "note_originate"
+    : persona === "note_servicer" ? "note_service"
+    : null;
+
+  if (personaKind) {
+    const { title, icon } = PERSONA_WIDGET_LABELS[personaKind];
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground">{icon}</span>
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            {title} Metrics
+          </h3>
+        </div>
+        {personaKind === "land" && <LandSourcingWidgets />}
+        {personaKind === "note_invest" && <NoteInvestorWidgets />}
+        {personaKind === "note_originate" && <NoteOriginatorWidgets />}
+        {personaKind === "note_service" && <NoteServicerWidgets />}
+      </div>
+    );
+  }
+
   const category = resolveCategory(businessType);
 
   const labels: Record<BusinessCategory, { title: string; icon: React.ReactNode }> = {
