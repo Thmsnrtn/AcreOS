@@ -76,13 +76,14 @@ describe("complianceValidator.composeDisclosure", () => {
 
   it("appends extras when they aren't already covered by the template", () => {
     const out = composeDisclosure("tax_advice", ["Consult a notary public"]);
-    expect(out).toContain("CPA"); // base template mentions CPA
+    // Base template (centralized TAX_ADVISORY_COPY) advises a "qualified tax professional".
+    expect(out).toContain("tax professional");
     expect(out).toContain("Consult a notary public");
   });
 
   it("filters extras already implicit in the template", () => {
-    const out = composeDisclosure("tax_advice", ["consult a CPA"]);
-    // The base template already contains "Consult a CPA…"
+    const out = composeDisclosure("tax_advice", ["consult a qualified tax professional"]);
+    // The base template already advises consulting a qualified tax professional.
     expect(out).toBe(DISCLOSURE_TEMPLATES.tax_advice);
   });
 
