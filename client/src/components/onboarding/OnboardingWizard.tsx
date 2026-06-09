@@ -10,6 +10,7 @@ import {
   Sparkles,
   Upload,
   Mail,
+  Send,
   Target,
   PartyPopper,
   Loader2,
@@ -209,14 +210,25 @@ const WIZARD_STEPS = [
     icon: Upload,
   },
   {
+    // The witnessed-send moment. After sample data is loaded, Pax drafts a
+    // follow-up to the stalest lead and the user taps Send — the minimum
+    // proof that Pax is an operator, not just an advisor. NOTHING sends
+    // without this explicit human tap.
     id: 2,
+    name: "first_follow_up",
+    title: "Let Pax Take an Action",
+    description: "Pax drafts your first follow-up — you tap Send",
+    icon: Send,
+  },
+  {
+    id: 3,
     name: "connect_email",
     title: "Connect Your Email",
     description: "Send campaigns directly from your inbox",
     icon: Mail,
   },
   {
-    id: 3,
+    id: 4,
     name: "create_campaign",
     title: "Create Your First Campaign",
     description: "Start reaching out to motivated sellers",
@@ -227,7 +239,7 @@ const WIZARD_STEPS = [
   // attempts to create their first seller-financed note. A land flipper
   // without notes shouldn't have to surface an EIN at signup.
   {
-    id: 4,
+    id: 5,
     name: "done",
     title: "You're All Set!",
     description: "Your AcreOS workspace is ready to go",
@@ -394,6 +406,50 @@ export function OnboardingWizard() {
     },
   });
 
+  // ── Witnessed first-follow-up send (the "Pax acted" proof) ─────────────────
+  // Pax drafts a follow-up to the stalest emailable lead; the user taps Send.
+  // NOTHING sends without that tap — the draft endpoint only reads + drafts.
+  const [followUpSent, setFollowUpSent] = useState(false);
+  const followUpDraftQuery = useQuery<{
+    available: boolean;
+    autonomyLevel?: string;
+    lead?: { id: number; name: string; email: string };
+    draft?: { subject: string; message: string };
+  }>({
+    queryKey: ["/api/pax/first-follow-up/draft"],
+    enabled: open && currentStep === 2,
+  });
+
+  const approveSendMutation = useMutation({
+    mutationFn: async (payload: { leadId: number; subject: string; message: string }) => {
+      const res = await apiRequest("POST", "/api/pax/first-follow-up/approve-and-send", payload);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message || "Pax couldn't send the follow-up");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setFollowUpSent(true);
+      toast({
+        title: "Pax sent it",
+        description: "Your first follow-up is on its way — and Pax logged the action.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      completeStepMutation.mutate({
+        stepId: currentStep,
+        data: { firstFollowUpSent: true },
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Couldn't send that follow-up",
+        description: `${error.message} — nothing was sent.`,
+        variant: "destructive",
+      });
+    },
+  });
+
   const completeMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/onboarding/complete", {});
@@ -417,11 +473,13 @@ export function OnboardingWizard() {
   //   • step 1 — Add Your First Leads (notes don't have leads in the
   //     same sense; notes are imported via CSV in a dedicated step that
   //     we surface from /notes after onboarding completes).
-  //   • step 3 — Create Your First Campaign (notes don't run direct
+  //   • step 2 — Let Pax Take an Action (the witnessed follow-up rides on
+  //     the sample-lead motion that pure-notes orgs skip).
+  //   • step 4 — Create Your First Campaign (notes don't run direct
   //     mail to landowners; outreach is an entirely different motion).
   // Mixed-strategy orgs ('both') keep every step.
   const stepsToSkipForInvestorType = (t: InvestorTypeChoice): Set<number> =>
-    t === "notes" ? new Set([1, 3]) : new Set();
+    t === "notes" ? new Set([1, 2, 4]) : new Set();
 
   const handleNext = async () => {
     try {
@@ -934,7 +992,8 @@ export function OnboardingWizard() {
           </motion.div>
         );
 
-      case 2:
+      case 2: {
+        const fu = followUpDraftQuery.data;
         return (
           <motion.div
             initial={{ opacity: 0, x: 20 }}
@@ -944,7 +1003,157 @@ export function OnboardingWizard() {
           >
             <div className="ob-eyebrow">
               <span className="ob-eyebrow-dot" aria-hidden="true" />
-              Step 2 · Send from your own inbox
+              Step 2 · Watch Pax take an action
+            </div>
+            <h1 className="ob-title">
+              Pax drafts. <span className="ob-title-italic">You send.</span>
+            </h1>
+            <p className="ob-sub">
+              Pax found a lead that&rsquo;s gone cold and wrote the follow-up for
+              you. Read it, then tap Send. Pax never sends on its own — you tap
+              Send every time.
+            </p>
+
+            {followUpDraftQuery.isLoading ? (
+              <div className="ob-cards" data-testid="follow-up-loading">
+                <div className="ob-card">
+                  <span className="ob-card-glyph">
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  </span>
+                  <span className="ob-card-title">Pax is drafting&hellip;</span>
+                  <span className="ob-card-desc">
+                    Reviewing your leads to find the best one to re-engage.
+                  </span>
+                </div>
+              </div>
+            ) : !fu?.available || !fu.draft || !fu.lead ? (
+              <div
+                className="ob-card"
+                data-testid="follow-up-empty"
+                style={{ cursor: "default" }}
+              >
+                <span className="ob-card-glyph">
+                  <Sparkles className="w-4 h-4" aria-hidden="true" />
+                </span>
+                <span className="ob-card-title">No stale leads yet</span>
+                <span className="ob-card-desc">
+                  Load sample data on the previous step (or import your own) and
+                  Pax will have a lead to follow up with. You can skip this for
+                  now.
+                </span>
+              </div>
+            ) : followUpSent ? (
+              <div
+                className="ob-card"
+                data-testid="follow-up-sent"
+                style={{ cursor: "default" }}
+              >
+                <span className="ob-card-glyph">
+                  <Check className="w-4 h-4" style={{ color: "var(--acr-pos)" }} aria-hidden="true" />
+                </span>
+                <span className="ob-card-title">Sent to {fu.lead.name}</span>
+                <span className="ob-card-desc">
+                  Pax sent the follow-up and logged the action. That&rsquo;s Pax
+                  as an operator, not just an advisor.
+                </span>
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginTop: 16,
+                  border: "0.5px solid var(--acr-line)",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  background: "var(--acr-surface-1)",
+                }}
+                data-testid="follow-up-draft"
+              >
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    borderBottom: "0.5px solid var(--acr-line)",
+                    font: "400 13px/1.4 var(--font-sans)",
+                    color: "var(--acr-ink-3)",
+                  }}
+                >
+                  <div>
+                    <strong style={{ color: "var(--acr-ink-2)" }}>To:</strong>{" "}
+                    {fu.lead.name} &lt;{fu.lead.email}&gt;
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    <strong style={{ color: "var(--acr-ink-2)" }}>Subject:</strong>{" "}
+                    {fu.draft.subject}
+                  </div>
+                </div>
+                <p
+                  style={{
+                    padding: "16px",
+                    margin: 0,
+                    whiteSpace: "pre-wrap",
+                    font: "400 14px/1.6 var(--font-sans)",
+                    color: "var(--acr-ink-1)",
+                  }}
+                >
+                  {fu.draft.message}
+                </p>
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    borderTop: "0.5px solid var(--acr-line)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <span className="ob-hint" style={{ margin: 0 }}>
+                    Drafted by Pax · sends only when you tap
+                  </span>
+                  <button
+                    type="button"
+                    className="ob-btn ob-btn-primary"
+                    onClick={() =>
+                      approveSendMutation.mutate({
+                        leadId: fu.lead!.id,
+                        subject: fu.draft!.subject,
+                        message: fu.draft!.message,
+                      })
+                    }
+                    disabled={approveSendMutation.isPending}
+                    aria-label={`Send the follow-up to ${fu.lead.name}`}
+                    data-testid="button-approve-send-follow-up"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+                  >
+                    {approveSendMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Send className="w-4 h-4" aria-hidden="true" />
+                    )}
+                    {approveSendMutation.isPending ? "Sending…" : "Send"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <p className="ob-hint" style={{ marginTop: 16 }}>
+              Pax operates at the assisted level by default — it drafts, you
+              approve. Nothing is sent autonomously.
+            </p>
+          </motion.div>
+        );
+      }
+
+      case 3:
+        return (
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            data-testid="onboarding-step-3"
+          >
+            <div className="ob-eyebrow">
+              <span className="ob-eyebrow-dot" aria-hidden="true" />
+              Step 3 · Send from your own inbox
             </div>
             <h1 className="ob-title">
               Connect <span className="ob-title-italic">your email.</span>
@@ -998,17 +1207,17 @@ export function OnboardingWizard() {
           </motion.div>
         );
 
-      case 3:
+      case 4:
         return (
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            data-testid="onboarding-step-3"
+            data-testid="onboarding-step-4"
           >
             <div className="ob-eyebrow">
               <span className="ob-eyebrow-dot" aria-hidden="true" />
-              Step 3 · Reach the right sellers
+              Step 4 · Reach the right sellers
             </div>
             <h1 className="ob-title">
               Your first <span className="ob-title-italic">campaign.</span>
@@ -1060,13 +1269,13 @@ export function OnboardingWizard() {
           </motion.div>
         );
 
-      case 4:
+      case 5:
         return (
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            data-testid="onboarding-step-4"
+            data-testid="onboarding-step-5"
           >
             <div className="ob-reveal">
               <div className="ob-reveal-icon">

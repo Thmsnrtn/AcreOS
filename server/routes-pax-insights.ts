@@ -5,6 +5,11 @@ import { paxObservations, paxNudges, leads, deals, leadActivities, properties, v
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
+import type { AuthenticatedRequest } from "./types/request";
+import { executeTool } from "./ai/tools";
+import { getOrgAutonomyLevel } from "./services/autonomyGuardrails";
+import { z } from "zod";
 
 const router = Router();
 
@@ -428,6 +433,150 @@ router.get("/pax-suggestions", async (req, res) => {
   } catch (error: any) {
     logger.error("Pax suggestions error", { error: error.message });
     res.status(500).json({ message: "Failed to load Pax suggestions" });
+  }
+});
+
+// ============================================================================
+// WITNESSED FIRST-FOLLOW-UP SEND (Maren / "Pax acted" proof)
+//
+// The minimum proof that Pax is an OPERATOR, not just an advisor: Pax drafts
+// the first follow-up to the stalest emailable lead, the human taps "Send",
+// and Pax sends it through the real autonomyGuardrails kernel (envelope + TCPA
+// + audit). NOTHING sends without an explicit human tap — the draft endpoint
+// never sends; only the approve-and-send endpoint does, and only when the
+// human invoked it.
+// ============================================================================
+
+const STALE_CUTOFF_DAYS = 21;
+
+/**
+ * Finds the single best stale lead to follow up with: not closed/dead, has an
+ * email, and is the most overdue for contact. Reuses the same staleness rule as
+ * /pax-suggestions. Returns null when there's nothing actionable.
+ */
+async function findStalestEmailableLead(orgId: number) {
+  const now = Date.now();
+  const cutoff = now - STALE_CUTOFF_DAYS * 24 * 60 * 60 * 1000;
+
+  const candidates = await db
+    .select({
+      id: leads.id,
+      firstName: leads.firstName,
+      lastName: leads.lastName,
+      email: leads.email,
+      status: leads.status,
+      lastContactedAt: leads.lastContactedAt,
+    })
+    .from(leads)
+    .where(eq(leads.organizationId, orgId))
+    .orderBy(leads.lastContactedAt)
+    .limit(50);
+
+  const stale = candidates.filter((l) => {
+    if (["closed", "dead", "lost"].includes(l.status ?? "")) return false;
+    if (!l.email) return false;
+    if (!l.lastContactedAt) return true; // never contacted ⇒ maximally stale
+    return new Date(l.lastContactedAt).getTime() < cutoff;
+  });
+
+  return stale[0] ?? null;
+}
+
+/** Build the follow-up draft for a stale lead. Deterministic, honest copy. */
+function buildFollowUpDraft(lead: { firstName: string | null; lastName: string | null }) {
+  const name = (lead.firstName || "there").trim();
+  const subject = `Following up on your land${lead.firstName ? `, ${name}` : ""}`;
+  const message =
+    `Hi ${name},\n\n` +
+    `I wanted to follow up and see if you're still thinking about your land. ` +
+    `If now's a good time to talk through your options — or if anything has changed — ` +
+    `just reply to this email and I'll get right back to you.\n\n` +
+    `Looking forward to hearing from you.`;
+  return { subject, message };
+}
+
+// GET /api/pax/first-follow-up/draft
+// Pax drafts (does NOT send) a follow-up to the stalest emailable lead.
+router.get("/first-follow-up/draft", async (req: AuthenticatedRequest, res) => {
+  try {
+    const org = req.organization!;
+    const lead = await findStalestEmailableLead(org.id);
+    if (!lead) {
+      return res.json({ available: false, draft: null });
+    }
+    const { subject, message } = buildFollowUpDraft(lead);
+    const autonomyLevel = await getOrgAutonomyLevel(org.id);
+    return res.json({
+      available: true,
+      autonomyLevel,
+      lead: {
+        id: lead.id,
+        name: `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim(),
+        email: lead.email,
+      },
+      draft: { subject, message },
+    });
+  } catch (error: any) {
+    logger.error("Pax first-follow-up draft error", { error: error.message });
+    return Errors.internal(res, error);
+  }
+});
+
+const approveSendSchema = z.object({
+  leadId: z.number().int().positive(),
+  subject: z.string().min(1).max(300),
+  message: z.string().min(1).max(20000),
+});
+
+// POST /api/pax/first-follow-up/approve-and-send
+// The witnessed tap: the human approved this exact draft, so Pax sends it
+// through the guarded send path (_approved:true unlocks the kernel send) and
+// emits a value event recording that Pax acted.
+router.post("/first-follow-up/approve-and-send", async (req: AuthenticatedRequest, res) => {
+  try {
+    const org = req.organization!;
+    const parsed = approveSendSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.issues);
+    }
+    const { leadId, subject, message } = parsed.data;
+
+    // Send through the real Pax tool path with the explicit-approval flag.
+    // executeTool routes send_email through autonomyGuardrails: rate-limit +
+    // TCPA + recordAutonomousSend. Without _approved:true this same call would
+    // return a draft and send nothing.
+    const result = await executeTool(
+      "send_email",
+      { lead_id: leadId, subject, message, _approved: true },
+      org,
+    );
+
+    if (!result.success) {
+      return Errors.badRequest(res, result.error || "Pax could not send the follow-up");
+    }
+
+    // Value event: a measurable record that Pax SENT something on the human's
+    // approval. This is the "Pax acted" signal the pricing thesis is built on.
+    await storage.logActivity({
+      organizationId: org.id,
+      agentType: "pax",
+      action: "pax_value_event",
+      entityType: "lead",
+      entityId: leadId,
+      description: "Pax sent a witnessed first follow-up email after human approval",
+      metadata: {
+        valueEvent: "first_follow_up_sent",
+        channel: "email",
+        witnessed: true,
+        approvedByHuman: true,
+        messageId: (result.data as any)?.messageId ?? null,
+      },
+    });
+
+    return res.json({ success: true, sent: true, data: result.data });
+  } catch (error: any) {
+    logger.error("Pax first-follow-up approve-and-send error", { error: error.message });
+    return Errors.internal(res, error);
   }
 });
 

@@ -40,12 +40,17 @@ export type OnboardingStatus = {
   totalSteps: number;
 };
 
+// NOTE: this list MUST stay index-aligned with WIZARD_STEPS in
+// client/src/components/onboarding/OnboardingWizard.tsx — updateOnboardingStep()
+// rejects any stepId outside 0..length-1, so adding a wizard step without a row
+// here makes that step's completion throw.
 const ONBOARDING_STEPS = [
   { id: 0, name: "welcome", title: "Welcome & Business Type" },
   { id: 1, name: "import", title: "Import Data" },
-  { id: 2, name: "connect", title: "Connect Services" },
-  { id: 3, name: "campaign", title: "Set Up Campaign" },
-  { id: 4, name: "review", title: "Review & Launch" },
+  { id: 2, name: "first_follow_up", title: "Let Pax Take an Action" },
+  { id: 3, name: "connect", title: "Connect Services" },
+  { id: 4, name: "campaign", title: "Set Up Campaign" },
+  { id: 5, name: "review", title: "Review & Launch" },
 ];
 
 const LAND_FLIPPER_TEMPLATES = {

@@ -13,6 +13,12 @@ import {
 } from "../services/tcpaCompliance";
 import { DataSourceBroker } from "../services/data-source-broker";
 import { propertyEnrichmentService } from "../services/propertyEnrichment";
+import {
+  getOrgAutonomyLevel,
+  checkSendRateLimit,
+  checkTcpaBeforeSend,
+  recordAutonomousSend,
+} from "../services/autonomyGuardrails";
 import { logger } from "../utils/logger";
 import { validateAtlasOutput, AtlasOutputType } from "./validators";
 
@@ -1609,6 +1615,50 @@ export async function executeTool(
         const htmlContent = args.message;
         const textContent = htmlContent.replace(/<[^>]*>/g, '').trim();
 
+        // ── Autonomy kernel gate (Maren / witnessed-send loop) ──────────────
+        // Wire the real autonomyGuardrails kernel into the live send path.
+        // organizations.paxAutonomyLevel was dead config; this reads it.
+        //
+        // INVARIANT (this increment): NOTHING sends without an explicit human
+        // tap. At the default "assisted" level a send_email call returns a
+        // DRAFT for approval — it does NOT send — unless the caller passes an
+        // explicit approval flag (args._approved === true), which only the
+        // approve-and-send endpoint sets after the human taps "Send".
+        const autonomyLevel = await getOrgAutonomyLevel(org.id);
+        const explicitlyApproved = args._approved === true;
+
+        if (autonomyLevel === "assisted" && !explicitlyApproved) {
+          // Draft-for-approval. No send. Surface a one-tap approval artifact.
+          return {
+            success: true,
+            data: {
+              draft: true,
+              requiresApproval: true,
+              channelType: "email",
+              leadId: args.lead_id ?? null,
+              to: toEmail!,
+              subject: args.subject,
+              message: htmlContent,
+              note:
+                "Draft ready. Pax will send this only after you tap Send — no autonomous send at the assisted level.",
+            },
+          };
+        }
+
+        // ── Guarded send (explicit human approval, or org above assisted) ────
+        // Honor the daily envelope, TCPA, and the autonomous-send audit trail.
+        const rateCheck = await checkSendRateLimit(org.id, "email");
+        if (!rateCheck.allowed) {
+          return { success: false, error: rateCheck.reason ?? "Daily send envelope reached" };
+        }
+
+        if (args.lead_id) {
+          const tcpaCheck = await checkTcpaBeforeSend(args.lead_id);
+          if (!tcpaCheck.allowed) {
+            return { success: false, error: `Cannot send email: ${tcpaCheck.reason}` };
+          }
+        }
+
         const result = await emailService.sendEmail({
           to: toEmail!,
           subject: args.subject,
@@ -1617,8 +1667,19 @@ export async function executeTool(
           organizationId: org.id,
         });
 
-        return { 
-          success: result.success, 
+        // Record the send into the audit envelope so the rate limiter and the
+        // daily Pax briefing reflect it. Non-blocking on its own internally.
+        if (result.success) {
+          await recordAutonomousSend(
+            org.id,
+            "email",
+            args.lead_id ?? 0,
+            `${args.subject} — ${textContent}`,
+          );
+        }
+
+        return {
+          success: result.success,
           data: result.success ? { messageId: result.messageId, message: "Email sent successfully" } : undefined,
           error: result.error 
         };
