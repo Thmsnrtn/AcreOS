@@ -1,17 +1,21 @@
 import { useLocation, Link } from "wouter";
 import { cn } from "@/lib/utils";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useState } from "react";
 import { MobileCommandDrawer } from "./MobileCommandDrawer";
+import { QuickAddSheet } from "./QuickAddSheet";
+import { useAuth } from "@/hooks/use-auth";
 import { NAV_ITEM_MAP, MOBILE_DOORS, type MasterNavItem } from "@/lib/nav-items";
 import { NAV_INDICATOR_LAYOUT_IDS, navIndicatorSpring } from "@/lib/animations";
 
 export function MobileBottomNav() {
   const [location] = useLocation();
   const { isMobile, isKeyboardOpen } = useIsMobile();
+  const { user } = useAuth();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
   // The five canonical doors — the SAME for every persona (persona changes the
   // content behind them, not the doors). Inbox/Settings/long-tail live behind
@@ -26,6 +30,25 @@ export function MobileBottomNav() {
 
   return (
     <>
+      {/* Quick-add FAB — thumb-reachable capture (lead / payment / ticket /
+          note) tailored to the user's persona. Floats above the fixed
+          five-door bar so it never becomes a sixth door. Hidden while the
+          More drawer is open to avoid stacking over its overlay. */}
+      {!isDrawerOpen && (
+        <button
+          type="button"
+          aria-label="Quick add"
+          aria-haspopup="dialog"
+          aria-expanded={isQuickAddOpen}
+          onClick={() => setIsQuickAddOpen(true)}
+          className="fixed right-4 z-50 flex items-center justify-center w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-level-3 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          style={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px) + 16px)" }}
+          data-testid="mobile-quick-add-fab"
+        >
+          <Plus className="w-7 h-7" aria-hidden="true" />
+        </button>
+      )}
+
       <nav
         aria-label="Mobile navigation"
         className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-t border-border"
@@ -110,6 +133,12 @@ export function MobileBottomNav() {
       <MobileCommandDrawer
         open={isDrawerOpen}
         onOpenChange={setIsDrawerOpen}
+      />
+
+      <QuickAddSheet
+        open={isQuickAddOpen}
+        onOpenChange={setIsQuickAddOpen}
+        persona={user?.persona}
       />
 
       <div className="h-[72px] md:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }} />

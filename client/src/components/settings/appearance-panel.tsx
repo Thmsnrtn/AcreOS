@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   useTheme,
   type ThemeId,
@@ -7,16 +6,13 @@ import {
   type Density,
   type MotionPreference,
 } from "@/contexts/theme-context";
-import { useNavPreferences } from "@/hooks/use-nav-preferences";
-import { NavCustomizer } from "@/components/nav-customizer";
 import { ListViewsPanel } from "@/components/settings/list-views-panel";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Sun, Moon, Monitor, LayoutPanelLeft } from "lucide-react";
+import { Sun, Moon, Monitor } from "lucide-react";
 
 /**
  * Settings → Appearance — the trust surface (design-system §14).
@@ -115,8 +111,6 @@ const DENSITY_OPTIONS: { value: Density; label: string; description: string }[] 
 
 export function AppearancePanel() {
   const { themeConfig, setThemeConfig, resolvedMode } = useTheme();
-  const navPrefs = useNavPreferences();
-  const [navCustomizerOpen, setNavCustomizerOpen] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -272,53 +266,6 @@ export function AppearancePanel() {
           </Select>
         </CardContent>
       </Card>
-
-      {/* Navigation */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Navigation</CardTitle>
-          <CardDescription>
-            Choose which sections appear in your sidebar and mobile bar — and
-            in what order. Mobile bar holds at most four.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm">
-                <span className="font-medium">{navPrefs.sidebarItems.length}</span>{" "}
-                <span className="text-muted-foreground">sidebar items ·</span>{" "}
-                <span className="font-medium">{navPrefs.mobileItems.length}</span>{" "}
-                <span className="text-muted-foreground">on mobile</span>
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Customizations sync across devices when you're signed in.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() => setNavCustomizerOpen(true)}
-              data-testid="button-open-nav-customizer"
-            >
-              <LayoutPanelLeft className="w-4 h-4" />
-              Customize
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <NavCustomizer
-        open={navCustomizerOpen}
-        onOpenChange={setNavCustomizerOpen}
-        sidebarItems={navPrefs.sidebarItems}
-        mobileItems={navPrefs.mobileItems}
-        onSidebarChange={navPrefs.setSidebarItems}
-        onMobileChange={navPrefs.setMobileItems}
-        onReset={navPrefs.reset}
-      />
 
       {/* List views — per-surface row/card preferences */}
       <ListViewsPanel />

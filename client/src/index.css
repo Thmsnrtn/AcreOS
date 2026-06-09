@@ -1917,9 +1917,13 @@ textarea:focus-visible,
   flex-shrink: 0;
   transition: filter 0.1s ease, transform 0.1s ease;
 }
-.traffic-light-close:hover {
-  filter: brightness(1.1);
-  transform: scale(1.1);
+/* Gate hover-only affordances behind a real pointer so iOS doesn't require a
+   double-tap (raw :hover sticks on touch — the first tap "hovers"). */
+@media (hover: hover) {
+  .traffic-light-close:hover {
+    filter: brightness(1.1);
+    transform: scale(1.1);
+  }
 }
 .traffic-light-close:active {
   filter: brightness(0.9);
@@ -1936,8 +1940,10 @@ textarea:focus-visible,
   pointer-events: none;
   user-select: none;
 }
-.traffic-light-group:hover .tl-symbol {
-  opacity: 1;
+@media (hover: hover) {
+  .traffic-light-group:hover .tl-symbol {
+    opacity: 1;
+  }
 }
 
 /* Reduced motion override — honor the system preference globally.

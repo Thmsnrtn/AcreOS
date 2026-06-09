@@ -61,7 +61,6 @@ import {
   Search,
   Sliders,
 } from "lucide-react";
-import type { Persona } from "@shared/models/auth";
 
 export interface MasterNavItem {
   id: string;
@@ -135,64 +134,17 @@ export const NAV_ITEM_MAP = new Map<string, MasterNavItem>(
 // Finance door; "ai-hub" is the Pax door. Persona changes only the content
 // behind each door, never the doors themselves (see MOBILE_DOORS).
 export const DEFAULT_SIDEBAR_ITEMS = ["today", "map", "deals", "money", "ai-hub", "inbox", "settings"];
-// 2026-05-29 — restored the mobile bottom nav to the surfaces founders expect
-// (Today / Inbox / Pipeline / Portfolio), reachable directly instead of nested
-// under the consolidated Deals/Money tabs. Everything else lives in the More
-// drawer. The 5th slot is the More button (see MobileBottomNav).
-export const DEFAULT_MOBILE_ITEMS  = ["today", "inbox", "pipeline", "portfolio"];
 
 // The five canonical "doors" — the same for every persona on every device
-// (design-review decision 2026-05-29). Persona changes the CONTENT behind each
-// door (persona-gated sections, vocabulary, Finance tabs), never the doors
-// themselves. The mobile bottom nav renders exactly these; Inbox/Settings and
-// the long tail are reached from the top bar (Search/⌘K) + the More drawer.
+// (design-review decision 2026-05-29; CLAUDE.md "five fixed doors" doctrine).
+// Persona changes the CONTENT behind each door (persona-gated sections,
+// vocabulary, Finance tabs), never the doors themselves. The mobile bottom nav
+// renders EXACTLY these — there is deliberately no per-persona or user-saved
+// override layer, so the rendered bar can never diverge from this list.
+// Inbox/Settings and the long tail are reached from the top bar (Search/⌘K) +
+// the More drawer.
 //   Today · Map · Deals · Finance(money) · Pax(ai-hub)
 export const MOBILE_DOORS = ["today", "map", "deals", "money", "ai-hub"];
-
-/**
- * Persona-aware default mobile bottom-nav, keyed on the user's RELIABLE
- * `persona` field (shared/models/auth.ts Persona) — the same explicit value
- * the desktop sidebar trusts — NOT a behavioral inference.
- *
- * AcreOS serves a handful of distinct investor types; each should open the app
- * to the four surfaces that match their daily loop. A note servicer should not
- * land on a Deals tab, and a wholesaler should not have to dig for buyer
- * blasts. User-customized prefs (saved in useNavPreferences) still override.
- *
- * 4 ids = the bottom-nav tabs; the 5th slot is always the More drawer.
- */
-export function mobileItemsForPersona(persona: Persona | undefined): string[] {
-  switch (persona) {
-    case "wholesaler":
-      // Contracts + buyer blasts + reply triage.
-      return ["today", "deals", "campaigns", "inbox"];
-    case "note_investor":
-      // Owns notes — monitors payments, delinquencies, portfolio value.
-      return ["today", "finance", "money", "inbox"];
-    case "note_originator":
-      // Originates seller-financed notes — deals close into the note book.
-      return ["today", "deals", "finance", "money"];
-    case "note_servicer":
-      // Services notes for others — payments ledger + borrower comms.
-      return ["today", "finance", "money", "inbox"];
-    case "tax_delinquent":
-      // Auction/tax-lien buyers — county research + property pipeline.
-      return ["today", "properties", "counties", "money"];
-    case "subdivider":
-      // Splits parcels and lists the children.
-      return ["today", "properties", "listings", "money"];
-    case "fix_flipper":
-      // Rehab projects on owned properties through to disposition.
-      return ["today", "properties", "deals", "money"];
-    case "landlord":
-      // Buy-and-hold — rent roll + portfolio (finance surfaces cash flow).
-      return ["today", "properties", "finance", "money"];
-    case "land_investor":
-    default:
-      // Land flipper / unknown — the launch-vertical default.
-      return DEFAULT_MOBILE_ITEMS;
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Phase 4 — new founder UI (Solene migration)
