@@ -259,10 +259,16 @@ export interface EnsembleCapStatus {
 }
 
 /**
- * Read the current ensemble (agent_dispatch) cap status. Fail-CLOSED:
- * if the MTD lookup errors, treat the cap as exceeded so a DB hiccup can
- * never quietly unbound the single largest cash cost. (Contrast with the
- * customer-facing AI gates, which fail open.)
+ * Read the current ensemble (agent_dispatch) cap status.
+ *
+ * ENFORCE-when-known: the cap THROWS only when we can actually read MTD spend
+ * AND it's a finite value at/over the red threshold. When the spend lookup
+ * ERRORS (or returns a non-finite value), we LOG LOUDLY and fail OPEN — because
+ * halting the *entire* autonomous ensemble on a transient DB read error is a
+ * worse failure than a bounded overspend until the next successful read (the
+ * enforcement resumes the instant the read recovers, and dispatch results write
+ * to the same DB, so a sustained outage degrades the ensemble through other
+ * paths anyway). This matches the customer-facing AI gates' fail-open posture.
  */
 export async function getEnsembleCapStatus(): Promise<EnsembleCapStatus> {
   const capUsd = getEnsembleMonthlyCapUsd();
@@ -272,15 +278,18 @@ export async function getEnsembleCapStatus(): Promise<EnsembleCapStatus> {
     monthToDateUsd = await getMonthToDateSpendForType("agent_dispatch");
   } catch (err) {
     logger.error(
-      "[capitalTracker] ensemble cap MTD lookup failed; failing CLOSED (treating cap as exceeded)",
+      "[capitalTracker] ensemble cap MTD lookup failed; failing OPEN (allowing dispatch) — enforcement resumes on read recovery",
       err instanceof Error ? err : undefined,
     );
-    return {
-      monthToDateUsd: Number.POSITIVE_INFINITY,
-      capUsd,
-      redThresholdUsd,
-      exceeded: true,
-    };
+    return { monthToDateUsd: 0, capUsd, redThresholdUsd, exceeded: false };
+  }
+  // Guard against a non-finite read (e.g. a malformed SUM) — never let NaN/∞
+  // gate dispatches; treat it as "can't tell" → fail open with a loud log.
+  if (!Number.isFinite(monthToDateUsd)) {
+    logger.error(
+      `[capitalTracker] ensemble cap MTD spend was non-finite (${monthToDateUsd}); failing OPEN`,
+    );
+    return { monthToDateUsd: 0, capUsd, redThresholdUsd, exceeded: false };
   }
   return {
     monthToDateUsd,

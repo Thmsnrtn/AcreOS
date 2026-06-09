@@ -102,11 +102,13 @@ describe("ensemble monthly cap — pre-dispatch enforcement", () => {
     expect(mockWhere).not.toHaveBeenCalled();
   });
 
-  it("fails CLOSED on a DB error (throws rather than silently unbounding)", async () => {
+  it("fails OPEN on a DB error (allows + logs loudly rather than halting the whole ensemble)", async () => {
+    // Enforce-when-known: a transient spend-read error must not throw — halting
+    // every dispatch on a DB blip is worse than a bounded overspend until the
+    // read recovers (enforcement resumes on the next successful read). The error
+    // is logged loudly; the dispatch proceeds.
     mockWhere.mockRejectedValue(new Error("connection reset"));
-    await expect(assertWithinEnsembleCap()).rejects.toBeInstanceOf(
-      EnsembleCapExceededError,
-    );
+    await expect(assertWithinEnsembleCap()).resolves.toBeUndefined();
   });
 
   it("respects a higher env cap (more headroom before tripping)", async () => {
