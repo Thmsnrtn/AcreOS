@@ -102,6 +102,54 @@ const CACHE_DURATION_DAYS = 30;
 const TIER_PRIORITY: AccessTier[] = ["free", "cached", "byok", "paid"];
 const DEFAULT_TIMEOUT_MS = 12000;
 
+/**
+ * Categories whose fetch implementation is HARDCODED into `executeSourceLookup`
+ * against fixed, free, federal/open endpoints (FEMA, USGS, USDA, Census, EPA,
+ * BLM, …). These do NOT depend on a `data_sources` DB row's `apiUrl` — the URL
+ * is baked in. The ONLY thing a DB row contributed for these was a loop entry to
+ * trigger the call.
+ *
+ * ROOT-CAUSE FIX (Iris, 2026-06-09): historically `lookup()` ran the built-in
+ * fetch only INSIDE `for (const source of sources)`. When the `data_sources`
+ * table is empty/unseeded in an environment (the prod state on v633), that loop
+ * has zero iterations, so the broker returned `success:false` in ~7ms WITHOUT
+ * making any network call — uniformly empty free government data on every public
+ * parcel-check. These categories must attempt their built-in federal fetch even
+ * when no DB row exists. (`parcel_data` county-GIS and the generic-API
+ * passthrough genuinely need a DB row and are deliberately excluded.)
+ */
+const BUILTIN_FEDERAL_CATEGORIES: ReadonlySet<LookupCategory> = new Set<LookupCategory>([
+  "flood_zone",
+  "wetlands",
+  "soil",
+  "environmental",
+  "infrastructure",
+  "natural_hazards",
+  "demographics",
+  "public_lands",
+  "transportation",
+  "water_resources",
+  "elevation",
+  "climate",
+  "agricultural_values",
+  "land_cover",
+  "cropland",
+  "epa_frs",
+  "storm_history",
+  "plss",
+  "watershed",
+  "fema_nri",
+  "usda_clu",
+]);
+
+/**
+ * Synthetic source id for the built-in federal fetch path. Real `data_sources`
+ * rows use positive serial ids, the in-memory cache hit uses 0, so a distinct
+ * negative sentinel keeps health/usage tracking for the built-in path from
+ * colliding with any real row.
+ */
+const BUILTIN_FEDERAL_SOURCE_ID = -1;
+
 export class DataSourceBroker {
   private healthCache: Map<number, SourceHealth> = new Map();
   private usageMetrics: Map<number, UsageMetrics> = new Map();
@@ -368,6 +416,52 @@ export class DataSourceBroker {
       }
     }
 
+    // ── Built-in federal fallback ────────────────────────────────────────────
+    // The DB-driven loop above produced nothing — either because no `data_sources`
+    // row matched this category (the unseeded-prod failure mode) or because every
+    // matching row failed. For categories whose fetch is HARDCODED against fixed
+    // free federal/open endpoints (see BUILTIN_FEDERAL_CATEGORIES), the DB row was
+    // only ever a loop trigger: the endpoint URL is baked into `executeSourceLookup`.
+    // So we attempt the built-in fetch directly via a synthesized virtual source.
+    // This is the difference between "delivering nothing in 7ms" and actually
+    // reaching FEMA/USGS/USDA/Census. The free tier always permits this path.
+    if (BUILTIN_FEDERAL_CATEGORIES.has(category) && maxTierIndex >= TIER_PRIORITY.indexOf("free")) {
+      const builtinHealth = this.healthCache.get(BUILTIN_FEDERAL_SOURCE_ID);
+      if (builtinHealth && builtinHealth.consecutiveFailures >= 5) {
+        // Upstream federal endpoint has been failing repeatedly — honest miss,
+        // don't hammer it. This is a real-signal degrade (network), not the
+        // empty-DB short-circuit we are fixing.
+        fallbacksUsed.push(`built-in federal (${category}): skipped — too many consecutive failures`);
+      } else {
+        try {
+          const virtualSource = this.buildVirtualFederalSource(category);
+          const result = await this.executeSourceLookup(virtualSource, category, options);
+          const latencyMs = Date.now() - startTime;
+
+          this.updateHealth(BUILTIN_FEDERAL_SOURCE_ID, true, latencyMs);
+          this.trackUsage(BUILTIN_FEDERAL_SOURCE_ID, 0, false);
+          await this.cacheResult(BUILTIN_FEDERAL_SOURCE_ID, lookupKey, result, options.state, options.county);
+
+          return {
+            success: true,
+            data: result,
+            source: {
+              id: BUILTIN_FEDERAL_SOURCE_ID,
+              title: virtualSource.title,
+              tier: "free",
+              costCents: 0,
+            },
+            fromCache: false,
+            lookupTimeMs: latencyMs,
+            fallbacksUsed,
+          };
+        } catch (error: any) {
+          this.updateHealth(BUILTIN_FEDERAL_SOURCE_ID, false, Date.now() - startTime);
+          fallbacksUsed.push(`built-in federal (${category}): ${error?.message ?? String(error)}`);
+        }
+      }
+    }
+
     return {
       success: false,
       data: null,
@@ -381,6 +475,52 @@ export class DataSourceBroker {
       lookupTimeMs: Date.now() - startTime,
       fallbacksUsed,
     };
+  }
+
+  /**
+   * Synthesize a minimal in-memory `DataSource` for a built-in federal category.
+   * `executeSourceLookup` only reads `source` for `parcel_data`/generic-API paths
+   * (excluded from BUILTIN_FEDERAL_CATEGORIES), so the federal queries ignore it
+   * entirely — but we give it a real, human-readable title so provenance is honest
+   * and a cast keeps us type-safe without inventing fake column values.
+   */
+  private buildVirtualFederalSource(category: LookupCategory): DataSource {
+    const titleByCategory: Partial<Record<LookupCategory, string>> = {
+      flood_zone: "FEMA NFHL",
+      wetlands: "USFWS NWI",
+      soil: "USDA NRCS SDA",
+      environmental: "EPA TRI",
+      infrastructure: "HIFLD",
+      natural_hazards: "USGS/FEMA/WFIGS",
+      demographics: "US Census ACS",
+      public_lands: "BLM/NPS/USFS",
+      transportation: "DOT/ESRI/Census TIGER",
+      water_resources: "USGS Water Services",
+      elevation: "USGS 3DEP National Map",
+      climate: "Open-Meteo ERA5",
+      agricultural_values: "USDA ERS / NASS",
+      land_cover: "USGS NLCD",
+      cropland: "USDA NASS CropScape",
+      epa_frs: "EPA FRS",
+      storm_history: "NOAA Storm Events",
+      plss: "BLM CadNSDI",
+      watershed: "EPA WATERS / USGS NHD",
+      fema_nri: "FEMA National Risk Index",
+      usda_clu: "USDA FSA CLU",
+    };
+
+    return {
+      id: BUILTIN_FEDERAL_SOURCE_ID,
+      title: titleByCategory[category] ?? "Federal Open Data",
+      category,
+      accessLevel: "free",
+      isEnabled: true,
+      isVerified: true,
+      costPerCall: 0,
+      priority: 1,
+      apiUrl: null,
+      portalUrl: null,
+    } as unknown as DataSource;
   }
 
   async lookupMultiple(categories: LookupCategory[], options: BrokerLookupOptions): Promise<MultiLookupResult> {
@@ -569,7 +709,10 @@ export class DataSourceBroker {
 
   private async queryFemaFlood(lat: number, lng: number): Promise<any> {
     return enrichmentCircuitBreaker.call(async () => {
-      const baseUrl = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer";
+      // FEMA migrated the public NFHL service off the `/gis/nfhl/` path (now a
+      // WebSEAL gateway that returns an HTML error page) to `/arcgis/`. Using the
+      // old host made every flood-zone fetch fail immediately. (Iris, 2026-06-09)
+      const baseUrl = "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer";
       const geometryParam = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
       const url = `${baseUrl}/28/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=DFIRM_ID,FLD_ZONE,ZONE_SUBTY,STATIC_BFE&returnGeometry=false&f=json`;
 
@@ -812,7 +955,7 @@ export class DataSourceBroker {
     }));
 
     try {
-      const femaUrl = `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`;
+      const femaUrl = `https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`;
       const femaResponse = await fetch(femaUrl, {
         headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
@@ -868,7 +1011,7 @@ export class DataSourceBroker {
 
     // FEMA FIRM panel lookup (panel ID, effective date, digitized flag)
     try {
-      const firmUrl = `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/3/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=FIRM_PAN,PANEL,SUFFIX,EFF_DATE,CASE_NO,STATUS,NP_DATE,SOURCE_CIT&returnGeometry=false&f=json`;
+      const firmUrl = `https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/3/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=FIRM_PAN,PANEL,SUFFIX,EFF_DATE,CASE_NO,STATUS,NP_DATE,SOURCE_CIT&returnGeometry=false&f=json`;
       const firmResponse = await fetch(firmUrl, {
         headers: { "User-Agent": "AcreOS Real Estate Platform" },
         signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),

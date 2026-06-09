@@ -196,9 +196,11 @@ export const openDataProvider: DataProvider = {
   async healthCheck(): Promise<ProviderHealthStatus> {
     const start = Date.now();
     try {
-      // Quick check against FEMA NFHL (reliable free endpoint)
+      // Quick check against FEMA NFHL (reliable free endpoint). FEMA moved the
+      // public NFHL service to the `/arcgis/` path; the old `/gis/nfhl/` host now
+      // returns a WebSEAL HTML error page. (Iris, 2026-06-09)
       const response = await fetch(
-        "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer?f=json",
+        "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer?f=json",
         { signal: AbortSignal.timeout(5000) }
       );
       return {
