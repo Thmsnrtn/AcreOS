@@ -6783,6 +6783,43 @@ const STATEMENTS = [
   `ALTER TABLE "solene_pre_call_decisions" ADD COLUMN IF NOT EXISTS "is_founder_bypass" boolean NOT NULL DEFAULT false`,
   `ALTER TABLE "solene_pre_call_decisions" ADD COLUMN IF NOT EXISTS "founder_bypass_reason" text`,
   `CREATE INDEX IF NOT EXISTS "solene_pre_call_decisions_founder_bypass_idx" ON "solene_pre_call_decisions" ("is_founder_bypass", "decided_at")`,
+
+  // ── 0148 — Iris (CTO) — parcel_observations append-only LOCKDOWN (crown-jewel) ──
+  // parcel_observations is the company's longitudinal "balance sheet" of parcel
+  // facts (the unrecoverable system-of-record that feeds lead-alerts +
+  // parcel-biography). Until now its immutability was a code comment only; this
+  // installs the BEFORE-trigger pattern proven on audit_events (0049): a function
+  // that RAISEs on UPDATE/DELETE for every session except one that explicitly
+  // opts in via the session GUC `acreos.allow_parcel_observation_mutation`. The
+  // runtime Fly.io role never sets the GUC, so it can ONLY ever INSERT; a DBA
+  // doing retention pruning sets the GUC 'on' for their session and the trigger
+  // stands aside. INSERT is untouched (BEFORE UPDATE/DELETE never fire on INSERT),
+  // so the fire-and-forget recordParcelObservations() write path keeps working.
+  // Triggers ONLY — the SHA-256 hash-chain is a separate Beatrice follow-up.
+  // Mirrors migrations/0147_parcel_observations_append_only.sql. Idempotent
+  // (CREATE OR REPLACE FUNCTION + DROP TRIGGER IF EXISTS then CREATE TRIGGER).
+  `CREATE OR REPLACE FUNCTION parcel_observations_deny_mutation()
+   RETURNS trigger AS $$
+   BEGIN
+     -- Silenceable by a DBA via session GUC for retention pruning; unset
+     -- (production runtime default) means every UPDATE/DELETE raises.
+     IF current_setting('acreos.allow_parcel_observation_mutation', true) = 'on' THEN
+       RETURN COALESCE(NEW, OLD);
+     END IF;
+     RAISE EXCEPTION 'parcel_observations is append-only (UPDATE/DELETE denied)'
+       USING ERRCODE = 'restrict_violation';
+   END;
+   $$ LANGUAGE plpgsql`,
+  `DROP TRIGGER IF EXISTS parcel_observations_no_update ON "parcel_observations"`,
+  `CREATE TRIGGER parcel_observations_no_update
+     BEFORE UPDATE ON "parcel_observations"
+     FOR EACH ROW
+     EXECUTE FUNCTION parcel_observations_deny_mutation()`,
+  `DROP TRIGGER IF EXISTS parcel_observations_no_delete ON "parcel_observations"`,
+  `CREATE TRIGGER parcel_observations_no_delete
+     BEFORE DELETE ON "parcel_observations"
+     FOR EACH ROW
+     EXECUTE FUNCTION parcel_observations_deny_mutation()`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
