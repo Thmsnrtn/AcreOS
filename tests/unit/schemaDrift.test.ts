@@ -91,11 +91,43 @@ function parseSchemaFile(relPath: string): DeclaredColumn[] {
   // First pass: find each pgTable(...) block. We need the table name
   // and the line range so we can scope column scanning correctly. A
   // single file declares many tables back-to-back.
+  //
+  // The table name can appear on the SAME line as `pgTable(`:
+  //     export const t = pgTable("my_table", {
+  // OR on the FOLLOWING line (the prevailing multi-line style in
+  // shared/schema.ts):
+  //     export const t = pgTable(
+  //       "my_table",
+  //       { ... }
+  // A single-line-only regex silently MISSES every multi-line table,
+  // which then mis-attributes that table's columns to the previous
+  // single-line table and floods the report with phantom drift. So we
+  // anchor on `pgTable(` and pull the first quoted identifier that
+  // follows within a short window.
   const tableStarts: { table: string; startLine: number }[] = [];
-  const tableRe = /pgTable\(\s*"([a-z_][a-z0-9_]*)"\s*,/;
+  const pgTableOpenRe = /pgTable\(/;
+  const tableNameRe = /^\s*"([a-z_][a-z0-9_]*)"\s*,/;
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(tableRe);
-    if (m) tableStarts.push({ table: m[1], startLine: i });
+    const open = lines[i].match(pgTableOpenRe);
+    if (!open) continue;
+    // Same line: pgTable("name", ...
+    const sameLine = lines[i].match(/pgTable\(\s*"([a-z_][a-z0-9_]*)"\s*,/);
+    if (sameLine) {
+      tableStarts.push({ table: sameLine[1], startLine: i });
+      continue;
+    }
+    // Multi-line: the name is the first quoted identifier on a
+    // following line (skip blank/comment-only lines in between).
+    for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+      const nm = lines[j].match(tableNameRe);
+      if (nm) {
+        tableStarts.push({ table: nm[1], startLine: i });
+        break;
+      }
+      // Stop scanning if we hit something that clearly isn't the name
+      // (a column declaration means we overshot).
+      if (/^\s*[a-zA-Z]/.test(lines[j]) && !/^\s*"/.test(lines[j])) break;
+    }
   }
 
   // For each pgTable block, scan forward until the brace at column 0
@@ -149,15 +181,31 @@ function collectMigratedColumns(): Set<string> {
     const typeTok =
       "(?:serial|bigserial|smallserial|text|integer|int|int4|int8|varchar|character|numeric|decimal|boolean|bool|timestamp|timestamptz|date|time|jsonb|json|uuid|bigint|smallint|real|double|float4|float8|char|inet|interval)";
 
-    // CREATE TABLE [IF NOT EXISTS] <id> ( body );
-    const createRe = new RegExp(
-      `CREATE TABLE(?:\\s+IF NOT EXISTS)?\\s+${id}\\s*\\(([\\s\\S]*?)\\)\\s*(?:WITH|;|$)`,
+    // CREATE TABLE [IF NOT EXISTS] <id> ( body )
+    //
+    // We can't capture the body with a non-greedy `\(([\s\S]*?)\)` because
+    // column declarations contain NESTED parens — `REFERENCES orgs(id)`,
+    // `numeric(12,2)`, `DEFAULT now()` — and the first `)` would truncate
+    // the body, dropping most columns and producing phantom drift. Instead
+    // we locate the opening paren and walk forward counting paren depth to
+    // find the matching close, so the full multi-column body is captured.
+    const headRe = new RegExp(
+      `CREATE TABLE(?:\\s+IF NOT EXISTS)?\\s+${id}\\s*\\(`,
       "gi",
     );
     let m: RegExpExecArray | null;
-    while ((m = createRe.exec(sql))) {
+    while ((m = headRe.exec(sql))) {
       const table = m[1] ?? m[2];
-      const body = m[3];
+      // m.index..headRe.lastIndex points just past the opening "(".
+      const bodyStart = headRe.lastIndex;
+      let depth = 1;
+      let k = bodyStart;
+      for (; k < sql.length && depth > 0; k++) {
+        const ch = sql[k];
+        if (ch === "(") depth++;
+        else if (ch === ")") depth--;
+      }
+      const body = sql.slice(bodyStart, k - 1);
       // Each top-level column declaration: id <type>
       const colRe = new RegExp(
         `(?:^|,)\\s*(?:"([a-z_][a-z0-9_]*)"|([a-z_][a-z0-9_]*))\\s+${typeTok}\\b`,
@@ -180,15 +228,36 @@ function collectMigratedColumns(): Set<string> {
       }
     }
 
-    // ALTER TABLE <id> ADD COLUMN [IF NOT EXISTS] <id> ...
-    const alterRe = new RegExp(
-      `ALTER TABLE\\s+${id}\\s+ADD COLUMN(?:\\s+IF NOT EXISTS)?\\s+${id}`,
-      "gi",
-    );
-    while ((m = alterRe.exec(sql))) {
+    // ALTER TABLE <id> ADD COLUMN [IF NOT EXISTS] <id> [, ADD COLUMN ...]
+    //
+    // A single ALTER TABLE may chain MANY comma-separated ADD COLUMN
+    // clauses against the same table:
+    //   ALTER TABLE acquired_notes
+    //     ADD COLUMN IF NOT EXISTS a INTEGER,
+    //     ADD COLUMN IF NOT EXISTS b BOOLEAN,
+    //     ADD COLUMN IF NOT EXISTS c JSONB;
+    // Matching only `ALTER TABLE <id> ADD COLUMN <id>` would capture just
+    // the first column and flag the rest as phantom drift. So we first
+    // locate the ALTER TABLE + table name, then sweep every ADD COLUMN
+    // clause up to the terminating `;`.
+    const alterHeadRe = new RegExp(`ALTER TABLE\\s+${id}\\s+`, "gi");
+    while ((m = alterHeadRe.exec(sql))) {
       const table = m[1] ?? m[2];
-      const col = m[3] ?? m[4];
-      out.add(`${table}.${col}`);
+      // The statement runs from here to the next semicolon.
+      const semi = sql.indexOf(";", alterHeadRe.lastIndex);
+      const stmt = sql.slice(
+        m.index,
+        semi === -1 ? sql.length : semi,
+      );
+      const addColRe = new RegExp(
+        `ADD COLUMN(?:\\s+IF NOT EXISTS)?\\s+${id}`,
+        "gi",
+      );
+      let cm: RegExpExecArray | null;
+      while ((cm = addColRe.exec(stmt))) {
+        const col = cm[1] ?? cm[2];
+        out.add(`${table}.${col}`);
+      }
     }
   }
 

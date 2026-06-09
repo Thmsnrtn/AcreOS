@@ -265,7 +265,10 @@ describe("dispatchQueue.enqueueDispatch", () => {
     ).rejects.toThrow(/promptText must be non-empty/);
   });
 
-  it("defaults maxCostUsd to $25 and timeoutMs to 10 minutes", async () => {
+  // The 2026-06-05 cost audit (shared/schema/solene-dispatch.ts) lowered the
+  // DEFAULT per-dispatch cap to $5 (DISPATCH_DEFAULT_COST_USD); $25 is now the
+  // hard ceiling (DISPATCH_MAX_COST_USD), not the default.
+  it("defaults maxCostUsd to $5 and timeoutMs to 10 minutes", async () => {
     const { enqueueDispatch } = await import("./dispatchQueue");
     const id = await enqueueDispatch({
       sourceType: "auto_dispatch",
@@ -275,7 +278,7 @@ describe("dispatchQueue.enqueueDispatch", () => {
     });
     const row = QUEUE.find((q) => q.id === id);
     expect(row).toBeDefined();
-    expect(Number(row!.max_cost_usd)).toBe(25);
+    expect(Number(row!.max_cost_usd)).toBe(5);
     expect(row!.timeout_ms).toBe(10 * 60 * 1000);
     expect(row!.status).toBe("queued");
   });

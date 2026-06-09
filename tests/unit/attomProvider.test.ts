@@ -55,16 +55,28 @@ describe("attomProvider", () => {
     expect(attomProvider.tierRequired).toBe("pro");
   });
 
-  it("returns cached result when cache hit", async () => {
-    const mockData = { property: [{ building: { rooms: { beds: 3 } } }] };
+  it("bypasses its internal cache for proprietary (redistributable=no) feeds — live passthrough only", async () => {
+    // Beatrice item 7 / commit e72feb5e (license register): ATTOM ships
+    // redistributable="no", so the provider-internal cache-and-reserve path
+    // is DISABLED. Even with a fresh cache row present, ATTOM must make a
+    // live call rather than serve cached data — caching a proprietary feed
+    // without a signed contract + TTL would breach the contract. This is a
+    // licensing invariant, not a perf choice; do not "fix" by re-enabling.
+    const cachedData = { property: [{ building: { rooms: { beds: 3 } } }] };
+    const liveData = { property: [{ building: { rooms: { beds: 9 } } }] };
 
     vi.doMock("../../server/db", () => ({
       db: {
         execute: vi.fn().mockResolvedValue({
-          rows: [{ response_data: mockData }],
+          rows: [{ response_data: cachedData }],
         }),
       },
     }));
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(liveData),
+    });
 
     const { attomProvider } = await import("../../server/services/providers/attom-provider");
     const result = await attomProvider.lookup("property_details", {
@@ -73,9 +85,11 @@ describe("attomProvider", () => {
       longitude: -112.074,
     });
 
-    expect(result.cached).toBe(true);
-    expect(result.costCents).toBe(0); // Cached responses are free
-    expect(result.data).toEqual(mockData);
+    // Served from the live API, NOT the cache row.
+    expect(result.cached).toBe(false);
+    expect(result.costCents).toBe(5); // property_details billed at full cost
+    expect(result.data).toEqual(liveData);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it("throws on unsupported input type", async () => {

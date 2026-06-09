@@ -478,15 +478,24 @@ function baseOpportunity(
 }
 
 describe("evaluateForAutoDispatch — guardrails", () => {
-  it("auto-dispatches (simulated) when all guardrails pass", async () => {
+  // Commit dfe74061 (phase A α) replaced the old SIMULATED dispatch path with
+  // real enqueueDispatch wiring. `dryRun` no longer produces a `SIMULATED:`
+  // agentId — it reports a genuine dispatch DECISION (dispatched=true,
+  // simulated=false) while skipping the queue-enqueue + DB persistence side
+  // effects. There is no simulation mode anymore.
+  it("approves a real auto-dispatch (dryRun skips side effects) when all guardrails pass", async () => {
     const r = await evaluateForAutoDispatch(baseOpportunity(), {
       countMemberDispatchesLast24h: async () => 0,
       dryRun: true,
     });
     expect(r.dispatched).toBe(true);
-    expect(r.simulated).toBe(true);
-    expect(r.agentId).toMatch(/^SIMULATED:/);
+    expect(r.simulated).toBe(false);
+    // dryRun skips enqueue + persistence, so no agentId/dispatchId is minted.
+    expect(r.agentId).toBeNull();
+    expect(r.dispatchId).toBeNull();
     expect(r.evaluation.passed).toBe(true);
+    // The prompt that WOULD be dispatched is still surfaced for inspection.
+    expect(r.promptSummary).toBeTruthy();
   });
 
   it("BLOCKS when confidence < floor", async () => {
