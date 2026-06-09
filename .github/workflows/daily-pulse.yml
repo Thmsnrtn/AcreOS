@@ -93,13 +93,22 @@ jobs:
             exit 0
           fi
 
+          # Two-line ntfy body (one-line + blank line + detail) built with
+          # printf. The previous inline multi-line `-d` string put its second
+          # line at column 0, which terminated YAML's `run: |` block scalar
+          # early and made the WHOLE workflow file unparseable — every run
+          # failed at load with "could not find expected ':'" (shown as a 0s
+          # red run in the Actions list). Building the body with printf keeps
+          # every line indented under the block, so the YAML stays well-formed,
+          # while \n\n still produces the blank-line separator in the push.
+          printf '%s\n\n%s' \
+            "${{ steps.gather.outputs.ONE_LINE }}" \
+            "${{ steps.gather.outputs.DETAIL }}" > /tmp/pulse-body.txt
           curl -sS -X POST \
             -H "Title: AcreOS daily pulse" \
             -H "Priority: default" \
             -H "Tags: bar_chart,sunrise" \
-            -d "${{ steps.gather.outputs.ONE_LINE }}
-
-${{ steps.gather.outputs.DETAIL }}" \
+            --data-binary @/tmp/pulse-body.txt \
             "https://ntfy.sh/${NTFY_TOPIC}"
 
           echo "✓ Pushed to ntfy topic"

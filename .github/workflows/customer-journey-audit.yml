@@ -63,16 +63,29 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
 
-      - name: Validate TARGET_URL
+      # 🔑 FOUNDER INFRA REQUIRED — this audit walks a LIVE deployed URL, so it
+      # cannot run until the founder sets the TARGET_URL secret (and the
+      # E2E_TEST_AUTH_TOKEN it pairs with). Previously it hard-failed RED when
+      # TARGET_URL was unset, which trained the team to ignore this check.
+      # Skip cleanly instead: a missing live-URL secret is an infra gap, not a
+      # customer-journey regression, so the workflow stays GREEN-with-a-reason
+      # (amber-by-design). A RED here now means an ACTUAL journey regression.
+      #   gh secret set TARGET_URL --body "https://acreos.io"
+      #   gh secret set E2E_TEST_AUTH_TOKEN --body "<signed token>"
+      - name: Resolve TARGET_URL (skip cleanly if unset)
+        id: guard
         run: |
           if [ -z "${TARGET_URL:-}" ]; then
-            echo "::error::TARGET_URL is unset — cannot run customer-journey audit"
-            exit 1
+            echo "::notice::TARGET_URL secret unset — skipping customer-journey audit (requires a live deployed URL). Set TARGET_URL + E2E_TEST_AUTH_TOKEN secrets to enable."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "Auditing $TARGET_URL"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Run customer-journey audit
         id: audit
+        if: steps.guard.outputs.skip != 'true'
         run: |
           if [ -n "${{ github.event.inputs.project_filter }}" ]; then
             node scripts/run-customer-journey-audit.mjs \

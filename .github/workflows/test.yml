@@ -44,13 +44,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: TypeScript check
-        run: npx tsc --noEmit
+      # Unified gate — the SAME `npm run check` the deploy gate (deploy.yml)
+      # and CI (ci.yml) run. The previous bare `npx tsc --noEmit` ran WITHOUT
+      # a heap ceiling and OOM-killed the runner (exit 134 = SIGABRT), so this
+      # workflow was chronically red even when the code was green. `check`
+      # pins NODE_OPTIONS=--max-old-space-size=6144 (under the runner's ~7GB),
+      # forces `--incremental false`, and runs the schema + no-fabrication
+      # ratchets — so Test can never disagree with the deploy gate.
+      - name: TypeScript check + ratchets
+        run: npm run check
 
       - name: Run database migrations
         run: npx drizzle-kit migrate
         continue-on-error: true # migrations may not exist in test env
 
+      # Plain `vitest run` — identical to the deploy gate's blocking test step.
+      # No `--coverage` here: coverage v8 instrumentation is heavier (OOM risk)
+      # and its threshold gate is report-only, owned by ci.yml's Coverage step.
       - name: Run tests
         run: npx vitest run --reporter=verbose
         env:
