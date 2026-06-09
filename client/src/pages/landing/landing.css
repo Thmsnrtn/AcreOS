@@ -1815,3 +1815,101 @@
   color: var(--acr-ink);
   font-weight: 600;
 }
+
+/* ─── Land Credit Score band (Soren — category-defining noun) ─────────── */
+/* Public explainer for the 300–850 / A+–F parcel score. Reuses the
+   .lp-data-source grid for the six dimensions. All color from --acr-* tokens;
+   the gauge is illustrative and labeled as such. */
+
+.lp-lcs-gauge {
+  max-width: 560px;
+  margin: 8px 0 40px;
+  padding: 24px;
+  background: var(--acr-surface);
+  border: 0.5px solid var(--acr-line);
+  border-radius: 14px;
+}
+.lp-lcs-gauge-label {
+  display: inline-block;
+  font: 600 10px/1 var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--acr-ink-3);
+  background: var(--acr-line-soft);
+  border-radius: 999px;
+  padding: 4px 9px;
+  margin-bottom: 16px;
+}
+.lp-lcs-gauge-bar {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--acr-neg) 0%,
+    var(--acr-warn) 50%,
+    var(--acr-pos) 100%
+  );
+}
+.lp-lcs-gauge-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  opacity: 0.85;
+}
+.lp-lcs-gauge-marker {
+  position: absolute;
+  top: 50%;
+  /* Illustrative position only — ~720/850 on the 300–850 scale. */
+  left: 76%;
+  width: 4px;
+  height: 22px;
+  border-radius: 2px;
+  background: var(--acr-ink);
+  transform: translate(-50%, -50%);
+  box-shadow: var(--acr-shadow-1);
+}
+.lp-lcs-gauge-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font: 600 11px/1 var(--font-sans);
+  color: var(--acr-ink-3);
+}
+.lp-lcs-gauge-note {
+  margin: 14px 0 0;
+  font: 400 13px/1.5 var(--font-sans);
+  color: var(--acr-ink-2);
+}
+
+.lp-lcs-subhead {
+  font: 700 18px/1.3 var(--font-sans);
+  color: var(--acr-ink);
+  margin: 8px 0 6px;
+}
+.lp-lcs-subsub {
+  font: 400 15px/1.55 var(--font-sans);
+  color: var(--acr-ink-2);
+  margin: 0 0 20px;
+  max-width: 620px;
+}
+.lp-lcs-weight {
+  font-weight: 600;
+  color: var(--acr-ink-3);
+}
+
+.lp-lcs-honest {
+  margin: 40px 0 32px;
+  padding: 24px;
+  background: var(--acr-surface);
+  border: 0.5px solid var(--acr-line);
+  border-radius: 14px;
+}
+.lp-lcs-honest-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+  font: 400 14px/1.5 var(--font-sans);
+  color: var(--acr-ink-2);
+}

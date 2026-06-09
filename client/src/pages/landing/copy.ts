@@ -49,8 +49,13 @@ export const LANDING_COPY = {
     sub:
       "AcreOS pulls lists, runs real comparable sales (not Zillow estimates), sends direct mail, drafts seller replies, tracks every parcel from cold lead through closed note in one thread, and turns on automated note servicing once payments are connected. The operator handles judgment calls; the system handles the busy work.",
     cta1: "See Pax run on your county — free for 14 days",
-    cta2: "Watch a 90-second demo first",
-    ctaSub: "Pax pulls your first list inside 10 minutes.",
+    // Secondary CTA is the proof itself: the public streaming parcel-check at
+    // /tools/parcel-check lets a stranger watch real government data resolve
+    // source-by-source, no signup. The proof sells; the result page carries the
+    // signup CTA. (Replaced the old "90-second demo" line — there is no video;
+    // the parcel-check IS the demo.)
+    cta2: "Run it on your county — free, no signup",
+    ctaSub: "Pax pulls your first list inside 10 minutes. Every parcel gets a Land Credit Score — a 300–850 read on the parcel itself.",
     proof: "",
   },
   positioning: {
@@ -120,7 +125,7 @@ export const LANDING_COPY = {
   features: {
     eyebrow: "What's in the box",
     title: "Every tool a Land Investor needs, in one place.",
-    sub: "Find, analyze, reach, close, service. No tab-juggling, no per-step subscriptions.",
+    sub: "Find, analyze, reach, close, service. Every parcel carries a Land Credit Score — a 300–850 read on the dirt. No tab-juggling, no per-step subscriptions.",
   },
   data: {
     eyebrow: "The data",
@@ -162,6 +167,41 @@ export const LANDING_COPY = {
       "No card, no calls, no pressure. Full feature access during the trial.",
     cta1: "Start free trial",
     cta2: "Email us first",
+  },
+  // Public explainer for the Land Credit Score — the category-defining noun.
+  // Honest framing (truth-engine, 2026-06-08): the score reads PARCELS, not
+  // people. It is not a consumer credit report and pulls no personal credit.
+  // Scale (300–850), grades (A+ … F), and the six weighted dimensions mirror
+  // the product surface (client/src/pages/land-credit.tsx feature-importance
+  // table + shared/schema/marketplace.ts landCreditScores). No example score is
+  // stated as real; the sample card is labeled "illustrative."
+  landCreditScore: {
+    eyebrow: "The Land Credit Score",
+    title: "A credit score for the parcel — not the person.",
+    sub:
+      "Every parcel AcreOS touches gets a Land Credit Score: a single 300–850 read, graded A+ through F, of how a piece of land stacks up as an investment. It scores the dirt, not the buyer. It is not a consumer credit report and pulls no personal credit.",
+    scaleNote: "300–850 scale · A+ through F · recomputed as the underlying data changes.",
+    dimensionsTitle: "Six weighted dimensions",
+    dimensionsSub:
+      "The score is a weighted blend of six dimensions, drawn from the same government and market data behind every parcel check.",
+    dimensions: [
+      { name: "Location", weight: 25, what: "Market strength, population growth, economic health, accessibility." },
+      { name: "Financial", weight: 20, what: "Cash flow, appreciation, liquidity, tax burden, carrying cost." },
+      { name: "Physical", weight: 20, what: "Topography, soil quality, water access, utilities, road access." },
+      { name: "Legal", weight: 15, what: "Zoning, restrictions, mineral rights, water rights, clear title." },
+      { name: "Environmental", weight: 10, what: "Flood risk, wildfire, contamination, wetlands, protected species." },
+      { name: "Market", weight: 10, what: "Demand, supply, price history, days on market, comparable sales." },
+    ],
+    sampleLabel: "Illustrative — example output, not a real parcel",
+    honestTitle: "What it is — and what it isn't",
+    honest: [
+      "It scores parcels, not people. No personal or consumer credit is involved.",
+      "It is not a FICO score, a consumer credit report, or a regulated credit product.",
+      "It is a decision aid, not a guarantee — the operator still makes the call.",
+      "It updates as the underlying flood, soil, market, and ownership data changes.",
+    ],
+    cta1: "Run a free parcel check",
+    cta2: "Start free trial",
   },
 };
 

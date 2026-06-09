@@ -17,8 +17,12 @@
  *   overwhelming; follow-up sections illustrate the agents instead)
  * - Title font-size scales with clamp(48px, 7vw, 80px) for responsive
  *
- * CTA links wire to production routes: /auth?mode=register and #how
- * (in-page anchor for the How It Works section landing later in 2A.3).
+ * CTA links wire to production routes: primary → /auth?mode=register;
+ * secondary → /tools/parcel-check (the public streaming proof — a stranger
+ * watches real government data resolve source-by-source, no signup. The proof
+ * sells; the result page carries the signup CTA). The old secondary "#how"
+ * anchor promised a demo the product can't deliver as video — the parcel-check
+ * IS the demo.
  */
 
 import { Link } from "wouter";
@@ -91,9 +95,19 @@ export function Hero() {
           >
             {c.cta1}
           </Link>
-          <a href="#how" className="lp-btn lp-btn-secondary lp-btn-lg">
+          <Link
+            href="/tools/parcel-check?utm_source=landing&utm_medium=internal&utm_campaign=hero_proof"
+            className="lp-btn lp-btn-secondary lp-btn-lg"
+            onClick={() =>
+              emitMarketingTouch({
+                surface: "landing:hero",
+                eventType: "cta_click",
+                payload: { ctaId: "hero_secondary_parcel_check" },
+              })
+            }
+          >
             {c.cta2}
-          </a>
+          </Link>
         </div>
         <div className="lp-hero-ctasub">{c.ctaSub}</div>
         {c.proof ? (

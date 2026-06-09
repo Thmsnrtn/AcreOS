@@ -7,7 +7,8 @@
  *
  * Section order:
  *   Hero → Positioning → HowItWorks → Agents → DayInLife → Features →
- *   Quotes → Pricing → FAQ → FinalCTA → Footer
+ *   LandCreditScore → DataProvenance → Quotes → Pricing → FAQ →
+ *   FinalCTA → Footer
  *
  * Voice is mechanics-first, third-person — see
  * client/src/pages/landing/copy.ts. The former founder-letter tone
@@ -42,6 +43,7 @@ import { HowItWorks } from "./landing/HowItWorks";
 import { Agents } from "./landing/Agents";
 import { DayInLife } from "./landing/DayInLife";
 import { Features } from "./landing/Features";
+import { LandCreditScoreBand } from "./landing/LandCreditScore";
 import { DataProvenance } from "./landing/DataProvenance";
 import { Quotes } from "./landing/Quotes";
 import { Pricing } from "./landing/Pricing";
@@ -85,6 +87,7 @@ export default function LandingPage() {
         <Agents />
         <DayInLife />
         <Features />
+        <LandCreditScoreBand />
         <DataProvenance />
         <Quotes />
         <Pricing />
