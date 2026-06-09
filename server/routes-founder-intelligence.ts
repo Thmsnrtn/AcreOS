@@ -25,7 +25,7 @@ import {
   supportTickets, subscriptionEvents, systemAlerts, activityLog,
   notes, campaigns, apiUsageLogs,
   decisionsInboxItems, jobHealthLogs, churnRiskScores, revenueProtectionInterventions,
-  founderDigestHistory, companyAgents, agentMessages, companyBriefingCache,
+  founderDigestHistory, companyAgents, companyBriefingCache,
   agentConversations, agentActionLog, agentGoals, trustEvolutionLog,
   agentActionUndoLog,
 } from "@shared/schema";

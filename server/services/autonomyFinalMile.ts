@@ -9,7 +9,7 @@
  */
 
 import { db } from "../db";
-import { agentEvents, agentMessages } from "@shared/schema";
+import { agentEvents } from "@shared/schema";
 import { eq, and, sql, desc, gte, lt, inArray } from "drizzle-orm";
 import { wsServer } from "../websocket";
 import { logger } from "../utils/logger";

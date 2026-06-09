@@ -13592,8 +13592,22 @@ export const agentProposalObservations = pgTable("agent_proposal_observations", 
 ]);
 export type AgentProposalObservation = typeof agentProposalObservations.$inferSelect;
 
-// Agent Messages — inter-agent communication on typed channels
-export const agentMessages = pgTable("agent_messages", {
+// Agent Channel Messages — Sovereign Company Protocol broadcast bus.
+//
+// HISTORY / RECONCILIATION (2026-06-09, iris/agent-messages-reconcile):
+// This typed-channel design was originally declared as `agent_messages`
+// (2026-03-18, Sovereign Company Protocol) but NO migration ever created
+// that table — every broadcast threw "column to_channel does not exist" at
+// runtime. Meanwhile a SEPARATE correlation-based `agent_messages` table
+// (shared/schema/solene-agent-messages.ts) WAS migrated (2026-06-03) and is
+// the one that physically exists in prod. The two designs collided on a
+// single physical name. They are two distinct features, so they now own two
+// distinct tables: the correlation-based inter-agent DM table keeps the live
+// `agent_messages` name (canonical def re-exported from the solene barrel
+// below), and this broadcast bus moves to its own `agent_channel_messages`
+// table (created by migration 0146). No prod data is dropped — the
+// typed-channel table never existed.
+export const agentChannelMessages = pgTable("agent_channel_messages", {
   id: serial("id").primaryKey(),
   fromAgent: text("from_agent").notNull(),           // agent codename
   toChannel: text("to_channel").notNull(),           // releases | incidents | customer_signals | metrics_alerts | revenue_events | content_pipeline | compliance_flags
@@ -13606,15 +13620,15 @@ export const agentMessages = pgTable("agent_messages", {
   readByAgents: jsonb("read_by_agents").$type<string[]>().default([]),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
-  index("agent_messages_channel_idx").on(table.toChannel),
-  index("agent_messages_from_idx").on(table.fromAgent),
-  index("agent_messages_priority_idx").on(table.priority),
-  index("agent_messages_created_idx").on(table.createdAt),
+  index("agent_channel_messages_channel_idx").on(table.toChannel),
+  index("agent_channel_messages_from_idx").on(table.fromAgent),
+  index("agent_channel_messages_priority_idx").on(table.priority),
+  index("agent_channel_messages_created_idx").on(table.createdAt),
 ]);
 
-export const insertAgentMessageSchema = createInsertSchema(agentMessages).omit({ id: true, createdAt: true });
-export type AgentMessage = typeof agentMessages.$inferSelect;
-export type InsertAgentMessage = z.infer<typeof insertAgentMessageSchema>;
+export const insertAgentChannelMessageSchema = createInsertSchema(agentChannelMessages).omit({ id: true, createdAt: true });
+export type AgentChannelMessage = typeof agentChannelMessages.$inferSelect;
+export type InsertAgentChannelMessage = z.infer<typeof insertAgentChannelMessageSchema>;
 
 // Company Briefing Cache — pre-generated CEO briefings
 export const companyBriefingCache = pgTable("company_briefing_cache", {
@@ -17079,6 +17093,17 @@ export * from "./schema/solene-capital";
 // SOLENE — proactive page-event ledger (urgent / critical pages to Tom)
 // ============================================================================
 export * from "./schema/solene-page";
+
+// ============================================================================
+// SOLENE — inter-agent direct messages (correlation-based DM table). This is
+// the CANONICAL `agent_messages` table that physically exists in prod (created
+// 2026-06-03, migrate.mjs). Re-exported here so `agentMessages` resolves to
+// the real table from `@shared/schema` and the schema-column validator (which
+// indexes only shared/schema.ts) sees the live column set. The typed-channel
+// broadcast bus that previously squatted this name now lives on its own
+// `agent_channel_messages` table (see agentChannelMessages above).
+// ============================================================================
+export * from "./schema/solene-agent-messages";
 
 // ============================================================================
 // SOLENE — team-system audit (overarching team-as-a-system elite-bar audit)

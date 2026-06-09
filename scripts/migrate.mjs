@@ -6740,6 +6740,37 @@ const STATEMENTS = [
   `ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "prev_hash" text`,
   `ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "row_hash" text`,
   `CREATE INDEX IF NOT EXISTS "audit_events_seq_chain_idx" ON "audit_events" ("seq")`,
+
+  // ── 0146 — Iris (CTO) — agent_channel_messages (Sovereign Company Protocol bus) ──
+  // Reconciles the long-standing agent_messages two-design collision. The
+  // typed-channel broadcast bus (from_agent/to_channel/data/read_by_agents,
+  // declared 2026-03-18 in shared/schema.ts) never had a CREATE — every
+  // broadcast threw "column to_channel does not exist". The physical
+  // agent_messages table that exists in prod is the correlation-based
+  // inter-agent DM design (from_agent_role/to_agent_role/correlation_id,
+  // created 2026-06-03 above). The two designs are distinct features that
+  // collided on one name, so the broadcast bus now gets its own table here.
+  // No prod data moves — the typed-channel table never existed.
+  // Mirrors shared/schema.ts (agentChannelMessages) +
+  // migrations/0146_agent_channel_messages.sql. Idempotent (IF NOT EXISTS).
+  // Not org-scoped — this is an internal AI-team bus with no org_id column.
+  `CREATE TABLE IF NOT EXISTS "agent_channel_messages" (
+     "id" serial PRIMARY KEY,
+     "from_agent" text NOT NULL,
+     "to_channel" text NOT NULL,
+     "priority" text NOT NULL DEFAULT 'medium',
+     "subject" text NOT NULL,
+     "body" text NOT NULL,
+     "data" jsonb,
+     "requires_response" boolean DEFAULT false,
+     "respond_by" timestamp,
+     "read_by_agents" jsonb DEFAULT '[]'::jsonb,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "agent_channel_messages_channel_idx" ON "agent_channel_messages" ("to_channel")`,
+  `CREATE INDEX IF NOT EXISTS "agent_channel_messages_from_idx" ON "agent_channel_messages" ("from_agent")`,
+  `CREATE INDEX IF NOT EXISTS "agent_channel_messages_priority_idx" ON "agent_channel_messages" ("priority")`,
+  `CREATE INDEX IF NOT EXISTS "agent_channel_messages_created_idx" ON "agent_channel_messages" ("created_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

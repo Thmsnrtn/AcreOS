@@ -16,8 +16,8 @@
  */
 
 import { db } from "../db";
-import { agentMessages, type InsertAgentMessage } from "@shared/schema";
-import { eq, and, desc, gte, sql, not, arrayContains } from "drizzle-orm";
+import { agentChannelMessages } from "@shared/schema";
+import { eq, and, desc, gte, sql } from "drizzle-orm";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ class AgentCommsService {
    * Returns the created message ID.
    */
   async broadcast(options: BroadcastOptions): Promise<number> {
-    const [msg] = await db.insert(agentMessages).values({
+    const [msg] = await db.insert(agentChannelMessages).values({
       fromAgent: options.from,
       toChannel: options.channel,
       priority: options.priority || "medium",
@@ -73,7 +73,7 @@ class AgentCommsService {
       requiresResponse: options.requiresResponse || false,
       respondBy: options.respondBy,
       readByAgents: [],
-    }).returning({ id: agentMessages.id });
+    }).returning({ id: agentChannelMessages.id });
 
     return msg.id;
   }
@@ -82,15 +82,15 @@ class AgentCommsService {
    * Get messages from a specific channel, optionally filtered by time.
    */
   async getMessages(channel: AgentChannel, since?: Date, limit = 50) {
-    const conditions = [eq(agentMessages.toChannel, channel)];
+    const conditions = [eq(agentChannelMessages.toChannel, channel)];
     if (since) {
-      conditions.push(gte(agentMessages.createdAt, since));
+      conditions.push(gte(agentChannelMessages.createdAt, since));
     }
 
     return db.select()
-      .from(agentMessages)
+      .from(agentChannelMessages)
       .where(and(...conditions))
-      .orderBy(desc(agentMessages.createdAt))
+      .orderBy(desc(agentChannelMessages.createdAt))
       .limit(limit);
   }
 
@@ -100,13 +100,13 @@ class AgentCommsService {
   async getRecentMessages(since?: Date, limit = 100) {
     const conditions = [];
     if (since) {
-      conditions.push(gte(agentMessages.createdAt, since));
+      conditions.push(gte(agentChannelMessages.createdAt, since));
     }
 
     return db.select()
-      .from(agentMessages)
+      .from(agentChannelMessages)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(agentMessages.createdAt))
+      .orderBy(desc(agentChannelMessages.createdAt))
       .limit(limit);
   }
 
@@ -123,12 +123,12 @@ class AgentCommsService {
     if (subscribedChannels.length === 0) return [];
 
     const messages = await db.select()
-      .from(agentMessages)
+      .from(agentChannelMessages)
       .where(
-        sql`${agentMessages.toChannel} = ANY(${subscribedChannels})
-            AND NOT (${agentMessages.readByAgents}::jsonb ? ${agentCodename})`
+        sql`${agentChannelMessages.toChannel} = ANY(${subscribedChannels})
+            AND NOT (${agentChannelMessages.readByAgents}::jsonb ? ${agentCodename})`
       )
-      .orderBy(desc(agentMessages.createdAt))
+      .orderBy(desc(agentChannelMessages.createdAt))
       .limit(limit);
 
     return messages;
@@ -139,7 +139,7 @@ class AgentCommsService {
    */
   async markRead(messageId: number, agentCodename: string): Promise<void> {
     await db.execute(
-      sql`UPDATE agent_messages
+      sql`UPDATE agent_channel_messages
           SET read_by_agents = COALESCE(read_by_agents, '[]'::jsonb) || ${JSON.stringify([agentCodename])}::jsonb
           WHERE id = ${messageId}
           AND NOT (COALESCE(read_by_agents, '[]'::jsonb) ? ${agentCodename})`
@@ -160,14 +160,14 @@ class AgentCommsService {
     const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
 
     return db.select()
-      .from(agentMessages)
+      .from(agentChannelMessages)
       .where(
         and(
-          gte(agentMessages.createdAt, since),
-          sql`${agentMessages.priority} IN ('high', 'critical')`
+          gte(agentChannelMessages.createdAt, since),
+          sql`${agentChannelMessages.priority} IN ('high', 'critical')`
         )
       )
-      .orderBy(desc(agentMessages.createdAt))
+      .orderBy(desc(agentChannelMessages.createdAt))
       .limit(20);
   }
 
@@ -178,12 +178,12 @@ class AgentCommsService {
     const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
 
     const results = await db.select({
-      channel: agentMessages.toChannel,
+      channel: agentChannelMessages.toChannel,
       count: sql<number>`count(*)`,
     })
-      .from(agentMessages)
-      .where(gte(agentMessages.createdAt, since))
-      .groupBy(agentMessages.toChannel);
+      .from(agentChannelMessages)
+      .where(gte(agentChannelMessages.createdAt, since))
+      .groupBy(agentChannelMessages.toChannel);
 
     const activity: Record<string, number> = {};
     for (const row of results) {

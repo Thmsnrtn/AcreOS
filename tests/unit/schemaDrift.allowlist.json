@@ -1,5 +1,5 @@
 {
-  "description": "Pre-existing schema/migration drift, snapshotted on first run of tests/unit/schemaDrift.test.ts. Each entry is a \"table.column\" pair declared in shared/schema*.ts that no migration creates. The drift detector fails for any new entry. Burn this list down by shipping migrations. NOTE (2026-06-08, iris/ci-green): the detector's schema/SQL parsers were corrected to (a) recognize multi-line pgTable(\"name\", ...) declarations, (b) capture CREATE TABLE bodies with balanced-paren scanning (nested REFERENCES x(id) / numeric(p,s) no longer truncate the body), and (c) expand comma-chained ADD COLUMN clauses in a single ALTER TABLE. Those fixes eliminated ~74 phantom-drift false positives. The agent_messages.* entries below are GENUINE pre-existing drift surfaced by the parser fix: the typed-channel agentMessages table in shared/schema.ts (from_agent/to_channel/..., added 2026-03-18, Sovereign Company Protocol) diverges from the correlation-based agent_messages CREATE in scripts/migrate.mjs (from_agent_role/to_agent_role/...). Reconciling those two designs is owned follow-up work, not part of the CI-unblock; allowlisted as known-debt so the gate protects against genuinely NEW drift.",
+  "description": "Pre-existing schema/migration drift, snapshotted on first run of tests/unit/schemaDrift.test.ts. Each entry is a \"table.column\" pair declared in shared/schema*.ts that no migration creates. The drift detector fails for any new entry. Burn this list down by shipping migrations. NOTE (2026-06-08, iris/ci-green): the detector's schema/SQL parsers were corrected to (a) recognize multi-line pgTable(\"name\", ...) declarations, (b) capture CREATE TABLE bodies with balanced-paren scanning (nested REFERENCES x(id) / numeric(p,s) no longer truncate the body), and (c) expand comma-chained ADD COLUMN clauses in a single ALTER TABLE. Those fixes eliminated ~74 phantom-drift false positives. RESOLVED (2026-06-09, iris/agent-messages-reconcile): the agent_messages two-design collision is reconciled. The typed-channel broadcast bus moved to its own agent_channel_messages table (migration 0146 — created in scripts/migrate.mjs + migrations/0146_agent_channel_messages.sql), and the correlation-based DM table keeps the live agent_messages name (re-exported from shared/schema/solene-agent-messages.ts via the schema barrel). Both designs now have a backing migration, so the 7 agent_messages.* drift entries were removed from this allowlist.",
   "entries": [
     "agent_action_log.action_name",
     "agent_action_log.action_type",
@@ -26,13 +26,6 @@
     "agent_calibration_history.parameter_name",
     "agent_calibration_history.performance_after",
     "agent_calibration_history.status",
-    "agent_messages.created_at",
-    "agent_messages.data",
-    "agent_messages.from_agent",
-    "agent_messages.read_by_agents",
-    "agent_messages.requires_response",
-    "agent_messages.respond_by",
-    "agent_messages.to_channel",
     "agent_negotiations.compromise_details",
     "agent_negotiations.created_at",
     "agent_negotiations.resolution",
