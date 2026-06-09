@@ -17189,7 +17189,10 @@ export * from "./schema/solene-agent-identity";
 export * from "./schema/solene-capability-proposals";
 export * from "./schema/solene-chat-config";
 export * from "./schema/solene-confidence-observations";
-export * from "./schema/solene-constitutional-violations";
+// NOT re-exported: solene-constitutional-violations imports a runtime value from
+// the server-only "@sovereign/immutables" alias, which Rollup cannot resolve in
+// the client bundle (breaks the prod build). Its table is created in prod by
+// scripts/migrate.mjs; server code imports it directly from the sub-module path.
 export * from "./schema/solene-conversations";
 export * from "./schema/solene-counterfactuals";
 export * from "./schema/solene-decision-traces";
