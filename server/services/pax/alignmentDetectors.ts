@@ -143,14 +143,21 @@ export function assertDetectorCitations(detectors: ReadonlyArray<Detector>): voi
 // ============================================================================
 // DETECTOR 1 — founder-bypass detector
 // ----------------------------------------------------------------------------
-// Scans solene_pre_call_decisions for bypass entries (reasoning contains
-// the bypass marker phrases, OR the dispatch's sourceType was
-// "founder_bypass"). For each bypass row in the window, checks for a
-// corresponding audit_events row of action "alignment.founder_bypass_reviewed"
-// targeting that dispatch_id. Bypasses lacking a documented review row are
-// findings.
+// Scans solene_pre_call_decisions for bypass entries — rows explicitly marked
+// `is_founder_bypass = true` by the founderBypass.founderDispatch write path.
+// For each bypass row in the window, checks for a corresponding audit_events
+// row of action "alignment.founder_bypass_reviewed" targeting that
+// dispatch_id. Bypasses lacking a documented review row are findings.
 //
-// We use a raw SQL count + a separate filter pass because the audit_events
+// HONESTY (Quinn, 0147): this used to key on a reasoning-regex
+// ('founder.bypass|founder.override|sovereign.veto') that NOTHING ever wrote
+// into `reasoning`, so the detector could never fire. It now reads the real
+// boolean marker — same one the public /transparency count uses — and the
+// review-write path (POST /api/founder/bypass/review/:dispatchId, which writes
+// the `alignment.founder_bypass_reviewed` audit row) lets a bypass actually be
+// closed.
+//
+// We use a raw SQL pull + a separate filter pass because the audit_events
 // table joins on target_id (varchar) ← dispatch_id (int), so we cast at the
 // SQL level rather than asking drizzle's relational mapper to bridge types.
 // ============================================================================
@@ -186,9 +193,7 @@ export function makeFounderBypassDetector(
           SELECT id, dispatch_id, agent_role, reasoning, decided_at
           FROM solene_pre_call_decisions
           WHERE decided_at >= ${cutoff.toISOString()}
-            AND (
-              reasoning ~* '\\m(founder.bypass|founder.override|sovereign.veto)\\M'
-            )
+            AND is_founder_bypass = true
           ORDER BY decided_at DESC
           LIMIT 500
         `);

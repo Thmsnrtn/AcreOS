@@ -11,6 +11,13 @@
  *   GET /api/founder/bypass/recent
  *     Recent founder invocations (audit feed). ?limit=20 (max 100).
  *
+ *   POST /api/founder/bypass/review/:dispatchId
+ *     Record the post-hoc review of a sovereign bypass. Writes the
+ *     `alignment.founder_bypass_reviewed` audit_events row (targetType
+ *     "dispatch", targetId=dispatchId) that the founder-bypass alignment
+ *     detector looks for. Without this, every bypass stays permanently
+ *     "undocumented" — the loop could never be closed. (Quinn, 0147.)
+ *
  * Auth: isAuthenticated + requireFounder on every route.
  *
  * NOTE: Routes are authored but NOT yet registered in server/routes.ts —
@@ -30,6 +37,7 @@ import {
   listFounderInvocations,
 } from "@acreos/solene";
 import { DISPATCH_AGENT_ROLES } from "@shared/schema/solene-dispatch";
+import { auditFromRequest, AuditActions } from "./utils/auditLog";
 
 const dispatchBodySchema = z.object({
   agentRole: z.enum(DISPATCH_AGENT_ROLES),
@@ -50,6 +58,11 @@ const dispatchBodySchema = z.object({
 
 const cancelBodySchema = z.object({
   reason: z.string().min(1, "reason required").max(2_000),
+});
+
+const reviewBodySchema = z.object({
+  /** The founder's documented review note for the bypass. */
+  note: z.string().min(1, "note required").max(4_000),
 });
 
 export function registerFounderBypassRoutes(app: Express): void {
@@ -140,6 +153,48 @@ export function registerFounderBypassRoutes(app: Express): void {
         });
       } catch (err) {
         logger.error("[founder-bypass] recent failed", {
+          err: String(err),
+        });
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // POST /api/founder/bypass/review/:dispatchId
+  // -------------------------------------------------------------------------
+  // Records the post-hoc review of a sovereign bypass. Writes the
+  // `alignment.founder_bypass_reviewed` audit_events row (targetType
+  // "dispatch", targetId=dispatchId) the founder-bypass alignment detector
+  // looks for, so a documented bypass stops surfacing as an undocumented
+  // finding. This is the missing write path that closed the accountability
+  // loop (Quinn, 0147).
+  app.post(
+    "/api/founder/bypass/review/:dispatchId",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const dispatchId = Number.parseInt(req.params.dispatchId, 10);
+      if (!Number.isFinite(dispatchId) || dispatchId <= 0) {
+        return Errors.badRequest(
+          res,
+          "dispatchId must be a positive integer",
+        );
+      }
+      const parsed = reviewBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.issues);
+      }
+      try {
+        await auditFromRequest(req, {
+          action: AuditActions.ALIGNMENT_FOUNDER_BYPASS_REVIEWED,
+          target: { type: "dispatch", id: dispatchId },
+          justification: parsed.data.note,
+          metadata: { dispatchId },
+        });
+        return res.json({ reviewed: true, dispatchId });
+      } catch (err) {
+        logger.error("[founder-bypass] review failed", {
           err: String(err),
         });
         return Errors.internal(res, err);

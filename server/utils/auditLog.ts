@@ -34,7 +34,10 @@ export type AuditTargetType =
   | "dsar"
   | "subprocessor"
   | "settings"
-  | "export";
+  | "export"
+  // Solene dispatch — used by the founder-bypass review path so the
+  // alignment detector can join its review row back to the bypassed dispatch.
+  | "dispatch";
 
 export interface AuditActor {
   userId?: string | null;
@@ -150,6 +153,11 @@ export const AuditActions = {
   SETTINGS_AUTOPAY_STATE_CHANGED: "settings.autopay_state_changed",
   // Sub-processor registry
   SUBPROCESSOR_UPDATED: "subprocessor.updated",
+  // Alignment — founder-bypass post-hoc review. Written when the founder (or
+  // Quinn on the founder's behalf) documents the review of a sovereign bypass.
+  // The founder-bypass alignment detector keys on this action + targetType
+  // "dispatch" + targetId=dispatch_id to decide whether a bypass is closed.
+  ALIGNMENT_FOUNDER_BYPASS_REVIEWED: "alignment.founder_bypass_reviewed",
 } as const;
 
 export type AuditActionName = (typeof AuditActions)[keyof typeof AuditActions];

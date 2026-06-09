@@ -31,6 +31,10 @@ import {
   DISPATCH_MAX_COST_USD,
   type SoleneDispatchAgentRole,
 } from "@shared/schema/solene-dispatch";
+import {
+  solenePreCallDecisions,
+  PRECALL_PROMPT_SUMMARY_MAX_CHARS,
+} from "@shared/schema/solene-pre-call-decisions";
 import { logger } from "../../utils/logger";
 import { enqueueDispatch, cancelQueuedDispatch } from "./dispatchQueue";
 
@@ -67,6 +71,61 @@ export interface FounderInvocationSummary {
 
 const FOUNDER_DEFAULT_PRIORITY = 3.0;
 const PROMPT_PREVIEW_LIMIT = 200;
+
+// ----------------------------------------------------------------------------
+// recordFounderBypassMarker
+// ----------------------------------------------------------------------------
+
+/**
+ * Write the canonical founder-bypass accountability row.
+ *
+ * Every founderDispatch IS a sovereign bypass by construction (it enqueues
+ * with sourceType="founder_bypass" / enqueued_by="founder" and skips the
+ * propose/approve stage). The public /transparency `founderBypassCount` and
+ * the founder-bypass alignment detector both key on this row's
+ * `is_founder_bypass = true` boolean — replacing the dead reasoning-regex that
+ * NOTHING ever wrote, which kept the published count permanently 0.
+ *
+ * HONESTY: this row is written ONLY here, on a real founder bypass, so the
+ * published number is true — never inflated. Fire-and-forget: a marker-write
+ * failure must never crash the founder's dispatch. We log loudly so a gap is
+ * still observable out-of-band, matching the auditLog posture.
+ */
+async function recordFounderBypassMarker(opts: {
+  dispatchId: number;
+  agentRole: string;
+  reason: string | null;
+  promptText: string;
+}): Promise<void> {
+  try {
+    await db.insert(solenePreCallDecisions).values({
+      dispatchId: opts.dispatchId,
+      agentRole: opts.agentRole,
+      // Credential discipline: never store the full prompt — truncate to the
+      // same window the pre-call checker uses.
+      promptSummary: opts.promptText.slice(0, PRECALL_PROMPT_SUMMARY_MAX_CHARS),
+      // A founder bypass deliberately skips the upstream constitutional screen;
+      // the row records that the dispatch was ALLOWED via sovereign authority,
+      // not screened. The bypass IS the point.
+      allowed: true,
+      immutableNumber: null,
+      immutableText: null,
+      reasoning: "founder bypass: sovereign dispatch (constitutional pre-call screen skipped)",
+      modelUsed: "n/a (founder bypass)",
+      latencyMs: 0,
+      costUsd: "0.000000",
+      violationEventId: null,
+      isFounderBypass: true,
+      founderBypassReason: opts.reason,
+    });
+  } catch (err) {
+    logger.error(
+      "[founderBypass] failed to record bypass accountability marker",
+      err instanceof Error ? err : undefined,
+      { metadata: { dispatchId: opts.dispatchId } },
+    );
+  }
+}
 
 // ----------------------------------------------------------------------------
 // founderDispatch
@@ -112,6 +171,17 @@ export async function founderDispatch(
   });
 
   const recordedAt = new Date();
+
+  // Honesty surface: record the canonical founder-bypass accountability marker.
+  // This row's is_founder_bypass=true is the SINGLE source of truth the public
+  // /transparency founderBypassCount + the founder-bypass alignment detector
+  // count. Fire-and-forget — never blocks or crashes the founder's dispatch.
+  await recordFounderBypassMarker({
+    dispatchId,
+    agentRole: input.agentRole,
+    reason: input.reason ?? null,
+    promptText: input.promptText,
+  });
 
   // Structured audit log — consumed by the founder activity feed. Always
   // info-level because founder actions are first-class operational signal.

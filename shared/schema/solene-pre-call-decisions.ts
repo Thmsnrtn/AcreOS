@@ -43,6 +43,22 @@
 //                          pricing env vars
 //   violation_event_id   int, nullable — FK to solene_constitutional_violations.id
 //                          when blocked + also written there.
+//   is_founder_bypass    boolean NOT NULL default false — TRUE marks a row
+//                          written because the founder exercised sovereign
+//                          bypass authority (founderBypass.founderDispatch:
+//                          sourceType="founder_bypass", enqueued_by="founder").
+//                          This is the SINGLE source of truth for the public
+//                          /transparency founderBypassCount + the
+//                          founder-bypass alignment detector. It replaces the
+//                          fragile reasoning-regex that NOTHING ever wrote into
+//                          `reasoning`, so the published count was permanently
+//                          0 — a false accountability metric. A row is only
+//                          ever marked TRUE on a real founder bypass; never
+//                          inflated.
+//   founder_bypass_reason text, nullable — the founder's stated reason for the
+//                          bypass (FounderBypassInput.reason). Captured here so
+//                          a bypass is documented at the point it happens, not
+//                          reconstructed from logs.
 //
 // Indexes (driven by the read patterns the daily-pulse + retro UI will hit):
 //   (allowed, decided_at desc) — "show me recent blocks"
@@ -81,12 +97,23 @@ export const solenePreCallDecisions = pgTable(
     latencyMs: integer("latency_ms").notNull(),
     costUsd: numeric("cost_usd", { precision: 10, scale: 6 }).notNull(),
     violationEventId: integer("violation_event_id"),
+    // Honesty surface: the published /transparency founderBypassCount + the
+    // founder-bypass alignment detector both key on THIS boolean. Only ever
+    // true on a real founder bypass.
+    isFounderBypass: boolean("is_founder_bypass").notNull().default(false),
+    founderBypassReason: text("founder_bypass_reason"),
   },
   (t) => [
     index("solene_pre_call_decisions_allowed_idx").on(t.allowed, t.decidedAt),
     index("solene_pre_call_decisions_dispatch_idx").on(t.dispatchId),
     index("solene_pre_call_decisions_imm_idx").on(
       t.immutableNumber,
+      t.decidedAt,
+    ),
+    // Drives the transparency count + the bypass detector — index the
+    // (is_founder_bypass, decided_at) read pattern.
+    index("solene_pre_call_decisions_founder_bypass_idx").on(
+      t.isFounderBypass,
       t.decidedAt,
     ),
   ],

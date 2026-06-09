@@ -6771,6 +6771,18 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "agent_channel_messages_from_idx" ON "agent_channel_messages" ("from_agent")`,
   `CREATE INDEX IF NOT EXISTS "agent_channel_messages_priority_idx" ON "agent_channel_messages" ("priority")`,
   `CREATE INDEX IF NOT EXISTS "agent_channel_messages_created_idx" ON "agent_channel_messages" ("created_at")`,
+
+  // ============================================================
+  // Quinn (alignment) — founder-bypass accountability marker (0147)
+  // ============================================================
+  // Mirrors migrations/0147_founder_bypass_marker.sql. The public
+  // /transparency founderBypassCount + the founder-bypass alignment detector
+  // key on `is_founder_bypass` (the reasoning-regex it replaced was never
+  // written, so the published count was permanently 0). Self-contained block;
+  // safe to run alongside another agent's appended block.
+  `ALTER TABLE "solene_pre_call_decisions" ADD COLUMN IF NOT EXISTS "is_founder_bypass" boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE "solene_pre_call_decisions" ADD COLUMN IF NOT EXISTS "founder_bypass_reason" text`,
+  `CREATE INDEX IF NOT EXISTS "solene_pre_call_decisions_founder_bypass_idx" ON "solene_pre_call_decisions" ("is_founder_bypass", "decided_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

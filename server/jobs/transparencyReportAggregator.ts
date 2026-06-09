@@ -125,7 +125,10 @@ export async function runTransparencyReportAggregation(opts: {
   }
 }
 
-async function aggregateCounts(
+// Exported as a test seam so the founder-bypass accountability loop can be
+// locked against silent regression (founderBypassCount must be > 0 when real
+// is_founder_bypass rows exist). See transparencyReportAggregator.test.ts.
+export async function aggregateCounts(
   start: Date,
   end: Date,
 ): Promise<AggregationCounts> {
@@ -165,14 +168,20 @@ async function aggregateCounts(
     if (row.status === "reversed") appealsReversedCount = Number(row.c);
   }
 
-  // Founder bypass count — solene_pre_call_decisions rows whose reasoning
-  // matches the bypass markers.
+  // Founder bypass count — solene_pre_call_decisions rows explicitly marked
+  // is_founder_bypass=true by the founderBypass.founderDispatch write path.
+  //
+  // HONESTY (Quinn, 0147): this previously regex-matched `reasoning` for
+  // 'founder.bypass|founder.override|sovereign.veto', but NOTHING ever wrote
+  // those markers into that column, so the published number was structurally,
+  // permanently 0 — a false accountability metric. The count is now driven by
+  // a real boolean that is set ONLY on a real founder bypass; never inflated.
   const bypassRows = await db.execute(sql`
     SELECT COUNT(*)::int AS c
     FROM solene_pre_call_decisions
     WHERE decided_at >= ${start.toISOString()}
       AND decided_at <  ${end.toISOString()}
-      AND reasoning ~* '\\m(founder.bypass|founder.override|sovereign.veto)\\M'
+      AND is_founder_bypass = true
   `);
   const founderBypassCount = Number(
     (bypassRows as unknown as { rows?: Array<{ c: number }> }).rows?.[0]?.c ??
