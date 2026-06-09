@@ -242,6 +242,15 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // the monitor's own withJobLock liveness goes quiet. (If EVERY worker is
   // down, the external worker-heartbeat probe is the backstop.)
   { name: "job_deadman_monitor", intervalMs: 5 * MIN, critical: true },
+
+  // ── Cadenced agent/ops jobs the roster initially missed (parity-test caught) ──
+  // The two solene reviews are wall-clock jobs (1st-of-month / quarter-start at
+  // 09:00 UTC); intervalMs is their EXPECTED cadence so the deadman's 2× window
+  // tolerates the wall-clock gap. The calibration grader is Andrei's daily job
+  // (server/services/andrei/supportResolverCalibration.ts), registered alongside.
+  { name: "solene_monthly_team_member_review", intervalMs: MONTH, critical: false },
+  { name: "solene_quarterly_arc_review", intervalMs: 3 * MONTH, critical: false },
+  { name: "support_resolve_calibration_grader", intervalMs: DAY, critical: false },
 ];
 
 /** Roster entries that are NOT currently disabled by their env predicate. */
