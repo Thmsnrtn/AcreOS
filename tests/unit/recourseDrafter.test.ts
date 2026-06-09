@@ -411,6 +411,103 @@ describe("recourseDrafter — draft generation (mock model)", () => {
   });
 });
 
+describe("recourseDrafter — runRecourseSweepTick (scheduler heartbeat)", () => {
+  function makeDeps(
+    draftResult: { inserted: number; scanned: number; drafted: number },
+    overrides: Partial<{
+      founderUserIds: string[];
+      orgId: number;
+      sendResult: { sent: number; failed: number };
+    }> = {},
+  ) {
+    const aggregateAndDraft = vi.fn(async () => draftResult);
+    const getFounderPrimaryOrgId = vi.fn(async () => overrides.orgId ?? 1);
+    const getFounderUserIds = vi.fn(
+      async () => overrides.founderUserIds ?? ["founder-1"],
+    );
+    const sendPushToUser = vi.fn(
+      async () => overrides.sendResult ?? { sent: 1, failed: 0 },
+    );
+    return {
+      aggregateAndDraft,
+      getFounderPrimaryOrgId,
+      getFounderUserIds,
+      sendPushToUser,
+    };
+  }
+
+  it("runs aggregateAndDraft bounded at 25 drafts per tick", async () => {
+    const deps = makeDeps({ inserted: 0, scanned: 0, drafted: 0 });
+    const { runRecourseSweepTick } = await import(
+      "../../server/services/recourseDrafter"
+    );
+    await runRecourseSweepTick(deps, { maxDrafts: 25 });
+    expect(deps.aggregateAndDraft).toHaveBeenCalledWith({ maxDrafts: 25 });
+  });
+
+  it("pushes the founder ONLY when new drafts landed this tick", async () => {
+    const deps = makeDeps({ inserted: 2, scanned: 5, drafted: 2 });
+    const { runRecourseSweepTick } = await import(
+      "../../server/services/recourseDrafter"
+    );
+    const res = await runRecourseSweepTick(deps);
+    expect(deps.sendPushToUser).toHaveBeenCalledTimes(1);
+    const [orgId, userId, payload] = deps.sendPushToUser.mock.calls[0] as any[];
+    expect(orgId).toBe(1);
+    expect(userId).toBe("founder-1");
+    // Deep-links to the recourse queue, plural copy for 2 drafts.
+    expect(payload.url).toBe("/founder/recourse");
+    expect(payload.body).toContain("2 drafts");
+    expect(res.pushed).toBe(1);
+  });
+
+  it("stays silent (no push) when nothing new was drafted", async () => {
+    const deps = makeDeps({ inserted: 0, scanned: 9, drafted: 0 });
+    const { runRecourseSweepTick } = await import(
+      "../../server/services/recourseDrafter"
+    );
+    const res = await runRecourseSweepTick(deps);
+    expect(deps.sendPushToUser).not.toHaveBeenCalled();
+    expect(deps.getFounderUserIds).not.toHaveBeenCalled();
+    expect(res.pushed).toBe(0);
+  });
+
+  it("uses singular copy for exactly one new draft", async () => {
+    const deps = makeDeps({ inserted: 1, scanned: 1, drafted: 1 });
+    const { runRecourseSweepTick } = await import(
+      "../../server/services/recourseDrafter"
+    );
+    await runRecourseSweepTick(deps);
+    const [, , payload] = deps.sendPushToUser.mock.calls[0] as any[];
+    expect(payload.body).toContain("1 draft is ready");
+    expect(payload.body).not.toContain("drafts are ready");
+  });
+
+  it("is best-effort — a push failure never throws and the draft result still returns", async () => {
+    const deps = makeDeps({ inserted: 1, scanned: 1, drafted: 1 });
+    deps.sendPushToUser.mockRejectedValueOnce(new Error("push transport down"));
+    const { runRecourseSweepTick } = await import(
+      "../../server/services/recourseDrafter"
+    );
+    const res = await runRecourseSweepTick(deps);
+    expect(res.drafted).toBe(1);
+    expect(res.pushed).toBe(0);
+  });
+
+  it("pushes every founder user (multi-seat founder accounts)", async () => {
+    const deps = makeDeps(
+      { inserted: 3, scanned: 4, drafted: 3 },
+      { founderUserIds: ["founder-1", "founder-2"] },
+    );
+    const { runRecourseSweepTick } = await import(
+      "../../server/services/recourseDrafter"
+    );
+    const res = await runRecourseSweepTick(deps);
+    expect(deps.sendPushToUser).toHaveBeenCalledTimes(2);
+    expect(res.pushed).toBe(2);
+  });
+});
+
 describe("recourseDrafter — buildDraftUserPrompt", () => {
   it("labels each signal type and includes the account context", async () => {
     const { buildDraftUserPrompt } = await import(

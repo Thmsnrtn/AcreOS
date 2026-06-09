@@ -3479,7 +3479,7 @@ function startNpsPromptSchedulerJob() {
     const now = new Date();
     if (now.getUTCHours() === 4 && now.getUTCMinutes() >= 15 && now.getUTCMinutes() < 20) {
       void withJobLock('nps_prompt_scheduler', TTL_SECONDS, async () => {
-        const { npsResponses, npsPromptQueue } = await import('@shared/schema');
+        const { npsResponses, npsPromptQueue, teamMembers } = await import('@shared/schema');
         const twentyOneDaysAgo = new Date(now.getTime() - 21 * 24 * 60 * 60 * 1000);
         const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
@@ -3500,7 +3500,8 @@ function startNpsPromptSchedulerJob() {
 
         for (const org of eligible) {
           try {
-            // Recency gate: any NPS response in last 90 days → skip.
+            // Recency gate: any NPS response in last 90 days → skip the whole
+            // org. We've heard from this account recently; don't re-survey it.
             const recentResponse = await db
               .select({ id: npsResponses.id })
               .from(npsResponses)
@@ -3511,26 +3512,52 @@ function startNpsPromptSchedulerJob() {
               .limit(1);
             if (recentResponse.length > 0) { skippedRecent++; continue; }
 
-            // De-dupe: pending or shown row already → skip.
-            const pendingRow = await db
-              .select({ id: npsPromptQueue.id })
-              .from(npsPromptQueue)
+            // RAFE — per-member NPS. Previously only the org owner was ever
+            // surveyed, so seat-expanded accounts' actual users never got asked
+            // — exactly the people whose sentiment matters as a team grows. The
+            // queue keys on user_id, so we enqueue one row per ACTIVE member
+            // who has joined. The owner is included (they're a member). Bounded
+            // to 25 members/org to keep the daily fan-out predictable on a large
+            // team. Per-(org,user) dedupe means a member with a pending/shown
+            // row is never double-queued.
+            const members = await db
+              .select({ userId: teamMembers.userId })
+              .from(teamMembers)
               .where(sql`
-                ${npsPromptQueue.organizationId} = ${org.id}
-                AND ${npsPromptQueue.userId} = ${org.ownerId}
-                AND ${npsPromptQueue.status} IN ('pending', 'shown')
+                ${teamMembers.organizationId} = ${org.id}
+                AND ${teamMembers.isActive} = true
+                AND ${teamMembers.joinedAt} IS NOT NULL
               `)
-              .limit(1);
-            if (pendingRow.length > 0) { skippedPending++; continue; }
+              .limit(25);
 
-            await db.insert(npsPromptQueue).values({
-              organizationId: org.id,
-              userId: org.ownerId,
-              trigger: 'scheduled_quarterly',
-              scheduledFor: now,
-              status: 'pending',
-            });
-            enqueued++;
+            // Fall back to the owner if the org has no team_members rows yet
+            // (older accounts created before membership rows were backfilled).
+            const targetUserIds = members.length > 0
+              ? Array.from(new Set(members.map((m) => m.userId).filter(Boolean)))
+              : (org.ownerId ? [org.ownerId] : []);
+
+            for (const userId of targetUserIds) {
+              // De-dupe: pending or shown row already for this (org, user) → skip.
+              const pendingRow = await db
+                .select({ id: npsPromptQueue.id })
+                .from(npsPromptQueue)
+                .where(sql`
+                  ${npsPromptQueue.organizationId} = ${org.id}
+                  AND ${npsPromptQueue.userId} = ${userId}
+                  AND ${npsPromptQueue.status} IN ('pending', 'shown')
+                `)
+                .limit(1);
+              if (pendingRow.length > 0) { skippedPending++; continue; }
+
+              await db.insert(npsPromptQueue).values({
+                organizationId: org.id,
+                userId,
+                trigger: 'scheduled_quarterly',
+                scheduledFor: now,
+                status: 'pending',
+              });
+              enqueued++;
+            }
           } catch (rowErr) {
             log(`[nps-scheduler] org ${org.id} enqueue failed: ${rowErr}`, 'nps-scheduler');
           }
@@ -3545,6 +3572,80 @@ function startNpsPromptSchedulerJob() {
       });
     }
   }, 5 * 60 * 1000);
+}
+
+// ============================================================================
+// Rafe — Recourse-loop heartbeat (every 30 minutes).
+//
+// The recourse loop (server/services/recourseDrafter.ts) turns every negative
+// customer signal — a detractor NPS, a ≤2/5 support rating, a real cancellation
+// — into a DRAFTED, personal, same-hour founder reply. The drafting brain
+// (aggregateAndDraft) was BUILT and bounded for exactly this cadence, but until
+// now it only ran lazily inside GET /api/founder/recourse. That made "same-hour
+// personal reply" silently degrade to "whenever the founder happens to open the
+// tab." This job gives the loop a heartbeat: it sweeps + drafts on a fixed
+// cadence so a detractor/cancellation has a ready-to-send personal reply within
+// the half-hour, and pushes the founder's phone when new drafts actually land so
+// they can act in minutes — without opening anything.
+//
+// Idempotent + bounded by construction:
+//   - aggregateRecourseSignals de-dupes via the (signal_ref_type, signal_ref_id)
+//     unique index, so re-running never double-drafts.
+//   - aggregateAndDraft caps model fan-out at maxDrafts per tick (25 here).
+//   - withJobLock keeps the cross-process tick single-flighted.
+// Best-effort throughout: a sweep/draft/push failure logs and never throws.
+// ============================================================================
+async function processRecourseSweep(): Promise<void> {
+  const { runRecourseSweepTick, aggregateAndDraft } = await import(
+    '../services/recourseDrafter'
+  );
+  const { getFounderUserIds, getFounderPrimaryOrgId } = await import(
+    '../services/founder'
+  );
+  const { sendPushToUser } = await import('../services/pushNotificationService');
+
+  // The sweep tick aggregates negative signals + drafts the founder's personal
+  // reply (bounded 25/tick via aggregateAndDraft), then — only when NEW drafts
+  // land — wakes the founder's phone with a non-incident lifecycle nudge that
+  // deep-links to /founder/recourse. The founder + push services are injected
+  // so the testable core lives in recourseDrafter.ts.
+  const result = await runRecourseSweepTick(
+    {
+      aggregateAndDraft,
+      getFounderPrimaryOrgId,
+      getFounderUserIds,
+      sendPushToUser,
+    },
+    { maxDrafts: 25 },
+  );
+
+  if (result.inserted > 0 || result.drafted > 0 || result.pushed > 0) {
+    log(
+      `[recourse-sweep] scanned=${result.scanned} inserted=${result.inserted} drafted=${result.drafted} pushed=${result.pushed}`,
+      'recourse-sweep',
+    );
+  }
+}
+
+function startRecourseSweepJob() {
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  const TTL_SECONDS = 25 * 60; // Lock TTL slightly less than interval.
+
+  log('Registering recourse-loop sweep job (every 30 minutes)', 'recourse-sweep');
+
+  // First run a few minutes after boot so a fresh deploy seeds the queue
+  // without contending with startup work, then every 30 minutes.
+  setTimeout(() => {
+    withJobLock('recourse_sweep', TTL_SECONDS, processRecourseSweep).catch((err) => {
+      log(`Initial recourse sweep failed: ${err}`, 'recourse-sweep');
+    });
+  }, 4 * 60 * 1000);
+
+  trackInterval(() => {
+    withJobLock('recourse_sweep', TTL_SECONDS, processRecourseSweep).catch((err) => {
+      log(`Scheduled recourse sweep failed: ${err}`, 'recourse-sweep');
+    });
+  }, THIRTY_MINUTES);
 }
 
 // ============================================================================
@@ -3895,6 +3996,13 @@ export async function runScheduledJobs(): Promise<void> {
   // Enqueues one nps_prompt_queue row per eligible (org, owner); the
   // dialog reads the queue on next login via /api/nps/pending.
   startNpsPromptSchedulerJob();
+
+  // Rafe — Recourse-loop heartbeat (every 30 minutes). Sweeps negative
+  // customer signals into the recourse_drafts ledger and drafts the
+  // founder's personal reply (aggregateAndDraft, bounded 25/tick), then
+  // pushes the founder's phone when new drafts land so the "same-hour
+  // personal reply" promise holds without anyone opening the tab.
+  startRecourseSweepJob();
 
   // Tahoe E11 — resume expired subscription pauses (hourly). Defensive
   // double-write alongside the customer.subscription.resumed webhook:

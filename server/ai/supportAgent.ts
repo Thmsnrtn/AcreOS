@@ -5532,7 +5532,46 @@ Services: ${Object.entries(systemContext.serviceStatus).map(([k, v]) => `${k}:${
       content: contextMessage
     });
   }
-  
+
+  // RAFE — AI first-response on ticket creation.
+  //
+  // The interactive path (processSupportChat) only fires when the customer
+  // sends a follow-up *message*. A brand-new ticket therefore sat silent until
+  // a human (or the customer) re-engaged — even though Pax could often answer
+  // it immediately. We fire a single, bounded resolution pass through the SAME
+  // Pax resolution agent the /pax-resolve route uses (resolveTicketWithPax):
+  //   - high confidence → Pax posts the answer (labeled as Pax) + resolves;
+  //   - low confidence  → Pax escalates to a human via the existing path.
+  // It routes through the normal support AI client (shared OpenRouter wrapper),
+  // so the platform's cost/ensemble gates apply. Fire-and-forget + best-effort:
+  // a failure here NEVER blocks (or fails) ticket creation. Bug-reporter and
+  // other direct-insert paths are intentionally unaffected — only tickets minted
+  // through createSupportTicket get the auto first-response.
+  void (async () => {
+    try {
+      const { resolveTicketWithPax } = await import("./paxSupportResolver");
+      const result = await resolveTicketWithPax(ticket.id, org);
+      logger.info("[support] AI first-response pass complete", {
+        metadata: {
+          ticketId: ticket.id,
+          autoResolved: result.autoResolved,
+          escalated: result.escalated,
+          confidence: result.confidence,
+        },
+      });
+    } catch (firstResponseErr) {
+      logger.warn("[support] AI first-response pass failed (non-fatal)", {
+        metadata: {
+          ticketId: ticket.id,
+          error:
+            firstResponseErr instanceof Error
+              ? firstResponseErr.message
+              : String(firstResponseErr),
+        },
+      });
+    }
+  })();
+
   return ticket;
 }
 

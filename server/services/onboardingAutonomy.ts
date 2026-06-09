@@ -236,11 +236,75 @@ async function handleWelcome(
   journeyId: number,
   organizationId: number,
 ): Promise<Record<string, any>> {
-  // Compose a welcome touch. In production, would send a real email;
-  // for this MVP we record that the step ran and the intent.
+  // RAFE — un-stub the welcome touch. Until now this only RECORDED an intent;
+  // it never sent. The single real welcome email lives in webhookHandlers.ts
+  // and is gated on a PAID Stripe subscription, so free/trial users — exactly
+  // the people this 30-day activation journey exists for — got silence at day 0.
+  //
+  // We send the day-0 hello via the emailRegistry rails (sendRegisteredEmail
+  // 'welcome'), the SAME rails the recourse loop and churn engine use, and it
+  // is DECOUPLED from the Stripe-paid path: every org that starts a journey
+  // (trial or free included) gets the Pax hello. emailService.ts /
+  // growthAutomation.ts are untouched (Beatrice owns those).
+  //
+  // Best-effort: the step's job is to run the day-0 touch; a transport failure
+  // or a missing owner email is recorded in the outcome but never throws, so a
+  // bad email address can't fail the whole journey step.
+  const [org] = await db
+    .select({ name: organizations.name, ownerId: organizations.ownerId })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+
+  let recipientEmail: string | null = null;
+  let firstName: string | null = null;
+  if (org?.ownerId) {
+    const [owner] = await db
+      .select({ email: users.email, firstName: users.firstName })
+      .from(users)
+      .where(eq(users.id, org.ownerId))
+      .limit(1);
+    recipientEmail = owner?.email ?? null;
+    firstName = owner?.firstName ?? null;
+  }
+
+  if (!recipientEmail) {
+    logger.warn(
+      `[onboarding] day0 welcome: no deliverable owner email for org ${organizationId} — recording intent only`,
+    );
+    return {
+      intent: "welcome_email",
+      sent: false,
+      reason: "no_owner_email",
+      description:
+        "Hi from Pax, your AcreOS assistant. Over the next 30 days I'll check in at key moments to help you get active. If you need anything, just reply.",
+    };
+  }
+
+  let sent = false;
+  let suppressed = false;
+  try {
+    const { sendRegisteredEmail } = await import("./emailRegistry");
+    const result = await sendRegisteredEmail(
+      "welcome",
+      { firstName: firstName ?? undefined },
+      { to: recipientEmail, organizationId },
+    );
+    suppressed = result.suppressed === true;
+    sent = result.success === true && !suppressed;
+  } catch (err: any) {
+    logger.warn(
+      `[onboarding] day0 welcome email failed for org ${organizationId}`,
+      { metadata: { error: err?.message } },
+    );
+  }
+
   return {
     intent: "welcome_email",
-    description: "Hi from Pax, your AcreOS assistant. Over the next 30 days I'll check in at key moments to help you get active. If you need anything, just reply.",
+    sent,
+    suppressed,
+    description:
+      "Hi from Pax, your AcreOS assistant. Over the next 30 days I'll check in at key moments to help you get active. If you need anything, just reply.",
   };
 }
 
