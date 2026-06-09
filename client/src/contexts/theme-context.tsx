@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { clientLogger } from "@/lib/clientLogger";
+import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 
 /**
  * Theme system — five themes × light/dark + five font pairings.
@@ -162,7 +163,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Hydrate from server on mount — server preferences (if available) win
   // over localStorage for cross-device consistency. If the user is
   // unauthenticated or the endpoint errors, local state stays as-is.
+  //
+  // Only fetch when the browser carries a Clerk session; on public/logged-out
+  // pages there is nothing to hydrate and the authed call would just emit a
+  // 401. localStorage hydration (loadStoredConfig) already ran, so the local
+  // state is the correct fallback with no network call.
   useEffect(() => {
+    if (!hasAnyClerkSession()) return;
     let cancelled = false;
     fetchServerPreferences().then((server) => {
       if (cancelled || !server) return;

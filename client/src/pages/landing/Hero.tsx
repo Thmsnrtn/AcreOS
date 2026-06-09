@@ -150,7 +150,7 @@ const HERO_DEMO_FIXTURES = {
   servicing: {
     note: "Note #2204-A",
     paymentReceived: "$487.50",
-    receiptSent: "2 min ago",
+    receiptSent: "Emailed to buyer",
     nextDue: "Jun 1",
   },
 } as const;
@@ -188,10 +188,7 @@ function HeroVisual() {
             <div className="lp-hv-name">Pax · Comp analysis</div>
             <div className="lp-hv-role">{f.comp.apn}</div>
           </div>
-          <span className="lp-hv-badge lp-hv-badge-running">
-            <span className="lp-hv-spin" />
-            Running
-          </span>
+          <span className="lp-hv-badge lp-hv-badge-done">Example result</span>
         </div>
         <div className="lp-hv-row"><span>Comparable sales found</span><b>{f.comp.comparableSales}</b></div>
         <div className="lp-hv-row"><span>Median $/acre</span><b>{f.comp.medianPerAcre}</b></div>

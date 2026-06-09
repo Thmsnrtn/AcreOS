@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 
 /**
  * Client-side feature flag plumbing — design-system §8.
@@ -56,7 +57,16 @@ export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    void refresh();
+    // Only hit the authed /api/feature-flags endpoint when the browser
+    // actually carries a Clerk session. Public/logged-out pages (landing,
+    // pricing, parcel-check) otherwise produce a wall of 401s in the console.
+    // With no session we fall back to empty flags (fail-closed, matches
+    // server behavior for unknown flags) without a network call.
+    if (hasAnyClerkSession()) {
+      void refresh();
+    } else {
+      setState({ flags: {}, loaded: true });
+    }
   }, []);
 
   return (
