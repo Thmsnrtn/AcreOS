@@ -135,6 +135,20 @@ const SOURCE_AS_OF: Partial<Record<LookupCategory, string>> = {
   demographics: "2022", // ACS 5-Year 2018–2022
 };
 
+// Canonical, human-readable source name per public category. Used to KEEP
+// provenance on an empty/failed result: when a source returns no record we
+// still name WHICH source was checked, so the tile reads "USDA SSURGO returned
+// no record here" rather than an anonymous empty tile. Honesty contract: an
+// absence must stay attributable. Mirrors the client's CATEGORY_META.querying
+// labels so the named source matches what the user watched query.
+const PUBLIC_SOURCE_NAMES: Partial<Record<LookupCategory, string>> = {
+  flood_zone: "FEMA NFHL",
+  soil: "USDA SSURGO",
+  elevation: "USGS 3DEP",
+  wetlands: "USFWS NWI",
+  demographics: "U.S. Census",
+};
+
 interface PublicCategoryResult {
   category: LookupCategory;
   available: boolean;
@@ -257,7 +271,11 @@ function toPublicResult(
     category,
     available: ok,
     data: ok ? r!.data : null,
-    source: ok ? r!.source : null,
+    // Provenance survives an empty result: name the broker's actual source when
+    // it carries one, else the canonical source for this category. The tile can
+    // then render "<source> returned no record here" instead of an anonymous
+    // empty — an absence stays attributable (honesty contract).
+    source: r?.source ?? PUBLIC_SOURCE_NAMES[category] ?? null,
     sourceAsOf: SOURCE_AS_OF[category] ?? null,
     classification: classificationFor(category),
     confidence: null,
@@ -453,20 +471,12 @@ router.get("/", ipCeiling, sessionLimiter, async (req: Request, res: Response) =
       },
     );
 
-    const results: PublicCategoryResult[] = PUBLIC_CATEGORIES.map((category) => {
-      const r = resolved.results[category];
-      const ok = !!r && r.available && r.data != null;
-      return {
-        category,
-        available: ok,
-        data: ok ? r.data : null,
-        source: ok ? r.source : null,
-        sourceAsOf: SOURCE_AS_OF[category] ?? null,
-        classification: classificationFor(category),
-        confidence: null,
-        fromCache: ok ? r.fromCache : false,
-      };
-    });
+    // Reuse the single mapping spine so the batch tile and the streamed tile are
+    // byte-identical for the same source — including the provenance-on-empty
+    // behavior (source name retained when a category returns no record).
+    const results: PublicCategoryResult[] = PUBLIC_CATEGORIES.map((category) =>
+      toPublicResult(category, resolved.results[category]),
+    );
 
     return res.json({
       resolved: true,

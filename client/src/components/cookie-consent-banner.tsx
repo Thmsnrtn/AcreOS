@@ -103,20 +103,15 @@ export function CookieConsentBanner() {
       </button>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
         <div className="flex-1 text-sm text-muted-foreground">
-          We use cookies and similar technologies to improve your experience.
-          By continuing, you agree to our{" "}
+          We use essential cookies to run this site. With your permission, we
+          also use optional analytics cookies to understand and improve how it
+          works. Nothing optional is set unless you choose Accept — Decline (or
+          taking no action) keeps optional cookies off. See our{" "}
           <Link
             href="/privacy"
             className="underline hover:text-foreground inline-flex items-center min-h-11 px-1 -mx-1"
           >
-            Privacy Policy
-          </Link>{" "}
-          and{" "}
-          <Link
-            href="/terms"
-            className="underline hover:text-foreground inline-flex items-center min-h-11 px-1 -mx-1"
-          >
-            Terms of Service
+            Privacy &amp; Cookie Policy
           </Link>
           .
         </div>
@@ -125,7 +120,7 @@ export function CookieConsentBanner() {
             type="button"
             variant="outline"
             onClick={decline}
-            aria-label="Decline cookies"
+            aria-label="Decline optional cookies"
             data-testid="cookie-consent-decline"
             className="min-h-11 flex-1 sm:flex-initial"
           >
@@ -134,11 +129,11 @@ export function CookieConsentBanner() {
           <Button
             type="button"
             onClick={accept}
-            aria-label="Accept all cookies"
+            aria-label="Accept optional cookies"
             data-testid="cookie-consent-accept"
             className="min-h-11 flex-1 sm:flex-initial"
           >
-            Accept all
+            Accept
           </Button>
         </div>
       </div>

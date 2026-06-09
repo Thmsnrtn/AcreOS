@@ -415,9 +415,14 @@ export default function ParcelCheckPage() {
               ))}
             </div>
 
-            {/* Signup CTA — revealed once the full pull settles. */}
+            {/* Tail-of-pull state — revealed once the full pull settles.
+                Gated on whether ANY federal source actually returned data:
+                  - resolvedCount > 0 → show the conversion CTA (real proof).
+                  - resolvedCount === 0 → ALL sources came back empty/unreachable.
+                    Pushing "sign up" on a wholly-failed lookup advertises failure
+                    (an anti-proof), so we show an honest degraded banner instead. */}
             <AnimatePresence>
-              {stream.phase === "done" && (
+              {stream.phase === "done" && stream.resolvedCount > 0 && (
                 <motion.div
                   initial={reduced ? false : { opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -445,6 +450,24 @@ export default function ParcelCheckPage() {
                   >
                     Sign up free
                   </Link>
+                </motion.div>
+              )}
+              {stream.phase === "done" && stream.resolvedCount === 0 && (
+                <motion.div
+                  initial={reduced ? false : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={respectReducedMotion(SPRINGS.smooth, reduced)}
+                  className="rounded-lg border border-border bg-muted/40 p-6 text-center"
+                  role="status"
+                >
+                  <h2 className="text-lg font-semibold text-foreground">
+                    No federal data came back for this parcel
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    We couldn&apos;t reach the federal data sources for this location
+                    right now, or none had a record here. Try another address — most
+                    U.S. parcels return flood, soil, elevation, and tract data.
+                  </p>
                 </motion.div>
               )}
             </AnimatePresence>
