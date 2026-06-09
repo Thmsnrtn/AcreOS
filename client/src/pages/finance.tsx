@@ -1022,9 +1022,9 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             </CardHeader>
             <CardContent className="space-y-4">
               {isStripeStatusLoading ? (
-                <div className="flex items-center justify-center py-4" role="status" aria-live="polite">
-                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
-                  <span className="sr-only">Checking Stripe connection…</span>
+                <div className="space-y-3 py-1" data-testid="stripe-status-skeleton">
+                  <Skeleton className="h-4 w-48" announce announceText="Checking payment connection" />
+                  <Skeleton className="h-9 w-full rounded-md" announce={false} />
                 </div>
               ) : !stripeConnectStatus?.isConnected || !stripeConnectStatus?.chargesEnabled ? (
                 <div className="text-center py-4">
@@ -1142,14 +1142,15 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                       </TableHeader>
                       <TableBody>
                         {paymentsLoading ? (
-                        <TableRow>
-                          <TableCell colSpan={5} className="text-center h-16">
-                            <div className="flex items-center justify-center gap-2" role="status" aria-live="polite">
-                              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                              Loading payments…
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                        Array.from({ length: 4 }).map((_, i) => (
+                          <TableRow key={`payment-skeleton-${i}`} data-testid="payments-skeleton-row">
+                            <TableCell><Skeleton className="h-4 w-20" announce={i === 0} announceText="Loading payments" /></TableCell>
+                            <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" announce={false} /></TableCell>
+                            <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" announce={false} /></TableCell>
+                            <TableCell className="text-right"><Skeleton className="h-4 w-14 ml-auto" announce={false} /></TableCell>
+                            <TableCell><Skeleton className="h-5 w-16 rounded-full" announce={false} /></TableCell>
+                          </TableRow>
+                        ))
                       ) : payments?.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={5} className="text-center h-16 text-muted-foreground">
@@ -1303,9 +1304,15 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
 
             <TabsContent value="dunning" className="mt-4 space-y-4">
               {isDunningLoading ? (
-                <div className="flex items-center justify-center h-32" role="status" aria-live="polite">
-                  <Loader2 className="w-6 h-6 animate-spin" aria-hidden="true" />
-                  <span className="sr-only">Loading dunning data…</span>
+                <div className="grid grid-cols-2 gap-3" data-testid="dunning-skeleton">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Card key={`dunning-skeleton-${i}`} className="glass-panel">
+                      <CardContent className="p-4 space-y-2">
+                        <Skeleton className="h-3 w-24" announce={i === 0} announceText="Loading dunning data" />
+                        <Skeleton className="h-6 w-32" announce={false} />
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               ) : dunningData ? (
                 <>
