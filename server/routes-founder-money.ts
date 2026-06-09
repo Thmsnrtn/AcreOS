@@ -157,13 +157,25 @@ export function registerFounderMoneyRoutes(app: Express): void {
         );
         const aiSpent = await sumCapitalSinceDays(30);
 
+        // Map the server status vocabulary (green/amber/red) onto the
+        // client EnvelopeRow.statusTone contract (ok/warn/over). The two
+        // surfaces must agree or a wired, healthy envelope renders the
+        // gray "Phase 0" placeholder badge.
+        const TONE_MAP: Record<EnvelopeStatus, "ok" | "warn" | "over"> = {
+          green: "ok",
+          amber: "warn",
+          red: "over",
+        };
+
         const envelopes = [
           {
             id: "build",
             label: "AI ops (Solene + Pax)",
+            description:
+              "Solene + Pax model/API spend against the charter monthly cap.",
             limitUsd: aiLimit,
             spentUsd: aiSpent,
-            statusTone: envelopeStatus(aiSpent, aiLimit),
+            statusTone: TONE_MAP[envelopeStatus(aiSpent, aiLimit)],
           },
         ];
 

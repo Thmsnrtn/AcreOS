@@ -657,13 +657,8 @@ export async function registerRoutes(
   // Surfaces the exact gaps between current state and production-ready.
   // Hit GET /api/founder/readiness to get a structured checklist.
   // ============================================
-  app.get("/api/founder/readiness", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/founder/readiness", isAuthenticated, getOrCreateOrg, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = req.organization || req.organization;
-      if (!org?.isFounder) {
-        return res.status(403).json({ message: "Founder access required" });
-      }
-
       const checks: Array<{ name: string; status: "pass" | "warn" | "fail"; detail: string }> = [];
       const env = process.env;
 

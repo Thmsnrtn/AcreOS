@@ -141,7 +141,10 @@ interface PaidDataReadiness {
  */
 interface EnvelopeRow {
   id: "build" | "brand" | "ops";
+  /** Server-supplied label — the source of truth for what this envelope covers. */
   label: string;
+  /** Server-supplied description, when provided. */
+  description?: string | null;
   limitUsd: number;
   spentUsd: number;
   /** "ok" | "warn" | "over" — render tone */
@@ -563,6 +566,12 @@ function EnvelopeCard({
   row: EnvelopeRow | null;
 }) {
   const Icon = template.icon;
+  // The server-supplied label/description are the source of truth for what a
+  // live envelope actually covers (e.g. a $50 AI-only cap is NOT the whole
+  // engineering/product/infra budget). Fall back to the template copy only
+  // when no live row is present.
+  const displayLabel = row?.label ?? template.label;
+  const displayDescription = row?.description || template.description;
   const toneClass =
     row?.statusTone === "over"
       ? "border-acr-neg/40"
@@ -588,7 +597,7 @@ function EnvelopeCard({
           <CardTitle className="flex items-center justify-between text-base">
             <span className="inline-flex items-center gap-2">
               <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              {template.label}
+              {displayLabel}
             </span>
             <Badge
               variant={row ? "default" : "outline"}
@@ -608,7 +617,7 @@ function EnvelopeCard({
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                {template.description}
+                {displayDescription}
               </p>
             </>
           ) : (

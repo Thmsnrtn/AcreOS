@@ -81,6 +81,7 @@ export function registerFounderCustomersRoutes(app: Express) {
           .from(organizations)
           .where(
             and(
+              eq(organizations.isFounder, false),
               inArray(organizations.subscriptionStatus, [...ACTIVE_STATUSES]),
               sql`${organizations.subscriptionTier} <> 'free'`,
             ),
@@ -100,6 +101,7 @@ export function registerFounderCustomersRoutes(app: Express) {
           .from(organizations)
           .where(
             and(
+              eq(organizations.isFounder, false),
               gte(organizations.createdAt, trialCutoff),
               sql`(${organizations.subscriptionTier} = 'free' OR ${organizations.subscriptionStatus} NOT IN ('active', 'trialing'))`,
             ),
@@ -114,6 +116,7 @@ export function registerFounderCustomersRoutes(app: Express) {
           .from(organizations)
           .where(
             and(
+              eq(organizations.isFounder, false),
               inArray(organizations.subscriptionStatus, [...CHURNED_STATUSES]),
               gte(organizations.updatedAt, churnCutoff),
             ),
@@ -131,6 +134,9 @@ export function registerFounderCustomersRoutes(app: Express) {
             and(
               isNotNull(users.createdAt),
               gte(users.createdAt, utmCutoff),
+              // Exclude users who own a founder/internal org so the funnel
+              // measures real customers, not the founder's own org.
+              sql`NOT EXISTS (SELECT 1 FROM ${organizations} WHERE ${organizations.ownerId} = ${users.id} AND ${organizations.isFounder} = true)`,
             ),
           )
           .groupBy(sql`COALESCE(${users.acquisitionUtm} ->> 'utm_source', 'direct')`)
@@ -160,7 +166,13 @@ export function registerFounderCustomersRoutes(app: Express) {
           })
           .from(users)
           .leftJoin(organizations, eq(organizations.ownerId, users.id))
-          .where(isNotNull(users.createdAt))
+          .where(
+            and(
+              isNotNull(users.createdAt),
+              // Exclude the founder's own org from the recent-signups feed.
+              sql`NOT EXISTS (SELECT 1 FROM ${organizations} WHERE ${organizations.ownerId} = ${users.id} AND ${organizations.isFounder} = true)`,
+            ),
+          )
           .orderBy(desc(users.createdAt))
           .limit(RECENT_SIGNUPS_LIMIT);
 

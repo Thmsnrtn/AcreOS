@@ -2592,7 +2592,7 @@ export function registerAdminRoutes(app: Express): void {
       } else {
         const [created] = await db.insert(systemApiKeys)
           .values({ provider, displayName: provider, apiKey, isActive: isActive ?? true })
-          .returning();
+          .returning({ id: systemApiKeys.id, provider: systemApiKeys.provider, displayName: systemApiKeys.displayName, isActive: systemApiKeys.isActive, validationStatus: systemApiKeys.validationStatus });
         res.json(created);
       }
     } catch (err: any) {
