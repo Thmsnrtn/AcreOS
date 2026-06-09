@@ -90,16 +90,23 @@ describe("solene_embedded_records org-scoping invariant", () => {
     ]);
   });
 
-  it("enumerates exactly the 4 team-internal namespaces from EMBEDDING_NAMESPACES", () => {
+  it("enumerates exactly the 5 org-NULL-eligible namespaces from EMBEDDING_NAMESPACES", () => {
     // The invariant's allowlist is sourced from the schema constant. If a
-    // new team-internal namespace is added, the schema constant moves
-    // first; if a future namespace is meant to be tenant-only, it lives
-    // OUTSIDE EMBEDDING_NAMESPACES.
+    // new globally-shared (organization_id IS NULL) namespace is added, the
+    // schema constant moves first; if a future namespace is meant to be
+    // tenant-only, it lives OUTSIDE EMBEDDING_NAMESPACES.
+    //
+    // `land_knowledge` (Andrei E5) is a deliberately GLOBAL corpus — the
+    // hand-curated, cited Pax land-expertise cards live at
+    // organization_id IS NULL, like the team-internal namespaces. It is
+    // distinct from per-tenant Pax output, which carries a real org_id and
+    // is therefore NOT in this constant.
     expect([...TEAM_INTERNAL_NAMESPACES].sort()).toEqual([
       "audit_finding",
       "decision_trace",
       "failure_mode",
       "feedback_memory",
+      "land_knowledge",
     ]);
   });
 });
