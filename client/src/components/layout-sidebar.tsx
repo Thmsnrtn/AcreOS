@@ -161,6 +161,7 @@ import { useNewFounderUI } from "@/lib/featureFlags";
 import {
   FOUNDER_NAV_NEW_5_DOORS,
   FOUNDER_NAV_SETTINGS_SHORTCUT,
+  FOUNDER_NAV_ALL_TOOLS_SHORTCUT,
   type FounderNavDoor,
 } from "@/lib/nav-items";
 import { motion } from "framer-motion";
@@ -2041,6 +2042,22 @@ function NewFounderSidebar({
               isCollapsed={isCollapsed}
             />
           ))}
+
+          {/* Secondary: the categorized index of every founder deep-dive.
+              Keeps the ~70 surfaces beyond the 5 doors clickable + findable
+              without a wall of links in the primary nav. */}
+          <div
+            className={cn(
+              "my-1 border-t border-sidebar-border/60",
+              isCollapsed ? "mx-2" : "mx-1"
+            )}
+            aria-hidden="true"
+          />
+          <FounderDoorItem
+            door={FOUNDER_NAV_ALL_TOOLS_SHORTCUT}
+            isActive={isActive(FOUNDER_NAV_ALL_TOOLS_SHORTCUT.href)}
+            isCollapsed={isCollapsed}
+          />
         </nav>
 
         {/* Footer — Settings + theme + sign out */}

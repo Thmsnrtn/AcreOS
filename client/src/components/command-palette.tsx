@@ -57,7 +57,13 @@ import {
   VALID_SCOPES,
 } from "@shared/cmdkMatcher";
 import { PALETTE_VERBS, type PaletteVerb } from "@/lib/cmdkVerbs";
-import { ALL_NAV_ITEMS, type MasterNavItem } from "@/lib/nav-items";
+import {
+  ALL_NAV_ITEMS,
+  type MasterNavItem,
+  FOUNDER_NAV_DEEP_DIVES,
+  FOUNDER_NAV_NEW_5_DOORS,
+  FOUNDER_DEEP_DIVE_CATEGORY_LABEL,
+} from "@/lib/nav-items";
 import { readRecents, recordRecency } from "@/lib/cmdkRecency";
 import { Kbd } from "@/components/ui/kbd";
 import {
@@ -72,6 +78,7 @@ import {
 } from "@/components/ui/command";
 import {
   LayoutDashboard,
+  LayoutGrid,
   Users,
   Building2,
   Handshake,
@@ -236,19 +243,26 @@ const pages = [
   return true;
 });
 
-// Founder-only "Pages" — surfaced when isFounder is true. Mirrors the
-// Founder scope chip's destinations.
+// Founder-only "Pages" — surfaced when isFounder is true. Derived directly
+// from the founder nav catalog (lib/nav-items.ts) so EVERY founder surface
+// is reachable from ⌘K, not just a hand-picked ten. This is the reachability
+// guarantee for the ~70 deep-dives that live behind the 5 primary doors:
+// they have no sidebar link, but they all resolve here.
+//
+// Order: the 5 primary doors first (most-used), then every categorized
+// deep-dive. Labels carry the category so search like "money cost" works.
 const FOUNDER_PAGES: Array<{ name: string; icon: typeof Users; path: string }> = [
-  { name: "Founder — Bridge", icon: LayoutDashboard, path: "/founder/bridge" },
-  { name: "Founder — Steering", icon: TrendingUp, path: "/founder/steering" },
-  { name: "Founder — Studio", icon: Settings, path: "/founder/studio" },
-  { name: "Founder — Inspector", icon: Search, path: "/founder/inspector/audit" },
-  { name: "Founder — Decisions", icon: Shield, path: "/founder/decisions" },
-  { name: "Founder — Monthly letter", icon: FileText, path: "/founder/letter" },
-  { name: "Founder — Strategy", icon: Brain, path: "/founder/strategy" },
-  { name: "Founder — CMO", icon: Megaphone, path: "/founder/cmo" },
-  { name: "Founder — Customer health", icon: Activity, path: "/founder/customers/health" },
-  { name: "Founder — Recovery console", icon: ShieldCheck, path: "/founder/recovery-console" },
+  ...FOUNDER_NAV_NEW_5_DOORS.map((d) => ({
+    name: `Founder — ${d.label}`,
+    icon: d.icon as typeof Users,
+    path: d.href,
+  })),
+  { name: "Founder — All tools", icon: LayoutGrid, path: "/founder/all-tools" },
+  ...FOUNDER_NAV_DEEP_DIVES.map((d) => ({
+    name: `Founder · ${FOUNDER_DEEP_DIVE_CATEGORY_LABEL[d.category]} — ${d.label}`,
+    icon: d.icon as typeof Users,
+    path: d.href,
+  })),
 ];
 
 // Phase 4 Week 19-20 (cmdk-v2 / Anya §3): the prior 6-action
@@ -462,8 +476,11 @@ export function CommandPalette() {
         kind: "page" as const,
         page: p,
       }));
-      if (!matcherQuery.trim()) return rankItems("", items, { recents, keepAll: true }).slice(0, 10);
-      return rankItems(matcherQuery, items, { recents }).slice(0, 8);
+      // No query + founder chip: show a generous browsable slice (doors
+      // first, then deep-dives). With a query, rank across the WHOLE catalog
+      // so any of the ~70 founder surfaces is reachable by name/acronym.
+      if (!matcherQuery.trim()) return rankItems("", items, { recents, keepAll: true }).slice(0, 24);
+      return rankItems(matcherQuery, items, { recents }).slice(0, 12);
     }
     if (activeScope && activeScope !== "settings") return []; // pages list is the cross-cutting nav surface
     const items = pages.map((p) => ({

@@ -8,7 +8,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { useWhiteLabel } from "@/hooks/use-white-label";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
-import { useNewFounderUI } from "@/lib/featureFlags";
 import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { setSentryUser } from "@/lib/sentry";
@@ -320,11 +319,13 @@ const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"
 // Solene's daily one-line + Autonomy Horizon + capital + phase — the
 // pull-first CEO surface at /founder. Replaces the FounderChat shell
 // which was previously served at /founder (now remains at /founder/chat).
-const FounderPulsePage = React.lazy(() => import("@/pages/founder/index"));
 // Phase 4 of the Solene migration — new 5-door founder UI. /founder/today
-// becomes the default landing page when `useNewFounderUI` localStorage flag
-// is true (see client/src/lib/featureFlags.ts).
+// is the founder landing page; /founder now always renders it (the legacy
+// Pulse page at founder/index.tsx is retired).
 const FounderTodayPage = React.lazy(() => import("@/pages/founder/today"));
+// Categorized index of every founder deep-dive — the visible affordance
+// into the ~70 secondary /founder/* surfaces beyond the 5 primary doors.
+const FounderAllToolsPage = React.lazy(() => import("@/pages/founder/all-tools"));
 // Phase 5 — the remaining three doors (team / money / build). The customers
 // door reuses FounderCustomersPage (rewritten in Phase 5).
 const FounderTeamPage = React.lazy(() => import("@/pages/founder/team"));
@@ -436,7 +437,6 @@ const FounderOnboardingPage = React.lazy(() => import("@/pages/founder-onboardin
 const FounderExpansionPage = React.lazy(() => import("@/pages/founder-expansion"));
 const FounderExperimentsPage = React.lazy(() => import("@/pages/founder-experiments"));
 const FounderProvidersPage = React.lazy(() => import("@/pages/founder-providers"));
-const FounderTodoPage = React.lazy(() => import("@/pages/founder-todo"));
 const ForgotPasswordPage = React.lazy(() => import("@/pages/forgot-password"));
 const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
 // Onboarding consolidation (2026-05-11): `/onboarding-v2` is the canonical
@@ -1096,29 +1096,29 @@ function Router() {
       <Route path="/founder/dashboard">
         {() => <Redirect to="/founder/bridge" />}
       </Route>
-      {/* /founder — Pulse home (Solene's daily one-line + Autonomy Horizon
-          + capital position + phase + team activity). Replaces the chat
-          shell that was previously at this URL; chat remains at
-          /founder/chat. Every other variant home (/founder-dashboard,
-          /founder-home, /founder/now, /founder/cockpit, /founder/dashboard)
-          continues to redirect to /founder/bridge. */}
+      {/* /founder — the founder home. The Solene-migration 5-door model is
+          now the sole surface: /founder always renders Today (the morning
+          pulse + active asks + decisions waiting + chat entry). The legacy
+          Pulse page (founder/index.tsx) is retired; its "Deep Tools" links
+          (Command cockpit, Customers, Pax traces, Pax calibration,
+          Life-Cockpit) are all present in FOUNDER_NAV_DEEP_DIVES and
+          reachable from /founder/all-tools + the command palette. Every
+          variant home (/founder-dashboard, /founder/now, /founder/cockpit,
+          /founder/dashboard) continues to redirect to /founder/bridge. */}
       <Route path="/founder">
-        {() => {
-          // Phase 4 of Solene migration: when the new-UI flag is on,
-          // /founder is the new Today landing page. Otherwise, the
-          // existing Pulse page (current behavior).
-          const isNewUI = useNewFounderUI();
-          if (isNewUI) {
-            return <FounderProtectedRoute component={FounderTodayPage} />;
-          }
-          return <FounderProtectedRoute component={FounderPulsePage} />;
-        }}
+        {() => <FounderProtectedRoute component={FounderTodayPage} />}
       </Route>
       {/* Phase 4 — new 5-door founder Today landing page. Direct URL
           always resolves regardless of the feature flag; the flag only
           controls whether /founder defaults here. */}
       <Route path="/founder/today">
         {() => <FounderProtectedRoute component={FounderTodayPage} />}
+      </Route>
+      {/* Categorized index of every founder deep-dive — reachable from the
+          "All tools" entry in the founder sidebar. Keeps all ~70 secondary
+          surfaces clickable without cluttering the 5-door primary nav. */}
+      <Route path="/founder/all-tools">
+        {() => <FounderProtectedRoute component={FounderAllToolsPage} />}
       </Route>
       {/* Phase 3 — iOS-Claude-UX chat surface. Consumes the Phase 2 backend
           at /api/founder/solene-chat/*. Linked from the sidebar "Chat with
@@ -1437,8 +1437,12 @@ function Router() {
       <Route path="/founder/providers">
         {() => <FounderProtectedRoute component={FounderProvidersPage} />}
       </Route>
+      {/* /founder/todo — legacy "what needs you" feed. Overlaps the Today
+          door (active asks + decisions waiting), so it now redirects there.
+          The standalone page (founder-todo.tsx) is kept only as a redirect
+          target's source-of-record; no nav links to it. */}
       <Route path="/founder/todo">
-        {() => <FounderProtectedRoute component={FounderTodoPage} />}
+        {() => <Redirect to="/founder/today" />}
       </Route>
       <Route path="/executive-dashboard">
         {() => <FounderProtectedRoute component={ExecutiveDashboardPage} />}

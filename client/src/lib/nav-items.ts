@@ -60,6 +60,8 @@ import {
   ListChecks,
   Search,
   Sliders,
+  Scale,
+  LayoutGrid,
 } from "lucide-react";
 
 export interface MasterNavItem {
@@ -224,6 +226,16 @@ export const FOUNDER_NAV_SETTINGS_SHORTCUT: FounderNavDoor = {
   description: "Live-apply operational knobs",
 };
 
+/** "All tools" shortcut — the visible affordance into the categorized
+ *  deep-dive index (/founder/all-tools). Keeps every secondary founder
+ *  surface clickable without a 70-link wall in the primary nav. */
+export const FOUNDER_NAV_ALL_TOOLS_SHORTCUT: FounderNavDoor = {
+  label: "All tools",
+  icon: LayoutGrid,
+  href: "/founder/all-tools",
+  description: "Every founder deep-dive, grouped by area",
+};
+
 /**
  * The existing 30+ founder pages. NOT shown in the primary 5-door nav —
  * reachable via direct URL or via Solene opening them from chat.
@@ -264,20 +276,26 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "Founder feed", icon: Activity, href: "/founder/feed", category: "customers" },
   { label: "Growth campaigns", icon: Megaphone, href: "/founder/growth/campaigns", category: "customers" },
   { label: "CMO", icon: Megaphone, href: "/founder/cmo", category: "customers" },
+  { label: "Customer recourse", icon: LifeBuoy, href: "/founder/recourse", category: "customers" },
+  { label: "AI appeals", icon: Scale, href: "/founder/appeals", category: "customers" },
 
   // ── Money ───────────────────────────────────────────────────────────
   { label: "Cost", icon: DollarSign, href: "/founder/cost", category: "money" },
   { label: "Unit economics", icon: Receipt, href: "/founder/unit-economics", category: "money" },
+  { label: "Life-Cockpit", icon: Heart, href: "/founder/life-cockpit", category: "money" },
 
   // ── Strategy ────────────────────────────────────────────────────────
-  { label: "Pulse", icon: Activity, href: "/founder", category: "strategy" },
+  // Note: the canonical founder home (/founder → Today) and the four other
+  // primary doors (Team/Customers/Money/Build) are NOT listed here — they
+  // already live in FOUNDER_NAV_NEW_5_DOORS. This catalog is the SECONDARY
+  // surface: everything reachable beyond the 5 doors.
+  { label: "Command cockpit", icon: BarChart2, href: "/founder/command", category: "strategy" },
   { label: "Bridge", icon: CheckCircle2, href: "/founder/bridge", category: "strategy" },
   { label: "Steering", icon: TrendingUp, href: "/founder/steering", category: "strategy" },
   { label: "Decisions", icon: Shield, href: "/founder/decisions", category: "strategy" },
   { label: "Strategy", icon: Lightbulb, href: "/founder/strategy", category: "strategy" },
   { label: "System trends", icon: TrendingUp, href: "/founder/trends", category: "strategy" },
   { label: "Monthly letter", icon: FileText, href: "/founder/letter", category: "strategy" },
-  { label: "What needs you", icon: CheckCircle2, href: "/founder/todo", category: "strategy" },
   { label: "Expansion radar", icon: Target, href: "/founder/expansion", category: "strategy" },
   { label: "Action preview", icon: Eye, href: "/founder/preview", category: "strategy" },
 
@@ -286,11 +304,12 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "Inspector", icon: Search, href: "/founder/inspector/audit", category: "ops" },
   { label: "System keys", icon: Key, href: "/founder/keys", category: "ops" },
   { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", category: "ops" },
+  { label: "Legal readiness", icon: Scale, href: "/founder/legal-readiness", category: "ops" },
   { label: "Founder settings", icon: Settings, href: "/founder/settings", category: "ops" },
   { label: "Recovery console", icon: LifeBuoy, href: "/founder/recovery-console", category: "ops" },
   { label: "Onboarding", icon: Rocket, href: "/founder/onboarding", category: "ops" },
   { label: "Experiments", icon: FlaskConical, href: "/founder/experiments", category: "ops" },
-  { label: "Tool proposals", icon: Wrench, href: "/founder/tools", category: "ops" },
+  { label: "Capability queue", icon: Wrench, href: "/founder/tools", category: "ops" },
   { label: "Trust graduation", icon: Shield, href: "/founder/trust-graduation", category: "ops" },
 
   // ── Experimental ────────────────────────────────────────────────────
@@ -310,4 +329,36 @@ export function founderDeepDivesByCategory(
   category: FounderNavDeepDive["category"]
 ): FounderNavDeepDive[] {
   return FOUNDER_NAV_DEEP_DIVES.filter((d) => d.category === category);
+}
+
+/** Stable display order + human labels for the deep-dive categories.
+ *  Drives both the /founder/all-tools index and the ⌘K founder group. */
+export const FOUNDER_DEEP_DIVE_CATEGORY_ORDER: FounderNavDeepDive["category"][] =
+  ["strategy", "money", "customers", "ai", "engineering", "ops", "experimental"];
+
+export const FOUNDER_DEEP_DIVE_CATEGORY_LABEL: Record<
+  FounderNavDeepDive["category"],
+  string
+> = {
+  strategy: "Strategy",
+  money: "Money",
+  customers: "Customers",
+  ai: "AI & agents",
+  engineering: "Engineering",
+  ops: "Ops & admin",
+  experimental: "Experimental",
+};
+
+/** Deep-dives grouped + ordered for index rendering. Empty categories are
+ *  dropped so the index never shows a bare header. */
+export function founderDeepDivesGrouped(): Array<{
+  category: FounderNavDeepDive["category"];
+  label: string;
+  items: FounderNavDeepDive[];
+}> {
+  return FOUNDER_DEEP_DIVE_CATEGORY_ORDER.map((category) => ({
+    category,
+    label: FOUNDER_DEEP_DIVE_CATEGORY_LABEL[category],
+    items: founderDeepDivesByCategory(category),
+  })).filter((g) => g.items.length > 0);
 }
