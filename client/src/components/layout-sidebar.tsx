@@ -240,20 +240,22 @@ function PaxNotificationBadge() {
   return (
     <Popover onOpenChange={(open) => { if (open) refetchObservations(); }}>
       <Tooltip delayDuration={0}>
+        {/* Single asChild Slot: TooltipTrigger clones the PopoverTrigger,
+            which itself renders the real <button>. Nesting two asChild
+            Slots (Tooltip + Popover) over one child made both try to
+            clone+ref it → React "Function components cannot be given refs". */}
         <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <button
-              className="relative p-1.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-              aria-label="Pax AI insights"
-              data-testid="button-pax-notifications"
-            >
-              <Sparkles className="w-4 h-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground leading-none">
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
-              )}
-            </button>
+          <PopoverTrigger
+            className="relative p-1.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+            aria-label="Pax AI insights"
+            data-testid="button-pax-notifications"
+          >
+            <Sparkles className="w-4 h-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground leading-none">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="right">
@@ -1741,29 +1743,30 @@ function CollapsedModuleItem({
   return (
     <Popover>
       <Tooltip delayDuration={0}>
+        {/* Single asChild Slot: TooltipTrigger clones the PopoverTrigger,
+            which renders the real <button>. Two nested asChild Slots both
+            tried to clone+ref this child → the React refs warning. */}
         <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <button
+          <PopoverTrigger
+            className={cn(
+              "flex items-center justify-center w-full p-2.5 rounded-card transition-colors duration-150 min-h-[44px] relative",
+              isActive
+                ? "nav-item-active"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            )}
+            onMouseEnter={() => onPrefetch(module.href)}
+            data-testid={`module-${module.id}`}
+            data-tour-nav={module.id}
+          >
+            <module.icon
               className={cn(
-                "flex items-center justify-center w-full p-2.5 rounded-card transition-colors duration-150 min-h-[44px] relative",
-                isActive
-                  ? "nav-item-active"
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                "w-4 h-4 shrink-0",
+                isActive ? "text-acr-ink" : "text-muted-foreground"
               )}
-              onMouseEnter={() => onPrefetch(module.href)}
-              data-testid={`module-${module.id}`}
-              data-tour-nav={module.id}
-            >
-              <module.icon
-                className={cn(
-                  "w-4 h-4 shrink-0",
-                  isActive ? "text-acr-ink" : "text-muted-foreground"
-                )}
-              />
-              {showBadge && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
-              )}
-            </button>
+            />
+            {showBadge && (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
+            )}
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="right">

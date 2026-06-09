@@ -55,8 +55,23 @@ interface UseFounderChatResult {
   activeToolCalls: Array<{ name: string; status: "running" | "complete" | "failed" }>;
 }
 
+/**
+ * Thread ids are serial integers on the server. The threads hook may
+ * briefly hand us `null` (no thread resolved yet) — and we must never
+ * fire `/threads/:id/messages` or open the stream with a non-numeric id
+ * (e.g. the old "default" sentinel), or the server 400s/404s and litters
+ * the founder Today console. `numericThreadId` is non-null only when a
+ * real integer id is in hand.
+ */
+function toNumericThreadId(threadId: string | null): number | null {
+  if (!threadId) return null;
+  const n = Number(threadId);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 export function useFounderChat(threadId: string | null): UseFounderChatResult {
   const queryClient = useQueryClient();
+  const numericThreadId = toNumericThreadId(threadId);
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<ChatStatus>("idle");
   const [error, setError] = useState<Error | null>(null);
@@ -69,15 +84,18 @@ export function useFounderChat(threadId: string | null): UseFounderChatResult {
   // populate this endpoint; pre-Phase-B we just start with a clean
   // thread.
   const { data: serverMessages = [] } = useQuery<ChatMessage[]>({
-    queryKey: [`/api/founder/chat/threads/${threadId}/messages`],
-    enabled: !!threadId,
+    queryKey: [`/api/founder/chat/threads/${numericThreadId}/messages`],
+    enabled: numericThreadId !== null,
     staleTime: 30_000,
-    queryFn: async ({ queryKey }) => {
-      const url = queryKey[0] as string;
+    queryFn: async () => {
+      const url = `/api/founder/chat/threads/${numericThreadId}/messages`;
       try {
         const res = await fetch(url, { credentials: "include" });
         if (!res.ok) return [];
-        return (await res.json()) as ChatMessage[];
+        const body = (await res.json()) as
+          | ChatMessage[]
+          | { messages?: ChatMessage[] };
+        return Array.isArray(body) ? body : (body.messages ?? []);
       } catch {
         return [];
       }
@@ -181,7 +199,7 @@ export function useFounderChat(threadId: string | null): UseFounderChatResult {
           // Refetch the canonical list once the message is finalized so
           // we drop the local optimistic copies.
           queryClient.invalidateQueries({
-            queryKey: [`/api/founder/chat/threads/${threadId}/messages`],
+            queryKey: [`/api/founder/chat/threads/${numericThreadId}/messages`],
           });
           break;
         }
@@ -193,12 +211,12 @@ export function useFounderChat(threadId: string | null): UseFounderChatResult {
         }
       }
     },
-    [queryClient, threadId, updateStreamingMessage],
+    [queryClient, numericThreadId, updateStreamingMessage],
   );
 
   const sendMessage = useCallback(
     async (text: string, options?: SendMessageOptions) => {
-      if (!threadId || !text.trim()) return;
+      if (numericThreadId === null || !text.trim()) return;
       setError(null);
       setStatus("submitting");
 
@@ -223,7 +241,7 @@ export function useFounderChat(threadId: string | null): UseFounderChatResult {
         if (options?.pageContext) payload.pageContext = options.pageContext;
         await apiRequest(
           "POST",
-          `/api/founder/chat/threads/${threadId}/messages`,
+          `/api/founder/chat/threads/${numericThreadId}/messages`,
           payload,
         ).catch(() => {
           // Pre-Phase-B fallback: stub a "Atlas backend is not wired
@@ -243,17 +261,28 @@ export function useFounderChat(threadId: string | null): UseFounderChatResult {
         setStatus("error");
       }
     },
-    [appendLocal, threadId],
+    [appendLocal, numericThreadId],
   );
 
-  // SSE connection. Lives for the lifetime of the active thread.
+  // SSE connection.
+  //
+  // The server's streaming primitive is **POST** /api/founder/chat/stream
+  // (the SSE body comes back on the POST response). There is no GET
+  // /stream route, so a browser `EventSource` — which can only issue GET
+  // — would 404 on every founder surface that mounts a chat dock. We
+  // therefore only open an EventSource when a real numeric thread id is
+  // resolved AND a GET stream endpoint is actually exposed (off today).
+  // `handleStreamEvent` remains wired so flipping this on is a one-line
+  // change once the server adds GET /stream.
+  const GET_STREAM_ENDPOINT_AVAILABLE = false;
   useEffect(() => {
-    if (!threadId) return;
+    if (numericThreadId === null) return;
+    if (!GET_STREAM_ENDPOINT_AVAILABLE) return;
 
     let es: EventSource | null = null;
     try {
       es = new EventSource(
-        `/api/founder/chat/stream?threadId=${encodeURIComponent(threadId)}`,
+        `/api/founder/chat/stream?threadId=${numericThreadId}`,
         { withCredentials: true } as EventSourceInit,
       );
     } catch {
@@ -268,21 +297,19 @@ export function useFounderChat(threadId: string | null): UseFounderChatResult {
         const parsed = JSON.parse(evt.data) as ChatStreamEvent;
         handleStreamEvent(parsed);
       } catch {
-        // Ignore malformed events — Phase B's job to ensure they're
-        // well-formed; this is just defensive.
+        // Ignore malformed events — defensive only.
       }
     };
 
     es.onerror = () => {
-      // Phase B will own auto-reconnect on the server. Browser default
-      // EventSource also auto-reconnects with backoff; we leave the
-      // connection in place.
+      // Browser default EventSource auto-reconnects with backoff; leave
+      // the connection in place.
     };
 
     return () => {
       es?.close();
     };
-  }, [threadId, handleStreamEvent]);
+  }, [numericThreadId, handleStreamEvent]);
 
   return {
     messages,

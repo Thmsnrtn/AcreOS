@@ -33,7 +33,7 @@ export function ThreadSidebar({
   const handleNew = async () => {
     try {
       const t = await createThread.mutateAsync({});
-      onSelect(t.id);
+      if (t) onSelect(t.id);
     } catch {
       // Pre-Phase-B: createThread may fail. Sidebar still shows the
       // default thread; we no-op.

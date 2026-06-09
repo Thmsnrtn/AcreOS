@@ -46,11 +46,22 @@ export function BridgeAtlasPane({
   onStreamingChange,
 }: BridgeAtlasPaneProps) {
   const { threads } = useFounderChatThreads();
+  // Real serial-integer thread id, or `null` until the list loads.
+  // useFounderChat no-ops on null rather than firing a bogus "default" id.
   const defaultThreadId = useMemo(
-    () => threads.find((t) => t.isDefault)?.id ?? threads[0]?.id ?? "default",
+    () => threads.find((t) => t.isDefault)?.id ?? threads[0]?.id ?? null,
     [threads],
   );
-  const [activeThreadId, setActiveThreadId] = useState<string>(defaultThreadId);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(
+    defaultThreadId,
+  );
+  // Adopt the resolved default thread once the list loads, unless the
+  // user has already picked one.
+  useEffect(() => {
+    if (activeThreadId === null && defaultThreadId !== null) {
+      setActiveThreadId(defaultThreadId);
+    }
+  }, [activeThreadId, defaultThreadId]);
   const [threadsOpen, setThreadsOpen] = useState(false);
   // Respect prefers-reduced-motion for the threads-strip expand/collapse.
   const threadsOpenTransition = useRespectfulTransition(SPRING_SOFT);

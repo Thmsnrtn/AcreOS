@@ -173,8 +173,8 @@ function MorningPulseBanner() {
               <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
             ) : isError ? (
               <p className="mt-2 text-sm text-muted-foreground">
-                Couldn't reach the pulse endpoint. The 7am ET cron will
-                refresh it on the next tick.
+                Your morning pulse isn't available right now. It refreshes
+                automatically each morning — check back shortly.
               </p>
             ) : pulse ? (
               <>
@@ -218,10 +218,8 @@ function MorningPulseBanner() {
               </>
             ) : (
               <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                No pulse posted yet today. The 7am ET cron writes the first
-                row; until it fires, the GET endpoint re-composes live on
-                each request — if you're seeing this the live compose
-                returned null too. Check worker logs.
+                Your morning pulse will appear here once your agents post it
+                — typically first thing each morning.
               </p>
             )}
           </div>

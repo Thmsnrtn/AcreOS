@@ -25,7 +25,7 @@
  * shows the legacy tile layout (LegacyNowSurface) — handy during the
  * transition, deprecated in Phase F.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Menu, ExternalLink, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,9 +42,21 @@ import { TOUCH_TARGET_PT } from "@/lib/spacing";
 export default function FounderChatPage() {
   useDocumentTitle("Atlas — founder chat");
   const { threads } = useFounderChatThreads();
+  // Threads are serial integer ids; the server lazily creates the default
+  // thread on first POST /stream. Until a real thread resolves we hold
+  // `null` (useFounderChat no-ops on null — no bogus "default" request).
   const defaultThreadId =
-    threads.find((t) => t.isDefault)?.id ?? threads[0]?.id ?? "default";
-  const [activeThreadId, setActiveThreadId] = useState<string>(defaultThreadId);
+    threads.find((t) => t.isDefault)?.id ?? threads[0]?.id ?? null;
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(
+    defaultThreadId,
+  );
+  // Adopt the resolved default thread once the list loads, unless the
+  // user has already picked one.
+  useEffect(() => {
+    if (activeThreadId === null && defaultThreadId !== null) {
+      setActiveThreadId(defaultThreadId);
+    }
+  }, [activeThreadId, defaultThreadId]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [personaSheetOpen, setPersonaSheetOpen] = useState(false);
   const { mode: personaMode } = usePersonaMode();

@@ -17157,3 +17157,11 @@ export * from "./schema/founder-life-cockpit";
 // founder Command cockpit renders "is it green?". Migration 0135.
 // ============================================================================
 export * from "./schema/domain-audit-findings";
+
+// ============================================================================
+// SOLENE — Founder collaboration asks (solene_founder_asks).
+// FOUNDER-SIDE ONLY. Powers /api/founder/asks. Re-exported here so the single
+// drizzle schema source (drizzle.config.ts) creates the table on db:push;
+// prod mirrors the DDL via scripts/migrate.mjs.
+// ============================================================================
+export * from "./schema/solene-founder-collab";

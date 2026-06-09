@@ -56,11 +56,13 @@ export function BridgeAtlasSheet({
   onStreamingChange,
 }: BridgeAtlasSheetProps) {
   const { threads } = useFounderChatThreads();
-  const defaultThreadId = useMemo(
-    () => threads.find((t) => t.isDefault)?.id ?? threads[0]?.id ?? "default",
+  // Resolve the real (serial-integer) default thread; `null` until the
+  // list loads. useFounderChat no-ops on null instead of firing a bogus
+  // "default" id at the server.
+  const activeThreadId = useMemo(
+    () => threads.find((t) => t.isDefault)?.id ?? threads[0]?.id ?? null,
     [threads],
   );
-  const [activeThreadId] = useState<string>(defaultThreadId);
 
   const { messages, sendMessage, isStreaming, activeToolCalls, status } =
     useFounderChat(activeThreadId);
