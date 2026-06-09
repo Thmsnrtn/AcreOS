@@ -17165,3 +17165,48 @@ export * from "./schema/domain-audit-findings";
 // prod mirrors the DDL via scripts/migrate.mjs.
 // ============================================================================
 export * from "./schema/solene-founder-collab";
+
+// ============================================================================
+// SCHEMA SOURCE-OF-TRUTH DRIFT CLOSURE (Iris).
+// The 34 sub-modules below define tables that previously existed in prod only
+// because scripts/migrate.mjs (raw SQL, the prod release_command) mirrors their
+// DDL — they were NOT re-exported from this single drizzle schema source
+// (drizzle.config.ts -> ./shared/schema.ts), so `drizzle-kit push` (the local
+// db-build path) never created them, causing spurious local 500s (e.g. missing
+// `solene_conversations`). These re-exports are PURELY ADDITIVE: no table
+// definition is changed; they only make db:push match migrate.mjs. Alphabetized.
+// ============================================================================
+export * from "./schema/agent-codenames";
+export * from "./schema/beatrice-regwatch";
+export * from "./schema/external-watch";
+export * from "./schema/iris-perf";
+export * from "./schema/krieger-audit";
+export * from "./schema/onboarding-funnel";
+export * from "./schema/pax-verticals";
+export * from "./schema/solene-adversarial-tests";
+export * from "./schema/solene-agent-claims";
+export * from "./schema/solene-agent-identity";
+export * from "./schema/solene-capability-proposals";
+export * from "./schema/solene-chat-config";
+export * from "./schema/solene-confidence-observations";
+export * from "./schema/solene-constitutional-violations";
+export * from "./schema/solene-conversations";
+export * from "./schema/solene-counterfactuals";
+export * from "./schema/solene-decision-traces";
+export * from "./schema/solene-distributed-reasoning";
+export * from "./schema/solene-embeddings";
+export * from "./schema/solene-evidence-weights";
+export * from "./schema/solene-failure-modes";
+export * from "./schema/solene-learning-loop";
+export * from "./schema/solene-memory-files";
+export * from "./schema/solene-memory-retrieval";
+export * from "./schema/solene-model-upgrade";
+export * from "./schema/solene-morning-pulse";
+export * from "./schema/solene-pipeline";
+export * from "./schema/solene-plan-proposals";
+export * from "./schema/solene-pre-call-decisions";
+export * from "./schema/solene-session-tasks";
+export * from "./schema/solene-speculations";
+export * from "./schema/solene-token-economy";
+export * from "./schema/soren-seo";
+export * from "./schema/team-improvement";
