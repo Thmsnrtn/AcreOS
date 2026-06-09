@@ -45,7 +45,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: TypeScript check
+      # Same `npm run check` CI runs — single source of truth for the heap
+      # ceiling (6144, under the runner's ~7GB) and the schema +
+      # no-fabrication ratchets. CI and deploy can never diverge on the gate.
+      - name: TypeScript check + ratchets
         run: npm run check
 
       - name: Run tests
@@ -145,7 +148,10 @@ jobs:
         if: success()
         run: |
           set -e
-          HOST="$(flyctl info --json | jq -r '.Hostname')"
+          # flyctl 0.4.56+ removed `info --json`, which silently produced an
+          # empty hostname and broke this ledger POST. Pin the production host
+          # (Cloudflare-fronted) — the same path the health check uses.
+          HOST="acreos.io"
           PR_NUMBER=""
           if [ -n "${{ github.event.pull_request.number }}" ]; then
             PR_NUMBER="${{ github.event.pull_request.number }}"
@@ -179,7 +185,9 @@ jobs:
         if: failure()
         run: |
           set -e
-          HOST="acreos.app"
+          # Pin the real production host. Was hardcoded to the wrong domain
+          # (acreos.app), so the failure-path ledger POST never reached the API.
+          HOST="acreos.io"
           BODY="$(jq -n \
             --arg gitSha "$GITHUB_SHA" \
             --arg deployedBy "$GITHUB_ACTOR" \
@@ -193,6 +201,36 @@ jobs:
             || echo "Deploy ledger POST (failure path) failed — investigate"
         continue-on-error: true
 
+      # Real out-of-band alert so a failed production deploy reaches Tom's
+      # phone instead of dying in a CI log nobody is watching. Posts a short
+      # message to the DEPLOY_ALERT_WEBHOOK secret (ntfy.sh topic URL or a
+      # Slack/Discord incoming-webhook URL — both accept a POST body). If the
+      # secret is unset the step is a no-op (does NOT fail the run), so the
+      # workflow keeps working before Tom wires it up.
+      #
+      # 🔑 FOUNDER ACTION — set the secret once:
+      #   ntfy:  gh secret set DEPLOY_ALERT_WEBHOOK --body "https://ntfy.sh/<your-private-topic>"
+      #   Slack: gh secret set DEPLOY_ALERT_WEBHOOK --body "https://hooks.slack.com/services/XXX/YYY/ZZZ"
       - name: Notify on failure
         if: failure()
-        run: echo "Deploy failed — check Fly.io dashboard for rollback options"
+        env:
+          DEPLOY_ALERT_WEBHOOK: ${{ secrets.DEPLOY_ALERT_WEBHOOK }}
+        run: |
+          MSG="🚨 AcreOS production deploy FAILED — ${GITHUB_SHA:0:7} by ${GITHUB_ACTOR}. Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} — check Fly.io dashboard for rollback."
+          if [ -z "$DEPLOY_ALERT_WEBHOOK" ]; then
+            echo "DEPLOY_ALERT_WEBHOOK unset — printing alert only:"
+            echo "$MSG"
+            exit 0
+          fi
+          # Slack/Discord want {"text": "..."}; ntfy accepts a raw body. Send
+          # JSON (ntfy ignores the wrapper and shows the text) so one command
+          # works for both styles. --fail surfaces a 4xx/5xx in the log, but we
+          # never fail the workflow on a notify miss.
+          curl --fail --silent --show-error --max-time 15 \
+            -H "Content-Type: application/json" \
+            -H "Title: AcreOS deploy failed" \
+            -H "Priority: urgent" \
+            -H "Tags: rotating_light" \
+            -d "$(jq -n --arg t "$MSG" '{text:$t, message:$t}')" \
+            "$DEPLOY_ALERT_WEBHOOK" \
+            || echo "Alert webhook POST failed — investigate (deploy already marked failed)."

@@ -1,0 +1,106 @@
+name: Release Watchdog
+
+# Deploy-blindness alarm. A push can succeed-then-silently-not-roll-out (Fly
+# machine wedged, health check flaked into a half-deploy, a revert that never
+# redeployed). Nothing watches for that today. This job runs hourly, compares
+# the tip of origin/main to the SHA the live site actually reports at
+# /api/version, and pings DEPLOY_ALERT_WEBHOOK if they diverge — so a stale
+# release surfaces on Tom's phone within the hour instead of when a customer
+# notices.
+
+on:
+  schedule:
+    - cron: "17 * * * *" # hourly at :17 (off the top-of-hour stampede)
+  workflow_dispatch: {} # allow a manual run from the Actions tab
+
+concurrency:
+  group: release-watchdog
+  cancel-in-progress: true
+
+jobs:
+  check-release-freshness:
+    name: Compare origin/main to live deployed SHA
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1 # we only need the tip of the default branch
+
+      - name: Resolve expected vs deployed SHA
+        id: resolve
+        run: |
+          set -uo pipefail
+
+          # Expected: the commit GitHub considers the tip of main right now.
+          EXPECTED="$(git rev-parse HEAD)"
+          echo "expected=$EXPECTED" >> "$GITHUB_OUTPUT"
+          echo "Expected (origin/main tip): $EXPECTED"
+
+          # Deployed: the SHA the live server bakes in. /api/version returns
+          # { "sha": "<git-sha>" } (server/routes.ts → VITE_GIT_SHA, set from
+          # the Dockerfile GIT_SHA build-arg the deploy passes through). This
+          # is auth-free and Cloudflare-fronted, so we test the real path.
+          RESP="$(curl --fail --silent --show-error --max-time 20 \
+            "https://acreos.io/api/version" || echo '__CURL_FAILED__')"
+          echo "Raw /api/version response: $RESP"
+
+          if [ "$RESP" = "__CURL_FAILED__" ]; then
+            echo "status=unreachable" >> "$GITHUB_OUTPUT"
+            echo "deployed=unreachable" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          DEPLOYED="$(printf '%s' "$RESP" | jq -r '.sha // "unknown"')"
+          echo "deployed=$DEPLOYED" >> "$GITHUB_OUTPUT"
+          echo "Deployed (live /api/version): $DEPLOYED"
+
+          # "unknown" means the running build wasn't given a GIT_SHA — itself a
+          # deploy-hygiene problem worth surfacing.
+          if [ "$DEPLOYED" = "unknown" ] || [ -z "$DEPLOYED" ]; then
+            echo "status=unknown-sha" >> "$GITHUB_OUTPUT"
+          elif [ "$DEPLOYED" = "$EXPECTED" ]; then
+            echo "status=match" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=diverged" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Summary
+        run: |
+          echo "Status:   ${{ steps.resolve.outputs.status }}"
+          echo "Expected: ${{ steps.resolve.outputs.expected }}"
+          echo "Deployed: ${{ steps.resolve.outputs.deployed }}"
+
+      # Alert on anything that isn't a clean match. Uses the SAME secret +
+      # POST shape as deploy.yml's failure notifier (ntfy or Slack/Discord).
+      # No-op when the secret is unset so the job is safe to land before Tom
+      # wires it up.
+      #
+      # 🔑 FOUNDER ACTION: gh secret set DEPLOY_ALERT_WEBHOOK --body "<url>"
+      - name: Alert on stale / unreachable release
+        if: steps.resolve.outputs.status != 'match'
+        env:
+          DEPLOY_ALERT_WEBHOOK: ${{ secrets.DEPLOY_ALERT_WEBHOOK }}
+          STATUS: ${{ steps.resolve.outputs.status }}
+          EXPECTED: ${{ steps.resolve.outputs.expected }}
+          DEPLOYED: ${{ steps.resolve.outputs.deployed }}
+        run: |
+          case "$STATUS" in
+            diverged)    HEADLINE="⚠️ AcreOS STALE RELEASE — live site is behind origin/main";;
+            unreachable) HEADLINE="🚨 AcreOS /api/version UNREACHABLE — site may be down";;
+            unknown-sha) HEADLINE="⚠️ AcreOS live build reports no GIT_SHA (deploy hygiene)";;
+            *)           HEADLINE="⚠️ AcreOS release watchdog: $STATUS";;
+          esac
+          MSG="$HEADLINE. expected=${EXPECTED:0:7} deployed=${DEPLOYED} — https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          echo "$MSG"
+          if [ -z "$DEPLOY_ALERT_WEBHOOK" ]; then
+            echo "DEPLOY_ALERT_WEBHOOK unset — alert printed only, not sent."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 15 \
+            -H "Content-Type: application/json" \
+            -H "Title: AcreOS release watchdog" \
+            -H "Priority: high" \
+            -H "Tags: warning" \
+            -d "$(jq -n --arg t "$MSG" '{text:$t, message:$t}')" \
+            "$DEPLOY_ALERT_WEBHOOK" \
+            || echo "Watchdog webhook POST failed — investigate."

@@ -23,8 +23,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: TypeScript type check
-        run: npx tsc --noEmit
+      # Unified gate — same `npm run check` the deploy gate runs, so CI and
+      # deploy can never disagree on heap ceiling or which lints run.
+      # `check` pins NODE_OPTIONS=--max-old-space-size=6144 (safely under the
+      # ubuntu-latest runner's ~7GB; 8192 invited the OOM-killer that broke
+      # deploys Jun 6-8), forces `--incremental false` (a stale tsBuildInfo in
+      # node_modules produced a false-negative this session), and runs the
+      # schema + no-fabrication ratchets.
+      - name: TypeScript type check + ratchets
+        run: npm run check
 
       - name: ESLint
         run: npm run lint
