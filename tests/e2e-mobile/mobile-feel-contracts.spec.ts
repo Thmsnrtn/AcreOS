@@ -31,7 +31,7 @@
  * violation, not just the first. Sets the threshold pattern the wider
  * mobile-craft discipline can grow from.
  */
-import { test, expect, type Page, type Locator } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 const ROUTES_TO_AUDIT = [
   "/today",
@@ -260,10 +260,6 @@ async function collectVhUsageViolations(page: Page): Promise<string[]> {
     return out;
   });
 }
-
-// Silence the unused-import warning when only some of the imports are
-// used by the spec body (Playwright's type surface re-exports many shapes).
-void Locator;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Contract C1 — "no blank dialog" + C2 — "no blank route"
