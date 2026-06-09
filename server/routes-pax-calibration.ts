@@ -54,15 +54,23 @@ const BUCKETS: Array<{ label: string; min: number; max: number; midpoint: number
 ];
 
 const HONEST_NOTE =
-  "Pax confidence is now backed by real signals: (1) model self-reported " +
-  "confidence from the AI router (aiRouter requestConfidence → AIResponse.confidence) " +
-  "for model-backed surfaces, and (2) evidence-derived detector confidence " +
-  "(sample size + signal magnitude) for the deterministic rule-based monitors " +
-  "(stale leads, expiring offers, pipeline velocity, quota). No confidence value " +
-  "is a hand-coded constant anymore. Where a path has NO measurable signal, the " +
-  "underlying API returns null ('not measured') rather than a fabricated number; " +
-  "such rows are simply absent from this plot (confidenceScore is notNull on " +
-  "pax_observations, so only measured detector/model confidences are written).";
+  "Pax confidence is backed by real signals from two sources, and this plot " +
+  "mixes them: (1) MODEL self-reported confidence — the response-quality scorer " +
+  "in executive.ts now calls the AI router with requestConfidence:true, so the " +
+  "model emits its own confidence (0..1) and paxObserver.recordModelObservation " +
+  "stamps it (×100) into pax_observations with a confidenceBasis of 'model:…'. " +
+  "(2) DETERMINISTIC detector confidence — the rule-based monitors (stale leads, " +
+  "expiring offers, pipeline velocity, quota, data integrity, service health) " +
+  "derive confidence from real evidence (sample size + signal magnitude) via " +
+  "paxObserver.detectorConfidence(), not a hand-coded constant. No confidence " +
+  "value is a fabricated constant anymore. STILL DETECTOR-ONLY: most observation " +
+  "volume is detector-derived — the main streamed Pax chat answer is plaintext " +
+  "(not JSON), so it cannot carry a model confidence field; only JSON-mode " +
+  "model sub-calls (currently the quality scorer) contribute model points. " +
+  "Where a path has NO measurable signal, the router returns null ('not " +
+  "measured') and recordModelObservation writes NO row rather than a fabricated " +
+  "number — so honest-null is represented by absence (confidenceScore is notNull " +
+  "on pax_observations, so only measured model/detector confidences appear).";
 
 export function registerPaxCalibrationRoutes(app: Express) {
   app.get(

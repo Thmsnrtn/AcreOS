@@ -244,6 +244,58 @@ class PaxObserverService {
   }
 
   /**
+   * Record a MODEL-BACKED observation whose confidence is the model's OWN
+   * self-reported confidence (aiRouter requestConfidence → AIResponse.confidence,
+   * a number in 0..1), not a deterministic detector heuristic.
+   *
+   * This is the path that makes the calibration plot's "model-derived confidence"
+   * claim TRUE: before this, NO production caller set requestConfidence, so
+   * pax_observations.confidenceScore was 100% detectorConfidence() measuring
+   * itself. Here:
+   *   - `modelConfidence` is a number 0..1 → stamped as 0..100 with a
+   *     `confidenceBasis: "model:..."` provenance string, OR
+   *   - `null` (the model omitted/malformed it — honest "not measured"). Because
+   *     pax_observations.confidenceScore is notNull, we DO NOT fabricate a
+   *     number: we return null and write NO row. The honest-null is represented
+   *     by the row's absence, never by a constant.
+   *
+   * Returns the observation, or null when no model signal was available (or on
+   * any DB error — same fail-soft contract as recordObservation).
+   */
+  async recordModelObservation(
+    options: Omit<RecordObservationOptions, "confidenceScore"> & {
+      /** Model self-reported confidence in [0,1], or null = "not measured". */
+      modelConfidence: number | null;
+      /** Names the model/surface the confidence came from, for the audit trail. */
+      modelSource: string;
+    },
+  ): Promise<PaxObservation | null> {
+    const { modelConfidence, modelSource, metadata, ...rest } = options;
+    // Honest-null: no measured model signal ⇒ no fabricated number ⇒ no row.
+    if (
+      modelConfidence === null ||
+      typeof modelConfidence !== "number" ||
+      !Number.isFinite(modelConfidence) ||
+      modelConfidence < 0 ||
+      modelConfidence > 1
+    ) {
+      logger.info(
+        `[paxObserver] model confidence not measured (${modelSource}) — skipping model-backed observation (honest-null)`,
+      );
+      return null;
+    }
+    const confidenceScore = Math.round(modelConfidence * 100);
+    return this.recordObservation({
+      ...rest,
+      confidenceScore,
+      metadata: {
+        ...(metadata ?? {}),
+        confidenceBasis: `model:${modelSource} (self-reported confidence ${modelConfidence.toFixed(2)})`,
+      },
+    });
+  }
+
+  /**
    * Record an observation with confidence scoring and notification decision
    */
   async recordObservation(options: RecordObservationOptions): Promise<PaxObservation | null> {

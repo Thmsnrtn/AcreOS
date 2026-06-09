@@ -367,32 +367,35 @@ export class ModelTrainingService {
         job.status = "completed";
         job.completedAt = new Date();
         job.progress = 100;
-        job.metrics = {
-          mae: 0.085 + Math.random() * 0.02,
-          rmse: 0.12 + Math.random() * 0.03,
-          mape: 0.07 + Math.random() * 0.02,
-          r2: 0.88 + Math.random() * 0.05,
-        };
 
-        // Persist metrics
+        // Andrei (andrei/ai-hygiene 2026-06): this is a SIMULATED progress
+        // stub — no real training/eval pass runs here. Previously it fabricated
+        // mae/rmse/mape/r2 via Math.random() and persisted them as if they were
+        // measured metrics. That is fabrication in a fact path. The honest
+        // representation of "we did not actually evaluate a model" is NO metric
+        // value (null) plus an explicit insufficient_data marker — never a
+        // random number. (Real metrics come from the actual training script in
+        // jobs/valuationModelRetrain.ts, which parses mae/rmse/mape/r2 from a
+        // genuine training run; if/when this stub is wired to that pipeline, set
+        // job.metrics from its output and write real trainingMetrics rows.)
+        job.metrics = undefined; // no measured metrics — honest-null
+
         await db.update(modelVersions)
           .set({
-            status: "staging",
+            // Not promotable: there is no measured metric to gate on. Leave in
+            // 'training' terminal-but-unevaluated state and record WHY in notes.
+            status: "training",
             trainedAt: new Date(),
-            primaryMetric: "mae",
-            primaryMetricValue: job.metrics.mae.toString(),
-            trainingSamples: config.trainingSamples || 15_000,
+            primaryMetric: null,
+            primaryMetricValue: null, // nullable column — honest "not measured"
+            trainingSamples: config.trainingSamples || null,
+            notes: "insufficient_data: simulated run produced no measured eval metrics (mae/rmse/mape/r2). No metrics persisted. Wire to the real training pipeline (valuationModelRetrain) to populate.",
           })
           .where(eq(modelVersions.id, modelVersionId));
 
-        for (const [name, value] of Object.entries(job.metrics)) {
-          await db.insert(trainingMetrics).values({
-            modelVersionId,
-            metricName: name,
-            metricValue: (value as number).toString(),
-            splitType: "validation",
-          });
-        }
+        // Deliberately write NO trainingMetrics rows: metricValue is notNull, so
+        // a real metric row cannot honestly represent "not measured". Absence is
+        // the truthful state until a real eval pass supplies values.
       }
     }, intervalMs);
   }
