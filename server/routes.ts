@@ -1678,12 +1678,8 @@ export async function registerRoutes(
   // ============================================
   // ADMIN FEATURE FLAGS (founder-only)
   // ============================================
-  app.get("/api/admin/feature-flags", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/admin/feature-flags", isAuthenticated, getOrCreateOrg, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = req.organization || req.organization;
-      if (!org?.isFounder) {
-        return res.status(403).json({ message: "Founder access required" });
-      }
       const { platformFeatureFlags } = await import("@shared/schema");
       const flags = await db.select().from(platformFeatureFlags).limit(1000);
       res.json(flags);
@@ -1692,12 +1688,8 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/feature-flags/:key", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/admin/feature-flags/:key", isAuthenticated, getOrCreateOrg, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = req.organization || req.organization;
-      if (!org?.isFounder) {
-        return res.status(403).json({ message: "Founder access required" });
-      }
       const { platformFeatureFlags } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       const { enabled } = req.body;
@@ -1808,12 +1800,8 @@ export async function registerRoutes(
   }
 
   // Executive Revenue Dashboard — Founder-only aggregate metrics
-  app.get('/api/founder/executive-dashboard', isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/founder/executive-dashboard', isAuthenticated, getOrCreateOrg, requireFounder, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (!req.isFounder) {
-        return Errors.forbidden(res, "Executive dashboard is restricted to founders", { docsSlug: "feature-founder-only" });
-      }
-
       logger.info("[ExecutiveDashboard] Fetching metrics");
 
       // Active organizations and subscription breakdown

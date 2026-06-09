@@ -32,7 +32,7 @@ import crypto from "crypto";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { alertingService } from "./services/alerting";
-import { isFounderEmail, isFounderIdentity } from "./services/founder";
+import { isFounderIdentity } from "./services/founder";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { Errors } from "./utils/errors";
@@ -257,7 +257,8 @@ export function registerAdminRoutes(app: Express): void {
       // R1.b fix: gate on canonical founder identity, not org ownership.
       // Previously any org owner could view escalated cases across all orgs.
       if (!isFounderIdentity({ email: userEmail, userId })) {
-        return Errors.forbidden(res, "Founder access required");
+        // Hide existence of founder-only surfaces from non-founders (404, not 403).
+        return Errors.notFound(res, "Resource");
       }
 
       const cases = await storage.getEscalatedCases();
@@ -298,7 +299,8 @@ export function registerAdminRoutes(app: Express): void {
 
       // R1.b fix: gate on canonical founder identity, not org ownership.
       if (!isFounderIdentity({ email: userEmail, userId })) {
-        return Errors.forbidden(res, "Founder access required");
+        // Hide existence of founder-only surfaces from non-founders (404, not 403).
+        return Errors.notFound(res, "Resource");
       }
 
       const supportCase = await storage.getSupportCase(caseId);
@@ -345,7 +347,8 @@ export function registerAdminRoutes(app: Express): void {
 
       // R1.b fix: gate on canonical founder identity, not org ownership.
       if (!isFounderIdentity({ email: userEmail, userId })) {
-        return Errors.forbidden(res, "Founder access required");
+        // Hide existence of founder-only surfaces from non-founders (404, not 403).
+        return Errors.notFound(res, "Resource");
       }
 
       const allCases = await storage.getSupportCases(org.id);
@@ -480,7 +483,8 @@ export function registerAdminRoutes(app: Express): void {
       // R1 fix: gate on canonical founder identity, not org ownership.
       // Previously any org owner could call this endpoint against any org.
       if (!isFounderIdentity({ email: userEmail, userId })) {
-        return Errors.forbidden(res, "Founder access required");
+        // Hide existence of founder-only surfaces from non-founders (404, not 403).
+        return Errors.notFound(res, "Resource");
       }
 
       const requests = await storage.getAllFeatureRequestsForFounder();
@@ -502,7 +506,8 @@ export function registerAdminRoutes(app: Express): void {
 
       // R1 fix: gate on canonical founder identity, not org ownership.
       if (!isFounderIdentity({ email: userEmail, userId })) {
-        return Errors.forbidden(res, "Founder access required");
+        // Hide existence of founder-only surfaces from non-founders (404, not 403).
+        return Errors.notFound(res, "Resource");
       }
 
       const parsed = featureRequestUpdateSchema.safeParse(req.body);
@@ -679,24 +684,27 @@ export function registerAdminRoutes(app: Express): void {
   // ADMIN / FOUNDER DASHBOARD
   // ============================================
   
+  // Founder/admin gate. Returns 404 (not 403) to hide the existence of
+  // founder-only routes from non-founders, matching the `requireFounder`
+  // hide-existence standard. Matches founders by email OR Clerk user ID via
+  // isFounderIdentity — covering the userId founder path, not email-only.
   const isFounderAdmin: RequestHandler = async (req, res, next) => {
     if (!req.user) {
-      Errors.unauthorized(res);
+      // Hide existence even from unauthenticated callers.
+      Errors.notFound(res, "Resource");
       return;
     }
 
-    const user = req.user;
-    const userId = user?.id || user.id;
-    const userEmail = user?.email || user.email;
+    const user = req.user as any;
+    const userId = (req as any).auth?.userId ?? user.clerkUserId ?? user.id ?? null;
+    const userEmail = user.email;
 
-    const founderUserIds = (process.env.FOUNDER_USER_IDS || "").split(",").map(id => id.trim()).filter(Boolean);
-    const isFounder = isFounderEmail(userEmail) || founderUserIds.includes(String(userId));
-    if (isFounder) {
+    if (isFounderIdentity({ email: userEmail, userId })) {
       return next();
     }
 
     logger.warn("Admin access denied", { userId, userEmail, path: req.path });
-    Errors.forbidden(res, "Access denied. Admin privileges required.");
+    Errors.notFound(res, "Resource");
   };
 
   // F-A01-1: Cross-org admin guard — validates URL :orgId matches authenticated org
@@ -4275,10 +4283,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/feedback — all feedback (founder only)
-  api.get("/api/admin/feedback", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  api.get("/api/admin/feedback", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { betaAnalytics } = await import("./services/betaAnalytics");
       const limit = Number(req.query.limit) || 100;
       const offset = Number(req.query.offset) || 0;
@@ -4290,10 +4296,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // POST /api/admin/feedback/process — process unprocessed feedback (founder only)
-  api.post("/api/admin/feedback/process", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  api.post("/api/admin/feedback/process", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { feedbackProcessor } = await import("./services/feedbackProcessor");
       const processed = await feedbackProcessor.processNewFeedback();
       res.json({ processed });
@@ -4303,10 +4307,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/feedback/summary — feedback summary by category/severity (founder only)
-  api.get("/api/admin/feedback/summary", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  api.get("/api/admin/feedback/summary", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { feedbackProcessor } = await import("./services/feedbackProcessor");
       const summary = await feedbackProcessor.getFeedbackSummary();
       res.json(summary);
@@ -4370,10 +4372,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/agents/status — agent status (founder only)
-  api.get("/api/admin/agents/status", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  api.get("/api/admin/agents/status", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { getAgentStatus } = await import("./agents/index");
       res.json(getAgentStatus());
     } catch (err: any) {
@@ -4382,10 +4382,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // POST /api/admin/agents/:name/toggle — enable/disable agent (founder only)
-  api.post("/api/admin/agents/:name/toggle", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  api.post("/api/admin/agents/:name/toggle", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { setAgentEnabled } = await import("./agents/index");
       const { enabled } = req.body as { enabled: boolean };
       const success = setAgentEnabled(req.params.name, enabled);
@@ -4397,10 +4395,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/digests — list recent digests (founder only)
-  api.get("/api/admin/digests", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  api.get("/api/admin/digests", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const result = await db.execute(sql`
         SELECT id, agent_type as "agentType", brief_type as "briefType", content, generated_at as "generatedAt", read_at as "readAt"
         FROM founder_briefs
@@ -4414,10 +4410,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/digests/latest — latest digest (founder only)
-  api.get("/api/admin/digests/latest", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  api.get("/api/admin/digests/latest", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const result = await db.execute(sql`
         SELECT id, agent_type as "agentType", brief_type as "briefType", content, generated_at as "generatedAt"
         FROM founder_briefs
@@ -4435,10 +4429,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // GET /api/admin/beta-analytics — founder analytics dashboard data
-  api.get("/api/admin/beta-analytics", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  api.get("/api/admin/beta-analytics", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org.isFounder) return Errors.forbidden(res, "Founder access required");
       const { betaAnalytics } = await import("./services/betaAnalytics");
       const [signupCount, onboardingRate, activationRates, userTimelines, healthIndicators, pageVisits, feedback] = await Promise.all([
         betaAnalytics.getSignupCount(),
@@ -4456,10 +4448,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // ── Tier Override (Section 10) ──
-  app.post("/api/admin/organizations/:id/tier-override", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/admin/organizations/:id/tier-override", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const targetOrgId = parseInt(req.params.id);
       const { tier, reason, expiresAt } = req.body;
       if (!tier || !reason) return Errors.badRequest(res, "tier and reason are required");
@@ -4485,10 +4475,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  app.post("/api/admin/impersonate/:orgId", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/admin/impersonate/:orgId", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const org = getOrganization(req);
-      if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const targetOrgId = parseInt(req.params.orgId);
       const { organizations } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
@@ -4517,10 +4506,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  app.post("/api/admin/organizations/:id/features", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/admin/organizations/:id/features", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const targetOrgId = parseInt(req.params.id);
       const { features } = req.body;
       if (!features || typeof features !== "object") return Errors.badRequest(res, "features object required");
@@ -4535,10 +4522,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  app.get("/api/founder/stage", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/founder/stage", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const { detectStage } = await import("./services/companyStageDetector");
       const stage = await detectStage();
       res.json(stage);
@@ -4547,10 +4532,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  app.get("/api/founder/leading-indicators", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/founder/leading-indicators", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
-      if (!org?.isFounder) return Errors.forbidden(res, "Founder access required");
       const { computeLeadingIndicators } = await import("./services/leadingIndicators");
       const indicators = await computeLeadingIndicators();
       res.json(indicators);
