@@ -5,10 +5,12 @@
  * cmoBroadcast, autonomousDealMachine, dunning sweeper, etc.) can
  * silently stop running and the only signal is server logs. From the
  * user's perspective, Pax/Sophie/Atlas "just stop happening." This
- * route reads the `job_runs` table (the same one `scheduler.ts`
- * writes) and reports per-job last-success and stale-ness so the
+ * route reads the `job_health_logs` table (the one `withJobLock` in
+ * jobRuntime.ts actually writes, keyed by the snake_case logical job
+ * names) and reports per-job last-liveness and stale-ness so the
  * client can surface a "Pax is behind" / "Morning brief paused" card
- * on /today.
+ * on /today. Job names come from the canonical JOB_ROSTER so this can
+ * never drift back into reporting phantom never_ran rows.
  *
  * Read-only and cheap — one indexed query per job name. Cached
  * client-side at 60s staleTime so this isn't a hot path.
@@ -21,29 +23,44 @@
 import type { Express, Response } from "express";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { jobRuns, drDrills } from "@shared/schema";
+import { jobHealthLogs, drDrills } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { JOB_ROSTER } from "./jobs/jobRegistry";
 
 /**
- * Jobs we surface in the user-facing health card and their canonical
- * expected interval. Kept in sync with the schedules in
- * `server/jobs/runScheduledJobs.ts`. The 2× multiplier becomes the
- * "stale" threshold — a job that hasn't completed successfully in
- * twice its expected interval is treated as behind.
+ * Jobs we surface in the user-facing health card, derived from the canonical
+ * JOB_ROSTER so this endpoint can never again drift from what's actually
+ * scheduled. Previously this hardcoded 8 camelCase names that were NEVER
+ * written to the source table — so the endpoint permanently reported
+ * "never_ran" for every row. We now (a) source names from the roster (the same
+ * snake_case logical names `withJobLock` writes) and (b) read from
+ * `job_health_logs` (the table the writer ACTUALLY populates) instead of
+ * `job_runs`. The 2× multiplier is the "stale" threshold.
+ *
+ * We surface the customer-facing subset (the autopilots a user would notice
+ * "just stopped happening"), not all ~118 internal jobs — but every name here
+ * is guaranteed to exist in the roster + be written by the runtime.
  */
-const TRACKED_JOBS: Array<{ name: string; label: string; intervalMs: number }> = [
-  { name: "morningBrief",            label: "Morning brief",      intervalMs: 24 * 60 * 60 * 1000 },
-  { name: "dailyBriefing",           label: "Daily briefing",     intervalMs: 24 * 60 * 60 * 1000 },
-  { name: "atlasPendingConfirmationNudger", label: "Pax nudges",  intervalMs: 60 * 60 * 1000 },
-  { name: "autonomousDealMachine",   label: "Deal autopilot",     intervalMs: 60 * 60 * 1000 },
-  { name: "autonomousTaskProcessor", label: "Task processor",     intervalMs: 15 * 60 * 1000 },
-  { name: "cmoBroadcast",            label: "Outreach broadcasts", intervalMs: 60 * 60 * 1000 },
-  { name: "noteDunning",             label: "Note dunning",       intervalMs: 24 * 60 * 60 * 1000 },
-  { name: "embeddingRefresh",        label: "Search index",       intervalMs: 6 * 60 * 60 * 1000 },
-];
+const SURFACED_JOBS: Record<string, string> = {
+  atlas_morning_brief_daily: "Morning brief",
+  founder_briefing_daily: "Daily briefing",
+  pax_nudges: "Pax nudges",
+  autonomous_deal_machine: "Deal autopilot",
+  scheduled_tasks: "Task processor",
+  churn_engine_daily: "Churn engine",
+  dunning_tasks: "Dunning",
+  onboarding_scheduler: "Onboarding",
+};
+
+const TRACKED_JOBS: Array<{ name: string; label: string; intervalMs: number }> =
+  JOB_ROSTER.filter((e) => e.name in SURFACED_JOBS).map((e) => ({
+    name: e.name,
+    label: SURFACED_JOBS[e.name],
+    intervalMs: e.intervalMs,
+  }));
 
 interface JobHealth {
   name: string;
@@ -66,45 +83,48 @@ export function registerJobHealthRoutes(app: Express): void {
         const out: JobHealth[] = [];
 
         for (const j of TRACKED_JOBS) {
-          // Last success
+          // Last liveness: success OR skipped_lock both prove the job ran
+          // (a lock-skipped job is alive — another machine won the lock).
+          // job_health_logs success rows are sampled (≤1/hr/process), so we
+          // anchor "ran successfully" on the broader liveness set.
           const [lastSuccess] = await db
-            .select({ at: jobRuns.completedAt })
-            .from(jobRuns)
+            .select({ at: jobHealthLogs.runStartedAt })
+            .from(jobHealthLogs)
             .where(
               and(
-                eq(jobRuns.jobName, j.name),
-                eq(jobRuns.status, "success"),
+                eq(jobHealthLogs.jobName, j.name),
+                sql`${jobHealthLogs.status} IN ('success', 'skipped_lock')`,
               ),
             )
-            .orderBy(desc(jobRuns.completedAt))
+            .orderBy(desc(jobHealthLogs.runStartedAt))
             .limit(1);
 
           // Last failure
           const [lastFailure] = await db
-            .select({ at: jobRuns.startedAt })
-            .from(jobRuns)
+            .select({ at: jobHealthLogs.runStartedAt })
+            .from(jobHealthLogs)
             .where(
               and(
-                eq(jobRuns.jobName, j.name),
-                sql`${jobRuns.status} IN ('failure', 'timeout')`,
+                eq(jobHealthLogs.jobName, j.name),
+                sql`${jobHealthLogs.status} IN ('failed', 'timeout')`,
               ),
             )
-            .orderBy(desc(jobRuns.startedAt))
+            .orderBy(desc(jobHealthLogs.runStartedAt))
             .limit(1);
 
           // Consecutive failures: count failures more recent than the
-          // last success.
+          // last liveness row.
           let consecutiveFailures = 0;
           if (lastFailure?.at) {
             const sinceTs = lastSuccess?.at ?? new Date(0);
             const [cnt] = await db
               .select({ n: sql<number>`COUNT(*)::int` })
-              .from(jobRuns)
+              .from(jobHealthLogs)
               .where(
                 and(
-                  eq(jobRuns.jobName, j.name),
-                  sql`${jobRuns.status} IN ('failure', 'timeout')`,
-                  sql`${jobRuns.startedAt} > ${sinceTs}`,
+                  eq(jobHealthLogs.jobName, j.name),
+                  sql`${jobHealthLogs.status} IN ('failed', 'timeout')`,
+                  sql`${jobHealthLogs.runStartedAt} > ${sinceTs}`,
                 ),
               );
             consecutiveFailures = Number(cnt?.n ?? 0);

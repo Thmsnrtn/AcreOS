@@ -4430,7 +4430,24 @@ export async function runScheduledJobs(): Promise<void> {
         run: async () => {
           // 15m cadence → TTL = ~90% of cadence (13m).
           await withJobLock("synthetic_checks", 13 * 60, async () => {
-            await runAllSyntheticChecks();
+            // Detection WITHOUT announcement was the bug: the results were
+            // discarded. Inspect them and page on-call if any check is
+            // failing (a failing SES/Stripe-webhook/Clerk/DB/Twilio probe is a
+            // production-affecting signal). 'degraded' is informational only.
+            const results = await runAllSyntheticChecks();
+            const failing = results.filter((r) => r.status === "failing");
+            if (failing.length > 0) {
+              const keys = failing.map((r) => r.checkKey).join(", ");
+              const { notifyOnCall } = await import("../services/oncall");
+              await notifyOnCall(
+                "P1",
+                `Synthetic check failing: ${keys}`,
+                `Synthetic vendor check(s) reported status=failing: ${keys}. ` +
+                  `A failing probe means a core dependency (email/Stripe webhook/Clerk proxy/DB/Twilio) ` +
+                  `is unreachable or erroring. See synthetic_check_runs for detail.`,
+                { failing: failing.map((r) => ({ checkKey: r.checkKey, status: r.status })) },
+              ).catch(() => {/* notifyOnCall is internally best-effort */});
+            }
           });
         },
       });
@@ -5105,5 +5122,98 @@ export async function runScheduledJobs(): Promise<void> {
     });
   }).catch((err) => {
     log(`Failed to import redemption-clock refresh job: ${err}`, "redemption-clock");
+  });
+
+  // ─── Tess — Deadman job-roster monitor (every ~5 min) ────────────────────
+  // Closes the "a job silently went dark and all alarms stayed green" blind
+  // spot. The three existing health systems key on rows that EXIST; this one
+  // keys on rows that SHOULD exist (JOB_ROSTER). For every non-disabled roster
+  // job it checks last job_health_logs liveness vs 2× the job's cadence and
+  // pages on-call (P1 critical / P2 otherwise) + records a reliability finding
+  // on absence. Self-rescheduling + advisory-lock-gated so only one worker
+  // machine runs the sweep per tick.
+  import("./deadmanCheck").then(({ runJobDeadmanCheck }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("Deadman job-roster monitor registered (self-rescheduling, 5m)", "deadman");
+      scheduleSelfRescheduling({
+        name: "job_deadman_monitor",
+        intervalMs: 5 * 60 * 1000,
+        // Delay the first sweep so freshly-registered jobs have a chance to run
+        // once before we judge them dark (the per-job uptime guard backstops
+        // this, but a longer initial delay avoids noise on every boot).
+        initialDelayMs: 10 * 60 * 1000,
+        run: async () => {
+          // 5m cadence → TTL = ~90% (4m). Lock-gated so two worker generations
+          // don't double-page the same dark job.
+          await withJobLock("job_deadman_monitor", 4 * 60, async () => {
+            const r = await runJobDeadmanCheck();
+            log(`[deadman] checked=${r.checked} dark=${r.dark.length}`, "deadman");
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import deadman monitor: ${err}`, "deadman");
+  });
+
+  // ─── Quinn F2 — Audit-chain integrity verifier (weekly) ──────────────────
+  // verifyAuditEventsChain() walks the global audit_events hash chain and
+  // proves no row was tampered with or reordered. It is correct but was NEVER
+  // run anywhere — the integrity guarantee was theoretical. Schedule it weekly;
+  // on ok:false page P1 + record an integrity finding (compliance domain — the
+  // audit log is a SOC 2 CC7 control, the closest roster domain to "integrity";
+  // there is no dedicated "integrity" domain in DOMAIN_AUDIT_DOMAINS).
+  import("../utils/auditEventsChain").then(({ verifyAuditEventsChain }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("Audit-chain verifier registered (self-rescheduling, weekly)", "audit-chain");
+      scheduleSelfRescheduling({
+        name: "audit_chain_verify",
+        intervalMs: 7 * 24 * 60 * 60 * 1000,
+        initialDelayMs: 15 * 60 * 1000, // 15min after boot
+        run: async () => {
+          // Weekly cadence; TTL generous for a full-table walk (30m).
+          await withJobLock("audit_chain_verify", 30 * 60, async () => {
+            const result = await verifyAuditEventsChain();
+            if (result.ok) {
+              log(
+                `[audit-chain] OK — scanned=${result.scanned} preChainSkipped=${result.preChainSkipped}`,
+                "audit-chain",
+              );
+              return;
+            }
+            const f = result.failure;
+            const title = "Audit-events hash chain BROKEN";
+            const body =
+              `verifyAuditEventsChain reported ok:false after scanning ${result.scanned} rows. ` +
+              `First failure: auditEventId=${f?.auditEventId} seq=${f?.seq} reason=${f?.reason}. ` +
+              `This means an audit_events row was tampered with, reordered, or lost its hash — ` +
+              `a tamper-evidence / integrity violation.`;
+            log(`[audit-chain] ${body}`, "audit-chain");
+            const [{ notifyOnCall }, { recordFinding }] = await Promise.all([
+              import("../services/oncall"),
+              import("../services/audit/domainAudit"),
+            ]);
+            await recordFinding({
+              domain: "compliance",
+              detector: "audit_chain_verify",
+              severity: "critical",
+              title,
+              detail: body,
+              citedReason: "SOC 2 CC7.2/CC7.3 — the audit_events chain must be tamper-evident.",
+              dedupeKey: `audit_chain_broken:${f?.auditEventId ?? "unknown"}`,
+              subjectRef: f?.auditEventId ?? null,
+              metadata: { scanned: result.scanned, failure: f },
+            }).catch(() => {/* finding is best-effort */});
+            await notifyOnCall("P1", title, body, {
+              auditEventId: f?.auditEventId,
+              seq: f?.seq,
+              reason: f?.reason,
+            }).catch(() => {/* notifyOnCall is internally best-effort */});
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to import audit-chain verifier: ${err}`, "audit-chain");
   });
 }
