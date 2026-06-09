@@ -29,14 +29,26 @@ const PLATFORM_DEFAULT_MONTHLY_CEILING_CENTS = 100_000;
 // outer envelope: the per-org ceilings prevent one customer from hogging
 // spend; this prevents the whole platform from quietly billing $30/day at
 // $0 MRR. Settable via env so Tom can ratchet it without a deploy.
-// Default $5/day = 500 cents.
+//
+// This is the ONLY fail-CLOSED gate in the AI cost stack — assertWithin* below
+// re-throws AiCostCeilingExceededError but swallows DB errors fail-open. So the
+// SOFT gates (intelligence/budget.ts $10/day per-category, aiQuotaService
+// $50/day per-org) disable themselves under DB load, leaving THIS ceiling as
+// the only limit that actually holds. It must therefore sit just ABOVE the
+// summed soft budgets so it is the meaningful master limit, not a 100×-below
+// decorative floor.
+//
+// Default $15/day = 1500 cents (above the $10/day category budget; the per-org
+// $50/day quota is per-org, so $15 platform-wide is the binding aggregate
+// backstop under DB failure). Env-overridable.
+const PLATFORM_DEFAULT_DAILY_CEILING_CENTS_FALLBACK = 1500;
 function getPlatformDailyCeilingCents(): number {
   const fromEnv = process.env.AI_PLATFORM_DAILY_CEILING_CENTS;
   if (fromEnv) {
     const n = Number(fromEnv);
     if (Number.isFinite(n) && n > 0) return n;
   }
-  return 500;
+  return PLATFORM_DEFAULT_DAILY_CEILING_CENTS_FALLBACK;
 }
 
 export class AiCostCeilingExceededError extends Error {

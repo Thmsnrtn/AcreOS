@@ -46,6 +46,7 @@ import {
   type SoleneDispatchStatus,
 } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
+import { assertWithinEnsembleCap } from "./capitalTracker";
 
 export interface EnqueueDispatchOpts {
   sourceType: SoleneDispatchSourceType;
@@ -115,6 +116,14 @@ export async function enqueueDispatch(
   if (!opts.promptText || opts.promptText.trim().length === 0) {
     throw new Error("enqueueDispatch: promptText must be non-empty");
   }
+
+  // Pre-dispatch ensemble cap — the binding pre-call bound on agent-dispatch
+  // spend (the single largest cash cost). Throws EnsembleCapExceededError once
+  // month-to-date agent_dispatch spend crosses the RED threshold of
+  // ENSEMBLE_MONTHLY_CAP_USD (default = the $50 Solene envelope). The founder
+  // can override a single dispatch via founderOverride. Fails CLOSED on DB
+  // error so a hiccup can never quietly unbound the ensemble.
+  await assertWithinEnsembleCap({ founderOverride: opts.founderOverride });
 
   const [inserted] = await db
     .insert(soleneDispatchQueue)

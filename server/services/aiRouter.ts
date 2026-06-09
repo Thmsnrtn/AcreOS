@@ -1042,10 +1042,11 @@ export async function routeAITask(
   // ── Platform-wide AI cost ceiling (the outer envelope) ─────────────────────
   // Sums all `ai_telemetry_events.estimated_cost_cents` in the last 24h and
   // throws AiCostCeilingExceededError if past AI_PLATFORM_DAILY_CEILING_CENTS
-  // (default $5/day). This is the hard backstop that prevents the runaway
-  // $30/day scenario regardless of which surface initiated the call, and
-  // ALWAYS runs (no skipBudget bypass). Per-org ceiling also enforced when
-  // orgId is set.
+  // (default $15/day — set just above the summed soft budgets so it remains
+  // the binding master limit when those gates fail open under DB load). This
+  // is the hard fail-CLOSED backstop that prevents the runaway $30/day
+  // scenario regardless of which surface initiated the call, and ALWAYS runs
+  // (no skipBudget bypass). Per-org ceiling also enforced when orgId is set.
   if (!config.skipQuota) {
     try {
       const { assertWithinAiCostCeiling } = await import("./aiCostCeiling");

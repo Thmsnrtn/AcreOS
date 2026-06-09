@@ -21,7 +21,7 @@
  *     amber | red). Amber at 70%, red at 90%.
  */
 
-import { and, gte, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "../../db";
 import {
   soleneCapitalEvents,
@@ -180,6 +180,141 @@ function parseEnvelopeEnv(): number {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_MONTHLY_ENVELOPE_USD;
   return parsed;
+}
+
+// ============================================================================
+// Pre-dispatch ensemble cap — the ONLY PRE-call bound on agent-dispatch spend.
+// ----------------------------------------------------------------------------
+// recordCapitalEvent persists agent_dispatch cost AFTER a run; the monthly
+// envelope status is observational. This adds the missing enforcement: a hard
+// pre-call gate that reads month-to-date `agent_dispatch` spend and THROWS once
+// it crosses the RED threshold (default 90% of the envelope). Mirrors how the
+// autonomous executor defers inbox items on BudgetExceededError.
+//
+// Cap source (first wins):
+//   ENSEMBLE_MONTHLY_CAP_USD   — explicit ensemble cap
+//   SOLENE_MONTHLY_ENVELOPE_USD — the existing $50 charter envelope
+//   DEFAULT_MONTHLY_ENVELOPE_USD ($50)
+//
+// The RED threshold (ENVELOPE_THRESHOLDS.redPercent, default 90%) is the
+// binding line so the cap trips with headroom before the envelope is fully
+// drained. Founder can bypass a single dispatch via the `founderOverride`
+// option threaded from enqueueDispatch.
+// ============================================================================
+
+export class EnsembleCapExceededError extends Error {
+  readonly code = "ENSEMBLE_MONTHLY_CAP_EXCEEDED" as const;
+  constructor(
+    public readonly monthToDateUsd: number,
+    public readonly redThresholdUsd: number,
+    public readonly capUsd: number,
+  ) {
+    super(
+      `Ensemble monthly cap reached: agent_dispatch MTD ` +
+        `$${monthToDateUsd.toFixed(2)} ≥ red threshold ` +
+        `$${redThresholdUsd.toFixed(2)} (cap $${capUsd.toFixed(2)})`,
+    );
+    this.name = "EnsembleCapExceededError";
+  }
+}
+
+/** Resolve the ensemble monthly cap in USD (env-overridable). */
+export function getEnsembleMonthlyCapUsd(): number {
+  const raw = process.env.ENSEMBLE_MONTHLY_CAP_USD;
+  if (raw) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  // Fall back to the existing Solene envelope ($50 charter default).
+  return parseEnvelopeEnv();
+}
+
+/** Month-to-date spend (UTC month) for a single capital-event type. */
+export async function getMonthToDateSpendForType(
+  type: SoleneCapitalEventType,
+): Promise<number> {
+  const now = new Date();
+  const monthStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
+  );
+  const [row] = await db
+    .select({
+      sum: sql<string>`COALESCE(SUM(${soleneCapitalEvents.costUsd}), 0)`,
+    })
+    .from(soleneCapitalEvents)
+    .where(
+      and(
+        eq(soleneCapitalEvents.eventType, type),
+        gte(soleneCapitalEvents.occurredAt, monthStart),
+      ),
+    );
+  return Number(row?.sum ?? 0);
+}
+
+export interface EnsembleCapStatus {
+  monthToDateUsd: number;
+  capUsd: number;
+  redThresholdUsd: number;
+  exceeded: boolean;
+}
+
+/**
+ * Read the current ensemble (agent_dispatch) cap status. Fail-CLOSED:
+ * if the MTD lookup errors, treat the cap as exceeded so a DB hiccup can
+ * never quietly unbound the single largest cash cost. (Contrast with the
+ * customer-facing AI gates, which fail open.)
+ */
+export async function getEnsembleCapStatus(): Promise<EnsembleCapStatus> {
+  const capUsd = getEnsembleMonthlyCapUsd();
+  const redThresholdUsd = capUsd * (ENVELOPE_THRESHOLDS.redPercent / 100);
+  let monthToDateUsd: number;
+  try {
+    monthToDateUsd = await getMonthToDateSpendForType("agent_dispatch");
+  } catch (err) {
+    logger.error(
+      "[capitalTracker] ensemble cap MTD lookup failed; failing CLOSED (treating cap as exceeded)",
+      err instanceof Error ? err : undefined,
+    );
+    return {
+      monthToDateUsd: Number.POSITIVE_INFINITY,
+      capUsd,
+      redThresholdUsd,
+      exceeded: true,
+    };
+  }
+  return {
+    monthToDateUsd,
+    capUsd,
+    redThresholdUsd,
+    exceeded: monthToDateUsd >= redThresholdUsd,
+  };
+}
+
+/**
+ * Hard pre-dispatch gate. Throws EnsembleCapExceededError when month-to-date
+ * agent_dispatch spend has crossed the RED threshold. Call BEFORE enqueuing
+ * or running any new agent dispatch.
+ *
+ * @param opts.founderOverride — explicit per-dispatch bypass (default false).
+ *        The DEFAULT (unbounded) path is now bounded.
+ */
+export async function assertWithinEnsembleCap(opts?: {
+  founderOverride?: boolean;
+}): Promise<void> {
+  if (opts?.founderOverride) {
+    logger.info(
+      "[capitalTracker] ensemble cap bypassed via founderOverride",
+    );
+    return;
+  }
+  const status = await getEnsembleCapStatus();
+  if (status.exceeded) {
+    throw new EnsembleCapExceededError(
+      status.monthToDateUsd,
+      status.redThresholdUsd,
+      status.capUsd,
+    );
+  }
 }
 
 function round2(n: number): number {
