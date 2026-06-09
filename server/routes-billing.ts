@@ -1120,6 +1120,7 @@ export function registerBillingRoutes(app: Express): void {
                 subject: "Your AcreOS refund has been processed",
                 html: `<h2>Refund Processed</h2><p>Your refund of <strong>$${(amountCents / 100).toFixed(2)}</strong> has been processed. It should appear on your statement within 5-10 business days.</p><p>— The AcreOS Team</p>`,
                 text: `Your refund of $${(amountCents / 100).toFixed(2)} has been processed. It should appear within 5-10 business days.\n\n— The AcreOS Team`,
+                transactional: true, // billing receipt — not commercial
               });
             }
           } catch {}

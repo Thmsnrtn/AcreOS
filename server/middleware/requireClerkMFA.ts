@@ -44,8 +44,7 @@
 
 import type { Request, RequestHandler, Response, NextFunction } from "express";
 import { createClerkClient } from "@clerk/express";
-import { db } from "../db";
-import { auditEvents } from "@shared/schema";
+import { chainAndInsertAuditEvent } from "../utils/auditEventsChain";
 import { logger } from "../utils/logger";
 import { sendError } from "../utils/errors";
 
@@ -118,7 +117,7 @@ async function logMfaDecision(
   meta: Record<string, unknown> = {}
 ): Promise<void> {
   try {
-    await db.insert(auditEvents).values({
+    await chainAndInsertAuditEvent({
       actorUserId: shape.userId,
       actorEmail: shape.email,
       action: `mfa.${decision}`,

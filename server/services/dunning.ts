@@ -325,6 +325,7 @@ class DunningService {
         subject: template.subject,
         html: template.html,
         text: template.text,
+        transactional: true, // billing/payment-failure notice — not commercial
       });
 
       logger.info(`[Dunning] Sent ${templateType} email to ${recipientEmail} for org ${org.id}`);

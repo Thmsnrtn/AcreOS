@@ -23,7 +23,8 @@
  */
 
 import { db } from "../db";
-import { users, auditEvents } from "@shared/schema";
+import { users } from "@shared/schema";
+import { chainAndInsertAuditEvent } from "../utils/auditEventsChain";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { emailService } from "./emailService";
@@ -94,7 +95,7 @@ export async function detectAndAlertEmailChange(opts: DetectOpts): Promise<void>
     await db.update(users).set({ email: clerkEmail }).where(eq(users.id, opts.userId));
 
     try {
-      await db.insert(auditEvents).values({
+      await chainAndInsertAuditEvent({
         actorUserId: opts.userId,
         actorEmail: clerkEmail,
         action: "auth.email_changed",

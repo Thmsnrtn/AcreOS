@@ -38,6 +38,7 @@ import crypto from "node:crypto";
 import { logger } from "../utils/logger";
 import { routeAITask, TaskComplexity, AIProvider } from "./aiRouter";
 import type { InsertComplianceValidation } from "@shared/schema";
+import { TAX_ADVISORY_COPY } from "../utils/taxAdvisory";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -91,7 +92,10 @@ const DISCLOSURE_TEMPLATES: Record<RegulatedDomain, string> = {
   real_estate_offer: `**Important:** This offer is informational only and does not create a binding contract. Final terms are subject to a fully-executed purchase agreement, title review, and applicable disclosures. AcreOS is not your real estate agent or attorney.`,
   contract: `**Important:** This is a draft for discussion only. It is not legal advice and does not constitute a binding agreement until reviewed and signed by all parties. Please consult a licensed attorney in your jurisdiction before executing.`,
   lender_disclosure: `**Important:** Financing terms shown are estimates only. Actual rates, fees, and terms depend on credit underwriting and lender approval. Consult a licensed lender or mortgage broker for binding quotes. AcreOS is not a lender.`,
-  tax_advice: `**Important:** This is general information, not tax advice. Tax outcomes depend on your specific situation and current law. Please consult a CPA or licensed tax advisor before making decisions based on this information.`,
+  // Beatrice / compliance-debt §4 — sourced from the centralized
+  // TAX_ADVISORY_COPY primitive so the Pax tax-response disclaimer stays
+  // identical to the founder cockpit + taxOptimizer framing.
+  tax_advice: `**Important:** ${TAX_ADVISORY_COPY}`,
   legal_advice: `**Important:** This is general information, not legal advice. Please consult a licensed attorney in your jurisdiction before acting on it.`,
   general: `**Important:** AcreOS provides general information to assist Land Investors. It is not a substitute for professional legal, tax, or financial advice.`,
 };

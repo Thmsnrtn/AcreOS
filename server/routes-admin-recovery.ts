@@ -37,6 +37,7 @@ import Stripe from "stripe";
 import { db } from "./db";
 import { STRIPE_API_VERSION } from "./stripeClient";
 import { auditEvents, organizations } from "@shared/schema";
+import { chainAndInsertAuditEvent } from "./utils/auditEventsChain";
 import { users } from "@shared/models/auth";
 import { isAuthenticated } from "./auth";
 import { isFounderIdentity } from "./services/founder";
@@ -117,7 +118,7 @@ async function writeAuditEvent(
       null;
     const userAgent = (req.headers["user-agent"] as string) ?? null;
 
-    await db.insert(auditEvents).values({
+    await chainAndInsertAuditEvent({
       actorUserId: userId,
       actorEmail: email,
       action: entry.action,
@@ -721,6 +722,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
               to: oldOwner.email,
               subject: "AcreOS account ownership transferred",
               html: oldHtml,
+              transactional: true, // security/account notice — not commercial
             });
             emailResults.oldOwner = r?.success ? "sent" : r?.error ?? "failed";
           } else {
@@ -734,6 +736,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
               to: newOwner.email,
               subject: "You are now the owner of an AcreOS organization",
               html: newHtml,
+              transactional: true, // security/account notice — not commercial
             });
             emailResults.newOwner = r?.success ? "sent" : r?.error ?? "failed";
           } else {

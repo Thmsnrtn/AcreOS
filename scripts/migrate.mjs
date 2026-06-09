@@ -6724,6 +6724,22 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "sanctions_list_entries_normalized_name_idx" ON "sanctions_list_entries" ("normalized_name")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "sanctions_list_entries_source_uid_idx" ON "sanctions_list_entries" ("source_list", "ofac_uid")`,
+
+  // ── 0145 — Beatrice (CRO) — audit_events HASH CHAIN (crown-jewel) ──────────
+  // Extends the audit_log SHA-256 tamper-evidence chain (0143) to the
+  // audit_events table, which carries the MOST sensitive events (login,
+  // MFA-disable, ownership-transfer, refunds, DSAR-erasure) and was previously
+  // un-chained. GLOBAL chain (audit_events is intentionally org-less), ordered
+  // by the new `seq` bigserial; the chaining writer computes the hash before
+  // insert and writes the fully-chained row in ONE INSERT (audit_events has a
+  // blanket append-only UPDATE-deny trigger from 0049, so audit_log's
+  // insert-then-UPDATE pattern is impossible). TAMPER-EVIDENCE, not legal proof.
+  // Mirrors shared/schema.ts (auditEvents.seq/prevHash/rowHash) +
+  // migrations/0145_audit_events_hash_chain.sql. Idempotent (IF NOT EXISTS).
+  `ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "seq" bigserial`,
+  `ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "prev_hash" text`,
+  `ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "row_hash" text`,
+  `CREATE INDEX IF NOT EXISTS "audit_events_seq_chain_idx" ON "audit_events" ("seq")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

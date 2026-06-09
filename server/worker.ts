@@ -49,6 +49,7 @@ import { logger } from "./utils/logger";
 import { runWithRestoredTraceContext } from "./utils/queueTraceContext";
 import { initSentry, Sentry } from "./utils/sentry";
 import { instanceId } from "./utils/jobRuntime";
+import { requireEncryptionKey } from "./utils/validateEnv";
 
 // Initialize Sentry early so unhandled errors are reported.
 initSentry();
@@ -519,6 +520,15 @@ process.on("uncaughtException", (err) => {
 });
 
 // ── Boot ────────────────────────────────────────────────────────────────────
+
+// Beatrice / compliance-debt §3 — the worker process runs scheduled jobs that
+// read/write encrypted columns (founder vault, skip-trace PII, BYOK secrets).
+// It must NOT boot under the ephemeral dev fallback key against prod data.
+// Hard-require the field-encryption key here, independent of NODE_ENV, so a
+// mis-provisioned worker refuses to start rather than silently corrupting or
+// exposing encrypted data. Throws (never logs the value) → process crashes
+// loudly, which is the intended fail-closed behavior.
+requireEncryptionKey();
 
 logger.info(`[worker] booting — pollInterval=${POLL_INTERVAL_MS}ms batchSize=${BATCH_SIZE} handlers=${HANDLED_EVENT_TYPES.join(",")}`);
 

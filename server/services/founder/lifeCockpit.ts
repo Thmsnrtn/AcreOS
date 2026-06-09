@@ -27,6 +27,7 @@ import {
   currentEncryptionKid,
 } from "./vaultEncryption";
 import { decrypt, encrypt } from "../fieldEncryption";
+import { TAX_ADVISORY_COPY } from "../../utils/taxAdvisory";
 import {
   computeDraftReturn,
   type DraftReturn,
@@ -735,6 +736,12 @@ export interface EstimatedTaxRadarResult {
   /** True when there is enough captured income to compute a meaningful radar. */
   ready: boolean;
   reason?: string;
+  /**
+   * Beatrice / compliance-debt §4 — centralized "informational, not tax advice"
+   * framing for the founder tax cockpit's estimated-tax radar. Render adjacent
+   * to the computed quarterly figures.
+   */
+  disclaimer: string;
 }
 
 /**
@@ -783,6 +790,7 @@ export async function computeEstimatedTaxRadarForFounder(
       usableIncome.length === 0
         ? "No income captured for this year yet. Add your income in the Income tab — the radar lights up once there's non-withheld income (an AcreOS draw or side income)."
         : undefined,
+    disclaimer: TAX_ADVISORY_COPY,
   };
 }
 

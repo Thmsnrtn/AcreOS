@@ -21,6 +21,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { generateWithAutoRouting } from "./aiRouter";
+import { TAX_ADVISORY_COPY } from "../utils/taxAdvisory";
 
 // Migrated from direct OpenAI client to central aiRouter (P1-36).
 // Cost tracking, semantic caching, prompt versioning all flow through aiRouter.
@@ -86,6 +87,11 @@ export interface TaxPositionSummary {
   installmentSaleOpportunities: InstallmentSaleAnalysis[];
   exchange1031Candidates: Exchange1031Candidate[];
   generatedAt: Date;
+  /**
+   * Beatrice / compliance-debt §4 — centralized "informational, not tax advice"
+   * framing. Always TAX_ADVISORY_COPY; render adjacent to every figure above.
+   */
+  disclaimer: string;
 }
 
 export interface TaxRecommendation {
@@ -318,6 +324,7 @@ class TaxOptimizerService {
       installmentSaleOpportunities,
       exchange1031Candidates,
       generatedAt: new Date(),
+      disclaimer: TAX_ADVISORY_COPY,
     };
   }
 
@@ -587,7 +594,11 @@ Write a 3-paragraph tax planning summary with specific action items for this rea
       { orgId: organizationId, taskTier: "standard" }, // tax-optimizer planning
     );
 
-    return response.content || "Tax planning report unavailable.";
+    // Beatrice / compliance-debt §4 — every tax-output path carries the
+    // centralized non-advice framing. Append it to the AI narrative so the
+    // disclaimer travels with the text wherever it is rendered or forwarded.
+    const body = response.content || "Tax planning report unavailable.";
+    return `${body}\n\n---\n${TAX_ADVISORY_COPY}`;
   }
 }
 
