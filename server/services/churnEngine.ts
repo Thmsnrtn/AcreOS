@@ -34,6 +34,8 @@ import { logger } from "../utils/logger";
 
 const RESCUE_RISK_THRESHOLD = 85;  // auto-send rescue email
 const ALERT_RISK_THRESHOLD = 80;   // create systemAlert
+const RESCUE_RECOVERY_THRESHOLD = 40; // risk below this = recovered → clear rescue cooldown
+const RESCUE_COOLDOWN_DAYS = 60;      // a rescue this old (while no longer high-risk) also clears the cooldown
 
 // Milestone keys (stored as string[] in organizations.milestonesReached)
 export const MILESTONES = {
@@ -285,7 +287,7 @@ export const churnEngine = {
       )
       .limit(500);
 
-    let scored = 0, rescued = 0, alerted = 0;
+    let scored = 0, rescued = 0, alerted = 0, cooldownsReset = 0;
 
     for (const org of payingOrgs) {
       try {
@@ -300,6 +302,38 @@ export const churnEngine = {
           .where(eq(organizations.id, org.id));
 
         scored++;
+
+        // ─── Rescue cooldown reset ──────────────────────────────────────────
+        // A one-shot rescue (churnRescueSentAt set, never cleared except by an
+        // admin) makes a rescued→recovered→re-deteriorating org permanently
+        // invisible to auto-rescue. Clear the cooldown once the org has
+        // genuinely recovered so both auto- and manual-rescue can re-fire:
+        //   • risk has dropped below the recovery threshold, OR
+        //   • the prior rescue is older than the cooldown window AND the org is
+        //     no longer high-risk (sustained-healthy fallback).
+        if (org.churnRescueSentAt && risk < RESCUE_RISK_THRESHOLD) {
+          const rescueAgeDays = Math.floor(
+            (Date.now() - new Date(org.churnRescueSentAt).getTime()) / (1000 * 60 * 60 * 24)
+          );
+          const recovered = risk < RESCUE_RECOVERY_THRESHOLD;
+          const cooledDown = rescueAgeDays >= RESCUE_COOLDOWN_DAYS;
+          if (recovered || cooledDown) {
+            await db
+              .update(organizations)
+              .set({ churnRescueSentAt: null })
+              .where(eq(organizations.id, org.id));
+            // Reflect the reset locally so this run's rescue gate can re-fire.
+            org.churnRescueSentAt = null;
+            cooldownsReset++;
+            logActivity({
+              orgId: org.id,
+              job: "churn_engine",
+              action: "rescue_cooldown_reset",
+              summary: `Rescue cooldown cleared for ${org.name} (risk ${risk}/100, ${recovered ? "recovered below " + RESCUE_RECOVERY_THRESHOLD : rescueAgeDays + "d since last rescue"})`,
+              metadata: { riskScore: risk, rescueAgeDays, reason: recovered ? "recovered" : "cooldown_elapsed" },
+            }).catch(() => {});
+          }
+        }
 
         // Create systemAlert for high-risk orgs
         if (risk >= ALERT_RISK_THRESHOLD) {
@@ -365,12 +399,12 @@ export const churnEngine = {
       }
     }
 
-    logger.info(`[ChurnEngine] Scored ${scored} orgs. ${alerted} new risk alerts. ${rescued} rescue emails sent.`);
+    logger.info(`[ChurnEngine] Scored ${scored} orgs. ${alerted} new risk alerts. ${rescued} rescue emails sent. ${cooldownsReset} rescue cooldown(s) reset.`);
     logActivity({
       job: "churn_engine",
       action: "scoring_complete",
-      summary: `Churn engine scored ${scored} paying orgs — ${alerted} new risk alert(s), ${rescued} rescue email(s) sent`,
-      metadata: { scored, alerted, rescued },
+      summary: `Churn engine scored ${scored} paying orgs — ${alerted} new risk alert(s), ${rescued} rescue email(s) sent, ${cooldownsReset} rescue cooldown(s) reset`,
+      metadata: { scored, alerted, rescued, cooldownsReset },
     }).catch(() => {});
 
     // Sovereign Company Protocol — Forge broadcasts churn summary to customer_signals channel

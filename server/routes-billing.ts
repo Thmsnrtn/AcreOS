@@ -763,10 +763,47 @@ export function registerBillingRoutes(app: Express): void {
       // internally; the second argument is UsageLimitOptions, not a tier.
       const limits = await getAllUsageLimits(org.id, { isFounder: req.isFounder });
 
+      // Network-loss context: the org's OWN aggregate standing in the data
+      // network (percentile, counties reached, properties contributed). The
+      // cancellation dialog reframes churn as "going blind" on the benchmarks
+      // this org currently sees. `contributing` is the truthful opt-out
+      // signal — an org that has contributed nothing has no standing to lose,
+      // so the dialog must show neutral copy rather than imply visibility it
+      // never had (Beatrice cross-cut). This is the org's OWN aggregate
+      // standing only — never a window into other orgs' raw data.
+      let dataNetwork:
+        | {
+            propertiesContributed: number;
+            countiesReached: number;
+            dealsCompleted: number;
+            percentileRank: number;
+            contributing: boolean;
+          }
+        | null = null;
+      try {
+        const { getDataContributionMetrics } = await import("./services/dataNetworkVisibility");
+        const metrics = await getDataContributionMetrics(org.id);
+        dataNetwork = {
+          propertiesContributed: metrics.propertiesContributed,
+          countiesReached: metrics.countiesReached,
+          dealsCompleted: metrics.dealsCompleted,
+          percentileRank: metrics.percentileRank,
+          contributing: metrics.propertiesContributed > 0,
+        };
+      } catch (metricsErr) {
+        // Non-fatal: cancellation flow must not break if metrics are
+        // unavailable. The dialog falls back to omitting the network section.
+        logger.warn(
+          `[cancellation-context] data-network metrics unavailable for org ${org.id}`,
+          metricsErr instanceof Error ? metricsErr : undefined,
+        );
+      }
+
       res.json({
         currentTier: org.subscriptionTier,
         usage: limits,
         memberSince: org.createdAt,
+        dataNetwork,
       });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -788,16 +825,20 @@ export function registerBillingRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
 
-      // Save survey. Tahoe E11: the dialog now always presents the pause
-      // option ahead of confirm-cancel; record offered_pause = true so the
-      // founder save-rate aggregation has the denominator right.
+      // Save survey. The self-serve cancellation dialog only ever presents a
+      // DOWNGRADE alternative (when a lower paid tier exists) — it does NOT
+      // offer a pause. Pause is a distinct flow (POST /api/subscription/pause)
+      // that records its own survey row with offered_pause = true /
+      // accepted_pause = true. Hardcoding offered_pause = true here inflated
+      // the founder save-rate denominator with pause offers that never
+      // happened; record it truthfully as false for this path.
       await db.insert(cancellationSurveys).values({
         organizationId: org.id,
         userId,
         reason: parsed.data.reason,
         feedback: parsed.data.feedback,
         previousTier: org.subscriptionTier,
-        offeredPause: true,
+        offeredPause: false,
         acceptedPause: false,
       });
 

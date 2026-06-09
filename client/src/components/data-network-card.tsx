@@ -62,8 +62,8 @@ export function DataNetworkCard() {
   });
 
   const { data: metrics, isLoading: metricsLoading } = useQuery<ContributionMetrics>({
-    queryKey: ["/api/data-network/contributions"],
-    queryFn: () => apiRequest("GET", "/api/data-network/contributions").then(r => r.json()),
+    queryKey: ["/api/data-network/contribution"],
+    queryFn: () => apiRequest("GET", "/api/data-network/contribution").then(r => r.json()),
   });
 
   const { data: benchmarks, isLoading: benchmarksLoading } = useQuery<LcsBenchmark[]>({

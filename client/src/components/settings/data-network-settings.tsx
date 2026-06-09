@@ -30,7 +30,7 @@ export function DataNetworkSettings() {
   });
 
   const statsQuery = useQuery<ContributionStats>({
-    queryKey: ["/api/data-network/contributions"],
+    queryKey: ["/api/data-network/contribution"],
   });
 
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null);
