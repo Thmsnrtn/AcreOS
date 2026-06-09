@@ -49,7 +49,7 @@ function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
   const userId = (req as any).auth?.userId ?? user?.clerkUserId ?? null;
   const email = user?.email ?? null;
   if (!isFounderIdentity({ email, userId })) {
-    Errors.forbidden(res, "Founder access required");
+    Errors.notFound(res, "Resource");
     return false;
   }
   return true;

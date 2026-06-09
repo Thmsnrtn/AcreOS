@@ -24,7 +24,7 @@ import {
   CREDENTIAL_DEFINITIONS,
   SERVICE_GROUPS,
 } from "./services/configManager";
-import { isFounderEmail } from "./services/founder";
+import { isFounderIdentity } from "./services/founder";
 import { Errors } from "./utils/errors";
 
 const router = Router();
@@ -32,9 +32,10 @@ const router = Router();
 // ── Auth guard ────────────────────────────────────────────────────────────────
 
 function requireFounder(req: any, res: any, next: any) {
-  const email = req.user?.email || req.user?.email;
-  if (!isFounderEmail(email)) {
-    return Errors.forbidden(res, "Founder access required");
+  const userId = req.auth?.userId ?? req.user?.clerkUserId ?? req.user?.id ?? null;
+  const email = req.user?.email ?? null;
+  if (!isFounderIdentity({ email, userId })) {
+    return Errors.notFound(res, "Resource");
   }
   next();
 }

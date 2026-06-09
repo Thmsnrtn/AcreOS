@@ -15,6 +15,7 @@
 
 import { Router, type Response } from "express";
 import { type AuthenticatedRequest, getOrganization } from "./types/request";
+import { isFounderIdentity } from "./services/founder";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { stampTraceContext } from "./utils/queueTraceContext";
@@ -38,8 +39,11 @@ const router = Router();
 
 /** Founder-only middleware shim — keeps the gate consistent across routes. */
 function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
-  if (!req.isFounder) {
-    Errors.forbidden(res, "Accounting endpoints are currently founder-only");
+  const user = req.user as any;
+  const userId = (req as any).auth?.userId ?? user?.clerkUserId ?? user?.id ?? null;
+  const email = user?.email ?? null;
+  if (!isFounderIdentity({ email, userId })) {
+    Errors.notFound(res, "Resource");
     return false;
   }
   return true;

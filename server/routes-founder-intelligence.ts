@@ -30,7 +30,7 @@ import {
   agentActionUndoLog,
 } from "@shared/schema";
 import { sql, desc, eq, and, gte, lte, lt, count, sum, avg, ne, isNull } from "drizzle-orm";
-import { isFounderEmail } from "./services/founder";
+import { isFounderIdentity } from "./services/founder";
 import { decisionsInboxService } from "./services/decisionsInbox";
 import { founderDigestService } from "./services/founderDigest";
 import { companyAgentService } from "./services/companyAgents";
@@ -51,9 +51,10 @@ const router = Router();
 // ── Auth guard ─────────────────────────────────────────────────────────────
 
 function requireFounder(req: any, res: any, next: any) {
-  const userEmail = req.user?.email || req.user?.email;
-  if (!isFounderEmail(userEmail)) {
-    return Errors.forbidden(res, "Founder access required");
+  const userId = req.auth?.userId ?? req.user?.clerkUserId ?? req.user?.id ?? null;
+  const userEmail = req.user?.email ?? null;
+  if (!isFounderIdentity({ email: userEmail, userId })) {
+    return Errors.notFound(res, "Resource");
   }
   next();
 }
