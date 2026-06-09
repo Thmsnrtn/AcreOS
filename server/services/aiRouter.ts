@@ -1000,14 +1000,31 @@ export function extractModelConfidence(content: string): number | null {
  * still costed via the central conservative DEFAULT_RATE — never a private,
  * separately-maintained guess.
  */
-function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
+export function estimateCost(
+  model: string,
+  promptTokens: number,
+  completionTokens: number,
+  cachedInputTokens: number = 0,
+): number {
   if (model && model !== "cache" && !isKnownModel(model)) {
     logger.warn("[AIRouter] estimateCost: unknown model — costing via central DEFAULT_RATE", {
       metadata: { model },
     });
   }
+  if (!Number.isFinite(promptTokens) || promptTokens < 0) promptTokens = 0;
+  if (!Number.isFinite(completionTokens) || completionTokens < 0) completionTokens = 0;
+  if (!Number.isFinite(cachedInputTokens) || cachedInputTokens < 0) cachedInputTokens = 0;
+
   const costs = priceFor(model);
-  return (promptTokens * costs.input + completionTokens * costs.output) / 1_000_000;
+  // Mirror computeCostUsd: the cached portion of the prompt bills at the
+  // discounted Anthropic prompt-cache READ rate (~0.1× input). Without this,
+  // cache-warmed calls were charged all prompt tokens at the full input rate —
+  // up to ~8× overcharge on heavily-cached calls.
+  const freshInput = Math.max(0, promptTokens - cachedInputTokens);
+  const cachedRate = costs.cachedInput ?? costs.input;
+  const inputUsd = (freshInput * costs.input + cachedInputTokens * cachedRate) / 1_000_000;
+  const outputUsd = (completionTokens * costs.output) / 1_000_000;
+  return inputUsd + outputUsd;
 }
 
 export async function routeAITask(
@@ -1358,6 +1375,14 @@ export async function routeAITask(
             content = escalatedContent;
             usage = escalatedResponse.usage;
             finalModel = escalatedModel;
+            // The escalated call carries no cache_control, so its prompt is
+            // billed entirely fresh. Read the escalated cached count (normally
+            // 0) rather than leaking the primary model's cache discount onto a
+            // different model that never warmed it.
+            cachedInputTokens =
+              (escalatedResponse.usage as any)?.prompt_tokens_details?.cached_tokens
+              ?? (escalatedResponse.usage as any)?.cache_read_input_tokens
+              ?? 0;
           }
         } catch (escalationErr) {
           logger.warn(`[AIRouter] Cascade escalation failed, using original response`, { metadata: { detail: escalationErr } });
@@ -1369,7 +1394,7 @@ export async function routeAITask(
 
   // ── Build result ─────────────────────────────────────────────────────────────
   const latencyMs = Date.now() - startTime;
-  const costEstimate = usage ? estimateCost(finalModel, usage.prompt_tokens, usage.completion_tokens) : 0;
+  const costEstimate = usage ? estimateCost(finalModel, usage.prompt_tokens, usage.completion_tokens, cachedInputTokens) : 0;
 
   // Extract the model self-reported confidence from the FINAL content (after
   // any cascade replacement). When requested but absent/malformed → honest null.
@@ -1459,6 +1484,7 @@ export async function routeAITask(
       finalModel,
       usage.prompt_tokens || 0,
       usage.completion_tokens || 0,
+      cachedInputTokens,
     );
     // Fire-and-forget; recordUsage swallows its own errors.
     void recordUsage(config.orgId, usdAuthoritative, task.taskType ?? "unknown");
