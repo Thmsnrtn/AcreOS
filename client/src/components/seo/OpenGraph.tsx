@@ -32,7 +32,7 @@ export function OpenGraph({
   description,
   type = "website",
   image = "https://acreos.io/images/aerial_view_wide_hor_0f1000c4.jpg",
-  imageAlt = "Aerial view of open land — one of many asset types property investors hunt, analyze, and close on AcreOS.",
+  imageAlt = "Aerial view of open land — one of many asset types Land Investors hunt, analyze, and close on AcreOS.",
 }: OpenGraphProps) {
   useEffect(() => {
     const head = document.head;

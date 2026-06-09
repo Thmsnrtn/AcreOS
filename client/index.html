@@ -7,24 +7,24 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="AcreOS" />
-    <meta name="description" content="AcreOS is the operating system for property investors — land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Pull lists, run comps, send mail, draft replies, and close deals with AI agents in one platform." />
+    <meta name="description" content="AcreOS is the operating system for Land Investors — land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Pull lists, run comps, send mail, draft replies, and close deals with AI agents in one platform." />
     <meta name="mobile-web-app-capable" content="yes" />
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="AcreOS" />
     <meta property="og:url" content="https://acreos.io/" />
-    <meta property="og:title" content="AcreOS — The Operating System for Property Investors" />
+    <meta property="og:title" content="AcreOS — The Operating System for Land Investors" />
     <meta property="og:description" content="One platform for every investor type — find deals, run comps, send mail, draft replies, close deals, and service notes with AI agents that act on your behalf." />
     <meta property="og:image" content="https://acreos.io/images/aerial_view_wide_hor_0f1000c4.jpg" />
     <meta property="og:image:width" content="1280" />
     <meta property="og:image:height" content="720" />
-    <meta property="og:image:alt" content="Aerial view of open land — one of many asset types property investors hunt, analyze, and close on AcreOS." />
+    <meta property="og:image:alt" content="Aerial view of open land — one of many asset types Land Investors hunt, analyze, and close on AcreOS." />
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="AcreOS — The Operating System for Property Investors" />
+    <meta name="twitter:title" content="AcreOS — The Operating System for Land Investors" />
     <meta name="twitter:description" content="One platform for every investor type — find deals, run comps, send mail, draft replies, close deals, and service notes with AI agents that act on your behalf." />
     <meta name="twitter:image" content="https://acreos.io/images/aerial_view_wide_hor_0f1000c4.jpg" />
-    <meta name="twitter:image:alt" content="Aerial view of open land — one of many asset types property investors hunt, analyze, and close on AcreOS." />
+    <meta name="twitter:image:alt" content="Aerial view of open land — one of many asset types Land Investors hunt, analyze, and close on AcreOS." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -72,7 +72,7 @@
     <link rel="preconnect" href="https://clerk.acreos.io" crossorigin>
     <link rel="preconnect" href="https://api.mapbox.com" crossorigin>
     <link rel="dns-prefetch" href="https://events.mapbox.com">
-    <title>AcreOS — The Operating System for Property Investors</title>
+    <title>AcreOS — The Operating System for Land Investors</title>
     <!-- Structured data for search engines -->
     <script type="application/ld+json">
     {
@@ -82,7 +82,7 @@
       "applicationCategory": "BusinessApplication",
       "applicationSubCategory": "CRM",
       "operatingSystem": "Web",
-      "description": "Operating system for property investors — find deals, run comps, send mail, draft replies, close deals, manage seller-financed notes, and track rehabs. Built for land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords.",
+      "description": "Operating system for Land Investors — find deals, run comps, send mail, draft replies, close deals, manage seller-financed notes, and track rehabs. Built for land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords.",
       "offers": {
         "@type": "Offer",
         "price": "0",
@@ -106,12 +106,26 @@
   </head>
   <body>
     <script data-csp-nonce>
-      // Prevent dark mode FOUC — apply theme before React renders
+      // Prevent dark mode FOUC — resolve the theme mode before React renders.
+      // Mirrors theme-context.tsx: the canonical config is JSON under
+      // 'acreos-theme-config' with a `mode` of 'light' | 'dark' | 'auto';
+      // 'acreos-theme' is the legacy raw light|dark fallback. 'auto'/absent
+      // defers to the OS prefers-color-scheme, exactly like resolvedMode.
       try {
-        const t = localStorage.getItem('theme');
-        if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-          document.documentElement.classList.add('dark');
+        var mode = null;
+        var raw = localStorage.getItem('acreos-theme-config');
+        if (raw) {
+          var m = JSON.parse(raw).mode;
+          if (m === 'system') m = 'auto';
+          if (m === 'light' || m === 'dark' || m === 'auto') mode = m;
         }
+        if (!mode) {
+          var legacy = localStorage.getItem('acreos-theme');
+          if (legacy === 'light' || legacy === 'dark') mode = legacy;
+        }
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var isDark = mode === 'dark' || ((mode === 'auto' || !mode) && prefersDark);
+        if (isDark) document.documentElement.classList.add('dark');
       } catch(e) {}
     </script>
     <div id="root"></div>

@@ -7,7 +7,7 @@
  * Uses founder-owned Meta ad account credentials stored in founder_ad_accounts table.
  *
  * Templates:
- *   - land_investors_signup   → Targets real estate professionals / RE investors to sign up for AcreOS
+ *   - land_investors_signup   → Targets Land Investors to sign up for AcreOS
  *   - retargeting_visitors    → Retargets landing page visitors who didn't convert
  *   - lookalike_subscribers   → Custom audience of current subscribers + lookalike
  */
@@ -114,8 +114,8 @@ const CAMPAIGN_TEMPLATES: Record<string, CampaignTemplate> = {
     adCopy: {
       headline: "Run Your Land Business on Autopilot",
       primaryText:
-        "AcreOS is the all-in-one CRM built for real estate professionals. AI-powered lead scoring, automated follow-ups, deal pipelines, and seller financing — all in one place. Try free for 7 days.",
-      description: "The software serious real estate professionals use.",
+        "AcreOS is the all-in-one CRM built for Land Investors. AI-powered lead scoring, automated follow-ups, deal pipelines, and seller financing — all in one place. Try free for 14 days.",
+      description: "The software serious Land Investors use.",
       callToAction: "LEARN_MORE",
     },
     landingPagePath: "/",
@@ -136,7 +136,7 @@ const CAMPAIGN_TEMPLATES: Record<string, CampaignTemplate> = {
       headline: "You Checked Out AcreOS — Here's What You're Missing",
       primaryText:
         "Stop managing land deals in spreadsheets. AcreOS automates your follow-ups, scores your leads with AI, and tracks every deal to close. Start your free trial today.",
-      description: "7-day free trial, no credit card required.",
+      description: "14-day free trial, no credit card required.",
       callToAction: "SIGN_UP",
     },
     landingPagePath: "/?utm_source=meta&utm_medium=retargeting",
@@ -154,10 +154,10 @@ const CAMPAIGN_TEMPLATES: Record<string, CampaignTemplate> = {
       custom_audiences: [],
     },
     adCopy: {
-      headline: "The CRM Built for Real Estate Professionals",
+      headline: "The CRM Built for Land Investors",
       primaryText:
-        "Join hundreds of real estate professionals using AcreOS to source more deals, automate follow-ups, and close faster. AI deal scoring. Seller financing tracking. 7-day free trial.",
-      description: "Trusted by active real estate professionals.",
+        "Join hundreds of Land Investors using AcreOS to source more deals, automate follow-ups, and close faster. AI deal scoring. Seller financing tracking. 14-day free trial.",
+      description: "Trusted by active Land Investors.",
       callToAction: "LEARN_MORE",
     },
     landingPagePath: "/?utm_source=meta&utm_medium=lookalike",

@@ -11,7 +11,7 @@ const CONFIG: ComparisonConfig = {
   competitor: "DealMachine",
   h1: "AcreOS vs DealMachine",
   metaDescription:
-    "Comparing AcreOS and DealMachine for land + property investors — CRM, comps, direct mail, automated due diligence, and seller-financed note servicing in one platform.",
+    "Comparing AcreOS and DealMachine for Land Investors — CRM, comps, direct mail, automated due diligence, and seller-financed note servicing in one platform.",
   matrix: [
     { capability: "Land-specific parcel intelligence", acreos: true, competitor: null },
     { capability: "Driving-for-dollars list capture", acreos: null, competitor: null },

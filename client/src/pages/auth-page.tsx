@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 export default function AuthPage() {
   usePageMeta(
     "Sign in",
-    "Sign in to AcreOS — the operating system property investors use to manage leads, properties, deals, notes, and rehabs in one place."
+    "Sign in to AcreOS — the operating system Land Investors use to manage leads, properties, deals, notes, and rehabs in one place."
   );
   const { user, isLoading, authFailCount } = useAuth();
   const clerk = useClerk();
@@ -426,7 +426,7 @@ export default function AuthPage() {
             <span className="text-2xl font-bold tracking-tight" aria-hidden="true">{brandName}</span>
           </div>
           <p className="text-sm text-muted-foreground text-center">
-            The operating system for property investors
+            The operating system for Land Investors
           </p>
         </div>
 

@@ -82,7 +82,7 @@ export function ComparisonPage({ config }: { config: ComparisonConfig }) {
     "@type": "Product",
     name: "AcreOS",
     description:
-      "Operating system for property investors — find deals, run comps, send mail, draft replies, close deals.",
+      "Operating system for Land Investors — find deals, run comps, send mail, draft replies, close deals.",
     brand: { "@type": "Brand", name: "AcreOS" },
     url: `${SITE.url}/compare/${config.slug}`,
     review: {

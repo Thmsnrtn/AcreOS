@@ -51,30 +51,30 @@ const TEMPLATE_CONTEXT: Record<string, {
   painPoints: string[];
 }> = {
   land_investors_signup: {
-    audience: "real estate investors, rural property buyers, and real estate professionals aged 30–65 in the US",
-    product: "AcreOS — an all-in-one CRM built exclusively for real estate investors with AI-powered lead scoring, automated follow-up sequences, visual deal pipelines, seller financing note tracking, and parcel data integration",
+    audience: "Land Investors and rural property buyers aged 30–65 in the US",
+    product: "AcreOS — an all-in-one CRM built exclusively for Land Investors with AI-powered lead scoring, automated follow-up sequences, visual deal pipelines, seller financing note tracking, and parcel data integration",
     benefits: [
       "AI lead scoring that predicts which motivated sellers will close",
       "Automated follow-up sequences so no lead ever goes cold",
       "Visual Kanban pipeline for every acquisition stage",
       "Seller financing note and amortization tracking",
       "County parcel data and GIS integration",
-      "7-day free trial, no credit card required, setup in minutes",
+      "14-day free trial, no credit card required, setup in minutes",
     ],
     painPoints: [
       "losing motivated sellers because of disorganized spreadsheet follow-ups",
       "spending hours on manual calls and emails instead of closing deals",
       "missing deals while competitors use better automation tools",
-      "juggling fragmented tools with no single source of truth for their real estate business",
+      "juggling fragmented tools with no single source of truth for their land business",
     ],
   },
   retargeting_visitors: {
-    audience: "real estate investors who have already visited the AcreOS website but haven't signed up yet",
-    product: "AcreOS — the CRM built for real estate investors that automates your pipeline and closes more deals",
+    audience: "Land Investors who have already visited the AcreOS website but haven't signed up yet",
+    product: "AcreOS — the CRM built for Land Investors that automates your pipeline and closes more deals",
     benefits: [
       "AI predicts your most likely-to-close leads before you even call them",
       "Automated sequences mean zero leads fall through the cracks",
-      "Start your free 7-day trial in under 5 minutes",
+      "Start your free 14-day trial in under 5 minutes",
       "Built by investors for investors — not a generic CRM",
     ],
     painPoints: [
@@ -84,27 +84,27 @@ const TEMPLATE_CONTEXT: Record<string, {
     ],
   },
   lookalike_subscribers: {
-    audience: "people who look like current AcreOS subscribers — real estate investors, rural property buyers, and real estate professionals",
-    product: "AcreOS — the operating system serious real estate investors use to systematize and scale their acquisitions",
+    audience: "people who look like current AcreOS subscribers — Land Investors and rural property buyers",
+    product: "AcreOS — the operating system serious Land Investors use to systematize and scale their acquisitions",
     benefits: [
-      "Join hundreds of real estate investors already closing more deals with AI automation",
+      "Join hundreds of Land Investors already closing more deals with AI automation",
       "AI-scored leads, automated follow-ups, deal tracking — all in one platform",
       "Seller financing tracking built in — no spreadsheets needed",
-      "Free 7-day trial, cancel anytime",
+      "Free 14-day trial, cancel anytime",
     ],
     painPoints: [
-      "running a real estate business on spreadsheets and sticky notes",
+      "running a land business on spreadsheets and sticky notes",
       "leaving money on the table because of poor lead management",
     ],
   },
 };
 
 const COPY_ANGLE_INSTRUCTIONS: Record<CopyAngle, string> = {
-  pain_point: `Lead with a visceral, specific pain that this real estate investor feels TODAY. Name the problem like you've lived it. Let it sting for one beat. Then present AcreOS as the direct relief. Do NOT lead with the product — lead with the pain. Be specific and concrete, not vague.`,
+  pain_point: `Lead with a visceral, specific pain that this Land Investor feels TODAY. Name the problem like you've lived it. Let it sting for one beat. Then present AcreOS as the direct relief. Do NOT lead with the product — lead with the pain. Be specific and concrete, not vague.`,
 
   aspiration: `Paint a vivid, tangible picture of what this investor's business looks like when it runs on AcreOS. Tap into the dream of systematized, scalable deal flow. Use aspirational but grounded language — freedom, growth, focus on the deals that matter. Make them see the version of themselves they want to become.`,
 
-  social_proof: `Open with credibility — make the reader feel they're late to something proven. Use numbers, community, and implied results to lower the risk of trying AcreOS. The reader should feel that smart real estate investors have already figured this out. Social pressure is the lever.`,
+  social_proof: `Open with credibility — make the reader feel they're late to something proven. Use numbers, community, and implied results to lower the risk of trying AcreOS. The reader should feel that smart Land Investors have already figured this out. Social pressure is the lever.`,
 
   curiosity: `Open with a bold provocative claim, surprising insight, or sharp question that creates an information gap. Make the reader NEED to know more. Don't reveal everything — just enough to make them click. Use counterintuitive or contrarian angles to stop the scroll.`,
 };
@@ -159,7 +159,7 @@ class AdCreativeService {
 
     const ctx = TEMPLATE_CONTEXT[templateKey] || TEMPLATE_CONTEXT.land_investors_signup;
 
-    const systemPrompt = `You are a world-class direct response copywriter. You have written high-converting Facebook and Instagram ads for SaaS, real estate, and investment products. You deeply understand real estate professionals — their language, daily frustrations, aspirations, and decision triggers.
+    const systemPrompt = `You are a world-class direct response copywriter. You have written high-converting Facebook and Instagram ads for SaaS, real estate, and investment products. You deeply understand Land Investors — their language, daily frustrations, aspirations, and decision triggers.
 
 PRODUCT BRIEF:
 - Product: ${ctx.product}
@@ -172,7 +172,7 @@ RULES:
 - Primary text: ≤125 characters, emotionally resonant + clear value + action signal
 - Description: ≤30 characters, punchy one-liner
 - Hook: Just the first sentence/opening line that would stop the scroll
-- Use real estate professional language naturally: deals, closes, motivated sellers, follow-ups, parcels, pipelines
+- Use Land Investor language naturally: deals, closes, motivated sellers, follow-ups, parcels, pipelines
 - Be concrete and specific — numbers beat vague claims
 - No exclamation points unless truly warranted
 - callToAction must be exactly one of: SIGN_UP, LEARN_MORE, GET_OFFER`;

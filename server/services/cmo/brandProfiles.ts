@@ -40,11 +40,11 @@ export async function seedAcreosBrandProfile(): Promise<BrandProfile> {
   const profileData = {
     slug: ACREOS_SLUG,
     displayName: "AcreOS",
-    oneLiner: "The operating system for property investors",
+    oneLiner: "The operating system for Land Investors",
     audiencePrimary:
-      "Solo and small-team property investors doing 1-10 deals per month — land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, buy-and-hold landlords. They hate spreadsheet chaos and 20-hour manual comps research.",
+      "Solo and small-team Land Investors doing 1-10 deals per month — land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, buy-and-hold landlords. They hate spreadsheet chaos and 20-hour manual comps research.",
     audienceSecondary:
-      "Newer property investors who got burned by old-school courses, want a serious operating system, and don't trust generic CRMs to understand their workflow.",
+      "Newer Land Investors who got burned by old-school courses, want a serious operating system, and don't trust generic CRMs to understand their workflow.",
     toneDescriptors: [
       "direct",
       "mechanics-first",

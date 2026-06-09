@@ -794,7 +794,7 @@ async function composeBriefWithPax(
 ): Promise<string | null> {
   if (!PAX_COMPOSED_BRIEF_ENABLED) return null;
 
-  const personaLabel = (persona && PERSONA_LABELS[persona]) ?? "a property investor";
+  const personaLabel = (persona && PERSONA_LABELS[persona]) ?? "a Land Investor";
   const prefix = inputs.firstClosePrefix ?? "";
 
   const system =
