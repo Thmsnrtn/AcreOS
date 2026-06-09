@@ -64,6 +64,10 @@ COPY --from=build /app /app
 EXPOSE 5000
 
 ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium"
+# Runtime-only heap cap for the Node server (Fly machine sizing). This ENV is
+# declared in the final production stage, which does NOT run `npm run build`
+# (that happens in the `build` stage above, with no NODE_OPTIONS set), so it
+# never throttles the build tooling — only the `node dist/index.cjs` CMD.
 ENV NODE_OPTIONS="--max-old-space-size=3584"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
