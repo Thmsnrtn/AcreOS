@@ -266,6 +266,7 @@ export function AnalyticsContent() {
     avgDaysPerStage: { stage: string; avgDays: number }[];
     avgTotalDays: number;
     bottleneckStage: string | null;
+    sampleSize?: number;
   }>({
     queryKey: ['/api/analytics/velocity', dateRange],
   });
@@ -274,6 +275,7 @@ export function AnalyticsContent() {
     stageConversions: { fromStage: string; toStage: string; rate: number }[];
     overallWinRate: number;
     lossReasons: { reason: string; count: number }[];
+    sampleSize?: number;
   }>({
     queryKey: ['/api/analytics/conversions', dateRange],
   });
@@ -479,6 +481,15 @@ export function AnalyticsContent() {
           <CardContent>
             {loadingVelocity ? (
               <Skeleton className="h-64 w-full" />
+            ) : (velocity?.avgDaysPerStage?.length ?? 0) === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center text-sm text-muted-foreground">
+                <Clock className="h-8 w-8 mb-3 opacity-40" />
+                <p className="font-medium">Per-stage timing not available yet</p>
+                <p className="mt-1 max-w-xs">
+                  Stage-by-stage durations aren&apos;t tracked yet. Once deals
+                  move through stages over time, this breakdown will populate.
+                </p>
+              </div>
             ) : (
               <div className="space-y-4">
                 <div
@@ -533,6 +544,13 @@ export function AnalyticsContent() {
               <Skeleton className="h-48 w-full" />
             ) : (
               <div className="space-y-4">
+                {(conversions?.stageConversions?.length ?? 0) === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Per-stage conversion rates aren&apos;t tracked yet. The
+                    overall win rate below is computed from real won and lost
+                    deals.
+                  </p>
+                )}
                 {conversions?.stageConversions?.map((conv, i) => (
                   <div key={i} className="flex items-center gap-3">
                     <Badge variant="outline" className="min-w-24 justify-center">

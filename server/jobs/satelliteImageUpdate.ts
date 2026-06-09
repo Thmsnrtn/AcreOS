@@ -33,7 +33,7 @@ const REFRESH_INTERVAL_DAYS = 30;     // Re-fetch imagery older than this
 const SIGNIFICANT_CHANGE_THRESHOLD = 20; // Alert when changeScore > 20 %
 
 // ---------------------------------------------------------------------------
-// Mocked satellite imagery API
+// Satellite imagery API
 // ---------------------------------------------------------------------------
 
 interface SatelliteApiResponse {
@@ -46,29 +46,41 @@ interface SatelliteApiResponse {
   metadata: Record<string, any>;
 }
 
-async function fetchSatelliteImagery(
-  propertyId: number,
-  lat: number,
-  lng: number
-): Promise<SatelliteApiResponse> {
-  // In production this would call Sentinel Hub, Planet, or Nearmap APIs.
-  // Mocked here with realistic structure.
-  const captureDate = new Date();
-  captureDate.setDate(captureDate.getDate() - Math.floor(Math.random() * 7)); // 0–7 days ago
+/**
+ * Truth-immutable (Quinn): this job previously fabricated imagery, NDVI,
+ * cloud coverage and capture dates with Math.random(), which then flowed
+ * into a customer-facing "Change score N/100" badge. We do NOT ship a
+ * change score that isn't real. Until a real imagery provider (Sentinel
+ * Hub / Planet / Nearmap) is wired and credentialed, the imagery fetch is
+ * unavailable and the job no-ops — no snapshots, no analysis, no badge.
+ */
+export function isImageryProviderConfigured(): boolean {
+  return Boolean(
+    process.env.SATELLITE_IMAGERY_API_KEY ||
+    process.env.SENTINEL_HUB_API_KEY ||
+    process.env.PLANET_API_KEY ||
+    process.env.NEARMAP_API_KEY,
+  );
+}
 
-  return {
-    imageUrl: `https://satellite-provider.example.com/imagery/${propertyId}/${captureDate.toISOString().slice(0, 10)}.tif`,
-    provider: "sentinel-2",
-    resolution: 10,
-    captureDate: captureDate.toISOString(),
-    cloudCoverage: Math.random() * 15, // 0–15 %
-    ndvi: 0.2 + Math.random() * 0.6,   // 0.2–0.8 typical vegetated land
-    metadata: {
-      band_combination: "B04_B03_B02",
-      processing_level: "L2A",
-      satellite: "Sentinel-2B",
-    },
-  };
+export async function fetchSatelliteImagery(
+  _propertyId: number,
+  _lat: number,
+  _lng: number
+): Promise<SatelliteApiResponse | null> {
+  // No real imagery provider is wired yet. Return null rather than
+  // fabricating an image, NDVI, or capture date. The caller treats null
+  // as "imagery unavailable" and writes nothing.
+  if (!isImageryProviderConfigured()) {
+    return null;
+  }
+
+  // A real provider integration (Sentinel Hub / Planet / Nearmap) belongs
+  // here, returning the genuine imagery + NDVI + capture metadata. Until
+  // that exists we deliberately do not synthesize values.
+  throw new Error(
+    "Satellite imagery provider key set but no live integration implemented",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -117,8 +129,12 @@ async function processProperty(property: any): Promise<{
   const lat = property.latitude ? parseFloat(property.latitude) : 39.5;
   const lng = property.longitude ? parseFloat(property.longitude) : -98.35;
 
-  // Fetch latest imagery
+  // Fetch latest imagery. Null = no imagery provider connected; we write
+  // nothing rather than fabricate a snapshot/change score.
   const imagery = await fetchSatelliteImagery(property.id, lat, lng);
+  if (!imagery) {
+    return { updated: false, significantChange: false, changeScore: 0 };
+  }
 
   // Store new snapshot
   const [newSnapshot] = await db
@@ -231,6 +247,32 @@ async function processSatelliteUpdateJob(job: Job): Promise<void> {
     .returning({ id: backgroundJobs.id });
 
   const bgJobId = jobRecord[0]?.id;
+
+  // Truth-immutable short-circuit: with no imagery provider connected, the
+  // job does nothing. It does NOT synthesize snapshots or change scores.
+  if (!isImageryProviderConfigured()) {
+    logger.info(
+      "[SatelliteImageUpdate] No imagery provider configured — skipping run (no fabricated imagery/change scores).",
+    );
+    if (bgJobId) {
+      await db
+        .update(backgroundJobs)
+        .set({
+          status: "completed",
+          completedAt: new Date(),
+          result: {
+            skipped: true,
+            reason: "imagery_provider_not_configured",
+            totalProcessed: 0,
+            totalUpdated: 0,
+            totalSignificantChanges: 0,
+            totalFailed: 0,
+          },
+        })
+        .where(eq(backgroundJobs.id, bgJobId));
+    }
+    return;
+  }
 
   let totalProcessed = 0;
   let totalUpdated = 0;
