@@ -47,6 +47,18 @@ const ENCRYPTED_PREFIX = "enc:v1:";
 
 // ─── Key management ───────────────────────────────────────────────────────────
 
+// Beatrice / compliance-debt §3 — dev fallback is now an EPHEMERAL per-boot
+// random key. The previous all-0x42 static key was a public constant: any
+// process that booted without NODE_ENV=production (a worker, a migrate run, a
+// mis-set env) silently encrypted founder-vault / skip-trace PII / BYOK
+// secrets under a key everyone can reproduce — effectively plaintext. An
+// ephemeral key means dev data is merely UNREADABLE across restarts (an
+// acceptable dev annoyance), never readable under a shared constant. There is
+// no code path that should rely on this in prod: validateEnv() hard-requires
+// the real key for any process that touches encrypted columns, independent of
+// NODE_ENV.
+let _ephemeralDevKey: Buffer | null = null;
+
 function loadEncryptionKey(): Buffer {
   const hexKey = process.env.FIELD_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY;
   if (!hexKey) {
@@ -56,9 +68,20 @@ function loadEncryptionKey(): Buffer {
         "Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
       );
     }
-    logger.warn("[fieldEncryption] FIELD_ENCRYPTION_KEY not set — using insecure dev key. " +
-      "Set FIELD_ENCRYPTION_KEY in production.");
-    return Buffer.alloc(KEY_BYTES, 0x42); // dev-only all-0x42 key
+    // Ephemeral per-boot random key — never a shared constant. Generated once
+    // per process so encrypt/decrypt round-trip within a single boot, but data
+    // is unreadable after a restart (by design — no static fallback can ever
+    // reach prod data). We never log the key material.
+    if (!_ephemeralDevKey) {
+      _ephemeralDevKey = crypto.randomBytes(KEY_BYTES);
+      logger.warn(
+        "[fieldEncryption] FIELD_ENCRYPTION_KEY not set — generated an EPHEMERAL " +
+        "per-boot dev key. Encrypted data will NOT survive a restart. " +
+        "Set FIELD_ENCRYPTION_KEY (or ENCRYPTION_KEY) for any persistent or " +
+        "production use.",
+      );
+    }
+    return _ephemeralDevKey;
   }
 
   const key = Buffer.from(hexKey.slice(0, KEY_BYTES * 2), "hex");

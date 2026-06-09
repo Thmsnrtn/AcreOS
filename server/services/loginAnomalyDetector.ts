@@ -19,7 +19,8 @@
  */
 
 import { db } from "../db";
-import { users, userSignInLocations, auditEvents } from "@shared/schema";
+import { users, userSignInLocations } from "@shared/schema";
+import { chainAndInsertAuditEvent } from "../utils/auditEventsChain";
 import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
@@ -255,7 +256,7 @@ async function writeNewLocationAudit(opts: {
 }): Promise<void> {
   try {
     const [user] = await db.select().from(users).where(eq(users.id, opts.userId)).limit(1);
-    await db.insert(auditEvents).values({
+    await chainAndInsertAuditEvent({
       actorUserId: opts.userId,
       actorEmail: user?.email ?? null,
       action: "auth.new_location_detected",

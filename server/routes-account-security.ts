@@ -17,7 +17,8 @@
 
 import type { Express, Response } from "express";
 import { db } from "./db";
-import { users, auditEvents } from "@shared/schema";
+import { users } from "@shared/schema";
+import { chainAndInsertAuditEvent } from "./utils/auditEventsChain";
 import { eq } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -46,7 +47,7 @@ async function writeSelfAuditEvent(
     const userId = getUserId(req);
     const orgId = getOrganizationId(req);
     const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    await db.insert(auditEvents).values({
+    await chainAndInsertAuditEvent({
       actorUserId: userId,
       actorEmail: u?.email ?? null,
       action: opts.action,

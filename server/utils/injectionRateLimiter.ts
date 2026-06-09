@@ -125,7 +125,8 @@ export async function recordAttemptIfDetected(req: RateLimitInput): Promise<Rate
   void (async () => {
     try {
       const { db } = await import("../db");
-      const { aiInjectionAttempts, auditEvents } = await import("@shared/schema");
+      const { aiInjectionAttempts } = await import("@shared/schema");
+      const { chainAndInsertAuditEvent } = await import("./auditEventsChain");
       await db.insert(aiInjectionAttempts).values({
         userId: req.userId ?? null,
         organizationId: req.organizationId ?? null,
@@ -134,7 +135,7 @@ export async function recordAttemptIfDetected(req: RateLimitInput): Promise<Rate
         inputPreview: (req.input ?? "").slice(0, 200),
       });
       if (blocked) {
-        await db.insert(auditEvents).values({
+        await chainAndInsertAuditEvent({
           actorUserId: req.userId ?? null,
           action: "ai.injection_rate_limit",
           targetType: "user",

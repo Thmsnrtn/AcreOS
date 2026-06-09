@@ -280,9 +280,10 @@ export async function notifyStatementGenerated(
     organizationId: statement.organizationId,
     // Eleonora's deliverability stack auto-attaches the List-Unsubscribe
     // header (RFC 2369 + RFC 8058) to every outbound message via
-    // buildRawMimeMessage — we don't need to mark this as a campaign
-    // email (which would add the marketing-unsubscribe footer; this is
-    // a transactional servicing notification).
+    // buildRawMimeMessage. This is a transactional loan-servicing notice,
+    // so we mark it transactional to suppress the marketing-unsubscribe
+    // footer that now renders by default on all non-transactional sends.
+    transactional: true,
   });
 
   const now = new Date();

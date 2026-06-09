@@ -22,9 +22,8 @@
  */
 
 import type { Request } from "express";
-import { db } from "../db";
-import { auditEvents } from "@shared/schema";
 import { logger } from "./logger";
+import { chainAndInsertAuditEvent } from "./auditEventsChain";
 
 export type AuditTargetType =
   | "user"
@@ -64,7 +63,12 @@ export interface AuditLogInput {
  */
 export async function auditLog(input: AuditLogInput): Promise<void> {
   try {
-    await db.insert(auditEvents).values({
+    // Beatrice / compliance-debt §2 — write through the hash-chain helper so
+    // every crown-jewel event (login, MFA-disable, ownership-transfer, refund,
+    // DSAR-erasure) is tamper-evident, matching audit_log. The row is inserted
+    // already-chained in a single statement (audit_events is append-only and
+    // rejects the insert-then-UPDATE pattern audit_log uses).
+    await chainAndInsertAuditEvent({
       actorUserId: input.actor.userId ?? null,
       actorEmail: input.actor.email ?? null,
       action: input.action,

@@ -281,7 +281,6 @@ export async function getSESClient(orgId?: number) {
     region: creds.region,
   };
 }
-
 export interface EmailOptions {
   to: string | string[];
   subject: string;
@@ -297,6 +296,7 @@ export interface EmailOptions {
   unsubscribeUrl?: string;
   /** Whether this is a marketing/campaign email (appends unsubscribe footer if true) */
   isCampaignEmail?: boolean;
+  transactional?: boolean; // CAN-SPAM §5 safe-default: footer on EVERY send UNLESS true. See shouldRenderCanSpamFooter().
 }
 
 export interface EmailResult {
@@ -536,10 +536,16 @@ export class EmailService {
         });
         const unsubUrl = options.unsubscribeUrl || buildUnsubscribeUrl(unsubToken);
 
-        // CAN-SPAM / GDPR compliance: append unsubscribe footer for campaign/marketing emails.
-        // §5 requires both (a) a clear opt-out + (b) a valid physical postal address.
+        // CAN-SPAM / GDPR compliance: append the visible opt-out + postal-address
+        // footer. §5 requires both (a) a clear opt-out + (b) a valid physical
+        // postal address in every COMMERCIAL message. We fail safe: the footer
+        // renders on every send EXCEPT those explicitly marked
+        // `transactional: true`. This closes the highest-volume marketing path
+        // (growthAutomation lifecycle emails) that previously shipped with
+        // neither isCampaignEmail nor unsubscribeUrl set. The List-Unsubscribe
+        // header alone does not satisfy §5's visible-body requirement.
         let htmlBody = options.html;
-        if (options.isCampaignEmail || options.unsubscribeUrl) {
+        if (shouldRenderCanSpamFooter(options)) {
           // CAN-SPAM §5: render a real postal address when we have one, and
           // NEVER ship a literal placeholder. If no address is resolvable we
           // render only the brand name on that line.
@@ -737,17 +743,22 @@ export class EmailService {
     const template = templates[type];
 
     // CAN-SPAM compliance: welcome + churn_rescue + founder_briefing carry
-    // marketing-shaped CTAs; mark as campaign so the List-Unsubscribe
-    // header + visible-footer wire in. Notification + alert stay transactional.
-    const isCampaignEmail =
-      type === 'welcome' || type === 'churn_rescue' || type === 'founder_briefing';
+    // marketing-shaped CTAs; they are commercial and get the footer by the
+    // safe-default. verification + password_reset + notification + alert are
+    // genuinely transactional (they facilitate an existing transaction), so we
+    // mark them `transactional: true` to suppress the footer.
+    const transactional =
+      type === 'verification' ||
+      type === 'password_reset' ||
+      type === 'notification' ||
+      type === 'alert';
 
     return this.sendEmail({
       to: options.to,
       subject: options.subject || template.subject,
       html: template.html,
       organizationId: options.organizationId,
-      isCampaignEmail,
+      transactional,
     });
   }
 
@@ -1104,3 +1115,19 @@ export class AWSSESDomainService {
 }
 
 export const awsSesDomainService = new AWSSESDomainService();
+
+/**
+ * CAN-SPAM §5 safe-default predicate. The visible postal-address + opt-out
+ * footer renders on EVERY send unless the caller explicitly marks the message
+ * `transactional: true`. Exported (pure, no I/O) so the fail-safe decision is
+ * unit-testable without driving the full SES send path. The List-Unsubscribe
+ * header alone does NOT satisfy §5's visible-body requirement.
+ *
+ * Placed at file end so it adds no lines above the no-fabrication-allowlisted
+ * Math.random() jitter/boundary lines earlier in this file.
+ */
+export function shouldRenderCanSpamFooter(
+  options: { transactional?: boolean },
+): boolean {
+  return !options.transactional;
+}

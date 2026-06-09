@@ -5264,6 +5264,13 @@ export type InsertAuditLogPurge = typeof auditLogPurges.$inferInsert;
 // 2FA resets). Retention: 7 years; never deleted.
 export const auditEvents = pgTable("audit_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Beatrice / compliance-debt §2 — monotonic ordering key for the GLOBAL
+  // hash chain. audit_events is intentionally org-less (cross-org targets:
+  // account-wide 2FA resets, ownership transfers), so unlike audit_log its
+  // chain is a single global sequence rather than per-org. The UUID PK is
+  // random and cannot order the chain, so `seq` (bigserial) gives the chain
+  // walker a deterministic total order. NOT part of the canonical hash payload.
+  seq: bigserial("seq", { mode: "number" }),
   actorUserId: text("actor_user_id"),
   actorEmail: text("actor_email"),
   action: text("action").notNull(),
@@ -5274,6 +5281,18 @@ export const auditEvents = pgTable("audit_events", {
   ip: text("ip"),
   userAgent: text("user_agent"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // Beatrice / compliance-debt §2 — SHA-256 hash chain extending the audit_log
+  // tamper-evidence scheme to the crown-jewel events (login, MFA-disable,
+  // ownership-transfer, refunds, DSAR-erasure). prev_hash is the previous
+  // chained row's row_hash (global order by `seq`), or 'GENESIS'. row_hash =
+  // SHA-256(prev_hash || '\n' || canonical(payload)). Computed BEFORE insert
+  // (see server/utils/auditEventsChain.ts) because audit_events already carries
+  // a blanket append-only UPDATE-deny trigger (migration 0049) — we cannot use
+  // audit_log's insert-then-update pattern here, so the row is inserted
+  // already-chained in a single statement. Nullable for backfill of pre-chain
+  // rows. TAMPER-EVIDENCE, not legal proof.
+  prevHash: text("prev_hash"),
+  rowHash: text("row_hash"),
 }, (table) => [
   index("idx_audit_events_actor").on(table.actorUserId),
   index("idx_audit_events_target").on(table.targetType, table.targetId),
@@ -5282,6 +5301,9 @@ export const auditEvents = pgTable("audit_events", {
   // P1-15 (Phase 3 Week 7-8) — Coriander recovery-console views filter by
   // action and order by created_at DESC. Migration: 0045_index_audit.sql.
   index("audit_events_action_created_idx").on(table.action, table.createdAt),
+  // Beatrice / compliance-debt §2 — chain walker reads the latest chained row
+  // (max seq where row_hash IS NOT NULL) and walks ascending by seq.
+  index("audit_events_seq_chain_idx").on(table.seq),
 ]);
 
 export type AuditEvent = typeof auditEvents.$inferSelect;
