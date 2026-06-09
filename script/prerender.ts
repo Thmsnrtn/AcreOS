@@ -73,6 +73,55 @@ const META_BY_PATH: Record<string, RouteMeta> = {
       "Transparent plans for every Land Investor — same price regardless of vertical. CRM, direct mail, automated due diligence, note servicing, and rehab tracking in one platform.",
     ogType: "product",
   },
+  "/why": {
+    title: "Why we built AcreOS · AcreOS",
+    description:
+      "The case for one operating system built specifically for Land Investors — why the spreadsheets, generic CRMs, and stitched-together tools fall short, and what AcreOS does instead.",
+    ogType: "article",
+  },
+  "/land-credit-score": {
+    title: "The Land Credit Score — AcreOS",
+    description:
+      "The Land Credit Score is a 300–850 read on a parcel as an investment, graded A+ through F across six weighted dimensions. It scores land, not people — it is not a FICO score, a consumer credit report, or a regulated credit product, and it pulls no personal credit.",
+    ogType: "website",
+    jsonLd: [
+      {
+        id: "lcs-defined-term",
+        data: {
+          "@context": "https://schema.org",
+          "@type": "DefinedTerm",
+          name: "Land Credit Score",
+          description:
+            "A 300–850 score, graded A+ through F, of how a parcel of land stacks up as an investment, computed from a weighted blend of six dimensions (Location, Financial, Physical, Legal, Environmental, Market). It scores parcels, not people, and is not a consumer credit report.",
+          inDefinedTermSet: `${SITE_BASE_URL}/glossary`,
+          url: `${SITE_BASE_URL}/land-credit-score`,
+        },
+      },
+      {
+        id: "lcs-software-application",
+        data: {
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "AcreOS Land Credit Score",
+          description:
+            "Scores any U.S. parcel 300–850 (A+ through F) across six weighted dimensions, from the same government and market data behind every AcreOS parcel check. Scores land, not people — not a consumer credit report.",
+          applicationCategory: "BusinessApplication",
+          operatingSystem: "Any (web)",
+          url: `${SITE_BASE_URL}/land-credit-score`,
+          offers: {
+            "@type": "Offer",
+            price: "0",
+            priceCurrency: "USD",
+          },
+          publisher: {
+            "@type": "Organization",
+            name: "AcreOS",
+            url: SITE_BASE_URL,
+          },
+        },
+      },
+    ],
+  },
   "/security": {
     title: "Security · AcreOS",
     description:
@@ -169,8 +218,15 @@ async function main() {
     if (!route.prerender) continue;
     const meta = META_BY_PATH[route.path];
     if (!meta) {
-      console.warn(`[prerender] no meta entry for ${route.path}, skipping`);
-      continue;
+      // FAIL THE BUILD. A route flagged prerender:true is promised in the
+      // sitemap; if it has no META_BY_PATH entry it would silently ship the
+      // generic landing <head> on its own URL — a silent SEO own-goal. Make
+      // that impossible: every prerender:true route MUST have a meta entry.
+      throw new Error(
+        `[prerender] no META_BY_PATH entry for prerender:true route "${route.path}". ` +
+          `Add one in script/prerender.ts (this route is sitemap-promised — it cannot ` +
+          `ship the generic landing head).`,
+      );
     }
     const head = renderHead(route, meta);
     const html = rewriteHead(template, head);

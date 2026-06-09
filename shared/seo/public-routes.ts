@@ -40,6 +40,10 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/", changefreq: "weekly", priority: 1.0, label: "Landing", prerender: true },
   { path: "/pricing", changefreq: "monthly", priority: 0.9, label: "Pricing", prerender: true },
   { path: "/why", changefreq: "monthly", priority: 0.8, label: "Why we built this", prerender: true },
+  // The Land Credit Score — AcreOS's category-defining owned noun. Public,
+  // ungated explainer (client/src/pages/landing/LandCreditScore.tsx). High
+  // priority: this is the term we want to own in search.
+  { path: "/land-credit-score", changefreq: "monthly", priority: 0.9, label: "Land Credit Score", prerender: true },
   { path: "/security", changefreq: "monthly", priority: 0.7, label: "Security", prerender: true },
   { path: "/glossary", changefreq: "monthly", priority: 0.7, label: "Glossary", prerender: true },
   // Comparison landers — high-intent "[competitor] alternative" search

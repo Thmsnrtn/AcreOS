@@ -9,12 +9,14 @@ import { e2eTestAuthEnabled } from "../auth/testAuth";
 // The nonce is stored in res.locals.cspNonce for use by the static file server.
 
 // Routes that are allowed to render inside a third-party iframe. The
-// public Land Deal Calculator is intentionally embeddable on partner
-// land-investing sites; nothing else is. Keep this allow-list narrow —
-// every entry here is a clickjacking attack surface we accept the cost
-// of in exchange for distribution.
+// public Land Deal Calculator, Land Credit Score, and Parcel Check are
+// intentionally embeddable on partner land-investing sites; nothing else
+// is. Keep this allow-list narrow — every entry here is a clickjacking
+// attack surface we accept the cost of in exchange for distribution.
 const IFRAME_ALLOWED_PATHS = new Set<string>([
   "/tools/calculator/embed",
+  "/land-credit-score/embed",
+  "/tools/parcel-check/embed",
 ]);
 
 function isIframeAllowed(path: string): boolean {

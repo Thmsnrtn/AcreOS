@@ -217,7 +217,16 @@ function StreamingTile({ tile }: { tile: TileState }) {
   );
 }
 
-export default function ParcelCheckPage() {
+/**
+ * The parcel-check surface. Rendered two ways:
+ *   - default: the full /tools/parcel-check marketing page (nav, hero, CTAs).
+ *   - `embed`: the iframe-friendly /tools/parcel-check/embed surface — no
+ *     header/hero/signup CTAs, a fixed-width frame on an explicit background,
+ *     and a "Powered by AcreOS · check your parcel" backlink. The honesty +
+ *     provenance footnote ALWAYS renders, so a host site can't strip the
+ *     "screening tool, not a survey" disclaimer from the embedded check.
+ */
+function ParcelCheckSurface({ embed = false }: { embed?: boolean }) {
   usePageMeta(TITLE, DESCRIPTION);
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -293,23 +302,25 @@ export default function ParcelCheckPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
       />
 
-      <header className="border-b border-border">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 py-4">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            AcreOS
-          </Link>
-          <Link
-            href="/auth?mode=register&utm_source=parcel-check&utm_medium=internal&utm_campaign=parcel_check_header"
-            className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
-          >
-            Sign up
-          </Link>
-        </div>
-      </header>
+      {!embed && (
+        <header className="border-b border-border">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6 py-4">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              AcreOS
+            </Link>
+            <Link
+              href="/auth?mode=register&utm_source=parcel-check&utm_medium=internal&utm_campaign=parcel_check_header"
+              className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
+            >
+              Sign up
+            </Link>
+          </div>
+        </header>
+      )}
 
       <section className="border-b border-border bg-muted/30">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-8 sm:py-12">
@@ -437,19 +448,32 @@ export default function ParcelCheckPage() {
                     your criteria — flood, soil, elevation, wetlands, and more — from
                     free government data. Sign up and point it at your county.
                   </p>
-                  <Link
-                    href="/auth?mode=register&utm_source=parcel-check&utm_medium=internal&utm_campaign=parcel_check_result_cta"
-                    onClick={() =>
-                      emitMarketingTouch({
-                        surface: "tools:parcel-check",
-                        eventType: "cta_click",
-                        payload: { ctaId: "result_signup" },
-                      })
-                    }
-                    className="mt-4 inline-flex items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
-                    Sign up free
-                  </Link>
+                  {embed ? (
+                    // Inside an iframe a wouter <Link> would navigate the host's
+                    // embed; use a real external anchor opening AcreOS in a new tab.
+                    <a
+                      href="https://acreos.io/auth?mode=register&utm_source=embed&utm_medium=iframe&utm_campaign=parcel_check_embed_cta"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-4 inline-flex items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      Sign up free
+                    </a>
+                  ) : (
+                    <Link
+                      href="/auth?mode=register&utm_source=parcel-check&utm_medium=internal&utm_campaign=parcel_check_result_cta"
+                      onClick={() =>
+                        emitMarketingTouch({
+                          surface: "tools:parcel-check",
+                          eventType: "cta_click",
+                          payload: { ctaId: "result_signup" },
+                        })
+                      }
+                      className="mt-4 inline-flex items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      Sign up free
+                    </Link>
+                  )}
                 </motion.div>
               )}
               {stream.phase === "done" && stream.resolvedCount === 0 && (
@@ -484,20 +508,51 @@ export default function ParcelCheckPage() {
           elevation certificate, or wetlands delineation.
         </p>
 
-        {/* Internal linking — calculator + learn cross-links (SEO juice).
-            The learn target is resolved from the registry so it always points
-            at a real, authored page (no /learn hub route exists). */}
-        <nav aria-label="Related free tools" className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <Link href="/tools/calculator" className="text-primary hover:underline">
-            Land Deal Calculator
-          </Link>
-          {learnLink && (
-            <Link href={learnLink.href} className="text-primary hover:underline">
-              {learnLink.label}
+        {/* Embed mode: the "Powered by AcreOS · check your parcel" backlink the
+            flywheel runs on (external, new tab — a wouter Link would route the
+            iframe internally). Main route: internal calculator + learn
+            cross-links for SEO juice. */}
+        {embed ? (
+          <p className="mt-8 text-center text-xs text-muted-foreground">
+            Powered by{" "}
+            <a
+              href="https://acreos.io/tools/parcel-check?utm_source=embed&utm_medium=iframe&utm_campaign=parcel_check_embed"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium underline underline-offset-2 hover:text-foreground"
+            >
+              AcreOS
+            </a>{" "}
+            · check your parcel
+          </p>
+        ) : (
+          <nav aria-label="Related free tools" className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <Link href="/tools/calculator" className="text-primary hover:underline">
+              Land Deal Calculator
             </Link>
-          )}
-        </nav>
+            {learnLink && (
+              <Link href={learnLink.href} className="text-primary hover:underline">
+                {learnLink.label}
+              </Link>
+            )}
+          </nav>
+        )}
       </section>
     </main>
   );
+}
+
+/** /tools/parcel-check — the full public marketing surface. */
+export default function ParcelCheckPage() {
+  return <ParcelCheckSurface />;
+}
+
+/**
+ * /tools/parcel-check/embed — iframe-friendly Parcel Check. No nav/footer, the
+ * honesty + provenance disclaimer travels inside, "Powered by AcreOS · check
+ * your parcel" backlink. Iframe-ability is scoped to this exact path by
+ * server/middleware/security.ts.
+ */
+export function ParcelCheckEmbedPage() {
+  return <ParcelCheckSurface embed />;
 }

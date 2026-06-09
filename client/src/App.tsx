@@ -79,6 +79,11 @@ const LandingPage = React.lazy(() => import("@/pages/landing"));
 // Public Land Credit Score explainer — ungated marketing surface for the
 // category-defining noun. (The in-app /land-credit page is auth + flag gated.)
 const LandCreditScorePage = React.lazy(() => import("@/pages/landing/LandCreditScore"));
+// Iframe-friendly Land Credit Score — bare band + honesty disclaimer + backlink.
+// Iframe-ability scoped to this path by server/middleware/security.ts.
+const LandCreditScoreEmbedPage = React.lazy(() =>
+  import("@/pages/landing/LandCreditScore").then((m) => ({ default: m.LandCreditScoreEmbedPage })),
+);
 import NotFound from "@/pages/not-found";
 
 // ─── Lazy-loaded page bundles ───────────────────────────────────────────────
@@ -205,6 +210,10 @@ const CalculatorEmbedPage = React.lazy(() => import("@/pages/tools/calculator-em
 // (FEMA/USDA/USGS/USFWS/Census) for any address so a stranger sees the
 // free-tier promise work before signing up.
 const ParcelCheckPage = React.lazy(() => import("@/pages/tools/parcel-check"));
+// Iframe-friendly Parcel Check — bare check + honesty disclaimer + backlink.
+const ParcelCheckEmbedPage = React.lazy(() =>
+  import("@/pages/tools/parcel-check").then((m) => ({ default: m.ParcelCheckEmbedPage })),
+);
 const SkipTracingPage = React.lazy(() => import("@/pages/skip-tracing"));
 // TerritoryManagerPage archived 2026-06-01 — no nav entry, no callers.
 const ZoningLookupPage = React.lazy(() => import("@/pages/zoning-lookup"));
@@ -670,7 +679,10 @@ function Router() {
       <Route path="/pricing" component={PricingPage} />
       <Route path="/why" component={WhyPage} />
       {/* Public Land Credit Score explainer — ungated marketing surface.
-          Distinct from the auth + flag gated in-app /land-credit page. */}
+          Distinct from the auth + flag gated in-app /land-credit page.
+          Embed route mounted BEFORE the bare route so wouter's first-match
+          Switch routes the more-specific /embed URL first. */}
+      <Route path="/land-credit-score/embed" component={LandCreditScoreEmbedPage} />
       <Route path="/land-credit-score" component={LandCreditScorePage} />
       <Route path="/compare/acreos-vs-propstream" component={AcreosVsPropstreamPage} />
       <Route path="/compare/acreos-vs-dealmachine" component={AcreosVsDealmachinePage} />
@@ -693,7 +705,9 @@ function Router() {
       <Route path="/tools/calculator/embed" component={CalculatorEmbedPage} />
       <Route path="/tools/calculator" component={CalculatorPage} />
       {/* Public Parcel Check — free open-data moat surface. Must precede the
-          authed /tools route registered later. */}
+          authed /tools route registered later. Embed route mounted BEFORE the
+          bare route (wouter first-match on the more-specific /embed URL). */}
+      <Route path="/tools/parcel-check/embed" component={ParcelCheckEmbedPage} />
       <Route path="/tools/parcel-check" component={ParcelCheckPage} />
       {/* 2026-06-01 cut — GlossaryPage archived; nothing links to it. */}
 

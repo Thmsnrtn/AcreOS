@@ -19,6 +19,7 @@ Disallow: /analytics
 Allow: /
 Allow: /pricing
 Allow: /why
+Allow: /land-credit-score
 Allow: /security
 Allow: /glossary
 Allow: /compare/acreos-vs-propstream
