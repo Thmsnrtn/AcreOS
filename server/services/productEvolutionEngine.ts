@@ -302,34 +302,24 @@ class ProductEvolutionEngine {
     const daysSinceDeployment = Math.floor((Date.now() - deployedAt.getTime()) / 86400000);
     if (daysSinceDeployment < 7) return; // Wait at least 7 days
 
-    // Measure adoption (simplified — based on activity patterns)
-    const adoptionRate = Math.random() * 0.6 + 0.2; // Placeholder: 20-80%
-
-    // Measure retention impact (pre vs post deployment)
-    const retentionImpact = (Math.random() - 0.3) * 0.1; // -3% to +7%
-
-    // Revenue impact estimation
-    const revenueImpactCents = Math.round((Math.random() - 0.2) * 50000);
-
-    // Support impact (negative = fewer tickets = good)
-    const supportImpact = (Math.random() - 0.5) * 0.2; // -10% to +10%
-
-    // Overall score
-    const overallScore = Math.round(
-      (adoptionRate * 40) +
-      (Math.max(0, retentionImpact) * 200) +
-      (Math.max(0, revenueImpactCents / 1000)) +
-      (Math.max(0, -supportImpact * 100))
-    );
-
+    // Truth-immutable (Quinn): this previously fabricated adoption/retention/
+    // revenue/support impact with Math.random() and wrote them into a table an
+    // executor reads to sunset features. We do NOT invent impact numbers. Until
+    // real measurement (activity analytics, pre/post retention, ledger revenue
+    // attribution) is wired, we persist a "no-signal" row: all metrics NULL and
+    // overallScore NULL. Downstream selectors (identifyLowImpactFeatures uses
+    // `adoptionRate < 0.2 OR overallScore < 20`) skip NULL rows under SQL
+    // three-valued logic, so an insufficient-data feature is never auto-sunset.
     await db.insert(featureImpactScores).values({
       featureName,
       deployedAt,
-      adoptionRate,
-      retentionImpact,
-      revenueImpactCents,
-      supportImpact,
-      overallScore,
+      adoptionRate: null,
+      retentionImpact: null,
+      revenueImpactCents: null,
+      supportImpact: null,
+      // NULL overallScore == "insufficient_data" marker. Never a number we
+      // didn't actually measure.
+      overallScore: null,
     });
   }
 

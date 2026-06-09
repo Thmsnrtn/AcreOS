@@ -68,52 +68,43 @@ function BeforeAfterSlider({ before, after, label }: { before: string; after: st
 }
 
 function ChangeDetectionDisplay({ snapshots }: { snapshots: any[] }) {
-  const changedSnaps = snapshots.filter(s => s.changeDetected);
   const latestSnap = snapshots[0];
   const prevSnap = snapshots[1];
 
   if (snapshots.length < 2) return null;
 
-  const changeScore = changedSnaps.length > 0
-    ? Math.min(100, Math.round((changedSnaps.length / snapshots.length) * 100 + 20))
-    : 0;
-
-  const severity = changeScore > 40 ? "high" : changeScore > 15 ? "moderate" : "low";
+  // Truth-immutable (Quinn): the "Change score N/100" badge was a fabricated
+  // heuristic (random NDVI upstream + a magic +20 here) presented as a precise
+  // fact. It is hard-disabled. We only surface a real before/after comparison
+  // and any genuine change flags the imagery provider actually wrote. No score.
+  const changedSnaps = snapshots.filter(s => s.changeDetected);
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <p className="text-sm font-medium">Change detection results</p>
-        <div
-          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${changeScore > 40 ? 'bg-acr-neg-soft text-acr-neg' : changeScore > 15 ? 'bg-acr-warn-soft text-acr-warn' : 'bg-acr-pos-soft text-acr-pos'}`}
-          role="status"
-          aria-label={`Change score ${changeScore} of 100 (${severity} change detected)`}
-        >
-          <Activity className="w-3 h-3" aria-hidden="true" />
-          <span className="tabular-nums">Change score: {changeScore}/100</span>
-        </div>
+      <p className="text-sm font-medium">Change detection</p>
+      <div
+        className="flex items-center gap-2 text-xs p-2 bg-muted rounded border"
+        role="status"
+      >
+        <Activity className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+        <span className="text-muted-foreground">
+          Automated change scoring isn&apos;t available — no satellite imagery
+          provider is connected. Compare the snapshots below manually.
+        </span>
       </div>
-      {changedSnaps.length > 0 ? (
-        <ul className="space-y-2 list-none p-0 m-0" aria-label="Snapshots with detected change">
+
+      {changedSnaps.length > 0 && (
+        <ul className="space-y-2 list-none p-0 m-0" aria-label="Snapshots flagged with change by the imagery provider">
           {changedSnaps.map((snap, i) => (
             <li
               key={i}
-              role="alert"
-              className="flex items-center gap-2 text-xs p-2 bg-acr-neg-soft rounded border border-acr-neg-soft"
+              className="flex items-center gap-2 text-xs p-2 bg-acr-warn-soft rounded border border-acr-warn-soft"
             >
-              <AlertTriangle className="w-3.5 h-3.5 text-acr-neg shrink-0" aria-hidden="true" />
-              <span>Change detected on {snap.capturedAt ? new Date(snap.capturedAt).toLocaleDateString() : '—'} · zoom {snap.zoom ?? '—'}</span>
+              <AlertTriangle className="w-3.5 h-3.5 text-acr-warn shrink-0" aria-hidden="true" />
+              <span>Provider flagged change on {snap.capturedAt ? new Date(snap.capturedAt).toLocaleDateString() : '—'} · zoom {snap.zoom ?? '—'}</span>
             </li>
           ))}
         </ul>
-      ) : (
-        <div
-          className="flex items-center gap-2 text-xs p-2 bg-acr-pos-soft rounded border border-acr-pos-soft"
-          role="status"
-        >
-          <CheckCircle className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
-          <span>No significant changes detected across {snapshots.length} snapshots</span>
-        </div>
       )}
 
       <BeforeAfterSlider

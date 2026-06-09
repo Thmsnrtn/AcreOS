@@ -11,6 +11,7 @@ import { usageLimitGate } from "./middleware/usageLimitGate";
 import { requireScope } from "./middleware/roleScope";
 import { leadNurturerService } from "./services/leadNurturer";
 import { leadScoringService } from "./services/leadScoring";
+import { skipTracingService, type SkipTraceResult } from "./services/skipTracingService";
 import { attachPermissionContext, type UserPermissionContext } from "./utils/permissions";
 import { alertingService } from "./services/alerting";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
@@ -55,6 +56,50 @@ const mergeLeadsSchema = z.object({
 );
 
 const MAX_CSV_IMPORT_ROWS = 500;
+
+/**
+ * Truth-immutable (Quinn): map a real skip-trace provider result into the
+ * stored `skip_traces.results` shape. This NEVER mints `verified: true` —
+ * the providers return a confidence score, not a source-asserted
+ * verification, so every contact is recorded as unverified. Exported so the
+ * no-fabrication invariant is unit-testable in isolation.
+ */
+export function mapSkipTraceResults(trace: SkipTraceResult): {
+  results: {
+    phones: { number: string; type: string; verified: boolean }[];
+    emails: { email: string; verified: boolean }[];
+    relatives: { name: string }[];
+    addresses?: { address: string; type: string; current: boolean }[];
+    ageRange?: string;
+  };
+  hasAny: boolean;
+} {
+  const phones = trace.contacts
+    .filter((c) => c.type === "phone")
+    .map((c) => ({ number: c.value, type: c.lineType ?? "unknown", verified: false }));
+  const emails = trace.contacts
+    .filter((c) => c.type === "email")
+    .map((c) => ({ email: c.value, verified: false }));
+  const relatives = trace.contacts
+    .filter((c) => c.type === "relative")
+    .map((c) => ({ name: c.value }));
+
+  const hasAny =
+    phones.length > 0 || emails.length > 0 || relatives.length > 0 || !!trace.owner;
+
+  return {
+    hasAny,
+    results: {
+      phones,
+      emails,
+      relatives,
+      ...(trace.owner?.address
+        ? { addresses: [{ address: trace.owner.address, type: "current", current: true }] }
+        : {}),
+      ...(trace.owner?.age != null ? { ageRange: String(trace.owner.age) } : {}),
+    },
+  };
+}
 
 const upload = createUploadMiddleware({ maxSizeMB: 5, allowedTypes: ["text"] });
 const validateCSV = validateFileMiddleware(["text"]);
@@ -1623,7 +1668,22 @@ export function registerLeadRoutes(app: Express): void {
         return Errors.notFound(res, "Lead");
       }
 
-      // Create pending skip trace
+      // Truth-immutable: skip-trace MUST resolve through a real provider.
+      // If no skip-trace provider is configured, return an honest
+      // "unavailable" state and record NO cost — never fabricate PII.
+      if (!skipTracingService.isConfigured()) {
+        logger.warn("Skip trace requested but no provider configured", {
+          source: "routes-leads",
+          metadata: { organizationId: org.id, leadId },
+        });
+        return res.json({
+          status: "unavailable",
+          message: "No skip-trace provider configured",
+        });
+      }
+
+      // Create pending skip trace. Cost is left null until the real
+      // provider returns — we never pre-charge for a result we don't have.
       const skipTrace = await storage.createSkipTrace({
         organizationId: org.id,
         leadId,
@@ -1632,7 +1692,7 @@ export function registerLeadRoutes(app: Express): void {
           address: lead.address || "",
         },
         status: "processing",
-        costCents: 50,
+        costCents: null,
         requestedAt: new Date(),
         purposeOfUse,
         justification,
@@ -1640,50 +1700,57 @@ export function registerLeadRoutes(app: Express): void {
         attestationVersion,
       });
 
-      // Simulate async processing with mock data after 1 second
-      setTimeout(async () => {
-        try {
-          const mockResults = {
-            phones: [
-              { number: `+1${Math.floor(Math.random() * 9000000000 + 1000000000)}`, type: "mobile", verified: true },
-              { number: `+1${Math.floor(Math.random() * 9000000000 + 1000000000)}`, type: "landline", verified: false },
-            ],
-            emails: [
-              { email: `${lead.firstName.toLowerCase()}.${lead.lastName.toLowerCase()}@email.com`, verified: true },
-            ],
-            addresses: [
-              { 
-                address: lead.address || "123 Current St, Anytown, ST 12345", 
-                type: "current", 
-                current: true 
-              },
-              { 
-                address: "456 Previous Ave, Oldtown, ST 54321", 
-                type: "previous", 
-                current: false 
-              },
-            ],
-            relatives: [
-              { name: "Jane Doe", relationship: "spouse" },
-              { name: "John Doe Jr", relationship: "child" },
-            ],
-            ageRange: "45-55",
-          };
+      // Route through the real skip-tracing service (BatchSkipTracing /
+      // REISkip via the registry). The service owns provider selection,
+      // cross-customer caching, and the canonical ledger debit — so we
+      // never charge here and never fabricate a contact.
+      try {
+        const trace = await skipTracingService.trace(
+          {
+            firstName: lead.firstName,
+            lastName: lead.lastName,
+            address: lead.address ?? undefined,
+            city: lead.city ?? undefined,
+            state: lead.state ?? undefined,
+            zip: lead.zip ?? undefined,
+          },
+          org.id,
+        );
 
-          await storage.updateSkipTrace(skipTrace.id, {
-            status: "completed",
-            results: mockResults,
+        if (!trace.success) {
+          const updated = await storage.updateSkipTrace(skipTrace.id, {
+            status: "no_results",
+            provider: trace.source === "none" ? null : trace.source,
             completedAt: new Date(),
           });
-        } catch (err) {
-          logger.error("Error updating skip trace", err instanceof Error ? err : undefined);
-          await storage.updateSkipTrace(skipTrace.id, {
-            status: "failed",
-          });
+          return res.json(updated);
         }
-      }, 1000);
 
-      res.json(skipTrace);
+        // Map the provider's real contacts into the stored shape. The helper
+        // NEVER mints verified:true — providers return a confidence score, not
+        // a source-asserted verification.
+        const { results, hasAny } = mapSkipTraceResults(trace);
+
+        const creditCents = Number(process.env.SKIP_TRACE_CREDIT_CENTS ?? 20);
+        const updated = await storage.updateSkipTrace(skipTrace.id, {
+          status: hasAny ? "completed" : "no_results",
+          provider: trace.source,
+          // Real cost only — the ledger debit was already posted by the
+          // service; this is the displayed unit cost, not a second charge.
+          costCents: hasAny ? (trace.creditsUsed ?? 1) * creditCents : 0,
+          results,
+          completedAt: new Date(),
+        });
+        return res.json(updated);
+      } catch (err) {
+        logger.error("Skip trace lookup failed", err instanceof Error ? err : undefined);
+        const failed = await storage.updateSkipTrace(skipTrace.id, {
+          status: "failed",
+          costCents: 0,
+          completedAt: new Date(),
+        });
+        return res.json(failed);
+      }
     } catch (err) {
       logger.error("Skip trace error", err instanceof Error ? err : undefined);
       Errors.internal(res, err);

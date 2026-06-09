@@ -5249,28 +5249,41 @@ Notary Public</p>
     };
   }
 
-  async getDealVelocity(orgId: number, dateRange: { startDate: Date; endDate: Date }) {
-    const closedDeals = await db.select()
+  async getDealVelocity(orgId: number, _dateRange: { startDate: Date; endDate: Date }) {
+    // Truth-immutable: report only what the data supports. We have
+    // created_at and closing_date on closed deals, so the total
+    // create→close cycle time is real. Per-stage durations are NOT
+    // tracked (no stage-history table), so we return an empty per-stage
+    // breakdown and no fabricated bottleneck rather than random numbers.
+    const closedDeals = await db.select({
+      createdAt: deals.createdAt,
+      closingDate: deals.closingDate,
+    })
       .from(deals)
       .where(and(
         eq(deals.organizationId, orgId),
         eq(deals.status, 'closed')
       ));
-    
-    const stages = ['lead', 'negotiation', 'due_diligence', 'under_contract', 'closed'];
-    const avgDaysPerStage: { stage: string; avgDays: number }[] = stages.map((stage, index) => ({
-      stage,
-      avgDays: Math.floor(Math.random() * 10) + 3,
-    }));
-    
-    const avgTotalDays = avgDaysPerStage.reduce((sum, s) => sum + s.avgDays, 0);
-    const bottleneckStage = avgDaysPerStage.reduce((max, s) => 
-      s.avgDays > max.avgDays ? s : max, avgDaysPerStage[0])?.stage || null;
-    
+
+    const cycleDays = closedDeals
+      .map((d) => {
+        if (!d.createdAt || !d.closingDate) return null;
+        const ms = new Date(d.closingDate).getTime() - new Date(d.createdAt).getTime();
+        return ms >= 0 ? ms / 86_400_000 : null;
+      })
+      .filter((v): v is number => v !== null);
+
+    const avgTotalDays = cycleDays.length > 0
+      ? Math.round(cycleDays.reduce((sum, v) => sum + v, 0) / cycleDays.length)
+      : 0;
+
     return {
-      avgDaysPerStage,
+      // Per-stage durations are not yet tracked — honest empty, not random.
+      avgDaysPerStage: [] as { stage: string; avgDays: number }[],
       avgTotalDays,
-      bottleneckStage,
+      bottleneckStage: null as string | null,
+      // Sample size so the client can show "not enough history yet".
+      sampleSize: cycleDays.length,
     };
   }
 
@@ -5306,34 +5319,29 @@ Notary Public</p>
     };
   }
 
-  async getConversionRates(orgId: number, dateRange: { startDate: Date; endDate: Date }) {
-    const stages = ['lead', 'negotiation', 'due_diligence', 'under_contract', 'closed'];
-    
-    const stageConversions = stages.slice(0, -1).map((fromStage, index) => ({
-      fromStage,
-      toStage: stages[index + 1],
-      rate: Math.floor(Math.random() * 40) + 40,
-    }));
-    
+  async getConversionRates(orgId: number, _dateRange: { startDate: Date; endDate: Date }) {
+    // Truth-immutable: the overall win rate is computable from real
+    // won/lost counts. Per-stage conversion rates and categorized loss
+    // reasons are NOT tracked, so we return honest-empty for those rather
+    // than fabricating per-stage rates or invented loss-reason tallies.
     const wonDeals = await db.select({ count: count() })
       .from(deals)
       .where(and(eq(deals.organizationId, orgId), eq(deals.status, 'closed')));
     const lostDeals = await db.select({ count: count() })
       .from(deals)
       .where(and(eq(deals.organizationId, orgId), or(eq(deals.status, 'dead'), eq(deals.status, 'cancelled'))));
-    
+
     const won = Number(wonDeals[0]?.count || 0);
     const lost = Number(lostDeals[0]?.count || 0);
     const overallWinRate = (won + lost) > 0 ? (won / (won + lost)) * 100 : 0;
-    
+
     return {
-      stageConversions,
+      // Per-stage conversion requires a stage-history table we don't have.
+      stageConversions: [] as { fromStage: string; toStage: string; rate: number }[],
       overallWinRate: Number(overallWinRate.toFixed(1)),
-      lossReasons: [
-        { reason: 'Price too high', count: 5 },
-        { reason: 'No response', count: 3 },
-        { reason: 'Competitor', count: 2 },
-      ],
+      // Loss reasons are not captured as structured data — honest empty.
+      lossReasons: [] as { reason: string; count: number }[],
+      sampleSize: won + lost,
     };
   }
 

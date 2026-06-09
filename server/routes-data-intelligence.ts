@@ -395,103 +395,24 @@ router.post("/campaign-sizing", async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 // Freedom Meter Snapshot
 // ---------------------------------------------------------------------------
+//
+// Truth-immutable (Quinn): this endpoint fabricated note balances, remaining
+// terms, next-payment dates, portfolio value, a "freedom score", and a 12-month
+// synthetic history — none of it backed by a real notes/amortization system of
+// record. It has no current client caller. Rather than fabricate a customer's
+// financial picture, the handler is hard-gated to an honest "unavailable" state
+// so it cannot be wired by accident. Restore real data here only once a notes
+// ledger / amortization source exists.
+// ---------------------------------------------------------------------------
 
-router.get("/freedom-snapshot", async (req: Request, res: Response) => {
-  try {
-    const { db } = await import("./db");
-    const { deals, properties } = await import("@shared/schema");
-    const { eq, and } = await import("drizzle-orm");
-    const org = req.organization;
-    const monthlyExpenses = parseFloat(String(req.query.expenses || "4500"));
-
-    // Fetch active seller-financed deals for this org
-    const closedDeals = await db
-      .select()
-      .from(deals)
-      .where(and(
-        eq(deals.organizationId, org.id),
-        eq(deals.status, "closed")
-      ))
-      .limit(100);
-
-    // Mock active note data (in production, this would join with a notes table)
-    // For now, generate from closed deals with seller financing
-    const activeNotes = closedDeals
-      .filter((d: any) => d.dealType === "owner_finance" || d.sellerFinanced)
-      .slice(0, 10)
-      .map((d: any, i: number) => ({
-        noteId: d.id,
-        propertyName: `${d.county || "County"}, ${d.state || "State"} — ${d.acres || 5} acres`,
-        monthlyPayment: (d as any).monthlyPayment || 329,
-        remainingMonths: 84 - (Math.floor(Math.random() * 20)),
-        totalBalance: ((d as any).salePrice || 15000) * 0.7,
-        nextPaymentDate: new Date(Date.now() + Math.random() * 30 * 86400000).toISOString(),
-        status: "current" as const,
-        interestRate: 9,
-        buyer: (d as any).buyerName,
-      }));
-
-    const totalMonthlyNoteIncome = activeNotes.reduce((s: number, n: any) => s + n.monthlyPayment, 0);
-    const freedomScore = monthlyExpenses > 0 ? (totalMonthlyNoteIncome / monthlyExpenses) * 100 : 0;
-
-    const monthlyShortfall = Math.max(0, monthlyExpenses - totalMonthlyNoteIncome);
-    const avgNoteMonthly = activeNotes.length > 0 ? totalMonthlyNoteIncome / activeNotes.length : 329;
-    const notesNeeded = avgNoteMonthly > 0 ? Math.ceil(monthlyShortfall / avgNoteMonthly) : 0;
-    const monthsUntilFreedom = notesNeeded > 0 ? notesNeeded * 2 : null;
-
-    const now = new Date();
-
-    // Historical progress (12-month synthetic based on deal history)
-    const historical = Array.from({ length: 12 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
-      const fraction = Math.max(0, 0.4 + (i * 0.05));
-      const income = Math.round(totalMonthlyNoteIncome * fraction);
-      return {
-        month: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        noteIncome: income,
-        expenses: monthlyExpenses,
-        freedomScore: Math.round((income / monthlyExpenses) * 100),
-      };
-    });
-
-    // Daily wisdom for today
-    const wisdomList = [
-      "\"The goal isn't to flip more properties — it's to collect enough notes that work feels optional.\" ",
-      "\"One deal financed at 9% for 84 months turns a $10K buy into $40K+ collected over time. That's the compounding power of the land note model.\"",
-      "\"Your down payment recoups your acquisition cost on day one. Every monthly payment after that is pure passive income.\"",
-      "\"When your note income exceeds your fixed expenses, you've achieved financial freedom.\"",
-      "\"The beauty of land notes: if the buyer defaults, you keep the down payment, all payments made, AND the land. Defaults are almost painless.\"",
-      "\"Diversify across counties and states. Geographic diversification is risk management.\"",
-      "\"Land notes are the closest thing to a subscription business in real estate: one acquisition, then monthly recurring revenue for 84 months.\"",
-    ];
-    const dailyInsight = wisdomList[Math.floor(Date.now() / 86400000) % wisdomList.length];
-
-    res.json({
-      totalMonthlyNoteIncome,
-      totalMonthlyExpenses: monthlyExpenses,
-      freedomScore,
-      activeNotes,
-      monthsUntilFreedom,
-      projectedFreedomDate: monthsUntilFreedom
-        ? new Date(now.getFullYear(), now.getMonth() + monthsUntilFreedom, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" })
-        : null,
-      portfolioValue: activeNotes.reduce((s: number, n: any) => s + n.totalBalance, 0),
-      notesAtRisk: activeNotes.filter((n: any) => n.status !== "current").length,
-      milestones: [
-        { label: "First Note", targetMonthly: 300, achieved: totalMonthlyNoteIncome >= 300 },
-        { label: "Cover Phone/Internet", targetMonthly: 200, achieved: totalMonthlyNoteIncome >= 200 },
-        { label: "Cover Groceries ($500/mo)", targetMonthly: 500, achieved: totalMonthlyNoteIncome >= 500 },
-        { label: "Cover Car Payment", targetMonthly: 800, achieved: totalMonthlyNoteIncome >= 800 },
-        { label: "Cover Rent/Mortgage", targetMonthly: 2000, achieved: totalMonthlyNoteIncome >= 2000 },
-        { label: "Full Expenses Covered", targetMonthly: monthlyExpenses, achieved: totalMonthlyNoteIncome >= monthlyExpenses },
-        { label: "2× Monthly Expenses", targetMonthly: monthlyExpenses * 2, achieved: totalMonthlyNoteIncome >= monthlyExpenses * 2 },
-      ],
-      historicalProgress: historical,
-      dailyInsight,
-    });
-  } catch (err: any) {
-    Errors.internal(res, err);
-  }
+router.get("/freedom-snapshot", async (_req: Request, res: Response) => {
+  res.status(503).json({
+    error: "SERVICE_UNAVAILABLE",
+    message:
+      "Freedom snapshot is not available — there is no notes/amortization system of record to source it from. This surface will not return fabricated note income, balances, or a freedom score.",
+    statusCode: 503,
+    status: "unavailable",
+  });
 });
 
 // ---------------------------------------------------------------------------
