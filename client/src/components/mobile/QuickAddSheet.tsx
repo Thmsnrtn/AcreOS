@@ -1,11 +1,20 @@
 /**
  * QuickAddSheet — the FAB action sheet for the mobile shell.
  *
- * Persona-aware: the same FAB does different work per investor type.
- *   land_investor / fix_flipper / tax_delinquent / subdivider / wholesaler
- *     → Quick add lead (name + phone + source)
- *   note_investor / note_originator / note_servicer
- *     → Log payment received (note + amount + date)
+ * Persona-aware: the FAB's PRIMARY action matches each persona's actual job,
+ * not a one-size-fits-all "log payment" for every note vertical.
+ *   land_investor / fix_flipper / tax_delinquent / subdivider / wholesaler /
+ *   subdivider
+ *     → Add a lead/parcel (name + phone + source) — their sourcing motion
+ *   note_investor
+ *     → Add a note (route to the full add-note form; underwriting a note is
+ *       more than a phone sheet can hold honestly)
+ *   note_originator
+ *     → Originate a note (route to the origination pipeline — they're the
+ *       lender at origination, structuring a deal into a new note)
+ *   note_servicer
+ *     → Log a payment (note + amount + date) — they SERVICE the book; posting
+ *       payments is their core daily motion (they don't own the notes)
  *   landlord
  *     → Log maintenance issue (property + summary + severity)
  *
@@ -16,12 +25,15 @@
  *
  * Optimistic + minimal: keep field count tiny. Real editing happens
  * on desktop. This sheet is for "I just took a call, capture this
- * before I forget."
+ * before I forget." Where the real motion (originating / structuring a
+ * note) needs more than a few fields, we route to the proper surface
+ * rather than fabricate a thin record.
  */
 
 import { useState, useRef, useEffect } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
-import { Mic, MicOff, Loader2 } from "lucide-react";
+import { useLocation } from "wouter";
+import { Mic, MicOff, Loader2, FileText, HandCoins, ArrowRight } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -50,16 +62,16 @@ interface QuickAddSheetProps {
   persona: Persona | undefined;
 }
 
-type FlowKind = "lead" | "payment" | "maintenance";
+type FlowKind = "lead" | "payment" | "maintenance" | "add_note" | "originate_note";
 
 function flowForPersona(persona: Persona | undefined): FlowKind {
-  if (
-    persona === "note_investor" ||
-    persona === "note_originator" ||
-    persona === "note_servicer"
-  ) {
-    return "payment";
-  }
+  // Each note persona's PRIMARY quick-action matches its real job:
+  //   investor   → add a note (buys notes onto the book they own)
+  //   originator → originate a note (lends; structures a deal into a new note)
+  //   servicer   → log a payment (services others' notes; posting is the motion)
+  if (persona === "note_investor") return "add_note";
+  if (persona === "note_originator") return "originate_note";
+  if (persona === "note_servicer") return "payment";
   if (persona === "landlord") return "maintenance";
   return "lead";
 }
@@ -586,18 +598,82 @@ function MaintenanceForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+// ─── Route-out card (Note Investor "Add a note" / Originator "Originate") ─────
+// Adding a note (investor) or originating one (originator) is a real
+// underwriting motion — principal, rate, term, amortization — more than a
+// few phone fields can capture honestly. Rather than fabricate a thin record
+// or fail the server's validation, the quick action routes to the proper
+// full-form surface, framed for the persona's job.
+
+function RouteOutCard({
+  icon,
+  headline,
+  body,
+  ctaLabel,
+  href,
+  onDone,
+}: {
+  icon: JSX.Element;
+  headline: string;
+  body: string;
+  ctaLabel: string;
+  href: string;
+  onDone: () => void;
+}) {
+  const [, navigate] = useLocation();
+  return (
+    <div className="text-center py-6 px-2">
+      <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted mb-3">
+        {icon}
+      </div>
+      <p className="text-sm font-semibold">{headline}</p>
+      <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto leading-relaxed">
+        {body}
+      </p>
+      <Button
+        className="mt-5 w-full h-12"
+        onClick={() => {
+          onDone();
+          navigate(href);
+        }}
+      >
+        {ctaLabel}
+        <ArrowRight className="h-4 w-4 ml-1.5" aria-hidden="true" />
+      </Button>
+    </div>
+  );
+}
+
 // ─── Top-level sheet ────────────────────────────────────────────────────────
+
+const FLOW_COPY: Record<FlowKind, { title: string; description: string }> = {
+  lead: {
+    title: "Quick add lead",
+    description: "Take the call. Save the rest later from desktop.",
+  },
+  payment: {
+    // Servicer framing: they post payments onto the book they service.
+    title: "Log a payment",
+    description: "Post a payment to the serviced book before you forget.",
+  },
+  maintenance: {
+    title: "Log maintenance issue",
+    description: "Tenant call about the heater? Open a ticket in seconds.",
+  },
+  add_note: {
+    title: "Add a note",
+    description: "Bring a note onto your book — set it up on the full form.",
+  },
+  originate_note: {
+    title: "Originate a note",
+    description: "Structure a deal into a new note — open your origination pipeline.",
+  },
+};
 
 export function QuickAddSheet({ open, onOpenChange, persona }: QuickAddSheetProps) {
   const flow = flowForPersona(persona);
-  const title =
-    flow === "payment" ? "Log payment received"
-    : flow === "maintenance" ? "Log maintenance issue"
-    : "Quick add lead";
-  const description =
-    flow === "payment" ? "Borrower text confirmation? Capture it before you forget."
-    : flow === "maintenance" ? "Tenant call about the heater? Open a ticket in seconds."
-    : "Take the call. Save the rest later from desktop.";
+  const { title, description } = FLOW_COPY[flow];
+  const onDone = () => onOpenChange(false);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -607,9 +683,29 @@ export function QuickAddSheet({ open, onOpenChange, persona }: QuickAddSheetProp
           <SheetDescription>{description}</SheetDescription>
         </SheetHeader>
         <div className="mt-4">
-          {flow === "lead" && <LeadForm onDone={() => onOpenChange(false)} />}
-          {flow === "payment" && <PaymentForm onDone={() => onOpenChange(false)} />}
-          {flow === "maintenance" && <MaintenanceForm onDone={() => onOpenChange(false)} />}
+          {flow === "lead" && <LeadForm onDone={onDone} />}
+          {flow === "payment" && <PaymentForm onDone={onDone} />}
+          {flow === "maintenance" && <MaintenanceForm onDone={onDone} />}
+          {flow === "add_note" && (
+            <RouteOutCard
+              icon={<FileText className="h-6 w-6 text-muted-foreground" aria-hidden="true" />}
+              headline="Adding a note takes a few details"
+              body="Principal, rate, term, and borrower — the full form sets the amortization right the first time."
+              ctaLabel="Open add-a-note form"
+              href="/notes"
+              onDone={onDone}
+            />
+          )}
+          {flow === "originate_note" && (
+            <RouteOutCard
+              icon={<HandCoins className="h-6 w-6 text-muted-foreground" aria-hidden="true" />}
+              headline="Originate from your pipeline"
+              body="Pick the deal, underwrite the borrower, and set the terms — then fund the new note."
+              ctaLabel="Open origination pipeline"
+              href="/notes/pipeline"
+              onDone={onDone}
+            />
+          )}
         </div>
       </SheetContent>
     </Sheet>
