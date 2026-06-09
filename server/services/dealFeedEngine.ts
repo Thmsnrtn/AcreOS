@@ -19,6 +19,67 @@ import {
 import { eq, and, desc, gte, sql, count } from "drizzle-orm";
 import { subDays, startOfDay } from "date-fns";
 import { logger } from "../utils/logger";
+import { acquisitionRadar, type ParcelData } from "./acquisitionRadar";
+import type { RadarConfig } from "@shared/schema";
+
+// Neutral radar score used as a fall-open default when real scoring is
+// unavailable (no config, scorer error). Keeps the feed honest rather than
+// crashing or fabricating a high score.
+const NEUTRAL_RADAR_SCORE = 50;
+
+/**
+ * Map a feed candidate (a `properties` row, loosely typed in this pipeline)
+ * onto the `ParcelData` shape the real acquisition-radar scorer expects.
+ * Mirrors the mapping in acquisitionRadar.scanParcelsForOrganization so the
+ * two code paths score identical inputs identically.
+ */
+function toParcelData(parcel: any): ParcelData {
+  const num = (v: any): number | undefined => {
+    if (v == null || v === "") return undefined;
+    const n = typeof v === "number" ? v : parseFloat(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  return {
+    propertyId: typeof parcel.propertyId === "number" ? parcel.propertyId
+      : typeof parcel.id === "number" ? parcel.id : undefined,
+    apn: parcel.apn || parcel.parcelNumber || undefined,
+    county: parcel.county || undefined,
+    state: parcel.state || undefined,
+    latitude: num(parcel.latitude ?? parcel.lat),
+    longitude: num(parcel.longitude ?? parcel.lng),
+    listPrice: num(parcel.listPrice),
+    assessedValue: num(parcel.assessedValue),
+    acreage: num(parcel.acreage ?? parcel.sizeAcres),
+    zoning: parcel.zoning || undefined,
+    daysOnMarket: num(parcel.daysOnMarket),
+  };
+}
+
+/**
+ * Run the REAL acquisition-radar scorer for a single parcel, falling OPEN to
+ * the neutral default on any failure so one bad parcel never breaks the feed.
+ * The radar scorer owns its own enrichment (fetchEnrichedData) — the feed does
+ * not pre-fetch parcel/tax/market/flood data, so this adds no double-fetch.
+ */
+export async function scoreParcelRadar(
+  parcel: any,
+  config: RadarConfig | null,
+): Promise<number> {
+  if (!config) return NEUTRAL_RADAR_SCORE;
+  try {
+    const result = await acquisitionRadar.scoreParcel(toParcelData(parcel), config);
+    const score = result?.score;
+    return typeof score === "number" && Number.isFinite(score) ? score : NEUTRAL_RADAR_SCORE;
+  } catch (err) {
+    logger.warn("radar scoring failed for parcel; falling open to neutral", {
+      apn: parcel?.apn || parcel?.parcelNumber || null,
+      county: parcel?.county || null,
+      state: parcel?.state || null,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return NEUTRAL_RADAR_SCORE;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Composite score formula
@@ -206,6 +267,7 @@ function safeDivide(numerator: number, denominator: number, fallback = 0): numbe
 async function buildOpportunity(
   parcel: any,
   _orgId: number,
+  radarConfig: RadarConfig | null,
 ): Promise<DealOpportunity | null> {
   try {
     const apn = parcel.apn || parcel.parcelNumber || "";
@@ -225,12 +287,11 @@ async function buildOpportunity(
 
     // Parallel enrichment — allSettled so failures don't block
     const [radarResult, intentResult, lcsResult, offerResult] = await Promise.allSettled([
-      // TODO(tsc): acquisitionRadar.scoreParcel(parcel, config) needs a
-      // per-org RadarConfig row that buildOpportunity does not load. The
-      // previous call passed (_orgId, parcel) — wrong arg shapes — so radar
-      // scoring already failed at runtime and fell back to the neutral
-      // default. Wire the org's radarConfigs row here to enable it.
-      Promise.resolve<{ score: number }>({ score: 50 }),
+      // Real acquisition-radar scoring. scoreParcelRadar maps the candidate to
+      // the scorer's ParcelData shape, uses the org's RadarConfig weights, and
+      // falls open to the neutral default (logging a structured warn) on any
+      // failure so a single bad parcel never breaks the feed.
+      scoreParcelRadar(parcel, radarConfig).then(score => ({ score })),
       import("./sellerIntentPredictor").then(m => {
         const svc = new m.SellerIntentPredictorService();
         return svc.predictIntent?.(_orgId, parcel.leadId) ?? { intentScore: 50 };
@@ -366,10 +427,24 @@ export async function generateDealFeed(orgId: number): Promise<DealOpportunity[]
     })));
   }
 
+  // Load the org's radar config ONCE (honest schema-default weights when the
+  // org has none — getOrCreateConfig creates a Default row). Threaded into
+  // every buildOpportunity so we don't reload it per parcel. If config loading
+  // itself fails, fall open: radar scoring uses the neutral default.
+  let radarConfig: RadarConfig | null = null;
+  try {
+    radarConfig = await acquisitionRadar.getOrCreateConfig(orgId);
+  } catch (err) {
+    logger.warn("failed to load radar config for deal feed; radar scores fall open to neutral", {
+      orgId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   // Build opportunities in parallel per county batch
   const opportunities: DealOpportunity[] = [];
   const buildResults = await Promise.allSettled(
-    candidates.slice(0, 250).map(c => buildOpportunity(c, orgId)),
+    candidates.slice(0, 250).map(c => buildOpportunity(c, orgId, radarConfig)),
   );
 
   for (const r of buildResults) {
