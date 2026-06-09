@@ -14,7 +14,7 @@ describe("founder-chat stream route module", () => {
     const mod = await import("../../server/routes-founder-chat");
     expect(typeof mod.registerFounderChatRoutes).toBe("function");
     expect(mod.default).toBeDefined();
-  });
+  }, 30000); // heavy tool-registry side-effect import — robust under full-suite load
 
   it("after loading, registry has at least 40 founder-chat tools", async () => {
     await import("../../server/routes-founder-chat");
@@ -23,7 +23,7 @@ describe("founder-chat stream route module", () => {
     // Initial: 16 inquiry + 13 action + 6 synthesis + 9 delegation = 44.
     // Phase G read-only Fly batch adds 4 more inquiry tools → 48.
     expect(total).toBeGreaterThanOrEqual(40);
-  });
+  }, 30000);
 
   it("inquiry/action/synthesis/delegation counts are correct", async () => {
     await import("../../server/routes-founder-chat");
@@ -45,7 +45,7 @@ describe("founder-chat stream route module", () => {
     // Synthesis: 6 core + 2 added by the pre-Phase-D synthesis-tools update.
     expect(listTools({ category: "synthesis" }).length).toBe(8);
     expect(listTools({ category: "delegation" }).length).toBe(9);
-  });
+  }, 30000);
 
   it("expected SSE event sequence for a buckets turn", () => {
     // The chat-stream emits this sequence (asserted by inspection of

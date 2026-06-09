@@ -143,17 +143,20 @@ describe("PersonaMapStrip — persona dispatch table", () => {
     expect(src).toContain("export function PersonaMapStrip");
   });
 
-  // Critical: persona dispatch must cover at least 2 distinct personas.
-  it("handles note_investor persona (isCollateral branch)", () => {
-    expect(src).toContain('persona === "note_investor"');
+  // Critical: persona dispatch must cover the distinct personas. The strip was
+  // rewritten (persona-depth, 2026-06-08) from `persona === "x"` if-chains to a
+  // `switch (persona) { case "x": }` dispatch — accept either form so the test
+  // guards persona COVERAGE, not the dispatch style.
+  it("handles note_investor persona (portfolio-yield branch)", () => {
+    expect(src).toMatch(/(case "note_investor"|persona === "note_investor")/);
   });
 
-  it("handles wholesaler persona (isCurbCapture branch)", () => {
-    expect(src).toContain('persona === "wholesaler"');
+  it("handles wholesaler persona (curb-capture branch)", () => {
+    expect(src).toMatch(/(case "wholesaler"|persona === "wholesaler")/);
   });
 
-  it("handles fix_flipper persona (isInventory branch)", () => {
-    expect(src).toContain('persona === "fix_flipper"');
+  it("handles fix_flipper persona (inventory branch)", () => {
+    expect(src).toMatch(/(case "fix_flipper"|persona === "fix_flipper")/);
   });
 
   it("land_investor path returns null (no strip for default persona)", () => {
