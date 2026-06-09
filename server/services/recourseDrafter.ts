@@ -484,3 +484,79 @@ export async function aggregateAndDraft(
 
   return { ...agg, drafted };
 }
+
+// ---------------------------------------------------------------------------
+// 3. The sweep tick — what the scheduler heartbeat runs.
+// ---------------------------------------------------------------------------
+
+export interface RecourseSweepResult {
+  inserted: number;
+  scanned: number;
+  drafted: number;
+  /** Number of founder push notifications that were sent this tick. */
+  pushed: number;
+}
+
+/**
+ * Dependencies the sweep tick needs to wake the founder's phone. Injectable so
+ * the scheduler heartbeat wires in the real founder + push services while tests
+ * drive the notify decision with no network and no DB.
+ */
+export interface RecourseSweepDeps {
+  aggregateAndDraft: typeof aggregateAndDraft;
+  getFounderPrimaryOrgId: () => Promise<number>;
+  getFounderUserIds: () => Promise<string[]>;
+  sendPushToUser: (
+    organizationId: number,
+    userId: string,
+    payload: { title: string; body: string; url?: string; tag?: string; data?: Record<string, any> },
+  ) => Promise<{ sent: number; failed: number }>;
+}
+
+/**
+ * Run one recourse-loop sweep tick: aggregate + draft (bounded), then — ONLY
+ * when new drafts actually landed this tick — push the founder's phone so the
+ * "same-hour personal reply" promise holds without anyone opening the app.
+ *
+ * This is the testable core of the scheduler's recourse heartbeat. It is
+ * best-effort: a push failure is swallowed (logged) and never changes the
+ * aggregate/draft result, and we never page (this is a lifecycle nudge, not a
+ * P0/P1 incident).
+ */
+export async function runRecourseSweepTick(
+  deps: RecourseSweepDeps,
+  opts: { maxDrafts?: number } = {},
+): Promise<RecourseSweepResult> {
+  const result = await deps.aggregateAndDraft({ maxDrafts: opts.maxDrafts ?? 25 });
+
+  let pushed = 0;
+  // Only wake the founder when NEW drafts were generated this tick. Re-runs that
+  // find nothing new (the common case) stay silent.
+  if (result.drafted > 0) {
+    try {
+      const [orgId, founderUserIds] = await Promise.all([
+        deps.getFounderPrimaryOrgId().catch(() => 1),
+        deps.getFounderUserIds().catch(() => [] as string[]),
+      ]);
+      const many = result.drafted !== 1;
+      for (const userId of founderUserIds) {
+        const r = await deps.sendPushToUser(orgId, userId, {
+          title: "A customer needs a personal reply",
+          body: many
+            ? `${result.drafted} drafts are ready in your recourse queue — send them before the hour is out.`
+            : "1 draft is ready in your recourse queue — send it before the hour is out.",
+          url: "/founder/recourse",
+          tag: "recourse-drafts",
+          data: { recourse: true, drafted: result.drafted },
+        });
+        pushed += r.sent;
+      }
+    } catch (err) {
+      logger.warn("[recourse] founder push on sweep failed", {
+        metadata: { error: (err as Error).message },
+      });
+    }
+  }
+
+  return { ...result, pushed };
+}

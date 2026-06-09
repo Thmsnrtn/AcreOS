@@ -1100,238 +1100,67 @@ Generate 3 helpful tips for this step.`,
       throw new Error("Organization not found");
     }
 
+    // RAFE — persona-aware sample data. Until now this shipped ONE hardcoded
+    // land-flipper fixture set to everyone, so a note investor / servicer who
+    // clicked "Try with sample data" landed in raw-land-acquisition mock — the
+    // exact mismatch the persona work removed everywhere else. We now branch on
+    // the org's businessType (set by the onboarding wizard and resolved here)
+    // and ship a fixture set SHAPED for that persona, using the same vocabulary
+    // the Today/Finance persona forks encode. All fixtures stay honest, realistic,
+    // and clearly marked as sample. Cleanup contract preserved: every lead keeps
+    // source="sample_data" and every property keeps an apn that starts with
+    // "SAMPLE-", so clearSampleData() removes them regardless of persona.
+    const businessType =
+      (org.onboardingData as OnboardingData)?.businessType ?? "land_flipper";
+
+    const fixtures = buildSampleFixtures(orgId, businessType);
+
     let leadsCreated = 0;
     let propertiesCreated = 0;
     let notesCreated = 0;
     let dealsCreated = 0;
 
-    // Sample leads data
-    const sampleLeads = [
-      {
-        organizationId: orgId,
-        type: "seller" as const,
-        firstName: "John",
-        lastName: "Anderson",
-        email: "john.anderson@example.com",
-        phone: "(555) 123-4567",
-        address: "123 Oak Street",
-        city: "Austin",
-        state: "TX",
-        zip: "78701",
-        status: "new",
-        source: "sample_data",
-        tags: ["sample", "hot lead"],
-      },
-      {
-        organizationId: orgId,
-        type: "seller" as const,
-        firstName: "Maria",
-        lastName: "Garcia",
-        email: "maria.garcia@example.com",
-        phone: "(555) 234-5678",
-        address: "456 Pine Avenue",
-        city: "Phoenix",
-        state: "AZ",
-        zip: "85001",
-        status: "contacted",
-        source: "sample_data",
-        tags: ["sample", "motivated seller"],
-      },
-      {
-        organizationId: orgId,
-        type: "buyer" as const,
-        firstName: "Robert",
-        lastName: "Smith",
-        email: "robert.smith@example.com",
-        phone: "(555) 345-6789",
-        address: "789 Maple Drive",
-        city: "Denver",
-        state: "CO",
-        zip: "80202",
-        status: "qualified",
-        source: "sample_data",
-        tags: ["sample", "cash buyer"],
-      },
-      {
-        organizationId: orgId,
-        type: "seller" as const,
-        firstName: "Linda",
-        lastName: "Williams",
-        email: "linda.williams@example.com",
-        phone: "(555) 456-7890",
-        address: "321 Cedar Lane",
-        city: "Tampa",
-        state: "FL",
-        zip: "33601",
-        status: "negotiating",
-        source: "sample_data",
-        tags: ["sample", "inherited property"],
-      },
-      {
-        organizationId: orgId,
-        type: "buyer" as const,
-        firstName: "Michael",
-        lastName: "Johnson",
-        email: "michael.johnson@example.com",
-        phone: "(555) 567-8901",
-        address: "654 Birch Road",
-        city: "Nashville",
-        state: "TN",
-        zip: "37201",
-        status: "new",
-        source: "sample_data",
-        tags: ["sample", "terms buyer"],
-      },
-    ];
-
     // Create leads
     const createdLeads: any[] = [];
-    for (const leadData of sampleLeads) {
-      const lead = await storage.createLead(leadData);
+    for (const leadData of fixtures.leads) {
+      const lead = await storage.createLead(leadData as any);
       createdLeads.push(lead);
       leadsCreated++;
     }
 
-    // Sample properties data
-    const sampleProperties = [
-      {
-        organizationId: orgId,
-        apn: "SAMPLE-001-234",
-        legalDescription: "Lot 5, Block A, Sunset Acres",
-        county: "Travis",
-        state: "TX",
-        address: "Tract 5 FM 2222",
-        city: "Austin",
-        zip: "78730",
-        sizeAcres: "5.25",
-        zoning: "Agricultural",
-        terrain: "rolling",
-        roadAccess: "paved",
-        status: "owned",
-        assessedValue: "15000",
-        marketValue: "25000",
-        purchasePrice: "12000",
-        listPrice: "29900",
-        sellerId: createdLeads[0]?.id,
-        description: "Beautiful 5+ acre parcel with mature trees and rolling terrain. Great for homesite or recreational use.",
-        highlights: ["Road frontage", "Mature trees", "Electric available"],
-      },
-      {
-        organizationId: orgId,
-        apn: "SAMPLE-002-567",
-        legalDescription: "Lot 12, Desert Vista Estates",
-        county: "Maricopa",
-        state: "AZ",
-        address: "N Desert Vista Road",
-        city: "Surprise",
-        zip: "85374",
-        sizeAcres: "2.5",
-        zoning: "Residential",
-        terrain: "flat",
-        roadAccess: "gravel",
-        status: "listed",
-        assessedValue: "8000",
-        marketValue: "18000",
-        purchasePrice: "6500",
-        listPrice: "19900",
-        sellerId: createdLeads[1]?.id,
-        description: "Level 2.5 acre lot perfect for manufactured or stick-built home. Mountain views!",
-        highlights: ["Mountain views", "Level lot", "Near town"],
-      },
-      {
-        organizationId: orgId,
-        apn: "SAMPLE-003-890",
-        legalDescription: "Parcel B, Mountain Creek Ranch",
-        county: "El Paso",
-        state: "CO",
-        address: "County Road 47",
-        city: "Peyton",
-        zip: "80831",
-        sizeAcres: "10.0",
-        zoning: "Agricultural",
-        terrain: "mountainous",
-        roadAccess: "dirt",
-        status: "under_contract",
-        assessedValue: "22000",
-        marketValue: "45000",
-        purchasePrice: "18000",
-        listPrice: "49900",
-        description: "Stunning 10 acre mountain property with Pikes Peak views. Perfect for off-grid living.",
-        highlights: ["Pikes Peak views", "Creek frontage", "Wildlife"],
-      },
-    ];
-
-    // Create properties
+    // Create properties (each fixture names which sample lead is its seller by
+    // index, resolved against the just-created leads so FKs are valid).
     const createdProperties: any[] = [];
-    for (const propData of sampleProperties) {
-      const property = await storage.createProperty(propData as any);
+    for (const propSpec of fixtures.properties) {
+      const { sellerLeadIndex, ...propData } = propSpec;
+      const property = await storage.createProperty({
+        ...propData,
+        sellerId:
+          sellerLeadIndex != null ? createdLeads[sellerLeadIndex]?.id : undefined,
+      } as any);
       createdProperties.push(property);
       propertiesCreated++;
     }
 
-    // Create sample deals
-    if (createdProperties.length > 0) {
-      const sampleDeals = [
-        {
-          organizationId: orgId,
-          propertyId: createdProperties[0]?.id,
-          type: "acquisition",
-          status: "closed",
-          offerAmount: "10000",
-          acceptedAmount: "12000",
-          notes: "Sample acquisition deal - good margin on this one",
-        },
-        {
-          organizationId: orgId,
-          propertyId: createdProperties[2]?.id,
-          type: "disposition",
-          status: "in_escrow",
-          offerAmount: "45000",
-          notes: "Sample disposition - cash buyer, closing next week",
-        },
-      ];
-
-      for (const dealData of sampleDeals) {
-        await storage.createDeal(dealData as any);
-        dealsCreated++;
-      }
+    // Create deals (each fixture names its property by index).
+    for (const dealSpec of fixtures.deals) {
+      const { propertyIndex, ...dealData } = dealSpec;
+      const propertyId =
+        propertyIndex != null ? createdProperties[propertyIndex]?.id : undefined;
+      if (propertyIndex != null && propertyId == null) continue;
+      await storage.createDeal({ ...dealData, propertyId } as any);
+      dealsCreated++;
     }
 
-    // Create sample notes (seller finance)
-    if (createdProperties.length > 1 && createdLeads.length > 2) {
-      const today = new Date();
-      const nextMonth = addMonths(new Date(today), 1);
-      const maturityDate = new Date(today);
-      maturityDate.setFullYear(maturityDate.getFullYear() + 5);
-
-      const sampleNote = {
-        organizationId: orgId,
-        propertyId: createdProperties[1]?.id,
-        borrowerId: createdLeads[2]?.id,
-        originalPrincipal: "19900",
-        currentBalance: "18500",
-        interestRate: "9.9",
-        termMonths: 60,
-        monthlyPayment: "419.52",
-        serviceFee: "0",
-        lateFee: "25",
-        gracePeriodDays: 10,
-        startDate: today,
-        firstPaymentDate: nextMonth,
-        nextPaymentDate: nextMonth,
-        maturityDate: maturityDate,
-        status: "active",
-        downPayment: "1990",
-        downPaymentReceived: true,
-        notes_text: "Sample seller-financed note. Buyer is paying on time.",
-        // Reg-Z §1026.43 hard gate (Workstream A). Sample onboarding data is
-        // synthetic / non-consumer — flagged exempt so the gate constraint
-        // doesn't reject the seed insert. Real consumer originations must
-        // go through POST /api/notes/:id/originate with a full ATR.
-        atrExemptionCode: "business_purpose",
-      };
-
-      await storage.createNote(sampleNote as any);
+    // Create notes (each fixture names its property + borrower lead by index).
+    for (const noteSpec of fixtures.notes) {
+      const { propertyIndex, borrowerLeadIndex, ...noteData } = noteSpec;
+      const propertyId =
+        propertyIndex != null ? createdProperties[propertyIndex]?.id : undefined;
+      const borrowerId =
+        borrowerLeadIndex != null ? createdLeads[borrowerLeadIndex]?.id : undefined;
+      if (propertyIndex != null && propertyId == null) continue;
+      await storage.createNote({ ...noteData, propertyId, borrowerId } as any);
       notesCreated++;
     }
 
@@ -1414,6 +1243,272 @@ Generate 3 helpful tips for this step.`,
         deals: dealsDeleted,
       },
     };
+  }
+}
+
+// ===========================================================================
+// Persona-shaped sample fixtures (Rafe).
+//
+// Each builder returns a self-contained fixture set for one persona. Properties
+// and notes reference their related leads/properties by INDEX (resolved against
+// the just-created rows in generateSampleData) so we never hand-wire ids. The
+// cleanup contract is enforced here, not by the caller:
+//   - every lead carries source="sample_data" + a "sample" tag;
+//   - every property's apn starts with "SAMPLE-";
+// so clearSampleData() removes the whole set for any persona.
+//
+// NO Math.random() anywhere — every value is a fixed, realistic, honest figure
+// (the no-fabrication CI ratchet blocks random in customer-fact paths).
+// ===========================================================================
+
+interface SampleLeadFixture {
+  organizationId: number;
+  type: "seller" | "buyer";
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  status: string;
+  source: "sample_data";
+  tags: string[];
+}
+
+interface SamplePropertyFixture {
+  organizationId: number;
+  apn: string; // MUST start with "SAMPLE-" so clearSampleData removes it.
+  legalDescription: string;
+  county: string;
+  state: string;
+  address: string;
+  city: string;
+  zip: string;
+  sizeAcres: string;
+  zoning: string;
+  terrain: string;
+  roadAccess: string;
+  status: string;
+  assessedValue: string;
+  marketValue: string;
+  purchasePrice: string;
+  listPrice: string;
+  description: string;
+  highlights: string[];
+  /** Index into the fixture leads array that owns/sells this property. */
+  sellerLeadIndex?: number;
+}
+
+interface SampleDealFixture {
+  organizationId: number;
+  type: string;
+  status: string;
+  offerAmount: string;
+  acceptedAmount?: string;
+  notes: string;
+  /** Index into the fixture properties array this deal is on. */
+  propertyIndex?: number;
+}
+
+interface SampleNoteFixture {
+  organizationId: number;
+  originalPrincipal: string;
+  currentBalance: string;
+  interestRate: string;
+  termMonths: number;
+  monthlyPayment: string;
+  serviceFee: string;
+  lateFee: string;
+  gracePeriodDays: number;
+  startDate: Date;
+  firstPaymentDate: Date;
+  nextPaymentDate: Date;
+  maturityDate: Date;
+  status: string;
+  downPayment: string;
+  downPaymentReceived: boolean;
+  notes_text: string;
+  // Reg-Z §1026.43 hard gate (Workstream A). Sample onboarding data is
+  // synthetic / non-consumer — flagged exempt so the gate constraint doesn't
+  // reject the seed insert. Real consumer originations must go through
+  // POST /api/notes/:id/originate with a full ATR.
+  atrExemptionCode: "business_purpose";
+  /** Index into the fixture properties array secured by this note. */
+  propertyIndex?: number;
+  /** Index into the fixture leads array that is the borrower. */
+  borrowerLeadIndex?: number;
+}
+
+interface SampleFixtureSet {
+  leads: SampleLeadFixture[];
+  properties: SamplePropertyFixture[];
+  deals: SampleDealFixture[];
+  notes: SampleNoteFixture[];
+}
+
+function noteDates(monthsPaid: number): {
+  startDate: Date;
+  firstPaymentDate: Date;
+  nextPaymentDate: Date;
+  maturityDate: Date;
+} {
+  // Anchor on "now" but back-date the start so a seasoned book reads honestly.
+  const now = new Date();
+  const startDate = new Date(now);
+  startDate.setMonth(startDate.getMonth() - monthsPaid);
+  const firstPaymentDate = addMonths(new Date(startDate), 1);
+  const nextPaymentDate = addMonths(new Date(now), 1);
+  const maturityDate = new Date(startDate);
+  maturityDate.setFullYear(maturityDate.getFullYear() + 5);
+  return { startDate, firstPaymentDate, nextPaymentDate, maturityDate };
+}
+
+/**
+ * Land flipper / default — vacant-parcel acquisition + seller-financed exit.
+ * This preserves the original hardcoded fixture set verbatim so existing land
+ * customers see exactly what they did before.
+ */
+function buildLandFlipperFixtures(orgId: number): SampleFixtureSet {
+  const leads: SampleLeadFixture[] = [
+    { organizationId: orgId, type: "seller", firstName: "John", lastName: "Anderson", email: "john.anderson@example.com", phone: "(555) 123-4567", address: "123 Oak Street", city: "Austin", state: "TX", zip: "78701", status: "new", source: "sample_data", tags: ["sample", "hot lead"] },
+    { organizationId: orgId, type: "seller", firstName: "Maria", lastName: "Garcia", email: "maria.garcia@example.com", phone: "(555) 234-5678", address: "456 Pine Avenue", city: "Phoenix", state: "AZ", zip: "85001", status: "contacted", source: "sample_data", tags: ["sample", "motivated seller"] },
+    { organizationId: orgId, type: "buyer", firstName: "Robert", lastName: "Smith", email: "robert.smith@example.com", phone: "(555) 345-6789", address: "789 Maple Drive", city: "Denver", state: "CO", zip: "80202", status: "qualified", source: "sample_data", tags: ["sample", "cash buyer"] },
+    { organizationId: orgId, type: "seller", firstName: "Linda", lastName: "Williams", email: "linda.williams@example.com", phone: "(555) 456-7890", address: "321 Cedar Lane", city: "Tampa", state: "FL", zip: "33601", status: "negotiating", source: "sample_data", tags: ["sample", "inherited property"] },
+    { organizationId: orgId, type: "buyer", firstName: "Michael", lastName: "Johnson", email: "michael.johnson@example.com", phone: "(555) 567-8901", address: "654 Birch Road", city: "Nashville", state: "TN", zip: "37201", status: "new", source: "sample_data", tags: ["sample", "terms buyer"] },
+  ];
+
+  const properties: SamplePropertyFixture[] = [
+    { organizationId: orgId, apn: "SAMPLE-001-234", legalDescription: "Lot 5, Block A, Sunset Acres", county: "Travis", state: "TX", address: "Tract 5 FM 2222", city: "Austin", zip: "78730", sizeAcres: "5.25", zoning: "Agricultural", terrain: "rolling", roadAccess: "paved", status: "owned", assessedValue: "15000", marketValue: "25000", purchasePrice: "12000", listPrice: "29900", description: "Beautiful 5+ acre parcel with mature trees and rolling terrain. Great for homesite or recreational use.", highlights: ["Road frontage", "Mature trees", "Electric available"], sellerLeadIndex: 0 },
+    { organizationId: orgId, apn: "SAMPLE-002-567", legalDescription: "Lot 12, Desert Vista Estates", county: "Maricopa", state: "AZ", address: "N Desert Vista Road", city: "Surprise", zip: "85374", sizeAcres: "2.5", zoning: "Residential", terrain: "flat", roadAccess: "gravel", status: "listed", assessedValue: "8000", marketValue: "18000", purchasePrice: "6500", listPrice: "19900", description: "Level 2.5 acre lot perfect for manufactured or stick-built home. Mountain views!", highlights: ["Mountain views", "Level lot", "Near town"], sellerLeadIndex: 1 },
+    { organizationId: orgId, apn: "SAMPLE-003-890", legalDescription: "Parcel B, Mountain Creek Ranch", county: "El Paso", state: "CO", address: "County Road 47", city: "Peyton", zip: "80831", sizeAcres: "10.0", zoning: "Agricultural", terrain: "mountainous", roadAccess: "dirt", status: "under_contract", assessedValue: "22000", marketValue: "45000", purchasePrice: "18000", listPrice: "49900", description: "Stunning 10 acre mountain property with Pikes Peak views. Perfect for off-grid living.", highlights: ["Pikes Peak views", "Creek frontage", "Wildlife"] },
+  ];
+
+  const deals: SampleDealFixture[] = [
+    { organizationId: orgId, type: "acquisition", status: "closed", offerAmount: "10000", acceptedAmount: "12000", notes: "Sample acquisition deal - good margin on this one", propertyIndex: 0 },
+    { organizationId: orgId, type: "disposition", status: "in_escrow", offerAmount: "45000", notes: "Sample disposition - cash buyer, closing next week", propertyIndex: 2 },
+  ];
+
+  const d = noteDates(0);
+  const notes: SampleNoteFixture[] = [
+    { organizationId: orgId, originalPrincipal: "19900", currentBalance: "18500", interestRate: "9.9", termMonths: 60, monthlyPayment: "419.52", serviceFee: "0", lateFee: "25", gracePeriodDays: 10, ...d, status: "active", downPayment: "1990", downPaymentReceived: true, notes_text: "Sample seller-financed note. Buyer is paying on time.", atrExemptionCode: "business_purpose", propertyIndex: 1, borrowerLeadIndex: 2 },
+  ];
+
+  return { leads, properties, deals, notes };
+}
+
+/**
+ * Note investor — a small SERVICED note book. The center of gravity is the
+ * note ledger (borrowers, payment cadence, delinquency), not parcel hunting,
+ * so the fixtures lead with borrowers + a seasoned book at mixed performance.
+ */
+function buildNoteInvestorFixtures(orgId: number): SampleFixtureSet {
+  const leads: SampleLeadFixture[] = [
+    { organizationId: orgId, type: "buyer", firstName: "Dana", lastName: "Phillips", email: "dana.phillips@example.com", phone: "(555) 201-3300", address: "44 Sandhill Trail", city: "Ocala", state: "FL", zip: "34470", status: "active", source: "sample_data", tags: ["sample", "borrower", "current"] },
+    { organizationId: orgId, type: "buyer", firstName: "Marcus", lastName: "Reed", email: "marcus.reed@example.com", phone: "(555) 202-4411", address: "1208 Mesquite Way", city: "Lubbock", state: "TX", zip: "79410", status: "active", source: "sample_data", tags: ["sample", "borrower", "watch"] },
+    { organizationId: orgId, type: "buyer", firstName: "Tyra", lastName: "Coleman", email: "tyra.coleman@example.com", phone: "(555) 203-5522", address: "9 Red Rock Loop", city: "Cortez", state: "CO", zip: "81321", status: "active", source: "sample_data", tags: ["sample", "borrower", "delinquent"] },
+    { organizationId: orgId, type: "seller", firstName: "Greenline", lastName: "Capital", email: "desk@greenline-notes.example.com", phone: "(555) 204-6633", address: "500 Note Exchange Blvd", city: "Dallas", state: "TX", zip: "75201", status: "qualified", source: "sample_data", tags: ["sample", "note seller", "wholesale tape"] },
+  ];
+
+  // Each note is secured by a parcel; properties carry status="owned" because
+  // the note investor holds paper on land they've already conveyed.
+  const properties: SamplePropertyFixture[] = [
+    { organizationId: orgId, apn: "SAMPLE-N01-118", legalDescription: "Lot 7, Block C, Sandhill Acres", county: "Marion", state: "FL", address: "44 Sandhill Trail", city: "Ocala", zip: "34470", sizeAcres: "1.25", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "owned", assessedValue: "9000", marketValue: "16000", purchasePrice: "7000", listPrice: "0", description: "Collateral parcel for a performing seller-financed note. Borrower current.", highlights: ["Performing note collateral", "Paved access"], sellerLeadIndex: 0 },
+    { organizationId: orgId, apn: "SAMPLE-N02-227", legalDescription: "Tract 3, Mesquite Flats", county: "Lubbock", state: "TX", address: "1208 Mesquite Way", city: "Lubbock", zip: "79410", sizeAcres: "3.0", zoning: "Agricultural", terrain: "flat", roadAccess: "gravel", status: "owned", assessedValue: "11000", marketValue: "21000", purchasePrice: "8500", listPrice: "0", description: "Collateral parcel for a note on the watch list — borrower paid 9 days late twice this year.", highlights: ["Note collateral", "Watch-list borrower"], sellerLeadIndex: 1 },
+    { organizationId: orgId, apn: "SAMPLE-N03-336", legalDescription: "Parcel A, Red Rock Mesa", county: "Montezuma", state: "CO", address: "9 Red Rock Loop", city: "Cortez", zip: "81321", sizeAcres: "5.0", zoning: "Agricultural", terrain: "rolling", roadAccess: "dirt", status: "owned", assessedValue: "14000", marketValue: "27000", purchasePrice: "10000", listPrice: "0", description: "Collateral parcel for a delinquent note — 38 days past due, loss-mitigation outreach in progress.", highlights: ["Note collateral", "Delinquent — loss mit"], sellerLeadIndex: 2 },
+  ];
+
+  // No acquisition/disposition deals — a note investor's pipeline is the book,
+  // surfaced as notes below. One disposition-style "note purchase" deal shows
+  // how a bought tape lands.
+  const deals: SampleDealFixture[] = [
+    { organizationId: orgId, type: "acquisition", status: "closed", offerAmount: "14200", acceptedAmount: "14200", notes: "Sample note purchase - bought a single performing note off a wholesale tape at ~0.78 of UPB.", propertyIndex: 0 },
+  ];
+
+  const dCurrent = noteDates(14); // seasoned, performing
+  const dWatch = noteDates(8);
+  const dDelinquent = noteDates(20);
+  const notes: SampleNoteFixture[] = [
+    { organizationId: orgId, originalPrincipal: "15500", currentBalance: "13100", interestRate: "10.5", termMonths: 84, monthlyPayment: "258.61", serviceFee: "15", lateFee: "25", gracePeriodDays: 10, ...dCurrent, status: "active", downPayment: "1550", downPaymentReceived: true, notes_text: "Sample performing note. Borrower current, 14 payments in. Yield holding.", atrExemptionCode: "business_purpose", propertyIndex: 0, borrowerLeadIndex: 0 },
+    { organizationId: orgId, originalPrincipal: "18000", currentBalance: "16400", interestRate: "9.75", termMonths: 96, monthlyPayment: "246.18", serviceFee: "15", lateFee: "25", gracePeriodDays: 10, ...dWatch, status: "active", downPayment: "1800", downPaymentReceived: true, notes_text: "Sample watch-list note. Paid 9 days late twice — inside grace but trending. Worth a check-in call.", atrExemptionCode: "business_purpose", propertyIndex: 1, borrowerLeadIndex: 1 },
+    { organizationId: orgId, originalPrincipal: "22000", currentBalance: "20950", interestRate: "11.0", termMonths: 120, monthlyPayment: "303.12", serviceFee: "15", lateFee: "25", gracePeriodDays: 10, ...dDelinquent, status: "delinquent", downPayment: "2200", downPaymentReceived: true, notes_text: "Sample delinquent note. 38 days past due. Loss-mitigation outreach started; do NOT proceed to remedy without notice + cure period.", atrExemptionCode: "business_purpose", propertyIndex: 2, borrowerLeadIndex: 2 },
+  ];
+
+  return { leads, properties, deals, notes };
+}
+
+/**
+ * Residential wholesaler — motivated-seller lead flow + a cash buyer list +
+ * assignments in flight. No notes (wholesalers flip contracts, not paper).
+ */
+function buildWholesalerFixtures(orgId: number): SampleFixtureSet {
+  const leads: SampleLeadFixture[] = [
+    { organizationId: orgId, type: "seller", firstName: "Carla", lastName: "Nguyen", email: "carla.nguyen@example.com", phone: "(555) 301-1010", address: "812 Harwood St", city: "Columbus", state: "OH", zip: "43201", status: "negotiating", source: "sample_data", tags: ["sample", "motivated seller", "pre-foreclosure"] },
+    { organizationId: orgId, type: "seller", firstName: "Devon", lastName: "Brooks", email: "devon.brooks@example.com", phone: "(555) 302-2020", address: "55 Lakeview Ct", city: "Memphis", state: "TN", zip: "38103", status: "contacted", source: "sample_data", tags: ["sample", "motivated seller", "tired landlord"] },
+    { organizationId: orgId, type: "buyer", firstName: "Anita", lastName: "Powell", email: "anita.powell@example.com", phone: "(555) 303-3030", address: "9001 Investor Row", city: "Atlanta", state: "GA", zip: "30303", status: "qualified", source: "sample_data", tags: ["sample", "cash buyer", "buyer list"] },
+    { organizationId: orgId, type: "buyer", firstName: "Hector", lastName: "Vega", email: "hector.vega@example.com", phone: "(555) 304-4040", address: "210 Rehab Ave", city: "Atlanta", state: "GA", zip: "30310", status: "qualified", source: "sample_data", tags: ["sample", "cash buyer", "buyer list"] },
+  ];
+
+  const properties: SamplePropertyFixture[] = [
+    { organizationId: orgId, apn: "SAMPLE-W01-441", legalDescription: "Lot 9, Block 2, Harwood Addition", county: "Franklin", state: "OH", address: "812 Harwood St", city: "Columbus", zip: "43201", sizeAcres: "0.18", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "under_contract", assessedValue: "78000", marketValue: "135000", purchasePrice: "92000", listPrice: "104000", description: "Sample wholesale deal. 3/1 needing cosmetic rehab. Under contract at $92k, assigning to a cash buyer.", highlights: ["Under contract", "Assignment in flight", "ARV ~$165k"], sellerLeadIndex: 0 },
+    { organizationId: orgId, apn: "SAMPLE-W02-552", legalDescription: "Unit 4, Lakeview Court Condos", county: "Shelby", state: "TN", address: "55 Lakeview Ct", city: "Memphis", zip: "38103", sizeAcres: "0.05", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "lead", assessedValue: "61000", marketValue: "98000", purchasePrice: "0", listPrice: "0", description: "Sample lead. Tired-landlord condo, seller exploring a quick cash exit. Pre-offer.", highlights: ["Tired landlord", "Pre-offer"], sellerLeadIndex: 1 },
+  ];
+
+  const deals: SampleDealFixture[] = [
+    { organizationId: orgId, type: "assignment", status: "in_escrow", offerAmount: "92000", acceptedAmount: "92000", notes: "Sample assignment. Locked at $92k, assigning to cash buyer at $104k — $12k assignment fee. EMD received.", propertyIndex: 0 },
+    { organizationId: orgId, type: "acquisition", status: "negotiating", offerAmount: "58000", notes: "Sample offer out. Tired-landlord condo, countered at $66k. Working toward a contract-to-close.", propertyIndex: 1 },
+  ];
+
+  return { leads, properties, deals, notes: [] };
+}
+
+/**
+ * Fix-and-flipper — acquisition + rehab + resale. Properties carry rehab framing
+ * (ARV, holding) and deals show an in-rehab + a listed-for-resale.
+ */
+function buildFixAndFlipFixtures(orgId: number): SampleFixtureSet {
+  const leads: SampleLeadFixture[] = [
+    { organizationId: orgId, type: "seller", firstName: "Priya", lastName: "Raman", email: "priya.raman@example.com", phone: "(555) 401-7000", address: "330 Birchwood Dr", city: "Raleigh", state: "NC", zip: "27601", status: "negotiating", source: "sample_data", tags: ["sample", "motivated seller", "estate sale"] },
+    { organizationId: orgId, type: "seller", firstName: "Owen", lastName: "Fletcher", email: "owen.fletcher@example.com", phone: "(555) 402-8000", address: "77 Magnolia St", city: "Charlotte", state: "NC", zip: "28202", status: "contacted", source: "sample_data", tags: ["sample", "motivated seller"] },
+    { organizationId: orgId, type: "buyer", firstName: "Sasha", lastName: "Klein", email: "sasha.klein@example.com", phone: "(555) 403-9000", address: "12 Retail Buyer Ln", city: "Raleigh", state: "NC", zip: "27604", status: "qualified", source: "sample_data", tags: ["sample", "retail buyer"] },
+  ];
+
+  const properties: SamplePropertyFixture[] = [
+    { organizationId: orgId, apn: "SAMPLE-F01-771", legalDescription: "Lot 14, Birchwood Estates", county: "Wake", state: "NC", address: "330 Birchwood Dr", city: "Raleigh", zip: "27601", sizeAcres: "0.25", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "owned", assessedValue: "188000", marketValue: "245000", purchasePrice: "165000", listPrice: "0", description: "Sample flip mid-rehab. Bought at $165k, ~$38k rehab budget, ARV ~$285k. Kitchen + 2 baths in progress.", highlights: ["Mid-rehab", "ARV ~$285k", "Holding cost ~$1.4k/mo"], sellerLeadIndex: 0 },
+    { organizationId: orgId, apn: "SAMPLE-F02-882", legalDescription: "Lot 6, Magnolia Court", county: "Mecklenburg", state: "NC", address: "77 Magnolia St", city: "Charlotte", zip: "28202", sizeAcres: "0.21", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "listed", assessedValue: "210000", marketValue: "299000", purchasePrice: "182000", listPrice: "299000", description: "Sample completed flip, listed for resale. Rehab done, on market 11 days, 2 showings scheduled.", highlights: ["Rehab complete", "Listed for resale", "11 days on market"], sellerLeadIndex: 1 },
+  ];
+
+  const deals: SampleDealFixture[] = [
+    { organizationId: orgId, type: "acquisition", status: "closed", offerAmount: "160000", acceptedAmount: "165000", notes: "Sample acquisition. Closed at $165k. Rehab scope locked at $38k. Target exit $285k.", propertyIndex: 0 },
+    { organizationId: orgId, type: "disposition", status: "listed", offerAmount: "299000", notes: "Sample resale. Listed at $299k after a $41k rehab. Watching days-on-market against the $182k basis.", propertyIndex: 1 },
+  ];
+
+  return { leads, properties, deals, notes: [] };
+}
+
+/**
+ * Dispatch to the right persona fixture builder. Verticals without a bespoke
+ * set fall back to the closest shaped one (hybrid → note investor, since the
+ * land side is already well-covered by the land flipper default; everything
+ * else → land flipper) so no persona ever lands in a blank or mismatched set.
+ */
+export function buildSampleFixtures(
+  orgId: number,
+  businessType: BusinessType | string,
+): SampleFixtureSet {
+  switch (businessType) {
+    case "note_investor":
+    case "creative_finance":
+      return buildNoteInvestorFixtures(orgId);
+    case "residential_wholesaler":
+      return buildWholesalerFixtures(orgId);
+    case "fix_and_flip":
+      return buildFixAndFlipFixtures(orgId);
+    case "land_flipper":
+    case "hybrid":
+    default:
+      return buildLandFlipperFixtures(orgId);
   }
 }
 
