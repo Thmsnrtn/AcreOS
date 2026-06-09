@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { fadeInUp } from "@/lib/animations";
@@ -35,6 +35,24 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
   const [deliveryMethod, setDeliveryMethod] = useState<string>("email");
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // a11y: move focus to the step heading on every step transition so
+  // keyboard + screen-reader users land on the new content instead of
+  // being stranded where the prior step's focus was. The aria-live
+  // region below announces the step label politely in parallel.
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const STEP_LABELS: Record<Step, string> = {
+    analysis: "Step 1 of 3: Analysis",
+    letter: "Step 2 of 3: Letter preview",
+    confirm: "Step 3 of 3: Confirm and send",
+  };
+  useEffect(() => {
+    if (!open) return;
+    // Defer to the next frame so the heading exists after the
+    // AnimatePresence step swap has committed.
+    const id = requestAnimationFrame(() => stepHeadingRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [step, open]);
 
   const { data: dealStats } = useQuery<{ offersSent: number }>({
     queryKey: ["/api/deals/stats"],
@@ -106,7 +124,11 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
       </SheetTrigger>
       <SheetContent side="bottom" className="h-[85vh] overflow-y-auto">
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+          <SheetTitle
+            ref={stepHeadingRef}
+            tabIndex={-1}
+            className="flex items-center gap-2 outline-none"
+          >
             {step !== "analysis" && (
               <Button
                 variant="ghost"
@@ -117,11 +139,15 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
                 <ArrowLeft className="w-4 h-4" />
               </Button>
             )}
-            {step === "analysis" && "Step 1: Analysis"}
-            {step === "letter" && "Step 2: Letter Preview"}
-            {step === "confirm" && "Step 3: Confirm & Send"}
+            {STEP_LABELS[step]}
           </SheetTitle>
         </SheetHeader>
+
+        {/* Polite step announcer — narrates the active step to assistive
+            tech as transitions happen, independent of where focus lands. */}
+        <div aria-live="polite" className="sr-only" data-testid="offer-wizard-step-announcer">
+          {STEP_LABELS[step]}
+        </div>
 
         <div className="mt-4 space-y-4">
           <AnimatePresence mode="wait">
@@ -154,8 +180,18 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
                       {initiateMutation.data.tiers.map((tier: OfferTier) => (
                         <Card
                           key={tier.name}
-                          className={`cursor-pointer transition-all hover-elevate ${selectedTier?.name === tier.name ? "ring-2 ring-primary" : ""}`}
+                          role="button"
+                          tabIndex={0}
+                          aria-pressed={selectedTier?.name === tier.name}
+                          aria-label={`Select ${tier.name} offer at ${formatPrice(tier.price)}`}
+                          className={`cursor-pointer transition-all hover-elevate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${selectedTier?.name === tier.name ? "ring-2 ring-primary" : ""}`}
                           onClick={() => handleSelectTier(tier)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleSelectTier(tier);
+                            }
+                          }}
                         >
                           <CardContent className="p-4 space-y-2">
                             <div className="flex justify-between items-center">

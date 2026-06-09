@@ -40,6 +40,9 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { motion, AnimatePresence } from "framer-motion";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { useRespectfulTransition } from "@/lib/motion-tokens";
 import type { Lead as SchemaLead, Property, Deal as SchemaDeal } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
@@ -586,6 +589,12 @@ export function CommandPalette() {
     },
   );
 
+  // Global ⌘K toggle only. Escape-to-close is now owned by Radix
+  // DismissableLayer (see <DialogPrimitive.Content onEscapeKeyDown>),
+  // which also restores focus to the trigger — so we no longer hand-roll
+  // a window-level Escape branch here. The inner "back out one level"
+  // Escape behaviour (exit AI mode / clear a selected lead-deal sub-menu
+  // without closing the whole palette) lives on onEscapeKeyDown below.
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "k") {
       e.preventDefault();
@@ -596,18 +605,27 @@ export function CommandPalette() {
         setInputValue("");
       }
     }
-    if (e.key === "Escape") {
+  }, [open]);
+
+  // Escape inside the trapped dialog: back out of an inner sub-state
+  // (AI response panel, or a lead/deal status sub-menu) one level at a
+  // time. preventDefault() stops Radix from closing the whole palette
+  // while there's still inner state to unwind; once there's nothing left
+  // to back out of we let Radix handle the close (+ focus restoration).
+  const handleEscapeKeyDown = useCallback(
+    (e: KeyboardEvent) => {
       if (aiMode) {
+        e.preventDefault();
         setAiMode(false);
         setAiResponse(null);
       } else if (selectedLeadId || selectedDealId) {
+        e.preventDefault();
         setSelectedLeadId(null);
         setSelectedDealId(null);
-      } else {
-        setOpen(false);
       }
-    }
-  }, [open, aiMode, selectedLeadId, selectedDealId]);
+    },
+    [aiMode, selectedLeadId, selectedDealId],
+  );
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
@@ -720,30 +738,52 @@ export function CommandPalette() {
   const selectedDeal = selectedDealId ? dealsData?.find(d => d.id === selectedDealId) : null;
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            aria-hidden="true"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={backdropFade}
-            className="fixed inset-0 z-[60] command-backdrop"
-            onClick={() => setOpen(false)}
-            data-testid="command-palette-backdrop"
-          />
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Command palette"
-            initial={{ opacity: 0, scale: 0.92, y: -16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.94, y: -12 }}
-            transition={paletteSpring}
-            className="fixed left-1/2 top-[14vh] z-[60] w-full max-w-[560px] -translate-x-1/2 p-4"
-            data-testid="command-palette-dialog"
-          >
+    // Radix Dialog provides the honest modal substrate the hand-rolled
+    // motion.div lacked: FocusScope (focus trap + restoration to the
+    // ⌘K trigger on close), DismissableLayer (Escape + outside-pointer
+    // dismiss), RemoveScroll (body scroll-lock), and an accessible name
+    // via the VisuallyHidden DialogTitle below. forceMount keeps the
+    // portal/overlay/content nodes alive so AnimatePresence can still
+    // drive the Framer exit spring — preserving the liquid-glass visual
+    // identity inside the trapped content rather than on the dialog node.
+    <Dialog open={open} onOpenChange={setOpen}>
+      <AnimatePresence>
+        {open && (
+          <DialogPrimitive.Portal forceMount>
+            <DialogPrimitive.Overlay asChild forceMount>
+              <motion.div
+                aria-hidden="true"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={backdropFade}
+                className="fixed inset-0 z-[60] command-backdrop"
+                data-testid="command-palette-backdrop"
+              />
+            </DialogPrimitive.Overlay>
+            <DialogPrimitive.Content
+              aria-label="Command palette"
+              onEscapeKeyDown={handleEscapeKeyDown}
+              className="fixed left-1/2 top-[14vh] z-[60] w-full max-w-[560px] -translate-x-1/2 p-4 outline-none"
+              data-testid="command-palette-dialog"
+              asChild
+            >
+              {/* The Framer spring lives HERE — on a child INSIDE the
+                  trapped DialogContent, not on the dialog node itself — so
+                  the focus trap/scroll-lock wrap the animated surface while
+                  the liquid-glass scale/translate entrance is preserved.
+                  paletteSpring is already prefers-reduced-motion-aware via
+                  useRespectfulTransition, so the entrance collapses to an
+                  instant noop when the OS requests reduced motion. */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92, y: -16 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.94, y: -12 }}
+                transition={paletteSpring}
+              >
+            <VisuallyHidden>
+              <DialogTitle>Command palette</DialogTitle>
+            </VisuallyHidden>
             {/* shouldFilter=false: we hand-curate results via the
                 cmdkMatcher (acronym/bigram/substring + recency) so
                 the cmdk default fuzzy filter would just remove items
@@ -1520,9 +1560,11 @@ export function CommandPalette() {
                 </div>
               )}
             </Command>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+              </motion.div>
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        )}
+      </AnimatePresence>
+    </Dialog>
   );
 }
