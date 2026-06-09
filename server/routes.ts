@@ -153,6 +153,7 @@ import { requestTimeout } from "./middleware/security";
 // R4: Clerk-native MFA enforcement (replaces broken in-house require2FA).
 // See server/middleware/requireClerkMFA.ts for the decision matrix.
 import { requireClerkMFA } from "./middleware/requireClerkMFA";
+import { createClerkProxyHandler } from "./middleware/clerkProxy";
 
 // Domain route modules
 import { registerDashboardRoutes } from "./routes-dashboard";
@@ -364,104 +365,11 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  // Clerk proxy — Cloudflare blocks clerk.acreos.io (Error 1000)
-  app.use("/__clerk", express.urlencoded({ extended: false }), express.json(), async (req, res) => {
-    // E2E test-auth: block the Clerk proxy so Clerk-JS fails to load and the
-    // SPA renders via the API-based useAuth (no FAPI redirect to a domain CI
-    // can't resolve). Hard-gated; never active on Fly. See server/auth/testAuth.ts.
-    if (e2eTestAuthEnabled()) {
-      return res.status(404).end();
-    }
-    try {
-      const clerkPath = req.originalUrl.replace(/^\/__clerk/, "") || "/";
+  // Clerk proxy — Cloudflare blocks clerk.acreos.io (Error 1000). Handler is
+  // extracted to server/middleware/clerkProxy.ts so its double-send guards and
+  // 10s upstream timeout are unit-testable in isolation.
+  app.use("/__clerk", express.urlencoded({ extended: false }), express.json(), createClerkProxyHandler());
 
-      // STR-011 root cause: /v1/client is per-session and MUST NOT be cached
-      // across users. The prior cache keyed by a `__client=` cookie regex
-      // that never matched (Clerk sets `__client_uat` and `__session`, not
-      // `__client`), so every request fell through to the "anon" bucket and
-      // signed-in users got served a stale empty-sessions response for up
-      // to 60s — blocking hydration after ticket sign-in.
-      //
-      // /v1/environment is safe to cache (it's public / instance-level,
-      // not user-level) — keep that cache, drop the client cache entirely.
-      if (req.method === "GET" && clerkPath === "/v1/environment") {
-        const cacheKey = `clerk:${clerkPath}`;
-        if ((globalThis as any).__clerkCache?.[cacheKey] && Date.now() - (globalThis as any).__clerkCache[cacheKey].ts < 60000) {
-          const cached = (globalThis as any).__clerkCache[cacheKey];
-          res.setHeader("X-Clerk-Cache", "hit");
-          cached.headers.forEach(([k, v]: [string, string]) => res.setHeader(k, v));
-          res.status(cached.status);
-          return res.end(cached.body);
-        }
-      }
-
-      const targetUrl = `https://possible-emu-83.clerk.accounts.dev${clerkPath}`;
-      const fwdHeaders: Record<string, string> = {
-        "Clerk-Proxy-Url": "https://acreos.io/__clerk",
-        "Clerk-Secret-Key": process.env.CLERK_SECRET_KEY || "",
-      };
-      for (const key of ["content-type", "authorization", "cookie", "accept", "user-agent", "referer", "origin"]) {
-        if (req.headers[key]) fwdHeaders[key] = req.headers[key] as string;
-      }
-      fwdHeaders["x-forwarded-for"] = req.ip || req.socket.remoteAddress || "";
-      fwdHeaders["x-forwarded-proto"] = "https";
-      fwdHeaders["x-forwarded-host"] = "acreos.io";
-      let body: string | undefined;
-      if (!["GET", "HEAD"].includes(req.method)) {
-        const ct = (req.headers["content-type"] || "").toLowerCase();
-        if (ct.includes("application/json")) body = JSON.stringify(req.body);
-        else if (ct.includes("form-urlencoded") && typeof req.body === "object") body = new URLSearchParams(req.body as Record<string, string>).toString();
-        else if (typeof req.body === "string") body = req.body;
-      }
-      const clerkRes = await fetch(targetUrl, { method: req.method, headers: fwdHeaders, body, redirect: "manual" });
-
-      // Set-Cookie: use getSetCookie() to get each Set-Cookie value as a
-      // separate array entry (not merged, not comma-joined). STR-011
-      // investigation showed forEach on Node 20 does iterate per-cookie,
-      // but getSetCookie() is the spec-blessed multi-value accessor and
-      // the safer long-term choice. Also log the cookie names relayed so
-      // we can verify __client lands in the browser.
-      const setCookies = clerkRes.headers.getSetCookie();
-      if (setCookies.length > 0) {
-        const cookieNames = setCookies.map((c) => c.split("=")[0]);
-        logger.info(`[clerk-proxy] ${req.method} ${clerkPath} -> Set-Cookie: ${cookieNames.join(", ")}`);
-        for (const raw of setCookies) {
-          res.appendHeader("Set-Cookie", raw.replace(/domain=[^;]+/gi, "domain=.acreos.io"));
-        }
-      }
-
-      clerkRes.headers.forEach((value, key) => {
-        const k = key.toLowerCase();
-        if (["transfer-encoding", "connection", "content-encoding", "content-length", "set-cookie"].includes(k)) return;
-        if (k === "location") {
-          let loc = value;
-          if (loc.startsWith("/v1/") || loc.startsWith("/npm/")) loc = "/__clerk" + loc;
-          if (loc.includes("possible-emu-83.clerk.accounts.dev")) loc = loc.replace("https://possible-emu-83.clerk.accounts.dev", "/__clerk");
-          if (loc.includes("accounts.acreos.io")) loc = "https://acreos.io/";
-          res.setHeader(key, loc);
-          return;
-        }
-        res.setHeader(key, value);
-      });
-      res.status(clerkRes.status);
-      const responseBody = Buffer.from(await clerkRes.arrayBuffer());
-
-      // Cache ONLY /v1/environment (instance-level, safe to share).
-      // /v1/client is per-session and must not be cached across users.
-      if (req.method === "GET" && clerkRes.status < 400 && clerkPath === "/v1/environment") {
-        const cacheKey = `clerk:${clerkPath}`;
-        if (!(globalThis as any).__clerkCache) (globalThis as any).__clerkCache = {};
-        const hdrs: [string, string][] = [];
-        clerkRes.headers.forEach((v, k) => { if (!["transfer-encoding","connection","content-encoding","content-length"].includes(k)) hdrs.push([k,v]); });
-        (globalThis as any).__clerkCache[cacheKey] = { status: clerkRes.status, headers: hdrs, body: responseBody, ts: Date.now() };
-      }
-
-      res.end(responseBody);
-    } catch (err: any) {
-      logger.error("[clerk-proxy] " + err.message);
-      res.status(502).json({ error: "Clerk proxy error" });
-    }
-  });
 
 
   // PERF: HTTP Cache-Control for safe-GET /api/ responses. Registered
