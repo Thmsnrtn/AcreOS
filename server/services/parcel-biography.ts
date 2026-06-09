@@ -461,6 +461,127 @@ export function assembleBiography(
 }
 
 // ----------------------------------------------------------------------------
+// Log-native seller-likelihood scorer (Iyari — Chief of Future)
+// ----------------------------------------------------------------------------
+//
+// The feature engine above computes owner-tenure, value velocity/acceleration,
+// and tax-delinquency recurrence from the append-only observation log — but
+// until now those features terminated at a UI card; no SCORE consumed them.
+// Meanwhile the deal-feed ranker sources 25% of its composite (the
+// `ownerMotivation` pillar) from a CONVERSATION-driven predictor that returns a
+// neutral 50 for any cold parcel (no leadId) — exactly the cold discovery
+// parcels the feed exists to surface.
+//
+// This is a v0 HEURISTIC (not ML): a monotone function over features we already
+// own, deliberately simple and explainable, whose only job is to PROVE the
+// longitudinal asset is predictive (see the parcel_alerts backtest) before we
+// spend a model on it. It introduces no new table, no new external data, and no
+// new capture — a pure read elevation.
+//
+// HONESTY GATE: when the biography has no real series (hasAnySeries === false),
+// the scorer returns null. We never fabricate motivation from a single dot —
+// consistent with the no-fabrication ratchet and the engine's own contract. The
+// deal feed falls open to its existing neutral default when this is null.
+
+/** Result of the log-native seller-likelihood heuristic. */
+export interface SellerLikelihood {
+  /** 0-100. Higher = more likely the current owner sells. Monotone in drivers. */
+  score: number;
+  /**
+   * Human-readable reasons that moved the score, strongest first. The biography
+   * card is the explanation surface; these are its bullet points.
+   */
+  drivers: string[];
+}
+
+// Heuristic constants — deliberately legible. Tuning lives here, not in ML.
+const SELLER_LIKELIHOOD_BASE = 30; // a cold long-history parcel starts below neutral
+const TENURE_LONG_YEARS = 15; // a passive holder past this is materially more likely
+const TENURE_VERY_LONG_YEARS = 25; // estate / generational-hold territory
+
+/**
+ * Score how likely the CURRENT owner is to sell, from the parcel's longitudinal
+ * biography alone. PURE — no DB, no I/O. Monotone: every driver can only raise
+ * the score, so the ordering is interpretable and never self-cancels.
+ *
+ * Drivers (all sourced from EXISTING biography features):
+ *   - long owner tenure (a passive holder — derived from the owner series)
+ *   - recurring tax delinquency (a chronically-strained owner)
+ *   - currently delinquent (an acute trigger)
+ *   - stalling assessed-value acceleration (the climb is decelerating — the
+ *     owner's paper-gain thesis is weakening)
+ *
+ * Returns null when there is no real series to reason over (honesty gate).
+ */
+export function scoreSellerLikelihood(
+  bio: ParcelBiography,
+): SellerLikelihood | null {
+  // Honesty gate: no field has ≥2 real points → nothing longitudinal to mine.
+  // Never invent motivation from a single observed dot.
+  if (!bio || !bio.hasAnySeries) return null;
+
+  let score = SELLER_LIKELIHOOD_BASE;
+  const drivers: string[] = [];
+
+  // --- Owner tenure (passive-holder prior) ------------------------------------
+  const tenureYears = bio.ownerTenure?.currentTenureYears ?? null;
+  if (tenureYears != null) {
+    if (tenureYears >= TENURE_VERY_LONG_YEARS) {
+      score += 30;
+      drivers.push(`Owned ${tenureYears}+ yrs (long passive hold)`);
+    } else if (tenureYears >= TENURE_LONG_YEARS) {
+      score += 18;
+      drivers.push(`Owned ${tenureYears} yrs (passive holder)`);
+    } else if (tenureYears >= 8) {
+      score += 8;
+      drivers.push(`Owned ${tenureYears} yrs`);
+    }
+  }
+
+  // --- Tax-delinquency recurrence + acute state -------------------------------
+  const tax = bio.taxRecurrence;
+  if (tax) {
+    if (tax.isRecurring) {
+      score += 22;
+      drivers.push(
+        tax.episodes >= 3
+          ? `Chronically tax-delinquent (${tax.episodes} episodes)`
+          : "Recurring tax delinquency",
+      );
+    }
+    if (tax.currentlyDelinquent) {
+      score += 15;
+      drivers.push("Currently tax delinquent");
+    }
+  }
+
+  // --- Stalling assessed-value acceleration -----------------------------------
+  // A decelerating climb (accel < 0) means the owner's unrealized-gain thesis is
+  // weakening — a classic prompt to take the gain. Only counts when we actually
+  // have ≥3 numeric points (deriveNumericTrend already enforces that; accel is
+  // null otherwise, so this never fires on thin data).
+  const accel = bio.assessedValue?.trend?.accelerationPerYear2 ?? null;
+  const valueDirection = bio.assessedValue?.trend?.direction ?? null;
+  if (accel != null && accel < 0 && (valueDirection === "rising" || valueDirection === "flat")) {
+    score += 10;
+    drivers.push("Value appreciation stalling");
+  }
+
+  // Clamp into range. (Base + all drivers can exceed 100; clamp keeps it honest.)
+  score = Math.max(0, Math.min(100, score));
+
+  // If nothing fired beyond the base, the parcel has a real series but no
+  // motivation signal — report the base honestly with an explanatory driver so
+  // the ranker still gets a real (low) number rather than the conversation
+  // predictor's neutral 50.
+  if (drivers.length === 0) {
+    drivers.push("Longitudinal history present; no motivation signal");
+  }
+
+  return { score, drivers };
+}
+
+// ----------------------------------------------------------------------------
 // DB-backed reader (the only DB access; SELECT only)
 // ----------------------------------------------------------------------------
 

@@ -81,6 +81,56 @@ export async function scoreParcelRadar(
   }
 }
 
+/**
+ * COLD-parcel ownerMotivation (no leadId, so no conversation to read). Mines the
+ * parcel's own append-only observation log via the log-native seller-likelihood
+ * scorer. Returns an intentResult-compatible shape so the existing assignment
+ * (`intentScore`, plus motivation signals) needs no change downstream.
+ *
+ * Honesty gate: when the biography has no real longitudinal series the scorer
+ * returns null and we fall OPEN to the neutral default (intentScore 50) — the
+ * exact behavior the conversation predictor produced for cold parcels before,
+ * so there is no regression for thin-history parcels. The win is concentrated on
+ * parcels we DO have history for, which is where the moat lives.
+ *
+ * Read-only and fail-open: any error degrades to neutral, never breaks the feed.
+ */
+export async function scoreColdParcelMotivation(
+  parcel: any,
+  orgId: number,
+): Promise<{ intentScore: number; drivers?: string[]; source: string }> {
+  const neutral = { intentScore: NEUTRAL_RADAR_SCORE, source: "cold_neutral_default" };
+  try {
+    const apn = parcel?.apn || parcel?.parcelNumber || "";
+    const state = parcel?.state || "";
+    if (!apn || !state) return neutral;
+
+    const { getParcelBiography, scoreSellerLikelihood } = await import("./parcel-biography");
+    const bio = await getParcelBiography({
+      apn,
+      state,
+      county: parcel?.county ?? null,
+      organizationId: orgId,
+    });
+
+    const likelihood = scoreSellerLikelihood(bio);
+    if (!likelihood) return neutral; // honesty gate → fall open, no regression
+
+    return {
+      intentScore: likelihood.score,
+      drivers: likelihood.drivers,
+      source: "log_native_seller_likelihood",
+    };
+  } catch (err) {
+    logger.warn("cold-parcel log-native motivation scoring failed; falling open to neutral", {
+      apn: parcel?.apn || parcel?.parcelNumber || null,
+      state: parcel?.state || null,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return neutral;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Composite score formula
 // ---------------------------------------------------------------------------
@@ -185,6 +235,12 @@ function opportunityId(apn: string, county: string, state: string): string {
 // ---------------------------------------------------------------------------
 
 function extractMotivationSignals(ownerData: any): string[] {
+  // Cold parcels carry log-native `drivers` from scoreSellerLikelihood — surface
+  // them directly so the score stays explainable on the deal card (the biography
+  // card is the full explanation surface; these are its headline bullets).
+  if (Array.isArray(ownerData?.drivers) && ownerData.drivers.length > 0) {
+    return ownerData.drivers.slice(0, 5);
+  }
   const signals: string[] = [];
   if (ownerData?.isTaxDelinquent) signals.push("Tax delinquent");
   if (ownerData?.isOutOfState) signals.push("Out of state");
@@ -292,10 +348,25 @@ async function buildOpportunity(
       // falls open to the neutral default (logging a structured warn) on any
       // failure so a single bad parcel never breaks the feed.
       scoreParcelRadar(parcel, radarConfig).then(score => ({ score })),
-      import("./sellerIntentPredictor").then(m => {
-        const svc = new m.SellerIntentPredictorService();
-        return svc.predictIntent?.(_orgId, parcel.leadId) ?? { intentScore: 50 };
-      }),
+      // ownerMotivation pillar (25% of composite). For WARM parcels (a leadId)
+      // the conversation-driven predictor is correct — it reads the actual
+      // dialogue. But for COLD discovery parcels (no leadId) that predictor
+      // returns a constant neutral 50, making a quarter of the score a no-op for
+      // exactly the parcels the feed exists to surface. There we instead mine
+      // the parcel's own longitudinal biography (owner tenure, tax-delinquency
+      // recurrence, stalling value acceleration) via the log-native
+      // seller-likelihood scorer. The scorer's honesty gate returns null on
+      // insufficient series → we fall open to the same neutral 50 as before (no
+      // regression). See scoreSellerLikelihood in parcel-biography.ts.
+      // FUTURE-CONSOLIDATION FLAG: conversation / snapshot / log-native are
+      // three separate motivation engines; this only ROUTES the log-native one
+      // to cold parcels. Unifying them is a deliberate later decision.
+      (parcel.leadId
+        ? import("./sellerIntentPredictor").then(m => {
+            const svc = new m.SellerIntentPredictorService();
+            return svc.predictIntent?.(_orgId, parcel.leadId) ?? { intentScore: 50 };
+          })
+        : scoreColdParcelMotivation(parcel, _orgId)),
       import("./landCredit").then(m => {
         const svc = m.landCredit;
         return svc.calculateCreditScore?.(String(_orgId), String(parcel.propertyId)) ?? { overall: 575 };
