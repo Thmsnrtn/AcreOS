@@ -224,7 +224,27 @@ export function serveStatic(app: Express) {
     }
 
     try {
-      let html = fs.readFileSync(indexPath, "utf-8");
+      // Prefer a per-route prerendered shell (written by script/prerender.ts to
+      // dist/public/<route>/index.html for PUBLIC_ROUTES flagged prerender:true)
+      // so crawlers + link-unfurlers get the route's real <title>/meta/JSON-LD
+      // instead of the generic root index.html. Without this the entire prerender
+      // step is inert — the build generates per-route heads that were never
+      // served (every sub-route fell through to the root shell). The SPA still
+      // hydrates over the prerendered shell identically; runtime env + CSP nonce
+      // are injected below exactly as for the root shell (same </head> +
+      // data-csp-nonce markers, since prerender only swaps the head metadata).
+      let shellPath = indexPath;
+      {
+        const cleanPath = req.path.replace(/\/+$/, "");
+        if (cleanPath && cleanPath !== "/" && !cleanPath.includes("..")) {
+          const candidate = path.resolve(distPath, "." + cleanPath, "index.html");
+          // Path-traversal guard: candidate must stay within distPath.
+          if (candidate.startsWith(distPath + path.sep) && fs.existsSync(candidate)) {
+            shellPath = candidate;
+          }
+        }
+      }
+      let html = fs.readFileSync(shellPath, "utf-8");
       const nonce: string = res.locals.cspNonce || "";
       // Inject runtime env vars (with CSP nonce) before </head>
       const envScript = buildEnvScriptTag(nonce);
