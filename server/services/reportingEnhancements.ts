@@ -22,25 +22,33 @@ export function tableToCSV(data: any[], columns?: string[]): string {
 }
 
 // Item 155: Pipeline velocity report
+//
+// Per-stage average dwell time (avgDays) requires a stage-transition history
+// (when each deal entered/left each status). No such history is recorded today
+// — `deals` carries only a single current `status` plus created/offer/closing
+// timestamps, which cannot reconstruct time-in-stage. Rather than fabricate
+// per-stage durations, we report avgDays as null ("not available") and surface
+// an explicit timingAvailable: false flag. Stage counts are real.
 export async function getPipelineVelocity(orgId: number): Promise<{
-  stages: Array<{ stage: string; avgDays: number; count: number }>;
-  bottleneck: string;
-  totalAvgDays: number;
+  stages: Array<{ stage: string; avgDays: number | null; count: number }>;
+  bottleneck: string | null;
+  totalAvgDays: number | null;
+  timingAvailable: boolean;
 }> {
   const stages = ["new", "contacted", "responded", "offer_sent", "negotiating", "under_contract", "closed_won"];
-  const stageData: Array<{ stage: string; avgDays: number; count: number }> = [];
+  const stageData: Array<{ stage: string; avgDays: number | null; count: number }> = [];
 
   for (const stage of stages) {
     const [result] = await db.select({ count: count() })
       .from(deals)
       .where(and(eq(deals.organizationId, orgId), eq(deals.status, stage)));
-    stageData.push({ stage, avgDays: Math.floor(Math.random() * 14) + 1, count: result?.count || 0 });
+    stageData.push({ stage, avgDays: null, count: result?.count || 0 });
   }
 
-  const bottleneck = stageData.reduce((max, s) => s.avgDays > max.avgDays ? s : max, stageData[0]);
-  const totalAvgDays = stageData.reduce((sum, s) => sum + s.avgDays, 0);
-
-  return { stages: stageData, bottleneck: bottleneck.stage, totalAvgDays };
+  // No stage-transition timing source — cannot honestly identify a bottleneck
+  // or a total cycle time. Report nulls; the timingAvailable flag tells callers
+  // these fields are intentionally absent, not zero.
+  return { stages: stageData, bottleneck: null, totalAvgDays: null, timingAvailable: false };
 }
 
 // Item 157: Deal P&L statement

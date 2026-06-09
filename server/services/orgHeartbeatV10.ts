@@ -111,11 +111,11 @@ class OrgHeartbeatService {
     const measuredPred = Number(measuredPredictions[0]?.count || 0);
     const feedbackClosureRate = totalPred > 0 ? (measuredPred / totalPred) * 100 : 0;
 
-    // 5. Agent latencies (simulated — track thinking cycle times)
+    // 5. Agent latencies — real measured per-agent thinking-cycle times are not
+    // instrumented yet (no latency capture around agent invocations). Leave the
+    // map empty rather than fabricate values; consumers render an empty
+    // latencies map as "not measured" instead of inventing per-agent numbers.
     const agentLatencies: Record<string, number> = {};
-    for (const agent of agents) {
-      agentLatencies[agent.codename] = Math.floor(Math.random() * 2000) + 500; // placeholder
-    }
 
     // 6. Trust trajectory — change in trust levels (simulated from calibrations)
     const trustTrajectory: Record<string, number> = {};

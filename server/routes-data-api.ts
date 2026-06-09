@@ -214,20 +214,22 @@ router.get("/usage/:keyId", async (req: Request, res: Response) => {
 
     if (!key) return Errors.notFound(res, "API key");
 
-    // Synthetic usage stats (in production, track per-request in an api_usage table)
+    // Per-partner-key request usage is not yet instrumented: there is no
+    // per-request log keyed by systemApiKeys.id (api_usage_logs tracks internal
+    // service spend per organization, not partner Data-API calls). Rather than
+    // fabricate counts, report honest zeros with an explicit "not tracked yet"
+    // marker so no founder/partner mistakes invented numbers for real usage.
     const usageStats = {
       keyId,
       provider: key.provider,
       displayName: key.displayName,
-      totalRequests: Math.floor(Math.random() * 10000),
-      requestsToday: Math.floor(Math.random() * 200),
-      requestsThisMonth: Math.floor(Math.random() * 5000),
-      avgResponseTimeMs: 120 + Math.floor(Math.random() * 80),
-      topEndpoints: [
-        { endpoint: '/data-api/benchmarks', calls: Math.floor(Math.random() * 3000) },
-        { endpoint: '/data-api/price-trends', calls: Math.floor(Math.random() * 2000) },
-        { endpoint: '/data-api/demand', calls: Math.floor(Math.random() * 1000) },
-      ],
+      tracked: false,
+      trackingNote: "Per-key request metering is not instrumented yet — counts will populate once Data-API request logging ships.",
+      totalRequests: 0,
+      requestsToday: 0,
+      requestsThisMonth: 0,
+      avgResponseTimeMs: null as number | null,
+      topEndpoints: [] as Array<{ endpoint: string; calls: number }>,
       isActive: key.isActive,
       createdAt: key.createdAt,
       lastUsedAt: key.lastValidatedAt,

@@ -52,7 +52,10 @@ const CALIBRATION_RULES: CalibrationRule[] = [
     calibrationType: "timing_shift",
     condition: "Email open rates below 15%",
     evaluate: (metrics) => {
-      const openRate = metrics.emailOpenRate || 20;
+      const openRate = metrics.emailOpenRate;
+      if (openRate == null) {
+        return { shouldCalibrate: false, reason: "Email open-rate telemetry not available — skipping calibration", suggestedValue: "" };
+      }
       return {
         shouldCalibrate: openRate < 15,
         reason: `Email open rate at ${openRate}% — timing may be suboptimal`,
@@ -66,7 +69,10 @@ const CALIBRATION_RULES: CalibrationRule[] = [
     calibrationType: "personality_evolve",
     condition: "CEO overrides content suggestions >60% of the time",
     evaluate: (metrics) => {
-      const overrideRate = metrics.overrideRate || 0;
+      const overrideRate = metrics.overrideRate;
+      if (overrideRate == null) {
+        return { shouldCalibrate: false, reason: "CEO-override telemetry not available — skipping calibration", suggestedValue: "" };
+      }
       return {
         shouldCalibrate: overrideRate > 60,
         reason: `CEO overrides ${overrideRate}% of content suggestions — recalibration needed`,
@@ -80,7 +86,10 @@ const CALIBRATION_RULES: CalibrationRule[] = [
     calibrationType: "threshold_adjust",
     condition: "Risk alerts that turn out to be non-issues exceed 40%",
     evaluate: (metrics) => {
-      const falseAlarmRate = metrics.falseAlarmRate || 0;
+      const falseAlarmRate = metrics.falseAlarmRate;
+      if (falseAlarmRate == null) {
+        return { shouldCalibrate: false, reason: "Risk false-alarm telemetry not available — skipping calibration", suggestedValue: "" };
+      }
       return {
         shouldCalibrate: falseAlarmRate > 40,
         reason: `${falseAlarmRate}% of risk alerts are false alarms — reducing sensitivity`,
@@ -278,7 +287,12 @@ If no calibration needed, respond: { "shouldCalibrate": false }`;
     const successRate = totalPredictions > 0 ? (correctPredictions / totalPredictions) * 100 : 50;
     const predictionError = Math.abs(avgConfidence - successRate);
 
-    // Simulated metrics (in production, would pull from real data)
+    // falseAlarmRate / emailOpenRate / overrideRate have no telemetry source
+    // wired up yet (no risk-alert disposition log, no email-open events table,
+    // no CEO-override capture). Emit honest nulls plus an explicit
+    // insufficient-data marker rather than random placeholders. The calibration
+    // rules below treat null as "do not calibrate" via their `?? fallback`
+    // guards, so a missing signal never triggers a parameter change.
     return {
       totalPredictions,
       correctPredictions,
@@ -286,9 +300,10 @@ If no calibration needed, respond: { "shouldCalibrate": false }`;
       successRate: Math.round(successRate),
       predictionError: Math.round(predictionError),
       falsePositiveRate: totalPredictions > 0 ? Math.round((1 - correctPredictions / totalPredictions) * 100) : 0,
-      falseAlarmRate: Math.round(Math.random() * 30), // placeholder
-      emailOpenRate: 15 + Math.round(Math.random() * 20), // placeholder
-      overrideRate: Math.round(Math.random() * 50), // placeholder
+      falseAlarmRate: null,
+      emailOpenRate: null,
+      overrideRate: null,
+      _insufficientData: ["falseAlarmRate", "emailOpenRate", "overrideRate"],
     };
   }
 
