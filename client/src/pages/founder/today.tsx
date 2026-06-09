@@ -11,8 +11,8 @@
  *   2. Active asks — up to 3 most-recent open agent asks (compact);
  *      "View all" routes to /founder/build
  *   3. What shipped overnight — recent completed dispatches
- *   4. Decisions waiting — stub for the founder-decisions queue
- *      (shape documented inline; comes online in a later phase)
+ *   4. Decisions waiting — top pending items from the decisions-inbox
+ *      queue (approve / reject / defer happen on /founder/decisions)
  *   5. Chat with Solene — STUB until Phase 2 backend + Phase 3 frontend
  *      both land; until then, point Tom back to the Claude Code CLI
  *
@@ -104,6 +104,29 @@ interface CompletedDispatch {
   summary: string;
   completedAt: string;
   commitShas?: string[];
+}
+
+/**
+ * GET /api/founder/intelligence/decisions-inbox — already shipped
+ * (server/routes-founder-intelligence.ts:1134). The decisions queue is
+ * backed by the decisions_inbox_items table; the founder approves / rejects
+ * / defers each pending item. This is the same source the full
+ * /founder/decisions surface reads. Compact subset of the row shape.
+ */
+interface DecisionInboxItem {
+  id: number;
+  itemType: string;
+  riskLevel: string;
+  urgencyScore: number;
+  recommendedActionLabel: string;
+  sophieAnalysis: string;
+  ownerAgentCodename?: string | null;
+  createdAt: string;
+}
+
+interface DecisionsInboxResponse {
+  items: DecisionInboxItem[];
+  totalPending: number;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -284,9 +307,12 @@ function ActiveAsksSection() {
           <EmptyState
             icon={HelpCircle}
             headline="No open asks"
-            subtitle="Agents will surface questions here when they need your input to unblock a dispatch."
-            // TODO(cta): passive surface — no user action when there are zero asks
-            cta={{ label: "", _noOp: true }}
+            subtitle="Agents will surface questions here when they need your input to unblock a dispatch. Nothing's blocked — give the team something to build."
+            cta={{
+              label: "Dispatch work",
+              href: "/founder/build",
+              "data-testid": "cta-asks-dispatch-work",
+            }}
           />
         ) : (
           <ul className="space-y-2" aria-live="polite">
@@ -358,9 +384,17 @@ function ShippedOvernightSection() {
           <EmptyState
             icon={GitCommit}
             headline="Nothing yet"
-            subtitle="When agents complete dispatches, the most recent will show up here."
-            // TODO(cta): passive surface — no user action when there are no dispatches
-            cta={{ label: "", _noOp: true }}
+            subtitle="Completed dispatches land here. Kick one off and you'll see what the team ships."
+            cta={{
+              label: "Dispatch work",
+              href: "/founder/build",
+              "data-testid": "cta-overnight-dispatch-work",
+            }}
+            secondaryCta={{
+              label: "Ask Solene",
+              href: "/founder/solene-chat",
+              "data-testid": "cta-overnight-ask-solene",
+            }}
           />
         ) : (
           <ul className="space-y-1.5" aria-live="polite">
@@ -397,33 +431,126 @@ function ShippedOvernightSection() {
   );
 }
 
-// ─── Section: Decisions Waiting (stub) ───────────────────────────────────
+// ─── Section: Decisions Waiting ──────────────────────────────────────────
+//
+// Reads the pending decisions_inbox_items queue (the same source the full
+// /founder/decisions surface uses). Each item is a recommendation an agent
+// has escalated for the founder's approve / reject / defer call. Compact
+// preview here (top 3 by urgency, server-sorted); deep actions live on the
+// full surface.
+
+function riskBadgeClass(risk: string): string {
+  switch (risk) {
+    case "critical":
+      return "border-destructive/40 text-destructive";
+    case "high":
+    case "medium":
+      return "border-acr-warn/40 text-acr-warn";
+    default:
+      return "border-border text-muted-foreground";
+  }
+}
 
 function DecisionsWaitingSection() {
-  // TODO(phase-?): the founder-decisions queue is a separate schema from
-  // agent-asks. Expected shape (provisional):
-  //   { id, summary, options[], proposed, dueBy, severity }
-  // When the queue ships, replace this stub with a useQuery against
-  // /api/founder/decisions?status=pending.
+  const { data, isLoading, isError } = useQuery<DecisionsInboxResponse>({
+    queryKey: ["/api/founder/intelligence/decisions-inbox", "today-compact"],
+    queryFn: async () => {
+      const res = await fetch(
+        "/api/founder/intelligence/decisions-inbox",
+        { credentials: "include" },
+      );
+      if (!res.ok) return { items: [], totalPending: 0 };
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const allItems = data?.items ?? [];
+  const items = allItems.slice(0, 3);
+  const totalPending = data?.totalPending ?? allItems.length;
+
   return (
-    <Card data-testid="decisions-waiting-section">
-      <CardHeader className="pb-3">
+    <Card aria-busy={isLoading} data-testid="decisions-waiting-section">
+      <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <AlertCircle
             className="h-4 w-4 text-muted-foreground"
             aria-hidden="true"
           />
           Decisions waiting
+          {!isLoading && totalPending > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              {totalPending}
+            </Badge>
+          )}
         </CardTitle>
+        {!isLoading && totalPending > 0 && (
+          <Button asChild variant="ghost" size="sm">
+            <Link
+              href="/founder/decisions"
+              aria-label="View all decisions waiting on you"
+              data-testid="link-view-all-decisions"
+            >
+              View all
+              <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
+            </Link>
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="pt-0">
-        <EmptyState
-          icon={AlertCircle}
-          headline="No decisions waiting"
-          subtitle="When Solene escalates something that needs your call, it shows up here."
-          // TODO(cta): founder-decisions queue not yet wired — no action surface yet
-          cta={{ label: "", _noOp: true }}
-        />
+        {isLoading ? (
+          <div className="space-y-2" aria-label="Loading decisions">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        ) : isError ? (
+          <p className="text-sm text-muted-foreground">
+            Couldn't load decisions right now.
+          </p>
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon={AlertCircle}
+            headline="No decisions waiting"
+            subtitle="When Solene escalates something that needs your call, it shows up here. In the meantime, you can ask her what's on the horizon."
+            cta={{
+              label: "Ask Solene",
+              href: "/founder/solene-chat",
+              "data-testid": "cta-decisions-ask-solene",
+            }}
+          />
+        ) : (
+          <ul className="space-y-2" aria-live="polite">
+            {items.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-start gap-3 rounded-md border border-border bg-card p-3 hover:bg-muted/40 transition-colors"
+              >
+                <Badge
+                  variant="outline"
+                  className={`text-xs shrink-0 capitalize ${riskBadgeClass(item.riskLevel)}`}
+                >
+                  {item.riskLevel}
+                </Badge>
+                <div className="min-w-0 flex-1">
+                  <Link
+                    href={`/founder/decisions?id=${item.id}`}
+                    aria-label={`Review decision: ${item.recommendedActionLabel || item.itemType}`}
+                    className="block rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    data-testid={`link-decision-${item.id}`}
+                  >
+                    <p className="text-sm text-foreground line-clamp-2 hover:underline">
+                      {item.recommendedActionLabel?.trim() ||
+                        item.itemType.replace(/_/g, " ")}
+                    </p>
+                  </Link>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {relativeTime(item.createdAt)}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </CardContent>
     </Card>
   );
