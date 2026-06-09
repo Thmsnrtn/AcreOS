@@ -55,7 +55,13 @@ const TIERS = [
     price: TIER_PRICES_CENTS.scale.priceMonthlyCents / 100,
     yearlyPrice: TIER_PRICES_CENTS.scale.priceYearlyCents / 100,
     description: "For growing teams",
-    cta: "Start 14-day free trial",
+    // Scale is sales-assisted, not self-serve — custom integrations,
+    // white-glove migration, and a dedicated success partner are quoted,
+    // not checked out. This matches landing/Pricing.tsx (the canonical
+    // "Talk to us" mailto). Earlier this said "Start 14-day free trial",
+    // contradicting the landing page and implying a self-serve path that
+    // doesn't exist for Scale.
+    cta: "Talk to us",
     highlighted: false,
   },
 ];
@@ -299,7 +305,19 @@ export default function PricingPage() {
                     variant={tier.highlighted ? "default" : "outline"}
                     asChild
                   >
-                    <Link href="/auth?mode=register">{tier.cta}</Link>
+                    {tier.cta === "Talk to us" ? (
+                      // Sales-assisted Scale path — mailto matches the
+                      // landing page (landing/Pricing.tsx) so both surfaces
+                      // tell the same story. No fake self-serve trial.
+                      <a
+                        href="mailto:sales@acreos.io?subject=AcreOS%20Scale%20tier%20inquiry"
+                        data-testid="cta-scale-mailto"
+                      >
+                        {tier.cta}
+                      </a>
+                    ) : (
+                      <Link href="/auth?mode=register">{tier.cta}</Link>
+                    )}
                   </Button>
                 </CardContent>
               </Card>

@@ -52,12 +52,16 @@ const TIERS = [
   },
   {
     name: "Pro",
+    // Monthly-equivalent of the annual plan is DERIVED from the canonical
+    // price (priceYearlyCents / 12) so this prose can never drift from the
+    // live toggle below — the $199/$499 prototype drift that "made MRR math
+    // fiction" started exactly here, with a hand-typed price in prose.
     desc:
-      "$41/mo billed annually. Full Pax assistant, unlimited counties, and BYOK for the data costs every operator already pays.",
+      `$${Math.round(TIER_PRICES_CENTS.pro.priceYearlyCents / 12 / 100)}/mo billed annually. Full Pax assistant, unlimited counties, and BYOK for the data costs every operator already pays.`,
     m: TIER_PRICES_CENTS.pro.priceMonthlyCents / 100,
     a: TIER_PRICES_CENTS.pro.priceYearlyCents / 100,
     features: [
-      "5 users",
+      "Unlimited seats ($20/seat after the first)",
       "Unlimited counties in buy-box",
       "Full Pax assistant + automation builder",
       "Unlimited campaigns (BYOK for postage)",

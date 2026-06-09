@@ -154,7 +154,7 @@ export const LANDING_COPY = {
     eyebrow: "Pricing",
     title: "Premium government data, free. Paid data when you scale.",
     sub:
-      "Numbers on the page. No \"contact us\" wall. The free tier runs flood, soil, elevation, and wetlands checks from government data on every parcel. Pro at $41/mo (billed annually) unlocks the full Pax assistant, unlimited counties, and bring-your-own-key for the parcel and skip-trace data costs you already pay. Every paid plan is backed by a 30-day money-back guarantee.",
+      "Numbers on the page. No \"contact us\" wall. The free tier runs flood, soil, elevation, and wetlands checks from government data on every parcel. Pro unlocks the full Pax assistant, unlimited counties, and bring-your-own-key for the parcel and skip-trace data costs you already pay — see the live price on each tile below. Every paid plan is backed by a 30-day money-back guarantee.",
   },
   faq: {
     eyebrow: "Common questions",
