@@ -11206,6 +11206,24 @@ export const supportTickets = pgTable("support_tickets", {
   aiHandled: boolean("ai_handled").default(false),
   aiConfidenceScore: numeric("ai_confidence_score"), // 0-100 confidence in resolution
   aiResolutionAttempts: integer("ai_resolution_attempts").default(0),
+
+  // ── Andrei — autonomous-resolve calibration loop (close the loop) ──────────
+  // When Pax auto-resolves a ticket on its SELF-REPORTED confidence, the only
+  // way calibration can ever learn is if the OUTCOME of that decision is
+  // labeled later. These two columns are that label:
+  //   aiResolutionOutcome: null while the decision stands unobserved, then
+  //     'held' (stayed resolved / not contradicted), 'reopened' (the customer
+  //     posted again on an auto-resolved ticket → the answer didn't land), or
+  //     'csat_negative' (the customer rated it ≤2★ / thumbs-down).
+  //   aiResolutionReopened: convenience bool mirroring the reopen case for fast
+  //     filtering. A reopened OR csat_negative outcome == "was corrected" — the
+  //     label the Brier/calibration job needs to know an auto-resolve was wrong.
+  // Set by gradeAutoResolvedTicket() (server/services/andrei/supportResolverCalibration.ts)
+  // from the reopen/CSAT handlers + the daily grader. Pax's live auto-resolve
+  // THRESHOLD is unchanged — this only INSTRUMENTS the outcome so the data to
+  // govern that threshold later exists.
+  aiResolutionOutcome: text("ai_resolution_outcome"), // null | held | reopened | csat_negative
+  aiResolutionReopened: boolean("ai_resolution_reopened").default(false),
   
   // Resolution details
   resolution: text("resolution"),

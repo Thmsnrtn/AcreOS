@@ -44,6 +44,7 @@ import {
   executeSupportTool,
   PAX_SYSTEM_PROMPT,
 } from "./supportAgent";
+import { recordSupportResolveDecision } from "../services/andrei/supportResolverCalibration";
 
 const MAX_RESOLVE_ITERATIONS = 8;
 
@@ -333,6 +334,17 @@ export async function resolveTicketWithPax(
     logger.info(
       `[paxSupportResolver] ticket #${ticketId} auto-resolved by Pax (confidence ${confidence}%, threshold ${threshold}%)`,
     );
+    // Andrei — close the calibration loop. Record the autonomous-resolve DECISION
+    // (stated confidence + path tag + confidence-band observation) so the outcome
+    // can later be graded against reopen/CSAT. Fail-soft: never blocks the resolve.
+    await recordSupportResolveDecision({
+      ticketId,
+      organizationId: org.id,
+      confidence,
+      decision: "auto_resolve",
+      category,
+      threshold,
+    });
     return {
       autoResolved: true,
       confidence,
@@ -359,6 +371,16 @@ export async function resolveTicketWithPax(
         logger.info(
           `[paxSupportResolver] ticket #${ticketId} resolved via Opus second opinion`,
         );
+        // The Opus second opinion still ends in an autonomous customer-facing
+        // resolve — record it on the calibration loop too.
+        await recordSupportResolveDecision({
+          ticketId,
+          organizationId: org.id,
+          confidence,
+          decision: "auto_resolve",
+          category,
+          threshold,
+        });
         return {
           autoResolved: true,
           confidence,
@@ -393,6 +415,17 @@ export async function resolveTicketWithPax(
   logger.info(
     `[paxSupportResolver] ticket #${ticketId} escalated to human (confidence ${confidence}% < threshold ${threshold}%)`,
   );
+  // Andrei — record the escalate DECISION on the calibration loop too, so the
+  // plot can filter the full autonomous path (both gate outcomes), not just the
+  // auto-resolves. Fail-soft.
+  await recordSupportResolveDecision({
+    ticketId,
+    organizationId: org.id,
+    confidence,
+    decision: "escalate",
+    category,
+    threshold,
+  });
   return {
     autoResolved: false,
     confidence,

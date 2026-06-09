@@ -5216,4 +5216,34 @@ export async function runScheduledJobs(): Promise<void> {
   }).catch((err) => {
     log(`Failed to import audit-chain verifier: ${err}`, "audit-chain");
   });
+
+  // ─── Andrei (AI/ML) — autonomous support-resolve calibration grader ──────────
+  // Self-contained appended block (kept isolated to minimise merge conflict with
+  // another agent editing this file this wave). Closes the loop on the ONE path
+  // Pax acts on a customer unsupervised: server/ai/paxSupportResolver.ts auto-
+  // resolves on the model's self-reported confidence, and per-event reopen/CSAT
+  // handlers grade the outcome live. This daily job is the backstop + rollup: it
+  // ages still-unobserved auto-resolves to 'held' once they're old enough that a
+  // reopen is unlikely, then logs the Brier/calibration report for the
+  // autonomous support path. Cheap (one UPDATE + one aggregate read); no AI calls.
+  import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    log("Registering support-resolve calibration grader (daily)", "support-calibration");
+    scheduleSelfRescheduling({
+      name: "support_resolve_calibration_grader",
+      intervalMs: TWENTY_FOUR_HOURS_MS,
+      initialDelayMs: 7 * 60 * 1000, // 7 min after boot
+      run: async () => {
+        return await withJobLock("support_resolve_calibration_grader", 60 * 60, async () => {
+          const { runSupportResolverCalibrationGrader } = await import(
+            "../services/andrei/supportResolverCalibration"
+          );
+          const aged = await runSupportResolverCalibrationGrader();
+          return aged ?? 0;
+        }) ?? 0;
+      },
+    });
+  }).catch((err) => {
+    log(`Support-resolve calibration grader import failed: ${err}`, "support-calibration");
+  });
 }

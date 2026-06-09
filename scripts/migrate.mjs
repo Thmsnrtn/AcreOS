@@ -6820,6 +6820,26 @@ const STATEMENTS = [
      BEFORE DELETE ON "parcel_observations"
      FOR EACH ROW
      EXECUTE FUNCTION parcel_observations_deny_mutation()`,
+
+  // ── 0149 — Andrei (AI/ML) — close the calibration loop on the autonomous ──
+  //    support resolver. Mirrors migrations/0149_support_resolve_outcome_label.sql.
+  // server/ai/paxSupportResolver.ts auto-resolves a customer-facing ticket on
+  // the MODEL's self-reported confidence vs a static threshold, writes that
+  // confidence to support_tickets.ai_confidence_score, but nothing ever read it
+  // back against an outcome — so calibration never learned. These columns are
+  // the outcome LABEL that closes the loop: ai_resolution_outcome is null while
+  // the decision stands unobserved, then 'held' | 'reopened' | 'csat_negative';
+  // ai_resolution_reopened mirrors the reopen case for fast filtering.
+  // (reopened OR csat_negative) == "the auto-resolve was corrected" — the label
+  // the Brier/calibration job needs. INSTRUMENTATION ONLY — the live
+  // auto-resolve threshold is unchanged. Self-contained block; safe to run
+  // alongside another agent's appended block. Idempotent (ADD COLUMN IF NOT
+  // EXISTS + CREATE INDEX IF NOT EXISTS).
+  `ALTER TABLE "support_tickets" ADD COLUMN IF NOT EXISTS "ai_resolution_outcome" text`,
+  `ALTER TABLE "support_tickets" ADD COLUMN IF NOT EXISTS "ai_resolution_reopened" boolean DEFAULT false`,
+  `CREATE INDEX IF NOT EXISTS "support_tickets_ai_resolve_outcome_idx"
+     ON "support_tickets" ("ai_resolution_outcome")
+     WHERE "ai_handled" = true AND "ai_confidence_score" IS NOT NULL`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

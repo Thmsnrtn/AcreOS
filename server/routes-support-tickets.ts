@@ -119,14 +119,46 @@ export function registerSupportTicketRoutes(app: Express): void {
       if (!message) {
         return Errors.badRequest(res, "Message is required");
       }
-      
+
+      // Andrei — calibration loop. A customer posting again on an auto-resolved
+      // ticket is the strongest signal the auto-resolve DIDN'T land: it's a
+      // reopen. Grade it BEFORE we re-engage Pax so the outcome label flips to
+      // 'reopened' (the Brier-stream negative the calibration job needs). The
+      // grader no-ops on anything that wasn't a Pax auto-resolve. Fail-soft.
+      try {
+        const [prior] = await db
+          .select({
+            status: supportTickets.status,
+            aiHandled: supportTickets.aiHandled,
+            resolvedBy: supportTickets.resolvedBy,
+          })
+          .from(supportTickets)
+          .where(eq(supportTickets.id, ticketId));
+        if (
+          prior &&
+          prior.aiHandled === true &&
+          prior.resolvedBy === "pax" &&
+          (prior.status === "resolved" || prior.status === "closed")
+        ) {
+          const { gradeAutoResolvedTicket } = await import(
+            "./services/andrei/supportResolverCalibration"
+          );
+          await gradeAutoResolvedTicket(ticketId, "reopened");
+        }
+      } catch (gradeErr) {
+        logger.warn("[support] auto-resolve reopen grading failed (non-fatal)", {
+          ticketId,
+          err: String(gradeErr),
+        });
+      }
+
       // Add user message
       await db.insert(supportTicketMessages).values({
         ticketId,
         role: "user",
         content: message
       });
-      
+
       // Process with Pax
       const { processSupportChat } = await import("./ai/supportAgent");
       const response = await processSupportChat(message, org, user.id, ticketId);
@@ -205,7 +237,26 @@ export function registerSupportTicketRoutes(app: Express): void {
           updatedAt: new Date()
         })
         .where(eq(supportTickets.id, ticketId));
-      
+
+      // Andrei — calibration loop. A low CSAT (≤2★ of 5) on a Pax auto-resolved
+      // ticket labels that auto-resolve a miss: outcome → 'csat_negative' (a
+      // Brier-stream negative). The grader no-ops if this ticket wasn't a Pax
+      // auto-resolve. Fail-soft — never block the close.
+      try {
+        const ratingNum = typeof rating === "number" ? rating : Number(rating);
+        if (Number.isFinite(ratingNum) && ratingNum > 0 && ratingNum <= 2) {
+          const { gradeAutoResolvedTicket } = await import(
+            "./services/andrei/supportResolverCalibration"
+          );
+          await gradeAutoResolvedTicket(ticketId, "csat_negative");
+        }
+      } catch (gradeErr) {
+        logger.warn("[support] auto-resolve CSAT grading failed (non-fatal)", {
+          ticketId,
+          err: String(gradeErr),
+        });
+      }
+
       res.json({ success: true });
     } catch (error: any) {
       logger.error("[support] Error closing ticket", error);
