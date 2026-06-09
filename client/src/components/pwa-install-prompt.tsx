@@ -100,7 +100,7 @@ export function PWAInstallPrompt() {
   return (
     <aside
       aria-label="Install AcreOS"
-      className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:w-96"
+      className="fixed bottom-[140px] md:bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:w-96"
     >
       <Card className="border-primary/20 shadow-lg">
         <CardContent className="p-4">

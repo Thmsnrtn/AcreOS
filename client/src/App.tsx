@@ -1948,7 +1948,7 @@ function AppContent() {
           Also hidden on /ai (chat surface has its own send button — the
           global FAB overlaps the chat input on mobile) and on /inbox
           (primary action lives in the page chrome there too). */}
-      {user && !location.startsWith("/ai") && !location.startsWith("/inbox") && !location.startsWith("/field-scout") && (
+      {user && !location.startsWith("/ai") && !location.startsWith("/inbox") && !location.startsWith("/field-scout") && !location.startsWith("/founder") && (
         <div className="md:hidden"><FloatingActionButton /></div>
       )}
       {/* ConversationTray removed 2026-05-20 — the floating chat button opened
