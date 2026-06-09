@@ -10,7 +10,7 @@
 import type { Express, Request, Response } from "express";
 import type { AuthenticatedRequest } from "./types/request";
 import { db } from "./db";
-import { jobHealthLogs, agentMessages, agentEvents } from "@shared/schema";
+import { jobHealthLogs, agentChannelMessages, agentEvents } from "@shared/schema";
 import { eq, desc, sql, and, gte, inArray } from "drizzle-orm";
 import { wsServer } from "./websocket";
 import { logger } from "./utils/logger";
@@ -151,8 +151,8 @@ export function registerSovereignIntegrationRoutes(app: Express) {
       const limit = parseInt(req.query.limit as string) || 50;
       const messages = await db
         .select()
-        .from(agentMessages)
-        .orderBy(desc(agentMessages.createdAt))
+        .from(agentChannelMessages)
+        .orderBy(desc(agentChannelMessages.createdAt))
         .limit(limit);
       res.json(messages);
     } catch (err: any) {
@@ -211,10 +211,10 @@ export function registerSovereignIntegrationRoutes(app: Express) {
         return Errors.badRequest(res, "toAgent and task required");
       }
 
-      // Create delegation message. agent_messages columns: fromAgent,
+      // Create delegation message. agent_channel_messages columns: fromAgent,
       // toChannel, subject, body, priority, data — there is no toAgent/content/
       // messageType/isRead column.
-      const [message] = await db.insert(agentMessages).values({
+      const [message] = await db.insert(agentChannelMessages).values({
         fromAgent: fromAgent ?? "founder",
         toChannel: toAgent,
         subject: `Delegated: ${task}`,
@@ -280,7 +280,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
 
       // Notify each participant
       for (const agent of participants) {
-        await db.insert(agentMessages).values({
+        await db.insert(agentChannelMessages).values({
           fromAgent: "system",
           toChannel: agent,
           subject: `Vote requested: ${topic}`,

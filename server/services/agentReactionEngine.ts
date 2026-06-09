@@ -12,7 +12,6 @@
  */
 
 import { db } from "../db";
-import { agentMessages } from "@shared/schema";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
 import { agentCommsService, type AgentChannel } from "./agentComms";

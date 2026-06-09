@@ -19,7 +19,7 @@
  *      signal, since the founder's reversal is ground truth.
  *   2. Active strategic priorities — what the company is trying to do
  *      this quarter, so tactical decisions align with strategy.
- *   3. High-priority agent broadcasts (last 72h) from agentMessages —
+ *   3. High-priority agent broadcasts (last 72h) from agentChannelMessages —
  *      what the rest of the team is actively signaling.
  *   4. Recent negative outcomes (outcomeScore < 0, last 14d) — the
  *      concrete failures to avoid repeating.
@@ -38,7 +38,7 @@
 
 import { db } from "../db";
 import {
-  agentMessages,
+  agentChannelMessages,
   agentActionLog,
   decisionsInboxItems,
 } from "@shared/schema";
@@ -214,20 +214,20 @@ async function recentHighPriorityBroadcasts(
   const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
   const rows = await db
     .select({
-      from: agentMessages.fromAgent,
-      channel: agentMessages.toChannel,
-      priority: agentMessages.priority,
-      subject: agentMessages.subject,
-      createdAt: agentMessages.createdAt,
+      from: agentChannelMessages.fromAgent,
+      channel: agentChannelMessages.toChannel,
+      priority: agentChannelMessages.priority,
+      subject: agentChannelMessages.subject,
+      createdAt: agentChannelMessages.createdAt,
     })
-    .from(agentMessages)
+    .from(agentChannelMessages)
     .where(
       and(
-        gte(agentMessages.createdAt, since),
-        sql`${agentMessages.priority} IN ('high', 'critical')`,
+        gte(agentChannelMessages.createdAt, since),
+        sql`${agentChannelMessages.priority} IN ('high', 'critical')`,
       ),
     )
-    .orderBy(desc(agentMessages.createdAt))
+    .orderBy(desc(agentChannelMessages.createdAt))
     .limit(12);
 
   return rows
