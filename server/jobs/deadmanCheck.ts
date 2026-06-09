@@ -32,7 +32,7 @@
  *
  * Action on detection
  * ───────────────────
- * notifyOnCall(critical ? "P1" : "P2", …)  +  recordFinding(domain:"reliability").
+ * notifyOnCall(critical ? "P0" : "P1", …)  +  recordFinding(domain:"reliability").
  * notifyOnCall degrades gracefully to a DB-only finding when the on-call
  * webhook/push secret is unset — we do not block on paging being wired.
  *
@@ -146,7 +146,7 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
     if (now - lastPaged > REPAGE_THROTTLE_MS) {
       _lastPagedAt.set(entry.name, now);
       try {
-        await notifyOnCall(entry.critical ? "P1" : "P2", title, body, {
+        await notifyOnCall(entry.critical ? "P0" : "P1", title, body, {
           job: entry.name,
           lastSeenMs,
           thresholdMs,
@@ -158,7 +158,7 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
       }
     }
 
-    logger.warn(`[deadman] ${entry.critical ? "P1" : "P2"} ${title} — ${ageDesc}`, {
+    logger.warn(`[deadman] ${entry.critical ? "P0" : "P1"} ${title} — ${ageDesc}`, {
       metadata: { job: entry.name, lastSeenMs, thresholdMs },
     });
   }
