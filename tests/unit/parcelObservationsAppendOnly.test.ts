@@ -13,7 +13,7 @@
  * SOURCE gate: it asserts the protective DDL is present and correctly shaped on
  * BOTH paths that actually reach prod:
  *
- *   1. migrations/0147_parcel_observations_append_only.sql (drizzle path)
+ *   1. migrations/0148_parcel_observations_append_only.sql (drizzle path)
  *   2. scripts/migrate.mjs STATEMENTS (the path actually run on Fly deploy —
  *      drizzle migrations are NOT auto-run).
  *
@@ -32,7 +32,7 @@ import { describe, it, expect } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const MIGRATION_SQL = readFileSync(
-  path.join(REPO_ROOT, "migrations", "0147_parcel_observations_append_only.sql"),
+  path.join(REPO_ROOT, "migrations", "0148_parcel_observations_append_only.sql"),
   "utf8",
 );
 const MIGRATE_MJS = readFileSync(
