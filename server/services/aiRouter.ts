@@ -2,6 +2,10 @@ import OpenAI from "openai";
 import crypto from "crypto";
 import { logger } from "../utils/logger";
 import { computeCostUsd } from "./aiCostRates";
+// Single source of truth for model IDs + their token prices. aiRouter no longer
+// hard-codes model strings or a private cost table — both come from here so the
+// router and paxModelTier can never disagree on which Opus is "best" again.
+import { MODELS, priceFor, isKnownModel } from "./models";
 import { checkQuota, recordUsage, AIQuotaExceeded } from "./aiQuotaService";
 import {
   recordAiCall as recordCascadeCall,
@@ -261,7 +265,7 @@ export enum TaskComplexity {
   SIMPLE = "simple",
   MODERATE = "moderate",
   COMPLEX = "complex",
-  CRITICAL = "critical", // Opus 4.6 — highest-stakes decisions only
+  CRITICAL = "critical", // Opus (current best, claude-opus-4-8) — highest-stakes only
 }
 
 // ============================================
@@ -445,7 +449,7 @@ export interface AIRouterConfig {
   forceModel?: string;     // pin to a specific OpenRouter model ID
   useVision?: boolean;     // route to vision-capable model (gpt-4o via OpenRouter)
   useReasoning?: boolean;  // route to deep-reasoning model (DeepSeek R1)
-  useCritical?: boolean;   // force Opus 4.6 (highest-stakes tasks only)
+  useCritical?: boolean;   // force Opus 4.8 (highest-stakes tasks only)
   orgId?: number;
   /**
    * Phase 3 Week 9: per-org daily AI cost cap.
@@ -517,8 +521,9 @@ const COMPLEX_TASKS = [
   "creative",
 ];
 
-// CRITICAL tasks: routed to Opus 4.6 — reserved for the <2% of requests where
-// the highest possible reasoning quality is worth the 5× cost premium over Sonnet.
+// CRITICAL tasks: routed to Opus (current best, claude-opus-4-8) — reserved for
+// the <2% of requests where the highest possible reasoning quality is worth the
+// cost premium over Sonnet.
 // Rule: only use Opus when a wrong answer has real financial or legal consequences.
 const CRITICAL_TASKS = [
   "contract_review",       // Legal document with binding consequences
@@ -552,7 +557,7 @@ const CRITICAL_TASKS = [
 //   T2  Haiku 4.5          — balanced reasoning, medium tasks, $0.80/$4.00
 //   T3  Sonnet 4.6         — complex analysis, deal decisions, $3.00/$15.00
 //   T3r DeepSeek Reasoner  — long-form step-by-step math/logic, $0.55/$2.19
-//   T4  Opus 4.6           — highest-stakes decisions only (<2% of volume), $15/$75
+//   T4  Opus 4.8           — highest-stakes decisions only (<2% of volume), $5/$25
 //
 // TARGET DISTRIBUTION: 60% T1, 30% T2, 7% T3, 1% T3r, 2% T4
 // This achieves ~85% cost reduction vs all-Opus while preserving Opus-quality
@@ -563,18 +568,23 @@ const CRITICAL_TASKS = [
 // the cached portion. Applied automatically when system prompt ≥ 1024 tokens.
 // ============================================
 
+// Model IDs come from the SINGLE source of truth in ./models.ts. These exported
+// aliases are kept for the many call-sites that already import MODEL_* — they are
+// now thin re-exports, not independent definitions, so they can never drift from
+// paxModelTier or the cost table.
 // Tier 1 — Micro (cheapest, fast, good for simple templated tasks)
-export const MODEL_SIMPLE    = "deepseek/deepseek-chat";              // $0.14/$0.28 per M tokens
+export const MODEL_SIMPLE    = MODELS.DEEPSEEK_CHAT;     // $0.14/$0.28 per M tokens
 // Tier 2 — Balanced (good reasoning, moderate cost)
-export const MODEL_MODERATE  = "anthropic/claude-haiku-4-5-20251001"; // $0.80/$4.00 per M tokens
+export const MODEL_MODERATE  = MODELS.HAIKU;            // $0.80/$4.00 per M tokens (OpenRouter)
 // Tier 3 — Premium (best reasoning for complex land investment decisions)
-export const MODEL_COMPLEX   = "anthropic/claude-sonnet-4-6";         // $3.00/$15.00 per M tokens
+export const MODEL_COMPLEX   = MODELS.SONNET;          // $3.00/$15.00 per M tokens
 // Tier 3R — Deep reasoning (step-by-step for valuation/financial models)
-export const MODEL_REASONING = "deepseek/deepseek-reasoner";          // $0.55/$2.19 per M tokens
+export const MODEL_REASONING = MODELS.DEEPSEEK_REASONER; // $0.55/$2.19 per M tokens
 // Tier 4 — Opus (highest-stakes only: contract review, capital allocation, legal)
-export const MODEL_CRITICAL  = "anthropic/claude-opus-4-6";           // $15.00/$75.00 per M tokens
+// Pinned to the CURRENT best Opus (claude-opus-4-8) via models.ts.
+export const MODEL_CRITICAL  = MODELS.OPUS;            // $5.00/$25.00 per M tokens
 // Tier V — Vision/Docs (multimodal, used for satellite/document parsing)
-export const MODEL_VISION    = "openai/gpt-4o";                       // $2.50/$10.00 per M tokens
+export const MODEL_VISION    = MODELS.VISION;          // $2.50/$10.00 per M tokens
 
 // Legacy aliases kept for backward compat
 const OPENROUTER_CHEAP_MODEL     = MODEL_SIMPLE;
@@ -585,12 +595,12 @@ const OPENAI_FAST_MODEL          = MODEL_MODERATE;
 // Model presets for in-rail model selector
 export const MODEL_PRESETS = {
   auto: null, // Use automatic routing
-  fast: "deepseek/deepseek-chat",
+  fast: MODELS.DEEPSEEK_CHAT,
   balanced: "openai/gpt-4o-mini",
-  powerful: "openai/gpt-4o",
-  reasoning: "deepseek/deepseek-reasoner",
-  claude: "anthropic/claude-sonnet-4-6",
-  claude_opus: "anthropic/claude-opus-4-6",
+  powerful: MODELS.VISION,
+  reasoning: MODELS.DEEPSEEK_REASONER,
+  claude: MODELS.SONNET,
+  claude_opus: MODELS.OPUS,
 } as const;
 
 export type ModelPreset = keyof typeof MODEL_PRESETS;
@@ -713,7 +723,7 @@ export function invalidateDbModelCache(): void {
 export function classifyTaskComplexity(taskType: string, contentLength?: number): TaskComplexity {
   const normalizedTask = taskType.toLowerCase().replace(/[-_\s]/g, "_");
 
-  // CRITICAL check first — Opus 4.6 for highest-stakes tasks only
+  // CRITICAL check first — Opus 4.8 for highest-stakes tasks only
   if (CRITICAL_TASKS.some(t => normalizedTask.includes(t))) {
     return TaskComplexity.CRITICAL;
   }
@@ -851,7 +861,7 @@ export function selectProviderAndModel(
   }
 
   // Default routing:
-  //   CRITICAL → Opus 4.6     (highest-stakes: contracts, legal, capital allocation)
+  //   CRITICAL → Opus 4.8     (highest-stakes: contracts, legal, capital allocation)
   //   COMPLEX  → Sonnet 4.6   (complex analysis, deals, valuations)
   //   MODERATE → Haiku 4.5    (balanced: analysis, drafting, research)
   //   SIMPLE   → DeepSeek     (templates, lookups, formatting)
@@ -885,7 +895,7 @@ export async function selectProviderAndModelAsync(
 ): Promise<{ provider: AIProvider; model: string; client: OpenAI; maxTokens: number }> {
   // Load DB model configs
   const dbConfig = await loadDbModelConfigs();
-  // CRITICAL bypasses DB config — always uses MODEL_CRITICAL (Opus 4.6)
+  // CRITICAL bypasses DB config — always uses MODEL_CRITICAL (Opus 4.8)
   const dbModel = complexity === TaskComplexity.CRITICAL
     ? null
     : complexity === TaskComplexity.COMPLEX
@@ -977,17 +987,26 @@ export function extractModelConfidence(content: string): number | null {
   return n;
 }
 
-const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number; cachedInput?: number }> = {
-  [MODEL_SIMPLE]:    { input: 0.14,  output: 0.28   },                       // DeepSeek Chat
-  [MODEL_MODERATE]:  { input: 0.80,  output: 4.00,  cachedInput: 0.08  },    // Claude Haiku 4.5 (90% cache discount)
-  [MODEL_COMPLEX]:   { input: 3.00,  output: 15.00, cachedInput: 0.30  },    // Claude Sonnet 4.6 (90% cache discount)
-  [MODEL_CRITICAL]:  { input: 15.00, output: 75.00, cachedInput: 1.50  },    // Claude Opus 4.6 (90% cache discount)
-  [MODEL_VISION]:    { input: 2.50,  output: 10.00  },                       // GPT-4o
-  [MODEL_REASONING]: { input: 0.55,  output: 2.19   },                       // DeepSeek Reasoner
-};
-
+/**
+ * Estimate the USD cost of a call. Prices come from the single source of truth
+ * (models.priceFor → aiCostRates.AI_COST_RATES) — the same table computeCostUsd
+ * uses for the authoritative ledger, so an estimate and the later actual can
+ * only differ on token-count accuracy, never on pricing.
+ *
+ * The OLD private table here was keyed to stale Opus pricing ($15/$75 vs the
+ * real $5/$25 — 3× wrong) and unkeyed models fell back to a silent
+ * {input:1,output:3}. Now: known models (every id in models.MODELS) get their
+ * real rate; an UNKNOWN model is logged once (so a routing bug surfaces) and
+ * still costed via the central conservative DEFAULT_RATE — never a private,
+ * separately-maintained guess.
+ */
 function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
-  const costs = COST_PER_MILLION_TOKENS[model] || { input: 1, output: 3 };
+  if (model && model !== "cache" && !isKnownModel(model)) {
+    logger.warn("[AIRouter] estimateCost: unknown model — costing via central DEFAULT_RATE", {
+      metadata: { model },
+    });
+  }
+  const costs = priceFor(model);
   return (promptTokens * costs.input + completionTokens * costs.output) / 1_000_000;
 }
 
@@ -1530,12 +1549,12 @@ export async function routeReasoningTask(
 }
 
 /**
- * Route a CRITICAL task to Opus 4.6 — highest-stakes decisions only.
+ * Route a CRITICAL task to Opus 4.8 — highest-stakes decisions only.
  * Use for: contract review, legal document drafting, capital allocation,
  * note securitization, regulatory compliance determinations.
  *
- * COST WARNING: Opus 4.6 is ~5× the cost of Sonnet 4.6.
- * Only use when the quality ceiling genuinely matters.
+ * COST WARNING: Opus 4.8 ($5/$25 per 1M) is ~1.7× the cost of Sonnet 4.6
+ * ($3/$15). Only use when the quality ceiling genuinely matters.
  */
 export async function routeCriticalTask(
   taskType: string,

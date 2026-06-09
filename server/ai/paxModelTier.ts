@@ -37,7 +37,7 @@
  * is testable and instantly reversible without a deploy.
  *
  * Pricing (per 1M tokens, claude-api skill 2026-06):
- *   Opus 4.7/4.8  $5 in / $25 out   — top reasoning tier
+ *   Opus 4.8      $5 in / $25 out   — top reasoning tier (current best)
  *   Sonnet 4.6    $3 in / $15 out   — extraction + grounded synthesis
  *   Haiku 4.5     $1 in / $5  out   — short lookups / restatement / formatting
  * Routing a flood-zone restatement turn from Opus → Haiku is a ~5x input /
@@ -45,13 +45,18 @@
  */
 
 import { logger } from "../utils/logger";
+// Model IDs come from the SINGLE source of truth (server/services/models.ts) —
+// the same one aiRouter uses. Before this, OPUS was pinned to a STALE
+// claude-opus-4-7 here while aiRouter pinned a different Opus, so the two
+// "pick the top model" systems disagreed. Importing keeps them in lock-step.
+import { MODELS } from "../services/models";
 
 // ── Model capability rungs (OpenRouter ids match aiRouter.ts conventions) ────
 // Ordered LOW → HIGH capability. `rank` is the comparison key used to clamp a
 // task-type pick to never exceed the tier ceiling.
-export const PAX_ROUTE_MODEL_HAIKU = "anthropic/claude-haiku-4-5-20251001";
-export const PAX_ROUTE_MODEL_SONNET = "anthropic/claude-sonnet-4-6";
-export const PAX_ROUTE_MODEL_OPUS = "anthropic/claude-opus-4-7";
+export const PAX_ROUTE_MODEL_HAIKU = MODELS.HAIKU;
+export const PAX_ROUTE_MODEL_SONNET = MODELS.SONNET;
+export const PAX_ROUTE_MODEL_OPUS = MODELS.OPUS;
 
 /** Capability ladder. Higher rank = more capable = more expensive. */
 const MODEL_RANK: Record<string, number> = {

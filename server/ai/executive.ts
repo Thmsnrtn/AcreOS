@@ -29,7 +29,7 @@ import { pickPaxModelForOrg } from "../services/paxModelTier";
 // subscription-tier router above — this clamps the tier ceiling DOWN to the
 // cheapest eval-green model for the turn type).
 import { routePaxModelForTurn } from "./paxModelTier";
-import { predictCostCents } from "../services/aiCostRates";
+import { predictCostCents, computeCostUsd } from "../services/aiCostRates";
 import { evaluateLivePaxOutput } from "../services/aiEvalHarness";
 
 // Tahoe Andrei (2026-06-07): live runtime eval gate. The critical `pax_inbox`
@@ -58,33 +58,48 @@ function buildPaxToolList(
 }
 
 // ── Quality Feedback Loop ────────────────────────────────────────────────────
-// Fire-and-forget: scores each Pax response quality via DeepSeek and writes
-// success/failure patterns to agentMemory so future responses improve over time.
+// Fire-and-forget: scores each Pax response quality via a MODEL-BACKED call and
+// writes success/failure patterns to agentMemory so future responses improve.
+//
+// Andrei (andrei/ai-hygiene 2026-06): this sub-call now routes through the
+// aiRouter with `requestConfidence: true` (it already forces JSON), so the model
+// returns its OWN self-reported `confidence` (0..1) alongside the quality score.
+// That real model confidence is stamped into a pax_observations row via
+// paxObserver.recordModelObservation — the FIRST production caller to set
+// requestConfidence, making the calibration plot's "model-derived confidence"
+// claim actually true. When the model omits confidence, we keep honest-null (no
+// observation row, no fabricated number).
 async function scoreAndLearnFromResponse(
   orgId: number,
   userMessage: string,
   assistantResponse: string
 ): Promise<void> {
   try {
-    const openrouterKey = process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY;
-    if (!openrouterKey) return;
-    const scorer = new OpenAI({
-      apiKey: openrouterKey,
-      baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
-      defaultHeaders: { "HTTP-Referer": "https://acreos.fly.dev", "X-Title": "AcreOS" },
-    });
+    const { routeAITask, TaskComplexity: TC } = await import("../services/aiRouter");
     const scoringPrompt = `Rate this AI assistant response for a real estate platform on a scale of 1-10.
 User asked: "${userMessage.slice(0, 300)}"
 Assistant responded: "${assistantResponse.slice(0, 500)}"
 Return ONLY valid JSON: {"score": <number 1-10>, "reasons": ["<reason>"], "improvements": ["<suggestion>"]}`;
 
-    const result = await scorer.chat.completions.create({
-      model: "deepseek/deepseek-chat",
-      messages: [{ role: "user", content: scoringPrompt }],
-      max_tokens: 200,
-      response_format: { type: "json_object" },
-    });
-    const parsed = JSON.parse(result.choices[0].message.content || "{}");
+    const result = await routeAITask(
+      {
+        taskType: "response_quality_score",
+        complexity: TC.SIMPLE,
+        messages: [{ role: "user", content: scoringPrompt }],
+        maxTokens: 220,
+        temperature: 0.1,
+        responseFormat: "json",
+        // PRIMARY confidence signal: ask the model how sure it is of its own
+        // rating. Flows back as AIResponse.confidence (0..1) or null.
+        requestConfidence: true,
+      },
+      // Internal scoring call (not customer-facing) — bypass the per-org
+      // quota/budget gates like the cascade quality checks do, but still record
+      // org-scoped telemetry via orgId.
+      { skipBudget: true, skipQuota: true, orgId },
+    );
+
+    const parsed = JSON.parse(result.content || "{}");
     const score = Number(parsed.score) || 0;
     if (score < 1 || score > 10) return;
 
@@ -102,10 +117,42 @@ Return ONLY valid JSON: {"score": <number 1-10>, "reasons": ["<reason>"], "impro
         responsePattern: assistantResponse.slice(0, 150),
         reasons: parsed.reasons || [],
         improvements: parsed.improvements || [],
+        // The model's own self-reported confidence in its rating (0..1) or null.
+        modelConfidence: result.confidence ?? null,
         recordedAt: new Date().toISOString(),
       },
       confidence: String(Math.min(1, score / 10)),
     } as any);
+
+    // Stamp the REAL model confidence into pax_observations so the calibration
+    // surface has model-derived points (not only detector heuristics). Only
+    // surfaces a row when the model actually reported confidence; honest-null
+    // otherwise (recordModelObservation returns null and writes nothing).
+    try {
+      const { paxObserver } = await import("../services/paxObserver");
+      await paxObserver.recordModelObservation({
+        organizationId: orgId,
+        type: memoryType === "success_pattern" ? "opportunity" : "optimization",
+        modelConfidence: result.confidence ?? null,
+        modelSource: "pax_response_quality",
+        severity: "info",
+        title:
+          memoryType === "success_pattern"
+            ? "Strong Pax response pattern"
+            : "Pax response could improve",
+        description:
+          memoryType === "success_pattern"
+            ? `A recent Pax answer scored ${score}/10. Captured as a success pattern to reinforce.`
+            : `A recent Pax answer scored ${score}/10. Captured as an improvement opportunity.`,
+        skipBatching: true,
+        metadata: {
+          source: "pax_response_quality_scorer",
+          dataPoints: { score, model: result.model },
+        },
+      });
+    } catch {
+      // Observation write is advisory — never block on it.
+    }
   } catch {
     // Never block a response over scoring failure
   }
@@ -1357,14 +1404,13 @@ export async function processChat(
   const usage = response.usage;
   let estimatedCost: number | undefined;
   if (usage) {
-    const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number }> = {
-      "deepseek/deepseek-chat": { input: 0.14, output: 0.28 },
-      "deepseek/deepseek-reasoner": { input: 0.55, output: 2.19 },
-      "gpt-4o": { input: 2.50, output: 10.00 },
-      "gpt-4o-mini": { input: 0.15, output: 0.60 },
-    };
-    const costs = COST_PER_MILLION_TOKENS[model] || { input: 1, output: 3 };
-    estimatedCost = (usage.prompt_tokens * costs.input + usage.completion_tokens * costs.output) / 1_000_000;
+    // Central pricing table (single source of truth) — the old local table here
+    // was missing every Anthropic model and fell back to a silent {1,3} guess.
+    estimatedCost = computeCostUsd(
+      model,
+      usage.prompt_tokens || 0,
+      usage.completion_tokens || 0,
+    );
   }
 
   // Fire-and-forget quality scoring — never blocks the response
@@ -2010,14 +2056,8 @@ export async function* processChatStream(
 
   let estimatedCost: number | undefined;
   if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
-    const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number }> = {
-      "deepseek/deepseek-chat": { input: 0.14, output: 0.28 },
-      "deepseek/deepseek-reasoner": { input: 0.55, output: 2.19 },
-      "gpt-4o": { input: 2.50, output: 10.00 },
-      "gpt-4o-mini": { input: 0.15, output: 0.60 },
-    };
-    const costs = COST_PER_MILLION_TOKENS[model] || { input: 1, output: 3 };
-    estimatedCost = (totalPromptTokens * costs.input + totalCompletionTokens * costs.output) / 1_000_000;
+    // Central pricing table (single source of truth) — see processChat above.
+    estimatedCost = computeCostUsd(model, totalPromptTokens, totalCompletionTokens);
   }
 
   yield { 
