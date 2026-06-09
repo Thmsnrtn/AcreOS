@@ -514,7 +514,8 @@ export interface RunDispatchResult {
     | "timeout"
     | "error"
     | "missing_api_key"
-    | "platform_cost_ceiling";
+    | "platform_cost_ceiling"
+    | "ensemble_monthly_cap";
 }
 
 /**
@@ -547,9 +548,59 @@ export async function runDispatch(
     defaultModel: DEFAULT_MODEL,
   });
 
+  // Pre-dispatch ensemble cap (runtime backstop) — the binding monthly bound
+  // on agent_dispatch spend. enqueueDispatch already gates this at enqueue
+  // time, but a row may have been queued before the cap was crossed, so we
+  // re-check at run time. Fails CLOSED on DB error (refuse rather than risk
+  // unbounding the largest cash cost). Founder per-dispatch overrides are
+  // applied at enqueue, not here.
+  try {
+    const { assertWithinEnsembleCap } = await import("./capitalTracker");
+    await assertWithinEnsembleCap();
+  } catch (err) {
+    if ((err as { code?: string })?.code === "ENSEMBLE_MONTHLY_CAP_EXCEEDED") {
+      const msg = "ensemble monthly cap reached; refusing dispatch";
+      logger.warn(`[dispatchRunner] ${msg}`, {
+        metadata: {
+          dispatchId,
+          detail: err instanceof Error ? err.message : String(err),
+        },
+      });
+      await appendTranscript(transcriptPath, { event: "rejected", reason: msg });
+      try {
+        await failDispatch(dispatchId, {
+          errorMessage: msg,
+          resultFullPath: transcriptPath,
+        });
+      } catch (failErr) {
+        logger.warn(
+          `[dispatchRunner] failDispatch after ensemble cap swallow id=${dispatchId}: ${failErr instanceof Error ? failErr.message : String(failErr)}`,
+        );
+      }
+      return {
+        dispatchId,
+        success: false,
+        costUsd: 0,
+        tokenInput: 0,
+        tokenOutput: 0,
+        durationMs: Date.now() - started,
+        finalText: msg,
+        filesModified: [],
+        commitsReferenced: [],
+        transcriptPath,
+        terminationReason: "ensemble_monthly_cap",
+      };
+    }
+    // Any non-cap error from the gate: log and proceed (the platform ceiling
+    // below is the next line of defense).
+    logger.warn(
+      `[dispatchRunner] ensemble cap check errored non-fatally id=${dispatchId}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   // Platform-wide cost ceiling gate — refuse the dispatch if the rolling
   // 24h spend is already at-or-over AI_PLATFORM_DAILY_CEILING_CENTS
-  // (default $5/day). Same backstop as the chat path; without it a single
+  // (default $15/day). Same backstop as the chat path; without it a single
   // dispatch can spend $25 (the per-dispatch cap) regardless of total
   // daily burn. Fail-open on transient DB errors.
   try {
