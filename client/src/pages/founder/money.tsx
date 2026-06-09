@@ -30,6 +30,8 @@ import {
   Sparkles,
   ArrowRight,
   Info,
+  Gauge,
+  BarChart3,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -40,6 +42,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -162,6 +165,15 @@ interface CapitalEvent {
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
+/**
+ * The runway model caps months-to-zero at this many months (see
+ * RUNWAY_CAP_MONTHS in server/services/finance/runwayModel.ts). When a scenario
+ * lands exactly on the cap the company is net cash-positive — rendering a
+ * precise "120.0 mo" would imply a false precision, so we show a qualitative
+ * "10y+ (cash-positive)" instead. Kept in sync with the server constant.
+ */
+const RUNWAY_CAP_MONTHS = 120;
+
 function fmtUsd(value: number): string {
   if (!Number.isFinite(value)) return "—";
   return new Intl.NumberFormat(undefined, {
@@ -175,6 +187,17 @@ function fmtMonths(value: number): string {
   if (!Number.isFinite(value)) return "—";
   if (value < 1) return "<1 mo";
   return `${value.toFixed(1)} mo`;
+}
+
+/**
+ * Runway-specific month formatter. At the model's cap the company is net
+ * cash-positive (runway is effectively unbounded) — show that as a qualitative
+ * ceiling rather than a falsely-precise "120.0 mo".
+ */
+function fmtRunwayMonths(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  if (value >= RUNWAY_CAP_MONTHS) return "10y+ (cash-positive)";
+  return fmtMonths(value);
 }
 
 function relativeTime(iso: string): string {
@@ -218,9 +241,9 @@ function CfoPositionBanner({
 
   const runwayLine =
     base?.monthsToZero != null
-      ? `Runway ${fmtMonths(base.monthsToZero)} base${
+      ? `Runway ${fmtRunwayMonths(base.monthsToZero)} base${
           downside?.monthsToZero != null
-            ? ` / ${fmtMonths(downside.monthsToZero)} downside`
+            ? ` / ${fmtRunwayMonths(downside.monthsToZero)} downside`
             : ""
         }, ${trend}.`
       : "Runway not yet modelable — no cash basis on the ledger.";
@@ -286,7 +309,9 @@ function ScenarioCard({
           {label}
         </div>
         <div className="text-3xl font-semibold tabular-nums text-foreground">
-          {scenario?.monthsToZero != null ? fmtMonths(scenario.monthsToZero) : "—"}
+          {scenario?.monthsToZero != null
+            ? fmtRunwayMonths(scenario.monthsToZero)
+            : "—"}
         </div>
         <p className="text-xs text-muted-foreground mt-2">
           {scenario
@@ -326,7 +351,10 @@ function RunwaySection({
           Runway to zero
         </h2>
         <span className="text-[10px] font-medium text-muted-foreground/80 border border-border rounded px-1.5 py-0.5">
-          {data?.isModeled ? "modeled" : "estimate"}
+          {/* The model only has a real cash basis to stand behind once the
+              ledger (or a founder-declared override) reports cash on hand.
+              Until then it's "awaiting ledger", not a confident "modeled". */}
+          {data && data.cashOnHandUsd > 0 ? "modeled" : "awaiting ledger"}
         </span>
       </div>
       {isLoading ? (
@@ -409,19 +437,39 @@ function UnitEconomicsSection() {
                 <div className="text-2xl font-semibold tabular-nums text-foreground">
                   {data ? `${data.blendedGrossMarginPct.toFixed(1)}%` : "—"}
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  floor {data?.thresholds.grossMarginFloorPct ?? 70}% (charter)
-                </p>
+                {/* Only assert the charter floor when the API has actually
+                    returned the threshold — never print "(charter)" as fact
+                    while loading or on a failed fetch. */}
+                {data ? (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    floor {data.thresholds.grossMarginFloorPct}% (charter)
+                  </p>
+                ) : null}
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">
                   LTV : CAC
                 </div>
-                <div className="text-2xl font-semibold tabular-nums text-muted-foreground">
-                  N/A
+                {/* Drive the ratio off the API contract: render the real ratio
+                    only when the server says a CAC numerator exists, else the
+                    honest "N/A". No hardcoded verdict. */}
+                <div
+                  className={`text-2xl font-semibold tabular-nums ${
+                    data?.cacAvailable && data.ltvCacRatio != null
+                      ? "text-foreground"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {data?.cacAvailable && data.ltvCacRatio != null
+                    ? `${data.ltvCacRatio.toFixed(1)}:1`
+                    : "N/A"}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  no CAC data yet
+                  {data?.cacAvailable
+                    ? `floor ${data.thresholds.ltvCacFloor}:1 (charter)`
+                    : data?.note
+                      ? "no CAC numerator yet"
+                      : "no CAC data yet"}
                 </p>
               </div>
             </div>
@@ -831,6 +879,73 @@ export default function FounderMoneyPage() {
         <EnvelopesSection />
 
         <RecentEventsSection />
+
+        {/* Door → live deep-data surfaces. This summary screen is the scannable
+            top; the real per-line cost ledger and the full unit-economics
+            breakdown live behind their own founder routes. */}
+        <Card data-testid="money-deeper-links">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Go deeper</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 grid gap-3 sm:grid-cols-2">
+            <Button
+              asChild
+              variant="outline"
+              className="h-auto justify-start py-3"
+            >
+              <Link
+                href="/founder/cost"
+                aria-label="Open the cost console"
+                data-testid="link-money-cost"
+              >
+                <Gauge
+                  className="mr-2 h-4 w-4 text-muted-foreground shrink-0"
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 text-left">
+                  <span className="block text-sm font-medium text-foreground">
+                    Cost console
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Per-line burn, infra + AI spend, optimizer.
+                  </span>
+                </span>
+                <ArrowRight
+                  className="ml-auto h-4 w-4 text-muted-foreground shrink-0"
+                  aria-hidden="true"
+                />
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="h-auto justify-start py-3"
+            >
+              <Link
+                href="/founder/unit-economics"
+                aria-label="Open the unit-economics breakdown"
+                data-testid="link-money-unit-economics"
+              >
+                <BarChart3
+                  className="mr-2 h-4 w-4 text-muted-foreground shrink-0"
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 text-left">
+                  <span className="block text-sm font-medium text-foreground">
+                    Unit economics
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Gross margin, cohort contribution, LTV:CAC.
+                  </span>
+                </span>
+                <ArrowRight
+                  className="ml-auto h-4 w-4 text-muted-foreground shrink-0"
+                  aria-hidden="true"
+                />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
 
         <div className="pt-2 text-center">
           <Link

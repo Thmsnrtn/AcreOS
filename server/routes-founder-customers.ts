@@ -25,7 +25,7 @@
 
 import type { Express, Response } from "express";
 import { db } from "./db";
-import { organizations } from "@shared/schema";
+import { organizations, subscriptionEvents } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { and, desc, eq, gte, sql, isNotNull, inArray } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
@@ -49,11 +49,17 @@ const TOP_UTM_LIMIT = 10;
 const ACTIVE_STATUSES = ["active", "trialing", "past_due"] as const;
 
 /**
- * Status values that mark an org as churned (cancelled or hard-deleted
- * via dunning suspension). We separately filter on "updated in the
- * window" to bound the churn count to recent activity.
+ * The churn WINDOW is keyed on the real `cancel` subscription_event timestamp
+ * (see below), NOT on organizations.updatedAt — any unrelated org update (a
+ * profile edit, a churn-risk-score refresh) re-dates updatedAt and would
+ * otherwise drag a long-since-churned org back into the 30-day window.
+ *
+ * The canonical subscription_events.event_type written by
+ * storage.logSubscriptionEvent on a real cancellation (webhook
+ * customer.subscription.deleted + the in-app cancel path). This is the only
+ * real cancellation TIMESTAMP we persist, so we key the churn window on it.
  */
-const CHURNED_STATUSES = ["cancelled", "canceled", "suspended"] as const;
+const CANCEL_EVENT_TYPE = "cancel" as const;
 
 type TaxAddress = {
   city?: string;
@@ -109,16 +115,26 @@ export function registerFounderCustomersRoutes(app: Express) {
         const trialOrgCount = trialRow?.count ?? 0;
 
         // ── Churned in last 30 days ───────────────────────────────────────
+        // Keyed on the REAL cancellation timestamp: the `cancel`
+        // subscription_event's created_at. This is the only persisted moment
+        // an org actually cancelled, so the 30-day window can't be polluted by
+        // an unrelated organizations.updatedAt bump (the previous bug). We
+        // count DISTINCT orgs (an org could have churn→reactivate→churn within
+        // the window — we want it counted once) that are NOT founder orgs.
         const [churnRow] = await db
           .select({
-            count: sql<number>`count(*)::int`,
+            count: sql<number>`count(DISTINCT ${subscriptionEvents.organizationId})::int`,
           })
-          .from(organizations)
+          .from(subscriptionEvents)
+          .innerJoin(
+            organizations,
+            eq(organizations.id, subscriptionEvents.organizationId),
+          )
           .where(
             and(
+              eq(subscriptionEvents.eventType, CANCEL_EVENT_TYPE),
+              gte(subscriptionEvents.createdAt, churnCutoff),
               eq(organizations.isFounder, false),
-              inArray(organizations.subscriptionStatus, [...CHURNED_STATUSES]),
-              gte(organizations.updatedAt, churnCutoff),
             ),
           );
         const churnedLast30d = churnRow?.count ?? 0;
@@ -181,7 +197,10 @@ export function registerFounderCustomersRoutes(app: Express) {
           const utm = r.utm ?? null;
           return {
             orgName: r.orgName ?? "(no org)",
-            persona: r.persona ?? "land_investor",
+            // Default a NULL persona to "unknown", never "land_investor" — a
+            // missing persona is not a confirmed land-investor signup, and the
+            // founder funnel must not invent acquisition signal.
+            persona: r.persona ?? "unknown",
             createdAt: r.createdAt ? r.createdAt.toISOString() : new Date(0).toISOString(),
             utmSource: utm?.utm_source ?? null,
             city: tax?.city ?? null,

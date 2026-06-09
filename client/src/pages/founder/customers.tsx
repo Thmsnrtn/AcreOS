@@ -34,6 +34,8 @@ import {
   Info,
   AlertTriangle,
   Compass,
+  Scale,
+  LifeBuoy,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -198,7 +200,7 @@ function FunnelStrip({
         testId="customers-funnel-paid"
       />
       <FunnelTile
-        label="Trial (last 14d)"
+        label="New (14d, not paying)"
         value={data.trialOrgCount}
         icon={Compass}
         tone="brand"
@@ -258,11 +260,19 @@ function RecentSignupsSection({
                 key={`${row.orgName}-${row.createdAt}-${idx}`}
                 className="flex items-start gap-3 rounded-md border border-border bg-card p-3"
               >
+                {/* A null/"unknown" persona is rendered neutrally — never
+                    dressed up as a confirmed persona. */}
                 <Badge
                   variant="outline"
-                  className="text-xs shrink-0 capitalize"
+                  className={`text-xs shrink-0 ${
+                    row.persona === "unknown"
+                      ? "text-muted-foreground italic"
+                      : "capitalize"
+                  }`}
                 >
-                  {row.persona}
+                  {row.persona === "unknown"
+                    ? "unknown"
+                    : row.persona.replace(/_/g, " ")}
                 </Badge>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-foreground truncate">
@@ -320,8 +330,11 @@ function TopUtmSection({
             icon={TrendingUp}
             headline="No UTM data yet"
             subtitle="Tag campaign URLs with utm_source so this page can tell you what's working."
-            // TODO(cta): UTM tagging is an external campaign-side action
-            cta={{ label: "", _noOp: true }}
+            cta={{
+              label: "Manage campaigns",
+              href: "/founder/growth/campaigns",
+              "data-testid": "customers-utm-cta",
+            }}
             actionIcon={null}
             testId="customers-utm-empty"
           />
@@ -424,6 +437,89 @@ export default function FounderCustomersPage() {
                 </Link>
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Door → live deep-data surfaces. The funnel above is the scannable
+            top; per-org health, the recourse heartbeat, and the customer
+            appeals queue each have their own founder route with live data. */}
+        <Card data-testid="customers-deeper-links">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Go deeper</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 grid gap-3 sm:grid-cols-3">
+            <Button
+              asChild
+              variant="outline"
+              className="h-auto justify-start py-3"
+            >
+              <Link
+                href="/founder/customers/health"
+                aria-label="Open the customer health workbench"
+                data-testid="link-customers-deep-health"
+              >
+                <Heart
+                  className="mr-2 h-4 w-4 text-muted-foreground shrink-0"
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 text-left">
+                  <span className="block text-sm font-medium text-foreground">
+                    Health workbench
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Per-org churn risk + signal.
+                  </span>
+                </span>
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="h-auto justify-start py-3"
+            >
+              <Link
+                href="/founder/recourse"
+                aria-label="Open the customer recourse surface"
+                data-testid="link-customers-deep-recourse"
+              >
+                <LifeBuoy
+                  className="mr-2 h-4 w-4 text-muted-foreground shrink-0"
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 text-left">
+                  <span className="block text-sm font-medium text-foreground">
+                    Recourse
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Customer-recourse heartbeat.
+                  </span>
+                </span>
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="h-auto justify-start py-3"
+            >
+              <Link
+                href="/founder/appeals"
+                aria-label="Open the customer appeals queue"
+                data-testid="link-customers-deep-appeals"
+              >
+                <Scale
+                  className="mr-2 h-4 w-4 text-muted-foreground shrink-0"
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 text-left">
+                  <span className="block text-sm font-medium text-foreground">
+                    Appeals
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Customer appeals queue.
+                  </span>
+                </span>
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 
