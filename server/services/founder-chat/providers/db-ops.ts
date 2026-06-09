@@ -311,13 +311,131 @@ function parseTargetTable(rawSql: string): { table: string; whereClause: string 
 }
 
 /**
+ * The leading verb of a destructive statement, if it is one of the
+ * row-scoping verbs we gate (DELETE / UPDATE). INSERT and other verbs
+ * return null — INSERT adds rows rather than mutating an unbounded set,
+ * so the WHERE/org-scope guard does not apply to it.
+ */
+function destructiveVerb(rawSql: string): "DELETE" | "UPDATE" | null {
+  const cleaned = stripComments(rawSql).replace(/;\s*$/, "").trim();
+  const lead = leadingKeyword(cleaned);
+  if (lead === "DELETE") return "DELETE";
+  if (lead === "UPDATE") return "UPDATE";
+  return null;
+}
+
+/**
+ * True when the WHERE clause text references `organization_id` as a
+ * filter column (constrains the write to a single org). We accept the
+ * unquoted or double-quoted identifier on the LEFT of a predicate —
+ * `organization_id = 7`, `"organization_id" IN (...)`, `org.organization_id = $1`.
+ * We deliberately do NOT accept `organization_id` appearing only on the
+ * RIGHT of a predicate or inside a string literal.
+ */
+function whereScopesOrg(whereClause: string): boolean {
+  const cleaned = stripComments(whereClause);
+  // Match `organization_id` (optionally table-qualified / double-quoted)
+  // immediately followed by a comparison/membership operator.
+  return /(?:^|[^."\w])(?:"?[a-z_][a-z0-9_]*"?\.)?"?organization_id"?\s*(?:=|<>|!=|\bIN\b|\bIS\b|\bANY\b)/i.test(
+    cleaned,
+  );
+}
+
+export class DbWriteGuardError extends DbOpsError {
+  constructor(message: string) {
+    super(message, "safety");
+    this.name = "DbWriteGuardError";
+  }
+}
+
+/**
+ * Pre-execution guard for DELETE / UPDATE. Enforced BEFORE the snapshot
+ * and the write. Rules:
+ *
+ *   1. A DELETE / UPDATE with NO WHERE clause is refused outright (it
+ *      would mutate every row of the table) — UNLESS platformWide=true.
+ *   2. If the target table carries an `organization_id` column, the
+ *      WHERE clause MUST constrain `organization_id` — otherwise the
+ *      write could cross org boundaries — UNLESS platformWide=true.
+ *   3. When the statement shape is not a recognizable single-table
+ *      DELETE/UPDATE (multi-table, complex CTE), we cannot prove it is
+ *      bounded/org-scoped, so it is refused UNLESS platformWide=true.
+ *
+ * platformWide=true is the explicit, loud escape hatch for legitimate
+ * cross-org / unbounded platform operations. It does not relax the
+ * single-statement / non-CTE-write checks in parseSqlSafety — it only
+ * waives the WHERE + org-scope requirement here.
+ */
+async function assertWriteScoped(
+  rawSql: string,
+  platformWide: boolean,
+): Promise<void> {
+  const verb = destructiveVerb(rawSql);
+  // INSERT and other non-row-scoping verbs are out of scope for this guard.
+  if (!verb) return;
+
+  // platform_wide is the explicit, audited escape hatch. The louder
+  // confirmation ceremony (SQL-forward + flagged) is enforced in the UI.
+  if (platformWide) return;
+
+  const target = parseTargetTable(rawSql);
+  if (!target) {
+    throw new DbWriteGuardError(
+      `Refusing ${verb}: statement shape is not a recognizable single-table ${verb} ` +
+        `(multi-table joins / complex CTEs can't be proven org-scoped). ` +
+        `Rewrite as a single-table ${verb} with a WHERE on organization_id, ` +
+        `or pass platform_wide:true to run an unbounded/cross-org write.`,
+    );
+  }
+
+  if (!target.whereClause) {
+    throw new DbWriteGuardError(
+      `Refusing ${verb} on "${target.table}" with no WHERE clause — it would mutate every row. ` +
+        `Add a WHERE clause (scoped to organization_id where the table has one), ` +
+        `or pass platform_wide:true for an intentional table-wide write.`,
+    );
+  }
+
+  // Detect whether the target table is org-scoped. If we can't read the
+  // schema, fail closed: an org-scoped table whose schema we can't verify
+  // must still require the org filter, so we require it whenever the
+  // WHERE clause doesn't already mention organization_id.
+  let hasOrgColumn = false;
+  try {
+    const cols = await getTableSchema(target.table);
+    hasOrgColumn = cols.some((c) => c.column_name === "organization_id");
+  } catch (err) {
+    logger.warn("[db-ops] org-column detection failed; requiring org scope to be safe", {
+      metadata: {
+        table: target.table,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
+    // Fail closed only when the WHERE doesn't already scope org.
+    hasOrgColumn = !whereScopesOrg(target.whereClause);
+  }
+
+  if (hasOrgColumn && !whereScopesOrg(target.whereClause)) {
+    throw new DbWriteGuardError(
+      `Refusing ${verb} on "${target.table}": this table has an organization_id column, ` +
+        `so the WHERE clause must constrain organization_id to keep the write inside one org. ` +
+        `Add \`organization_id = <id>\` to the WHERE, or pass platform_wide:true for a deliberate cross-org write.`,
+    );
+  }
+}
+
+/**
  * Execute a destructive SQL statement. Refuses anything `parseSqlSafety`
  * reports as readOnly (i.e. force the caller through runReadOnlyQuery
- * for those). Captures a snapshot of affected rows when the statement
- * is a single-table DELETE or UPDATE with a parseable WHERE.
+ * for those). Before executing a DELETE / UPDATE, enforces the
+ * WHERE + organization_id scope guard (`assertWriteScoped`) unless the
+ * caller passes platformWide=true. Captures a snapshot of affected rows
+ * when the statement is a single-table DELETE or UPDATE with a parseable
+ * WHERE.
  */
 export async function runDestructiveQuery(
   rawSql: string,
+  opts: { platformWide?: boolean } = {},
 ): Promise<DbWriteResult> {
   const safety = parseSqlSafety(rawSql);
   if (safety.isReadOnly) {
@@ -326,6 +444,9 @@ export async function runDestructiveQuery(
       "safety",
     );
   }
+
+  // Pre-execution guard: WHERE + org-scope (or explicit platform_wide).
+  await assertWriteScoped(rawSql, opts.platformWide === true);
 
   let snapshot: Array<Record<string, unknown>> | null = null;
   let snapshotTable: string | null = null;
@@ -349,7 +470,11 @@ export async function runDestructiveQuery(
   }
 
   logger.warn("[db-ops] runDestructiveQuery", {
-    metadata: { reason: safety.reason, snapshotRows: snapshot?.length ?? 0 },
+    metadata: {
+      reason: safety.reason,
+      snapshotRows: snapshot?.length ?? 0,
+      platformWide: opts.platformWide === true,
+    },
   });
 
   try {

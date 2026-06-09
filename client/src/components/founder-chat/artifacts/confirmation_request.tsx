@@ -63,6 +63,16 @@ export function ConfirmationRequestArtifact({
   const argsJson = JSON.stringify(toolCall.args, null, 2);
   const pending = confirmMut.isPending || cancelMut.isPending;
 
+  // For db_query_write the SQL itself — not the generic description — is
+  // the thing Tom needs to read. Surface it expanded by default as the
+  // hero, and visibly flag a platform-wide (unbounded / cross-org) write.
+  const isDbWrite = toolCall.name === "db_query_write";
+  const dbWriteSql =
+    isDbWrite && typeof toolCall.args.sql === "string"
+      ? (toolCall.args.sql as string)
+      : null;
+  const platformWide = isDbWrite && toolCall.args.platform_wide === true;
+
   return (
     <Card
       className={cn(
@@ -100,14 +110,48 @@ export function ConfirmationRequestArtifact({
             <p className="text-sm text-muted-foreground leading-relaxed">
               {preview}
             </p>
-            <Badge
-              variant="secondary"
-              className="font-mono text-micro bg-background/60 text-muted-foreground border-transparent"
-            >
-              {toolCall.name}
-            </Badge>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge
+                variant="secondary"
+                className="font-mono text-micro bg-background/60 text-muted-foreground border-transparent"
+              >
+                {toolCall.name}
+              </Badge>
+              {platformWide && (
+                <Badge
+                  variant="secondary"
+                  className="font-mono text-micro bg-acr-warn/15 text-acr-warn border border-acr-warn/40"
+                  data-testid={`confirm-platform-wide-${requestId}`}
+                >
+                  platform_wide
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* db_query_write: the SQL is the hero — show it expanded, not
+            collapsed behind a toggle. */}
+        {dbWriteSql && (
+          <div className="pl-11 space-y-2">
+            {platformWide && (
+              <p
+                className="text-xs text-acr-warn font-semibold leading-relaxed"
+                role="note"
+              >
+                Platform-wide write — this is NOT scoped to a single
+                organization. It can mutate rows across every org. Read the SQL
+                carefully before confirming.
+              </p>
+            )}
+            <pre
+              className="p-3 rounded-md bg-muted/60 overflow-x-auto text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-words"
+              data-testid={`confirm-sql-${requestId}`}
+            >
+              {dbWriteSql}
+            </pre>
+          </div>
+        )}
 
         {warning && (
           <p

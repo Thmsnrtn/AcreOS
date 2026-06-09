@@ -958,13 +958,25 @@ registerTool({
 registerTool({
   name: "db_query_write",
   description:
-    "Run a DESTRUCTIVE SQL statement (INSERT/UPDATE/DELETE) against the primary database. Captures a SELECT snapshot of affected rows when feasible. Tier 3 destructive — db_query (read) is the inquiry sibling.",
+    "Run a DESTRUCTIVE SQL statement (INSERT/UPDATE/DELETE) against the primary database. " +
+    "DELETE/UPDATE MUST carry a WHERE clause, and on tables with an organization_id column the " +
+    "WHERE must constrain organization_id — otherwise the write is refused. Set platform_wide:true " +
+    "ONLY for a deliberate unbounded or cross-org platform operation (it triggers a louder confirmation). " +
+    "Captures a SELECT snapshot of affected rows when feasible. Tier 3 destructive — db_query (read) is the inquiry sibling.",
   category: "action",
   destructive: true,
   tier: 3,
   schema: z.object({
     sql: z.string().min(1),
     reason: z.string().min(3).max(500),
+    platform_wide: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Explicit escape hatch for an intentional unbounded/cross-org write. " +
+          "When true, the WHERE + organization_id requirement is waived and the " +
+          "confirmation card is shown in its loud platform-wide form. Default false.",
+      ),
   }),
   async handler(args) {
     const safety = parseSqlSafety(args.sql);
@@ -974,7 +986,9 @@ registerTool({
       );
     }
     try {
-      const result = await runDestructiveQuery(args.sql);
+      const result = await runDestructiveQuery(args.sql, {
+        platformWide: args.platform_wide === true,
+      });
       const snapPreview = result.snapshot
         ? `\n\nCaptured ${result.snapshot.length} affected row${result.snapshot.length === 1 ? "" : "s"} before write.`
         : "";
