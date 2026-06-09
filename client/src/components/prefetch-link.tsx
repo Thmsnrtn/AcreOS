@@ -23,7 +23,7 @@
  * Override via `prefetchKeys` for routes whose canonical query isn't
  * obvious from the URL.
  */
-import { type AnchorHTMLAttributes, type ReactNode, useCallback, useRef } from "react";
+import { type AnchorHTMLAttributes, type ReactNode, forwardRef, useCallback, useRef } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -89,7 +89,10 @@ function inferKeys(href: string): string[] {
   }
 }
 
-export function PrefetchLink({
+// forwardRef so the link composes inside Radix `asChild` Slots (TooltipTrigger,
+// PopoverTrigger, etc.) without the "Function components cannot be given refs"
+// warning — the ref flows through to wouter's underlying <a>.
+export const PrefetchLink = forwardRef<HTMLAnchorElement, PrefetchLinkProps>(function PrefetchLink({
   href,
   children,
   prefetchKeys,
@@ -98,7 +101,7 @@ export function PrefetchLink({
   onMouseEnter,
   onFocus,
   ...rest
-}: PrefetchLinkProps) {
+}, ref) {
   const queryClient = useQueryClient();
   // Once-per-mount guard so the same link doesn't prefetch repeatedly
   // when the user hovers/leaves/hovers again. The cache entry persists
@@ -119,6 +122,7 @@ export function PrefetchLink({
 
   return (
     <Link
+      ref={ref}
       href={href}
       onMouseEnter={(e) => {
         doPrefetch();
@@ -133,4 +137,4 @@ export function PrefetchLink({
       {children}
     </Link>
   );
-}
+});

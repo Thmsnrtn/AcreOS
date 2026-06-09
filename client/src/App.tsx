@@ -1437,10 +1437,9 @@ function Router() {
       <Route path="/founder/providers">
         {() => <FounderProtectedRoute component={FounderProvidersPage} />}
       </Route>
-      {/* /founder/todo — legacy "what needs you" feed. Overlaps the Today
-          door (active asks + decisions waiting), so it now redirects there.
-          The standalone page (founder-todo.tsx) is kept only as a redirect
-          target's source-of-record; no nav links to it. */}
+      {/* /founder/todo — legacy "what needs you" feed, now folded into the
+          Today door (active asks + decisions waiting). Redirects there; the
+          old standalone page was deleted 2026-06-09. */}
       <Route path="/founder/todo">
         {() => <Redirect to="/founder/today" />}
       </Route>

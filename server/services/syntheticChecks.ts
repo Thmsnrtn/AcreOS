@@ -23,6 +23,7 @@ import { db } from "../db";
 import { syntheticCheckRuns, stripeProcessedEvents } from "@shared/schema";
 import { desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { CLERK_FAPI_ORIGIN } from "../middleware/clerkProxy";
 
 export type CheckStatus = "ok" | "degraded" | "failing";
 
@@ -96,7 +97,8 @@ async function checkStripeWebhookFreshness(): Promise<CheckResult> {
 async function checkClerkProxyHealth(): Promise<CheckResult> {
   const t = await timeIt(async () => {
     // Ping clerk's environment endpoint to verify the proxy is alive.
-    const upstream = "https://possible-emu-83.clerk.accounts.dev/v1/environment";
+    // Same origin the proxy relays to (env-overridable) — single source of truth.
+    const upstream = `${CLERK_FAPI_ORIGIN}/v1/environment`;
     const r = await fetch(upstream, { method: "GET" });
     if (!r.ok) throw new Error(`clerk environment returned ${r.status}`);
     return { ok: true };

@@ -4,8 +4,20 @@ import { logger } from "../utils/logger";
 
 // Clerk Frontend API origin we proxy to. Cloudflare blocks the vanity
 // clerk.acreos.io (Error 1000), so the browser talks to /__clerk and we relay
-// to the *.clerk.accounts.dev FAPI here.
-const CLERK_FAPI_ORIGIN = "https://possible-emu-83.clerk.accounts.dev";
+// to the *.clerk.accounts.dev backing FAPI here.
+//
+// Override with the CLERK_FAPI_ORIGIN env var if the instance's backing domain
+// ever changes (e.g. a new Clerk instance) — no code edit required. The default
+// is the current production instance's backing domain. Do NOT derive this from
+// the publishable key: that encodes the Cloudflare-blocked vanity domain.
+// syntheticChecks.ts imports both constants so the health probe always targets
+// the exact origin the proxy uses.
+const DEFAULT_CLERK_FAPI_ORIGIN = "https://possible-emu-83.clerk.accounts.dev";
+export const CLERK_FAPI_ORIGIN =
+  process.env.CLERK_FAPI_ORIGIN?.trim().replace(/\/+$/, "") || DEFAULT_CLERK_FAPI_ORIGIN;
+// Hostname only — used to rewrite upstream Location headers back through /__clerk
+// regardless of which origin is configured.
+export const CLERK_FAPI_HOST = new URL(CLERK_FAPI_ORIGIN).host;
 
 // Bound the upstream call well below the 30s global requestTimeout wall
 // (server/middleware/security.ts). PROD BUG 2026-06-09: an un-timed fetch to
@@ -95,7 +107,7 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
         if (k === "location") {
           let loc = value;
           if (loc.startsWith("/v1/") || loc.startsWith("/npm/")) loc = "/__clerk" + loc;
-          if (loc.includes("possible-emu-83.clerk.accounts.dev")) loc = loc.replace(CLERK_FAPI_ORIGIN, "/__clerk");
+          if (loc.includes(CLERK_FAPI_HOST)) loc = loc.replace(CLERK_FAPI_ORIGIN, "/__clerk");
           if (loc.includes("accounts.acreos.io")) loc = "https://acreos.io/";
           res.setHeader(key, loc);
           return;
