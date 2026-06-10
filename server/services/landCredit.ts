@@ -808,49 +808,26 @@ class LandCreditScoring {
   }
 
   /**
-   * Compare score to industry benchmarks — returns percentile rank
+   * Compare score to industry benchmarks.
+   *
+   * 2026-06-10 (T0-12, elevation-blueprint-2026-06-10.md): the hardcoded
+   * per-type benchmark averages and state bonuses (invented numbers) were
+   * removed — fabricated facts violate the no-fabrication discipline. This
+   * is the live handler behind GET /api/land-credit/benchmark/:propertyId,
+   * so it now returns a typed insufficient-data result until real
+   * network-cohort percentiles exist (Tier-2 item 2A in the blueprint).
    */
   compareToIndustryBenchmarks(
-    score: number,
-    propertyType: string,
-    state: string
-  ): {
-    percentile: number;
-    benchmarkAvg: number;
-    benchmarkMedian: number;
-    outperforms: boolean;
-  } {
-    // Industry benchmark scores by property type and state (simplified lookup)
-    // In production these would come from aggregated transaction data
-    const benchmarks: Record<string, { avg: number; median: number }> = {
-      agricultural: { avg: 620, median: 610 },
-      residential: { avg: 650, median: 640 },
-      commercial: { avg: 670, median: 660 },
-      industrial: { avg: 640, median: 630 },
-      recreational: { avg: 590, median: 580 },
-    };
-
-    const stateBonus: Record<string, number> = {
-      TX: 10, FL: 8, GA: 5, TN: 5, NC: 5,
-      CA: -5, NY: -5, NJ: -3,
-    };
-
-    const base = benchmarks[propertyType?.toLowerCase()] || { avg: 625, median: 615 };
-    const stateAdj = stateBonus[state?.toUpperCase()] || 0;
-    const benchmarkAvg = base.avg + stateAdj;
-    const benchmarkMedian = base.median + stateAdj;
-
-    // Percentile approximation: assume normal distribution around benchmark avg (std dev ~80)
-    const stdDev = 80;
-    const z = (score - benchmarkAvg) / stdDev;
-    // Approximate CDF for percentile
-    const percentile = Math.min(99, Math.max(1, Math.round(50 + 50 * Math.tanh(z * 0.8))));
-
+    _score: number,
+    _propertyType: string,
+    _state: string
+  ):
+    | { available: true; percentile: number; benchmarkAvg: number; benchmarkMedian: number; outperforms: boolean }
+    | { available: false; reason: string } {
     return {
-      percentile,
-      benchmarkAvg: Math.round(benchmarkAvg),
-      benchmarkMedian: Math.round(benchmarkMedian),
-      outperforms: score > benchmarkAvg,
+      available: false,
+      reason:
+        "Industry benchmarks are not computed yet — AcreOS only reports benchmarks derived from real scored transactions, and that dataset does not exist yet.",
     };
   }
 

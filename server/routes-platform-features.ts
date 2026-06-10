@@ -1049,8 +1049,12 @@ export function registerPlatformFeatureRoutes(app: Express): void {
 
       if (!score || !property) return Errors.notFound(res, "Property or LCS");
 
-      const state = property.state || "TX";
-      const propertyType = (property as any).zoning || "agricultural";
+      // 2026-06-10 (T0-12): comparison/benchmarks are typed insufficient-data
+      // results ({ available: false, reason }) until real network-cohort
+      // percentiles exist — elevation-blueprint-2026-06-10.md Tier-2 item 2A.
+      // Score + grade remain real (the property's own stored LCS row).
+      const state = property.state || "";
+      const propertyType = (property as any).zoning || "";
       const comparison = benchmarking.compareToIndustry(score.overallScore ?? 0, propertyType, state);
       const benchmarks = benchmarking.getBenchmarks(propertyType, state);
 
@@ -1059,7 +1063,6 @@ export function registerPlatformFeatureRoutes(app: Express): void {
         grade: score.grade,
         comparison,
         benchmarks,
-        summary: `Your LCS: ${score.overallScore}. State benchmark: median ${benchmarks.median}, 75th percentile: ${benchmarks.p75}. Your property ranks in the ${comparison.percentile}th percentile for ${state} ${propertyType}.`,
       });
     } catch (error) { Errors.internal(res, error); }
   });
