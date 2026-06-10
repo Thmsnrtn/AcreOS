@@ -180,7 +180,19 @@ interface RailMessage {
   mentionChips?: { type: string; id: number; name: string }[];
   thinkingContent?: string;
   isThinking?: boolean;
-  approvalRequired?: { toolCallId: string; toolName: string; args: any };
+  /**
+   * Tier 1A approval kernel: an approval-required tool call frozen
+   * server-side as a pending_actions row. Approve/Reject hit
+   * /api/pax/pending-actions/:id/{approve,reject} — the ONLY path from a
+   * frozen row to execution. status tracks the local card lifecycle.
+   */
+  pendingAction?: {
+    pendingActionId: number;
+    toolName: string;
+    args: any;
+    status: "pending" | "deciding" | "executed" | "rejected" | "failed";
+    resultNote?: string;
+  };
   /** Set when the server's hallucination guard replaced the streamed text with a corrected version. */
   wasCorrected?: boolean;
 }
@@ -829,19 +841,20 @@ export function PaxCopilotRail() {
                 setMessages((prev) => prev.map((m) =>
                   m.id === asstId ? { ...m, role: "error" as const, content: data.error ?? "An error occurred", isStreaming: false } : m
                 ));
-              } else if (data.type === "approval_required") {
-                let parsedArgs = data.args;
-                if (typeof parsedArgs === "string") {
-                  try { parsedArgs = JSON.parse(parsedArgs); } catch {}
-                }
+              } else if (data.type === "pending_action" && data.pendingAction?.pendingActionId) {
+                // Tier 1A approval kernel: the tool call is frozen server-side
+                // as a pending_actions row; render the Approve/Reject card.
                 setMessages((prev) => prev.map((m) =>
                   m.id === asstId ? {
                     ...m,
-                    isStreaming: false,
-                    approvalRequired: { toolCallId: data.toolCallId, toolName: data.toolName, args: parsedArgs },
+                    pendingAction: {
+                      pendingActionId: data.pendingAction.pendingActionId,
+                      toolName: data.pendingAction.toolName,
+                      args: data.pendingAction.args,
+                      status: "pending" as const,
+                    },
                   } : m
                 ));
-                setIsStreaming(false);
               }
             } catch {}
           }
@@ -1025,26 +1038,41 @@ export function PaxCopilotRail() {
     }
   };
 
-  // ── Pre-approval gate ─────────────────────────────────────────────────────
-  const handleApprove = async (toolCallId: string, msgId: string, approved: boolean) => {
-    setMessages((prev) => prev.map((m) =>
-      m.id === msgId ? { ...m, approvalRequired: undefined } : m
-    ));
-    if (!approved) {
-      sendMessage("I've decided not to proceed with that action.");
-      return;
-    }
+  // ── Approval kernel (Tier 1A) ─────────────────────────────────────────────
+  // Approve/Reject act on the FROZEN pending_actions row server-side. No
+  // natural-language "Confirmed, please proceed" round-trip — the human tap
+  // is the approval, the kernel re-verifies the content hash, and a
+  // double-tap is idempotent (the second tap returns the first result).
+  const handlePendingActionDecision = async (
+    msgId: string,
+    pendingActionId: number,
+    decision: "approve" | "reject",
+  ) => {
+    const setStatus = (status: NonNullable<RailMessage["pendingAction"]>["status"], resultNote?: string) =>
+      setMessages((prev) => prev.map((m) =>
+        m.id === msgId && m.pendingAction
+          ? { ...m, pendingAction: { ...m.pendingAction, status, resultNote } }
+          : m
+      ));
+
+    setStatus("deciding");
     try {
-      const res = await fetch(`/api/ai/conversations/${activeConversationId}/approve-tool`, {
+      const res = await fetch(`/api/pax/pending-actions/${pendingActionId}/${decision}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ toolCallId, approved: true }),
       });
-      if (res.ok) {
-        sendMessage("Confirmed, please proceed with the action.");
+      const body = await res.json().catch(() => null);
+      if (res.ok && decision === "approve") {
+        setStatus("executed", body?.alreadyExecuted ? "Already sent — returned the original result." : undefined);
+      } else if (res.ok) {
+        setStatus("rejected");
+      } else {
+        setStatus("failed", body?.message ?? "The action could not be completed. Ask Pax to draft it again.");
       }
-    } catch {}
+    } catch {
+      setStatus("failed", "Connection failed. The action was not executed — try again.");
+    }
   };
 
   // File drag handlers
@@ -1602,34 +1630,55 @@ export function PaxCopilotRail() {
                               </TooltipContent>
                             </Tooltip>
                           )}
-                          {/* Pre-approval card */}
-                          {msg.approvalRequired && (
+                          {/* Approval-kernel card: the frozen pending action awaiting a witnessed tap */}
+                          {msg.pendingAction && (
                             <div className="rounded-md border border-acr-warn-soft bg-acr-warn-soft dark:bg-acr-warn-soft/30 dark:border-acr-warn-soft p-3 text-xs space-y-2 mt-1">
                               <div className="flex items-center gap-1.5">
-                                <AlertCircle className="w-3.5 h-3.5 text-acr-warn flex-shrink-0" />
-                                <span className="font-medium text-acr-warn dark:text-acr-warn">Action requires your approval</span>
+                                {msg.pendingAction.status === "executed" ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos flex-shrink-0" aria-hidden="true" />
+                                ) : (
+                                  <AlertCircle className="w-3.5 h-3.5 text-acr-warn flex-shrink-0" aria-hidden="true" />
+                                )}
+                                <span className="font-medium text-acr-warn dark:text-acr-warn">
+                                  {msg.pendingAction.status === "executed" && "Approved and sent"}
+                                  {msg.pendingAction.status === "rejected" && "Rejected — nothing was sent"}
+                                  {msg.pendingAction.status === "failed" && "Not completed"}
+                                  {(msg.pendingAction.status === "pending" || msg.pendingAction.status === "deciding") &&
+                                    "Action requires your approval"}
+                                </span>
                               </div>
                               <p className="text-acr-warn dark:text-acr-warn leading-snug">
-                                <span className="font-mono bg-acr-warn-soft dark:bg-acr-warn-soft px-1 rounded text-caption">{msg.approvalRequired.toolName}</span>
-                                {" "}{formatApprovalArgs(msg.approvalRequired.toolName, msg.approvalRequired.args)}
+                                <span className="font-mono bg-acr-warn-soft dark:bg-acr-warn-soft px-1 rounded text-caption">{msg.pendingAction.toolName}</span>
+                                {" "}{formatApprovalArgs(msg.pendingAction.toolName, msg.pendingAction.args)}
                               </p>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  className="h-7 text-xs"
-                                  onClick={() => handleApprove(msg.approvalRequired!.toolCallId, msg.id, true)}
-                                >
-                                  Approve
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 text-xs"
-                                  onClick={() => handleApprove(msg.approvalRequired!.toolCallId, msg.id, false)}
-                                >
-                                  Deny
-                                </Button>
-                              </div>
+                              {msg.pendingAction.resultNote && (
+                                <p className="text-muted-foreground leading-snug">{msg.pendingAction.resultNote}</p>
+                              )}
+                              {(msg.pendingAction.status === "pending" || msg.pendingAction.status === "deciding") && (
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    disabled={msg.pendingAction.status === "deciding"}
+                                    aria-label={`Approve and send ${msg.pendingAction.toolName.replace(/_/g, " ")}`}
+                                    onClick={() => handlePendingActionDecision(msg.id, msg.pendingAction!.pendingActionId, "approve")}
+                                    data-testid={`pending-action-approve-${msg.pendingAction.pendingActionId}`}
+                                  >
+                                    {msg.pendingAction.status === "deciding" ? "Working…" : "Approve & send"}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs"
+                                    disabled={msg.pendingAction.status === "deciding"}
+                                    aria-label={`Reject ${msg.pendingAction.toolName.replace(/_/g, " ")}`}
+                                    onClick={() => handlePendingActionDecision(msg.id, msg.pendingAction!.pendingActionId, "reject")}
+                                    data-testid={`pending-action-reject-${msg.pendingAction.pendingActionId}`}
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           )}
                           {/* Artifact renders */}

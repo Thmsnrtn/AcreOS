@@ -1899,38 +1899,15 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
-  // ============================================
-  // PRE-APPROVAL GATE FOR DESTRUCTIVE TOOLS
-  // ============================================
-
-  // In-memory pending approvals: conversationId+toolCallId → { toolName, args, orgId, resolve }
-  const pendingApprovals = new Map<string, { toolName: string; args: any; resolve: (approved: boolean) => void }>();
-
-  // Expose the map so executive.ts can use it via module-level export
-  (global as any).__paxPendingApprovals = pendingApprovals;
-
-  const approveToolSchema = z.object({
-    toolCallId: z.string().min(1, "toolCallId is required"),
-    approved: z.boolean(),
-  });
-
-  api.post("/api/ai/conversations/:id/approve-tool", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const parsed = approveToolSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.issues);
-      }
-      const { toolCallId, approved } = parsed.data;
-      const key = `${req.params.id}:${toolCallId}`;
-      const pending = pendingApprovals.get(key);
-      if (!pending) return Errors.notFound(res, "Pending approval");
-      pendingApprovals.delete(key);
-      pending.resolve(!!approved);
-      res.json({ success: true });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
+  // (2026-06-10, Tier 1A approval kernel) The old in-memory
+  // __paxPendingApprovals map + POST /api/ai/conversations/:id/approve-tool
+  // endpoint were dead bypass machinery: nothing ever populated the map, so
+  // the endpoint 404'd and the client fell back to a natural-language
+  // "Confirmed, please proceed" message — approval theater. Approvals now
+  // flow through the structural kernel: executeTool freezes
+  // approval-required calls as pending_actions rows and
+  // POST /api/pax/pending-actions/:id/approve (routes-pax-insights.ts)
+  // executes exactly the frozen, hash-verified row.
 
   // ============================================
   // SSE: REAL-TIME OBSERVATIONS STREAM

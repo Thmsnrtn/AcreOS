@@ -21,6 +21,11 @@ import {
 } from "../services/autonomyGuardrails";
 import { logger } from "../utils/logger";
 import { validateAtlasOutput, AtlasOutputType } from "./validators";
+import {
+  APPROVAL_REQUIRED_TOOLS as kernelApprovalRequiredTools,
+  proposePendingAction,
+  pendingActionArtifact,
+} from "../services/approvalKernel";
 
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
@@ -928,24 +933,23 @@ export const toolDefinitions = {
   },
 };
 
-// Tools that require user approval before execution (communication + payment tools)
-export const APPROVAL_REQUIRED_TOOLS = new Set([
-  "send_email",
-  "send_sms",
-  "send_gmail",
-  "send_slack_message",
-  "create_stripe_payment_link",
-]);
+// Tools that require user approval before execution (communication + payment
+// tools). Canonical definition lives in the approval kernel
+// (server/services/approvalKernel.ts) — re-exported here for existing
+// importers (executive.ts historical, appIntents catalog, MCP safe intents).
+export { APPROVAL_REQUIRED_TOOLS } from "../services/approvalKernel";
 
 // Options threaded into executeTool by TRUSTED SERVER CODE only — never
 // derived from model output. See the witnessed-send kernel gate below.
 export interface ExecuteToolOptions {
   /**
    * True ONLY when a human explicitly approved this exact action (the
-   * approve-and-send endpoint after the user taps "Send"). The model cannot
-   * set this — it is not a tool arg.
+   * pending-action approve endpoint after the user taps "Send"). The model
+   * cannot set this — it is not a tool arg.
    */
   trustedApproval?: boolean;
+  /** The requesting user, recorded as created_by on pending_actions rows. */
+  userId?: string;
 }
 
 // Tool executor functions
@@ -973,6 +977,26 @@ export async function executeTool(
       args = rest;
     }
     const trustedApproval = options?.trustedApproval === true;
+
+    // ── The approval kernel (2026-06-10, Tier 1A elevation blueprint) ──────
+    // STRUCTURAL gate: any approval-required tool invoked without the
+    // trusted server-side approval option does not execute, period. The call
+    // is frozen as a pending_actions row (frozen args + sha256 content hash
+    // + 24h expiry) and a pending artifact is returned for the human to
+    // approve. The ONLY path to execution is the approve endpoint, which
+    // re-verifies the hash and replays EXACTLY the frozen row with
+    // { trustedApproval: true }. Because this lives inside executeTool,
+    // every caller — chat, streaming chat, vaService, app intents, future
+    // surfaces — inherits witnessed-send by construction.
+    if (kernelApprovalRequiredTools.has(toolName) && !trustedApproval) {
+      const pending = await proposePendingAction({
+        organizationId: org.id,
+        toolName,
+        args,
+        createdByUserId: options?.userId ?? null,
+      });
+      return { success: true, data: pendingActionArtifact(pending) };
+    }
 
     switch (toolName) {
       case "get_leads": {

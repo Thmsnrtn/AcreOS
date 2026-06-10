@@ -6867,6 +6867,49 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "pax_drafts_org_idx" ON "pax_drafts" ("organization_id")`,
   `CREATE INDEX IF NOT EXISTS "pax_drafts_lookup_idx"
      ON "pax_drafts" ("organization_id", "lead_id", "channel", "status")`,
+
+  // ── 0151 — Tier 1A (elevation blueprint) — structural approval kernel. ──
+  //    Mirrors migrations/0151_approval_kernel.sql.
+  // Generalizes the 0150 draft-bound approval to EVERY approval-required
+  // tool: executeTool freezes ungated invocations as pending_actions rows
+  // (tool + frozen args + sha256 content hash + expiry) and returns a
+  // pending artifact instead of executing. The approve endpoint executes
+  // THAT row (org-checked, hash-re-verified, idempotent via the guarded
+  // pending→approved UPDATE) and records the send in append-only pax_sends
+  // (no UPDATE path exists). Idempotent (CREATE TABLE/INDEX IF NOT EXISTS);
+  // self-contained block.
+  `CREATE TABLE IF NOT EXISTS "pending_actions" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL,
+     "tool_name" text NOT NULL,
+     "args" jsonb NOT NULL,
+     "content_hash" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'pending',
+     "expires_at" timestamp NOT NULL,
+     "created_by_user_id" text,
+     "approved_by_user_id" text,
+     "executed_at" timestamp,
+     "result_summary" jsonb,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "pending_actions_org_status_idx"
+     ON "pending_actions" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "pending_actions_org_dedupe_idx"
+     ON "pending_actions" ("organization_id", "tool_name", "content_hash", "status")`,
+  `CREATE TABLE IF NOT EXISTS "pax_sends" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL,
+     "pending_action_id" integer NOT NULL,
+     "tool_name" text NOT NULL,
+     "channel" text NOT NULL,
+     "recipient_ref" text,
+     "content_hash" text NOT NULL,
+     "sent_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "pax_sends_org_sent_idx"
+     ON "pax_sends" ("organization_id", "sent_at")`,
+  `CREATE INDEX IF NOT EXISTS "pax_sends_org_action_idx"
+     ON "pax_sends" ("organization_id", "pending_action_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
