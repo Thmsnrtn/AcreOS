@@ -6447,6 +6447,80 @@ export type InsertParcelAlert = z.infer<typeof insertParcelAlertSchema>;
 export type ParcelAlert = typeof parcelAlerts.$inferSelect;
 
 // ============================================
+// COUNTY MARKET ROLLUPS (Tier 3F — cross-org data co-op)
+// --------------------------------------------
+// Privacy-preserving county-level market aggregates computed monthly from
+// cross-org observations (parcel_observations density, deals/offer_letters
+// pricing, land_credit_scores grades) by the `county_market_rollup` worker
+// job (server/services/dataCoop/countyRollupJob.ts).
+//
+// Privacy model — generalized from marketNetworkContributor:
+//   - NO organization column AT ALL (structural org-null: a rollup row cannot
+//     link back to a tenant because the linkage does not exist in the schema).
+//   - cohort_size records the k backing the row; rows below k=5 are NEVER
+//     materialized — computeCountyRollup() returns null below the floor, so
+//     the gate lives in the aggregation, not the read path.
+//   - every price sample is value-bucketed (nearest $500/acre) BEFORE
+//     aggregation so no exact deal is recoverable from a percentile.
+// Migration 0157. Mirrors scripts/migrate.mjs STATEMENTS.
+// ============================================
+export const countyMarketRollups = pgTable("county_market_rollups", {
+  id: serial("id").primaryKey(),
+  state: text("state").notNull(), // 2-letter state code, uppercased
+  county: text("county").notNull(),
+  period: text("period").notNull(), // calendar month, "YYYY-MM"
+  // CountyRollupMetrics (server/services/dataCoop/privacyRollup.ts) — each
+  // sub-metric is independently k-gated and null when its own cohort is thin.
+  metrics: jsonb("metrics").$type<Record<string, unknown>>().notNull(),
+  // Distinct contributing parcels (cross-org APNs observed in the county) —
+  // the k that allowed this row to exist. Always >= 5 by construction.
+  cohortSize: integer("cohort_size").notNull(),
+  computedAt: timestamp("computed_at").notNull().defaultNow(),
+}, (table) => [
+  // One row per (state, county, period); the monthly job upserts.
+  uniqueIndex("county_market_rollups_state_county_period_uk").on(
+    table.state, table.county, table.period,
+  ),
+  // Map-door browse path: all counties for a state, newest period first.
+  index("county_market_rollups_state_period_idx").on(table.state, table.period),
+]);
+
+export type CountyMarketRollup = typeof countyMarketRollups.$inferSelect;
+
+// Run ledger for the rollup job — the deadman roster proves the job RAN;
+// this proves it PRODUCED. Two consecutive zero-rollup runs raise an
+// alert-spine warning (the co-op silently producing nothing is the
+// "wired but dark" failure mode).
+export const countyRollupRuns = pgTable("county_rollup_runs", {
+  id: serial("id").primaryKey(),
+  period: text("period").notNull(), // the (most recent) period recomputed
+  rollupsWritten: integer("rollups_written").notNull().default(0),
+  countiesScanned: integer("counties_scanned").notNull().default(0),
+  ranAt: timestamp("ran_at").notNull().defaultNow(),
+}, (table) => [
+  index("county_rollup_runs_ran_at_idx").on(table.ranAt),
+]);
+
+export type CountyRollupRun = typeof countyRollupRuns.$inferSelect;
+
+// Quarterly public market report DRAFTS (Tier 3F foundation). Generated
+// server-side from county_market_rollups; founder-reviewable at
+// /api/founder/market-reports. NEVER auto-published — witnessed-publish is a
+// follow-up; status stays 'draft' until a founder-approval path exists.
+export const marketReportDrafts = pgTable("market_report_drafts", {
+  id: serial("id").primaryKey(),
+  quarter: text("quarter").notNull(), // "YYYY-Q#"
+  status: text("status").notNull().default("draft"), // draft (publish path not built yet)
+  report: jsonb("report").$type<Record<string, unknown>>().notNull(), // structured JSON artifact
+  markdown: text("markdown").notNull(), // rendered markdown artifact
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("market_report_drafts_quarter_uk").on(table.quarter),
+]);
+
+export type MarketReportDraft = typeof marketReportDrafts.$inferSelect;
+
+// ============================================
 // LAND INTELLIGENCE REPORTS (Iyari #2 — persist the report; seed the corpus)
 // --------------------------------------------
 // The LIS report (generateLandIntelligenceReport) is otherwise a cold recompute

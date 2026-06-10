@@ -49,6 +49,7 @@ import {
   Star,
   Loader2,
   HelpCircle,
+  Flame,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -65,6 +66,7 @@ import { deriveIntel, type PropertyIntelligence } from "@/pages/maps-intel";
 import { usePersona } from "@/hooks/use-persona";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
+import { MarketHeatPanel } from "@/components/maps/MarketHeatPanel";
 import {
   RadarChart,
   Radar,
@@ -833,6 +835,10 @@ export default function MapsPage() {
   const [mapMode, setMapMode] = useState<"properties" | "deals">(personaDefaultMode);
   const [showBuyerDemandHeatmap, setShowBuyerDemandHeatmap] = useState(false);
   const [showPredictionHeatmap, setShowPredictionHeatmap] = useState(false);
+  // Tier 3F — cross-org data co-op layer. Lives INSIDE the Map door (five
+  // fixed doors): a panel of privacy-preserving county aggregates (k>=5
+  // floor server-side; below the floor the panel shows progress, never heat).
+  const [showMarketHeat, setShowMarketHeat] = useState(false);
   // RAFE (Tahoe Wave-2): "See a sample" — guarantees a first lookup never
   // returns empty by running a REAL enrichment on a curated data-rich parcel.
   const [samplePreviewOpen, setSamplePreviewOpen] = useState(false);
@@ -991,6 +997,11 @@ export default function MapsPage() {
             {showPredictionHeatmap && (
               <Badge className="text-micro shrink-0 bg-acr-brand-soft text-acr-brand hidden md:flex">
                 <TrendingUp className="w-2.5 h-2.5 mr-1" /> Prediction
+              </Badge>
+            )}
+            {showMarketHeat && (
+              <Badge className="text-micro shrink-0 bg-acr-heat-warm-soft text-acr-heat-warm hidden md:flex">
+                <Flame className="w-2.5 h-2.5 mr-1" /> Market heat
               </Badge>
             )}
           </div>
@@ -1238,11 +1249,22 @@ export default function MapsPage() {
                     </div>
                     <Switch id="layer-ml-prediction" checked={showPredictionHeatmap} onCheckedChange={setShowPredictionHeatmap} />
                   </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Flame className="w-3.5 h-3.5 text-acr-heat-warm" aria-hidden="true" />
+                      <div>
+                        <Label htmlFor="layer-market-heat" className="text-xs cursor-pointer">County market heat</Label>
+                        <p className="text-micro text-muted-foreground">Network aggregates per county.</p>
+                      </div>
+                    </div>
+                    <Switch id="layer-market-heat" checked={showMarketHeat} onCheckedChange={setShowMarketHeat} />
+                  </div>
                 </fieldset>
 
                 <Button variant="outline" className="w-full text-sm" onClick={() => {
                   setSearchQuery(""); setStatusFilter("all"); setMinAcres(0); setMaxAcres(10000);
                   setShowBuyerDemandHeatmap(false); setShowPredictionHeatmap(false);
+                  setShowMarketHeat(false);
                 }}>
                   Reset all filters
                 </Button>
@@ -1342,6 +1364,15 @@ export default function MapsPage() {
                 interactive
                 enable3DTerrain
                 showControls
+              />
+            )}
+
+            {/* Tier 3F — county market-heat layer panel. Overlays the map
+                canvas inside the Map door; toggled from Intelligence layers. */}
+            {showMarketHeat && (
+              <MarketHeatPanel
+                onClose={() => setShowMarketHeat(false)}
+                className="absolute top-2 left-2 z-10 w-80 max-w-[calc(100%-1rem)] max-h-[calc(100%-1rem)]"
               />
             )}
           </div>

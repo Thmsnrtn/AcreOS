@@ -2329,6 +2329,10 @@ export async function registerRoutes(
   registerSendGridEventRoutes(app);
   // Pillar 9.1 — Founder DLQ inspection + retry/discard endpoints.
   (await import("./routes-founder-dlq")).registerFounderDlqRoutes(app);
+  // Tier 3F — data co-op: Map-door county market heat (customer) + quarterly
+  // market-report drafts (founder-gated, witnessed-publish — list/preview only).
+  (await import("./routes-market-heat")).registerMarketHeatRoutes(app);
+  (await import("./routes-founder-market-reports")).registerFounderMarketReportRoutes(app);
   // Eleonora deliverability — Phase 1 §10 / Week 7-8: per-org DKIM/SPF/DMARC
   // identity provisioning, one-click List-Unsubscribe handler, founder
   // deliverability dashboard.

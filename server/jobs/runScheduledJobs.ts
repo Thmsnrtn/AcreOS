@@ -4617,6 +4617,36 @@ export async function runScheduledJobs(): Promise<void> {
     log(`Failed to import ledger dead-letter replay: ${err}`, "billing");
   });
 
+  // ─── Tier 3F: county market rollup (monthly) ─────────────────────
+  // Cross-org data co-op: recomputes the current + previous month's
+  // privacy-preserving county rollups (k>=5 floor, value bucketing,
+  // structural org-null — see server/services/dataCoop/privacyRollup.ts),
+  // records a county_rollup_runs ledger row, raises an alert-spine warning
+  // after two consecutive zero-rollup runs, and drafts the quarterly market
+  // report at quarter close (draft only — founder reviews; never published).
+  import("../services/dataCoop/countyRollupJob").then(({ runCountyMarketRollup }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("County market rollup registered (self-rescheduling, 30d)", "data");
+      scheduleSelfRescheduling({
+        name: "county_market_rollup",
+        intervalMs: 30 * 24 * 60 * 60 * 1000,
+        initialDelayMs: 18 * 60 * 1000,
+        run: async () => {
+          // Monthly cadence; TTL = expected max duration + buffer (60m).
+          await withJobLock("county_market_rollup", 60 * 60, async () => {
+            const r = await runCountyMarketRollup();
+            log(
+              `[data-coop] counties=${r.countiesScanned} rollups=${r.rollupsWritten} periods=${r.periods.join(",")}`,
+              "data",
+            );
+          });
+        },
+      });
+    });
+  }).catch(err => {
+    log(`Failed to import county market rollup: ${err}`, "data");
+  });
+
   // ─── Panel-300 #10: disclosure-timing dispatcher (every 1h) ──────
   // Picks up disclosure_timing_scheduled rows where send_date ≤ now
   // AND form is attorney-reviewed; sends + marks 'sent'. TILA timing
