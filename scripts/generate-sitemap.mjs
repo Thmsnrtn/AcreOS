@@ -6,12 +6,12 @@
 //
 // WHY THIS EXISTS
 //   sitemap.xml used to be hand-edited, which let it drift: it still listed
-//   /glossary (a public route ARCHIVED on 2026-06-01 — see client/src/App.tsx
-//   line ~691, "GlossaryPage archived; nothing links to it") long after the
-//   route was gone. A sitemap that points crawlers at dead URLs is an SEO
-//   liability. This generator derives the URL list from the actual route
-//   source-of-truth so the committed file can never silently rot, and the
-//   --check flag (wired into CI) fails the build if it does.
+//   /glossary after the route was archived on 2026-06-01 (the route was later
+//   RESTORED on 2026-06-10, T0-8, precisely because the sitemap promised it).
+//   A sitemap that points crawlers at dead URLs is an SEO liability. This
+//   generator derives the URL list from the actual route source-of-truth so
+//   the committed file can never silently rot, and the --check flag (wired
+//   into CI) fails the build if it does.
 //
 // ROUTE SOURCE-OF-TRUTH
 //   1. STATIC marketing/public pages: STATIC_ROUTES below. Each entry is a
@@ -77,6 +77,8 @@ const STATIC_ROUTES = [
   { path: "/security",                lastmod: "2026-06-08", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/security" component={SecurityPage} />' },
   { path: "/compare/acreos-vs-propstream",  lastmod: "2026-06-08", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/compare/acreos-vs-propstream" component={AcreosVsPropstreamPage} />' },
   { path: "/compare/acreos-vs-dealmachine", lastmod: "2026-06-08", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/compare/acreos-vs-dealmachine" component={AcreosVsDealmachinePage} />' },
+  { path: "/land-credit-score",       lastmod: "2026-06-08", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/land-credit-score" component={LandCreditScorePage} />' },
+  { path: "/glossary",                lastmod: "2026-06-10", changefreq: "monthly", priority: "0.6", appRoute: 'App.tsx: <Route path="/glossary" component={GlossaryPage} /> (restored 2026-06-10, T0-8)' },
   { path: "/changelog",               lastmod: "2026-06-08", changefreq: "weekly",  priority: "0.6", appRoute: 'App.tsx: <Route path="/changelog" component={ChangelogPage} />' },
   { path: "/auth",                    lastmod: "2026-06-08", changefreq: "monthly", priority: "0.5", appRoute: 'App.tsx: <Route path="/auth" component={AuthPage} />' },
   { path: "/status",                  lastmod: "2026-06-08", changefreq: "daily",   priority: "0.5", appRoute: 'App.tsx: <Route path="/status" component={StatusPage} />' },
