@@ -937,13 +937,43 @@ export const APPROVAL_REQUIRED_TOOLS = new Set([
   "create_stripe_payment_link",
 ]);
 
+// Options threaded into executeTool by TRUSTED SERVER CODE only — never
+// derived from model output. See the witnessed-send kernel gate below.
+export interface ExecuteToolOptions {
+  /**
+   * True ONLY when a human explicitly approved this exact action (the
+   * approve-and-send endpoint after the user taps "Send"). The model cannot
+   * set this — it is not a tool arg.
+   */
+  trustedApproval?: boolean;
+}
+
 // Tool executor functions
 export async function executeTool(
-  toolName: string, 
+  toolName: string,
   args: Record<string, any>,
-  org: Organization
+  org: Organization,
+  options?: ExecuteToolOptions
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
+    // ── Witnessed-send kernel gate (2026-06-10, T0-1 elevation blueprint) ──
+    // `_approved` used to be an ordinary tool arg, which meant (a) the MODEL
+    // could emit `_approved: true` itself and unlock the guarded send, and
+    // (b) vaService called executeTool with no call-site approval gate at
+    // all. Approval is now a server-side OPTION (`trustedApproval`) that only
+    // the human-tap approve endpoint sets. Any `_approved` arriving in args
+    // is model-supplied by definition — strip it before dispatch so it can
+    // never influence a send decision. The call-site blocks in executive.ts
+    // remain as defense-in-depth; THIS gate is the one that holds.
+    if ("_approved" in args) {
+      logger.warn("[executeTool] Stripped model-supplied _approved arg", {
+        metadata: { toolName, orgId: org.id },
+      });
+      const { _approved: _stripped, ...rest } = args;
+      args = rest;
+    }
+    const trustedApproval = options?.trustedApproval === true;
+
     switch (toolName) {
       case "get_leads": {
         const leads = await storage.getLeads(org.id);
@@ -1621,13 +1651,13 @@ export async function executeTool(
         //
         // INVARIANT (this increment): NOTHING sends without an explicit human
         // tap. At the default "assisted" level a send_email call returns a
-        // DRAFT for approval — it does NOT send — unless the caller passes an
-        // explicit approval flag (args._approved === true), which only the
-        // approve-and-send endpoint sets after the human taps "Send".
+        // DRAFT for approval — it does NOT send — unless trusted server code
+        // passed { trustedApproval: true }, which only the approve-and-send
+        // endpoint sets after the human taps "Send". (2026-06-10, T0-1: this
+        // was previously args._approved, which the model could emit itself.)
         const autonomyLevel = await getOrgAutonomyLevel(org.id);
-        const explicitlyApproved = args._approved === true;
 
-        if (autonomyLevel === "assisted" && !explicitlyApproved) {
+        if (autonomyLevel === "assisted" && !trustedApproval) {
           // Draft-for-approval. No send. Surface a one-tap approval artifact.
           return {
             success: true,
@@ -1653,7 +1683,9 @@ export async function executeTool(
         }
 
         if (args.lead_id) {
-          const tcpaCheck = await checkTcpaBeforeSend(args.lead_id);
+          // 2026-06-10 (T0-5): org-scoped — a bare lead id can no longer
+          // resolve against another org's consent record.
+          const tcpaCheck = await checkTcpaBeforeSend(org.id, args.lead_id);
           if (!tcpaCheck.allowed) {
             return { success: false, error: `Cannot send email: ${tcpaCheck.reason}` };
           }
@@ -1722,12 +1754,59 @@ export async function executeTool(
           return { success: false, error: "Phone number not available" };
         }
 
+        // ── Autonomy kernel gate (2026-06-10, T0-1 elevation blueprint) ─────
+        // send_sms previously had NO autonomy gate at all — only TCPA/quiet-
+        // hours — so a single model tool call could fire a live SMS with no
+        // human in the loop (an unwitnessed-send pathway). Mirror the
+        // send_email kernel exactly: at the default "assisted" level this
+        // returns a DRAFT and sends nothing; only the trusted human-tap
+        // approval path (or an org explicitly above assisted) reaches the
+        // guarded send, which honors the daily envelope + TCPA + audit trail.
+        const smsAutonomyLevel = await getOrgAutonomyLevel(org.id);
+
+        if (smsAutonomyLevel === "assisted" && !trustedApproval) {
+          // Draft-for-approval. No send. Surface a one-tap approval artifact.
+          return {
+            success: true,
+            data: {
+              draft: true,
+              requiresApproval: true,
+              channelType: "sms",
+              leadId: args.lead_id ?? null,
+              to: toPhone,
+              message: args.message,
+              note:
+                "Draft ready. Pax will send this only after you tap Send — no autonomous send at the assisted level.",
+            },
+          };
+        }
+
+        // ── Guarded send (explicit human approval, or org above assisted) ───
+        const smsRateCheck = await checkSendRateLimit(org.id, "sms");
+        if (!smsRateCheck.allowed) {
+          return { success: false, error: smsRateCheck.reason ?? "Daily send envelope reached" };
+        }
+
+        if (args.lead_id) {
+          // 2026-06-10 (T0-5): org-scoped TCPA lookup, same as send_email.
+          const tcpaCheck = await checkTcpaBeforeSend(org.id, args.lead_id);
+          if (!tcpaCheck.allowed) {
+            return { success: false, error: `Cannot send SMS: ${tcpaCheck.reason}` };
+          }
+        }
+
         const result = await sendOrgSMS(org.id, toPhone, args.message);
 
-        return { 
-          success: result.success, 
+        // Record into the audit envelope so the rate limiter and the daily
+        // Pax briefing reflect it (same discipline as send_email).
+        if (result.success) {
+          await recordAutonomousSend(org.id, "sms", args.lead_id ?? 0, args.message ?? "");
+        }
+
+        return {
+          success: result.success,
           data: result.success ? { messageId: result.messageId, message: "SMS sent successfully" } : undefined,
-          error: result.error 
+          error: result.error
         };
       }
 

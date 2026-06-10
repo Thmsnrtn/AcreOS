@@ -9,6 +9,11 @@ import { Errors } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
 import { executeTool } from "./ai/tools";
 import { getOrgAutonomyLevel } from "./services/autonomyGuardrails";
+import {
+  upsertPendingDraft,
+  claimDraftForSend,
+  recordDraftSendResult,
+} from "./services/paxDraftService";
 import { z } from "zod";
 
 const router = Router();
@@ -497,6 +502,8 @@ function buildFollowUpDraft(lead: { firstName: string | null; lastName: string |
 
 // GET /api/pax/first-follow-up/draft
 // Pax drafts (does NOT send) a follow-up to the stalest emailable lead.
+// 2026-06-10 (T0-6): the draft is now PERSISTED server-side at generation
+// time — approval references draftId + contentHash, never client content.
 router.get("/first-follow-up/draft", async (req: AuthenticatedRequest, res) => {
   try {
     const org = req.organization!;
@@ -506,6 +513,14 @@ router.get("/first-follow-up/draft", async (req: AuthenticatedRequest, res) => {
     }
     const { subject, message } = buildFollowUpDraft(lead);
     const autonomyLevel = await getOrgAutonomyLevel(org.id);
+    const draftRow = await upsertPendingDraft({
+      organizationId: org.id,
+      leadId: lead.id,
+      channel: "email",
+      toAddress: lead.email!,
+      subject,
+      message,
+    });
     return res.json({
       available: true,
       autonomyLevel,
@@ -514,6 +529,8 @@ router.get("/first-follow-up/draft", async (req: AuthenticatedRequest, res) => {
         name: `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim(),
         email: lead.email,
       },
+      draftId: draftRow.id,
+      contentHash: draftRow.contentHash,
       draft: { subject, message },
     });
   } catch (error: any) {
@@ -522,16 +539,20 @@ router.get("/first-follow-up/draft", async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// 2026-06-10 (T0-6): approval is by draftId + content hash. The old schema
+// took client-resupplied subject/message, which meant the human's tap blessed
+// whatever the client sent — approval was not bound to the draft Pax wrote.
 const approveSendSchema = z.object({
-  leadId: z.number().int().positive(),
-  subject: z.string().min(1).max(300),
-  message: z.string().min(1).max(20000),
+  draftId: z.number().int().positive(),
+  contentHash: z.string().regex(/^[0-9a-f]{64}$/, "Invalid content hash"),
 });
 
 // POST /api/pax/first-follow-up/approve-and-send
-// The witnessed tap: the human approved this exact draft, so Pax sends it
-// through the guarded send path (_approved:true unlocks the kernel send) and
-// emits a value event recording that Pax acted.
+// The witnessed tap: the human approved this exact draft, so Pax sends the
+// STORED draft through the guarded send path ({ trustedApproval: true }
+// unlocks the kernel send) and emits a value event recording that Pax acted.
+// Idempotent: the pending→sent claim inside claimDraftForSend means a
+// double-tap sends once — the second tap returns the first result.
 router.post("/first-follow-up/approve-and-send", async (req: AuthenticatedRequest, res) => {
   try {
     const org = req.organization!;
@@ -539,17 +560,50 @@ router.post("/first-follow-up/approve-and-send", async (req: AuthenticatedReques
     if (!parsed.success) {
       return Errors.validationFailed(res, parsed.error.issues);
     }
-    const { leadId, subject, message } = parsed.data;
+    const { draftId, contentHash } = parsed.data;
 
-    // Send through the real Pax tool path with the explicit-approval flag.
-    // executeTool routes send_email through autonomyGuardrails: rate-limit +
-    // TCPA + recordAutonomousSend. Without _approved:true this same call would
-    // return a draft and send nothing.
+    const claim = await claimDraftForSend(org.id, draftId, contentHash);
+
+    if (claim.outcome === "not_found") {
+      return Errors.notFound(res, "Draft");
+    }
+    if (claim.outcome === "hash_mismatch") {
+      return Errors.badRequest(
+        res,
+        "This approval doesn't match the stored draft. Refresh, review the draft again, and re-approve.",
+      );
+    }
+    if (claim.outcome === "already_sent") {
+      // Second tap — return the first result instead of re-sending.
+      return res.json({
+        success: true,
+        sent: true,
+        alreadySent: true,
+        data: { messageId: claim.draft.sentMessageId ?? null },
+      });
+    }
+
+    const draft = claim.draft;
+
+    // Send the STORED draft through the real Pax tool path with the trusted
+    // server-side approval option. executeTool routes send_email through
+    // autonomyGuardrails: rate-limit + TCPA + recordAutonomousSend. Without
+    // trustedApproval this same call would return a draft and send nothing.
     const result = await executeTool(
       "send_email",
-      { lead_id: leadId, subject, message, _approved: true },
+      { lead_id: draft.leadId, subject: draft.subject, message: draft.message },
       org,
+      { trustedApproval: true },
     );
+
+    const messageId: string | null = (result.data as any)?.messageId ?? null;
+    // On failure this releases the claim back to 'pending' so the human can
+    // retry; on success it stores the provider message id for idempotent
+    // replays of the second tap.
+    await recordDraftSendResult(org.id, draft.id, {
+      success: result.success,
+      messageId,
+    });
 
     if (!result.success) {
       return Errors.badRequest(res, result.error || "Pax could not send the follow-up");
@@ -562,14 +616,15 @@ router.post("/first-follow-up/approve-and-send", async (req: AuthenticatedReques
       agentType: "pax",
       action: "pax_value_event",
       entityType: "lead",
-      entityId: leadId,
+      entityId: draft.leadId,
       description: "Pax sent a witnessed first follow-up email after human approval",
       metadata: {
         valueEvent: "first_follow_up_sent",
         channel: "email",
         witnessed: true,
         approvedByHuman: true,
-        messageId: (result.data as any)?.messageId ?? null,
+        draftId: draft.id,
+        messageId,
       },
     });
 
