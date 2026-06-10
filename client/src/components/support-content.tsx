@@ -11,6 +11,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
+import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { MessageSquare, Plus, Send, CheckCircle, User, Bot, Star, Loader2, ArrowLeft, Headphones, Lightbulb } from "lucide-react";
 import type { SupportCase, SupportMessage, FeatureRequest } from "@shared/schema";
@@ -45,7 +48,7 @@ function getStatusLabel(status: string): string {
     case "open":
       return "Open";
     case "ai_handling":
-      return "AI Handling";
+      return "Pax handling";
     case "awaiting_user":
       return "Awaiting Response";
     case "escalated":
@@ -147,17 +150,41 @@ export function SupportContent() {
   const [featureDescription, setFeatureDescription] = useState("");
   const [featureCategory, setFeatureCategory] = useState("");
 
-  const { data: cases, isLoading: casesLoading } = useQuery<SupportCase[]>({
+  // Every query on this surface renders an explicit error state with retry —
+  // the place people come when something is wrong must never itself silently
+  // fail (T3 census W1-10).
+  const {
+    data: cases,
+    isLoading: casesLoading,
+    isError: casesError,
+    error: casesErrorObj,
+    refetch: refetchCases,
+    isRefetching: casesRefetching,
+  } = useQuery<SupportCase[]>({
     queryKey: ["/api/support/cases"],
   });
 
-  const { data: activeCaseData, isLoading: caseLoading } = useQuery<CaseWithMessages>({
+  const {
+    data: activeCaseData,
+    isLoading: caseLoading,
+    isError: caseError,
+    error: caseErrorObj,
+    refetch: refetchCase,
+    isRefetching: caseRefetching,
+  } = useQuery<CaseWithMessages>({
     queryKey: ["/api/support/cases", activeCaseId],
     enabled: !!activeCaseId,
   });
 
   // Feature Requests
-  const { data: featureRequests, isLoading: featureRequestsLoading } = useQuery<FeatureRequest[]>({
+  const {
+    data: featureRequests,
+    isLoading: featureRequestsLoading,
+    isError: featureRequestsError,
+    error: featureRequestsErrorObj,
+    refetch: refetchFeatureRequests,
+    isRefetching: featureRequestsRefetching,
+  } = useQuery<FeatureRequest[]>({
     queryKey: ["/api/feature-requests"],
   });
 
@@ -199,7 +226,7 @@ export function SupportContent() {
       setNewMessage("");
       toast({
         title: "Case created",
-        description: "Your support case has been created. Our AI is now reviewing it.",
+        description: "Your support case has been created. Pax is reviewing it now.",
       });
     },
     onError: (err: any) => {
@@ -316,7 +343,7 @@ export function SupportContent() {
             <DialogHeader>
               <DialogTitle>Create support case</DialogTitle>
               <DialogDescription>
-                Describe your issue and our AI will assist you immediately.
+                Describe what's going on — Pax responds right away, and loops in the team when needed.
               </DialogDescription>
             </DialogHeader>
             <form
@@ -382,7 +409,7 @@ export function SupportContent() {
       </div>
 
       <div className="grid lg:grid-cols-[350px_1fr] gap-6">
-        <Card className="lg:h-[calc(100vh-350px)]">
+        <Card className="lg:h-[calc(100dvh-350px)]">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
               <Headphones className="w-5 h-5" />
@@ -391,20 +418,44 @@ export function SupportContent() {
             <CardDescription>Select a case to view the conversation</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
-            <ScrollArea className="h-[300px] lg:h-[calc(100vh-450px)]">
+            <ScrollArea className="h-[300px] lg:h-[calc(100dvh-450px)]">
               {casesLoading ? (
-                <div className="p-4 text-center text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
-                  Loading cases...
+                <div className="divide-y">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <Skeleton className="h-4 w-36" announce={i === 1} announceText="Loading your support cases" />
+                        <Skeleton className="h-5 w-16 rounded-full" announce={false} />
+                      </div>
+                      <Skeleton className="h-3 w-24" announce={false} />
+                    </div>
+                  ))}
+                </div>
+              ) : casesError ? (
+                <div className="p-4">
+                  <QueryErrorState
+                    error={casesErrorObj as Error}
+                    onRetry={() => refetchCases()}
+                    isRetrying={casesRefetching}
+                    compact
+                    title="Couldn't load your cases"
+                    description="Your cases are safe — this is just a display issue. If it persists, email support@acreos.com."
+                    testId="error-support-cases"
+                  />
                 </div>
               ) : cases?.length === 0 ? (
-                <div className="p-6 text-center">
-                  <MessageSquare className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
-                  <p className="text-muted-foreground text-sm">No support cases yet</p>
-                  <p className="text-muted-foreground text-xs mt-1">
-                    Create a new case to get help
-                  </p>
-                </div>
+                <EmptyState
+                  icon={MessageSquare}
+                  headline="No open tickets"
+                  subtitle="When something isn't working — or you just have a question — open a case and Pax picks it up right away."
+                  cta={{
+                    label: "New support case",
+                    onClick: () => setIsCreateOpen(true),
+                    "data-testid": "empty-new-support-case",
+                  }}
+                  className="py-8 px-4"
+                  testId="empty-support-cases"
+                />
               ) : (
                 <div className="divide-y">
                   {cases?.map((c) => (
@@ -436,7 +487,7 @@ export function SupportContent() {
           </CardContent>
         </Card>
 
-        <Card className="lg:h-[calc(100vh-350px)] flex flex-col">
+        <Card className="lg:h-[calc(100dvh-350px)] flex flex-col">
           {!activeCaseId ? (
             <div className="flex-1 flex items-center justify-center p-6">
               <div className="text-center">
@@ -448,8 +499,30 @@ export function SupportContent() {
               </div>
             </div>
           ) : caseLoading ? (
-            <div className="flex-1 flex items-center justify-center">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            <div className="flex-1 p-4 space-y-4" aria-busy="true">
+              <div className="space-y-2 border-b pb-4">
+                <Skeleton className="h-5 w-48" announceText="Loading the conversation" />
+                <Skeleton className="h-4 w-32" announce={false} />
+              </div>
+              <div className="flex gap-3">
+                <Skeleton className="h-8 w-8 rounded-full shrink-0" announce={false} />
+                <Skeleton className="h-16 w-3/5" announce={false} />
+              </div>
+              <div className="flex flex-row-reverse gap-3">
+                <Skeleton className="h-8 w-8 rounded-full shrink-0" announce={false} />
+                <Skeleton className="h-12 w-1/2" announce={false} />
+              </div>
+            </div>
+          ) : caseError ? (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <QueryErrorState
+                error={caseErrorObj as Error}
+                onRetry={() => refetchCase()}
+                isRetrying={caseRefetching}
+                title="Couldn't open this case"
+                description="The conversation is safe — this is just a display issue."
+                testId="error-support-case-detail"
+              />
             </div>
           ) : (
             <>
@@ -460,7 +533,7 @@ export function SupportContent() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="lg:hidden"
+                        className="lg:hidden h-11 w-11"
                         onClick={() => setActiveCaseId(null)}
                         aria-label="Back to cases"
                         data-testid="button-back"
@@ -482,6 +555,7 @@ export function SupportContent() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="min-h-11 sm:min-h-9"
                       onClick={handleResolve}
                       disabled={resolveCaseMutation.isPending}
                       data-testid="button-resolve-case"
@@ -552,10 +626,13 @@ export function SupportContent() {
                     <p className="text-sm font-medium">How was your experience?</p>
                     <div className="flex justify-center gap-1">
                       {[1, 2, 3, 4, 5].map((star) => (
-                        <button aria-label="Favorite"
+                        <button
                           key={star}
+                          type="button"
                           onClick={() => setRating(star)}
-                          className="p-1 hover-elevate"
+                          className="flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-md hover-elevate"
+                          aria-label={`Rate ${star} star${star === 1 ? "" : "s"}`}
+                          aria-pressed={star <= rating}
                           data-testid={`button-rating-${star}`}
                         >
                           <Star
@@ -570,6 +647,7 @@ export function SupportContent() {
                     </div>
                     <Button
                       size="sm"
+                      className="min-h-11 sm:min-h-9"
                       onClick={handleRate}
                       disabled={rating === 0 || rateCaseMutation.isPending}
                       data-testid="button-submit-rating"
@@ -600,6 +678,7 @@ export function SupportContent() {
                     />
                     <Button
                       size="icon"
+                      className="h-11 w-11 sm:h-9 sm:w-9"
                       onClick={handleSendMessage}
                       disabled={!replyMessage.trim() || sendMessageMutation.isPending}
                       aria-label="Send message"
@@ -719,18 +798,42 @@ export function SupportContent() {
         </CardHeader>
         <CardContent>
           {featureRequestsLoading ? (
-            <div className="p-4 text-center text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
-              Loading feature requests...
+            <div className="space-y-3" aria-busy="true">
+              {[1, 2].map((i) => (
+                <div key={i} className="p-4 border rounded-md space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <Skeleton className="h-4 w-44" announce={i === 1} announceText="Loading feature requests" />
+                    <Skeleton className="h-5 w-20 rounded-full" announce={false} />
+                  </div>
+                  <Skeleton className="h-3 w-full" announce={false} />
+                  <Skeleton className="h-3 w-28" announce={false} />
+                </div>
+              ))}
             </div>
+          ) : featureRequestsError ? (
+            <QueryErrorState
+              error={featureRequestsErrorObj as Error}
+              onRetry={() => refetchFeatureRequests()}
+              isRetrying={featureRequestsRefetching}
+              compact
+              title="Couldn't load feature requests"
+              description="Your submitted requests are safe — this is just a display issue."
+              testId="error-feature-requests"
+            />
           ) : featureRequests?.length === 0 ? (
-            <div className="p-6 text-center">
-              <Lightbulb className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
-              <p className="text-muted-foreground text-sm">No feature requests yet</p>
-              <p className="text-muted-foreground text-xs mt-1">
-                Submit your first feature request to help us improve
-              </p>
-            </div>
+            <EmptyState
+              icon={Lightbulb}
+              headline="No feature requests yet"
+              subtitle="Spotted something AcreOS should do better? Tell us — requests go straight to the roadmap review."
+              cta={{
+                label: "Submit a request",
+                onClick: () => setIsFeatureRequestOpen(true),
+                "data-testid": "empty-new-feature-request",
+              }}
+              actionIcon={null}
+              className="py-8"
+              testId="empty-feature-requests"
+            />
           ) : (
             <div className="space-y-3">
               {featureRequests?.map((request) => (
