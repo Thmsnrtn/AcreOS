@@ -84,6 +84,17 @@ jobs:
       - name: Build app
         run: npm run build
 
+      # Provision the FULL schema + seed BEFORE Playwright starts. Playwright
+      # launches the webServer BEFORE globalSetup runs, so without this step
+      # the server's first boot races the drizzle-kit push and floods the log
+      # with 42P01 "relation does not exist" errors from every boot-time
+      # background job (job_locks, platform_settings, agent_tasks, …) — and
+      # any journey that touches a not-yet-pushed table fails spuriously.
+      # tests/e2e-mobile/global-setup.ts is idempotent, so the in-suite
+      # globalSetup call becomes a fast re-run against an already-complete DB.
+      - name: Provision E2E database (full schema + seed)
+        run: npx tsx -e "import('./tests/e2e-mobile/global-setup.ts').then(m => m.default())"
+
       - name: Walk customer-surface journeys
         id: journeys
         run: |

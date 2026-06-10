@@ -49,7 +49,12 @@ ENV VITE_GIT_SHA=${GIT_SHA}
 # gh CLI + git for Rosy River C3 — the evolution pipeline opens PRs via `gh`
 # from this machine, which requires both packages and GH_TOKEN (or
 # `gh auth login`) at runtime. node:slim ships without either.
+# `apt-get upgrade` first: node:slim base tags lag Debian security updates
+# (e.g. openssl/libssl3 and chromium HIGH CVEs flagged by the Trivy image
+# gate), so we pull the current patch level at build time rather than
+# shipping whatever the base image froze.
 RUN apt-get update -qq && \
+    apt-get upgrade -y -qq && \
     apt-get install --no-install-recommends -y chromium chromium-sandbox git curl ca-certificates gnupg && \
     install -m 0755 -d /etc/apt/keyrings && \
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && \
@@ -58,6 +63,13 @@ RUN apt-get update -qq && \
     apt-get update -qq && \
     apt-get install --no-install-recommends -y gh && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+# The npm CLI bundled with the node base image vendors its own copies of
+# tar/minimatch/glob/picomatch, which routinely trail their CVE fixes and
+# trip the HIGH gate in the Trivy image scan. Refreshing npm itself pulls
+# the patched vendored tree. Runtime app deps are unaffected (installed in
+# the build stage from package-lock.json).
+RUN npm install -g npm@latest && npm cache clean --force
 
 COPY --from=build /app /app
 
