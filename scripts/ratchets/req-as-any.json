@@ -1,0 +1,9 @@
+{
+  "name": "req-as-any",
+  "description": "(req as any) defeats the AuthenticatedRequest augmentation (server/types/request.ts). Use AuthenticatedRequest + getOrganization/getUserId/getOrganizationId helpers instead.",
+  "pattern": "\\(req as any\\)",
+  "globs": ["server/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts"],
+  "baselineCount": 83,
+  "direction": "down"
+}

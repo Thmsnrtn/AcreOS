@@ -111,19 +111,12 @@ export type ConstitutionalSeverity =
   (typeof CONSTITUTIONAL_SEVERITIES)[number];
 
 // ============================================================================
-// THE 12 IMMUTABLES — denormalized snapshot form (shorter wording for DB
-// columns). Canonical source: sovereign-protocol/immutables.json. The
-// `short` field of each customer immutable lands here.
-//
-// DO NOT redeclare the immutables below — edit immutables.json + update the
-// fixture hash in tests/unit/sovereign-protocol-immutables.test.ts.
+// THE 12 IMMUTABLES — the denormalized snapshot constant
+// (CONSTITUTIONAL_IMMUTABLES) used to live here, derived from the server-only
+// "@sovereign/immutables" alias. shared/ must stay free of server-only
+// imports (enforced by scripts/check-boundaries.mjs), so the constant moved
+// to server/services/solene/constitutionalGuard.ts — its only runtime
+// consumer. Canonical source remains sovereign-protocol/immutables.json.
 // ============================================================================
-
-import { CUSTOMER_IMMUTABLES } from "@sovereign/immutables";
-
-export const CONSTITUTIONAL_IMMUTABLES: ReadonlyArray<{
-  readonly number: number;
-  readonly text: string;
-}> = CUSTOMER_IMMUTABLES.map((i) => ({ number: i.number, text: i.short }));
 
 export type ConstitutionalImmutableNumber = number;

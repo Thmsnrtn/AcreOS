@@ -501,7 +501,7 @@ export function registerOutreachMailRoutes(app: Express): void {
           // so we recompute from the per-piece weight × pieceCount. Same math
           // as queue time, so the refund matches.
           const action = mailPoolActionFor(existing.provider ?? "", existing.pieceType);
-          const { creditCost } = await import("@shared/billing/credit-weights");
+          const { creditCost } = await import("./services/creditCost");
           const weight = await creditCost(action);
           const refundCents = Math.max(0, Math.ceil(weight * existing.pieceCount));
           if (refundCents > 0) {

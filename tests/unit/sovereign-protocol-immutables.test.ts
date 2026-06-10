@@ -8,8 +8,10 @@
  * The hand-written copies in:
  *   - server/services/constitutionChecker.ts          (was: 10 sovereign principles)
  *   - server/services/solene/preCallConstitutionalChecker.ts (was: 12 verbatim)
- *   - server/services/solene/constitutionalGuard.ts   (was: 12 + critical set)
- *   - shared/schema/solene-constitutional-violations.ts (was: 12 short form)
+ *   - server/services/solene/constitutionalGuard.ts   (was: 12 + critical set;
+ *     now also hosts CONSTITUTIONAL_IMMUTABLES, the 12 short-form snapshot —
+ *     moved out of shared/schema/solene-constitutional-violations.ts so
+ *     shared/ never imports the server-only @sovereign alias)
  * have all been retired — each now re-exports from sovereign-protocol/immutables.ts,
  * which loads sovereign-protocol/immutables.json.
  *
@@ -50,8 +52,6 @@ import {
 } from "../../server/services/solene/preCallConstitutionalChecker";
 import {
   CONSTITUTIONAL_IMMUTABLES,
-} from "../../shared/schema/solene-constitutional-violations";
-import {
   CONSTITUTIONAL_SELF_DEFENSE_PROMPT_BLOCK,
 } from "../../server/services/solene/constitutionalGuard";
 
@@ -191,7 +191,7 @@ describe("downstream consumers all derive from the canonical source", () => {
     }
   });
 
-  it("schema.CONSTITUTIONAL_IMMUTABLES uses the short text field", () => {
+  it("constitutionalGuard.CONSTITUTIONAL_IMMUTABLES uses the short text field", () => {
     expect(CONSTITUTIONAL_IMMUTABLES).toHaveLength(CUSTOMER_IMMUTABLES.length);
     for (let idx = 0; idx < CUSTOMER_IMMUTABLES.length; idx++) {
       expect(CONSTITUTIONAL_IMMUTABLES[idx].number).toBe(

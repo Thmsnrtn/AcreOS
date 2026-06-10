@@ -57,6 +57,16 @@ jobs:
           CI: true
           SENTRY_SOURCEMAPS: skip
 
+      # Tier 1C: the client+server build must gate the deploy, not merely run
+      # inside the deploy job after the gate already passed. A Rollup-only
+      # resolution failure (e.g. a shared/ module importing a server-only
+      # alias) type-checks clean and tests clean but breaks `npm run build` —
+      # catch it HERE so the deploy job never starts.
+      - name: Build (gate — client + server bundles)
+        run: npm run build
+        env:
+          SENTRY_SOURCEMAPS: skip
+
   deploy:
     name: Deploy to Fly.io
     needs: test
