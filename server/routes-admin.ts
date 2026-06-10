@@ -152,7 +152,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const org = req.organization;
       const caseId = parseInt(req.params.id);
-      const supportCase = await storage.getSupportCase(caseId);
+      const supportCase = await storage.getSupportCase(org.id, caseId);
       
       if (!supportCase || supportCase.organizationId !== org.id) {
         return Errors.notFound(res, "Case");
@@ -177,7 +177,7 @@ export function registerAdminRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { message } = parsed.data;
 
-      const supportCase = await storage.getSupportCase(caseId);
+      const supportCase = await storage.getSupportCase(org.id, caseId);
       if (!supportCase || supportCase.organizationId !== org.id) {
         return Errors.notFound(res, "Case");
       }
@@ -210,7 +210,7 @@ export function registerAdminRoutes(app: Express): void {
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
       const { rating } = parsed.data;
 
-      const supportCase = await storage.getSupportCase(caseId);
+      const supportCase = await storage.getSupportCase(org.id, caseId);
       if (!supportCase || supportCase.organizationId !== org.id) {
         return Errors.notFound(res, "Case");
       }
@@ -231,7 +231,7 @@ export function registerAdminRoutes(app: Express): void {
       const org = req.organization;
       const caseId = parseInt(req.params.id);
 
-      const supportCase = await storage.getSupportCase(caseId);
+      const supportCase = await storage.getSupportCase(org.id, caseId);
       if (!supportCase || supportCase.organizationId !== org.id) {
         return Errors.notFound(res, "Case");
       }
@@ -303,7 +303,8 @@ export function registerAdminRoutes(app: Express): void {
         return Errors.notFound(res, "Resource");
       }
 
-      const supportCase = await storage.getSupportCase(caseId);
+      // Tier 1F: founder-gated cross-tenant read — explicit platform-ops path.
+      const supportCase = await storage.getSupportCaseForPlatformOps(caseId);
       if (!supportCase) {
         return Errors.notFound(res, "Case");
       }

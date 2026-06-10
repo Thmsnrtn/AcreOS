@@ -246,7 +246,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Get a specific response
   api.get("/api/responses/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const response = await storage.getCampaignResponse(Number(req.params.id));
+    const response = await storage.getCampaignResponse(org.id, Number(req.params.id));
     // 2026-06-10 (T0-2 sweep): cross-tenant read IDOR — 404, never confirm
     // another org's response exists.
     if (!response || response.organizationId !== org.id) return Errors.notFound(res, "Response");

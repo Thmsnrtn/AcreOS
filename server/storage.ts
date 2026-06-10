@@ -1,4 +1,5 @@
 import { db, withTransaction } from "./db";
+import { forOrg, unscopedForPlatformOps } from "./utils/orgScopedDb";
 import { addMonths } from "./utils/dateUtils";
 export { db };
 import { eq, and, desc, asc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray, ne, ilike, type SQL } from "drizzle-orm";
@@ -419,7 +420,7 @@ export interface IStorage {
 
   // AI Conversations (Command Center)
   getAiConversations(orgId: number): Promise<any[]>;
-  getAiConversation(id: number): Promise<any | undefined>;
+  getAiConversation(organizationId: number, id: number): Promise<any | undefined>;
   createAiConversation(conv: any): Promise<any>;
   updateAiConversation(id: number, updates: any, organizationId?: number): Promise<any>;
   deleteAiConversation(id: number, organizationId?: number): Promise<void>;
@@ -532,7 +533,7 @@ export interface IStorage {
 
   // Due Diligence Templates
   getDueDiligenceTemplates(orgId: number): Promise<DueDiligenceTemplate[]>;
-  getDueDiligenceTemplate(id: number): Promise<DueDiligenceTemplate | undefined>;
+  getDueDiligenceTemplate(organizationId: number, id: number): Promise<DueDiligenceTemplate | undefined>;
   createDueDiligenceTemplate(template: InsertDueDiligenceTemplate): Promise<DueDiligenceTemplate>;
   updateDueDiligenceTemplate(id: number, updates: Partial<InsertDueDiligenceTemplate>): Promise<DueDiligenceTemplate>;
   deleteDueDiligenceTemplate(id: number): Promise<void>;
@@ -543,11 +544,11 @@ export interface IStorage {
   createDueDiligenceItem(item: InsertDueDiligenceItem): Promise<DueDiligenceItem>;
   updateDueDiligenceItem(id: number, updates: Partial<InsertDueDiligenceItem>): Promise<DueDiligenceItem>;
   deleteDueDiligenceItem(id: number): Promise<void>;
-  applyTemplateToProperty(propertyId: number, templateId: number): Promise<DueDiligenceItem[]>;
+  applyTemplateToProperty(organizationId: number, propertyId: number, templateId: number): Promise<DueDiligenceItem[]>;
 
   // Deal Checklist Templates
   getChecklistTemplates(orgId: number): Promise<ChecklistTemplate[]>;
-  getChecklistTemplate(id: number): Promise<ChecklistTemplate | undefined>;
+  getChecklistTemplate(organizationId: number, id: number): Promise<ChecklistTemplate | undefined>;
   createChecklistTemplate(template: InsertChecklistTemplate): Promise<ChecklistTemplate>;
   updateChecklistTemplate(id: number, updates: Partial<InsertChecklistTemplate>): Promise<ChecklistTemplate>;
   deleteChecklistTemplate(id: number): Promise<void>;
@@ -557,7 +558,7 @@ export interface IStorage {
   getDealChecklist(dealId: number): Promise<DealChecklist | undefined>;
   createDealChecklist(checklist: InsertDealChecklist): Promise<DealChecklist>;
   updateDealChecklist(id: number, updates: Partial<InsertDealChecklist>): Promise<DealChecklist>;
-  applyChecklistTemplateToDeal(dealId: number, templateId: number): Promise<DealChecklist>;
+  applyChecklistTemplateToDeal(organizationId: number, dealId: number, templateId: number): Promise<DealChecklist>;
   updateDealChecklistItem(dealId: number, itemId: string, updates: { checked?: boolean; documentUrl?: string; checkedBy?: string }): Promise<DealChecklist>;
   checkStageGate(dealId: number): Promise<{ canAdvance: boolean; incompleteItems: DealChecklistItem[] }>;
 
@@ -571,7 +572,8 @@ export interface IStorage {
 
   // Support Cases
   createSupportCase(input: InsertSupportCase): Promise<SupportCase>;
-  getSupportCase(id: number): Promise<SupportCase | undefined>;
+  getSupportCase(organizationId: number, id: number): Promise<SupportCase | undefined>;
+  getSupportCaseForPlatformOps(id: number): Promise<SupportCase | undefined>;
   getSupportCases(organizationId: number, status?: string): Promise<SupportCase[]>;
   updateSupportCase(id: number, data: Partial<InsertSupportCase>): Promise<SupportCase | undefined>;
   getEscalatedCases(): Promise<SupportCase[]>;
@@ -795,9 +797,9 @@ export interface IStorage {
 
   // Document Templates
   getDocumentTemplates(orgId: number): Promise<DocumentTemplate[]>;
-  getDocumentTemplate(id: number): Promise<DocumentTemplate | undefined>;
+  getDocumentTemplate(organizationId: number, id: number): Promise<DocumentTemplate | undefined>;
   createDocumentTemplate(template: InsertDocumentTemplate): Promise<DocumentTemplate>;
-  updateDocumentTemplate(id: number, updates: Partial<InsertDocumentTemplate>): Promise<DocumentTemplate>;
+  updateDocumentTemplate(organizationId: number, id: number, updates: Partial<InsertDocumentTemplate>): Promise<DocumentTemplate>;
   deleteDocumentTemplate(id: number): Promise<void>;
   seedSystemTemplates(): Promise<void>;
 
@@ -816,7 +818,7 @@ export interface IStorage {
   // Document Version History
   createDocumentVersion(version: InsertDocumentVersion): Promise<DocumentVersion>;
   getDocumentVersions(orgId: number, documentId: number, documentType: string): Promise<DocumentVersion[]>;
-  getDocumentVersion(id: number): Promise<DocumentVersion | undefined>;
+  getDocumentVersion(organizationId: number, id: number): Promise<DocumentVersion | undefined>;
   restoreDocumentVersion(orgId: number, versionId: number): Promise<{ success: boolean; message: string }>;
 
   // Analytics & Reporting
@@ -906,7 +908,7 @@ export interface IStorage {
 
   // Mail Sender Identities
   getMailSenderIdentities(orgId: number): Promise<MailSenderIdentity[]>;
-  getMailSenderIdentity(id: number): Promise<MailSenderIdentity | undefined>;
+  getMailSenderIdentity(organizationId: number, id: number): Promise<MailSenderIdentity | undefined>;
   getDefaultMailSenderIdentity(orgId: number): Promise<MailSenderIdentity | undefined>;
   createMailSenderIdentity(data: InsertMailSenderIdentity): Promise<MailSenderIdentity>;
   updateMailSenderIdentity(id: number, data: Partial<MailSenderIdentity>): Promise<MailSenderIdentity>;
@@ -915,7 +917,7 @@ export interface IStorage {
 
   // Mailing Orders
   getMailingOrders(orgId: number, filters?: { campaignId?: number; status?: string }): Promise<MailingOrder[]>;
-  getMailingOrder(id: number): Promise<MailingOrder | undefined>;
+  getMailingOrder(organizationId: number, id: number): Promise<MailingOrder | undefined>;
   createMailingOrder(data: InsertMailingOrder): Promise<MailingOrder>;
   updateMailingOrder(id: number, data: Partial<MailingOrder>): Promise<MailingOrder>;
   incrementMailingOrderPieces(id: number, type: 'sent' | 'failed'): Promise<void>;
@@ -1375,9 +1377,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(aiConversations.updatedAt));
   }
 
-  async getAiConversation(id: number) {
-    const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, id));
-    return conv;
+  // Tier 1F: org-scoped by construction — fetch-by-bare-id no longer typechecks.
+  async getAiConversation(organizationId: number, id: number) {
+    return await forOrg(organizationId).findById(aiConversations, id);
   }
 
   async createAiConversation(conv: { organizationId: number; userId: string; title: string; agentRole: string }) {
@@ -1468,8 +1470,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(paxProjects.createdAt));
   }
 
-  async getPaxProject(id: number): Promise<PaxProject | null> {
-    const [row] = await db.select().from(paxProjects).where(eq(paxProjects.id, id));
+  // Tier 1F: org-scoped by construction.
+  async getPaxProject(organizationId: number, id: number): Promise<PaxProject | null> {
+    const row = await forOrg(organizationId).findById(paxProjects, id);
     return row ?? null;
   }
 
@@ -2008,10 +2011,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(dueDiligenceTemplates.isDefault), dueDiligenceTemplates.name);
   }
 
-  async getDueDiligenceTemplate(id: number) {
-    const [template] = await db.select().from(dueDiligenceTemplates)
-      .where(eq(dueDiligenceTemplates.id, id));
-    return template;
+  // Tier 1F: org-scoped by construction.
+  async getDueDiligenceTemplate(organizationId: number, id: number) {
+    return await forOrg(organizationId).findById(dueDiligenceTemplates, id);
   }
 
   async createDueDiligenceTemplate(template: InsertDueDiligenceTemplate) {
@@ -2086,8 +2088,8 @@ export class DatabaseStorage implements IStorage {
     await db.delete(dueDiligenceItems).where(eq(dueDiligenceItems.id, id));
   }
 
-  async applyTemplateToProperty(propertyId: number, templateId: number) {
-    const template = await this.getDueDiligenceTemplate(templateId);
+  async applyTemplateToProperty(organizationId: number, propertyId: number, templateId: number) {
+    const template = await this.getDueDiligenceTemplate(organizationId, templateId);
     if (!template) {
       throw new Error("Template not found");
     }
@@ -2116,10 +2118,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(checklistTemplates.name);
   }
 
-  async getChecklistTemplate(id: number) {
-    const [template] = await db.select().from(checklistTemplates)
-      .where(eq(checklistTemplates.id, id));
-    return template;
+  // Tier 1F: org-scoped by construction.
+  async getChecklistTemplate(organizationId: number, id: number) {
+    return await forOrg(organizationId).findById(checklistTemplates, id);
   }
 
   async createChecklistTemplate(template: InsertChecklistTemplate) {
@@ -2183,8 +2184,8 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async applyChecklistTemplateToDeal(dealId: number, templateId: number) {
-    const template = await this.getChecklistTemplate(templateId);
+  async applyChecklistTemplateToDeal(organizationId: number, dealId: number, templateId: number) {
+    const template = await this.getChecklistTemplate(organizationId, templateId);
     if (!template) {
       throw new Error("Template not found");
     }
@@ -2309,8 +2310,20 @@ export class DatabaseStorage implements IStorage {
     return newCase;
   }
 
-  async getSupportCase(id: number) {
-    const [supportCase] = await db.select().from(supportCases)
+  // Tier 1F: org-scoped by construction.
+  async getSupportCase(organizationId: number, id: number) {
+    return await forOrg(organizationId).findById(supportCases, id);
+  }
+
+  // Tier 1F escape hatch: the founder support desk legitimately operates
+  // across tenants (responding to ANY org's escalated case). Callers MUST be
+  // founder-gated before reaching this. Greppable + logged via
+  // unscopedForPlatformOps.
+  async getSupportCaseForPlatformOps(id: number) {
+    const platformDb = unscopedForPlatformOps(
+      "founder support desk: load escalated support case across tenants",
+    );
+    const [supportCase] = await platformDb.select().from(supportCases)
       .where(eq(supportCases.id, id));
     return supportCase;
   }
@@ -2875,10 +2888,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(verifiedEmailDomains.isDefault), verifiedEmailDomains.domain);
   }
 
-  async getVerifiedEmailDomain(id: number): Promise<VerifiedEmailDomain | undefined> {
-    const [domain] = await db.select().from(verifiedEmailDomains)
-      .where(eq(verifiedEmailDomains.id, id));
-    return domain;
+  // Tier 1F: org-scoped by construction.
+  async getVerifiedEmailDomain(organizationId: number, id: number): Promise<VerifiedEmailDomain | undefined> {
+    return await forOrg(organizationId).findById(verifiedEmailDomains, id);
   }
 
   async createVerifiedEmailDomain(data: InsertVerifiedEmailDomain): Promise<VerifiedEmailDomain> {
@@ -2909,10 +2921,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(provisionedPhoneNumbers.isDefault), provisionedPhoneNumbers.phoneNumber);
   }
 
-  async getProvisionedPhoneNumber(id: number): Promise<ProvisionedPhoneNumber | undefined> {
-    const [phone] = await db.select().from(provisionedPhoneNumbers)
-      .where(eq(provisionedPhoneNumbers.id, id));
-    return phone;
+  // Tier 1F: org-scoped by construction.
+  async getProvisionedPhoneNumber(organizationId: number, id: number): Promise<ProvisionedPhoneNumber | undefined> {
+    return await forOrg(organizationId).findById(provisionedPhoneNumbers, id);
   }
 
   async createProvisionedPhoneNumber(data: InsertProvisionedPhoneNumber): Promise<ProvisionedPhoneNumber> {
@@ -2947,10 +2958,9 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(campaignResponses.responseDate));
   }
 
-  async getCampaignResponse(id: number): Promise<CampaignResponse | undefined> {
-    const [response] = await db.select().from(campaignResponses)
-      .where(eq(campaignResponses.id, id));
-    return response;
+  // Tier 1F: org-scoped by construction.
+  async getCampaignResponse(organizationId: number, id: number): Promise<CampaignResponse | undefined> {
+    return await forOrg(organizationId).findById(campaignResponses, id);
   }
 
   async createCampaignResponse(data: InsertCampaignResponse): Promise<CampaignResponse> {
@@ -3143,6 +3153,9 @@ export class DatabaseStorage implements IStorage {
   // Sequence Enrollments
   // 2026-06-10 (T0-2 sweep): single-enrollment fetch so routes can verify the
   // parent sequence's org before mutating (enrollments carry no org column).
+  // NOTE (Tier 1F): sequence_enrollments has no organizationId column —
+  // ownership is proven through the parent sequence (see getOwnedEnrollment
+  // in routes-campaigns.ts). Do not org-pin here.
   async getSequenceEnrollment(id: number): Promise<SequenceEnrollment | undefined> {
     const [enrollment] = await db.select().from(sequenceEnrollments)
       .where(eq(sequenceEnrollments.id, id));
@@ -4353,9 +4366,18 @@ export class DatabaseStorage implements IStorage {
       .orderBy(documentTemplates.isSystemTemplate, documentTemplates.name);
   }
 
-  async getDocumentTemplate(id: number) {
+  // Tier 1F: org-scoped by construction. System templates (isSystemTemplate)
+  // are platform-shared and stay readable by every org; everything else is
+  // pinned to the caller's tenant.
+  async getDocumentTemplate(organizationId: number, id: number) {
     const [template] = await db.select().from(documentTemplates)
-      .where(eq(documentTemplates.id, id));
+      .where(and(
+        eq(documentTemplates.id, id),
+        or(
+          eq(documentTemplates.organizationId, organizationId),
+          eq(documentTemplates.isSystemTemplate, true),
+        ),
+      ));
     return template;
   }
 
@@ -4364,12 +4386,12 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateDocumentTemplate(id: number, updates: Partial<InsertDocumentTemplate>, organizationId?: number) {
-    const existing = await this.getDocumentTemplate(id);
+  // Tier 1F: organizationId is now REQUIRED — bare-id updates no longer typecheck.
+  async updateDocumentTemplate(organizationId: number, id: number, updates: Partial<InsertDocumentTemplate>) {
+    const existing = await this.getDocumentTemplate(organizationId, id);
     const currentVersion = existing?.version || 1;
 
-    const conditions = [eq(documentTemplates.id, id)];
-    if (organizationId) conditions.push(eq(documentTemplates.organizationId, organizationId));
+    const conditions = [eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organizationId)];
     const [updated] = await db.update(documentTemplates)
       .set({
         ...updates,
@@ -4885,23 +4907,21 @@ Notary Public</p>
       .orderBy(desc(documentVersions.version));
   }
 
-  async getDocumentVersion(id: number) {
-    const [version] = await db.select().from(documentVersions)
-      .where(eq(documentVersions.id, id));
-    return version;
+  // Tier 1F: org-scoped by construction.
+  async getDocumentVersion(organizationId: number, id: number) {
+    return await forOrg(organizationId).findById(documentVersions, id);
   }
 
   async restoreDocumentVersion(orgId: number, versionId: number): Promise<{ success: boolean; message: string }> {
-    const version = await this.getDocumentVersion(versionId);
+    // Tier 1F: the fetch itself is org-pinned — a cross-org versionId resolves
+    // to "not found" by construction.
+    const version = await this.getDocumentVersion(orgId, versionId);
     if (!version) {
       return { success: false, message: "Version not found" };
     }
-    if (version.organizationId !== orgId) {
-      return { success: false, message: "Access denied" };
-    }
 
     if (version.documentType === "template") {
-      const template = await this.getDocumentTemplate(version.documentId);
+      const template = await this.getDocumentTemplate(orgId, version.documentId);
       if (!template) {
         return { success: false, message: "Template not found" };
       }
@@ -4918,7 +4938,7 @@ Notary Public</p>
         createdBy: version.createdBy,
       });
       
-      await this.updateDocumentTemplate(template.id, {
+      await this.updateDocumentTemplate(orgId, template.id, {
         content: version.content,
         variables: version.variables as any,
         version: currentVersion + 1,
@@ -5623,11 +5643,9 @@ Notary Public</p>
       .orderBy(desc(emailSenderIdentities.isDefault), desc(emailSenderIdentities.createdAt));
   }
 
-  async getEmailSenderIdentity(id: number): Promise<EmailSenderIdentity | undefined> {
-    const [identity] = await db.select()
-      .from(emailSenderIdentities)
-      .where(eq(emailSenderIdentities.id, id));
-    return identity;
+  // Tier 1F: org-scoped by construction.
+  async getEmailSenderIdentity(organizationId: number, id: number): Promise<EmailSenderIdentity | undefined> {
+    return await forOrg(organizationId).findById(emailSenderIdentities, id);
   }
 
   async getDefaultEmailSenderIdentity(orgId: number): Promise<EmailSenderIdentity | undefined> {
@@ -5717,11 +5735,9 @@ Notary Public</p>
     return await query;
   }
 
-  async getInboxMessage(id: number): Promise<InboxMessage | undefined> {
-    const [message] = await db.select()
-      .from(inboxMessages)
-      .where(eq(inboxMessages.id, id));
-    return message;
+  // Tier 1F: org-scoped by construction.
+  async getInboxMessage(organizationId: number, id: number): Promise<InboxMessage | undefined> {
+    return await forOrg(organizationId).findById(inboxMessages, id);
   }
 
   async getUnreadInboxCount(orgId: number): Promise<number> {
@@ -5793,11 +5809,9 @@ Notary Public</p>
       .orderBy(desc(mailSenderIdentities.createdAt));
   }
 
-  async getMailSenderIdentity(id: number): Promise<MailSenderIdentity | undefined> {
-    const [identity] = await db.select()
-      .from(mailSenderIdentities)
-      .where(eq(mailSenderIdentities.id, id));
-    return identity;
+  // Tier 1F: org-scoped by construction.
+  async getMailSenderIdentity(organizationId: number, id: number): Promise<MailSenderIdentity | undefined> {
+    return await forOrg(organizationId).findById(mailSenderIdentities, id);
   }
 
   async getDefaultMailSenderIdentity(orgId: number): Promise<MailSenderIdentity | undefined> {
@@ -5861,11 +5875,9 @@ Notary Public</p>
       .orderBy(desc(mailingOrders.createdAt));
   }
 
-  async getMailingOrder(id: number): Promise<MailingOrder | undefined> {
-    const [order] = await db.select()
-      .from(mailingOrders)
-      .where(eq(mailingOrders.id, id));
-    return order;
+  // Tier 1F: org-scoped by construction.
+  async getMailingOrder(organizationId: number, id: number): Promise<MailingOrder | undefined> {
+    return await forOrg(organizationId).findById(mailingOrders, id);
   }
 
   async createMailingOrder(data: InsertMailingOrder): Promise<MailingOrder> {

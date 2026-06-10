@@ -261,7 +261,7 @@
     },
     {
       "file": "server/storage.ts",
-      "line": 2999,
+      "line": 3009,
       "category": "id",
       "note": "Random referral/invite code character — entropy for a human-typeable code."
     }

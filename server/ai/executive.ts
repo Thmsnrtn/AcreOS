@@ -934,9 +934,11 @@ async function loadOrgKnowledgeContext(orgId: number): Promise<string> {
   }
 }
 
-async function loadProjectContext(projectId: number): Promise<string> {
+async function loadProjectContext(orgId: number, projectId: number): Promise<string> {
   try {
-    const project = await storage.getPaxProject(projectId);
+    // Tier 1F: org-pinned fetch — a cross-org activeProjectId yields no
+    // context instead of leaking another tenant's project files.
+    const project = await storage.getPaxProject(orgId, projectId);
     if (!project) return "";
     const files = await storage.getPaxProjectFiles(projectId);
     const sections = files
@@ -1102,7 +1104,7 @@ export async function processChat(
   // Inject learned user preferences into the system prompt (non-blocking)
   const _prefCtx = await loadUserPreferenceContext(org.id);
   const _knowledgeCtx = await loadOrgKnowledgeContext(org.id);
-  const _projectCtx = options.activeProjectId ? await loadProjectContext(options.activeProjectId) : "";
+  const _projectCtx = options.activeProjectId ? await loadProjectContext(org.id, options.activeProjectId) : "";
   const _mentionCtx = options.mentionedEntities?.length
     ? `\n\n=== MENTIONED ENTITIES ===\n${options.mentionedEntities.map(e => `[${e.type.toUpperCase()}] ${e.name}: ${e.preview}`).join("\n")}\n=== END MENTIONED ENTITIES ===`
     : "";
@@ -1524,7 +1526,7 @@ export async function* processChatStream(
   // Inject learned user preferences into the system prompt (non-blocking)
   const _prefCtx = await loadUserPreferenceContext(org.id);
   const _knowledgeCtx = await loadOrgKnowledgeContext(org.id);
-  const _projectCtx = options.activeProjectId ? await loadProjectContext(options.activeProjectId) : "";
+  const _projectCtx = options.activeProjectId ? await loadProjectContext(org.id, options.activeProjectId) : "";
   const _mentionCtx = options.mentionedEntities?.length
     ? `\n\n=== MENTIONED ENTITIES ===\n${options.mentionedEntities.map(e => `[${e.type.toUpperCase()}] ${e.name}: ${e.preview}`).join("\n")}\n=== END MENTIONED ENTITIES ===`
     : "";

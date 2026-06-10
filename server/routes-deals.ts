@@ -716,7 +716,7 @@ export function registerDealRoutes(app: Express): void {
   
   api.get("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const template = await storage.getDueDiligenceTemplate(Number(req.params.id));
+    const template = await storage.getDueDiligenceTemplate(org.id, Number(req.params.id));
     // 2026-06-10 (T0-2): the F-D39 org check landed on PUT/DELETE but this GET
     // was missed — cross-tenant read IDOR. 404 (not 403) so we never confirm
     // another org's template exists.
@@ -775,7 +775,7 @@ export function registerDealRoutes(app: Express): void {
       return Errors.validationFailed(res, parsed.error.issues);
     }
     // F-D39: refuse to mutate another org's template.
-    const existing = await storage.getDueDiligenceTemplate(Number(req.params.id));
+    const existing = await storage.getDueDiligenceTemplate(org.id, Number(req.params.id));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
     // Map loose request items into the persisted DueDiligenceChecklistItem shape.
     const updates: Partial<{ name: string; items: DueDiligenceChecklistItem[]; isDefault: boolean }> = {};
@@ -797,7 +797,7 @@ export function registerDealRoutes(app: Express): void {
   api.delete("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     // F-D39: refuse to delete another org's template.
-    const existing = await storage.getDueDiligenceTemplate(Number(req.params.id));
+    const existing = await storage.getDueDiligenceTemplate(org.id, Number(req.params.id));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
     await storage.deleteDueDiligenceTemplate(Number(req.params.id));
     res.status(204).send();
@@ -830,9 +830,9 @@ export function registerDealRoutes(app: Express): void {
       // mismatch hides as 404 to avoid leaking which side was the cross-tenant ref.
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) return Errors.notFound(res, "Property");
-      const template = await storage.getDueDiligenceTemplate(templateId);
+      const template = await storage.getDueDiligenceTemplate(org.id, templateId);
       if (!template || template.organizationId !== org.id) return Errors.notFound(res, "Template");
-      const items = await storage.applyTemplateToProperty(propertyId, templateId);
+      const items = await storage.applyTemplateToProperty(org.id, propertyId, templateId);
       res.json(items);
     } catch (err: any) {
       Errors.badRequest(res, err.message || "Failed to apply template");
@@ -1753,7 +1753,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   
   api.get("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const template = await storage.getChecklistTemplate(Number(req.params.id));
+    const template = await storage.getChecklistTemplate(org.id, Number(req.params.id));
     // 2026-06-10 (T0-2): same GET/PUT asymmetry as DD templates — the F-D39
     // org check covered PUT/DELETE but missed GET. 404 hides existence.
     if (!template || template.organizationId !== org.id) return Errors.notFound(res, "Template");
@@ -1779,7 +1779,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.put("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     // F-D39: refuse to mutate another org's checklist template.
-    const existing = await storage.getChecklistTemplate(Number(req.params.id));
+    const existing = await storage.getChecklistTemplate(org.id, Number(req.params.id));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
     const template = await storage.updateChecklistTemplate(Number(req.params.id), req.body);
     if (!template) return Errors.notFound(res, "Template");
@@ -1789,7 +1789,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.delete("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     // F-D39: refuse to delete another org's checklist template.
-    const existing = await storage.getChecklistTemplate(Number(req.params.id));
+    const existing = await storage.getChecklistTemplate(org.id, Number(req.params.id));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
     await storage.deleteChecklistTemplate(Number(req.params.id));
     res.status(204).send();
@@ -1831,7 +1831,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       if (!templateId) {
         return Errors.badRequest(res, "templateId is required");
       }
-      const checklist = await storage.applyChecklistTemplateToDeal(dealId, templateId);
+      const checklist = await storage.applyChecklistTemplateToDeal(org.id, dealId, templateId);
       res.status(201).json(checklist);
     } catch (err: any) {
       Errors.badRequest(res, err.message || "Failed to apply template");

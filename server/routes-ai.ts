@@ -177,7 +177,7 @@ export function registerAIRoutes(app: Express): void {
   api.get("/api/ai/conversations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const conversationId = parseInt(req.params.id);
-    const conversation = await storage.getAiConversation(conversationId);
+    const conversation = await storage.getAiConversation(org.id, conversationId);
     
     if (!conversation || conversation.organizationId !== org.id) {
       return Errors.notFound(res, "Conversation");
@@ -193,7 +193,7 @@ export function registerAIRoutes(app: Express): void {
     const conversationId = parseInt(req.params.id);
     const limit = Math.min(parseInt((req.query.limit as string) ?? "20"), 50);
 
-    const conversation = await storage.getAiConversation(conversationId);
+    const conversation = await storage.getAiConversation(org.id, conversationId);
     if (!conversation || conversation.organizationId !== org.id) {
       return Errors.notFound(res, "Conversation");
     }
@@ -570,7 +570,7 @@ export function registerAIRoutes(app: Express): void {
   api.delete("/api/ai/conversations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const conversationId = parseInt(req.params.id);
-    const conversation = await storage.getAiConversation(conversationId);
+    const conversation = await storage.getAiConversation(org.id, conversationId);
     
     if (!conversation || conversation.organizationId !== org.id) {
       return Errors.notFound(res, "Conversation");
@@ -589,7 +589,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const org = req.organization;
       const conversationId = parseInt(req.params.id);
-      const conversation = await storage.getAiConversation(conversationId);
+      const conversation = await storage.getAiConversation(org.id, conversationId);
       if (!conversation || conversation.organizationId !== org.id) {
         return Errors.notFound(res, "Conversation");
       }
@@ -796,7 +796,7 @@ export function registerAIRoutes(app: Express): void {
       const org = req.organization;
       const projectId = parseInt(req.params.id);
       // F-D31 IDOR fix: verify project belongs to this org before listing files.
-      const project = await storage.getPaxProject(projectId);
+      const project = await storage.getPaxProject(org.id, projectId);
       if (!project || project.organizationId !== org.id) {
         return Errors.notFound(res, "Project");
       }
@@ -819,7 +819,7 @@ export function registerAIRoutes(app: Express): void {
       const userId = req.user?.id ?? "unknown";
       const projectId = parseInt(req.params.id);
       // F-D31 IDOR fix: refuse to write a file into another org's project.
-      const project = await storage.getPaxProject(projectId);
+      const project = await storage.getPaxProject(org.id, projectId);
       if (!project || project.organizationId !== org.id) {
         return Errors.notFound(res, "Project");
       }
@@ -846,7 +846,7 @@ export function registerAIRoutes(app: Express): void {
       const projectId = parseInt(req.params.id);
       // F-D31 IDOR fix: verify the parent project belongs to this org before
       // deleting any child file (file id alone wouldn't reveal ownership).
-      const project = await storage.getPaxProject(projectId);
+      const project = await storage.getPaxProject(org.id, projectId);
       if (!project || project.organizationId !== org.id) {
         return Errors.notFound(res, "Project");
       }

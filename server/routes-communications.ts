@@ -97,7 +97,7 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const id = parseInt(req.params.id);
-      const identity = await storage.getEmailSenderIdentity(id);
+      const identity = await storage.getEmailSenderIdentity(org.id, id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!identity || identity.organizationId !== org.id) {
         return Errors.notFound(res, "Email identity");
@@ -115,7 +115,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const org = req.organization;
       const id = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
-      const existing = await storage.getEmailSenderIdentity(id);
+      const existing = await storage.getEmailSenderIdentity(org.id, id);
       if (!existing || existing.organizationId !== org.id) {
         return Errors.notFound(res, "Email identity");
       }
@@ -185,7 +185,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const org = req.organization;
       const id = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
-      const existing = await storage.getEmailSenderIdentity(id);
+      const existing = await storage.getEmailSenderIdentity(org.id, id);
       if (!existing || existing.organizationId !== org.id) {
         return Errors.notFound(res, "Email identity");
       }
@@ -266,7 +266,7 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const id = parseInt(req.params.id);
-      const identity = await storage.getMailSenderIdentity(id);
+      const identity = await storage.getMailSenderIdentity(org.id, id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!identity || identity.organizationId !== org.id) {
         return Errors.notFound(res, "Mail identity");
@@ -284,7 +284,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const org = req.organization;
       const id = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
-      const existing = await storage.getMailSenderIdentity(id);
+      const existing = await storage.getMailSenderIdentity(org.id, id);
       if (!existing || existing.organizationId !== org.id) {
         return Errors.notFound(res, "Mail identity");
       }
@@ -347,7 +347,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const org = req.organization;
       const id = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
-      const existing = await storage.getMailSenderIdentity(id);
+      const existing = await storage.getMailSenderIdentity(org.id, id);
       if (!existing || existing.organizationId !== org.id) {
         return Errors.notFound(res, "Mail identity");
       }
@@ -380,7 +380,7 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const id = parseInt(req.params.id);
-      const identity = await storage.getMailSenderIdentity(id);
+      const identity = await storage.getMailSenderIdentity(org.id, id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!identity || identity.organizationId !== org.id) {
         return Errors.notFound(res, "Mail identity");
@@ -460,7 +460,7 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const id = parseInt(req.params.id);
-      const order = await storage.getMailingOrder(id);
+      const order = await storage.getMailingOrder(org.id, id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!order || order.organizationId !== org.id) {
         return Errors.notFound(res, "Mailing order");
@@ -510,7 +510,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const org = req.organization;
       const id = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
-      const existing = await storage.getMailingOrder(id);
+      const existing = await storage.getMailingOrder(org.id, id);
       if (!existing || existing.organizationId !== org.id) {
         return Errors.notFound(res, "Mailing order");
       }
@@ -544,7 +544,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const org = req.organization;
       const orderId = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify order belongs to requesting org
-      const order = await storage.getMailingOrder(orderId);
+      const order = await storage.getMailingOrder(org.id, orderId);
       if (!order || order.organizationId !== org.id) {
         return Errors.notFound(res, "Mailing order");
       }
@@ -604,7 +604,7 @@ export function registerCommunicationRoutes(app: Express): void {
       if (Number.isNaN(id)) {
         return Errors.notFound(res, "Message");
       }
-      const message = await storage.getInboxMessage(id);
+      const message = await storage.getInboxMessage(org.id, id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!message || message.organizationId !== org.id) {
         return Errors.notFound(res, "Message");
@@ -621,7 +621,7 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const id = parseInt(req.params.id);
-      const existing = await storage.getInboxMessage(id);
+      const existing = await storage.getInboxMessage(org.id, id);
       if (!existing || existing.organizationId !== org.id) {
         return Errors.notFound(res, "Message");
       }
@@ -640,7 +640,7 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const id = parseInt(req.params.id);
-      const existing = await storage.getInboxMessage(id);
+      const existing = await storage.getInboxMessage(org.id, id);
       if (!existing || existing.organizationId !== org.id) {
         return Errors.notFound(res, "Message");
       }
@@ -657,7 +657,7 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const id = parseInt(req.params.id);
-      const currentMessage = await storage.getInboxMessage(id);
+      const currentMessage = await storage.getInboxMessage(org.id, id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       if (!currentMessage || currentMessage.organizationId !== org.id) {
         return Errors.notFound(res, "Message");
@@ -675,7 +675,7 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = req.organization;
       const id = parseInt(req.params.id);
-      const existing = await storage.getInboxMessage(id);
+      const existing = await storage.getInboxMessage(org.id, id);
       if (!existing || existing.organizationId !== org.id) {
         return Errors.notFound(res, "Message");
       }
