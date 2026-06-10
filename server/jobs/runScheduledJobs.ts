@@ -5240,38 +5240,103 @@ export async function runScheduledJobs(): Promise<void> {
         run: async () => {
           // Weekly cadence; TTL generous for a full-table walk (30m).
           await withJobLock("audit_chain_verify", 30 * 60, async () => {
+            // ── 1) Global audit_events chain (Quinn F2) ─────────────────
             const result = await verifyAuditEventsChain();
             if (result.ok) {
               log(
                 `[audit-chain] OK — scanned=${result.scanned} preChainSkipped=${result.preChainSkipped}`,
                 "audit-chain",
               );
-              return;
+            } else {
+              const f = result.failure;
+              const title = "Audit-events hash chain BROKEN";
+              const body =
+                `verifyAuditEventsChain reported ok:false after scanning ${result.scanned} rows. ` +
+                `First failure: auditEventId=${f?.auditEventId} seq=${f?.seq} reason=${f?.reason}. ` +
+                `This means an audit_events row was tampered with, reordered, or lost its hash — ` +
+                `a tamper-evidence / integrity violation.`;
+              log(`[audit-chain] ${body}`, "audit-chain");
+              // Tier 1D: one spine call replaces the recordFinding +
+              // notifyOnCall pair (the spine pages critical findings itself).
+              const { raiseAlert } = await import("../services/alertSpine");
+              await raiseAlert({
+                severity: "critical",
+                source: "audit_chain_verify",
+                title,
+                detail: body,
+                dedupeKey: `audit_chain_broken:${f?.auditEventId ?? "unknown"}`,
+                domain: "compliance",
+                citedReason: "SOC 2 CC7.2/CC7.3 — the audit_events chain must be tamper-evident.",
+                subjectRef: f?.auditEventId ?? null,
+                alertType: "audit_chain_broken",
+                pagePriority: "P1",
+                metadata: { scanned: result.scanned, failure: f },
+              }).catch(() => {/* raiseAlert is internally best-effort */});
             }
-            const f = result.failure;
-            const title = "Audit-events hash chain BROKEN";
-            const body =
-              `verifyAuditEventsChain reported ok:false after scanning ${result.scanned} rows. ` +
-              `First failure: auditEventId=${f?.auditEventId} seq=${f?.seq} reason=${f?.reason}. ` +
-              `This means an audit_events row was tampered with, reordered, or lost its hash — ` +
-              `a tamper-evidence / integrity violation.`;
-            log(`[audit-chain] ${body}`, "audit-chain");
-            // Tier 1D: one spine call replaces the recordFinding +
-            // notifyOnCall pair (the spine pages critical findings itself).
-            const { raiseAlert } = await import("../services/alertSpine");
-            await raiseAlert({
-              severity: "critical",
-              source: "audit_chain_verify",
-              title,
-              detail: body,
-              dedupeKey: `audit_chain_broken:${f?.auditEventId ?? "unknown"}`,
-              domain: "compliance",
-              citedReason: "SOC 2 CC7.2/CC7.3 — the audit_events chain must be tamper-evident.",
-              subjectRef: f?.auditEventId ?? null,
-              alertType: "audit_chain_broken",
-              pagePriority: "P1",
-              metadata: { scanned: result.scanned, failure: f },
-            }).catch(() => {/* raiseAlert is internally best-effort */});
+
+            // ── 2) Per-org audit_log chains (Tier 2D, 2026-06-10) ──────
+            // The org-scoped audit_log table carries its own per-tenant
+            // SHA-256 chain (Kareem §1) that until now was only verified
+            // on demand via the admin endpoint. Walk every org's chain
+            // weekly; tamper/break → CRITICAL page per failing org.
+            // Runs even when the global chain failed — one broken chain
+            // must never mask another.
+            try {
+              const { verifyAllOrgAuditLogChains } = await import("../utils/auditLogChain");
+              const orgSummary = await verifyAllOrgAuditLogChains();
+              if (orgSummary.ok) {
+                log(
+                  `[audit-chain] per-org OK — orgs=${orgSummary.orgsChecked} scanned=${orgSummary.totalScanned}`,
+                  "audit-chain",
+                );
+              } else {
+                const { raiseAlert } = await import("../services/alertSpine");
+                for (const failure of orgSummary.failures) {
+                  const f = failure.failure;
+                  const detail =
+                    `verifyAuditLogChain(org=${failure.organizationId}) reported ok:false after ` +
+                    `scanning ${failure.scanned} rows. First failure: auditLogId=${f?.auditLogId} ` +
+                    `reason=${f?.reason}. An org-scoped audit_log row was tampered with, deleted ` +
+                    `without a documented purge, or lost its hash — a per-tenant tamper-evidence violation.`;
+                  log(`[audit-chain] ${detail}`, "audit-chain");
+                  await raiseAlert({
+                    severity: "critical",
+                    source: "audit_chain_verify",
+                    title: `Org audit_log hash chain BROKEN (org ${failure.organizationId})`,
+                    detail,
+                    dedupeKey: `org_audit_chain_broken:${failure.organizationId}`,
+                    domain: "compliance",
+                    citedReason:
+                      "SOC 2 CC7.2/CC7.3 — every tenant's audit_log chain must be tamper-evident.",
+                    subjectRef: String(failure.organizationId),
+                    alertType: "audit_chain_broken",
+                    pagePriority: "P1",
+                    metadata: {
+                      organizationId: failure.organizationId,
+                      scanned: failure.scanned,
+                      failure: f,
+                    },
+                  }).catch(() => {/* raiseAlert is internally best-effort */});
+                }
+                for (const err of orgSummary.errors) {
+                  // Verifier infra errors are NOT tamper evidence — warn,
+                  // don't page, but never let them pass silently (a verifier
+                  // that can't run is a dark control).
+                  await raiseAlert({
+                    severity: "warning",
+                    source: "audit_chain_verify",
+                    title: `Org audit_log chain verification errored (org ${err.organizationId})`,
+                    detail: `verifyAuditLogChain(org=${err.organizationId}) threw: ${err.message}`,
+                    dedupeKey: `org_audit_chain_verify_error:${err.organizationId}`,
+                    domain: "compliance",
+                    alertType: "audit_chain_verify_error",
+                    metadata: { organizationId: err.organizationId },
+                  }).catch(() => {/* raiseAlert is internally best-effort */});
+                }
+              }
+            } catch (orgErr) {
+              log(`[audit-chain] per-org verification failed to run: ${orgErr}`, "audit-chain");
+            }
           });
         },
       });

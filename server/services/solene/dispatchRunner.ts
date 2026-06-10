@@ -32,6 +32,10 @@ import { logger } from "../../utils/logger";
 import { listActiveClaims } from "./agentClaims";
 import { loadAgentIdentityBlock } from "./agentIdentity";
 import { loadFailureModePreambleFor } from "./failureModeLibrary";
+import {
+  retrieveRelevantMemories,
+  buildRetrievedMemoriesPromptBlock,
+} from "./learningLoop";
 import { recordCapitalEvent } from "./capitalTracker";
 import {
   completeDispatch,
@@ -347,20 +351,39 @@ export async function buildSystemPromptParts(
   maxCostUsd: number,
   timeoutMs: number,
 ): Promise<SystemPromptParts> {
-  // Resolve preambles in parallel — all four are I/O bound and independent.
+  // Resolve preambles in parallel — all five are I/O bound and independent.
   // Order in the rendered prompt:
   //   team-state → active-claims → identity (L1.4) → failure-modes (L3.12)
-  //     → hard-rules → role brief.
+  //     → retrieved lessons (L3.11 learning loop) → hard-rules → role brief.
   // plannedFiles is unavailable at this layer (the model decides what to
   // touch via tool_use mid-turn), so the failure-mode preamble falls back
   // to the top-3 critical/high modes for every dispatch.
-  const [teamStatePreamble, activeClaimsBlock, identityBlock, failureModeBlock] =
-    await Promise.all([
-      loadTeamStatePreamble(),
-      loadActiveClaimsBlock(dispatchId),
-      loadAgentIdentityBlock(role),
-      loadFailureModePreambleFor(role, undefined),
-    ]);
+  // retrieveRelevantMemories never throws by contract, but the .catch keeps
+  // prompt assembly alive even if that contract regresses — a missed lesson
+  // must never block a dispatch.
+  const [
+    teamStatePreamble,
+    activeClaimsBlock,
+    identityBlock,
+    failureModeBlock,
+    retrievedLessons,
+  ] = await Promise.all([
+    loadTeamStatePreamble(),
+    loadActiveClaimsBlock(dispatchId),
+    loadAgentIdentityBlock(role),
+    loadFailureModePreambleFor(role, undefined),
+    retrieveRelevantMemories({
+      queryText: brief,
+      queryingAgentRole: role,
+      queryDispatchId: dispatchId,
+    })
+      .then((r) => r.retrieved)
+      .catch(() => []),
+  ]);
+
+  const retrievedLessonsBlock =
+    buildRetrievedMemoriesPromptBlock(retrievedLessons) ||
+    "_No relevant past corrections retrieved for this task._";
 
   const staticPrefix = [
     "# Team-state preamble (auto-generated, 15-min refresh)",
@@ -378,6 +401,10 @@ export async function buildSystemPromptParts(
     "# Failure-mode library — patterns to avoid",
     "",
     failureModeBlock,
+    "",
+    "# Relevant past lessons (learning-loop RAG)",
+    "",
+    retrievedLessonsBlock,
     "",
     "# Solene autonomous-dispatch mode",
     "",
@@ -708,7 +735,7 @@ export async function runDispatch(
       "# Failure-mode library — patterns to avoid",
     );
     const blockClose = systemPrompt.indexOf(
-      "# Solene autonomous-dispatch mode",
+      "# Relevant past lessons (learning-loop RAG)",
     );
     if (blockOpen === -1 || blockClose === -1) return 0;
     const block = systemPrompt.slice(blockOpen, blockClose);

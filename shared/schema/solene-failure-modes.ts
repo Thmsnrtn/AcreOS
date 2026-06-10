@@ -52,6 +52,15 @@ export const soleneFailureModes = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    // Tier 2D — 'published' (disk-backed, agent-consulted) | 'draft'
+    // (auto-drafted from an incident's lessonsLearned; review-gated). The
+    // dispatch preamble reads ONLY the disk ledger, so a draft never reaches
+    // an agent until a human promotes it to a docs/internal/failure-modes/
+    // entry (at which point seedFailureModesFromDisk flips it to published).
+    status: text("status").notNull().default("published"),
+    // incidents.id when the row was auto-drafted from an incident resolution.
+    // Makes the auto-draft idempotent per incident.
+    sourceIncidentId: text("source_incident_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -63,6 +72,7 @@ export const soleneFailureModes = pgTable(
     uniqueIndex("solene_failure_modes_slug_unique").on(t.slug),
     index("solene_failure_modes_severity_idx").on(t.severity, t.retiredAt),
     index("solene_failure_modes_category_idx").on(t.category, t.retiredAt),
+    index("solene_failure_modes_status_idx").on(t.status),
   ],
 );
 
@@ -81,6 +91,9 @@ export const FAILURE_MODE_SEVERITIES = [
 ] as const;
 export type SoleneFailureModeSeverity =
   (typeof FAILURE_MODE_SEVERITIES)[number];
+
+export const FAILURE_MODE_STATUSES = ["published", "draft"] as const;
+export type SoleneFailureModeStatus = (typeof FAILURE_MODE_STATUSES)[number];
 
 export const FAILURE_MODE_CATEGORIES = [
   "credential_handling",

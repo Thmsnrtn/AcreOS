@@ -311,3 +311,74 @@ export async function verifyAuditLogChain(organizationId: number): Promise<Chain
 
   return { organizationId, scanned, preChainSkipped, documentedPurgesAcknowledged, ok: true, failure: null };
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Tier 2D — fleet-wide verification (weekly audit_chain_verify job)
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface AllOrgChainVerificationSummary {
+  /** Distinct organizations that have at least one audit_log row. */
+  orgsChecked: number;
+  /** Total rows walked across every org chain. */
+  totalScanned: number;
+  /** True only when every org chain verified AND no verifier error. */
+  ok: boolean;
+  /** Per-org verification failures (tamper/break evidence). */
+  failures: ChainVerificationResult[];
+  /** Orgs whose verification threw (infra error, NOT tamper evidence). */
+  errors: Array<{ organizationId: number; message: string }>;
+}
+
+/**
+ * Walk EVERY org's audit_log hash chain. Used by the weekly
+ * `audit_chain_verify` scheduled job so per-tenant tampering is detected
+ * continuously, not only when an admin happens to hit the verify endpoint.
+ *
+ * A verification failure (ok:false) is tamper/break evidence → the caller
+ * raises a CRITICAL alert. A thrown error is an infra problem and is kept
+ * separate so it cannot mask — or masquerade as — tampering.
+ */
+export async function verifyAllOrgAuditLogChains(): Promise<AllOrgChainVerificationSummary> {
+  const orgRows = await db
+    .selectDistinct({ organizationId: auditLog.organizationId })
+    .from(auditLog);
+
+  const summary: AllOrgChainVerificationSummary = {
+    orgsChecked: 0,
+    totalScanned: 0,
+    ok: true,
+    failures: [],
+    errors: [],
+  };
+
+  for (const { organizationId } of orgRows) {
+    if (organizationId == null) continue;
+    summary.orgsChecked++;
+    try {
+      const result = await verifyAuditLogChain(organizationId);
+      summary.totalScanned += result.scanned;
+      if (!result.ok) {
+        summary.ok = false;
+        summary.failures.push(result);
+        logger.error("[auditLogChain] per-org chain verification FAILED", undefined, {
+          metadata: {
+            organizationId,
+            failure: result.failure,
+            scanned: result.scanned,
+          },
+        });
+      }
+    } catch (err) {
+      summary.ok = false;
+      summary.errors.push({
+        organizationId,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      logger.error("[auditLogChain] per-org chain verification errored", err, {
+        metadata: { organizationId },
+      });
+    }
+  }
+
+  return summary;
+}

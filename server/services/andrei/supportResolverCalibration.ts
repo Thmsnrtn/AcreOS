@@ -362,6 +362,21 @@ export async function runSupportResolverCalibrationGrader(opts: {
         `bias=${report.overconfidenceBias ?? "n/a"} — ${report.verdict}`,
     );
 
+    // Tier 2D — close the loop: drift → domain-audit finding + a BOUNDED,
+    // audited threshold adjustment (hard clamps + append-only audit trail in
+    // support_resolver_threshold_adjustments). Recovery steps the offset back
+    // down. Fail-soft — the alert path below still runs if this errors.
+    try {
+      const { applyCalibrationThresholdAdjustment } = await import(
+        "./resolverThresholdAdjustment"
+      );
+      await applyCalibrationThresholdAdjustment(report);
+    } catch (adjErr) {
+      logger.warn("[supportResolverCalibration] threshold adjustment failed (non-fatal)", {
+        metadata: { detail: adjErr instanceof Error ? adjErr.message : String(adjErr) },
+      });
+    }
+
     // Tier 1D (alert spine): a FAILING calibration grade used to be a log
     // line nobody reads. Brier ≥ 0.3 is the "Poor calibration" verdict —
     // Pax's auto-resolve confidence is unreliable while it keeps acting on

@@ -12130,6 +12130,12 @@ export * from "./schema/reserve-floor-checks";
 export * from "./schema/compliance";
 
 // ============================================================================
+// TIER 2D — bounded, audited calibration-threshold adjustments for the Pax
+// support auto-resolve grader. Lives in ./schema/calibration-threshold-adjustments.ts
+// ============================================================================
+export * from "./schema/calibration-threshold-adjustments";
+
+// ============================================================================
 // REG-Z §1026.41 + §1026.36(c) — periodic statements, payment
 // applications, suspense bucket, late-fee non-pyramiding.
 // Lives in ./schema/reg-z.ts so a CFPB examiner reading the codebase can

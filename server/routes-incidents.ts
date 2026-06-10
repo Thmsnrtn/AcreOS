@@ -159,6 +159,31 @@ export function registerIncidentRoutes(app: Express): void {
           .where(eq(incidents.id, id))
           .returning();
         if (!row) return Errors.notFound(res, "Incident");
+
+        // Tier 2D — a finalized incident with lessonsLearned auto-drafts a
+        // failure-mode library entry (status='draft'; the dispatch preamble
+        // reads only the disk ledger, so drafts are review-gated by
+        // construction). Fail-soft: drafting never breaks the PATCH.
+        if (
+          row.lessonsLearned &&
+          (row.status === "resolved" || row.status === "post_mortem_done")
+        ) {
+          try {
+            const { draftFailureModeFromIncident } = await import(
+              "./services/solene/incidentFailureModeDraft"
+            );
+            await draftFailureModeFromIncident(row);
+          } catch (draftErr) {
+            logger.warn("[incidents] failure-mode draft failed (non-fatal)", {
+              metadata: {
+                incidentId: row.id,
+                error:
+                  draftErr instanceof Error ? draftErr.message : String(draftErr),
+              },
+            });
+          }
+        }
+
         return res.json(row);
       } catch (err: unknown) {
         logger.error("[incidents] update failed", err);

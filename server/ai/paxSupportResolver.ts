@@ -65,6 +65,28 @@ export function getResolveConfidenceThreshold(category?: string): number {
   return category === "billing" ? Math.max(base, 90) : base;
 }
 
+/**
+ * Tier 2D — the EFFECTIVE threshold the gate acts on: founder-configured base
+ * plus the calibration grader's bounded offset (raised on drift, lowered on
+ * recovery — see services/andrei/resolverThresholdAdjustment.ts). The offset
+ * is clamped to [0, +15] at write AND read, and base + offset is capped at
+ * EFFECTIVE_THRESHOLD_CEILING so adjustment can never silently disable
+ * auto-resolve. Fail-safe: any offset-read problem degrades to the base.
+ */
+export async function getEffectiveResolveConfidenceThreshold(
+  category?: string,
+): Promise<number> {
+  const base = getResolveConfidenceThreshold(category);
+  try {
+    const { getActiveResolveThresholdOffset, EFFECTIVE_THRESHOLD_CEILING } =
+      await import("../services/andrei/resolverThresholdAdjustment");
+    const offset = await getActiveResolveThresholdOffset();
+    return Math.min(EFFECTIVE_THRESHOLD_CEILING, base + offset);
+  } catch {
+    return base; // calibration plumbing must never break a support turn
+  }
+}
+
 // Resolution-focused subset of the support tool catalog. Read / diagnose /
 // decide only — the broad self-healing mutators (bulk fixes, stripe resync,
 // session invalidation, etc.) stay in the interactive agent. A resolution run
@@ -172,7 +194,8 @@ export async function resolveTicketWithPax(
   }
 
   const category = ticket.category ?? "general";
-  const threshold = getResolveConfidenceThreshold(category);
+  // Tier 2D: base threshold + the calibration grader's bounded offset.
+  const threshold = await getEffectiveResolveConfidenceThreshold(category);
 
   const tools = RESOLVER_TOOL_NAMES.map((name) => ({
     type: "function" as const,
