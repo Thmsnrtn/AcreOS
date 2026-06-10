@@ -56,8 +56,12 @@ type NoteWithDetails = Note & {
   property?: Property;
 };
 
-export default function FinancePage() {
+// `embedded` — mounted inside the /money door's Notes tab (money.tsx),
+// which already renders the app shell. See PageShellProps.embedded (T0-9).
+export default function FinancePage({ embedded = false }: { embedded?: boolean }) {
   useDocumentTitle("Finance");
+  // Parent page (money.tsx) owns the H1 when embedded.
+  const HeadingTag = embedded ? ("h2" as const) : ("h1" as const);
   // Persona controls hero variant + which chart shows. The default
   // land_investor view keeps the existing 12-month area chart (now
   // de-chartjunked); note-investor and project personas get a
@@ -199,7 +203,7 @@ export default function FinancePage() {
       : 0;
 
   return (
-    <PageShell label="Finance">
+    <PageShell label="Finance" embedded={embedded}>
           {/* Persona-shaped hero — renders nothing for default
               land_investor persona, so the existing chart below stays
               the entry point. For note_investor / wholesaler / flipper
@@ -275,12 +279,12 @@ export default function FinancePage() {
               <div>
                 <div className="acr-eyebrow">Finance</div>
                 {/* §1.3: dual class + Tailwind utility. */}
-                <h1 className="acr-cc-greeting text-hero" data-testid="text-page-title">
+                <HeadingTag className="acr-cc-greeting text-hero" data-testid="text-page-title">
                   The paper side.
                   <span className="acr-cc-greeting-soft">
                     {" "}Notes, payments, and statements — kept straight.
                   </span>
-                </h1>
+                </HeadingTag>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">

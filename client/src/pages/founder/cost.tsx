@@ -271,7 +271,7 @@ export default function FounderCostPage() {
           <motion.div
             variants={staggerContainer}
             initial="hidden"
-            animate="show"
+            animate="visible"
             className="space-y-5"
           >
             {/* ── Header strip: three key numbers ──────────────────────── */}

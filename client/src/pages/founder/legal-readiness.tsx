@@ -208,7 +208,7 @@ export default function FounderLegalReadinessPage() {
         <motion.div
           variants={staggerContainer}
           initial="hidden"
-          animate="show"
+          animate="visible"
           className="space-y-4"
         >
           {SECTIONS.map((section) => {

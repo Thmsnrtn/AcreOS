@@ -156,7 +156,7 @@ export default function DataSourcesPage() {
                 <motion.dl
                   variants={staggerContainer}
                   initial="hidden"
-                  animate="show"
+                  animate="visible"
                   className="grid gap-4 sm:grid-cols-2"
                 >
                   {data.classifications.map((item) => {
@@ -199,7 +199,7 @@ export default function DataSourcesPage() {
             <motion.div
               variants={staggerContainer}
               initial="hidden"
-              animate="show"
+              animate="visible"
               className="space-y-4"
             >
               {data.sources.map((s) => (

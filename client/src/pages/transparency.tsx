@@ -298,7 +298,7 @@ function PublishedReportView({
     <motion.div
       variants={staggerContainer}
       initial="hidden"
-      animate="show"
+      animate="visible"
       className="space-y-8"
     >
       {/* Period + stamp */}

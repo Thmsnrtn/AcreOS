@@ -209,7 +209,7 @@ export function SecurityActivityLog() {
             className="space-y-2"
             variants={staggerContainer}
             initial="hidden"
-            animate="show"
+            animate="visible"
             data-testid="list-security-activity"
           >
             {entries.map((entry) => {

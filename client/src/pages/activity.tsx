@@ -77,8 +77,12 @@ function groupByDay(events: ActivityEvent[]): [string, ActivityEvent[]][] {
   return Array.from(map.entries());
 }
 
-export default function ActivityPage() {
+// `embedded` — mounted inside the Pax overflow Sheet (pax-overflow-menu.tsx),
+// which already lives inside the app shell. See PageShellProps.embedded (T0-9).
+export default function ActivityPage({ embedded = false }: { embedded?: boolean }) {
   useDocumentTitle("Activity feed");
+  // The host surface (Sheet header / standalone shell) owns the H1 when embedded.
+  const HeadingTag = embedded ? ("h2" as const) : ("h1" as const);
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [offset, setOffset] = useState(0);
   const PAGE_SIZE = 50;
@@ -103,10 +107,10 @@ export default function ActivityPage() {
   const groups = groupByDay(data?.events ?? []);
 
   return (
-    <PageShell>
+    <PageShell embedded={embedded}>
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold">Activity feed</h1>
+          <HeadingTag className="text-2xl font-semibold">Activity feed</HeadingTag>
           <p className="text-muted-foreground text-sm mt-1">All actions across your organization.</p>
         </div>
 

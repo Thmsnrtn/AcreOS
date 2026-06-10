@@ -215,7 +215,10 @@ export function PaxOverflowMenu({
                 {view === "insights" && insightsContent}
                 {view === "activity" && (
                   <Suspense fallback={<DrawerFallback />}>
-                    <ActivityPage />
+                    {/* embedded — the Sheet lives inside the app shell;
+                        without it ActivityPage nested a second sidebar/topbar
+                        and a duplicate id="main-content" (T0-9). */}
+                    <ActivityPage embedded />
                   </Suspense>
                 )}
                 {view === "appeals" && (

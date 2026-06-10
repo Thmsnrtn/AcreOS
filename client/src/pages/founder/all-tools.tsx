@@ -45,7 +45,7 @@ export default function FounderAllToolsPage() {
         <motion.div
           variants={staggerContainer}
           initial="hidden"
-          animate="show"
+          animate="visible"
           className="space-y-6"
         >
           {groups.map((group) => (

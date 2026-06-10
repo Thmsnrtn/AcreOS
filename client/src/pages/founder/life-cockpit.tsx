@@ -1126,7 +1126,7 @@ export default function FounderLifeCockpitPage() {
 
   return (
     <PageShell label="Life-Cockpit">
-      <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">
+      <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6">
         <motion.div variants={staggerItem}>
           <h1 className="text-2xl font-semibold tracking-tight">Life-Cockpit</h1>
           <p className="text-muted-foreground">

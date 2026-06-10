@@ -710,7 +710,7 @@ function SuggestedPrompts() {
       className="mb-6"
       variants={staggerContainer}
       initial="hidden"
-      animate="show"
+      animate="visible"
     >
       <p id="suggested-prompts-label" className="text-xs font-semibold text-acr-ink-3 uppercase tracking-wide mb-3">
         Try asking Pax:

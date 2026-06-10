@@ -123,13 +123,16 @@ export default function FinancePageShell() {
 
         <TabsContent value="notes" data-testid="tab-content-notes">
           <Suspense fallback={<TabFallback />}>
-            <FinancePage />
+            {/* embedded — this PageShell already provides the app chrome;
+                without it FinancePage nested a second sidebar/topbar and a
+                duplicate id="main-content" (T0-9). */}
+            <FinancePage embedded />
           </Suspense>
         </TabsContent>
 
         <TabsContent value="portfolio" data-testid="tab-content-portfolio">
           <Suspense fallback={<TabFallback />}>
-            <PortfolioPage />
+            <PortfolioPage embedded />
           </Suspense>
         </TabsContent>
 

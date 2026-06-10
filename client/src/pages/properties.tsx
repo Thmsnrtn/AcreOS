@@ -136,7 +136,12 @@ import { DataProvenanceTag } from "@/components/data-provenance-tag";
 import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 
-export default function PropertiesPage() {
+// `embedded` — mounted inside the /pipeline door's Properties tab
+// (pipeline.tsx), which already renders the app shell. See
+// PageShellProps.embedded (T0-9).
+export default function PropertiesPage({ embedded = false }: { embedded?: boolean }) {
+  // Parent page (pipeline.tsx) owns the H1 when embedded.
+  const HeadingTag = embedded ? ("h2" as const) : ("h1" as const);
   const propertyLabelPlural = useTerm("entity.property.plural");
   const propertyLabel = useTerm("entity.property");
   useDocumentTitle(propertyLabelPlural);
@@ -450,13 +455,13 @@ export default function PropertiesPage() {
   };
 
   return (
-    <PageShell label={propertyLabelPlural}>
+    <PageShell label={propertyLabelPlural} embedded={embedded}>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="acr-cc-hero" style={{ marginTop: 0 }}>
               <div>
                 <div className="acr-eyebrow">Inventory</div>
-                <h1 className="acr-cc-greeting" data-testid="text-page-title">
+                <HeadingTag className="acr-cc-greeting" data-testid="text-page-title">
                   {properties && properties.length > 0 ? (
                     <>
                       {plural(properties.length, "parcel")}
@@ -472,7 +477,7 @@ export default function PropertiesPage() {
                       </span>
                     </>
                   )}
-                </h1>
+                </HeadingTag>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">

@@ -38,6 +38,44 @@ export function useDealsPaginated(params: { page: number; pageSize: number; sort
   });
 }
 
+// T0-10 — shape of GET /api/deals/aggregates (see server/services/dealAggregates.ts).
+export interface DealAggregatesResponse {
+  totals: {
+    totalDeals: number;
+    acquisitions: number;
+    dispositions: number;
+    totalPipelineValue: number;
+    closedValue: number;
+    stalledCount: number;
+    warningCount: number;
+  };
+  stages: { status: string; count: number; value: number }[];
+}
+
+/**
+ * T0-10 — org-wide deal aggregates for the Deals header KPIs + stage bar.
+ *
+ * The header previously reduced the CURRENT PAGE of useDealsPaginated
+ * (25 rows), so orgs with >25 deals saw wrong pipeline/closed/stalled
+ * numbers. This hook reads the server-side SQL aggregation instead.
+ * The queryKey starts with the bare '/api/deals' prefix so every existing
+ * deal-mutation invalidation cascades to it automatically.
+ */
+export function useDealAggregates(type: string = "all") {
+  const search = type !== "all" ? `?type=${encodeURIComponent(type)}` : "";
+  return useQuery<DealAggregatesResponse>({
+    queryKey: ['/api/deals', "aggregates", type],
+    queryFn: async () => {
+      const res = await fetch(`/api/deals/aggregates${search}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch deal aggregates");
+      return res.json();
+    },
+    staleTime: STALE_TIMES.short,
+    gcTime: CACHE_TIMES.medium,
+    placeholderData: keepPreviousData,
+  });
+}
+
 /**
  * Legacy hook: returns the flat deals array for backward compatibility.
  * Fetches page 1 with pageSize=100 (capped — pageSize=1000 was loading

@@ -40,6 +40,18 @@ interface PageShellProps {
   maxWidth?: "4xl" | "5xl" | "6xl" | "7xl";
   /** Accessible label for the main content region */
   label?: string;
+  /**
+   * T0-9 — render content-only (no sidebar / topbar / `<main id="main-content">`).
+   *
+   * Set this when the page is mounted INSIDE another page that already
+   * renders a PageShell (e.g. finance.tsx + portfolio.tsx inside the
+   * /money tabs, deals/leads/properties inside /pipeline). Without it the
+   * embedded page nested a second full app shell: duplicate sidebar +
+   * topbar, a second `id="main-content"` (invalid HTML — breaks the skip
+   * link), two H1s, and doubled left margin. Same class of bug that
+   * command-center.tsx (~:1909) was de-shelled for.
+   */
+  embedded?: boolean;
 }
 
 /**
@@ -70,10 +82,23 @@ const MAX_WIDTH_CLASSES = {
   "7xl": "max-w-7xl",
 } as const;
 
-export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7xl", label }: PageShellProps) {
+export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7xl", label, embedded }: PageShellProps) {
   const { isCollapsed } = useSidebarCollapsed();
   const { isOpen: railOpen } = usePaxRail();
   const resolvedLabel = useDocumentTitleFallback(label);
+  // Embedded mode: the parent PageShell already provides sidebar, topbar,
+  // skip link, main landmark, banners, and outer padding — render only the
+  // page content (still inside its own ErrorBoundary so a crash in an
+  // embedded tab doesn't take down the host page).
+  if (embedded) {
+    return (
+      <div className="space-y-6 md:space-y-8">
+        <ErrorBoundary>
+          {isLoading ? (loadingFallback ?? <PageShellSkeleton />) : children}
+        </ErrorBoundary>
+      </div>
+    );
+  }
   // min-h-[100dvh] (not min-h-screen / 100vh) so iOS Safari's dynamic
   // address bar doesn't cause content to overflow the visible viewport.
   return (

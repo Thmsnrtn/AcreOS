@@ -171,8 +171,12 @@ function formatPercent(value: number): string {
   return `${value.toFixed(2)}%`;
 }
 
-export default function PortfolioPage() {
+// `embedded` — mounted inside the /money door's Portfolio tab (money.tsx),
+// which already renders the app shell. See PageShellProps.embedded (T0-9).
+export default function PortfolioPage({ embedded = false }: { embedded?: boolean }) {
   useDocumentTitle("Portfolio analytics");
+  // Parent page (money.tsx) owns the H1 when embedded.
+  const HeadingTag = embedded ? ("h2" as const) : ("h1" as const);
   const [pendingDismiss, setPendingDismiss] = useState<PortfolioAlert | null>(null);
   const { data: summary, isLoading: summaryLoading, isError: summaryError, error: summaryErrorObj, isFetching: summaryFetching, refetch: refetchSummary } = useQuery<PortfolioSummary>({
     queryKey: ["/api/finance/portfolio-summary"],
@@ -300,11 +304,11 @@ export default function PortfolioPage() {
   ] : [];
 
   return (
-    <PageShell label="Portfolio">
+    <PageShell label="Portfolio" embedded={embedded}>
         
           <div>
             {/* §1.3: page H1 — dual class + Tailwind utility. */}
-            <h1 className="acr-cc-greeting text-hero" data-testid="text-portfolio-title">Portfolio analytics</h1>
+            <HeadingTag className="acr-cc-greeting text-hero" data-testid="text-portfolio-title">Portfolio analytics</HeadingTag>
             <p className="text-muted-foreground">Performance metrics and projections for your note portfolio — at a glance.</p>
           </div>
 

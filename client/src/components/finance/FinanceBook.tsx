@@ -241,7 +241,7 @@ export function FinanceBook({ notes }: FinanceBookProps) {
               className="md:hidden divide-y divide-border"
               variants={staggerContainer}
               initial="hidden"
-              animate="show"
+              animate="visible"
               data-testid="list-book-mobile"
             >
               {withRunningBalance.map((e) => (
