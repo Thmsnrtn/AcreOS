@@ -13,10 +13,13 @@
  *                               endpoint to validate before storing.
  *   DELETE /api/byok/:channel → revoke the active credential.
  *
- * Tier gate: BYOK is a Pro+ feature. Free/Starter callers receive 403.
- * Customer-facing rationale: BYOK lanes are a support-heavy path — we
- * scope them to tiers where the unit economics justify the support
- * overhead.
+ * Tier gate (Tier 1I, 2026-06-10): AI channels (anthropic / openrouter /
+ * openai) are available to ALL paid tiers — Starter included — because the
+ * economics guardrail makes BYOK the continuation path past the monthly
+ * AI-turn threshold, and Starter has a threshold too. Non-AI channels
+ * (mail/sms/data lanes) remain Pro+: they are a support-heavy path scoped
+ * to tiers where the unit economics justify the overhead. Free receives
+ * 403 on everything.
  *
  * Audit: every mutation lands in founder_audit via key-vault helpers; the
  * route itself is intentionally thin.
@@ -39,18 +42,43 @@ import { tierForSubscriptionTier } from "@shared/billing/tier-pricing";
 const router = Router();
 
 /**
- * Tier gate — BYOK is Pro+ only. Founder bypass is automatic because
- * `req.isFounder` orgs are typically on a paid tier; if a founder org is
- * misconfigured we still let them through to dogfood the flow.
+ * AI channels — open to every PAID tier (Tier 1I): these are the
+ * continuation path past the monthly AI-turn threshold, which applies to
+ * Starter as well. Keep in sync with AI_BYOK_CHANNELS in
+ * services/byok/aiByok.ts.
  */
-function requirePro(req: AuthenticatedRequest, res: Response): boolean {
+const AI_CHANNELS: readonly string[] = ["anthropic", "openrouter", "openai"];
+
+/**
+ * Tier gate. Founder bypass is automatic because `req.isFounder` orgs are
+ * typically on a paid tier; if a founder org is misconfigured we still let
+ * them through to dogfood the flow.
+ *
+ * - AI channels (anthropic/openrouter/openai): any paid tier (Starter+).
+ * - All other channels: Pro+ only.
+ * - When no channel is in scope (e.g. listing): allow any paid tier — the
+ *   GET response is metadata-only and the Starter UI needs it to render
+ *   the AI-key rows.
+ */
+function requireByokTier(
+  req: AuthenticatedRequest,
+  res: Response,
+  channel?: string,
+): boolean {
   if (req.isFounder) return true;
   const org = getOrganization(req);
   const tier = tierForSubscriptionTier(org.subscriptionTier);
+  const isPaid = tier === "starter" || tier === "pro" || tier === "scale";
+  const aiChannelScope = channel === undefined || AI_CHANNELS.includes(channel);
+
   if (tier === "pro" || tier === "scale") return true;
+  if (isPaid && aiChannelScope) return true;
+
   Errors.forbidden(
     res,
-    "BYOK is available on the Pro plan and above. Upgrade to bring your own provider keys.",
+    aiChannelScope
+      ? "Bring-your-own AI keys are available on paid plans. Upgrade to add your own Anthropic, OpenRouter, or OpenAI key."
+      : "This provider key lane is available on the Pro plan and above. Upgrade to bring your own provider keys.",
   );
   return false;
 }
@@ -134,7 +162,7 @@ async function validateCredential(channel: ByokChannel, plaintext: string): Prom
 
 router.get("/", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    if (!requirePro(req, res)) return;
+    if (!requireByokTier(req, res)) return;
     const organizationId = getOrganizationId(req);
     const credentials = await listByokCredentials(organizationId);
     // Derive a per-channel status snapshot so the UI can render one row
@@ -163,13 +191,13 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
 
 router.post("/", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    if (!requirePro(req, res)) return;
     const organizationId = getOrganizationId(req);
     const parsed = setBodySchema.safeParse(req.body);
     if (!parsed.success) {
       return Errors.validationFailed(res, parsed.error.issues);
     }
     const { channel, plaintext, requireValidation } = parsed.data;
+    if (!requireByokTier(req, res, channel)) return;
 
     if (requireValidation) {
       const v = await validateCredential(channel as ByokChannel, plaintext);
@@ -191,9 +219,9 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
 
 router.delete("/:channel", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    if (!requirePro(req, res)) return;
     const organizationId = getOrganizationId(req);
     const channel = req.params.channel;
+    if (!requireByokTier(req, res, channel)) return;
     if (!BYOK_CHANNELS.includes(channel as ByokChannel)) {
       return Errors.badRequest(res, `Unknown channel: ${channel}`);
     }

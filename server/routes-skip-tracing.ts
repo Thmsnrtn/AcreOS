@@ -9,7 +9,7 @@
 import { Router, type Response } from "express";
 import { skipTracingService } from "./services/skipTracingService";
 import { storage } from "./storage";
-import { poolDebit, refundPoolDebit } from "./services/creditPool";
+import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
@@ -37,6 +37,11 @@ router.post("/trace/:leadId", async (req: AuthenticatedRequest, res: Response) =
       notes: `Skip trace lead ${leadId}`,
       isFounder: req.isFounder,
     });
+
+      // Tier 1I — pool refusals are surfaced, never swallowed.
+      if (!traceDebit.allowed) {
+        return Errors.limitExceeded(res, poolRefusalDetails("skip_trace", traceDebit));
+      }
 
     // The service traces a SkipTraceInput (name/address), not a raw leadId —
     // load the lead and build the input from its fields.
@@ -108,6 +113,11 @@ router.post("/batch", async (req: AuthenticatedRequest, res: Response) => {
       notes: `Skip trace batch (max ${capped})`,
       isFounder: req.isFounder,
     });
+
+      // Tier 1I — pool refusals are surfaced, never swallowed.
+      if (!batchDebit.allowed) {
+        return Errors.limitExceeded(res, poolRefusalDetails("skip_trace", batchDebit));
+      }
 
     let queued: number;
     try {

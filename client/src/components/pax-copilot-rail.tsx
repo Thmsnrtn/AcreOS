@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -195,6 +195,8 @@ interface RailMessage {
   };
   /** Set when the server's hallucination guard replaced the streamed text with a corrected version. */
   wasCorrected?: boolean;
+  /** Tier 1I — recoverable error CTA (e.g. "Add your AI key" → /settings/byok). */
+  errorAction?: { label: string; href: string };
 }
 
 // ─── Pax stream text reducer ─────────────────────────────────────────────────
@@ -730,11 +732,32 @@ export function PaxCopilotRail() {
       });
 
       if (!res.ok) {
-        const err = res.status === 429 ? "Rate limit reached. Please try again shortly."
-          : res.status === 402 ? "Insufficient credits."
-          : "Pax couldn't reach us. Try again, or reload the chat.";
+        // Tier 1I — parse the structured error body so the BYOK-required
+        // refusal renders as a recoverable state with a CTA, not a dead end.
+        let errBody: any = null;
+        try {
+          errBody = await res.json();
+        } catch {
+          errBody = null;
+        }
+        const details = errBody?.details;
+        let err: string;
+        let errorAction: { label: string; href: string } | undefined;
+        if (res.status === 429 && details?.reason === "byok_required") {
+          err = details.message
+            ?? "You've used this month's included Pax turns. Add your own AI key to keep chatting without limits — your data and drafts stay fully accessible.";
+          errorAction = details.byokAvailable
+            ? { label: "Add your AI key", href: details.byokSettingsUrl || "/settings/byok" }
+            : { label: "Upgrade plan", href: details.upgradeUrl || "/pricing" };
+        } else if (res.status === 429) {
+          err = "Rate limit reached. Please try again shortly.";
+        } else if (res.status === 402) {
+          err = "Insufficient credits.";
+        } else {
+          err = "Pax couldn't reach us. Try again, or reload the chat.";
+        }
         setMessages((prev) => prev.map((m) =>
-          m.id === asstId ? { ...m, role: "error" as const, content: err, isStreaming: false } : m
+          m.id === asstId ? { ...m, role: "error" as const, content: err, isStreaming: false, errorAction } : m
         ));
         setIsStreaming(false);
         return;
@@ -1615,6 +1638,12 @@ export function PaxCopilotRail() {
                                 <span className="inline-block w-0.5 h-3.5 bg-primary ml-0.5 animate-pulse align-text-bottom" />
                               )}
                             </div>
+                          )}
+                          {/* Tier 1I — recoverable-error CTA (BYOK required / upgrade) */}
+                          {msg.role === "error" && msg.errorAction && (
+                            <Button size="sm" variant="outline" className="mt-1.5" asChild>
+                              <Link href={msg.errorAction.href}>{msg.errorAction.label}</Link>
+                            </Button>
                           )}
                           {/* Hallucination-guard correction affordance — honest, not alarming */}
                           {msg.wasCorrected && msg.role !== "error" && (

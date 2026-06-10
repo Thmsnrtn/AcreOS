@@ -4,7 +4,7 @@ import { insertAgentConfigSchema, insertAgentTaskSchema } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
-import { usageLimitGate } from "./middleware/usageLimitGate";
+import { usageLimitGate, aiByokThresholdGate } from "./middleware/usageLimitGate";
 import { usageMeteringService, creditService } from "./services/credits";
 import { processChat, processChatStream, agentProfiles, getOrCreateConversation, ProviderCreditError } from "./ai/executive";
 import { parsePaxPromptVersion } from "./ai/paxPromptVersions";
@@ -248,7 +248,7 @@ export function registerAIRoutes(app: Express): void {
     propertyId: z.union([z.number(), z.string()]).optional(),
   });
 
-  api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), async (req, res) => {
+  api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), aiByokThresholdGate(), async (req, res) => {
     // STR-016: step tags let us see in Fly logs exactly which pre-processing
     // dependency failed when the handler 500s. Non-essential side effects
     // (trackUsage, recordUsage) are wrapped so they can't block the user's
@@ -281,6 +281,9 @@ export function registerAIRoutes(app: Express): void {
       // Credit pre-check for AI chat. If credit/rate lookup throws, fail open
       // rather than 500 — founders, trial users, and insufficient-credit cases
       // should never be surfaced as a server crash.
+      // Tier 1I: BYOK-routed turns are the CUSTOMER's provider spend, not
+      // platform COGS — never wall them behind the platform credit balance.
+      const byokMode = res.locals.aiTurnGate?.mode === "byok";
       let aiChatCost = 2;
       try {
         aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
@@ -288,7 +291,7 @@ export function registerAIRoutes(app: Express): void {
         logger.warn("[AI Chat] calculateCost failed, using default 2¢", err instanceof Error ? err : undefined);
       }
       try {
-        const hasCredits = await creditService.hasEnoughCredits(org.id, aiChatCost);
+        const hasCredits = byokMode || await creditService.hasEnoughCredits(org.id, aiChatCost);
         if (!hasCredits) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
           return res.status(402).json({
@@ -406,7 +409,7 @@ export function registerAIRoutes(app: Express): void {
     ]).optional(),
   });
 
-  api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), async (req, res) => {
+  api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, requirePaxDisclosure, paxChatGuard, usageLimitGate("ai_requests"), aiByokThresholdGate(), async (req, res) => {
     // STR-016: mirror the resilience pattern from /api/ai/chat.
     let step: string = "init";
     try {
@@ -448,6 +451,9 @@ export function registerAIRoutes(app: Express): void {
       }
 
       step = "credit_check";
+      // Tier 1I: BYOK-routed turns are the customer's provider spend —
+      // skip the platform credit wall (parity with /api/ai/chat).
+      const byokMode = res.locals.aiTurnGate?.mode === "byok";
       let aiChatCost = 2;
       try {
         aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
@@ -455,7 +461,7 @@ export function registerAIRoutes(app: Express): void {
         logger.warn("[AI Chat Stream] calculateCost failed, using default 2¢", err instanceof Error ? err : undefined);
       }
       try {
-        const hasCredits = await creditService.hasEnoughCredits(org.id, aiChatCost);
+        const hasCredits = byokMode || await creditService.hasEnoughCredits(org.id, aiChatCost);
         if (!hasCredits) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
           return res.status(402).json({

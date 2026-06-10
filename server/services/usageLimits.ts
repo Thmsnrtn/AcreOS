@@ -8,12 +8,14 @@ import {
   TIER_LIMITS,
   FOUNDER_TIER_LIMITS,
   PRICING_FEATURE_FLAGS,
+  AI_TURNS_BYOK_WARN_RATIO,
   isTierVisible,
   getVisibleTiers,
   type SubscriptionTier,
   type ResourceType,
   type TierLimits,
 } from "@shared/billing/tier-limits";
+import { logger } from "../utils/logger";
 
 export {
   TIER_LIMITS,
@@ -153,8 +155,24 @@ export async function checkUsageLimit(
   }
   
   // Founders are always allowed
-  const allowed = isFounder || limit === null || current < limit;
-  
+  let allowed = isFounder || limit === null || current < limit;
+
+  // Tier 1I (Economics guardrail): an active AI BYOK credential lifts the
+  // platform `ai_requests` cap entirely — those turns route through the
+  // customer's own key (zero platform COGS), so capping them would punish
+  // exactly the orgs that took the BYOK path. Checked lazily (only when the
+  // cap would otherwise block) to keep the hot path one query lighter.
+  if (!allowed && resourceType === "ai_requests") {
+    try {
+      const { getActiveAiByokChannel } = await import("./byok/aiByok");
+      if (await getActiveAiByokChannel(organizationId)) {
+        allowed = true;
+      }
+    } catch {
+      // BYOK lookup failed — keep the cap (safe default).
+    }
+  }
+
   return {
     allowed,
     current,
@@ -171,24 +189,65 @@ export async function getAllUsageLimits(
   tier: SubscriptionTier;
   usage: Record<ResourceType, { current: number; limit: number | null; percentage: number | null }>;
   isFounder?: boolean;
+  /**
+   * Tier 1I — monthly AI-turn BYOK threshold snapshot for the client
+   * (Pax banner at ≥80%, blocked state with a CTA to /settings/byok).
+   */
+  aiTurns: {
+    current: number;
+    threshold: number | null;
+    percentage: number | null;
+    /** True at ≥ AI_TURNS_BYOK_WARN_RATIO of the threshold (not blocked yet). */
+    warning: boolean;
+    /** True at/past the threshold without an active AI key. */
+    blocked: boolean;
+    byokActive: boolean;
+    byokAvailable: boolean;
+    byokSettingsUrl: string;
+  };
 }> {
   const { tier, isFounder: orgIsFounder } = await getOrganizationTierAndFounderStatus(organizationId);
   const isFounder = options.isFounder ?? orgIsFounder;
   const limits = isFounder ? FOUNDER_TIER_LIMITS : TIER_LIMITS[tier];
-  
+
   const [leadCount, propertyCount, noteCount, aiRequestCount] = await Promise.all([
     getLeadCount(organizationId),
     getPropertyCount(organizationId),
     getNoteCount(organizationId),
     getMonthlyAiRequestCount(organizationId),
   ]);
-  
+
+  // Tier 1I — BYOK threshold snapshot (reuses the same monthly turn count).
+  let aiByokActive = false;
+  if (!isFounder) {
+    try {
+      const { getActiveAiByokChannel } = await import("./byok/aiByok");
+      aiByokActive = (await getActiveAiByokChannel(organizationId)) !== null;
+    } catch {
+      aiByokActive = false;
+    }
+  }
+  const aiThreshold = limits.aiTurnsByokThreshold;
+  const aiBlocked = !isFounder && !aiByokActive && aiThreshold !== null && aiRequestCount >= aiThreshold;
+  const aiWarning = !isFounder && !aiByokActive && !aiBlocked && aiThreshold !== null
+    && aiRequestCount >= aiThreshold * AI_TURNS_BYOK_WARN_RATIO;
+
   const calculatePercentage = (current: number, limit: number | null): number | null => {
     if (limit === null) return null;
     return Math.round((current / limit) * 100);
   };
-  
+
   return {
+    aiTurns: {
+      current: aiRequestCount,
+      threshold: aiThreshold,
+      percentage: calculatePercentage(aiRequestCount, aiThreshold),
+      warning: aiWarning,
+      blocked: aiBlocked,
+      byokActive: aiByokActive,
+      byokAvailable: limits.byokSupport || tier === "starter",
+      byokSettingsUrl: "/settings/byok",
+    },
     tier: isFounder ? "enterprise" : tier,
     isFounder,
     usage: {
@@ -213,6 +272,182 @@ export async function getAllUsageLimits(
         percentage: calculatePercentage(aiRequestCount, limits.ai_requests),
       },
     },
+  };
+}
+
+// ============================================
+// TIER 1I — AI-TURN BYOK THRESHOLD GATE (2026-06-10)
+// ============================================
+//
+// Founder decision: mandatory BYOK past a generous monthly turn threshold —
+// NOT a hard ceiling, NOT metered overage. Below the per-tier threshold
+// (TIER_LIMITS[*].aiTurnsByokThreshold) Pax turns ride the platform key.
+// Past it, the org must add their own AI key (Settings → Your provider
+// keys) — and with a key configured, usage is unlimited at zero platform
+// COGS. Existing drafts/conversations stay readable either way; only NEW
+// AI turns are gated.
+
+export interface AiTurnGateResult {
+  allowed: boolean;
+  /** Why a refusal happened. `byok_required` is the threshold wall. */
+  reason?: "byok_required";
+  /** How this org's AI calls are billed/routed right now. */
+  mode: "founder" | "byok" | "platform";
+  /** Pax turns consumed this calendar month. */
+  current: number;
+  /** The tier's BYOK threshold (null = no threshold for this tier). */
+  threshold: number | null;
+  /** True at ≥ AI_TURNS_BYOK_WARN_RATIO of the threshold (and not blocked). */
+  warning: boolean;
+  /** Whether this tier can self-serve a BYOK key for AI channels. */
+  byokAvailable: boolean;
+  /** Whether an active AI BYOK credential exists. */
+  byokActive: boolean;
+  tier: SubscriptionTier;
+}
+
+/**
+ * Threshold-crossing telemetry — structured log + one system_alerts row per
+ * org per calendar month (the growth machine consumes this signal). Best
+ * effort: never throws into the gate.
+ */
+async function recordAiByokThresholdCrossing(args: {
+  organizationId: number;
+  tier: SubscriptionTier;
+  current: number;
+  threshold: number;
+}): Promise<void> {
+  const { organizationId, tier, current, threshold } = args;
+  logger.warn("[ai-turns] org crossed monthly BYOK threshold", {
+    organizationId,
+    metadata: { tier, current, threshold, signal: "ai_byok_threshold_crossed" },
+  });
+  try {
+    const { systemAlerts } = await import("@shared/schema");
+    const { eq: eqOp, and: andOp, gte: gteOp } = await import("drizzle-orm");
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    // Dedup: one alert per org per month.
+    const existing = await db
+      .select({ id: systemAlerts.id })
+      .from(systemAlerts)
+      .where(
+        andOp(
+          eqOp(systemAlerts.organizationId, organizationId),
+          eqOp(systemAlerts.type, "ai_byok_threshold_crossed"),
+          gteOp(systemAlerts.createdAt, monthStart),
+        ),
+      );
+    if (existing.length > 0) return;
+    await db.insert(systemAlerts).values({
+      type: "ai_byok_threshold_crossed",
+      alertType: "revenue_at_risk",
+      severity: "warning",
+      title: "Org crossed monthly AI-turn BYOK threshold",
+      message:
+        `Org ${organizationId} (${tier}) used ${current} Pax turns this month — past the ` +
+        `${threshold}-turn included allotment. Without BYOK their AI calls are paused; ` +
+        `this is a prime BYOK-onboarding / expansion conversation.`,
+      organizationId,
+      relatedEntityType: "organization",
+      relatedEntityId: organizationId,
+      metadata: { tier, current, threshold },
+    });
+  } catch (err) {
+    logger.warn(
+      "[ai-turns] failed to write threshold-crossing alert (non-blocking)",
+      err instanceof Error ? err : undefined,
+    );
+  }
+}
+
+/**
+ * The Tier 1I gate every AI-turn route consults before spending platform
+ * AI dollars. Resolution order:
+ *
+ *   founder            → allowed (mode "founder")
+ *   active AI BYOK key → allowed, unlimited (mode "byok", their key/spend)
+ *   tier threshold null→ allowed (the plain ai_requests cap governs)
+ *   under threshold    → allowed; `warning` at ≥ 80%
+ *   at/past threshold  → refused with reason "byok_required"
+ */
+export async function checkAiTurnGate(
+  organizationId: number,
+  options: UsageLimitOptions = {},
+): Promise<AiTurnGateResult> {
+  const { tier, isFounder: orgIsFounder } = await getOrganizationTierAndFounderStatus(organizationId);
+  const isFounder = options.isFounder ?? orgIsFounder;
+  const limits = isFounder ? FOUNDER_TIER_LIMITS : TIER_LIMITS[tier];
+  const byokAvailable = limits.byokSupport || tier === "starter"; // AI channels open to all paid tiers
+  const threshold = limits.aiTurnsByokThreshold;
+
+  if (isFounder) {
+    return {
+      allowed: true,
+      mode: "founder",
+      current: 0,
+      threshold: null,
+      warning: false,
+      byokAvailable: true,
+      byokActive: false,
+      tier: "enterprise",
+    };
+  }
+
+  let byokActive = false;
+  try {
+    const { getActiveAiByokChannel } = await import("./byok/aiByok");
+    byokActive = (await getActiveAiByokChannel(organizationId)) !== null;
+  } catch {
+    byokActive = false; // lookup hiccup → platform path (threshold applies)
+  }
+
+  const current = await getMonthlyAiRequestCount(organizationId);
+
+  if (byokActive) {
+    return {
+      allowed: true,
+      mode: "byok",
+      current,
+      threshold,
+      warning: false,
+      byokAvailable,
+      byokActive: true,
+      tier,
+    };
+  }
+
+  if (threshold === null) {
+    return {
+      allowed: true,
+      mode: "platform",
+      current,
+      threshold: null,
+      warning: false,
+      byokAvailable,
+      byokActive: false,
+      tier,
+    };
+  }
+
+  const blocked = current >= threshold;
+  const warning = !blocked && current >= threshold * AI_TURNS_BYOK_WARN_RATIO;
+
+  if (blocked) {
+    // Fire-and-forget — never let telemetry slow or fail the gate.
+    void recordAiByokThresholdCrossing({ organizationId, tier, current, threshold });
+  }
+
+  return {
+    allowed: !blocked,
+    ...(blocked ? { reason: "byok_required" as const } : {}),
+    mode: "platform",
+    current,
+    threshold,
+    warning,
+    byokAvailable,
+    byokActive: false,
+    tier,
   };
 }
 

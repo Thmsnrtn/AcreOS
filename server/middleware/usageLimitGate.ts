@@ -18,7 +18,12 @@
  */
 
 import type { Response, NextFunction } from "express";
-import { checkUsageLimit, type ResourceType } from "../services/usageLimits";
+import {
+  checkUsageLimit,
+  checkAiTurnGate,
+  type ResourceType,
+  type AiTurnGateResult,
+} from "../services/usageLimits";
 import {
   TIER_LIMITS,
   nextPaidTier,
@@ -97,6 +102,62 @@ export function usageLimitGate(resourceType: ResourceType) {
     } catch (err) {
       logger.error(`[usageLimitGate] Error checking ${resourceType} limit`, err);
       // Fail open — don't block the request if the limit check itself errors
+      next();
+    }
+  };
+}
+
+/**
+ * Tier 1I — Economics guardrail (2026-06-10 founder decision).
+ *
+ * Enforces the mandatory-BYOK-past-threshold model on AI chat turns:
+ *  - founder orgs and orgs with an active AI BYOK key are never blocked
+ *  - under the tier's `aiTurnsByokThreshold`: allowed (warning flag at ≥80%)
+ *  - at/over threshold WITHOUT BYOK: 429 with `reason: "byok_required"` and
+ *    a deep link to the BYOK settings surface — a structured, recoverable
+ *    refusal, never a silent failure. Existing drafts/data stay readable
+ *    (this gate only sits on turn-generating POST routes).
+ *
+ * The gate result is stashed in `res.locals.aiTurnGate` so downstream
+ * handlers can skip platform-credit checks when `mode === "byok"`.
+ *
+ * Fail-open on gate errors (matches usageLimitGate): an internal error in
+ * the threshold machinery must never take Pax down.
+ */
+export function aiByokThresholdGate() {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const organizationId = req.organizationId;
+      if (!organizationId) {
+        return Errors.unauthorized(res);
+      }
+
+      const gate: AiTurnGateResult = await checkAiTurnGate(organizationId, {
+        isFounder: req.isFounder,
+      });
+      res.locals.aiTurnGate = gate;
+
+      if (!gate.allowed) {
+        return Errors.limitExceeded(res, {
+          reason: "byok_required" as const,
+          resourceType: "ai_requests" as const,
+          currentTier: gate.tier,
+          current: gate.current,
+          threshold: gate.threshold,
+          remaining: 0,
+          byokAvailable: gate.byokAvailable,
+          byokSettingsUrl: "/settings/byok",
+          message: gate.byokAvailable
+            ? "You've used this month's included Pax turns. Add your own Anthropic, OpenRouter, or OpenAI key in Settings → Your provider keys to keep chatting without limits — your data and drafts stay fully accessible either way."
+            : "You've used this month's included Pax turns. Upgrade your plan to unlock bring-your-own-key for unlimited Pax — your data and drafts stay fully accessible either way.",
+          upgradeUrl: "/settings#billing",
+        });
+      }
+
+      next();
+    } catch (err) {
+      logger.error("[aiByokThresholdGate] Error checking AI turn threshold", err);
+      // Fail open — never block Pax on a gate malfunction.
       next();
     }
   };

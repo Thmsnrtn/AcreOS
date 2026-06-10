@@ -1794,6 +1794,14 @@ export default function CommandCenterPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        // Tier 1I — BYOK-required refusal: surface the structured message
+        // (it explains the recovery path) instead of a generic failure.
+        if (response.status === 429 && errorData?.details?.reason === "byok_required") {
+          throw new Error(
+            errorData.details.message
+              ?? "You've used this month's included Pax turns. Add your own AI key in Settings → Your provider keys to keep chatting without limits.",
+          );
+        }
         throw new Error(errorData.error || `Request failed with status ${response.status}`);
       }
 
