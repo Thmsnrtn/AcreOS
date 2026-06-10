@@ -63,6 +63,12 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage.ts::acknowledgeAllAlerts",
   "server/storage.ts::cleanExpiredBorrowerSessions",
   "server/storage.ts::countFieldScoutVisits",
+  // createAutomationExecution / noteRepo entries below: pre-existing methods
+  // that became VISIBLE when comment-masking fixed the parser (2026-06-10) —
+  // they are not new code. getNoteByAccessToken is capability-based by design
+  // (the token IS the auth for borrower-facing links); the other two take a
+  // bare id from callers that org-verify upstream. Tighten when touched.
+  "server/storage.ts::createAutomationExecution",
   "server/storage.ts::createMessage",
   "server/storage.ts::createPaxProjectFile",
   "server/storage.ts::deleteBorrowerSession",
@@ -73,7 +79,6 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage.ts::getAdminDashboardData",
   "server/storage.ts::getAgentFeedbackByTask",
   "server/storage.ts::getAllFeatureRequestsForFounder",
-  "server/storage.ts::getAllOrganizations",
   "server/storage.ts::getBorrowerSession",
   "server/storage.ts::getBuyerPrequalificationByLead",
   "server/storage.ts::getCampaignByTrackingCode",
@@ -90,7 +95,6 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage.ts::getFieldScoutVisit",
   "server/storage.ts::getFieldScoutVisits",
   "server/storage.ts::getMessages",
-  "server/storage.ts::getOrganizationsInDunning",
   "server/storage.ts::getParcelSnapshot",
   "server/storage.ts::getPaxScheduledTasksDue",
   "server/storage.ts::getPendingReminders",
@@ -112,11 +116,13 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage/campaignRepo.ts::markOptimizationImplemented",
   "server/storage/dealRepo.ts::_autoGenerateClosingChecklist",
   "server/storage/leadRepo.ts::getLeadActivities",
-  "server/storage/orgRepo.ts::getOrganization",
-  "server/storage/orgRepo.ts::getOrganizationByOwner",
-  "server/storage/orgRepo.ts::getOrganizationBySlug",
-  "server/storage/orgRepo.ts::getOrganizationByStripeCustomerId",
-  "server/storage/orgRepo.ts::updateOrganization",
+  // The orgRepo organization-by-id/slug/stripe-id fetchers and the two
+  // platform org-list methods were allowlisted only because the pre-masking
+  // parser misclassified `organizations` itself as org-scoped. The
+  // organizations table IS the org — fetching it by key is the tenancy
+  // lookup primitive, not an offense. Entries removed 2026-06-10.
+  "server/storage/noteRepo.ts::createPayment",
+  "server/storage/noteRepo.ts::getNoteByAccessToken",
 ]);
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -150,6 +156,60 @@ function findSchemaFiles() {
     }
   }
   return files.sort();
+}
+
+/**
+ * Replace `//` and `/* … *​/` comment spans with spaces (string-aware: a
+ * `//` inside a string literal is left alone). Same-length output, so every
+ * index and line number in the masked source maps 1:1 onto the original.
+ *
+ * Why this exists: matchParen/matchBrace track string state but used to walk
+ * the RAW source, so an apostrophe inside a comment ("the calibrator's
+ * weights") opened phantom string state and desynced the depth counter. The
+ * resulting table/method spans were garbage that silently re-shuffled which
+ * tables counted as org-scoped whenever unrelated schema text moved —
+ * at one point dropping `properties` itself from the org-scoped set.
+ */
+function maskComments(source) {
+  const out = source.split("");
+  let inString = null;
+  let prevChar = "";
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    if (inString) {
+      if (ch === inString && prevChar !== "\\") inString = null;
+      prevChar = ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      inString = ch;
+      prevChar = ch;
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "/") {
+      while (i < source.length && source[i] !== "\n") {
+        out[i] = " ";
+        i++;
+      }
+      prevChar = "\n";
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "*") {
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
+        if (source[i] !== "\n") out[i] = " ";
+        i++;
+      }
+      if (i < source.length) {
+        out[i] = " ";
+        out[i + 1] = " ";
+        i++;
+      }
+      prevChar = " ";
+      continue;
+    }
+    prevChar = ch;
+  }
+  return out.join("");
 }
 
 /** Walk parens from `openIdx` (an opening "(") to its match. */
@@ -204,7 +264,7 @@ function collectOrgScopedTableIdents() {
   const idents = new Map();
   const callRe = /\bexport\s+const\s+([A-Za-z0-9_]+)\s*=\s*pgTable\s*\(\s*["'`]([a-zA-Z0-9_]+)["'`]/g;
   for (const file of findSchemaFiles()) {
-    const source = readFileSync(file, "utf8");
+    const source = maskComments(readFileSync(file, "utf8"));
     let match;
     while ((match = callRe.exec(source)) !== null) {
       const [, ident, tableName] = match;
@@ -301,7 +361,10 @@ function main() {
 
   for (const file of storageFiles) {
     const rel = file.replace(REPO_ROOT + "/", "");
-    const source = readFileSync(file, "utf8");
+    // Masked for the same reason as the schema pass — and as a bonus,
+    // commented-out code can no longer count as "touching" a table or as
+    // providing org context.
+    const source = maskComments(readFileSync(file, "utf8"));
     for (const method of extractAsyncMethods(source)) {
       scannedMethods += 1;
       const touched = touchedOrgScopedTables(method.text, orgScopedIdents);
