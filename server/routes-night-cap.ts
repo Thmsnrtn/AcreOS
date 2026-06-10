@@ -19,6 +19,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { Errors } from "./utils/errors";
 import { db } from "./db";
 import { sql, desc, eq, and, gte, lte } from "drizzle-orm";
 import {
@@ -259,7 +260,7 @@ router.get("/snapshot", async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     logger.error("[EveningReview] Snapshot error", err);
-    res.status(500).json({ error: err.message || "Failed to load Evening Review snapshot" });
+    Errors.internal(res, err);
   }
 });
 

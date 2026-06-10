@@ -245,16 +245,22 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Get a specific response
   api.get("/api/responses/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
     const response = await storage.getCampaignResponse(Number(req.params.id));
-    if (!response) return Errors.notFound(res, "Response");
+    // 2026-06-10 (T0-2 sweep): cross-tenant read IDOR — 404, never confirm
+    // another org's response exists.
+    if (!response || response.organizationId !== org.id) return Errors.notFound(res, "Response");
     res.json(response);
   });
 
   // Update a response
   api.put("/api/responses/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const validated = insertCampaignResponseSchema.partial().parse(req.body);
-      const response = await storage.updateCampaignResponse(Number(req.params.id), validated);
+      // 2026-06-10 (T0-2 sweep): scope the write to this org so a foreign id
+      // is a no-op that 404s.
+      const response = await storage.updateCampaignResponse(Number(req.params.id), validated, org.id);
       if (!response) return Errors.notFound(res, "Response");
       res.json(response);
     } catch (err) {
@@ -265,7 +271,9 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Delete a response
   api.delete("/api/responses/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    await storage.deleteCampaignResponse(Number(req.params.id));
+    const org = req.organization;
+    // 2026-06-10 (T0-2 sweep): org-scoped delete — a foreign id deletes nothing.
+    await storage.deleteCampaignResponse(Number(req.params.id), org.id);
     res.status(204).send();
   });
 
@@ -449,7 +457,11 @@ export function registerCampaignRoutes(app: Express): void {
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
       if (!sequence) return Errors.notFound(res, "Sequence");
       const validated = updateSequenceStepSchema.parse(req.body);
-      const step = await storage.updateSequenceStep(Number(req.params.stepId), validated);
+      // 2026-06-10 (T0-2 sweep): constrain to the org-checked sequence —
+      // previously a foreign stepId under your own sequence id wrote
+      // cross-tenant.
+      const step = await storage.updateSequenceStep(Number(req.params.stepId), validated, sequence.id);
+      if (!step) return Errors.notFound(res, "Step");
       res.json(step);
     } catch (err) {
       if (err instanceof z.ZodError) return Errors.badRequest(res, err.issues[0].message);
@@ -463,7 +475,8 @@ export function registerCampaignRoutes(app: Express): void {
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return Errors.notFound(res, "Sequence");
     
-    await storage.deleteSequenceStep(Number(req.params.stepId));
+    // 2026-06-10 (T0-2 sweep): constrain to the org-checked sequence.
+    await storage.deleteSequenceStep(Number(req.params.stepId), sequence.id);
     res.status(204).send();
   });
 
@@ -568,25 +581,44 @@ export function registerCampaignRoutes(app: Express): void {
     reason: z.string().optional(),
   });
 
+  // 2026-06-10 (T0-2 sweep): enrollments carry no org column, so ownership is
+  // proven through the parent sequence. Previously pause/resume/cancel wrote
+  // to any org's enrollment by id. 404 hides existence.
+  const getOwnedEnrollment = async (orgId: number, enrollmentId: number) => {
+    const enrollment = await storage.getSequenceEnrollment(enrollmentId);
+    if (!enrollment) return undefined;
+    const sequence = await storage.getSequence(orgId, enrollment.sequenceId);
+    return sequence ? enrollment : undefined;
+  };
+
   api.post("/api/enrollments/:id/pause", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
     const parsed = pauseEnrollmentSchema.safeParse(req.body);
     if (!parsed.success) {
       return Errors.validationFailed(res, parsed.error.issues);
     }
     const { reason } = parsed.data;
-    const enrollment = await storage.pauseEnrollment(Number(req.params.id), reason || "Manually paused");
+    const owned = await getOwnedEnrollment(org.id, Number(req.params.id));
+    if (!owned) return Errors.notFound(res, "Enrollment");
+    const enrollment = await storage.pauseEnrollment(owned.id, reason || "Manually paused");
     res.json(enrollment);
   });
 
   // Resume an enrollment
   api.post("/api/enrollments/:id/resume", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const enrollment = await storage.resumeEnrollment(Number(req.params.id));
+    const org = req.organization;
+    const owned = await getOwnedEnrollment(org.id, Number(req.params.id));
+    if (!owned) return Errors.notFound(res, "Enrollment");
+    const enrollment = await storage.resumeEnrollment(owned.id);
     res.json(enrollment);
   });
 
   // Cancel an enrollment
   api.post("/api/enrollments/:id/cancel", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const enrollment = await storage.cancelEnrollment(Number(req.params.id));
+    const org = req.organization;
+    const owned = await getOwnedEnrollment(org.id, Number(req.params.id));
+    if (!owned) return Errors.notFound(res, "Enrollment");
+    const enrollment = await storage.cancelEnrollment(owned.id);
     res.json(enrollment);
   });
 

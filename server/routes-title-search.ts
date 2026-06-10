@@ -7,6 +7,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { Errors } from "./utils/errors";
 import { titleSearchService } from "./services/titleSearchService";
 
 const router = Router();
@@ -25,7 +26,7 @@ router.post("/search", async (req: Request, res: Response) => {
     const result = await titleSearchService.search(String(apnValue), state ? String(state) : undefined);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

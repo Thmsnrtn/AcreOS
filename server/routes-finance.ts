@@ -799,6 +799,10 @@ export function registerFinanceRoutes(app: Express): void {
       
       let reminders;
       if (noteId) {
+        // 2026-06-10 (T0-2 sweep): verify note ownership — this branch
+        // previously returned any org's reminders for a guessed noteId.
+        const note = await storage.getNote(org.id, Number(noteId));
+        if (!note) return Errors.notFound(res, "Note");
         reminders = await storage.getRemindersForNote(Number(noteId));
       } else {
         reminders = await storage.getPendingReminders(100);

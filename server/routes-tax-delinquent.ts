@@ -8,6 +8,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { Errors } from "./utils/errors";
 import { taxDelinquentPipeline } from "./services/taxDelinquentPipeline";
 
 const router = Router();
@@ -27,7 +28,7 @@ router.get("/", async (req: Request, res: Response) => {
     });
     res.json(leads);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -44,7 +45,7 @@ router.post("/import", async (req: Request, res: Response) => {
     });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -58,7 +59,7 @@ router.get("/:id", async (req: Request, res: Response) => {
     if (!lead) return res.status(404).json({ error: "Lead not found" });
     res.json({ lead });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

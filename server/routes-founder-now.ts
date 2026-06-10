@@ -15,6 +15,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { Errors } from "./utils/errors";
 import { db } from "./db";
 import {
   decisionsInboxItems,
@@ -210,7 +211,7 @@ router.get("/", async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     logger.error("[founder-now] aggregation failed", err);
-    res.status(500).json({ error: err?.message ?? "Internal error" });
+    Errors.internal(res, err);
   }
 });
 

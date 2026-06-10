@@ -7,6 +7,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { Errors } from "./utils/errors";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getPortfolioPnl } from "./services/portfolioPnl";
@@ -22,7 +23,7 @@ router.get("/", isAuthenticated, getOrCreateOrg, async (req: Request, res: Respo
     const report = await getPortfolioPnl(org.id, new Date(year, 0, 1), new Date(year, 11, 31, 23, 59, 59));
     res.json({ report });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -37,7 +38,7 @@ router.get("/:year", isAuthenticated, getOrCreateOrg, async (req: Request, res: 
     const report = await getPortfolioPnl(org.id, new Date(year, 0, 1), new Date(year, 11, 31, 23, 59, 59));
     res.json({ report });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

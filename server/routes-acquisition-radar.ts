@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { Errors } from './utils/errors';
 import { acquisitionRadar } from './services/acquisitionRadar';
 
 const router = Router();
@@ -14,7 +15,7 @@ router.get('/config', async (req: Request, res: Response) => {
     const config = await acquisitionRadar.getOrCreateConfig(org.id);
     res.json({ config });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -50,7 +51,7 @@ router.get('/opportunities', async (req: Request, res: Response) => {
     });
     res.json({ opportunities });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -60,7 +61,7 @@ router.get('/opportunities/by-market', async (req: Request, res: Response) => {
     const byMarket = await acquisitionRadar.getOpportunitiesByMarket(org.id);
     res.json({ byMarket });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -70,7 +71,7 @@ router.get('/stats', async (req: Request, res: Response) => {
     const stats = await acquisitionRadar.getRadarStats(org.id);
     res.json({ stats });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 

@@ -657,7 +657,7 @@ router.patch("/nudges/:nudgeId/snooze", async (req, res) => {
 
     res.json({ success: true, snoozedUntil });
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    Errors.internal(res, e);
   }
 });
 
@@ -680,7 +680,7 @@ router.patch("/nudges/:nudgeId/action", async (req, res) => {
 
     res.json({ success: true });
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    Errors.internal(res, e);
   }
 });
 

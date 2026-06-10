@@ -6,6 +6,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { Errors } from "./utils/errors";
 import { zoningService } from "./services/zoningService";
 
 const router = Router();
@@ -26,7 +27,7 @@ router.post("/lookup", async (req: Request, res: Response) => {
     const result = await zoningService.getZoning(address);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

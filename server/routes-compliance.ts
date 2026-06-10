@@ -177,7 +177,7 @@ router.post('/usury-check', async (req: Request, res: Response) => {
     const clearance = checkUsury(state, Number(rate));
     res.json(clearance);
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    Errors.internal(res, e);
   }
 });
 
@@ -189,7 +189,7 @@ router.get('/usury-audit', async (req: Request, res: Response) => {
     const audit = await auditOrgUsury(org.id);
     res.json(audit);
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    Errors.internal(res, e);
   }
 });
 
@@ -293,7 +293,7 @@ router.get('/evidence-pack/:dealId', async (req: Request, res: Response) => {
     res.json({ summary, events: grouped });
   } catch (err: any) {
     logger.error('[compliance.evidence-pack] error', err);
-    res.status(500).json({ error: err?.message ?? 'Internal error' });
+    Errors.internal(res, err);
   }
 });
 

@@ -633,11 +633,12 @@ export interface IStorage {
   // Sequence Steps
   getSequenceSteps(sequenceId: number): Promise<SequenceStep[]>;
   createSequenceStep(step: InsertSequenceStep): Promise<SequenceStep>;
-  updateSequenceStep(id: number, updates: Partial<InsertSequenceStep>): Promise<SequenceStep>;
-  deleteSequenceStep(id: number): Promise<void>;
+  updateSequenceStep(id: number, updates: Partial<InsertSequenceStep>, sequenceId?: number): Promise<SequenceStep>;
+  deleteSequenceStep(id: number, sequenceId?: number): Promise<void>;
   reorderSequenceSteps(sequenceId: number, stepIds: number[]): Promise<void>;
 
   // Sequence Enrollments
+  getSequenceEnrollment(id: number): Promise<SequenceEnrollment | undefined>;
   getSequenceEnrollments(sequenceId: number): Promise<SequenceEnrollment[]>;
   getLeadEnrollments(leadId: number): Promise<SequenceEnrollment[]>;
   getActiveEnrollments(orgId: number): Promise<(SequenceEnrollment & { sequence: CampaignSequence; lead: Lead })[]>;
@@ -3113,16 +3114,22 @@ export class DatabaseStorage implements IStorage {
     return newStep;
   }
 
-  async updateSequenceStep(id: number, updates: Partial<InsertSequenceStep>): Promise<SequenceStep> {
+  // 2026-06-10 (T0-2 sweep): optional sequenceId constrains the write to the
+  // caller's (already org-checked) sequence so a foreign stepId is a no-op.
+  async updateSequenceStep(id: number, updates: Partial<InsertSequenceStep>, sequenceId?: number): Promise<SequenceStep> {
+    const conditions = [eq(sequenceSteps.id, id)];
+    if (sequenceId !== undefined) conditions.push(eq(sequenceSteps.sequenceId, sequenceId));
     const [updated] = await db.update(sequenceSteps)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(sequenceSteps.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   }
 
-  async deleteSequenceStep(id: number): Promise<void> {
-    await db.delete(sequenceSteps).where(eq(sequenceSteps.id, id));
+  async deleteSequenceStep(id: number, sequenceId?: number): Promise<void> {
+    const conditions = [eq(sequenceSteps.id, id)];
+    if (sequenceId !== undefined) conditions.push(eq(sequenceSteps.sequenceId, sequenceId));
+    await db.delete(sequenceSteps).where(and(...conditions));
   }
 
   async reorderSequenceSteps(sequenceId: number, stepIds: number[]): Promise<void> {
@@ -3134,6 +3141,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Sequence Enrollments
+  // 2026-06-10 (T0-2 sweep): single-enrollment fetch so routes can verify the
+  // parent sequence's org before mutating (enrollments carry no org column).
+  async getSequenceEnrollment(id: number): Promise<SequenceEnrollment | undefined> {
+    const [enrollment] = await db.select().from(sequenceEnrollments)
+      .where(eq(sequenceEnrollments.id, id));
+    return enrollment;
+  }
+
   async getSequenceEnrollments(sequenceId: number): Promise<SequenceEnrollment[]> {
     return await db.select().from(sequenceEnrollments)
       .where(eq(sequenceEnrollments.sequenceId, sequenceId))
