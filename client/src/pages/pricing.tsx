@@ -316,7 +316,14 @@ export default function PricingPage() {
                         {tier.cta}
                       </a>
                     ) : (
-                      <Link href="/auth?mode=register">{tier.cta}</Link>
+                      // Tier 2C — carry tier + cadence into the signup URL;
+                      // capturePendingUtm() folds plan/billing into the
+                      // first-touch snapshot for funnel segmentation.
+                      <Link
+                        href={`/auth?mode=register&plan=${tier.id}&billing=${annual ? "yearly" : "monthly"}`}
+                      >
+                        {tier.cta}
+                      </Link>
                     )}
                   </Button>
                 </CardContent>

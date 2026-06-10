@@ -1866,6 +1866,13 @@ function AppContent() {
         utm_content: snap?.utm_content ?? null,
         utm_term: snap?.utm_term ?? null,
         referrer: snap?.referrer ?? null,
+        // Tier 2C — referral + pricing-CTA tier context (?ref=, ?plan=,
+        // ?billing=) ride the same snapshot. The server applies the
+        // referral code itself during the flush; these props are for
+        // funnel segmentation only.
+        ref: snap?.ref ?? null,
+        plan: snap?.plan ?? null,
+        billing: snap?.billing ?? null,
       });
     })();
   }, [user]);

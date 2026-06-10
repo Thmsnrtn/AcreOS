@@ -235,6 +235,9 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "model_upgrade_backfill", intervalMs: DAY, critical: false },
   { name: "beatrice_reg_watch", intervalMs: DAY, critical: false },
   { name: "nps_prompt_scheduler", intervalMs: DAY, critical: false },
+  // Tier 2C — daily 15:05 UTC lifecycle email dispatcher
+  // (d7_check_in / d30_nps / cancellation_reason_ask).
+  { name: "lifecycle_dispatch", intervalMs: DAY, critical: false },
   { name: "recourse_sweep", intervalMs: 30 * MIN, critical: true },
   { name: "resume_expired_pauses", intervalMs: HOUR, critical: true },
   { name: "data_source_probe", intervalMs: 30 * MIN, critical: true },

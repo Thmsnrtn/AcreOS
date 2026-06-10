@@ -53,6 +53,21 @@ export function PublicFooter() {
           >
             Glossary
           </Link>
+          {/* Tier 2C — /why and /land-credit-score were orphaned (no
+              internal links anywhere); surfacing them here gives every
+              public trust page a crawlable + human path to both. */}
+          <Link
+            href="/why"
+            className="hover:text-foreground inline-flex items-center min-h-11 px-2"
+          >
+            Why AcreOS
+          </Link>
+          <Link
+            href="/land-credit-score"
+            className="hover:text-foreground inline-flex items-center min-h-11 px-2"
+          >
+            Land Credit Score
+          </Link>
           <Link
             href="/terms"
             className="hover:text-foreground inline-flex items-center min-h-11 px-2"

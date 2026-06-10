@@ -5757,6 +5757,22 @@ export const ACTIVATION_EVENTS = [
   "first_pax_question_asked",
   "first_mailer_sent",
   "first_payment_recorded",
+  // Tier 2C (2026-06-10) — server-side funnel truth. These two were
+  // previously CLIENT-emitted PostHog events (settings.tsx fired
+  // trial_to_paid off the ?subscription=success redirect; use-onboarding
+  // fired first_value_reached off onboarding completion), which made the
+  // revenue + activation funnel steps spoofable, ad-blockable, and
+  // detached from what actually happened. Now:
+  //   trial_to_paid       — emitted by the Stripe webhook
+  //                         (processSubscriptionCheckoutCompleted), the
+  //                         same place first_payment_processed is recorded.
+  //   first_value_reached — emitted by the approval kernel at the org's
+  //                         first WITNESSED send (the append-only pax_sends
+  //                         insert), not at "clicked through onboarding".
+  // Both are first-occurrence-idempotent via the (org, eventName) unique
+  // index like every other activation event.
+  "trial_to_paid",
+  "first_value_reached",
 ] as const;
 export type ActivationEvent =
   | typeof ACTIVATION_EVENTS[number]

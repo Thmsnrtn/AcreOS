@@ -46,7 +46,22 @@ export interface PendingUtm {
   utm_content?: string;
   referrer?: string;
   landedAt?: string;
+  // Tier 2C — referral + tier context ride the same first-touch chain.
+  ref?: string;
+  plan?: string;
+  billing?: string;
 }
+
+// Referral codes are 8-char base64url-uppercase from routes-referral
+// generateCode(); accept a slightly wider [4,16] window so a future code
+// format change doesn't silently drop attribution, but reject anything
+// that isn't URL-token shaped (defends against junk/abuse params).
+const REF_CODE_RE = /^[A-Za-z0-9_-]{4,16}$/;
+
+// Pricing-CTA tier context. Closed vocabularies — these come from our own
+// CTAs, so anything else is noise and gets dropped.
+const PLAN_VALUES = new Set(["free", "starter", "pro", "scale"]);
+const BILLING_VALUES = new Set(["monthly", "yearly"]);
 
 /**
  * Truthy when the referrer is from a different origin than the current
@@ -90,7 +105,27 @@ function buildSnapshot(): PendingUtm | null {
     snap.referrer = referrer.slice(0, 1024);
   }
 
-  if (!hasUtm && !crossOrigin) return null;
+  // Tier 2C — referral code + pricing-CTA tier context. Each is
+  // acquisition-relevant on its own (a ?ref= link with no UTM params
+  // must still produce a snapshot, or the referral is lost at signup).
+  let hasGrowthContext = false;
+  const ref = params.get("ref");
+  if (ref && REF_CODE_RE.test(ref)) {
+    snap.ref = ref.toUpperCase();
+    hasGrowthContext = true;
+  }
+  const plan = params.get("plan")?.toLowerCase();
+  if (plan && PLAN_VALUES.has(plan)) {
+    snap.plan = plan;
+    hasGrowthContext = true;
+  }
+  const billing = params.get("billing")?.toLowerCase();
+  if (billing && BILLING_VALUES.has(billing)) {
+    snap.billing = billing;
+    hasGrowthContext = true;
+  }
+
+  if (!hasUtm && !crossOrigin && !hasGrowthContext) return null;
 
   snap.landedAt = new Date().toISOString();
   return snap;

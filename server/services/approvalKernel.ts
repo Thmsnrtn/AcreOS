@@ -321,6 +321,27 @@ export async function approvePendingAction(params: {
     contentHash: action.contentHash,
   });
 
+  // Tier 2C — server-side funnel truth. first_value_reached used to be a
+  // client-side PostHog event fired when onboarding was marked complete —
+  // i.e. "clicked through the wizard," not "got value." The witnessed send
+  // (this append-only pax_sends row) is the real first-value moment: a human
+  // approved and the platform executed an outbound action on their behalf.
+  // recordActivationEvent is first-occurrence-idempotent on (org, eventName),
+  // so only the org's FIRST witnessed send ever records it. Fire-and-forget.
+  try {
+    const { recordActivationEventAsync } = await import("./activation");
+    recordActivationEventAsync({
+      orgId: organizationId,
+      userId: action.approvedByUserId ?? action.createdByUserId ?? null,
+      eventName: "first_value_reached",
+      eventValue: {
+        source: "pax_witnessed_send",
+        toolName: action.toolName,
+        pendingActionId: action.id,
+      },
+    });
+  } catch { /* non-fatal — funnel telemetry must never block a send */ }
+
   logger.info("[approvalKernel] Pending action executed after human approval", {
     metadata: { pendingActionId, organizationId, toolName: action.toolName },
   });

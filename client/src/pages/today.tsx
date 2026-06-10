@@ -98,6 +98,15 @@ const HEADING_OUT_MORNING_END_HOUR = 11; // exclusive
 const DRIVE_MODE_LEAD_SOURCE = "driving_for_dollars";
 const DRIVE_MODE_ROUTE = "/drivemode";
 
+// ── Referral nudge (Tier 2C) ─────────────────────────────────────────────
+// The referral program existed (settings → Account → refer & earn) but had
+// zero surfacing post-first-value, so nobody found it. This is the single
+// in-product touch: a quiet, permanently-dismissible card on Today that
+// only renders once the org has real data (hasAnyData — the "it's working"
+// proxy). Lives behind the Today door per the five-doors rule; the CTA
+// deep-links to the existing referral section in Settings.
+const REFERRAL_NUDGE_DISMISS_KEY = "acreos-today-referral-nudge-dismissed";
+
 function isHeadingOutMorning(now: Date): boolean {
   const day = now.getDay(); // 0=Sun, 6=Sat
   if (day === 0 || day === 6) return false;
@@ -355,6 +364,25 @@ export default function TodayPage() {
     isHeadingOutMorning(now) &&
     hasRecentDriveModeCapture(leads, now);
 
+  // ── Referral nudge state (Tier 2C) ───────────────────────────────────
+  // Permanent dismiss (no date suffix) — a growth nudge the user closed
+  // should stay closed; re-surfacing it would erode trust in dismissal.
+  const [referralNudgeDismissed, setReferralNudgeDismissed] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem(REFERRAL_NUDGE_DISMISS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const dismissReferralNudge = React.useCallback(() => {
+    setReferralNudgeDismissed(true);
+    try {
+      localStorage.setItem(REFERRAL_NUDGE_DISMISS_KEY, "1");
+    } catch {
+      // ignore — best-effort dismiss persistence
+    }
+  }, []);
+
   // Sample-data CTA: seed a realistic dataset directly from /today's
   // empty state without forcing the user into the onboarding wizard.
   const loadSampleDataMutation = useMutation({
@@ -606,6 +634,51 @@ export default function TodayPage() {
           pipeline, derived free from county records. Owns its own query
           + mark-read; behind the Today door per the five-doors rule. */}
       {!showEmptyState && !todayError && <ParcelAlerts />}
+
+      {/* ── Referral nudge (Tier 2C) ─────────────────────────────────── */}
+      {/* Post-first-value only (hasAnyData) and permanently dismissible.
+          Sits low on the page on purpose — it's a quiet suggestion, not
+          a banner competing with the operator's actual work. */}
+      {!showEmptyState && !todayError && hasAnyData && !referralNudgeDismissed && (
+        <Card className="rounded-card" data-testid="card-referral-nudge">
+          <CardContent className="p-4 md:p-3 flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 md:gap-2.5 min-w-0">
+              <div className="p-2 rounded-card bg-primary/10 shrink-0">
+                <Sparkles className="w-5 h-5 md:w-4 md:h-4 text-primary" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-semibold text-sm md:text-[13px] leading-snug">
+                  Working well?
+                </h3>
+                <p className="text-xs md:text-[11px] text-muted-foreground leading-snug">
+                  Refer another Land Investor — you both earn a free month
+                  when they close their first deal.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                asChild
+                size="sm"
+                variant="outline"
+                className="min-h-11 sm:min-h-9 md:h-8"
+                data-testid="button-referral-nudge-open"
+              >
+                <Link href="/settings?tab=account">Get your link</Link>
+              </Button>
+              <button
+                type="button"
+                onClick={dismissReferralNudge}
+                aria-label="Dismiss referral suggestion"
+                className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 md:h-8 md:w-8 -mr-1 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                data-testid="button-referral-nudge-dismiss"
+              >
+                <XIcon className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Section 5: Activity feed ─────────────────────────────────── */}
       {/* Kept as a standalone component — it owns its own infinite-scroll

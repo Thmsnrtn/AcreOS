@@ -20,6 +20,9 @@ import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 
 const TIERS = [
   {
+    // `id` keys the ?plan= tier context the signup CTA carries into the
+    // acquisition-UTM chain (Tier 2C) — must match TIER_PRICES_CENTS keys.
+    id: "free",
     name: "Free",
     desc: "Explore the platform — no card required.",
     m: 0,
@@ -35,6 +38,7 @@ const TIERS = [
     featured: false,
   },
   {
+    id: "starter",
     name: "Starter",
     desc: "For investors closing 1–4 deals a month.",
     m: TIER_PRICES_CENTS.starter.priceMonthlyCents / 100,
@@ -51,6 +55,7 @@ const TIERS = [
     featured: false,
   },
   {
+    id: "pro",
     name: "Pro",
     // Monthly-equivalent of the annual plan is DERIVED from the canonical
     // price (priceYearlyCents / 12) so this prose can never drift from the
@@ -74,6 +79,7 @@ const TIERS = [
     featured: true,
   },
   {
+    id: "scale",
     name: "Scale",
     desc: "For full-time operations & multi-state.",
     m: TIER_PRICES_CENTS.scale.priceMonthlyCents / 100,
@@ -153,8 +159,12 @@ export function Pricing() {
                   {t.cta}
                 </a>
               ) : (
+                // Tier 2C — carry which tier + cadence the user clicked
+                // into the signup URL. capturePendingUtm() picks plan/
+                // billing up into the first-touch snapshot so trial_to_paid
+                // cohorts can be segmented by stated intent.
                 <Link
-                  href="/auth?mode=register"
+                  href={`/auth?mode=register&plan=${t.id}&billing=${annual ? "yearly" : "monthly"}`}
                   className={`lp-btn ${t.featured ? "lp-btn-primary" : "lp-btn-secondary"} lp-btn-lg lp-tier-cta`}
                 >
                   {t.cta}

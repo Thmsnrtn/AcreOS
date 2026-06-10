@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { clientLogger } from "@/lib/clientLogger";
-import { trackCanonicalEvent } from "@/lib/analytics";
+import { trackEvent } from "@/lib/analytics";
 
 const STORAGE_KEY = "acreos_onboarding";
 
@@ -97,11 +97,13 @@ export function useOnboarding() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
-      // Phase Zero-Two — canonical funnel event 3 of 5. Onboarding marked
-      // complete = first value reached. The server endpoint is idempotent
-      // so a retry / refetch storm here won't multi-fire (the mutation
-      // itself only resolves once per call).
-      trackCanonicalEvent("first_value_reached", {
+      // Tier 2C — `first_value_reached` is no longer a client event.
+      // The server-truth version is recorded by the approval kernel at
+      // the org's first witnessed send (append-only pax_sends), because
+      // "finished the wizard" is not value — a real send is. This
+      // supplemental event keeps onboarding-completion visible in
+      // PostHog without polluting the canonical funnel.
+      trackEvent("onboarding_completed", {
         surface: "onboarding_complete",
       });
     },

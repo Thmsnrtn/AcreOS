@@ -3591,6 +3591,37 @@ function startNpsPromptSchedulerJob() {
 }
 
 // ============================================================================
+// Tier 2C (elevation blueprint) — lifecycle email dispatcher.
+//
+// Daily 15:05 UTC (morning across US timezones — a check-in email landing at
+// 3am local reads as automation; one landing mid-morning reads as a person).
+// Finds orgs due for d7_check_in / d30_nps / cancellation_reason_ask and
+// dispatches each at most once, ever, per (org, key). Eligibility windows,
+// dedupe, and the once-only contract live in jobs/lifecycleDispatch.ts.
+// ============================================================================
+function startLifecycleDispatchJob() {
+  const TTL_SECONDS = 55 * 60;
+
+  log('Registering lifecycle dispatch job (daily 15:05 UTC)', 'lifecycle');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 15 && now.getUTCMinutes() >= 5 && now.getUTCMinutes() < 10) {
+      void withJobLock('lifecycle_dispatch', TTL_SECONDS, async () => {
+        const { runLifecycleDispatch } = await import('./lifecycleDispatch');
+        const counters = await runLifecycleDispatch(now);
+        log(
+          `[lifecycle-dispatch] daily run: candidates=${counters.candidates} dispatched=${counters.dispatched} skipped=${counters.skipped} noOwnerEmail=${counters.noOwnerEmail} errors=${counters.errors}`,
+          'lifecycle',
+        );
+      }).catch((err) => {
+        log(`[lifecycle-dispatch] daily run failed: ${err}`, 'lifecycle');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ============================================================================
 // Rafe — Recourse-loop heartbeat (every 30 minutes).
 //
 // The recourse loop (server/services/recourseDrafter.ts) turns every negative
@@ -4016,6 +4047,12 @@ export async function runScheduledJobs(): Promise<void> {
   // Enqueues one nps_prompt_queue row per eligible (org, owner); the
   // dialog reads the queue on next login via /api/nps/pending.
   startNpsPromptSchedulerJob();
+
+  // Tier 2C — lifecycle email dispatcher (daily 15:05 UTC ≈ morning US).
+  // Sends d7_check_in / d30_nps / cancellation_reason_ask through
+  // lifecycleProgram.sendLifecycleMessage (suppression-checked, audited,
+  // CAN-SPAM-compliant transport via the worker's lifecycle_email handler).
+  startLifecycleDispatchJob();
 
   // Rafe — Recourse-loop heartbeat (every 30 minutes). Sweeps negative
   // customer signals into the recourse_drafts ledger and drafts the

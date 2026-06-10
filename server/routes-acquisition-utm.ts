@@ -27,6 +27,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { applyReferralCode } from "./services/referralService";
 
 const router = Router();
 
@@ -56,6 +57,15 @@ const acquisitionUtmSchema = z
     // onto the pre-signup marketing_touch rows so the touch chain survives
     // the auth handshake. See docs/internal/marketing-os/03-analytics.md §2.2.
     anonymousId: z.string().min(8).max(64).optional(),
+    // Tier 2C — referral + tier context ride the same first-touch chain.
+    // `ref` is a referral code (also APPLIED server-side below, not just
+    // stored); plan/billing are the pricing-CTA tier context.
+    ref: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{4,16}$/)
+      .optional(),
+    plan: z.enum(["free", "starter", "pro", "scale"]).optional(),
+    billing: z.enum(["monthly", "yearly"]).optional(),
   })
   .strict();
 
@@ -112,6 +122,16 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
     // joined to the new account. Fire-and-forget (best-effort).
     if (anonymousId) {
       void backfillTouchIdentity(anonymousId, userId);
+    }
+
+    // Tier 2C — apply the referral code server-side at signup flush. The
+    // authenticated user IS the referee (never body-supplied), and
+    // applyReferralCode never throws — referral attribution must not
+    // break the signup flow. The code is still persisted in the UTM blob
+    // below so attribution survives even if apply was refused (e.g. the
+    // code row was already claimed).
+    if (utmFields.ref) {
+      void applyReferralCode(utmFields.ref, userId);
     }
 
     // Strip empty / undefined keys so we don't persist
