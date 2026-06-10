@@ -6957,6 +6957,37 @@ const STATEMENTS = [
      "updated_at" timestamp NOT NULL DEFAULT now()
    )`,
 
+  // ── 0155 — Tier 2D (elevation blueprint, 2026-06-10) — close the ──
+  //    self-improvement loops. Mirrors migrations/0155_tier2d_self_improvement_loops.sql.
+  // support_resolver_threshold_adjustments: bounded, audited threshold-offset
+  // trail for the Pax support auto-resolve calibration grader (drift → finding
+  // + clamped step up; recovery → step back down). Platform-level, no org_id.
+  // Distinct by design from any Tier 2A model_calibration_log (LCS weights).
+  // solene_failure_modes.status/source_incident_id: incident resolutions with
+  // lessonsLearned auto-draft failure-mode entries (status='draft', never
+  // auto-published; the dispatch preamble reads only the disk ledger).
+  `CREATE TABLE IF NOT EXISTS "support_resolver_threshold_adjustments" (
+     "id" serial PRIMARY KEY,
+     "surface" text NOT NULL DEFAULT 'support_resolve',
+     "previous_offset" integer NOT NULL,
+     "new_offset" integer NOT NULL,
+     "direction" text NOT NULL,
+     "reason" text NOT NULL,
+     "brier_score" numeric(6,4),
+     "overconfidence_bias" numeric(6,2),
+     "graded_decisions" integer NOT NULL DEFAULT 0,
+     "clamped" boolean NOT NULL DEFAULT false,
+     "created_at" timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "srta_surface_created_idx"
+     ON "support_resolver_threshold_adjustments" ("surface", "created_at")`,
+  `ALTER TABLE "solene_failure_modes"
+     ADD COLUMN IF NOT EXISTS "status" text NOT NULL DEFAULT 'published'`,
+  `ALTER TABLE "solene_failure_modes"
+     ADD COLUMN IF NOT EXISTS "source_incident_id" text`,
+  `CREATE INDEX IF NOT EXISTS "solene_failure_modes_status_idx"
+     ON "solene_failure_modes" ("status")`,
+
   // ── 0162 — Tier 2B (one money spine) — ledger dead letters, 2026-06-10 ──
   // Mirrors migrations/0162_ledger_dead_letters.sql. Durable capture of
   // failed financial_ledger postings (Stripe webhook posts are best-effort

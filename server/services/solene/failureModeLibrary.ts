@@ -158,7 +158,10 @@ export async function seedFailureModesFromDisk(): Promise<SeedResult> {
         .limit(1);
 
       if (existing.length > 0) {
-        // Refresh non-key columns so disk changes propagate.
+        // Refresh non-key columns so disk changes propagate. Setting
+        // status:'published' here is the Tier 2D draft-promotion path: an
+        // auto-drafted row whose slug now exists on disk has been human-
+        // reviewed and committed — disk presence IS publication.
         await db
           .update(soleneFailureModes)
           .set({
@@ -169,6 +172,7 @@ export async function seedFailureModesFromDisk(): Promise<SeedResult> {
             triggerPatterns: m.triggerPatterns,
             prevention: m.prevention,
             exampleIncidentRefs: m.exampleIncidentRefs,
+            status: "published",
             retiredAt: null,
           })
           .where(eq(soleneFailureModes.slug, m.slug));
@@ -185,6 +189,7 @@ export async function seedFailureModesFromDisk(): Promise<SeedResult> {
         triggerPatterns: m.triggerPatterns,
         prevention: m.prevention,
         exampleIncidentRefs: m.exampleIncidentRefs,
+        status: "published",
       });
       inserted += 1;
     } catch (err) {

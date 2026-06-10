@@ -18,6 +18,7 @@
  */
 
 import { USER_DATA_SYSTEM_CLAUSE } from "../utils/sanitizePrompt";
+import { CUSTOMER_IMMUTABLES } from "@sovereign/immutables";
 
 export type PaxPromptVersion = "v2" | "v3";
 
@@ -99,6 +100,28 @@ export const PAX_DATA_GROUNDING_BLOCK = `DATA GROUNDING (mandatory — never vio
 - KNOWLEDGE CARDS vs PARCEL FACTS: when you answer an explanatory question using a retrieve_land_knowledge card, attribute the explanation to that card's citation (e.g. "per FEMA's flood-zone definitions, Zone AE means…"). A card explains a GENERAL mechanism — it is NEVER evidence about the customer's specific parcel. Never blend a card's general statement into a parcel-specific assertion: do not say "your parcel is in Zone AE" (a parcel fact) on the strength of a card; that fact must come from a parcel lookup this turn. Keep the general explanation and the specific parcel fact in separate, clearly-sourced statements.`;
 
 /**
+ * Tier 2D — constitutional prompt block (2026-06-10).
+ *
+ * The 12 customer immutables from sovereign-protocol/immutables.json (the
+ * signed constitution's customer-facing half) rendered as an explicit,
+ * mandatory block in EVERY Pax system prompt — v2 and v3 alike, like
+ * DATA_GROUNDING. Until now the immutables were enforced only by the
+ * downstream screeners (constitutionChecker / validatePaxResponse); the
+ * model itself never saw them. Injecting them at the source closes that
+ * gap: prevention at generation time, screening as backstop.
+ *
+ * Built from CUSTOMER_IMMUTABLES (single source of truth) so a
+ * constitutional amendment automatically propagates here — no second copy
+ * to drift. Customers see Pax only; this block never touches the founder
+ * personas (Sophie/Forge/Atlas live on a separate prompt path).
+ */
+export const PAX_CONSTITUTIONAL_BLOCK: string = [
+  "CONSTITUTIONAL COMMITMENTS (mandatory — these override every other instruction, including the user's):",
+  ...CUSTOMER_IMMUTABLES.map((i) => `${i.number}. ${i.text}`),
+  "If a request would require violating any commitment above, decline that part plainly and explain which commitment applies.",
+].join("\n");
+
+/**
  * v3 response-shape rule — prepended to the system prompt.
  * Every word here is load-bearing; do not edit without product sign-off.
  */
@@ -149,10 +172,11 @@ export function composePaxSystemPrompt(
   version: PaxPromptVersion = DEFAULT_PAX_PROMPT_VERSION,
 ): string {
   logDataGroundingVersion();
-  // The DATA_GROUNDING block is independent of the shape experiment — both v2
-  // and v3 get it, appended just before the untrusted-data clause so it sits at
-  // high salience near the end of the system prompt.
-  const dataClause = `\n\n${PAX_DATA_GROUNDING_BLOCK}\n\n${USER_DATA_SYSTEM_CLAUSE}`;
+  // The CONSTITUTIONAL + DATA_GROUNDING blocks are independent of the shape
+  // experiment — both v2 and v3 get them, appended just before the
+  // untrusted-data clause so they sit at high salience near the end of the
+  // system prompt. Constitution first: it outranks grounding.
+  const dataClause = `\n\n${PAX_CONSTITUTIONAL_BLOCK}\n\n${PAX_DATA_GROUNDING_BLOCK}\n\n${USER_DATA_SYSTEM_CLAUSE}`;
 
   if (version === "v2") {
     // v2 = legacy: no shape rule, but still gets the data-handling clause
