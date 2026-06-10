@@ -1,0 +1,9 @@
+{
+  "name": "res-status-raw",
+  "description": "raw res.status(...) responses bypass the Errors.* helpers (server/utils/errors.ts) and drift from the { error, message, details?, statusCode } contract. Use Errors.notFound/badRequest/validationFailed/unauthorized/forbidden/limitExceeded/internal instead.",
+  "pattern": "res\\.status\\(",
+  "globs": ["server/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts"],
+  "baselineCount": 699,
+  "direction": "down"
+}

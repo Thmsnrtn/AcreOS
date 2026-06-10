@@ -17234,10 +17234,12 @@ export * from "./schema/solene-agent-identity";
 export * from "./schema/solene-capability-proposals";
 export * from "./schema/solene-chat-config";
 export * from "./schema/solene-confidence-observations";
-// NOT re-exported: solene-constitutional-violations imports a runtime value from
-// the server-only "@sovereign/immutables" alias, which Rollup cannot resolve in
-// the client bundle (breaks the prod build). Its table is created in prod by
-// scripts/migrate.mjs; server code imports it directly from the sub-module path.
+// NOT re-exported: solene-constitutional-violations is a server-only audit
+// table; server code imports it directly from the sub-module path and its
+// table is created in prod by scripts/migrate.mjs. (Historically it also
+// imported the server-only "@sovereign/immutables" alias — that import now
+// lives in server/services/solene/constitutionalGuard.ts, enforced by
+// scripts/check-boundaries.mjs.)
 export * from "./schema/solene-conversations";
 export * from "./schema/solene-counterfactuals";
 export * from "./schema/solene-decision-traces";

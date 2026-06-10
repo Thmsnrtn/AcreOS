@@ -34,7 +34,8 @@ import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { financialLedger, organizations } from "@shared/schema";
 import { TIER_LIMITS, type SubscriptionTier } from "@shared/billing/tier-limits";
-import { creditCost, type CreditAction } from "@shared/billing/credit-weights";
+import { type CreditAction } from "@shared/billing/credit-weights";
+import { creditCost } from "./creditCost";
 import { logger } from "../utils/logger";
 
 /** TRACKED_CATEGORIES on the gauge query — must stay in sync. */

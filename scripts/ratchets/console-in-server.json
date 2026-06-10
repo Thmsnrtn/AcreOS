@@ -1,0 +1,9 @@
+{
+  "name": "console-in-server",
+  "description": "console.* in production server code bypasses the structured logger (server/utils/logger.ts) — no levels, no redaction, no transport. (server/utils/logger.ts itself and server/scripts/** operational tooling account for the baseline.)",
+  "pattern": "console\\.(log|warn|error|info|debug|trace)\\(",
+  "globs": ["server/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts", "server/scripts/**"],
+  "baselineCount": 11,
+  "direction": "down"
+}

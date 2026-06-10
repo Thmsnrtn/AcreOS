@@ -33,13 +33,32 @@ import { logger } from "../../utils/logger";
 import { db } from "../../db";
 import {
   soleneConstitutionalViolations,
-  CONSTITUTIONAL_IMMUTABLES,
   type ConstitutionalAction,
   type ConstitutionalSeverity,
   type ConstitutionalTriggerKind,
 } from "@shared/schema/solene-constitutional-violations";
-import { CRITICAL_CUSTOMER_IMMUTABLE_NUMBERS } from "@sovereign/immutables";
+import {
+  CRITICAL_CUSTOMER_IMMUTABLE_NUMBERS,
+  CUSTOMER_IMMUTABLES,
+} from "@sovereign/immutables";
 import { sendSolenePage } from "./pagerService";
+
+// ============================================================================
+// THE 12 IMMUTABLES — denormalized snapshot form (shorter wording for DB
+// columns). Canonical source: sovereign-protocol/immutables.json. The
+// `short` field of each customer immutable lands here.
+//
+// Moved here from shared/schema/solene-constitutional-violations.ts so that
+// shared/ never imports the server-only "@sovereign/immutables" alias
+// (boundary enforced by scripts/check-boundaries.mjs).
+//
+// DO NOT redeclare the immutables below — edit immutables.json + update the
+// fixture hash in tests/unit/sovereign-protocol-immutables.test.ts.
+// ============================================================================
+export const CONSTITUTIONAL_IMMUTABLES: ReadonlyArray<{
+  readonly number: number;
+  readonly text: string;
+}> = CUSTOMER_IMMUTABLES.map((i) => ({ number: i.number, text: i.short }));
 
 // ============================================================================
 // SYSTEM-PROMPT BLOCK — to be wired into buildSystemPrompt in a follow-up.

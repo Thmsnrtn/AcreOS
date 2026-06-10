@@ -26,8 +26,9 @@
  * returns when no override row exists.
  *
  * NOTE: This file is foundation-only. Action handlers do not yet draw from
- * the pool — wiring happens in the enforcement task. Importing `creditCost`
- * from a handler today is safe but inert until the deduction call is added.
+ * the pool — wiring happens in the enforcement task. Handlers import the
+ * async `creditCost()` override-aware helper from
+ * server/services/creditCost.ts (server-only; this shared file stays pure).
  */
 
 export type CreditAction =
@@ -105,44 +106,10 @@ export function creditActionForCategory(
   }
 }
 
-/**
- * Effective credit cost for an action. Reads from `founder_settings`
- * first (key `credits.weight.{action}`) so the founder can recalibrate
- * via /founder/studio/credits without a code deploy; falls back to the
- * compiled `CREDIT_WEIGHTS` constant when no override row exists.
- *
- * Returns a `number` (cents-to-us). Callers should round-up at deduction
- * time so fractional weights (email at 0.02) never undercount.
- */
-export async function creditCost(action: CreditAction): Promise<number> {
-  const fallback = CREDIT_WEIGHTS[action];
-
-  // Dynamic import keeps this `shared/` module client-bundle-safe — the
-  // pricing page imports `creditExamples` + `CREDIT_WEIGHTS` from this file
-  // and must not pull `server/db` (drizzle, pg) into the browser. The
-  // dynamic specifier is resolved at first-call time, which only happens
-  // on the server (handlers / metering jobs).
-  try {
-    const { getSetting } = await import("../../server/services/settings");
-    const value = await getSetting<number>(
-      `credits.weight.${action}`,
-      fallback,
-      { scope: "global", scopeRef: null },
-    );
-    // Defensive: founder_settings is JSONB so a malformed write could
-    // return a non-number. Fall back to the constant rather than
-    // billing wrongly.
-    return typeof value === "number" && Number.isFinite(value) && value >= 0
-      ? value
-      : fallback;
-  } catch {
-    // Settings service unavailable (e.g. called from a browser context by
-    // accident, or during test isolation without a DB) — return the
-    // compiled constant rather than throw, so metered actions never block
-    // on settings infrastructure failures.
-    return fallback;
-  }
-}
+// NOTE: the async `creditCost()` helper (founder_settings override + this
+// file's constants as fallback) lives in server/services/creditCost.ts — it
+// needs the settings service (drizzle/pg) and shared/ must stay
+// client-bundle-safe (enforced by scripts/check-boundaries.mjs).
 
 /**
  * One illustrative breakdown for the pricing-page UI. Each example shows

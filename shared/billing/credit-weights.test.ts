@@ -8,13 +8,17 @@
  * the third test below using a mock of the settings module.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   CREDIT_WEIGHTS,
-  creditCost,
   creditExamples,
   type CreditAction,
 } from "./credit-weights";
+
+// NOTE: the founder_settings override path of the async creditCost() helper
+// is covered in tests/unit/creditCost.test.ts — the helper moved to
+// server/services/creditCost.ts (Tier 1C boundary enforcement) so this
+// shared module stays pure.
 
 describe("CREDIT_WEIGHTS", () => {
   // Cent-cost weights from the approved plan. Lock these so a future edit
@@ -74,56 +78,5 @@ describe("creditExamples(750) — Starter $20 → 750 credits breakdown", () => 
       expect(e.creditsConsumed).toBe(750);
       expect(e.label).toBeTruthy();
     }
-  });
-});
-
-describe("creditCost — founder_settings override + fallback", () => {
-  beforeEach(() => {
-    vi.resetModules();
-  });
-
-  afterEach(() => {
-    vi.resetModules();
-    vi.doUnmock("../../server/services/settings");
-  });
-
-  it("falls back to CREDIT_WEIGHTS when no founder_settings override is set", async () => {
-    // Mock the settings module so getSetting returns the supplied fallback
-    // (matching the production code path where no row exists at any scope).
-    vi.doMock("../../server/services/settings", () => ({
-      getSetting: async <T,>(_key: string, fallback: T) => fallback,
-    }));
-
-    const mod = await import("./credit-weights");
-    const cost = await mod.creditCost("postcard_eddm");
-    expect(cost).toBe(CREDIT_WEIGHTS.postcard_eddm); // 31
-  });
-
-  it("honors a founder_settings override when present", async () => {
-    vi.doMock("../../server/services/settings", () => ({
-      // Simulate a calibrated override at the global scope.
-      getSetting: async (key: string, _fallback: unknown) => {
-        if (key === "credits.weight.postcard_eddm") return 28;
-        return _fallback;
-      },
-    }));
-
-    const mod = await import("./credit-weights");
-    const cost = await mod.creditCost("postcard_eddm");
-    expect(cost).toBe(28);
-  });
-
-  it("ignores a malformed (non-numeric) override and uses the fallback", async () => {
-    vi.doMock("../../server/services/settings", () => ({
-      // founder_settings is JSONB, so a buggy write could yield a string.
-      getSetting: async (key: string, _fallback: unknown) => {
-        if (key === "credits.weight.sms_outbound") return "garbage";
-        return _fallback;
-      },
-    }));
-
-    const mod = await import("./credit-weights");
-    const cost = await mod.creditCost("sms_outbound");
-    expect(cost).toBe(CREDIT_WEIGHTS.sms_outbound); // 1
   });
 });
