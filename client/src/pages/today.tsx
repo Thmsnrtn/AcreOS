@@ -34,6 +34,8 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { DecisionQueue, type DecisionItem, type ResolveAction } from "@/components/today/DecisionQueue";
+import { ReceiptsStrip, type ReceiptItem } from "@/components/today/ReceiptsStrip";
+import { trackEvent } from "@/lib/telemetry";
 import { CashStrip } from "@/components/today/CashStrip";
 import { TodayActivityFeed } from "@/components/today/ActivityFeed";
 import { MorningBrief } from "@/components/today/MorningBrief";
@@ -45,6 +47,13 @@ import "./today.css";
 interface TodayPayload {
   queue: DecisionItem[];
   brief: string | null;
+  // Finishability (Tier 3C): real completions today (today_queue_state
+  // "done" rows since the user's local midnight) + the day's total.
+  progress?: { cleared: number; total: number };
+  // Receipts (Tier 3C): completed events since last visit, each traceable
+  // to real rows (pax_sends, completed payments, successful scheduled-task
+  // runs). Empty → render nothing.
+  receipts?: ReceiptItem[];
   cash: {
     cashOnHand: number;
     openDealsValue: number;
@@ -156,6 +165,28 @@ export default function TodayPage() {
   // + ranks all of those (server/routes-today.ts) so the screen paints from a
   // single query. The Activity feed stays a separate component (it owns its
   // own infinite-scroll pagination) — see TodayActivityFeed below.
+  // Last-visit timestamp (read BEFORE the effect below overwrites it) — feeds
+  // both the welcome-back card and the server's receipts window.
+  const lastVisitTs = React.useMemo(() => {
+    try {
+      const stored = localStorage.getItem(LAST_VISIT_KEY);
+      return stored ? parseInt(stored, 10) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Tier 3C: the consolidated fetch carries `since` (receipts window, server-
+  // clamped to [7d, 12h] ago) and `tz` (user-local midnight for the "N of M
+  // cleared" progress). The key stays ["/api/today", "?..."] so prefix
+  // invalidation on ["/api/today"] keeps working; values are stable per
+  // mount, so refetches reuse the same cache entry.
+  const todayQueryKey = React.useMemo(() => {
+    const tz = new Date().getTimezoneOffset();
+    const since = lastVisitTs ?? Date.now() - 24 * 60 * 60 * 1000;
+    return ["/api/today", `?since=${since}&tz=${tz}`] as const;
+  }, [lastVisitTs]);
+
   const {
     data: today,
     isLoading: todayLoading,
@@ -164,8 +195,21 @@ export default function TodayPage() {
     refetch: refetchToday,
     isRefetching: todayRefetching,
   } = useQuery<TodayPayload>({
-    queryKey: ["/api/today"],
+    queryKey: todayQueryKey,
     staleTime: 2 * 60 * 1000,
+    // Perceived speed (Tier 3C): the key embeds since/tz, which change
+    // between visits — without this, every return to Today would paint a
+    // cold skeleton even though the previous payload is still cached. Paint
+    // the door from the most recent /api/today entry while the fresh fetch
+    // runs; the receipts/progress refresh in place when it lands.
+    placeholderData: () => {
+      const cached = queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ["/api/today"] })
+        .filter((q) => q.state.data !== undefined)
+        .sort((a, b) => b.state.dataUpdatedAt - a.state.dataUpdatedAt)[0];
+      return cached?.state.data as TodayPayload | undefined;
+    },
   });
 
   const decisionItems: DecisionItem[] = today?.queue ?? [];
@@ -190,21 +234,29 @@ export default function TodayPage() {
       if (!res.ok) throw new Error("Failed to resolve item");
       return res.json();
     },
-    onMutate: async ({ itemId }) => {
+    onMutate: async ({ itemId, action }) => {
       setResolvingIds((prev) => new Set(prev).add(itemId));
       await queryClient.cancelQueries({ queryKey: ["/api/today"] });
-      const previous = queryClient.getQueryData<TodayPayload>(["/api/today"]);
+      const previous = queryClient.getQueryData<TodayPayload>(todayQueryKey);
       if (previous) {
-        queryClient.setQueryData<TodayPayload>(["/api/today"], {
+        queryClient.setQueryData<TodayPayload>(todayQueryKey, {
           ...previous,
           queue: previous.queue.filter((q) => q.id !== itemId),
+          // Optimistic finishability: a "done" counts toward today's cleared
+          // tally immediately; the server recomputes on the next fetch.
+          progress:
+            action === "done" && previous.progress
+              ? { cleared: previous.progress.cleared + 1, total: previous.progress.total }
+              : action !== "done" && previous.progress
+                ? { cleared: previous.progress.cleared, total: Math.max(previous.progress.cleared, previous.progress.total - 1) }
+                : previous.progress,
         });
       }
       return { previous };
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(["/api/today"], context.previous);
+        queryClient.setQueryData(todayQueryKey, context.previous);
       }
       toast({
         variant: "destructive",
@@ -286,6 +338,25 @@ export default function TodayPage() {
   // Cash strip + pipeline aggregates now arrive pre-computed from /api/today.
   const cash = today?.cash;
 
+  // ── Measured (Tier 3C) ─────────────────────────────────────────────────
+  // One event when the queue first paints with data, through the existing
+  // trackEvent pipeline (/api/telemetry) — no new telemetry system.
+  const mountedAtRef = React.useRef(typeof performance !== "undefined" ? performance.now() : 0);
+  const paintTrackedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (paintTrackedRef.current || !today) return;
+    paintTrackedRef.current = true;
+    trackEvent("today_queue_rendered", {
+      items: today.queue.length,
+      cleared: today.progress?.cleared ?? 0,
+      total: today.progress?.total ?? 0,
+      receipts: today.receipts?.length ?? 0,
+      msToData: Math.round(
+        (typeof performance !== "undefined" ? performance.now() : 0) - mountedAtRef.current,
+      ),
+    });
+  }, [today]);
+
   // ── Persona Today (Maren CPO #3 / Krieger UX) ──────────────────────────
   // Each persona's actual JOB leads the day, not a relabeled clone: land
   // investors see sourcing/offer momentum, note investors the tape they own,
@@ -303,14 +374,8 @@ export default function TodayPage() {
     (today?.meta?.hasAnyData ?? false);
 
   const [welcomeBackDismissed, setWelcomeBackDismissed] = React.useState(false);
-  const lastVisitTs = React.useMemo(() => {
-    try {
-      const stored = localStorage.getItem(LAST_VISIT_KEY);
-      return stored ? parseInt(stored, 10) : null;
-    } catch {
-      return null;
-    }
-  }, []);
+  // lastVisitTs is read once near the top of the component (it also feeds
+  // the /api/today receipts window) — see todayQueryKey above.
   const daysSinceLastVisit = lastVisitTs
     ? Math.floor((Date.now() - lastVisitTs) / (1000 * 60 * 60 * 24))
     : null;
@@ -584,11 +649,18 @@ export default function TodayPage() {
         </Card>
       )}
 
-      {/* ── Morning brief (Chesky) ───────────────────────────────────── */}
-      {/* Replaces the autonomy slider in this slot. The slider was a
-          monthly-tune control; this is a daily one-paragraph read-out of
-          what happened overnight. The slider now lives at /settings/pax. */}
+      {/* ── Morning brief — collapsed queue preamble (Tier 3C) ───────── */}
+      {/* One-line disclosure directly above the queue, not a separate
+          destination. Expands in place; Pax controls live behind it. */}
       {!showEmptyState && !todayError && <MorningBrief brief={today?.brief ?? null} />}
+
+      {/* ── Receipts strip (Tier 3C) ─────────────────────────────────── */}
+      {/* Completed events since the last visit, each traceable to real
+          rows (pax_sends, completed payments). Renders nothing when there
+          are none — no padding. */}
+      {!showEmptyState && !todayError && (
+        <ReceiptsStrip receipts={today?.receipts ?? []} />
+      )}
 
       {/* ── Persona lede (Maren CPO #3 / Krieger UX) ─────────────────── */}
       {/* Each persona's own job, surfaced first: sourcing momentum (land),
@@ -614,6 +686,8 @@ export default function TodayPage() {
           autoThreshold={autoThreshold}
           onResolve={handleResolve}
           resolvingIds={resolvingIds}
+          clearedToday={today?.progress?.cleared ?? 0}
+          totalToday={today?.progress?.total ?? 0}
         />
       )}
 

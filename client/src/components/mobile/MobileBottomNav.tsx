@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { prefetchDoorChunksOnIdle } from "@/lib/door-prefetch";
 import { MobileCommandDrawer } from "./MobileCommandDrawer";
 import { QuickAddSheet } from "./QuickAddSheet";
 import { useAuth } from "@/hooks/use-auth";
@@ -23,6 +24,13 @@ export function MobileBottomNav() {
   const navItems: MasterNavItem[] = MOBILE_DOORS
     .map((id) => NAV_ITEM_MAP.get(id))
     .filter((item): item is MasterNavItem => item != null);
+
+  // Perceived speed (Tier 3C): once the bar is up for a signed-in user,
+  // warm the five door chunks during idle time so the next door tap paints
+  // immediately instead of hitting the route-level fallback.
+  useEffect(() => {
+    if (isMobile && user) prefetchDoorChunksOnIdle();
+  }, [isMobile, user]);
 
   if (!isMobile || isKeyboardOpen) {
     return null;

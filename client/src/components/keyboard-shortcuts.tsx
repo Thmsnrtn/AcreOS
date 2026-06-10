@@ -16,16 +16,25 @@ const SHORTCUT_CATEGORIES: ShortcutCategory[] = [
     name: "Navigation",
     icon: Navigation,
     shortcuts: [
-      { key: "g h", description: "Go to Home/Dashboard" },
-      { key: "g l", description: "Go to Leads" },
-      { key: "g p", description: "Go to Properties" },
+      // The five doors (g + first letter): Today · Map · Deals · Finance · Pax.
+      { key: "g t", description: "Go to Today" },
+      { key: "g m", description: "Go to Map" },
       { key: "g d", description: "Go to Deals" },
       { key: "g f", description: "Go to Finance" },
-      { key: "g a", description: "Go to Pax" },
+      { key: "g p", description: "Go to Pax" },
+      { key: "g l", description: "Go to Leads" },
+      { key: "g i", description: "Go to Inbox" },
       { key: "g s", description: "Go to Settings" },
-      { key: "g c", description: "Go to Campaigns" },
-      { key: "g m", description: "Go to Maps" },
-      { key: "g t", description: "Go to Team Inbox" },
+    ],
+  },
+  {
+    name: "Today queue",
+    icon: Zap,
+    shortcuts: [
+      { key: "j", description: "Next item in the queue" },
+      { key: "k", description: "Previous item in the queue" },
+      { key: "Enter", description: "Open the focused item" },
+      { key: "Esc", description: "Clear queue focus" },
     ],
   },
   {
@@ -171,6 +180,7 @@ function formatKey(key: string): string {
     "alt": "⌥",
     "shift": "⇧",
     "esc": "Esc",
+    "enter": "Enter",
   };
   return keyMap[key.toLowerCase()] || key.toUpperCase();
 }

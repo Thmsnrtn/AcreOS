@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useKeyboardLayer } from "@/hooks/use-keyboard-layer";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -103,6 +104,10 @@ export interface DecisionItem {
   confidenceHistory?: number[];
   // What the operator can do in place. Absent → treated as "navigate".
   inlineAction?: InlineAction;
+  // Urgency class from the server's one ranking function (Tier 3C):
+  // overdue → money → time → routine. Informational on the client — the
+  // server already sorted by it; we never re-derive or re-sort.
+  urgency?: "overdue" | "money" | "time" | "routine";
 }
 
 interface DecisionQueueProps {
@@ -127,6 +132,14 @@ interface DecisionQueueProps {
   onResolve?: (itemId: string, action: ResolveAction) => void;
   /** Ids currently mid-resolve (pending PATCH) — disables their controls. */
   resolvingIds?: ReadonlySet<string>;
+  /**
+   * Finishability (Tier 3C): items the operator marked done TODAY (server-
+   * derived from today_queue_state, org-scoped, survives reload) and the
+   * day's total (cleared + still in queue). Drives the "N of M cleared"
+   * header readout and the day-done zero state.
+   */
+  clearedToday?: number;
+  totalToday?: number;
 }
 
 // localStorage-backed snooze map. Keyed by item id, value is an ISO
@@ -171,6 +184,8 @@ export function DecisionQueue({
   autoThreshold = 1.01,
   onResolve,
   resolvingIds,
+  clearedToday = 0,
+  totalToday = 0,
 }: DecisionQueueProps) {
   const [snoozed, setSnoozed] = useState<Record<string, number>>(() => loadSnoozed());
   const [, setLocation] = useLocation();
@@ -205,11 +220,39 @@ export function DecisionQueue({
     setSnoozed({});
   }
 
+  // Server owns the ranking (one explainable comparator in routes-today.ts:
+  // overdue → money-touching → time-sensitive → routine). The client only
+  // subtracts locally-snoozed rows — it never re-sorts.
   const visible = useMemo(
-    () => items.filter((it) => !snoozed[it.id]).sort((a, b) => a.rank - b.rank),
+    () => items.filter((it) => !snoozed[it.id]),
     [items, snoozed],
   );
   const snoozedCount = Object.keys(snoozed).length;
+
+  // ── Keyboard layer (Tier 3C) — J/K traverses, Enter opens ──────────────
+  // Desktop-only (fine pointer + hover); suppressed while typing and while
+  // dialogs are open. See hooks/use-keyboard-layer.ts.
+  const { activeIndex } = useKeyboardLayer({
+    itemCount: visible.length,
+    enabled: !isLoading,
+    onOpen: (index) => {
+      const item = visible[index];
+      if (item) setLocation(item.actionUrl);
+    },
+  });
+  const activeId = activeIndex !== null ? visible[activeIndex]?.id ?? null : null;
+  const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+  useEffect(() => {
+    if (!activeId) return;
+    const el = rowRefs.current.get(activeId);
+    if (el) {
+      el.scrollIntoView({ block: "nearest" });
+      el.focus({ preventScroll: true });
+    }
+  }, [activeId]);
+
+  // Finishability readout: only rendered when something real happened today.
+  const showProgress = clearedToday > 0 && totalToday > 0;
 
   return (
     <div data-testid="section-decision-queue">
@@ -221,6 +264,28 @@ export function DecisionQueue({
             <Badge variant="secondary" className="bg-acr-brand-soft text-acr-brand border-transparent text-xs tabular-nums">
               {visible.length}
             </Badge>
+          )}
+          {/* "N of M cleared" — real completions today, server-derived. */}
+          {showProgress && (
+            <span
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums"
+              data-testid="text-queue-progress"
+            >
+              <span
+                className="h-1.5 w-16 rounded-full bg-muted overflow-hidden"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={totalToday}
+                aria-valuenow={clearedToday}
+                aria-label={`${clearedToday} of ${totalToday} cleared today`}
+              >
+                <span
+                  className="block h-full rounded-full bg-acr-pos"
+                  style={{ width: `${Math.min(100, Math.round((clearedToday / totalToday) * 100))}%` }}
+                />
+              </span>
+              {clearedToday} of {totalToday} cleared
+            </span>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -267,12 +332,23 @@ export function DecisionQueue({
         }
       >
         {visible.length === 0 ? (
+          // Three honest zero states: snoozed-away, day finished (real
+          // completions today), and nothing-came-in. The finished state is
+          // the Tier 3C payoff — the day is DONE and we say so.
           <ClearedEmpty
-            headline={snoozedCount > 0 ? "Queue cleared for now" : "All clear — nothing needs you right now"}
+            headline={
+              snoozedCount > 0
+                ? "Queue cleared for now"
+                : clearedToday > 0
+                  ? `That's the day — all ${totalToday} cleared.`
+                  : "All clear — nothing needs you right now"
+            }
             subtitle={
               snoozedCount > 0
                 ? `${snoozedCount} item${snoozedCount === 1 ? "" : "s"} snoozed for 24 hours. Use Restore to bring them back.`
-                : "When new leads, deals, or signals come in, they'll show up here first."
+                : clearedToday > 0
+                  ? "Nothing else needs you today. Tomorrow's queue builds overnight."
+                  : "When new leads, deals, or signals come in, they'll show up here first."
             }
           />
         ) : (
@@ -318,8 +394,24 @@ export function DecisionQueue({
               const onSwipeSnooze = canResolveInline
                 ? () => { lightImpact(); onResolve!(item.id, "snooze"); }
                 : () => snoozeItem(item.id);
+              const isKeyboardActive = item.id === activeId;
               return (
-                <motion.li key={item.id} role="listitem" variants={staggerItem}>
+                <motion.li
+                  key={item.id}
+                  role="listitem"
+                  variants={staggerItem}
+                  // Roving keyboard focus (J/K): the active row takes
+                  // programmatic focus so screen readers announce it and
+                  // Enter opens it. tabIndex -1 keeps Tab order unchanged.
+                  tabIndex={isKeyboardActive ? -1 : undefined}
+                  data-keyboard-active={isKeyboardActive ? "true" : undefined}
+                  className={isKeyboardActive ? "rounded-card ring-2 ring-ring outline-none" : undefined}
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(item.id, el);
+                    else rowRefs.current.delete(item.id);
+                  }}
+                  aria-label={isKeyboardActive ? `${item.title} — press Enter to open` : undefined}
+                >
                   <SwipeableCard
                     leftAction={{
                       icon: ArrowRightCircle,
