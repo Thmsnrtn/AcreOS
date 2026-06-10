@@ -74,7 +74,7 @@ export async function recordLedgerDeadLetter(args: RecordDeadLetterArgs): Promis
         organizationId: args.organizationId,
         kind: args.kind,
         externalEventId: args.externalEventId,
-        payload: args.payload as Record<string, unknown>,
+        payload: args.payload as unknown as Record<string, unknown>,
         lastError: errorMessage,
         status: "pending",
       })
