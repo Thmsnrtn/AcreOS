@@ -55,9 +55,13 @@ function computeCrossReferences(): Record<string, CrossReference[]> {
 }
 
 export default function GlossaryPage() {
+  // Title/description must mirror META_BY_PATH["/glossary"] in
+  // script/prerender.ts — crawlers get the prerendered head, then
+  // hydration re-asserts the same values (useDocumentTitle appends
+  // " · AcreOS", yielding "Land investor glossary · AcreOS").
   usePageMeta(
-    "Land Investor glossary",
-    "Plain-English definitions of the vocabulary every land investor needs — yellow letter, skip trace, AVM, executory contract, and more.",
+    "Land investor glossary",
+    "Plain-English definitions of the vocabulary every Land Investor needs — yellow letter, skip trace, AVM, BPO, executory contract, balloon, escrow shortfall, and more.",
   );
 
   const entries = Object.entries(GLOSSARY)
@@ -82,8 +86,8 @@ export default function GlossaryPage() {
 
       <OpenGraph
         url={`${SITE.url}/glossary`}
-        title="Land Investor glossary · AcreOS"
-        description="Plain-English definitions of the vocabulary every land investor needs — yellow letter, skip trace, AVM, executory contract, and more."
+        title="Land investor glossary · AcreOS"
+        description="Plain-English definitions of the vocabulary every Land Investor needs — yellow letter, skip trace, AVM, BPO, executory contract, balloon, escrow shortfall, and more."
         type="website"
       />
       <JsonLd

@@ -48,6 +48,12 @@ export function PublicFooter() {
             Status
           </Link>
           <Link
+            href="/glossary"
+            className="hover:text-foreground inline-flex items-center min-h-11 px-2"
+          >
+            Glossary
+          </Link>
+          <Link
             href="/terms"
             className="hover:text-foreground inline-flex items-center min-h-11 px-2"
           >

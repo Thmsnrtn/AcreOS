@@ -99,8 +99,12 @@ router.get('/drilldown/:propertyId', async (req: Request, res: Response) => {
 
 router.get('/benchmark/:propertyId', async (req: Request, res: Response) => {
   try {
-    const { propertyType = 'agricultural', state = 'TX', score } = req.query;
-    const numericScore = score ? parseInt(score as string) : 650;
+    // 2026-06-10 (T0-12): the benchmark is a typed insufficient-data result
+    // ({ available: false, reason }) until real network-cohort percentiles
+    // exist — see elevation-blueprint-2026-06-10.md Tier-2 item 2A. The
+    // previous fabricated defaults (score=650, state=TX) went with it.
+    const { propertyType = '', state = '', score } = req.query;
+    const numericScore = score ? parseInt(score as string) : 0;
     const benchmark = landCredit.compareToIndustryBenchmarks(
       numericScore,
       propertyType as string,

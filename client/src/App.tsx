@@ -474,7 +474,11 @@ const SecurityPage = React.lazy(() => import("@/pages/security"));
 // NOT a new customer door (respects the five-door nav model).
 const TransparencyPage = React.lazy(() => import("@/pages/transparency"));
 const WelcomeBackPage = React.lazy(() => import("@/pages/welcome-back"));
-// GlossaryPage archived 2026-06-01 — public route but nothing links to it.
+// GlossaryPage restored 2026-06-10 (T0-8): /glossary is sitemap-promised +
+// prerendered (script/prerender.ts META_BY_PATH) and seeds the
+// programmatic-SEO surface. Linked from PublicFooter so it is no longer
+// an orphan page.
+const GlossaryPage = React.lazy(() => import("@/pages/glossary"));
 
 // ─── Page loading fallback ──────────────────────────────────────────────────
 // Shown during route-level auth resolution and React.lazy() chunk loads.
@@ -709,7 +713,9 @@ function Router() {
           bare route (wouter first-match on the more-specific /embed URL). */}
       <Route path="/tools/parcel-check/embed" component={ParcelCheckEmbedPage} />
       <Route path="/tools/parcel-check" component={ParcelCheckPage} />
-      {/* 2026-06-01 cut — GlossaryPage archived; nothing links to it. */}
+      {/* Public Land Investor glossary — sitemap-promised + prerendered
+          long-tail SEO surface (restored 2026-06-10, T0-8). */}
+      <Route path="/glossary" component={GlossaryPage} />
 
       {/* Public Borrower Portal */}
       <Route path="/portal" component={BorrowerPortal} />
