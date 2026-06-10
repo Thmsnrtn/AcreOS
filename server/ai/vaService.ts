@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { storage } from "../storage";
 import { toolDefinitions, executeTool, type ToolName } from "./tools";
+import { serializeToolResultForModel, USER_DATA_SYSTEM_CLAUSE } from "./untrustedEnvelope";
 import type { Organization, VaAgent, VaAction, InsertVaAction, InsertVaBriefing } from "@shared/schema";
 import { validateAtlasOutput, AtlasOutputType } from "./validators";
 import { logger } from "../utils/logger";
@@ -630,7 +631,9 @@ When analyzing tasks, you should:
 Format your response as:
 ANALYSIS: [Your analysis of the situation]
 ACTIONS: [List of proposed actions, if any]
-RECOMMENDATION: [Your recommendation]`;
+RECOMMENDATION: [Your recommendation]
+
+${USER_DATA_SYSTEM_CLAUSE}`;
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },
@@ -667,7 +670,9 @@ RECOMMENDATION: [Your recommendation]`;
           toolResults.push({
             role: "tool",
             tool_call_id: toolCall.id,
-            content: JSON.stringify(result)
+            // Tier 1B: customer-content fields wrapped in the untrusted
+            // envelope before re-entering the model channel.
+            content: serializeToolResultForModel(toolCall.function.name, result)
           });
         }
       }

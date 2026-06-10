@@ -2,6 +2,9 @@ import OpenAI from "openai";
 import { db } from "../db";
 import { eq, desc } from "drizzle-orm";
 import { executeTool, APPROVAL_REQUIRED_TOOLS } from "./tools";
+// Tier 1B (elevation blueprint): customer-content fields in tool results are
+// wrapped in the untrusted envelope before re-entering the model channel.
+import { serializeToolResultForModel } from "./untrustedEnvelope";
 // Tahoe E8: the Pax tool list is now sourced from the App Intent registry
 // (single source of truth across Pax tool-use, command palette, external
 // agents) rather than a hand-maintained list in tools.ts.
@@ -1331,7 +1334,7 @@ export async function processChat(
           const args = JSON.parse(toolCall.function.arguments);
           const result = await executeTool(toolCall.function.name, args, org);
           toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
-          return { role: "tool" as const, tool_call_id: toolCall.id, content: JSON.stringify(result) };
+          return { role: "tool" as const, tool_call_id: toolCall.id, content: serializeToolResultForModel(toolCall.function.name, result) };
         })
       );
     } else {
@@ -1347,7 +1350,7 @@ export async function processChat(
         }
         const result = await executeTool(toolCall.function.name, args, org);
         toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
-        toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
+        toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: serializeToolResultForModel(toolCall.function.name, result) });
       }
     }
 
@@ -1794,7 +1797,7 @@ export async function* processChatStream(
               if (data) yield { type: "artifact", artifactType: artifactMeta.type, title: artifactMeta.title, data } as any;
             } catch {}
           }
-          toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
+          toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: serializeToolResultForModel(toolCall.function.name, result) });
         }
       } else {
         for (const toolCall of currentToolCalls) {
@@ -1826,7 +1829,7 @@ export async function* processChatStream(
               if (data) yield { type: "artifact", artifactType: artifactMeta.type, title: artifactMeta.title, data } as any;
             } catch {}
           }
-          toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
+          toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: serializeToolResultForModel(toolCall.function.name, result) });
         }
       }
 

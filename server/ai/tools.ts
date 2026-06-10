@@ -2045,7 +2045,38 @@ export async function executeTool(
         if (!url || (!url.startsWith("http://") && !url.startsWith("https://"))) {
           return { success: false, error: "Invalid URL. Must start with http:// or https://" };
         }
-        
+
+        // Tier 1B — shared SSRF guard at the tool boundary (same validateUrl
+        // as webhook dispatch/test, T0-11): rejects non-http(s) schemes and
+        // hostnames that ARE or RESOLVE TO private/loopback/link-local/
+        // metadata addresses (169.254.169.254 et al). browserAutomation.ts
+        // keeps its own per-request interception as defense-in-depth.
+        const { validateUrl, SSRFBlockedError } = await import(
+          "../middleware/fileUploadSecurity"
+        );
+        let parsedBrowseUrl: URL;
+        try {
+          parsedBrowseUrl = await validateUrl(url);
+        } catch (ssrfErr) {
+          if (ssrfErr instanceof SSRFBlockedError) {
+            logger.warn("[browse_web] URL blocked by SSRF guard", {
+              metadata: { orgId: org.id, reason: ssrfErr.message },
+            });
+            return { success: false, error: `URL blocked: ${ssrfErr.message}` };
+          }
+          throw ssrfErr;
+        }
+
+        // Tier 1B — operator domain policy (allowlist/denylist via env).
+        const { checkBrowseDomainPolicy } = await import("../utils/browsePolicy");
+        const policy = checkBrowseDomainPolicy(parsedBrowseUrl.hostname);
+        if (!policy.allowed) {
+          logger.warn("[browse_web] URL blocked by domain policy", {
+            metadata: { orgId: org.id, reason: policy.reason },
+          });
+          return { success: false, error: `URL blocked: ${policy.reason}` };
+        }
+
         const browserAutomation = await import("../services/browserAutomation");
         const browseWeb = browserAutomation.browseWeb;
         logger.info(`[browse_web] Calling browseWeb function...`);
