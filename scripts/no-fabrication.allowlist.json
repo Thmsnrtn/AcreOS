@@ -3,7 +3,7 @@
   "allowlist": [
     {
       "file": "server/routes-avm.ts",
-      "line": 25,
+      "line": 26,
       "category": "id",
       "note": "Idempotency/debit key suffix — entropy for uniqueness, not a fact."
     },
@@ -27,13 +27,13 @@
     },
     {
       "file": "server/routes-va-engine.ts",
-      "line": 1846,
+      "line": 1862,
       "category": "id",
       "note": "Escalation record id suffix — entropy for uniqueness."
     },
     {
       "file": "server/routes-va-engine.ts",
-      "line": 1926,
+      "line": 1942,
       "category": "id",
       "note": "Workflow record id suffix — entropy for uniqueness."
     },
@@ -261,7 +261,7 @@
     },
     {
       "file": "server/storage.ts",
-      "line": 2998,
+      "line": 2999,
       "category": "id",
       "note": "Random referral/invite code character — entropy for a human-typeable code."
     }
