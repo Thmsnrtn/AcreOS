@@ -10,7 +10,8 @@ import { countyGisEndpoints, type InsertParcelSnapshot } from "@shared/schema";
 import { eq, and, ilike } from "drizzle-orm";
 import { storage } from "../storage";
 import { logger } from '../utils/logger';
-import { recordParcelObservations } from "./data-cache/observation-log";
+import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observation-log";
+import * as providerIntel from "./providerIntelligence";
 import { fetchGeo } from "./providers/fetchGeo";
 
 interface RegridParcel {
@@ -81,9 +82,71 @@ export interface ParcelLookupResult {
       acres?: number;
       county?: string;
       state?: string;
+      // Widened facts (Tier 2A, elevation blueprint 2026-06-10) — captured
+      // opportunistically when the source exposes them; all optional.
+      assessedValue?: number | string;
+      marketValue?: number | string;
+      taxStatus?: string;
+      lastSalePrice?: number | string;
+      /** ISO string, datelike string, or ArcGIS epoch-ms number. */
+      lastSaleDate?: string | number;
     };
   };
   error?: string;
+}
+
+/**
+ * Defensive ArcGIS attribute pick: first non-empty value among candidate
+ * field names (county schemas vary wildly). Case-insensitive on key.
+ */
+function pickAttr(attrs: Record<string, unknown>, candidates: string[]): unknown {
+  const lowerMap = new Map<string, unknown>();
+  for (const key of Object.keys(attrs)) lowerMap.set(key.toLowerCase(), attrs[key]);
+  for (const cand of candidates) {
+    const v = lowerMap.get(cand.toLowerCase());
+    if (v !== null && v !== undefined && v !== "") return v;
+  }
+  return undefined;
+}
+
+/**
+ * Widened county-GIS facts (Tier 2A): assessed/market value, tax status, and
+ * sale history when the layer exposes them. Explicit fieldMappings win;
+ * common assessor field names are the fallback. Absent fields stay undefined —
+ * never defaulted.
+ */
+function gisWidenedFacts(
+  attrs: Record<string, unknown>,
+  mappings: Record<string, string>,
+): Pick<
+  NonNullable<ParcelLookupResult["parcel"]>["data"],
+  "assessedValue" | "marketValue" | "taxStatus" | "lastSalePrice" | "lastSaleDate"
+> {
+  const assessed = mappings.assessedValue
+    ? attrs[mappings.assessedValue]
+    : pickAttr(attrs, ["ASSESSED_VALUE", "ASSESSEDVALUE", "ASSDVALUE", "ASSD_TOTAL", "TOTASSDVAL", "TOTAL_ASSESSED", "TOTALVAL", "ASMT_TOTAL"]);
+  const market = mappings.marketValue
+    ? attrs[mappings.marketValue]
+    : pickAttr(attrs, ["MARKET_VALUE", "MARKETVALUE", "MKTVAL", "FULL_CASH_VALUE", "FULLCASHVALUE", "TOTAL_MARKET"]);
+  const taxStatus = mappings.taxStatus
+    ? attrs[mappings.taxStatus]
+    : pickAttr(attrs, ["TAX_STATUS", "TAXSTATUS", "DELINQUENT", "TAX_DELINQUENT"]);
+  const salePrice = mappings.lastSalePrice
+    ? attrs[mappings.lastSalePrice]
+    : pickAttr(attrs, ["SALE_PRICE", "SALEPRICE", "SALEAMT", "LAST_SALE_PRICE", "LASTSALEPRICE"]);
+  const saleDate = mappings.lastSaleDate
+    ? attrs[mappings.lastSaleDate]
+    : pickAttr(attrs, ["SALE_DATE", "SALEDATE", "SALEDT", "LAST_SALE_DATE", "LASTSALEDATE", "DEED_DATE", "DEEDDATE", "TRANSFER_DATE"]);
+
+  return {
+    assessedValue: assessed as number | string | undefined,
+    marketValue: market as number | string | undefined,
+    taxStatus: taxStatus === undefined ? undefined : String(taxStatus),
+    lastSalePrice: salePrice as number | string | undefined,
+    // Raw value preserved — ArcGIS commonly returns epoch-ms numbers, and
+    // coerceSaleDate (observation-log) handles both shapes downstream.
+    lastSaleDate: saleDate as string | number | undefined,
+  };
 }
 
 interface ArcGISFeature {
@@ -344,9 +407,10 @@ async function queryArcGISEndpoint(
               acres: attrs[mappings.acres || "ACRES"] as number | undefined,
               county: endpoint.county,
               state: endpoint.state,
+              ...gisWidenedFacts(attrs, mappings),
             },
           };
-          
+
           const firstRing = rings[0] || [];
           if (firstRing.length > 0) {
             let sumX = 0, sumY = 0;
@@ -384,10 +448,11 @@ async function queryArcGISEndpoint(
               acres: attrs[mappings.acres || "ACRES"] as number | undefined,
               county: endpoint.county,
               state: endpoint.state,
+              ...gisWidenedFacts(attrs, mappings),
             },
           };
         }
-        
+
         logger.info("[CountyGIS] Found parcel", { metadata: { county: endpoint.county, state: endpoint.state } });
         
         await db
@@ -443,6 +508,10 @@ function snapshotToResult(snapshot: {
   state: string;
   sourceId: string | null;
   fetchedAt: Date | null;
+  assessedValue?: string | null;
+  marketValue?: string | null;
+  lastSalePrice?: string | null;
+  lastSaleDate?: Date | null;
 }): ParcelLookupResult {
   return {
     found: true,
@@ -460,6 +529,11 @@ function snapshotToResult(snapshot: {
         acres: snapshot.acres ? parseFloat(snapshot.acres) : undefined,
         county: snapshot.county,
         state: snapshot.state,
+        // Tier 2A widened facts — surfaced from the snapshot when present.
+        assessedValue: snapshot.assessedValue ?? undefined,
+        marketValue: snapshot.marketValue ?? undefined,
+        lastSalePrice: snapshot.lastSalePrice ?? undefined,
+        lastSaleDate: snapshot.lastSaleDate?.toISOString(),
       },
     },
   };
@@ -474,24 +548,36 @@ async function cacheParcelResult(result: ParcelLookupResult, state: string, coun
   // Iyari — the acorn: append every fact this lookup resolved as an immutable
   // observation BEFORE we overwrite the snapshot cache. Fire-and-forget; never
   // block or fail the cache write. Read each fact defensively.
+  // Tier 2A: widened to assessed/market value, tax status, and sale history —
+  // the sale facts are recorded as DATED observations (observedAt = sale date)
+  // so the tenure clock gains real historical depth, not platform-age depth.
   if (result.parcel.apn && state && county) {
     const d = result.parcel.data ?? ({} as NonNullable<ParcelLookupResult["parcel"]>["data"]);
-    void recordParcelObservations({
+    void recordProviderParcelFacts({
       apn: result.parcel.apn,
       state: state.toUpperCase(),
       county,
       source: result.source ?? "unknown",
       organizationId: organizationId ?? null,
-      facts: {
-        owner: d.owner && d.owner !== "Unknown" ? d.owner : undefined,
-        owner_address: d.ownerAddress || undefined,
-        tax_amount: d.taxAmount || undefined,
-        acres: d.acres ?? undefined,
-      },
+      owner: d.owner,
+      ownerAddress: d.ownerAddress,
+      taxAmount: d.taxAmount || undefined,
+      acres: d.acres ?? undefined,
+      assessedValue: d.assessedValue,
+      marketValue: d.marketValue,
+      taxStatus: d.taxStatus,
+      lastSalePrice: d.lastSalePrice,
+      lastSaleDate: d.lastSaleDate,
     });
   }
 
   try {
+    const saleDate = coerceSaleDate(result.parcel.data.lastSaleDate);
+    const toNumericStr = (v: number | string | undefined): string | null => {
+      if (v === undefined || v === null || v === "") return null;
+      const n = Number(String(v).replace(/[$,\s]/g, ""));
+      return Number.isFinite(n) ? String(n) : null;
+    };
     const snapshotData: InsertParcelSnapshot = {
       apn: result.parcel.apn,
       state: state.toUpperCase(),
@@ -504,6 +590,12 @@ async function cacheParcelResult(result: ParcelLookupResult, state: string, coun
       ownerAddress: result.parcel.data.ownerAddress,
       acres: result.parcel.data.acres?.toString() || null,
       taxAmount: result.parcel.data.taxAmount || null,
+      // Tier 2A widened facts — persisted so the snapshot stays the full
+      // "current best view" and the sale-history backfill has a substrate.
+      assessedValue: toNumericStr(result.parcel.data.assessedValue),
+      marketValue: toNumericStr(result.parcel.data.marketValue),
+      lastSalePrice: toNumericStr(result.parcel.data.lastSalePrice),
+      lastSaleDate: saleDate,
     };
 
     await storage.upsertParcelSnapshot(snapshotData);
@@ -536,6 +628,23 @@ export async function lookupParcelByAPN(
       const cachedSnapshot = await storage.getParcelSnapshot(apn, state, county, CACHE_FRESHNESS_DAYS);
       if (cachedSnapshot) {
         logger.info("[Parcel] Found in cache", { metadata: { ageDays: Math.round((Date.now() - (cachedSnapshot.fetchedAt?.getTime() || 0)) / (1000 * 60 * 60 * 24)) } });
+        // Tier 2A cache telemetry: this early return used to make snapshot
+        // hits invisible. avoidedCostCents stays 0 — the skipped tier chain
+        // starts with FREE county GIS, so no provider cost is provably
+        // avoided here (never invent a saving). Fire-and-forget.
+        void providerIntel.recordLookup({
+          providerName: "parcel_snapshot_cache",
+          category: "parcel_boundary",
+          inputType: "apn",
+          success: true,
+          cached: true,
+          cacheLane: "parcel_snapshots",
+          avoidedCostCents: 0,
+          costCents: 0,
+          organizationId,
+          state,
+          county,
+        });
         return snapshotToResult(cachedSnapshot);
       }
     } catch (error) {
@@ -669,6 +778,11 @@ async function lookupFromRapidAPI(
               acres: props.acres || props.area_acres,
               county: county,
               state: state,
+              // Tier 2A widened facts — captured when the API exposes them.
+              assessedValue: props.assessed_value ?? undefined,
+              marketValue: props.market_value ?? undefined,
+              lastSalePrice: props.sale_price ?? undefined,
+              lastSaleDate: props.sale_date ?? undefined,
             },
           },
         };
@@ -695,6 +809,11 @@ async function lookupFromRapidAPI(
             acres: data.acres || data.area_acres,
             county: county,
             state: state,
+            // Tier 2A widened facts — captured when the API exposes them.
+            assessedValue: data.assessed_value ?? undefined,
+            marketValue: data.market_value ?? undefined,
+            lastSalePrice: data.sale_price ?? undefined,
+            lastSaleDate: data.sale_date ?? undefined,
           },
         },
       };
@@ -822,6 +941,11 @@ async function lookupFromRegrid(
           acres: props.ll_gisacre,
           county: props.county,
           state: props.state2,
+          // Tier 2A widened facts — Regrid standardized schema fields,
+          // captured opportunistically (absent stays undefined).
+          assessedValue: props.parval ?? undefined,
+          lastSalePrice: props.saleprice ?? undefined,
+          lastSaleDate: props.saledate ?? undefined,
         },
       },
     };

@@ -487,9 +487,19 @@ export type ValuationPrediction = typeof valuationPredictions.$inferSelect;
 // Land Credit Scores - Multi-dimensional property scoring
 export const landCreditScores = pgTable("land_credit_scores", {
   id: serial("id").primaryKey(),
-  
+
   propertyId: integer("property_id").references(() => properties.id).notNull(),
-  
+
+  // Parcel identity (migration 0152, Tier 2A) — scores used to be reachable
+  // only through the org-owned property row, which made network cohort
+  // benchmarks impossible without walking org structure. apn/state/county let
+  // cohorts ("all scored parcels in this state") be assembled from parcel
+  // identity alone, with no org linkage in the cohort path. Nullable: rows
+  // written before 0152 stay NULL and are simply excluded from cohorts.
+  apn: text("apn"),
+  state: text("state"),
+  county: text("county"),
+
   // Core scores (0-100)
   liquidityScore: integer("liquidity_score").notNull(),
   riskScore: integer("risk_score").notNull(),
@@ -515,6 +525,8 @@ export const landCreditScores = pgTable("land_credit_scores", {
 }, (table) => [
   index("land_credit_scores_property_idx").on(table.propertyId),
   index("land_credit_scores_grade_idx").on(table.grade),
+  // Cohort assembly path (migration 0152): benchmarks group by state/county.
+  index("land_credit_scores_state_county_idx").on(table.state, table.county, table.apn),
 ]);
 
 export const insertLandCreditScoreSchema = createInsertSchema(landCreditScores).omit({ id: true, createdAt: true });

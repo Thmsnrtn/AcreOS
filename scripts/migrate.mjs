@@ -6956,6 +6956,40 @@ const STATEMENTS = [
      "last_paged_at" timestamp NOT NULL,
      "updated_at" timestamp NOT NULL DEFAULT now()
    )`,
+
+  // ── 0152 — Tier 2A (elevation blueprint) — observation capture: feed the ──
+  //    compounding machines. Mirrors migrations/0152_observation_capture_2a.sql.
+  // land_credit_scores.apn/state/county: parcel identity on the score row so
+  // network cohort benchmarks assemble without org linkage (k>=5 privacy floor
+  // enforced in code, mirroring marketNetworkContributor).
+  // model_calibration_log: the LCS calibrator's per-org EMA weights lived in
+  // in-memory Maps and were erased on every deploy; each adjusted run appends
+  // one row, latest row per (org, model) is the live weight set.
+  // provider_lookup_log.cache_lane/avoided_cost_cents: cache hits used to
+  // early-return before telemetry, making hit rate + avoided dollars invisible
+  // across the four cache lanes. Idempotent; self-contained block.
+  `ALTER TABLE "land_credit_scores" ADD COLUMN IF NOT EXISTS "apn" text`,
+  `ALTER TABLE "land_credit_scores" ADD COLUMN IF NOT EXISTS "state" text`,
+  `ALTER TABLE "land_credit_scores" ADD COLUMN IF NOT EXISTS "county" text`,
+  `CREATE INDEX IF NOT EXISTS "land_credit_scores_state_county_idx"
+     ON "land_credit_scores" ("state", "county", "apn")`,
+  `CREATE TABLE IF NOT EXISTS "model_calibration_log" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer REFERENCES "organizations"("id") ON DELETE CASCADE,
+     "model_name" text NOT NULL DEFAULT 'lcs_calibrator',
+     "weights" jsonb NOT NULL,
+     "correlations" jsonb,
+     "sample_size" integer NOT NULL DEFAULT 0,
+     "adjusted" boolean NOT NULL DEFAULT false,
+     "reason" text,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "model_calibration_log_org_idx"
+     ON "model_calibration_log" ("organization_id", "model_name", "created_at")`,
+  `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "cache_lane" text`,
+  `ALTER TABLE "provider_lookup_log" ADD COLUMN IF NOT EXISTS "avoided_cost_cents" integer DEFAULT 0`,
+  `CREATE INDEX IF NOT EXISTS "provider_lookup_cache_lane_idx"
+     ON "provider_lookup_log" ("cache_lane", "created_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

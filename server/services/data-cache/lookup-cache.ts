@@ -22,6 +22,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { cachedLookups, cachedLookupHits } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import * as providerIntel from "../providerIntelligence";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TTL policy. Tuned per entity type — parcel polygons are effectively static
@@ -147,6 +148,21 @@ export async function getCachedOrFetch<T>(
     } catch (err) {
       logger.warn(`[lookupCache] hit-row insert failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
     }
+    // Unified cache telemetry (Tier 2A): cached_lookups lane. Avoided cost is
+    // honestly known — the original fetch recorded what was paid.
+    providerIntel
+      .recordLookup({
+        providerName: opts.provider,
+        category: opts.entityType,
+        inputType: "fingerprint",
+        success: true,
+        cached: true,
+        cacheLane: "cached_lookups",
+        costCents: 0,
+        avoidedCostCents: existing.costCents ?? 0,
+        organizationId: opts.organizationId,
+      })
+      .catch(() => {});
     return {
       result: existing.resultJson as T,
       fromCache: true,
