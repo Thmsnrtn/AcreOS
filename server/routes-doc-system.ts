@@ -146,14 +146,18 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/document-templates/:id - Get template by ID
   api.get("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
         return Errors.badRequest(res, "Invalid template ID");
       }
 
       const template = await storage.getDocumentTemplate(id);
-      if (!template) {
+      // 2026-06-10 (T0-2 sweep): org check was on PUT/PATCH/DELETE but missed
+      // on GET — cross-tenant read of another org's contract templates.
+      // System templates stay shared (same gate as the preview route).
+      if (!template || (!template.isSystemTemplate && template.organizationId !== org.id)) {
         return Errors.notFound(res, "Template");
       }
 
@@ -609,7 +613,10 @@ export function registerDocSystemRoutes(app: Express): void {
       }
 
       const template = await storage.getDocumentTemplate(templateId);
-      if (!template) {
+      // 2026-06-10 (T0-2 sweep): templateId comes from the body — without an
+      // org check this rendered another org's template content into a document.
+      // System templates (org NULL) stay shared.
+      if (!template || (!template.isSystemTemplate && template.organizationId !== org.id)) {
         return Errors.notFound(res, "Template");
       }
 
@@ -710,7 +717,9 @@ export function registerDocSystemRoutes(app: Express): void {
       }
 
       const template = await storage.getDocumentTemplate(templateId);
-      if (!template) {
+      // 2026-06-10 (T0-2 sweep): same body-supplied templateId IDOR as
+      // /api/documents/generate — enforce org ownership (system templates shared).
+      if (!template || (!template.isSystemTemplate && template.organizationId !== org.id)) {
         return Errors.notFound(res, "Template");
       }
 

@@ -15,6 +15,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { Errors } from "./utils/errors";
 import { db } from "./db";
 import { agentActionGraduations, agentEvents } from "@shared/schema";
 import { desc, eq, and } from "drizzle-orm";
@@ -48,7 +49,7 @@ router.get("/", async (_req: Request, res: Response) => {
     });
   } catch (err: any) {
     logger.error("[founder-graduation] list failed", err);
-    res.status(500).json({ error: err?.message ?? "Internal error" });
+    Errors.internal(res, err);
   }
 });
 
@@ -87,7 +88,7 @@ router.post("/override", async (req: Request, res: Response) => {
     res.json({ ok: true });
   } catch (err: any) {
     logger.error("[founder-graduation] override failed", err);
-    res.status(500).json({ error: err?.message ?? "Internal error" });
+    Errors.internal(res, err);
   }
 });
 

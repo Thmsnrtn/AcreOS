@@ -337,7 +337,12 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/seller-communications/lead/:leadId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const leadId = parseInt(req.params.leadId);
+      // 2026-06-10 (T0-2 sweep): verify the lead belongs to this org —
+      // previously any org's seller communications were readable by leadId.
+      const lead = await storage.getLead(org.id, leadId);
+      if (!lead) return Errors.notFound(res, "Lead");
       const comms = await storage.getSellerCommunicationsByLead(leadId);
       res.json(comms);
     } catch (error: any) {
@@ -393,7 +398,11 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/ad-postings/property/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const propertyId = parseInt(req.params.propertyId);
+      // 2026-06-10 (T0-2 sweep): verify the property belongs to this org.
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) return Errors.notFound(res, "Property");
       const postings = await storage.getAdPostingsByProperty(propertyId);
       res.json(postings);
     } catch (error: any) {
@@ -481,9 +490,12 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/buyer-prequalifications/lead/:leadId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const leadId = parseInt(req.params.leadId);
       const prequal = await storage.getBuyerPrequalificationByLead(leadId);
-      if (!prequal) {
+      // 2026-06-10 (T0-2 sweep): 404 on cross-tenant prequalification —
+      // never confirm another org's record exists.
+      if (!prequal || prequal.organizationId !== org.id) {
         return Errors.notFound(res, "Buyer prequalification");
       }
       res.json(prequal);
@@ -649,7 +661,11 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/collection-enrollments/note/:noteId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization;
       const noteId = parseInt(req.params.noteId);
+      // 2026-06-10 (T0-2 sweep): verify the note belongs to this org.
+      const note = await storage.getNote(org.id, noteId);
+      if (!note) return Errors.notFound(res, "Note");
       const enrollments = await storage.getCollectionEnrollmentsByNote(noteId);
       res.json(enrollments);
     } catch (error: any) {

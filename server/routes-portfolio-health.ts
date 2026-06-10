@@ -7,6 +7,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { Errors } from "./utils/errors";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { runPortfolioHealthJob, getActiveAlerts, dismissAlert } from "./services/portfolioHealth";
@@ -22,7 +23,7 @@ router.post("/run", async (req: Request, res: Response) => {
     const alerts = await getActiveAlerts(org.id);
     res.json({ success: true, alertsGenerated: alerts.length, alerts });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -33,7 +34,7 @@ router.get("/alerts", async (req: Request, res: Response) => {
     const alerts = await getActiveAlerts(org.id);
     res.json({ alerts });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -47,7 +48,7 @@ router.delete("/alerts/:id", async (req: Request, res: Response) => {
     await dismissAlert(org.id, alertId);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

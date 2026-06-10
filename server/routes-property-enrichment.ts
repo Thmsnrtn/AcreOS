@@ -7,6 +7,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { Errors } from "./utils/errors";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { db } from "./db";
 import { properties } from "@shared/schema";
@@ -26,7 +27,7 @@ router.post("/:id/enrich", async (req: Request, res: Response) => {
     const result = await propertyEnrichmentService.enrichProperty(org.id, propertyId);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -51,7 +52,7 @@ router.post("/bulk-enrich", async (req: Request, res: Response) => {
     }
     res.json({ results, count: results.length });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 
@@ -75,7 +76,7 @@ router.get("/:id/enrichment", async (req: Request, res: Response) => {
     const enrichmentData = await propertyEnrichmentService.enrichProperty(org.id, propertyId);
     res.json({ propertyId, enrichment: enrichmentData });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

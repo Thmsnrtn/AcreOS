@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { Errors } from './utils/errors';
 import { acreOSValuation } from './services/acreOSValuation';
 import { db } from './db';
 import { properties } from '../shared/schema';
@@ -163,7 +164,7 @@ router.get('/history/:propertyId', cacheResponse(300), async (req: Request, res:
     );
     res.json({ history });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 
@@ -177,7 +178,7 @@ router.get('/stats', cacheResponse(600), async (req: Request, res: Response) => 
     const stats = await acreOSValuation.getTrainingDataStats(org.id.toString());
     res.json({ stats });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    Errors.internal(res, error);
   }
 });
 

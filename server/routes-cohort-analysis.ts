@@ -6,6 +6,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { Errors } from "./utils/errors";
 import { buildCohortReport, type CohortSegment } from "./services/cohortAnalysis";
 
 const router = Router();
@@ -44,7 +45,7 @@ router.get("/", async (req: Request, res: Response) => {
     const report = await buildCohortReport(org.id, segmentBy, fromDate, toDate);
     res.json(report);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    Errors.internal(res, err);
   }
 });
 

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Errors } from "./utils/errors";
 import { DealUnderwritingService } from "./services/dealUnderwriting";
 
 const router = Router();
@@ -23,7 +24,7 @@ router.get("/history", async (req, res) => {
     const history = await svc.getUnderwritingHistory(org.id, dealId);
     res.json({ history });
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    Errors.internal(res, e);
   }
 });
 

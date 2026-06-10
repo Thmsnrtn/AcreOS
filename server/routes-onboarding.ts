@@ -273,7 +273,7 @@ router.get("/instant-deal-hunt", async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     logger.error("[OnboardingDealHunt]", err);
-    res.status(500).json({ error: err.message, opportunities: [], totalScanned: 0 });
+    Errors.internal(res, err);
   }
 });
 

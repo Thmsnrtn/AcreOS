@@ -647,8 +647,12 @@ export function registerDealRoutes(app: Express): void {
   });
   
   api.get("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
     const template = await storage.getDueDiligenceTemplate(Number(req.params.id));
-    if (!template) return Errors.notFound(res, "Template");
+    // 2026-06-10 (T0-2): the F-D39 org check landed on PUT/DELETE but this GET
+    // was missed — cross-tenant read IDOR. 404 (not 403) so we never confirm
+    // another org's template exists.
+    if (!template || template.organizationId !== org.id) return Errors.notFound(res, "Template");
     res.json(template);
   });
 
@@ -1680,8 +1684,11 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   });
   
   api.get("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
     const template = await storage.getChecklistTemplate(Number(req.params.id));
-    if (!template) return Errors.notFound(res, "Template");
+    // 2026-06-10 (T0-2): same GET/PUT asymmetry as DD templates — the F-D39
+    // org check covered PUT/DELETE but missed GET. 404 hides existence.
+    if (!template || template.organizationId !== org.id) return Errors.notFound(res, "Template");
     res.json(template);
   });
 

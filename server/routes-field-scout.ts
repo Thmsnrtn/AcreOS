@@ -386,10 +386,13 @@ fieldScoutRouter.post('/field-scout/reports', async (req: Request, res: Response
     }
 
     // Fetch all visits
+    // 2026-06-10 (T0-2 sweep): only export this org's visits — a foreign
+    // visitId is silently skipped (router is mounted behind getOrCreateOrg).
+    const org = req.organization;
     const visits = [];
     for (const vid of visitIds) {
       const visit = await storage.getFieldScoutVisit(parseInt(vid));
-      if (visit) {
+      if (visit && visit.organizationId === org.id) {
         const photos = await storage.getFieldScoutPhotosByVisit(visit.id);
         visits.push({ ...visit, photos });
       }
