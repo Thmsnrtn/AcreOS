@@ -32,32 +32,28 @@
  *
  * Action on detection
  * ───────────────────
- * notifyOnCall(critical ? "P0" : "P1", …)  +  recordFinding(domain:"reliability").
- * notifyOnCall degrades gracefully to a DB-only finding when the on-call
- * webhook/push secret is unset — we do not block on paging being wired.
+ * raiseAlert via the ONE alert spine (Tier 1D): a dark CRITICAL job pages
+ * (P0, throttled inside the spine — the repage throttle that used to live
+ * here was hoisted into alertSpine.pageCriticalThrottled) + records a
+ * reliability finding + a system_alerts row. A dark non-critical job lands
+ * as a warning (finding + system_alerts, no page) per spine policy.
  *
- * Dedupe: recordFinding upserts on (detector, dedupeKey); the dedupeKey is
- * per-job, so a job that stays dark re-fires (bumps last_seen_at) rather than
- * spamming. notifyOnCall is additionally throttled in-process so we don't
- * re-page the same dark job every 5 minutes (see _lastPagedAt).
+ * Dedupe: findings upsert on (detector, dedupeKey); the dedupeKey is
+ * per-job, so a job that stays dark re-fires (bumps last_seen_at) rather
+ * than spamming. The spine's page/system_alert windows additionally ensure
+ * we don't re-page the same dark job every 5 minutes.
  */
 
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { jobHealthLogs } from "@shared/schema";
 import { logger } from "../utils/logger";
-import { notifyOnCall } from "../services/oncall";
-import { recordFinding } from "../services/audit/domainAudit";
+import { raiseAlert } from "../services/alertSpine";
 import { activeRosterEntries } from "./jobRegistry";
 
 // Process start time — used to avoid false-paging a job that has simply never
 // had a chance to run yet on a freshly-booted worker.
 const _processStartedAt = Date.now();
-
-// Re-page throttle: don't notifyOnCall for the same dark job more than once per
-// hour (the finding still re-fires each run via recordFinding's upsert).
-const _lastPagedAt = new Map<string, number>();
-const REPAGE_THROTTLE_MS = 60 * 60 * 1000;
 
 const DETECTOR_ID = "job_deadman";
 
@@ -123,39 +119,28 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
       `within 2× its expected cadence. Last seen: ${ageDesc}. ` +
       `It may have stopped registering (deploy regression), be stuck, or its host worker may be down.`;
 
-    // Always record the finding (durable, deduped, survives a missing webhook).
+    // One spine call replaces the old recordFinding + throttled notifyOnCall
+    // pair: critical job dark → P0 page (throttled once/hour inside the
+    // spine) + finding + system_alerts; non-critical dark → warning finding
+    // + system_alerts, no page.
     try {
-      await recordFinding({
-        domain: "reliability",
-        detector: DETECTOR_ID,
-        severity: entry.critical ? "critical" : "warn",
+      await raiseAlert({
+        severity: entry.critical ? "critical" : "warning",
+        source: DETECTOR_ID,
         title,
         detail: body,
+        dedupeKey: `dark:${entry.name}`,
+        domain: "reliability",
         citedReason:
           "SLO: every roster job must emit a liveness row within 2× its cadence (deadman).",
-        dedupeKey: `dark:${entry.name}`,
         subjectRef: entry.name,
+        alertType: "job_dark",
         metadata: { lastSeenMs, thresholdMs, critical: entry.critical, intervalMs: entry.intervalMs },
       });
     } catch (err) {
-      logger.error(`[deadman] recordFinding failed for ${entry.name}`, err instanceof Error ? err : undefined);
-    }
-
-    // Page on-call, throttled per job so a sustained dark job rings once/hour.
-    const lastPaged = _lastPagedAt.get(entry.name) ?? 0;
-    if (now - lastPaged > REPAGE_THROTTLE_MS) {
-      _lastPagedAt.set(entry.name, now);
-      try {
-        await notifyOnCall(entry.critical ? "P0" : "P1", title, body, {
-          job: entry.name,
-          lastSeenMs,
-          thresholdMs,
-        });
-      } catch (err) {
-        // notifyOnCall is already internally best-effort, but never let a
-        // paging failure abort the rest of the sweep.
-        logger.error(`[deadman] notifyOnCall failed for ${entry.name}`, err instanceof Error ? err : undefined);
-      }
+      // raiseAlert is internally best-effort, but never let an alerting
+      // failure abort the rest of the sweep.
+      logger.error(`[deadman] raiseAlert failed for ${entry.name}`, err instanceof Error ? err : undefined);
     }
 
     logger.warn(`[deadman] ${entry.critical ? "P0" : "P1"} ${title} — ${ageDesc}`, {

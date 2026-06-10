@@ -24,6 +24,17 @@ vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// recordFinding routes CRITICAL findings through the alert spine's throttled
+// page channel (Tier 1D). Mock the spine so these substrate tests never touch
+// the real page transports (push/email/ntfy). Spine behaviour itself is
+// covered in alertSpine.test.ts.
+const { pageCriticalThrottledSpy } = vi.hoisted(() => ({
+  pageCriticalThrottledSpy: vi.fn().mockResolvedValue(true),
+}));
+vi.mock("../../server/services/alertSpine", () => ({
+  pageCriticalThrottled: pageCriticalThrottledSpy,
+}));
+
 // ── In-memory findings store + db mock ───────────────────────────────────────
 
 interface Row {

@@ -90,6 +90,32 @@ export interface DomainDetector {
  * saw it; don't spam them back to 'open').
  */
 export async function recordFinding(input: FindingInput): Promise<void> {
+  // ── Tier 1D (alert spine): a CRITICAL finding must never land silently in
+  // a table nobody watches. Route it through the spine's throttled page
+  // channel (notifyOnCall + Solene ntfy) BEFORE the upsert, so a dying
+  // database can't suppress the page. Throttled per (detector, dedupeKey) —
+  // a re-firing critical finding pages once per window, not once per run.
+  // Dynamic import: alertSpine statically imports this module; the lazy
+  // import breaks the cycle.
+  if (input.severity === "critical") {
+    try {
+      const { pageCriticalThrottled } = await import("../alertSpine");
+      await pageCriticalThrottled({
+        source: input.detector,
+        title: input.title,
+        detail: input.detail,
+        dedupeKey: input.dedupeKey,
+        metadata: { domain: input.domain, ...(input.metadata ?? {}) },
+      });
+    } catch (err) {
+      logger.error(
+        "[domainAudit] failed to page critical finding through alert spine",
+        err instanceof Error ? err : undefined,
+        { metadata: { detector: input.detector, dedupeKey: input.dedupeKey } },
+      );
+    }
+  }
+
   const now = new Date();
   await db
     .insert(domainAuditFindings)

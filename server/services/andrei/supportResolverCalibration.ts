@@ -361,6 +361,39 @@ export async function runSupportResolverCalibrationGrader(opts: {
         `graded=${report.gradedDecisions}/${report.totalAutoResolved} brier=${report.brierScore ?? "n/a"} ` +
         `bias=${report.overconfidenceBias ?? "n/a"} — ${report.verdict}`,
     );
+
+    // Tier 1D (alert spine): a FAILING calibration grade used to be a log
+    // line nobody reads. Brier ≥ 0.3 is the "Poor calibration" verdict —
+    // Pax's auto-resolve confidence is unreliable while it keeps acting on
+    // customers unsupervised. Raise it as a warning (finding + system_alerts).
+    if (report.brierScore != null && report.brierScore >= 0.3) {
+      try {
+        const { raiseAlert } = await import("../alertSpine");
+        await raiseAlert({
+          severity: "warning",
+          source: "support_resolver_calibration",
+          title: "Pax support auto-resolve calibration is FAILING",
+          detail:
+            `Brier=${report.brierScore} over ${report.gradedDecisions} graded decisions ` +
+            `(overconfidence bias ${report.overconfidenceBias ?? "n/a"}). ${report.verdict}`,
+          dedupeKey: "calibration:poor",
+          domain: "ai",
+          citedReason:
+            "The autonomous support-resolve path must stay calibrated; unreliable confidence means Pax acts on customers it shouldn't.",
+          alertType: "ai_calibration_failing",
+          metadata: {
+            brierScore: report.brierScore,
+            overconfidenceBias: report.overconfidenceBias,
+            gradedDecisions: report.gradedDecisions,
+            windowDays: report.windowDays,
+          },
+        });
+      } catch (alertErr) {
+        logger.warn("[supportResolverCalibration] alert spine raise failed (non-fatal)", {
+          metadata: { detail: alertErr instanceof Error ? alertErr.message : String(alertErr) },
+        });
+      }
+    }
   } catch (err) {
     logger.warn("[supportResolverCalibration] grader report failed (non-fatal)", {
       metadata: { detail: err instanceof Error ? err.message : String(err) },
