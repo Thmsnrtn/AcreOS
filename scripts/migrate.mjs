@@ -7052,6 +7052,51 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "public_parcel_reports_refreshed_idx"
      ON "public_parcel_reports" ("refreshed_at")`,
 
+  // ── 0157 — Tier 3F (elevation blueprint, 2026-06-10) — cross-org data co-op ──
+  // Mirrors migrations/0157_county_market_rollups.sql.
+  // county_market_rollups: privacy-preserving county aggregates (monthly
+  // `county_market_rollup` worker job). marketNetworkContributor's privacy
+  // model generalized: NO organization column (structural org-null),
+  // cohort_size records the k backing each row, rows below k=5 are never
+  // materialized (gate lives in the aggregation, not the read path), price
+  // samples bucketed to nearest $500/acre before aggregation.
+  // county_rollup_runs: run ledger — two consecutive zero-rollup runs raise
+  // an alert-spine warning. market_report_drafts: quarterly report artifacts
+  // (JSON+markdown), founder-reviewable, NEVER auto-published.
+  // Idempotent; self-contained block.
+  `CREATE TABLE IF NOT EXISTS "county_market_rollups" (
+     "id" serial PRIMARY KEY,
+     "state" text NOT NULL,
+     "county" text NOT NULL,
+     "period" text NOT NULL,
+     "metrics" jsonb NOT NULL,
+     "cohort_size" integer NOT NULL,
+     "computed_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "county_market_rollups_state_county_period_uk"
+     ON "county_market_rollups" ("state", "county", "period")`,
+  `CREATE INDEX IF NOT EXISTS "county_market_rollups_state_period_idx"
+     ON "county_market_rollups" ("state", "period")`,
+  `CREATE TABLE IF NOT EXISTS "county_rollup_runs" (
+     "id" serial PRIMARY KEY,
+     "period" text NOT NULL,
+     "rollups_written" integer NOT NULL DEFAULT 0,
+     "counties_scanned" integer NOT NULL DEFAULT 0,
+     "ran_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "county_rollup_runs_ran_at_idx"
+     ON "county_rollup_runs" ("ran_at")`,
+  `CREATE TABLE IF NOT EXISTS "market_report_drafts" (
+     "id" serial PRIMARY KEY,
+     "quarter" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'draft',
+     "report" jsonb NOT NULL,
+     "markdown" text NOT NULL,
+     "generated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "market_report_drafts_quarter_uk"
+     ON "market_report_drafts" ("quarter")`,
+
   // ── 0162 — Tier 2B (one money spine) — ledger dead letters, 2026-06-10 ──
   // Mirrors migrations/0162_ledger_dead_letters.sql. Durable capture of
   // failed financial_ledger postings (Stripe webhook posts are best-effort

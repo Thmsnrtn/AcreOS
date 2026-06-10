@@ -208,6 +208,11 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "index_analyzer", intervalMs: DAY, critical: false },
   { name: "land_credit_score_recalc", intervalMs: DAY, critical: false },
   { name: "feature_engineering", intervalMs: WEEK, critical: false },
+  // Tier 3F — cross-org data co-op: monthly privacy-preserving county
+  // rollups (k>=5 floor enforced in the aggregation). Production check on
+  // "ran but produced nothing" is the job's own two-zero-runs alert-spine
+  // warning; the deadman covers absence.
+  { name: "county_market_rollup", intervalMs: MONTH, critical: false },
   // db_backup's body (runDbBackupIfConfigured) no-ops without the S3 bucket —
   // declare that dormancy HERE so the deadman skips it cleanly AND the
   // config-dormant meta-check reports it every sweep instead of letting a
