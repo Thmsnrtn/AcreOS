@@ -164,14 +164,15 @@ class LandCreditScoring {
       // Compute confidence based on how many dimensions have real data vs defaults
       const confidence = this.computeConfidence(factors, creditScore);
 
-      // Save score to database.
-      // TODO(tsc): land_credit_scores has no organizationId/score/factors/
-      // riskLevel/strengths/weaknesses/recommendations columns. Map to the real
-      // schema: discrete 0-100 sub-scores, overallScore (0-100), grade, and the
-      // scoreBreakdown blob. The rich factors/strengths data has no schema home
-      // and is only returned to the caller, not persisted.
+      // Save score to database. Parcel identity (apn/state/county, Tier 2A,
+      // migration 0152) keys cross-org cohort benchmarks WITHOUT linking back
+      // to organizations. The rich factors/strengths data still has no schema
+      // home and is only returned to the caller, not persisted.
       await db.insert(landCreditScores).values({
         propertyId: Number(propertyId),
+        apn: property.apn ?? null,
+        state: property.state ? String(property.state).trim().toUpperCase() : null,
+        county: property.county ?? null,
         liquidityScore: market.score,
         riskScore: environmental.score,
         developmentPotentialScore: physical.score,
@@ -808,26 +809,37 @@ class LandCreditScoring {
   }
 
   /**
-   * Compare score to industry benchmarks.
+   * Compare score to network benchmarks.
    *
-   * 2026-06-10 (T0-12, elevation-blueprint-2026-06-10.md): the hardcoded
-   * per-type benchmark averages and state bonuses (invented numbers) were
-   * removed — fabricated facts violate the no-fabrication discipline. This
-   * is the live handler behind GET /api/land-credit/benchmark/:propertyId,
-   * so it now returns a typed insufficient-data result until real
-   * network-cohort percentiles exist (Tier-2 item 2A in the blueprint).
+   * 2026-06-10 (T0-12 → Tier 2A): the hardcoded per-type benchmark averages
+   * and state bonuses (invented numbers) were removed under T0-12. Tier 2A
+   * now delegates to the own-network cohort engine (latest score per parcel,
+   * state-keyed, k>=5 privacy floor). Below the floor this stays a typed
+   * insufficient-data result — never invented numbers.
    */
-  compareToIndustryBenchmarks(
-    _score: number,
-    _propertyType: string,
-    _state: string
-  ):
-    | { available: true; percentile: number; benchmarkAvg: number; benchmarkMedian: number; outperforms: boolean }
-    | { available: false; reason: string } {
+  async compareToIndustryBenchmarks(
+    score: number,
+    propertyType: string,
+    state: string
+  ): Promise<
+    | { available: true; percentile: number; benchmarkAvg: number; benchmarkMedian: number; outperforms: boolean; sampleSize: number; source: string }
+    | { available: false; reason: string }
+  > {
+    const { creditBenchmarkingService } = await import("./creditBenchmarking");
+    const comparison = await creditBenchmarkingService.compareToIndustry(score, propertyType, state);
+    if (!comparison.available) {
+      return { available: false, reason: comparison.reason };
+    }
     return {
-      available: false,
-      reason:
-        "Industry benchmarks are not computed yet — AcreOS only reports benchmarks derived from real scored transactions, and that dataset does not exist yet.",
+      available: true,
+      percentile: comparison.percentile,
+      // benchmarkAvg is reported as the cohort median — we do not store a mean
+      // and will not invent one; median is the honest central tendency here.
+      benchmarkAvg: comparison.benchmarks.median,
+      benchmarkMedian: comparison.benchmarks.median,
+      outperforms: comparison.vsMedian > 0,
+      sampleSize: comparison.benchmarks.sampleSize,
+      source: comparison.benchmarks.source,
     };
   }
 

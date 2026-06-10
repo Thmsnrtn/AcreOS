@@ -41,6 +41,7 @@
  */
 
 import { runAutoDueDiligence } from "./dueDiligenceEngine";
+import { recordParcelObservations } from "./data-cache/observation-log";
 import { buildCountyAgSnapshot, getCachedLandTrend } from "./usdaNassService";
 import { buildCountyOpportunityProfile, getKnownMigrationHotspots } from "./censusDataService";
 // NOTE: computeCountyOpportunityScore is intentionally NOT imported/used here.
@@ -300,6 +301,27 @@ export async function generateLandIntelligenceReport(
   // Build next steps
   const nextSteps = buildNextSteps(recommendation, dealKillers, opportunitySignals, input);
   const warningFlags = buildWarningFlags(dd, input, nassData);
+
+  // Tier 2A (elevation blueprint 2026-06-10): the fusion path sees
+  // authoritative federal facts about this parcel — record them into the
+  // observation log so they join the longitudinal series. Fire-and-forget;
+  // only when the parcel has a real identity and the DD pass actually ran.
+  // Absent facts stay absent (recordParcelObservations skips null/undefined).
+  if (input.apn && input.state && input.county && dd) {
+    void recordParcelObservations({
+      apn: input.apn,
+      state: input.state.toUpperCase(),
+      county: input.county,
+      source: "fusion_due_diligence",
+      facts: {
+        flood_zone: dd.checks.floodZone.zone ?? undefined,
+        wetlands_percent: dd.checks.wetlands.wetlandPercent ?? undefined,
+        road_access: dd.checks.roadAccess.roadType ?? (dd.checks.roadAccess.hasDirectRoadAccess ? "yes" : "none"),
+        soil_class: dd.checks.soil.dominantSoilName ?? undefined,
+        elevation_feet: dd.checks.elevation.elevationFeet ?? undefined,
+      },
+    });
+  }
 
   // Per-field provenance (Quinn item 5). Only stamped when the DD pass actually
   // ran — an absent field means "not pulled", never a fabricated default.

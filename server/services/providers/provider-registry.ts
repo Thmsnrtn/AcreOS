@@ -189,6 +189,24 @@ class ProviderRegistry {
             source: "ProviderRegistry",
             metadata: { provider: provider.name, category, cacheKey },
           });
+          // Cache-hit telemetry (Tier 2A): the early return here made hits
+          // invisible in provider_lookup_log. Avoided cost is honestly known —
+          // this provider's fixed per-lookup price would have been paid.
+          providerIntel
+            .recordLookup({
+              providerName: provider.name,
+              category,
+              inputType: input.type,
+              success: true,
+              cached: true,
+              cacheLane: "provider_cache",
+              costCents: 0,
+              avoidedCostCents: costCents,
+              organizationId,
+              state,
+              county,
+            })
+            .catch(() => {});
           return cached;
         }
       } catch (cacheErr) {
@@ -309,6 +327,23 @@ class ProviderRegistry {
         source: "ProviderRegistry",
         metadata: { provider: bestStale.provider, source: bestStale.source },
       });
+      // Cache-hit telemetry (Tier 2A). Avoided cost is 0 here — the live
+      // lookup FAILED, so no spend was provably avoided by serving stale.
+      providerIntel
+        .recordLookup({
+          providerName: bestStale.provider,
+          category,
+          inputType: input.type,
+          success: true,
+          cached: true,
+          cacheLane: "provider_cache_stale",
+          costCents: 0,
+          avoidedCostCents: 0,
+          organizationId,
+          state,
+          county,
+        })
+        .catch(() => {});
       return bestStale;
     }
 

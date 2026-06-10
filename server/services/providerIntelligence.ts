@@ -37,6 +37,18 @@ export interface LookupRecord {
   state?: string;
   /** County name of the looked-up parcel, for free-miss-by-county rollup. */
   county?: string;
+  /**
+   * Which cache lane served this hit (cache hits only):
+   * "provider_cache" | "provider_cache_stale" | "parcel_snapshots" | "cached_lookups".
+   */
+  cacheLane?: string;
+  /**
+   * Cents NOT spent because this hit was served from cache. Only set when the
+   * original cost is KNOWN (e.g. the cached row recorded what was paid, or the
+   * provider's per-lookup cost is fixed). 0 when the avoided cost can't be
+   * stated honestly — never invented.
+   */
+  avoidedCostCents?: number;
 }
 
 /**
@@ -58,6 +70,8 @@ export async function recordLookup(record: LookupRecord): Promise<void> {
       organizationId: record.organizationId ?? null,
       state: record.state ?? null,
       county: record.county ?? null,
+      cacheLane: record.cacheLane ?? null,
+      avoidedCostCents: record.avoidedCostCents ?? 0,
     });
   } catch (err: any) {
     logger.warn("[providerIntelligence] record failed (non-blocking)", {
@@ -238,5 +252,47 @@ export async function getProviderSummary(windowDays: number = 30): Promise<{
     byCategory,
     totalCostCents: Number(totals.cost_cents ?? 0),
     totalLookups: Number(totals.n ?? 0),
+  };
+}
+
+/**
+ * Unified cache-hit telemetry across the 4 cache lanes
+ * (provider_cache / provider_cache_stale / parcel_snapshots / cached_lookups).
+ *
+ * `avoidedCostCents` is the sum of HONESTLY-KNOWN avoided spend — lanes that
+ * can't prove what was avoided record 0, so this is a floor, not an estimate.
+ */
+export async function cacheTelemetrySummary(windowDays: number = 30): Promise<{
+  windowDays: number;
+  byLane: Array<{
+    lane: string;
+    hits: number;
+    avoidedCostCents: number;
+  }>;
+  totalHits: number;
+  totalAvoidedCostCents: number;
+}> {
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const rows = await db.execute(sql`
+    SELECT
+      COALESCE(cache_lane, 'unattributed') AS lane,
+      count(*)::int AS hits,
+      COALESCE(sum(avoided_cost_cents), 0)::int AS avoided_cents
+    FROM provider_lookup_log
+    WHERE cached = true
+      AND created_at >= ${since}
+    GROUP BY COALESCE(cache_lane, 'unattributed')
+    ORDER BY hits DESC
+  `);
+  const byLane = (rows.rows as any[]).map((r) => ({
+    lane: String(r.lane),
+    hits: Number(r.hits),
+    avoidedCostCents: Number(r.avoided_cents ?? 0),
+  }));
+  return {
+    windowDays,
+    byLane,
+    totalHits: byLane.reduce((s, l) => s + l.hits, 0),
+    totalAvoidedCostCents: byLane.reduce((s, l) => s + l.avoidedCostCents, 0),
   };
 }

@@ -64,25 +64,130 @@ export type IndustryTrendsResult = IndustryTrends | BenchmarkUnavailable;
 const NO_COHORT_DATA_REASON =
   "Network-wide cohort percentiles are not computed yet — AcreOS only reports benchmarks derived from real scored transactions, and that dataset does not exist yet.";
 
+/**
+ * Privacy floor for cross-org cohorts — mirrors marketNetworkContributor's
+ * MIN_COHORT_SIZE. A benchmark is only reported when at least 5 scored
+ * parcels back it, so no single org's portfolio is inferable from the
+ * aggregate. Cohorts are keyed by parcel identity (the state column added
+ * to land_credit_scores in 0152), never by organization.
+ */
+const MIN_COHORT_SIZE = 5;
+
+/** Linear-interpolated percentile value from an ASCENDING-sorted array. */
+function percentileValue(sortedAsc: number[], p: number): number {
+  if (sortedAsc.length === 0) return 0;
+  const idx = (p / 100) * (sortedAsc.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sortedAsc[lo];
+  const frac = idx - lo;
+  return sortedAsc[lo] + (sortedAsc[hi] - sortedAsc[lo]) * frac;
+}
+
 export class CreditBenchmarkingService {
 
   /**
-   * Industry benchmark scores for a property type in a state.
-   *
-   * Returns insufficient-data until real network-cohort percentiles exist
-   * (Tier-2 item 2A, elevation-blueprint-2026-06-10.md).
+   * Own-network cohort scores for a state: latest LCS per property across
+   * ALL orgs, restricted to rows that carry the state identity column
+   * (pre-0152 rows have NULL state and are honestly excluded). Cohorts are
+   * by state only — property-type slicing would require an org-linked join
+   * to properties, which the privacy model deliberately avoids.
    */
-  getBenchmarks(_propertyType: string, _state: string): BenchmarksResult {
-    return { available: false, reason: NO_COHORT_DATA_REASON };
+  private async cohortScores(state: string): Promise<number[]> {
+    const st = (state || "").trim().toUpperCase();
+    if (!st) return [];
+
+    const rows = await db.select({
+      propertyId: landCreditScores.propertyId,
+      overallScore: landCreditScores.overallScore,
+      createdAt: landCreditScores.createdAt,
+    })
+      .from(landCreditScores)
+      .where(eq(landCreditScores.state, st));
+
+    // Latest score per property — rescoring must not double-count a parcel.
+    const latestByProperty = new Map<number, { score: number; at: number }>();
+    for (const row of rows) {
+      if (typeof row.overallScore !== "number") continue;
+      const at = row.createdAt ? new Date(row.createdAt as any).getTime() : 0;
+      const prev = latestByProperty.get(row.propertyId);
+      if (!prev || at >= prev.at) {
+        latestByProperty.set(row.propertyId, { score: row.overallScore, at });
+      }
+    }
+    return Array.from(latestByProperty.values()).map((v) => v.score).sort((a, b) => a - b);
   }
 
   /**
-   * Compare a land credit score to industry benchmarks.
+   * Network-cohort benchmark scores for a state (Tier 2A).
    *
-   * Returns insufficient-data until real network-cohort percentiles exist.
+   * Computed ONLY from real scored parcels in AcreOS's own network. Returns
+   * insufficient-data when the cohort is smaller than MIN_COHORT_SIZE —
+   * never an invented median.
    */
-  compareToIndustry(_landCreditScore: number, _propertyType: string, _state: string): IndustryComparisonResult {
-    return { available: false, reason: NO_COHORT_DATA_REASON };
+  async getBenchmarks(_propertyType: string, state: string): Promise<BenchmarksResult> {
+    const scores = await this.cohortScores(state);
+    if (scores.length < MIN_COHORT_SIZE) {
+      return {
+        available: false,
+        reason: scores.length === 0
+          ? NO_COHORT_DATA_REASON
+          : `Only ${scores.length} scored parcels in the ${state.toUpperCase()} network cohort — a minimum of ${MIN_COHORT_SIZE} is required before AcreOS reports a benchmark (privacy floor + statistical honesty).`,
+      };
+    }
+    return {
+      available: true,
+      median: Math.round(percentileValue(scores, 50) * 10) / 10,
+      p25: Math.round(percentileValue(scores, 25) * 10) / 10,
+      p75: Math.round(percentileValue(scores, 75) * 10) / 10,
+      source: `AcreOS network cohort — ${state.toUpperCase()} (latest score per parcel)`,
+      sampleSize: scores.length,
+    };
+  }
+
+  /**
+   * Compare a land credit score to the own-network cohort for its state.
+   *
+   * Returns insufficient-data when the cohort is below the privacy floor.
+   */
+  async compareToIndustry(landCreditScore: number, _propertyType: string, state: string): Promise<IndustryComparisonResult> {
+    const scores = await this.cohortScores(state);
+    if (scores.length < MIN_COHORT_SIZE) {
+      return {
+        available: false,
+        reason: scores.length === 0
+          ? NO_COHORT_DATA_REASON
+          : `Only ${scores.length} scored parcels in the ${state.toUpperCase()} network cohort — a minimum of ${MIN_COHORT_SIZE} is required before AcreOS reports a comparison (privacy floor + statistical honesty).`,
+      };
+    }
+
+    const median = percentileValue(scores, 50);
+    const p25 = percentileValue(scores, 25);
+    const p75 = percentileValue(scores, 75);
+    const atOrBelow = scores.filter((s) => s <= landCreditScore).length;
+    const percentile = Math.round((atOrBelow / scores.length) * 100);
+
+    let relativePosition: IndustryComparison["relativePosition"];
+    if (landCreditScore >= p75) relativePosition = "top_quartile";
+    else if (landCreditScore >= median) relativePosition = "above_median";
+    else if (landCreditScore >= p25) relativePosition = "below_median";
+    else relativePosition = "bottom_quartile";
+
+    return {
+      available: true,
+      score: landCreditScore,
+      percentile,
+      vsMedian: Math.round((landCreditScore - median) * 10) / 10,
+      relativePosition,
+      benchmarks: {
+        available: true,
+        median: Math.round(median * 10) / 10,
+        p25: Math.round(p25 * 10) / 10,
+        p75: Math.round(p75 * 10) / 10,
+        source: `AcreOS network cohort — ${state.toUpperCase()} (latest score per parcel)`,
+        sampleSize: scores.length,
+      },
+    };
   }
 
   /**

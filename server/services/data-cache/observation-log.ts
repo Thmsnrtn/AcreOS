@@ -120,6 +120,118 @@ export async function recordObservations(observations: ObservationInput[]): Prom
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Widened provider-fact capture (Tier 2A, elevation blueprint 2026-06-10).
+//
+// Every provider write path used to record only owner/address/tax_amount/acres.
+// The valuation + sale-history facts (assessed_value, market_value, tax_status,
+// sale price/date) are exactly the series the Biography engine and the tenure
+// clock mine — and the sale facts come with their OWN date, so they become
+// DATED observations (observedAt = the sale date), giving the tenure clock
+// decades of depth instead of starting at platform age.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The full set of parcel facts a provider write path may have seen. */
+export interface ProviderParcelFacts {
+  apn: string;
+  state: string;
+  county: string;
+  source: string;
+  organizationId?: number | null;
+  confidence?: number | null;
+  owner?: string | null;
+  ownerAddress?: string | null;
+  siteAddress?: string | null;
+  taxAmount?: unknown;
+  acres?: unknown;
+  assessedValue?: unknown;
+  marketValue?: unknown;
+  taxStatus?: unknown;
+  lastSalePrice?: unknown;
+  /** Date | ISO string | epoch ms. Only a parseable, plausible date emits. */
+  lastSaleDate?: unknown;
+}
+
+/** Tolerant date coercion for sale dates. Null when not confidently datelike. */
+export function coerceSaleDate(value: unknown): Date | null {
+  if (value == null || value === "") return null;
+  let d: Date | null = null;
+  if (value instanceof Date) d = value;
+  else if (typeof value === "number" && value > 1_000_000_000_000) d = new Date(value);
+  else {
+    const s = String(value).trim();
+    const parsed = new Date(s);
+    if (!Number.isNaN(parsed.getTime()) && /\d{4}/.test(s)) d = parsed;
+  }
+  if (!d || Number.isNaN(d.getTime())) return null;
+  const year = d.getUTCFullYear();
+  // Plausibility gate: a sale outside 1900..now+1y is provider noise, and a
+  // wrongly-dated observation poisons the tenure clock worse than no point.
+  if (year < 1900 || d.getTime() > Date.now() + 365 * 24 * 60 * 60 * 1000) return null;
+  return d;
+}
+
+/**
+ * PURE: split a provider's parcel facts into observation batches.
+ *   - one "current" batch (observedAt defaults to now) for present-tense facts
+ *   - one DATED batch (observedAt = the sale date) for sale history, emitted
+ *     only when the sale date is confidently parseable — we never stamp a sale
+ *     with today's date (that would fabricate history).
+ * Field names match the backfill script + Biography engine vocabulary
+ * (sale_price / deed_date).
+ */
+export function buildParcelFactBatches(input: ProviderParcelFacts): ObservationBatchInput[] {
+  const batches: ObservationBatchInput[] = [];
+  const base = {
+    apn: input.apn,
+    state: input.state,
+    county: input.county,
+    source: input.source,
+    organizationId: input.organizationId ?? null,
+    confidence: input.confidence ?? null,
+  };
+
+  const owner = input.owner && input.owner !== "Unknown" ? input.owner : undefined;
+  batches.push({
+    ...base,
+    facts: {
+      owner,
+      owner_address: input.ownerAddress || undefined,
+      site_address: input.siteAddress || undefined,
+      tax_amount: input.taxAmount ?? undefined,
+      acres: input.acres ?? undefined,
+      assessed_value: input.assessedValue ?? undefined,
+      market_value: input.marketValue ?? undefined,
+      tax_status: input.taxStatus ?? undefined,
+    },
+  });
+
+  const saleDate = coerceSaleDate(input.lastSaleDate);
+  if (saleDate) {
+    batches.push({
+      ...base,
+      observedAt: saleDate,
+      facts: {
+        deed_date: saleDate.toISOString().slice(0, 10),
+        sale_price: input.lastSalePrice ?? undefined,
+      },
+    });
+  }
+
+  return batches;
+}
+
+/**
+ * Record the full widened fact set from one provider sighting. Fire-and-forget
+ * (same contract as everything else in this file): never throws, never blocks.
+ */
+export async function recordProviderParcelFacts(input: ProviderParcelFacts): Promise<void> {
+  if (!input.apn || !input.state || !input.county) return;
+  for (const batch of buildParcelFactBatches(input)) {
+    await recordParcelObservations(batch);
+  }
+}
+
 /**
  * Record every non-null fact from a single lookup as separate observation
  * rows. The ergonomic entry point for write paths. Fire-and-forget.

@@ -12644,15 +12644,48 @@ export const providerLookupLog = pgTable("provider_lookup_log", {
   // decision be data-driven: where are free misses concentrated?
   state: text("state"),
   county: text("county"),
+  // Cache telemetry (migration 0152, Tier 2A) — cache hits used to early-return
+  // before any telemetry write, making the hit rate (and the dollars the cache
+  // saves) invisible. cacheLane names which of the four cache lanes served the
+  // hit: "provider_cache" | "provider_cache_stale" | "parcel_snapshots" |
+  // "cached_lookups". avoidedCostCents is the provider cost the hit avoided —
+  // only when the original cost is actually KNOWN (0 otherwise; never invented).
+  cacheLane: text("cache_lane"),
+  avoidedCostCents: integer("avoided_cost_cents").default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("provider_lookup_provider_idx").on(table.providerName, table.createdAt),
   index("provider_lookup_category_idx").on(table.category, table.createdAt),
   index("provider_lookup_created_idx").on(table.createdAt),
   index("provider_lookup_county_idx").on(table.state, table.county, table.category),
+  index("provider_lookup_cache_lane_idx").on(table.cacheLane, table.createdAt),
 ]);
 
 export type ProviderLookupLog = typeof providerLookupLog.$inferSelect;
+
+// Model calibration log (migration 0152, Tier 2A) — persisted snapshots of
+// learned model weights. The LCS calibrator (server/services/lcsCalibrator.ts)
+// kept its EMA-adjusted per-org dimension weights in in-memory Maps, so every
+// deploy erased everything the calibration loop had learned. Each adjusted
+// calibration run appends one row here; the latest row per (org, model) is the
+// live weight set loaded on first use after a deploy. Append-only by
+// convention — history doubles as the calibration audit trail.
+export const modelCalibrationLog = pgTable("model_calibration_log", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  modelName: text("model_name").notNull().default("lcs_calibrator"),
+  weights: jsonb("weights").$type<Record<string, number>>().notNull(),
+  correlations: jsonb("correlations").$type<Record<string, number>>(),
+  sampleSize: integer("sample_size").notNull().default(0),
+  adjusted: boolean("adjusted").notNull().default(false),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("model_calibration_log_org_idx").on(table.organizationId, table.modelName, table.createdAt),
+]);
+
+export type ModelCalibrationLog = typeof modelCalibrationLog.$inferSelect;
+export type InsertModelCalibrationLog = typeof modelCalibrationLog.$inferInsert;
 
 // ── Per-source synthetic-probe health (Tess SRE item 2, migration 0122) ──────
 // The free data sources ARE the product, but a 200 OK from a MapServer root
@@ -13587,15 +13620,12 @@ export const personalBests = pgTable("personal_bests", {
   dealId: integer("deal_id").references(() => deals.id),
 });
 
-// Model calibration log — ML transparency
-export const modelCalibrationLog = pgTable("model_calibration_log", {
-  id: serial("id").primaryKey(),
-  modelType: text("model_type").notNull(), // lcs, radar, intent
-  recordsAnalyzed: integer("records_analyzed").notNull(),
-  correlation: numeric("correlation"),
-  adjustments: jsonb("adjustments").$type<Array<{ dimension: string; oldWeight: number; newWeight: number }>>(),
-  calibratedAt: timestamp("calibrated_at").defaultNow(),
-});
+// Model calibration log: the previous dead definition that lived here
+// (model_type/records_analyzed/correlation/adjustments — flagged "never
+// queried" by the 0013 index audit and never created by migrate.mjs) was
+// removed 2026-06-10 (Tier 2A). The live modelCalibrationLog table — the LCS
+// calibrator's durable weight store — is defined earlier in this file and
+// created by migration 0152.
 
 // Lead emails — inbound/outbound email thread per lead
 export const leadEmails = pgTable("lead_emails", {

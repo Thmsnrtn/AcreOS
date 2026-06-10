@@ -30,8 +30,10 @@ import { creditBenchmarkingService } from "../../server/services/creditBenchmark
 import { landCredit } from "../../server/services/landCredit";
 
 describe("CreditBenchmarkingService — honest absence until real cohort data exists", () => {
-  it("getBenchmarks returns insufficient-data, not invented percentiles", () => {
-    const result = creditBenchmarkingService.getBenchmarks("agricultural", "TX");
+  it("getBenchmarks returns insufficient-data, not invented percentiles", async () => {
+    // Tier 2A: now async (own-network cohort); with no scored rows the
+    // honest-absence contract is unchanged.
+    const result = await creditBenchmarkingService.getBenchmarks("agricultural", "TX");
     expect(result.available).toBe(false);
     if (result.available) throw new Error("unreachable");
     expect(result.reason).toBeTruthy();
@@ -43,17 +45,17 @@ describe("CreditBenchmarkingService — honest absence until real cohort data ex
     expect(result).not.toHaveProperty("sampleSize");
   });
 
-  it("getBenchmarks is insufficient-data for every state/type (no hidden TX/FL/GA tables)", () => {
+  it("getBenchmarks is insufficient-data for every state/type when no cohort exists (no hidden TX/FL/GA tables)", async () => {
     for (const state of ["TX", "FL", "GA", "ZZ"]) {
       for (const type of ["agricultural", "residential", "commercial", "timberland"]) {
-        const result = creditBenchmarkingService.getBenchmarks(type, state);
+        const result = await creditBenchmarkingService.getBenchmarks(type, state);
         expect(result.available).toBe(false);
       }
     }
   });
 
-  it("compareToIndustry returns insufficient-data, not an invented percentile rank", () => {
-    const result = creditBenchmarkingService.compareToIndustry(72, "residential", "FL");
+  it("compareToIndustry returns insufficient-data, not an invented percentile rank", async () => {
+    const result = await creditBenchmarkingService.compareToIndustry(72, "residential", "FL");
     expect(result.available).toBe(false);
     if (result.available) throw new Error("unreachable");
     expect(result.reason).toBeTruthy();
@@ -105,8 +107,10 @@ describe("CreditBenchmarkingService — honest absence until real cohort data ex
 });
 
 describe("landCredit.compareToIndustryBenchmarks — the live /api/land-credit/benchmark handler", () => {
-  it("returns insufficient-data, not hardcoded benchmark averages with state bonuses", () => {
-    const result = landCredit.compareToIndustryBenchmarks(650, "agricultural", "TX");
+  it("returns insufficient-data, not hardcoded benchmark averages with state bonuses", async () => {
+    // Tier 2A: delegates to the cohort engine; with no scored rows the
+    // honest-absence contract is unchanged.
+    const result = await landCredit.compareToIndustryBenchmarks(650, "agricultural", "TX");
     expect(result.available).toBe(false);
     if (result.available) throw new Error("unreachable");
     expect(result.reason).toBeTruthy();
