@@ -146,6 +146,11 @@ export default {
           neg:       "var(--acr-neg)",
           "neg-soft": "var(--acr-neg-soft)",
           glow: "var(--acr-glow)",
+          // Borrower portal — warm public-surface gradient endpoints.
+          // Defined as CSS vars in index.css (light + dark) so the portal's
+          // distinct parchment identity is tokenized, not hardcoded hex.
+          "portal-from": "var(--acr-portal-grad-from)",
+          "portal-to":   "var(--acr-portal-grad-to)",
           "chart-a": "var(--acr-chart-a)",
           "chart-b": "var(--acr-chart-b)",
           "chart-c": "var(--acr-chart-c)",

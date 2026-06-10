@@ -304,6 +304,21 @@
   --acr-heat-hot-soft:  rgba(191,76,46,0.18);
 }
 
+/* ─────────────── Borrower portal — warm public identity ─────────────── */
+/* The borrower portal is a PUBLIC surface — our customers' land buyers see
+   it. It keeps a deliberately warm, parchment-like backdrop distinct from
+   the in-app themes (a borrower never picks a theme). Tokenized here so the
+   identity stays consistent, rides the light/dark switch, and no component
+   className carries hardcoded hex. */
+:root {
+  --acr-portal-grad-from: #F5E6D3;
+  --acr-portal-grad-to:   #E8D4C4;
+}
+.dark {
+  --acr-portal-grad-from: #2D2118;
+  --acr-portal-grad-to:   #1A130D;
+}
+
 /* ─────────────── Homestead · light ─────────────── */
 [data-theme="homestead"]:root {
   /* --acr-* hex tokens (lifted verbatim from acreos/theme.jsx) */
