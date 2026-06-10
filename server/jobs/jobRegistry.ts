@@ -59,8 +59,40 @@ export interface JobRosterEntry {
    * the job is treated as intentionally off (env kill-switch / not-production)
    * and is SKIPPED — never paged as dark. Reads the exact env vars the
    * registration site reads.
+   *
+   * Tier 1E contract: every job that no-ops on missing config MUST declare
+   * its dormancy here (predicate + human-readable disabledReason) — a job
+   * body that silently skips without a roster-level disabledWhen is the
+   * "wired but dark, nobody remembers" failure mode this field exists to
+   * kill. The deadman's config-dormant meta-check (deadmanCheck.ts) lists
+   * every currently-dormant CRITICAL job each sweep so dormancy stays
+   * visible until the config lands.
    */
   disabledWhen?: () => boolean;
+  /**
+   * REQUIRED whenever disabledWhen is present: the human-readable reason the
+   * job is dormant, including which env var / secret unblocks it (and 🔑 when
+   * it's founder-provisioned). Surfaced verbatim by the deadman meta-check.
+   */
+  disabledReason?: string;
+}
+
+/**
+ * Tier 1E — shared config predicate for the backup pipeline (db_backup daily
+ * dump + backup_restore_verify weekly restore proof). Lives here (the only
+ * dependency-free jobs module) so the roster, the job bodies, and unit tests
+ * all evaluate ONE predicate instead of three drifting copies.
+ * 🔑 FOUNDER: fly secrets set DB_BACKUP_S3_BUCKET=... AWS_ACCESS_KEY_ID=...
+ * AWS_SECRET_ACCESS_KEY=... (see server/jobs/dbBackup.ts header).
+ */
+export function backupConfigMissingReason(): string | null {
+  if (!process.env.DB_BACKUP_S3_BUCKET) {
+    return "DB_BACKUP_S3_BUCKET unset — 🔑 founder must provision the backup bucket (fly secrets set DB_BACKUP_S3_BUCKET=...)";
+  }
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    return "AWS credentials unset (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) — 🔑 founder must provision S3 credentials";
+  }
+  return null;
 }
 
 const MIN = 60 * 1000;
@@ -176,8 +208,22 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "index_analyzer", intervalMs: DAY, critical: false },
   { name: "land_credit_score_recalc", intervalMs: DAY, critical: false },
   { name: "feature_engineering", intervalMs: WEEK, critical: false },
-  { name: "db_backup", intervalMs: DAY, critical: true },
-  { name: "course_completion_check", intervalMs: DAY, critical: false },
+  // db_backup's body (runDbBackupIfConfigured) no-ops without the S3 bucket —
+  // declare that dormancy HERE so the deadman skips it cleanly AND the
+  // config-dormant meta-check reports it every sweep instead of letting a
+  // critical job rot invisibly. Same predicate gates backup_restore_verify.
+  { name: "db_backup", intervalMs: DAY, critical: true,
+    disabledWhen: () => backupConfigMissingReason() !== null,
+    disabledReason: "backup destination not configured — 🔑 founder: fly secrets set DB_BACKUP_S3_BUCKET / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY" },
+  // Tier 1E — weekly restore-verification of the latest backup (scratch-DB
+  // restore + crown-jewel count parity + backup_verified proof row).
+  { name: "backup_restore_verify", intervalMs: WEEK, critical: true,
+    disabledWhen: () => backupConfigMissingReason() !== null,
+    disabledReason: "backup bucket/creds not configured — 🔑 founder: fly secrets set DB_BACKUP_S3_BUCKET / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY" },
+  // course_completion_check's body no-ops without SES sender config.
+  { name: "course_completion_check", intervalMs: DAY, critical: false,
+    disabledWhen: () => !process.env.AWS_SES_FROM_EMAIL,
+    disabledReason: "AWS_SES_FROM_EMAIL unset — completion path emails learners; dormant until SES sender configured" },
 
   // ── Per-member continuous audits ───────────────────────────────────────────
   { name: "krieger_mobile_feel_audit", intervalMs: 30 * MIN, critical: false },
@@ -256,4 +302,27 @@ export const JOB_ROSTER: JobRosterEntry[] = [
 /** Roster entries that are NOT currently disabled by their env predicate. */
 export function activeRosterEntries(): JobRosterEntry[] {
   return JOB_ROSTER.filter((e) => !(e.disabledWhen?.() ?? false));
+}
+
+export interface ConfigDormantEntry {
+  name: string;
+  critical: boolean;
+  reason: string;
+}
+
+/**
+ * Tier 1E meta-check input — roster entries whose disabledWhen currently
+ * evaluates true. These are jobs that are WIRED but intentionally dormant
+ * (missing secret / env kill-switch / not-production). The deadman lists
+ * the critical ones every sweep so "dormant" can never decay into
+ * "forgotten". Returns ALL dormant entries; callers filter on `critical`.
+ */
+export function configDormantEntries(): ConfigDormantEntry[] {
+  return JOB_ROSTER
+    .filter((e) => e.disabledWhen?.() ?? false)
+    .map((e) => ({
+      name: e.name,
+      critical: e.critical,
+      reason: e.disabledReason ?? "disabledWhen returned true (no disabledReason declared — add one)",
+    }));
 }

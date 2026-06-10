@@ -72,8 +72,10 @@ jobs:
 
       # Alert on anything that isn't a clean match. Uses the SAME secret +
       # POST shape as deploy.yml's failure notifier (ntfy or Slack/Discord).
-      # No-op when the secret is unset so the job is safe to land before Tom
-      # wires it up.
+      #
+      # Tier 1E (elevation blueprint): when the secret is UNSET this step
+      # FAILS with an explicit error instead of silently printing to a log
+      # nobody reads — a watchdog that can't bark is a lie.
       #
       # 🔑 FOUNDER ACTION: gh secret set DEPLOY_ALERT_WEBHOOK --body "<url>"
       - name: Alert on stale / unreachable release
@@ -93,8 +95,8 @@ jobs:
           MSG="$HEADLINE. expected=${EXPECTED:0:7} deployed=${DEPLOYED} — https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           echo "$MSG"
           if [ -z "$DEPLOY_ALERT_WEBHOOK" ]; then
-            echo "DEPLOY_ALERT_WEBHOOK unset — alert printed only, not sent."
-            exit 0
+            echo "::error title=DEPLOY_ALERT_WEBHOOK secret is NOT set::The release watchdog detected a problem ($STATUS) and could NOT alert anyone — the alert path is unwired. 🔑 Founder: gh secret set DEPLOY_ALERT_WEBHOOK --body \"https://ntfy.sh/<private-topic>\" (or a Slack/Discord incoming-webhook URL)."
+            exit 1
           fi
           curl --fail --silent --show-error --max-time 15 \
             -H "Content-Type: application/json" \
@@ -104,3 +106,20 @@ jobs:
             -d "$(jq -n --arg t "$MSG" '{text:$t, message:$t}')" \
             "$DEPLOY_ALERT_WEBHOOK" \
             || echo "Watchdog webhook POST failed — investigate."
+
+      # Tier 1E — alert-spine configuration gate, evaluated on EVERY hourly
+      # run (even when the release matches). The blueprint's rule: workflows
+      # FAIL, not silently skip, when DEPLOY_ALERT_WEBHOOK is unset. The
+      # watchdog's entire purpose is delivering an out-of-band alert; running
+      # green with an unwired alert path is a false sense of safety.
+      - name: Alert spine configured (DEPLOY_ALERT_WEBHOOK)
+        if: always()
+        env:
+          DEPLOY_ALERT_WEBHOOK: ${{ secrets.DEPLOY_ALERT_WEBHOOK }}
+        run: |
+          if [ -z "$DEPLOY_ALERT_WEBHOOK" ]; then
+            echo "::error title=DEPLOY_ALERT_WEBHOOK secret is NOT set::The release watchdog cannot deliver alerts — it is decorative until this secret exists. 🔑 Founder: gh secret set DEPLOY_ALERT_WEBHOOK --body \"https://ntfy.sh/<private-topic>\" (or a Slack/Discord incoming-webhook URL). This gate fails every run until then (Tier 1E: fail loudly, never silently skip)."
+            exit 1
+          fi
+          # Verify by presence/length only — NEVER print the secret value.
+          echo "DEPLOY_ALERT_WEBHOOK is set (length ${#DEPLOY_ALERT_WEBHOOK}). Alert spine wired. ✓"

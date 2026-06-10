@@ -14,14 +14,15 @@
  * Usage: imported by server/index.ts at startup to register the cron job.
  */
 
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import fs from "fs";
 import os from "os";
 import { log } from "../index";
+import { pgEnvFromDatabaseUrl } from "../utils/pgEnv";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface BackupResult {
   success: boolean;
@@ -35,7 +36,17 @@ export interface BackupResult {
 async function runPgDump(outputPath: string): Promise<void> {
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) throw new Error("DATABASE_URL not set");
-  await execAsync(`pg_dump --no-owner --no-acl "${dbUrl}" -f "${outputPath}"`);
+  // execFile (no shell) + credentials via PG* env — never on the argv,
+  // which any local process could read with `ps`.
+  await execFileAsync(
+    "pg_dump",
+    ["--no-owner", "--no-acl", "-f", outputPath],
+    {
+      env: { ...process.env, ...pgEnvFromDatabaseUrl(dbUrl) },
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: 30 * 60 * 1000,
+    },
+  );
 }
 
 async function uploadToS3(filePath: string, key: string): Promise<string> {

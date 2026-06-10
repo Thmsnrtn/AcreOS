@@ -212,7 +212,12 @@ export function registerIntegrationRoutes(app: Express): void {
         }
       } else if (provider === 'regrid') {
         try {
-          const testResponse = await fetch(`https://app.regrid.com/api/v2/parcels/address?query=1600%20Pennsylvania%20Ave%20NW,%20Washington,%20DC&token=${credentials.apiKey}&limit=1`);
+          // Tier 1E credential hygiene: key in the Authorization header
+          // (Regrid supports Bearer auth), never in the URL.
+          const testResponse = await fetch(
+            `https://app.regrid.com/api/v2/parcels/address?query=1600%20Pennsylvania%20Ave%20NW,%20Washington,%20DC&limit=1`,
+            { headers: { Authorization: `Bearer ${credentials.apiKey}` } },
+          );
           if (testResponse.status === 401 || testResponse.status === 403) {
             testResult = { success: false, message: 'Invalid Regrid API key' };
           } else {

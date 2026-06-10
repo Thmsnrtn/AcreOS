@@ -6867,6 +6867,29 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "pax_drafts_org_idx" ON "pax_drafts" ("organization_id")`,
   `CREATE INDEX IF NOT EXISTS "pax_drafts_lookup_idx"
      ON "pax_drafts" ("organization_id", "lead_id", "channel", "status")`,
+
+  // ── 0153 — Tier 1E (elevation blueprint) — backup restore-verification ──
+  //    ledger. Mirrors migrations/0153_backup_verified.sql.
+  // A backup that has never been restored is a hope, not a backup. The weekly
+  // backup_restore_verify job (server/jobs/backupRestoreVerify.ts) restores
+  // the latest S3 pg_dump into a scratch database, asserts crown-jewel
+  // row-count parity vs production within tolerance, drops the scratch DB,
+  // and writes one row here as the durable proof trail the deadman/founder
+  // surfaces can read. status: 'verified' | 'failed' | 'skipped_config'.
+  // Idempotent (CREATE TABLE/INDEX IF NOT EXISTS); self-contained block.
+  `CREATE TABLE IF NOT EXISTS "backup_verified" (
+     "id" serial PRIMARY KEY,
+     "backup_key" text NOT NULL,
+     "backup_size_bytes" bigint,
+     "status" text NOT NULL,
+     "tables_checked" jsonb,
+     "max_drift_pct" real,
+     "error" text,
+     "duration_ms" integer,
+     "verified_at" timestamp DEFAULT now() NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "backup_verified_at_idx"
+     ON "backup_verified" ("verified_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

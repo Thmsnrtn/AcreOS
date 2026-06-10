@@ -48,7 +48,7 @@ import { jobHealthLogs } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { notifyOnCall } from "../services/oncall";
 import { recordFinding } from "../services/audit/domainAudit";
-import { activeRosterEntries } from "./jobRegistry";
+import { activeRosterEntries, configDormantEntries, type ConfigDormantEntry } from "./jobRegistry";
 
 // Process start time — used to avoid false-paging a job that has simply never
 // had a chance to run yet on a freshly-booted worker.
@@ -64,6 +64,8 @@ const DETECTOR_ID = "job_deadman";
 export interface DeadmanResult {
   checked: number;
   dark: Array<{ name: string; critical: boolean; lastSeenMs: number | null; thresholdMs: number }>;
+  /** Tier 1E meta-check: roster jobs currently dormant on missing config. */
+  configDormant: ConfigDormantEntry[];
 }
 
 /**
@@ -171,5 +173,46 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
     });
   }
 
-  return { checked: entries.length, dark };
+  // ── Tier 1E meta-check: config-dormant jobs must stay VISIBLE ─────────────
+  // A disabledWhen predicate keeps the deadman from false-paging, but it also
+  // creates the opposite failure mode: a critical job sits "intentionally"
+  // dormant on a missing secret and everyone forgets it exists. Every sweep,
+  // list the dormant roster entries; record a durable, deduped finding for
+  // each CRITICAL one (warn severity — it's a known gap, not an outage) so
+  // the founder surfaces keep showing it until the config lands.
+  const configDormant = configDormantEntries();
+  const dormantCritical = configDormant.filter((e) => e.critical);
+  if (configDormant.length > 0) {
+    logger.warn(
+      `[deadman] ${configDormant.length} roster job(s) config-dormant (${dormantCritical.length} critical): ` +
+        configDormant.map((e) => `${e.name}${e.critical ? " [CRITICAL]" : ""}`).join(", "),
+      { metadata: { configDormant } },
+    );
+  }
+  for (const entry of dormantCritical) {
+    try {
+      await recordFinding({
+        domain: "reliability",
+        detector: "job_config_dormant",
+        severity: "warn",
+        title: `Critical job config-dormant: ${entry.name}`,
+        detail:
+          `Critical scheduled job "${entry.name}" is wired but dormant on missing configuration. ` +
+          `Reason: ${entry.reason}. It will activate the moment the config lands — until then this ` +
+          `finding re-fires every deadman sweep so the gap cannot be forgotten.`,
+        citedReason:
+          "Tier 1E: config-dormant critical jobs must be listed every sweep, never silently skipped.",
+        dedupeKey: `config-dormant:${entry.name}`,
+        subjectRef: entry.name,
+        metadata: { reason: entry.reason },
+      });
+    } catch (err) {
+      logger.error(
+        `[deadman] recordFinding (config-dormant) failed for ${entry.name}`,
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
+
+  return { checked: entries.length, dark, configDormant };
 }

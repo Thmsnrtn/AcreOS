@@ -3080,6 +3080,36 @@ function startDbBackupJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Tier 1E — backup RESTORE verification (weekly, Sun ~05:00 UTC) ─────────
+// A backup that has never been restored is a hope, not a backup. Downloads
+// the latest S3 dump, restores it into a scratch DB, asserts crown-jewel
+// row-count parity vs live production within tolerance, writes a
+// backup_verified proof row, drops the scratch DB. Config-dormant without
+// DB_BACKUP_S3_BUCKET + AWS creds — the SAME predicate backs the roster's
+// disabledWhen, so the deadman's config-dormant meta-check keeps the
+// dormancy visible instead of silently forgotten. Lock TTL 2h covers a slow
+// download + restore. Never crashes the scheduler.
+function startBackupRestoreVerifyJob() {
+  log('Registering backup restore-verification (weekly Sun ~05:00 UTC, config-gated on DB_BACKUP_S3_BUCKET + AWS creds)', 'backupRestoreVerify');
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCDay() !== 0 || now.getUTCHours() !== 5 || now.getUTCMinutes() >= 5) {
+      return;
+    }
+    void withJobLock('backup_restore_verify', 2 * 60 * 60, async () => {
+      const { runBackupRestoreVerification } = await import('./backupRestoreVerify');
+      const result = await runBackupRestoreVerification();
+      if (result.status === 'failed') {
+        // Surface through the job-failure machinery (job_health_logs row +
+        // event-mesh jobFailed) — a failed restore-verify must be LOUD.
+        throw new Error(`backup restore-verification FAILED: ${result.error ?? 'crown-jewel parity out of tolerance'}`);
+      }
+    }).catch((err) => {
+      log(`Backup restore-verification run failed: ${err}`, 'backupRestoreVerify');
+    });
+  }, 5 * 60 * 1000);
+}
+
 // ── Tess #5 — course-completion check (daily ~08:00 UTC, config-gated) ──────
 // Wired but DORMANT until email creds land: runCourseCompletionCheck() checks
 // AWS_SES_FROM_EMAIL at run time and logs a structured INFO skip + no-ops if
@@ -3950,6 +3980,10 @@ export async function runScheduledJobs(): Promise<void> {
   startFeatureEngineeringJob();      // weekly Sun ~02:30 UTC
   startDbBackupJob();                // daily ~07:00 UTC (dormant w/o DB_BACKUP_S3_BUCKET)
   startCourseCompletionCheckJob();   // daily ~08:00 UTC (dormant w/o AWS_SES_FROM_EMAIL)
+  // Tier 1E — weekly restore-verification of the latest backup (Sun ~05:00
+  // UTC; dormant w/o DB_BACKUP_S3_BUCKET + AWS creds — visible via the
+  // deadman's config-dormant meta-check, never silently forgotten).
+  startBackupRestoreVerifyJob();
   // Note: fairLendingAudit (monthly) is ALREADY registered below via
   // scheduleSelfRescheduling("fair_lending_audit") — not re-wired here.
 
