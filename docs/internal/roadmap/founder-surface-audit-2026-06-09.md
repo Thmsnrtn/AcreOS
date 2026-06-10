@@ -1,0 +1,32 @@
+# Founder-Surface A+ Audit — 2026-06-09
+
+First full founder-side audit at the same A+ bar as the customer side. Method: built pgvector for local PG@15, stood up an isolated founder-authed local server (`FOUNDER_USER_IDS=e2e_test_user`, `npm run start`), captured the canonical founder doors (Today/Money/Customers/Team/Build/Command) desktop + mobile via Playwright MCP, then ran 6 team lenses (Krieger, Iris, Soren, Maren, Lena+Rafe, Beatrice) against the real renders + code. See `reference_founder_local_audit_boot` memory for the boot recipe.
+
+## SHIPPED — "Founder Wave" (commits 987db0e9 · f90f8afd · 3d4485bf · 390edf9f, deployed)
+- **Terminology (Soren, P0, was LIVE on prod public `<title>`):** `script/prerender.ts` overwrote the corrected `client/index.html` at build time with "Property Investors" on `/`, `/pricing`, `/glossary`. Wave 2's sweep stopped one layer short. Fixed prerender + `atlas-persona.ts`. Verified: prod title now "Land Investors".
+- **Founder mobile overlays (Krieger, P0):** customer `FloatingActionButton` leaked onto `/founder/*` (stacked on the Solene FAB) — now excluded; PWA install card overlapped the founder bottom nav — now offset above it. Verified.
+- **Founder chat 400/404 (Iris):** client fired requests with bogus `threadId="default"` → 400 on messages, 404 on stream (GET vs POST-only). Fixed client thread-resolution. Verified gone.
+- **asks-500 schema gap (Iris):** `shared/schema.ts` didn't re-export `schema/solene-founder-collab.ts`, so `drizzle-kit push` never created `solene_founder_asks` → 500 on db:push-built DBs. Added the re-export. NOTE: this was a **local-only** artifact — prod creates the table via `scripts/migrate.mjs:5304`, so prod `/api/founder/asks` already worked.
+- **Money envelope (Lena M1/M2):** server `green/amber/red` tone vs client `ok/warn/over` mismatch made the LIVE AI-ops envelope render as a gray "Phase 0" stub; client also discarded the server label. Fixed tone mapping + render server label. Verified: now "AI ops (Solene + Pax)" + green "Healthy".
+- **Customers funnel (Rafe C1):** funnel counted the founder's own org (inflated paying/trial/churn/signups). Added `isFounder=false` exclusion to all aggregates.
+- **Gating (Beatrice #1, #3):** `/api/founder/readiness` used in-handler 403 → switched to `requireFounder` (404, isFounderIdentity); `system-api-keys` insert branch returned the raw key → now masked.
+- **Founder hero copy (Iris):** "Check worker logs." dev string in MorningPulseBanner → founder-facing copy.
+
+## SHIPPED — "Founder IA + Gating Wave" (commits 10adf2bc · 08e1f574 · 5cca49bc · 6f7a08e1 · c28f19f9, deployed)
+- **Deep-dive reachability (Maren P0):** new `/founder/all-tools` page (57 deep-dives grouped by area, verified rendering incl. Life-Cockpit/Cost/Unit-economics/Recourse), an "All tools" sidebar entry, and the command palette now derives from the full catalog (⌘K reaches every founder surface). Retired the dead `founder/index.tsx` Pulse home (Today is now sole `/founder`); `/founder/todo`→`/founder/today` redirect. No links lost.
+- **Today cold-start (Maren):** Decisions-Waiting wired to the real `/api/founder/intelligence/decisions-inbox` (verified rendering urgency-badged items, no longer a stub); cold-start empty states given agentive CTAs ("Dispatch work", "Ask Solene"); removed `_noOp` escape hatches.
+- **Money/Customers honesty + links (Lena/Rafe):** LTV:CAC driven from API; runway 120mo cap → "10y+ (cash-positive)"; "modeled" badge gated on cash basis; gross-margin floor only when data present; trial tile relabeled; churn re-keyed to `subscription_events.created_at` (no more `updatedAt` re-dating); persona null → "unknown"; added "Go deeper" links from Money→Cost/Unit-econ and Customers→Health/Recourse/Appeals.
+- **Gating convergence (Beatrice #2, full scope):** ~10 founder route files defined their own local `requireFounder` returning 403 (and two were email-only). Converged all to `Errors.notFound` (404 hide-existence) + `isFounderIdentity` (email OR userId). `admin-recovery` intentionally left at 403 (test-pinned contract). No gate loosened or un-gated.
+
+## QUEUED — follow-ups (not bugs / larger scope)
+- **forwardRef console warning (low, unchanged):** see below — benign, app-wide nav pattern, tracked not chased.
+- **Dead files cleanup:** `founder/index.tsx` (Pulse) + `founder-todo.tsx` are now un-routed/un-imported but still on disk — delete in a later cleanup.
+- **forwardRef console warning (low):** `TooltipTrigger asChild → wouter Link` (app-wide nav pattern, e.g. layout-sidebar.tsx:2105/2142). The failing ref is only tooltip-positioning; Radix still spreads event props so tooltips work. Benign dev-mode warning; fixing the app-wide primitive risks regression. Track, don't chase.
+- **Founder IA (Maren, P0-product):** ~70 deep-dive routes (incl. `/founder/life-cockpit` = founder personal taxes, `/founder/cost`, `/unit-economics`, `/recourse`) are reachable only via Solene chat / command palette / URL — `FOUNDER_NAV_DEEP_DIVES` is categorized but rendered nowhere in the default UI. Render them under each door (or an "All tools" drawer) and map categories→doors. Also: retire dead `founder/index.tsx` Pulse home; redirect `/founder/todo`→`/founder/today`.
+- **Cold-start empty states (Maren):** 24 founder sites use the `cta={{label:"", _noOp:true}}` escape hatch → five doors of CTA-less "Nothing yet" reads as "broken." Give Today-door empties real CTAs (Ask Solene / Dispatch work).
+- **Decisions Waiting stub (Maren):** `DecisionsWaitingSection` in today.tsx is hard-coded empty — wire to real escalations.
+- **Money/Customers medium items (Lena M3-M6, Rafe C3-C6):** LTV:CAC hardcoded JSX; runway 120mo cap shown as precise; trial definition loose; churn keyed on `updatedAt`; persona defaults to land_investor on null.
+- **Gating convergence (Beatrice #2, low):** ~7 founder/admin endpoints return 403 (leaks existence) instead of the `requireFounder` 404 standard, and gate on email-only `org.isFounder` (miss userId path). Secure but inconsistent — converge on `requireFounder`.
+
+## Grades (founder surfaces, pre-wave → post-wave intent)
+Today B− · Team C+ · Customers C/C+ · Money B− · Build B · Command B+ · Security A− · Responsive desktop A / mobile C (pre-fix). The Founder Wave closes the correctness/honesty/terminology/mobile-overlay defects; the IA + cold-start work is what stands between "solid" and A+ on the founder side.

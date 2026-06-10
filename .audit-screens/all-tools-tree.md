@@ -1,0 +1,316 @@
+- main "All tools" [ref=e127]:
+  - generic [ref=e128]:
+    - generic [ref=e130]:
+      - generic [ref=e131]: Founder · all tools
+      - heading "All tools 57 deep-dives across 7 areas." [level=1] [ref=e132]:
+        - text: All tools
+        - generic [ref=e133]: 57 deep-dives across 7 areas.
+    - generic [ref=e135]:
+      - paragraph [ref=e136]: Every founder surface beyond the five primary doors, grouped by area. The doors stay clean for the daily driver; this is where the rest lives. You can also reach any of these from the command palette (⌘K) or by asking Solene.
+      - generic [ref=e137]:
+        - generic [ref=e139]:
+          - generic [ref=e141]: Strategy9
+          - list "Strategy tools" [ref=e143]:
+            - listitem [ref=e144]:
+              - link "Command cockpit" [ref=e145] [cursor=pointer]:
+                - /url: /founder/command
+                - img [ref=e146]
+                - generic [ref=e147]: Command cockpit
+            - listitem [ref=e148]:
+              - link "Bridge" [ref=e149] [cursor=pointer]:
+                - /url: /founder/bridge
+                - img [ref=e150]
+                - generic [ref=e153]: Bridge
+            - listitem [ref=e154]:
+              - link "Steering" [ref=e155] [cursor=pointer]:
+                - /url: /founder/steering
+                - img [ref=e156]
+                - generic [ref=e159]: Steering
+            - listitem [ref=e160]:
+              - link "Decisions" [ref=e161] [cursor=pointer]:
+                - /url: /founder/decisions
+                - img [ref=e162]
+                - generic [ref=e164]: Decisions
+            - listitem [ref=e165]:
+              - link "Strategy" [ref=e166] [cursor=pointer]:
+                - /url: /founder/strategy
+                - img [ref=e167]
+                - generic [ref=e169]: Strategy
+            - listitem [ref=e170]:
+              - link "System trends" [ref=e171] [cursor=pointer]:
+                - /url: /founder/trends
+                - img [ref=e172]
+                - generic [ref=e175]: System trends
+            - listitem [ref=e176]:
+              - link "Monthly letter" [ref=e177] [cursor=pointer]:
+                - /url: /founder/letter
+                - img [ref=e178]
+                - generic [ref=e181]: Monthly letter
+            - listitem [ref=e182]:
+              - link "Expansion radar" [ref=e183] [cursor=pointer]:
+                - /url: /founder/expansion
+                - img [ref=e184]
+                - generic [ref=e188]: Expansion radar
+            - listitem [ref=e189]:
+              - link "Action preview" [ref=e190] [cursor=pointer]:
+                - /url: /founder/preview
+                - img [ref=e191]
+                - generic [ref=e194]: Action preview
+        - generic [ref=e196]:
+          - generic [ref=e198]: Money3
+          - list "Money tools" [ref=e200]:
+            - listitem [ref=e201]:
+              - link "Cost" [ref=e202] [cursor=pointer]:
+                - /url: /founder/cost
+                - img [ref=e203]
+                - generic [ref=e205]: Cost
+            - listitem [ref=e206]:
+              - link "Unit economics" [ref=e207] [cursor=pointer]:
+                - /url: /founder/unit-economics
+                - img [ref=e208]
+                - generic [ref=e211]: Unit economics
+            - listitem [ref=e212]:
+              - link "Life-Cockpit" [ref=e213] [cursor=pointer]:
+                - /url: /founder/life-cockpit
+                - img [ref=e214]
+                - generic [ref=e216]: Life-Cockpit
+        - generic [ref=e218]:
+          - generic [ref=e220]: Customers8
+          - list "Customers tools" [ref=e222]:
+            - listitem [ref=e223]:
+              - link "Customer health" [ref=e224] [cursor=pointer]:
+                - /url: /founder/customers/health
+                - img [ref=e225]
+                - generic [ref=e227]: Customer health
+            - listitem [ref=e228]:
+              - link "Onboarding funnel" [ref=e229] [cursor=pointer]:
+                - /url: /founder/onboarding-funnel
+                - img [ref=e230]
+                - generic [ref=e232]: Onboarding funnel
+            - listitem [ref=e233]:
+              - link "Feedback inbox" [ref=e234] [cursor=pointer]:
+                - /url: /founder/feedback
+                - img [ref=e235]
+                - generic [ref=e238]: Feedback inbox
+            - listitem [ref=e239]:
+              - link "Founder feed" [ref=e240] [cursor=pointer]:
+                - /url: /founder/feed
+                - img [ref=e241]
+                - generic [ref=e243]: Founder feed
+            - listitem [ref=e244]:
+              - link "Growth campaigns" [ref=e245] [cursor=pointer]:
+                - /url: /founder/growth/campaigns
+                - img [ref=e246]
+                - generic [ref=e249]: Growth campaigns
+            - listitem [ref=e250]:
+              - link "CMO" [ref=e251] [cursor=pointer]:
+                - /url: /founder/cmo
+                - img [ref=e252]
+                - generic [ref=e255]: CMO
+            - listitem [ref=e256]:
+              - link "Customer recourse" [ref=e257] [cursor=pointer]:
+                - /url: /founder/recourse
+                - img [ref=e258]
+                - generic [ref=e265]: Customer recourse
+            - listitem [ref=e266]:
+              - link "AI appeals" [ref=e267] [cursor=pointer]:
+                - /url: /founder/appeals
+                - img [ref=e268]
+                - generic [ref=e272]: AI appeals
+        - generic [ref=e274]:
+          - generic [ref=e276]: AI & agents11
+          - list "AI & agents tools" [ref=e278]:
+            - listitem [ref=e279]:
+              - link "Pax traces" [ref=e280] [cursor=pointer]:
+                - /url: /founder/pax-traces
+                - img [ref=e281]
+                - generic [ref=e286]: Pax traces
+            - listitem [ref=e287]:
+              - link "Pax calibration" [ref=e288] [cursor=pointer]:
+                - /url: /founder/pax-calibration
+                - img [ref=e289]
+                - generic [ref=e293]: Pax calibration
+            - listitem [ref=e294]:
+              - link "Agent traces" [ref=e295] [cursor=pointer]:
+                - /url: /founder/traces
+                - img [ref=e296]
+                - generic [ref=e301]: Agent traces
+            - listitem [ref=e302]:
+              - link "Agent queue" [ref=e303] [cursor=pointer]:
+                - /url: /founder/agent-queue
+                - img [ref=e304]
+                - generic [ref=e307]: Agent queue
+            - listitem [ref=e308]:
+              - link "Dispatches" [ref=e309] [cursor=pointer]:
+                - /url: /founder/dispatches
+                - img [ref=e310]
+                - generic [ref=e314]: Dispatches
+            - listitem [ref=e315]:
+              - link "Agent asks" [ref=e316] [cursor=pointer]:
+                - /url: /founder/asks
+                - img [ref=e317]
+                - generic [ref=e320]: Agent asks
+            - listitem [ref=e321]:
+              - link "Prompt evolutions" [ref=e322] [cursor=pointer]:
+                - /url: /founder/prompt-evolutions
+                - img [ref=e323]
+                - generic [ref=e331]: Prompt evolutions
+            - listitem [ref=e332]:
+              - link "Prompt history" [ref=e333] [cursor=pointer]:
+                - /url: /founder/prompt-history
+                - img [ref=e334]
+                - generic [ref=e338]: Prompt history
+            - listitem [ref=e339]:
+              - link "Memory browser" [ref=e340] [cursor=pointer]:
+                - /url: /memory-browser
+                - img [ref=e341]
+                - generic [ref=e345]: Memory browser
+            - listitem [ref=e346]:
+              - link "Agent performance" [ref=e347] [cursor=pointer]:
+                - /url: /agent-performance
+                - img [ref=e348]
+                - generic [ref=e350]: Agent performance
+            - listitem [ref=e351]:
+              - link "Agent collaboration" [ref=e352] [cursor=pointer]:
+                - /url: /agent-collaboration
+                - img [ref=e353]
+                - generic [ref=e356]: Agent collaboration
+        - generic [ref=e358]:
+          - generic [ref=e360]: Engineering7
+          - list "Engineering tools" [ref=e362]:
+            - listitem [ref=e363]:
+              - link "API telemetry" [ref=e364] [cursor=pointer]:
+                - /url: /founder/telemetry
+                - img [ref=e365]
+                - generic [ref=e367]: API telemetry
+            - listitem [ref=e368]:
+              - link "AI costs" [ref=e369] [cursor=pointer]:
+                - /url: /founder/ai-costs
+                - img [ref=e370]
+                - generic [ref=e372]: AI costs
+            - listitem [ref=e373]:
+              - link "Sentry cost" [ref=e374] [cursor=pointer]:
+                - /url: /founder/observability-cost
+                - img [ref=e375]
+                - generic [ref=e378]: Sentry cost
+            - listitem [ref=e379]:
+              - link "Cost optimizer" [ref=e380] [cursor=pointer]:
+                - /url: /founder/cost-optimizer
+                - img [ref=e381]
+                - generic [ref=e384]: Cost optimizer
+            - listitem [ref=e385]:
+              - link "Providers" [ref=e386] [cursor=pointer]:
+                - /url: /founder/providers
+                - img [ref=e387]
+                - generic [ref=e391]: Providers
+            - listitem [ref=e392]:
+              - link "Job health" [ref=e393] [cursor=pointer]:
+                - /url: /job-health
+                - img [ref=e394]
+                - generic [ref=e396]: Job health
+            - listitem [ref=e397]:
+              - link "Event log" [ref=e398] [cursor=pointer]:
+                - /url: /event-log
+                - img [ref=e399]
+                - generic [ref=e404]: Event log
+        - generic [ref=e406]:
+          - generic [ref=e408]: Ops & admin11
+          - list "Ops & admin tools" [ref=e410]:
+            - listitem [ref=e411]:
+              - link "Studio" [ref=e412] [cursor=pointer]:
+                - /url: /founder/studio
+                - img [ref=e413]
+                - generic [ref=e414]: Studio
+            - listitem [ref=e415]:
+              - link "Inspector" [ref=e416] [cursor=pointer]:
+                - /url: /founder/inspector/audit
+                - img [ref=e417]
+                - generic [ref=e420]: Inspector
+            - listitem [ref=e421]:
+              - link "System keys" [ref=e422] [cursor=pointer]:
+                - /url: /founder/keys
+                - img [ref=e423]
+                - generic [ref=e427]: System keys
+            - listitem [ref=e428]:
+              - link "Launch readiness" [ref=e429] [cursor=pointer]:
+                - /url: /founder/readiness
+                - img [ref=e430]
+                - generic [ref=e433]: Launch readiness
+            - listitem [ref=e434]:
+              - link "Legal readiness" [ref=e435] [cursor=pointer]:
+                - /url: /founder/legal-readiness
+                - img [ref=e436]
+                - generic [ref=e440]: Legal readiness
+            - listitem [ref=e441]:
+              - link "Founder settings" [ref=e442] [cursor=pointer]:
+                - /url: /founder/settings
+                - img [ref=e443]
+                - generic [ref=e446]: Founder settings
+            - listitem [ref=e447]:
+              - link "Recovery console" [ref=e448] [cursor=pointer]:
+                - /url: /founder/recovery-console
+                - img [ref=e449]
+                - generic [ref=e456]: Recovery console
+            - listitem [ref=e457]:
+              - link "Onboarding" [ref=e458] [cursor=pointer]:
+                - /url: /founder/onboarding
+                - img [ref=e459]
+                - generic [ref=e464]: Onboarding
+            - listitem [ref=e465]:
+              - link "Experiments" [ref=e466] [cursor=pointer]:
+                - /url: /founder/experiments
+                - img [ref=e467]
+                - generic [ref=e469]: Experiments
+            - listitem [ref=e470]:
+              - link "Capability queue" [ref=e471] [cursor=pointer]:
+                - /url: /founder/tools
+                - img [ref=e472]
+                - generic [ref=e474]: Capability queue
+            - listitem [ref=e475]:
+              - link "Trust graduation" [ref=e476] [cursor=pointer]:
+                - /url: /founder/trust-graduation
+                - img [ref=e477]
+                - generic [ref=e479]: Trust graduation
+        - generic [ref=e481]:
+          - generic [ref=e483]: Experimental8
+          - list "Experimental tools" [ref=e485]:
+            - listitem [ref=e486]:
+              - link "Sovereign dashboard" [ref=e487] [cursor=pointer]:
+                - /url: /sovereign
+                - img [ref=e488]
+                - generic [ref=e490]: Sovereign dashboard
+            - listitem [ref=e491]:
+              - link "Sovereign v13" [ref=e492] [cursor=pointer]:
+                - /url: /founder/v13
+                - img [ref=e493]
+                - generic [ref=e496]: Sovereign v13
+            - listitem [ref=e497]:
+              - link "Board of directors" [ref=e498] [cursor=pointer]:
+                - /url: /board-of-directors
+                - img [ref=e499]
+                - generic [ref=e501]: Board of directors
+            - listitem [ref=e502]:
+              - link "Conscious organization" [ref=e503] [cursor=pointer]:
+                - /url: /conscious-organization
+                - img [ref=e504]
+                - generic [ref=e512]: Conscious organization
+            - listitem [ref=e513]:
+              - link "Anticipatory enterprise" [ref=e514] [cursor=pointer]:
+                - /url: /anticipatory-enterprise
+                - img [ref=e515]
+                - generic [ref=e518]: Anticipatory enterprise
+            - listitem [ref=e519]:
+              - link "Data moat" [ref=e520] [cursor=pointer]:
+                - /url: /data-moat
+                - img [ref=e521]
+                - generic [ref=e525]: Data moat
+            - listitem [ref=e526]:
+              - link "Reseller program" [ref=e527] [cursor=pointer]:
+                - /url: /reseller
+                - img [ref=e528]
+                - generic [ref=e532]: Reseller program
+            - listitem [ref=e533]:
+              - link "Executive dashboard" [ref=e534] [cursor=pointer]:
+                - /url: /executive-dashboard
+                - img [ref=e535]
+                - generic [ref=e537]: Executive dashboard

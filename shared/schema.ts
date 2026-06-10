@@ -2556,6 +2556,28 @@ export const paxSends = pgTable("pax_sends", {
 ]);
 export type PaxSend = typeof paxSends.$inferSelect;
 
+// 2026-06-10 (Tier 1E, elevation blueprint): backup restore-verification
+// ledger. A backup that has never been restored is a hope, not a backup. The
+// weekly backup_restore_verify job (server/jobs/backupRestoreVerify.ts)
+// restores the latest S3 pg_dump into a scratch database, asserts crown-jewel
+// row-count parity vs production within tolerance, drops the scratch DB, and
+// writes one row here — the durable proof the deadman/founder surfaces can
+// read to answer "when did a restore last actually work?".
+export const backupVerified = pgTable("backup_verified", {
+  id: serial("id").primaryKey(),
+  backupKey: text("backup_key").notNull(), // s3 object key of the dump verified
+  backupSizeBytes: bigint("backup_size_bytes", { mode: "number" }),
+  status: text("status").notNull(), // "verified" | "failed" | "skipped_config"
+  tablesChecked: jsonb("tables_checked"), // [{ table, prodCount, scratchCount, driftPct, ok }]
+  maxDriftPct: real("max_drift_pct"),
+  error: text("error"),
+  durationMs: integer("duration_ms"),
+  verifiedAt: timestamp("verified_at").defaultNow().notNull(),
+}, (t) => [
+  index("backup_verified_at_idx").on(t.verifiedAt),
+]);
+export type BackupVerified = typeof backupVerified.$inferSelect;
+
 export const aiConversations = pgTable("ai_conversations", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").notNull(),

@@ -268,9 +268,15 @@ export async function getComparableProperties(
 
   try {
     const radiusMeters = radiusMiles * 1609.34;
-    const url = `https://app.regrid.com/api/v2/parcels/radius?lat=${lat}&lon=${lng}&radius=${Math.min(radiusMeters, 8046)}&token=${token}&return_geometry=false&limit=${filters.maxResults || 50}`;
-    
-    const response = await fetch(url);
+    // Tier 1E credential hygiene: the API key travels in the Authorization
+    // header (Regrid supports Bearer auth — same scheme as
+    // regrid-provider.ts), never in the URL where it would leak into logs,
+    // caches, and proxy access lines.
+    const url = `https://app.regrid.com/api/v2/parcels/radius?lat=${lat}&lon=${lng}&radius=${Math.min(radiusMeters, 8046)}&return_geometry=false&limit=${filters.maxResults || 50}`;
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     
     if (!response.ok) {
       if (response.status === 404) {

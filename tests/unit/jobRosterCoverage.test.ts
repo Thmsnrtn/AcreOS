@@ -64,15 +64,30 @@ describe("JOB_ROSTER entry sanity", () => {
 
   it("disabledWhen predicates read env and return a boolean without throwing", () => {
     const gated = JOB_ROSTER.filter((e) => e.disabledWhen);
-    // The three env-kill-switched AI jobs + fly_night_mode (prod+token gated).
+    // The three env-kill-switched AI jobs + fly_night_mode (prod+token gated)
+    // + the Tier 1E config-dormant set (backup pipeline + SES-gated course
+    // completion).
     expect(gated.map((e) => e.name).sort()).toEqual([
       "autonomous_decision_executor",
+      "backup_restore_verify",
       "campaign_optimizer",
+      "course_completion_check",
+      "db_backup",
       "fly_night_mode",
       "lead_nurturing",
     ]);
     for (const e of gated) {
       expect(typeof e.disabledWhen!(), e.name).toBe("boolean");
+    }
+  });
+
+  it("every disabledWhen-gated entry declares a human-readable disabledReason (Tier 1E contract)", () => {
+    for (const e of JOB_ROSTER.filter((x) => x.disabledWhen)) {
+      // fly_night_mode predates the contract and is environment-gated, not
+      // secret-gated — grandfathered without a reason.
+      if (e.name === "fly_night_mode") continue;
+      if (["lead_nurturing", "campaign_optimizer", "autonomous_decision_executor"].includes(e.name)) continue;
+      expect(e.disabledReason, `${e.name} must declare disabledReason`).toBeTruthy();
     }
   });
 

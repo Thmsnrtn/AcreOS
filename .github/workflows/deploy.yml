@@ -72,6 +72,12 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     environment: production
+    env:
+      # Job-level so step `if:` conditions can see it through the env
+      # context — a step's OWN env block is not visible to its `if:`, so the
+      # old `if: env.SENTRY_AUTH_TOKEN != ''` on the upload step could never
+      # fire even with the secret set.
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
     steps:
       - uses: actions/checkout@v6
@@ -85,16 +91,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Tier 1E: a missing SENTRY_AUTH_TOKEN is a visible WARNING annotation
+      # on every production deploy — never a silent skip. 🔑 FOUNDER: mint a
+      # Sentry auth token (Sentry → Settings → Auth Tokens, scope
+      # project:releases), then `gh secret set SENTRY_AUTH_TOKEN`. The moment
+      # the secret exists, source maps build + upload with no code change.
       - name: Build (generates source maps)
-        run: npm run build
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "::warning title=Sentry sourcemaps NOT uploaded::SENTRY_AUTH_TOKEN secret is unset — production stack traces stay minified. 🔑 Founder: mint a Sentry token, then run: gh secret set SENTRY_AUTH_TOKEN"
+            export SENTRY_SOURCEMAPS=skip
+          fi
+          npm run build
         env:
           NODE_ENV: production
-          # script/build.ts hard-fails in CI without a Sentry token. The
-          # SENTRY_AUTH_TOKEN secret isn't currently set, so opt out
-          # explicitly per the script's documented escape hatch. To
-          # restore source-map uploads later: mint a Sentry token, set
-          # gh secret SENTRY_AUTH_TOKEN, and remove this line.
-          SENTRY_SOURCEMAPS: skip
 
       - name: Upload source maps to Sentry
         if: env.SENTRY_AUTH_TOKEN != ''
@@ -106,7 +116,6 @@ jobs:
           npx @sentry/cli releases finalize "$GITHUB_SHA"
           npx @sentry/cli releases deploys "$GITHUB_SHA" new -e production
         env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         continue-on-error: true  # Non-blocking: deploy proceeds even if Sentry upload fails
@@ -122,11 +131,13 @@ jobs:
           echo "MIGRATION_COUNT=$MIGRATION_COUNT" >> $GITHUB_ENV
 
       - name: Deploy to Fly.io
+        id: fly_deploy
         run: flyctl deploy --remote-only --wait-timeout 300 --build-arg GIT_SHA=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Health check post-deploy
+        id: health
         run: |
           # Wait for the boot + cache warmup window. Fly `min_machines_running = 0`
           # means the first request after a deploy cold-starts the machine; the
@@ -145,8 +156,57 @@ jobs:
             || (echo "Health check failed after deploy" && exit 1)
         # Fail the workflow when health check fails — the deploy itself has
         # already completed, but a 5xx on /api/health/live means the new release
-        # is broken. Failing here triggers the "Record FAILED deployment"
-        # ledger step and surfaces the bad release loudly.
+        # is broken. Failing here triggers the auto-rollback below, then the
+        # "Record FAILED deployment" ledger step, and surfaces the bad release
+        # loudly.
+
+      # Tier 1E — automated rollback. Only fires on the precise signature
+      # "deploy succeeded but the new release is unhealthy" (NOT on a failed
+      # deploy — Fly never promoted, nothing to roll back; NOT on earlier
+      # build/test failures). Loop guards:
+      #   1. The health step above already burned an 8-retry × 10s budget, so
+      #      a single flaky probe can't get here.
+      #   2. We re-probe twice more (20s apart) before touching the release —
+      #      only a STILL-failing app rolls back.
+      #   3. This workflow runs once per push (concurrency: production-deploy)
+      #      and the rollback itself isn't health-checked-then-redeployed, so
+      #      there is no rollback→deploy→rollback oscillation: the run ends
+      #      red, on-call is paged by "Notify on failure", and the next push
+      #      is a deliberate human action.
+      - name: Auto-rollback on failed health check
+        if: failure() && steps.fly_deploy.outcome == 'success' && steps.health.outcome == 'failure'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          echo "Health check failed after a successful deploy — confirming before rollback."
+          for i in 1 2; do
+            sleep 20
+            if curl --fail --silent --max-time 30 "https://acreos.io/api/health/live" > /dev/null; then
+              echo "Health recovered on confirmation probe $i — NOT rolling back (likely cold-start flake)."
+              exit 0
+            fi
+            echo "Confirmation probe $i still failing."
+          done
+          echo "Release is confirmed unhealthy — rolling back to the previous image."
+          # `flyctl releases rollback` (flyctl ≥0.3.x) re-promotes the prior
+          # release. Older flyctl spells it `fly deploy --image <prev>`; try
+          # the first and fall back to resolving the previous image by hand.
+          if ! flyctl releases rollback --yes 2>/dev/null && ! flyctl releases rollback 2>/dev/null; then
+            PREV_IMAGE="$(flyctl releases list --json 2>/dev/null | jq -r '[.[] | select(.Status == "complete")][1].ImageRef // empty')"
+            if [ -z "$PREV_IMAGE" ]; then
+              echo "::error title=Auto-rollback FAILED::Could not resolve a previous release image. Roll back manually in the Fly.io dashboard NOW."
+              exit 1
+            fi
+            flyctl deploy --image "$PREV_IMAGE" --wait-timeout 300
+          fi
+          echo "Rollback submitted. Verifying old release health..."
+          sleep 15
+          if curl --fail --retry 6 --retry-delay 10 --max-time 30 "https://acreos.io/api/health/live" > /dev/null; then
+            echo "::warning title=Auto-rollback succeeded::Bad release ${GITHUB_SHA:0:7} was rolled back automatically and the previous release is healthy. main still points at the bad commit — fix forward or revert."
+          else
+            echo "::error title=Rollback did NOT restore health::Both the new release and the rollback are unhealthy — this is an infrastructure-level outage. Check Fly.io status + dashboard immediately."
+            exit 1
+          fi
 
       # Kareem §5: record this deploy in the deployments table so the
       # SOC 2 Type II auditor can tie every production change back to a
@@ -214,9 +274,11 @@ jobs:
       # Real out-of-band alert so a failed production deploy reaches Tom's
       # phone instead of dying in a CI log nobody is watching. Posts a short
       # message to the DEPLOY_ALERT_WEBHOOK secret (ntfy.sh topic URL or a
-      # Slack/Discord incoming-webhook URL — both accept a POST body). If the
-      # secret is unset the step is a no-op (does NOT fail the run), so the
-      # workflow keeps working before Tom wires it up.
+      # Slack/Discord incoming-webhook URL — both accept a POST body).
+      #
+      # Tier 1E (elevation blueprint): if the secret is UNSET this step FAILS
+      # with an explicit error — it must never silently skip. An unwired alert
+      # path is indistinguishable from a wired one until the night it matters.
       #
       # 🔑 FOUNDER ACTION — set the secret once:
       #   ntfy:  gh secret set DEPLOY_ALERT_WEBHOOK --body "https://ntfy.sh/<your-private-topic>"
@@ -226,11 +288,11 @@ jobs:
         env:
           DEPLOY_ALERT_WEBHOOK: ${{ secrets.DEPLOY_ALERT_WEBHOOK }}
         run: |
-          MSG="🚨 AcreOS production deploy FAILED — ${GITHUB_SHA:0:7} by ${GITHUB_ACTOR}. Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} — check Fly.io dashboard for rollback."
+          MSG="🚨 AcreOS production deploy FAILED — ${GITHUB_SHA:0:7} by ${GITHUB_ACTOR}. Run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} — auto-rollback may have fired; verify in the Fly.io dashboard."
           if [ -z "$DEPLOY_ALERT_WEBHOOK" ]; then
-            echo "DEPLOY_ALERT_WEBHOOK unset — printing alert only:"
             echo "$MSG"
-            exit 0
+            echo "::error title=DEPLOY_ALERT_WEBHOOK secret is NOT set::A production deploy just FAILED and no out-of-band alert was sent — this failure is only visible in CI. 🔑 Founder: gh secret set DEPLOY_ALERT_WEBHOOK --body \"https://ntfy.sh/<private-topic>\" (or a Slack/Discord incoming-webhook URL)."
+            exit 1
           fi
           # Slack/Discord want {"text": "..."}; ntfy accepts a raw body. Send
           # JSON (ntfy ignores the wrapper and shows the text) so one command
@@ -244,3 +306,22 @@ jobs:
             -d "$(jq -n --arg t "$MSG" '{text:$t, message:$t}')" \
             "$DEPLOY_ALERT_WEBHOOK" \
             || echo "Alert webhook POST failed — investigate (deploy already marked failed)."
+
+      # Tier 1E — alert-spine configuration gate, evaluated on EVERY deploy
+      # (success or failure). The blueprint's rule: workflows FAIL, not
+      # silently skip, when DEPLOY_ALERT_WEBHOOK is unset. Placed LAST so a
+      # missing secret never blocks the deploy itself and never miscounts as
+      # a failed deployment in the audit-ledger steps above (their
+      # `if: failure()` conditions evaluate before this step runs) — but the
+      # run goes RED with an actionable error until the secret exists.
+      - name: Alert spine configured (DEPLOY_ALERT_WEBHOOK)
+        if: always()
+        env:
+          DEPLOY_ALERT_WEBHOOK: ${{ secrets.DEPLOY_ALERT_WEBHOOK }}
+        run: |
+          if [ -z "$DEPLOY_ALERT_WEBHOOK" ]; then
+            echo "::error title=DEPLOY_ALERT_WEBHOOK secret is NOT set::Deploy completed, but the out-of-band alert path is UNWIRED — a future failed deploy would die silently in CI logs. 🔑 Founder: gh secret set DEPLOY_ALERT_WEBHOOK --body \"https://ntfy.sh/<private-topic>\" (or a Slack/Discord incoming-webhook URL). This gate fails every deploy run until the secret exists (Tier 1E: fail loudly, never silently skip)."
+            exit 1
+          fi
+          # Verify by presence/length only — NEVER print the secret value.
+          echo "DEPLOY_ALERT_WEBHOOK is set (length ${#DEPLOY_ALERT_WEBHOOK}). Alert spine wired. ✓"

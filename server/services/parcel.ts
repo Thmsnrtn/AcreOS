@@ -736,19 +736,24 @@ async function lookupFromRegrid(
     let data: RegridResponse | null = null;
     
     for (const apnVariant of apnVariants) {
-      // Use the correct APN endpoint
-      let url = `https://app.regrid.com/api/v2/parcels/apn?parcelnumb=${encodeURIComponent(apnVariant)}&token=${token}&return_custom=true`;
-      
+      // Use the correct APN endpoint. Tier 1E credential hygiene: the API key
+      // travels in the Authorization header (Regrid supports Bearer auth —
+      // same scheme as regrid-provider.ts), never in the URL where it would
+      // leak into logs, caches, and proxy access lines.
+      let url = `https://app.regrid.com/api/v2/parcels/apn?parcelnumb=${encodeURIComponent(apnVariant)}&return_custom=true`;
+
       if (stateCountyPath) {
         url += `&path=${encodeURIComponent(stateCountyPath)}`;
       }
-      
-      logger.debug("[Regrid] Trying APN lookup", { metadata: { apnVariant } });
-      logger.debug("[Regrid] URL", { metadata: { url: url.replace(token, 'REDACTED') } });
 
-      // Timeout + bounded retry + per-host limiter. host pinned so the token
-      // in the query string never becomes part of the limiter key.
-      const response = await fetchGeo(url, { host: "app.regrid.com" });
+      logger.debug("[Regrid] Trying APN lookup", { metadata: { apnVariant } });
+      logger.debug("[Regrid] URL", { metadata: { url } });
+
+      // Timeout + bounded retry + per-host limiter.
+      const response = await fetchGeo(url, {
+        host: "app.regrid.com",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       logger.debug("[Regrid] Response status", { metadata: { status: response.status } });
       
       if (response.ok) {
@@ -846,9 +851,13 @@ export async function lookupParcelByCoordinates(
   }
   
   try {
-    const url = `https://app.regrid.com/api/v2/parcels/point?lat=${lat}&lon=${lng}&token=${token}&return_geometry=true`;
+    // Tier 1E credential hygiene: key in the Authorization header, not the URL.
+    const url = `https://app.regrid.com/api/v2/parcels/point?lat=${lat}&lon=${lng}&return_geometry=true`;
 
-    const response = await fetchGeo(url, { host: "app.regrid.com" });
+    const response = await fetchGeo(url, {
+      host: "app.regrid.com",
+      headers: { Authorization: `Bearer ${token}` },
+    });
     
     if (!response.ok) {
       throw new Error(`Regrid API error: ${response.status}`);
