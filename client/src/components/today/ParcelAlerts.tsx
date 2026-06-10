@@ -203,7 +203,7 @@ export function ParcelAlerts() {
           className="space-y-2"
           variants={staggerContainer}
           initial="hidden"
-          animate="show"
+          animate="visible"
         >
           {alerts.map((a) => {
             const Icon = alertIcon(a);

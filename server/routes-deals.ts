@@ -9,8 +9,14 @@ import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
 import { db, withTransaction } from "./db";
-import { outcomeTelemetry, dueDiligenceItems } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { outcomeTelemetry, dueDiligenceItems, deals } from "@shared/schema";
+import { and, eq, sql } from "drizzle-orm";
+import {
+  STAGE_BENCHMARK_DAYS,
+  DEFAULT_STAGE_BENCHMARK_DAYS,
+  foldDealAggregates,
+  type DealAggregateRow,
+} from "./services/dealAggregates";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
@@ -102,6 +108,12 @@ async function triggerDealEnrichmentAsync(
   });
 }
 
+// T0-10 — query params for GET /api/deals/aggregates. `type` mirrors the
+// client's pipeline type filter so the header KPIs stay in sync with it.
+const dealAggregatesQuerySchema = z.object({
+  type: z.enum(["all", "acquisition", "disposition"]).default("all"),
+});
+
 // Zod schema for pagination query params
 const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -136,6 +148,62 @@ export function registerDealRoutes(app: Express): void {
     });
   });
   
+  // ── T0-10: Deals header aggregates ────────────────────────────────────
+  // GET /api/deals/aggregates — org-scoped SQL aggregation feeding the
+  // Deals door header KPIs + stage-distribution bar. The header previously
+  // reduced ONE page of the paginated list (25 rows), so orgs with >25
+  // deals saw wrong pipeline/closed/stalled numbers. Registered BEFORE
+  // /api/deals/:id so the literal path wins over the :id matcher.
+  api.get("/api/deals/aggregates", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsed = dealAggregatesQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return Errors.badRequest(res, "Invalid aggregates parameters", parsed.error.issues);
+      }
+      const { type } = parsed.data;
+
+      // Per-stage benchmark (days) as a SQL CASE, generated from the shared
+      // constant so server thresholds can't drift from the client's copy.
+      // Keys/values are compile-time constants — safe for sql.raw.
+      const benchmarkCase = sql`(case ${deals.status} ${sql.raw(
+        Object.entries(STAGE_BENCHMARK_DAYS)
+          .map(([stage, days]) => `when '${stage}' then ${days}`)
+          .join(" ")
+      )} else ${sql.raw(String(DEFAULT_STAGE_BENCHMARK_DAYS))} end)`;
+      // Whole days since last update — mirrors differenceInDays() on the
+      // client. Deals with no updatedAt count as 0 days (healthy).
+      const daysInStage = sql`floor(extract(epoch from (now() - coalesce(${deals.updatedAt}, now()))) / 86400)`;
+
+      const where =
+        type === "all"
+          ? eq(deals.organizationId, orgId)
+          : and(eq(deals.organizationId, orgId), eq(deals.type, type));
+
+      const rows: DealAggregateRow[] = await db
+        .select({
+          status: deals.status,
+          type: deals.type,
+          count: sql<number>`count(*)::int`,
+          // Same fallback chain the client used: offer amount, else accepted.
+          pipelineValue: sql<number>`coalesce(sum(coalesce(${deals.offerAmount}, ${deals.acceptedAmount}, 0)), 0)::float8`,
+          acceptedValue: sql<number>`coalesce(sum(coalesce(${deals.acceptedAmount}, 0)), 0)::float8`,
+          stalledCount: sql<number>`(count(*) filter (where ${daysInStage} >= ${benchmarkCase} * 2))::int`,
+          // ceil() because client day-counts are integers compared against a
+          // fractional 1.25x threshold. Includes stalled; folded out later.
+          warnAtLeastCount: sql<number>`(count(*) filter (where ${daysInStage} >= ceil(${benchmarkCase} * 1.25)))::int`,
+        })
+        .from(deals)
+        .where(where)
+        .groupBy(deals.status, deals.type);
+
+      res.json(foldDealAggregates(rows));
+    } catch (error) {
+      logger.error("Failed to compute deal aggregates", { organizationId: req.organizationId });
+      return Errors.internal(res, error);
+    }
+  });
+
   api.get("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const deal = await storage.getDeal(org.id, Number(req.params.id));

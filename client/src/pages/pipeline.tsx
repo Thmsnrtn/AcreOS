@@ -314,25 +314,28 @@ export default function PipelinePage() {
 
         <TabsContent value="board" data-testid="tab-content-board">
           <Suspense fallback={<TabFallback />}>
-            <DealsPage />
+            {/* embedded — this PageShell already provides the app chrome;
+                without it each tab page nested a second sidebar/topbar and a
+                duplicate id="main-content" (T0-9). */}
+            <DealsPage embedded />
           </Suspense>
         </TabsContent>
 
         <TabsContent value="leads" data-testid="tab-content-leads">
           <Suspense fallback={<TabFallback />}>
-            <LeadsPage />
+            <LeadsPage embedded />
           </Suspense>
         </TabsContent>
 
         <TabsContent value="properties" data-testid="tab-content-properties">
           <Suspense fallback={<TabFallback />}>
-            <PropertiesPage />
+            <PropertiesPage embedded />
           </Suspense>
         </TabsContent>
 
         <TabsContent value="deals" data-testid="tab-content-deals">
           <Suspense fallback={<TabFallback />}>
-            <DealsPage />
+            <DealsPage embedded />
           </Suspense>
         </TabsContent>
 

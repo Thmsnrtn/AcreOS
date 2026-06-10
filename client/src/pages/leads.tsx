@@ -639,7 +639,9 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
   );
 }
 
-export default function LeadsPage() {
+// `embedded` — mounted inside the /pipeline door's Leads tab (pipeline.tsx),
+// which already renders the app shell. See PageShellProps.embedded (T0-9).
+export default function LeadsPage({ embedded = false }: { embedded?: boolean }) {
   // Mobile gets a swipeable card list. The desktop spreadsheet remains
   // reachable from any mobile by appending ?desktop=1 to the URL — that
   // escape valve is honored here as well as on /leads/:id.
@@ -653,15 +655,17 @@ export default function LeadsPage() {
     new URLSearchParams(window.location.search).get("desktop") === "1";
   if (isMobile && !wantsDesktop) {
     return (
-      <PageShell>
+      <PageShell embedded={embedded}>
         <MobileLeadList />
       </PageShell>
     );
   }
-  return <LeadsPageDesktop />;
+  return <LeadsPageDesktop embedded={embedded} />;
 }
 
-function LeadsPageDesktop() {
+function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
+  // Parent page (pipeline.tsx) owns the H1 when embedded.
+  const HeadingTag = embedded ? ("h2" as const) : ("h1" as const);
   const leadsLabel = useTerm("entity.lead.plural");
   const leadLabel = useTerm("entity.lead");
   useDocumentTitle(`${leadsLabel} — AcreOS`);
@@ -1099,7 +1103,7 @@ function LeadsPageDesktop() {
 
   if (error) {
     return (
-      <PageShell label={leadsLabel}>
+      <PageShell label={leadsLabel} embedded={embedded}>
         <QueryErrorState
           error={error as Error}
           onRetry={() => refetch()}
@@ -1111,7 +1115,7 @@ function LeadsPageDesktop() {
   }
 
   return (
-    <PageShell label={leadsLabel}>
+    <PageShell label={leadsLabel} embedded={embedded}>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             {error && (
@@ -1124,7 +1128,7 @@ function LeadsPageDesktop() {
             <div className="acr-cc-hero" style={{ marginTop: 0 }}>
               <div>
                 <div className="acr-eyebrow">Leads</div>
-                <h1 className="acr-cc-greeting" data-testid="text-page-title">
+                <HeadingTag className="acr-cc-greeting" data-testid="text-page-title">
                   {leads && leads.length > 0 ? (
                     <>
                       {plural(leads.length, "lead")}
@@ -1140,7 +1144,7 @@ function LeadsPageDesktop() {
                       </span>
                     </>
                   )}
-                </h1>
+                </HeadingTag>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">

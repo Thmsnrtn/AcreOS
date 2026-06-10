@@ -4,7 +4,8 @@ import "./today.css";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
-import { useDeals, useDealsPaginated, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, useAdvanceDealStage, type BulkStageUpdateResult } from "@/hooks/use-deals";
+import { useDeals, useDealsPaginated, useDealAggregates, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, useAdvanceDealStage, type BulkStageUpdateResult } from "@/hooks/use-deals";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { InlineError } from "@/components/inline-error";
@@ -115,7 +116,12 @@ const statusColors: Record<string, string> = {
   cancelled: 'bg-acr-neg-soft text-acr-neg',
 };
 
-export default function DealsPage() {
+// `embedded` — mounted inside the /pipeline door's Board + Deals tabs
+// (pipeline.tsx), which already renders the app shell. See
+// PageShellProps.embedded (T0-9).
+export default function DealsPage({ embedded = false }: { embedded?: boolean }) {
+  // Parent page (pipeline.tsx) owns the H1 when embedded.
+  const HeadingTag = embedded ? ("h2" as const) : ("h1" as const);
   const dealsLabel = useTerm("entity.deal.plural");
   const dealLabel = useTerm("entity.deal");
   useDocumentTitle(dealsLabel);
@@ -132,10 +138,15 @@ export default function DealsPage() {
   // matching property client-side using the already-fetched
   // properties list. When the property isn't found we leave deal.property
   // undefined so the existing fallback still runs.
-  const propById = new Map<number, any>(properties.map((p: any) => [p.id, p]));
+  // Keys coerced via Number() (preserves the r8 Tasha / c9 fix): ids can
+  // drift between string and number across API shapes; a raw-keyed Map
+  // would silently miss. This Map is now the ONLY property join — the
+  // per-deal properties.find() that duplicated it at O(n×m) further down
+  // was removed in T0-10.
+  const propById = new Map<number, any>(properties.map((p: any) => [Number(p.id), p]));
   const deals = rawDeals?.map((d: any) => ({
     ...d,
-    property: d.property ?? (d.propertyId != null ? propById.get(d.propertyId) : undefined),
+    property: d.property ?? (d.propertyId != null ? propById.get(Number(d.propertyId)) : undefined),
   })) as typeof rawDeals;
   const [, setLocation] = useLocation();
   const searchString = useSearch();
@@ -312,21 +323,11 @@ export default function DealsPage() {
     }
   };
 
+  // T0-10 cleanup — property hydration happens exactly once upstream via
+  // the propById Map (O(n+m)). The per-deal properties.find() that used to
+  // live here duplicated that join at O(n×m) for zero benefit.
   const enrichedDeals: DealWithProperty[] = (deals || [])
-    .filter(deal => typeFilter === "all" || deal.type === typeFilter)
-    .map(deal => ({
-      ...deal,
-      // r8 Tasha (c9): mobile pipeline was showing "Property #3" because
-      // the join used strict === and deal.propertyId can arrive as a
-      // number from /api/deals while properties.find's p.id comes in as
-      // a number too — but coerce both via Number() to survive any
-      // shape drift and make the match truly type-insensitive. Also
-      // prefer the hydrated deal.property from the upstream map if
-      // already populated.
-      property: (deal as any).property ?? (Array.isArray(properties)
-        ? properties.find(p => Number(p.id) === Number(deal.propertyId))
-        : undefined),
-    }));
+    .filter(deal => typeFilter === "all" || deal.type === typeFilter);
 
   // Server-side pagination: data is already one page
   const paginatedDeals = enrichedDeals;
@@ -343,26 +344,28 @@ export default function DealsPage() {
     setDealCurrentPage(1);
   };
 
-  const acquisitions = enrichedDeals.filter(d => d.type === 'acquisition' && d.status !== 'cancelled');
-  const dispositions = enrichedDeals.filter(d => d.type === 'disposition' && d.status !== 'cancelled');
-  
-  const totalPipelineValue = enrichedDeals
-    .filter(d => d.status !== 'closed' && d.status !== 'cancelled')
-    .reduce((sum, d) => sum + Number(d.offerAmount || d.acceptedAmount || 0), 0);
+  // T0-10 — header KPIs + stage distribution read from the org-wide SQL
+  // aggregates endpoint (GET /api/deals/aggregates), NOT the current page
+  // of useDealsPaginated. The page-local reductions that used to live here
+  // silently lied for any org with more than one page (25 rows) of deals.
+  const { data: dealAggregates, isLoading: isAggregatesLoading } = useDealAggregates(typeFilter);
+  const aggTotals = dealAggregates?.totals;
+  const acquisitionsCount = aggTotals?.acquisitions ?? 0;
+  const dispositionsCount = aggTotals?.dispositions ?? 0;
+  const totalPipelineValue = aggTotals?.totalPipelineValue ?? 0;
+  const closedValue = aggTotals?.closedValue ?? 0;
+  const stalledCount = aggTotals?.stalledCount ?? 0;
+  const warningCount = aggTotals?.warningCount ?? 0;
+  const totalDealCount = aggTotals?.totalDeals ?? 0;
 
-  const closedValue = enrichedDeals
-    .filter(d => d.status === 'closed')
-    .reduce((sum, d) => sum + Number(d.acceptedAmount || 0), 0);
-
-  const activePipelineDeals = enrichedDeals.filter(d => d.status !== 'closed' && d.status !== 'cancelled');
-  const stalledCount = activePipelineDeals.filter(d => getDealHealth(d).status === 'stalled').length;
-  const warningCount = activePipelineDeals.filter(d => getDealHealth(d).status === 'warning').length;
-
-  // Stage distribution for pipeline visualization
-  const stageDistribution = useMemo(() => dealStages.map(s => ({
-    ...s,
-    count: enrichedDeals.filter(d => d.status === s.value).length,
-  })), [enrichedDeals]);
+  // Stage distribution for pipeline visualization — org-wide counts.
+  const stageDistribution = useMemo(() => {
+    const byStatus = new Map((dealAggregates?.stages ?? []).map(s => [s.status, s]));
+    return dealStages.map(s => ({
+      ...s,
+      count: byStatus.get(s.value)?.count ?? 0,
+    }));
+  }, [dealAggregates]);
 
   const handleDelete = () => {
     if (deletingDeal) {
@@ -457,7 +460,7 @@ export default function DealsPage() {
 
   if (error) {
     return (
-      <PageShell label={dealsLabel}>
+      <PageShell label={dealsLabel} embedded={embedded}>
         <QueryErrorState
           error={error as Error}
           onRetry={() => refetch()}
@@ -469,7 +472,7 @@ export default function DealsPage() {
   }
 
   return (
-    <PageShell label={dealsLabel}>
+    <PageShell label={dealsLabel} embedded={embedded}>
         
           
 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -483,12 +486,12 @@ export default function DealsPage() {
             <div className="acr-cc-hero" style={{ marginTop: 0 }}>
               <div>
                 <div className="acr-eyebrow">Deals</div>
-                <h1 className="text-hero acr-cc-greeting" data-testid="text-page-title">
+                <HeadingTag className="text-hero acr-cc-greeting" data-testid="text-page-title">
                   Acquisitions and dispositions.
                   <span className="acr-cc-greeting-soft">
                     {" "}From offer to close, all on one rail.
                   </span>
-                </h1>
+                </HeadingTag>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -529,7 +532,11 @@ export default function DealsPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Acquisitions</p>
-                    <p className="text-xl md:text-2xl font-bold" data-testid="text-acquisitions">{acquisitions.length}</p>
+                    {isAggregatesLoading ? (
+                      <Skeleton className="h-7 md:h-8 w-10" data-testid="skeleton-acquisitions" />
+                    ) : (
+                      <p className="text-xl md:text-2xl font-bold" data-testid="text-acquisitions">{acquisitionsCount}</p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -543,7 +550,11 @@ export default function DealsPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Dispositions</p>
-                    <p className="text-xl md:text-2xl font-bold" data-testid="text-dispositions">{dispositions.length}</p>
+                    {isAggregatesLoading ? (
+                      <Skeleton className="h-7 md:h-8 w-10" data-testid="skeleton-dispositions" />
+                    ) : (
+                      <p className="text-xl md:text-2xl font-bold" data-testid="text-dispositions">{dispositionsCount}</p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -557,9 +568,13 @@ export default function DealsPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Pipeline</p>
-                    <p className="text-lg md:text-2xl font-bold font-mono tabular-nums truncate" data-testid="text-pipeline-value">
-                      {usd(totalPipelineValue, { noCents: true })}
-                    </p>
+                    {isAggregatesLoading ? (
+                      <Skeleton className="h-7 md:h-8 w-20" data-testid="skeleton-pipeline-value" />
+                    ) : (
+                      <p className="text-lg md:text-2xl font-bold font-mono tabular-nums truncate" data-testid="text-pipeline-value">
+                        {usd(totalPipelineValue, { noCents: true })}
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -573,17 +588,28 @@ export default function DealsPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs md:text-sm text-muted-foreground truncate">Closed</p>
-                    <p className="text-lg md:text-2xl font-bold font-mono tabular-nums text-acr-pos truncate" data-testid="text-closed-value">
-                      {usd(closedValue, { noCents: true })}
-                    </p>
+                    {isAggregatesLoading ? (
+                      <Skeleton className="h-7 md:h-8 w-20" data-testid="skeleton-closed-value" />
+                    ) : (
+                      <p className="text-lg md:text-2xl font-bold font-mono tabular-nums text-acr-pos truncate" data-testid="text-closed-value">
+                        {usd(closedValue, { noCents: true })}
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Pipeline Health Bar */}
-          {enrichedDeals.length > 0 && (
+          {/* Pipeline Health Bar — org-wide counts from /api/deals/aggregates (T0-10) */}
+          {isAggregatesLoading ? (
+            <div className="rounded-xl border bg-card p-4 space-y-2" role="status" aria-live="polite" aria-busy="true">
+              <span className="sr-only">Loading pipeline distribution…</span>
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-2 w-full rounded-full" />
+              <Skeleton className="h-3 w-64" />
+            </div>
+          ) : totalDealCount > 0 && (
             <div className="rounded-xl border bg-card p-4 space-y-2" aria-labelledby="pipeline-distribution-heading">
               <div className="flex items-center justify-between text-xs">
                 <span id="pipeline-distribution-heading" className="font-medium text-muted-foreground uppercase tracking-wide">
@@ -600,7 +626,7 @@ export default function DealsPage() {
                       <Clock className="w-3 h-3" aria-hidden="true" /> {warningCount} slow
                     </span>
                   )}
-                  {stalledCount === 0 && warningCount === 0 && enrichedDeals.length > 0 && (
+                  {stalledCount === 0 && warningCount === 0 && totalDealCount > 0 && (
                     <span className="text-acr-pos font-medium">All deals on track</span>
                   )}
                 </div>
@@ -618,7 +644,7 @@ export default function DealsPage() {
                 }
               >
                 {stageDistribution.map((stage) => {
-                  const pct = enrichedDeals.length > 0 ? (stage.count / enrichedDeals.length) * 100 : 0;
+                  const pct = totalDealCount > 0 ? (stage.count / totalDealCount) * 100 : 0;
                   if (pct === 0) return null;
                   const stageBarColors: Record<string, string> = {
                     negotiating: 'bg-muted-foreground/40',
