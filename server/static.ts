@@ -195,13 +195,19 @@ export function serveStatic(app: Express) {
 
   app.use("{*splat}", (req: Request, res: Response) => {
     if (res.headersSent) return;
+    // This handler is mounted via app.use("{*splat}", …), which rewrites
+    // req.path to "/" inside the handler — so the real request path must come
+    // from req.originalUrl. (The API guard below already uses req.originalUrl;
+    // the letters-301, asset guard, per-route prerender lookup, and edge-cache
+    // rule below all need the same, or they silently see "/" for every route.)
+    const fullPath = (req.originalUrl || req.url || "/").split("?")[0].split("#")[0];
     // Don't serve index.html for API routes — if we got here, the API route didn't match
     if (req.originalUrl.startsWith("/api/")) {
       return res.status(404).json({ message: "Not found" });
     }
     // 301 legacy /letters[/:slug] → /field-notes[/:slug].
     {
-      const m = LEGACY_LETTERS_301.exec(req.path);
+      const m = LEGACY_LETTERS_301.exec(fullPath);
       if (m) {
         const slug = m[1];
         const search = req.originalUrl.includes("?")
@@ -219,7 +225,7 @@ export function serveStatic(app: Express) {
     // dynamic import throws, and the whole app crashes to ErrorBoundary.
     // Return 404 instead so the client-side chunk-error handler can detect
     // the deploy and trigger a hard reload to fetch the new bundle.
-    if (/^\/assets\/.*\.(js|css|map|wasm)(\.(br|gz))?$/i.test(req.path)) {
+    if (/^\/assets\/.*\.(js|css|map|wasm)(\.(br|gz))?$/i.test(fullPath)) {
       return res.status(404).type("text/plain").send("asset not found");
     }
 
@@ -234,33 +240,15 @@ export function serveStatic(app: Express) {
       // are injected below exactly as for the root shell (same </head> +
       // data-csp-nonce markers, since prerender only swaps the head metadata).
       let shellPath = indexPath;
-      // IMPORTANT: this handler is mounted via app.use("{*splat}", …), which
-      // rewrites req.path to "/" inside the handler — so the real request path
-      // must come from req.originalUrl (matching how the API-route guard above
-      // uses req.originalUrl, not req.path). Using req.path here silently made
-      // the per-route lookup always fall back to the root shell.
-      const fullPath = (req.originalUrl || req.url || "/").split("?")[0].split("#")[0];
-      let _dbgCandidate = "";
-      let _dbgExists = false;
       {
         const cleanPath = fullPath.replace(/\/+$/, "");
         if (cleanPath && cleanPath !== "/" && !cleanPath.includes("..")) {
           const candidate = path.resolve(distPath, "." + cleanPath, "index.html");
-          _dbgCandidate = candidate;
           // Path-traversal guard: candidate must stay within distPath.
           if (candidate.startsWith(distPath + path.sep) && fs.existsSync(candidate)) {
-            _dbgExists = true;
             shellPath = candidate;
           }
         }
-      }
-      // TEMP DIAGNOSTIC (remove next commit): confirm the originalUrl fix.
-      if (fullPath === "/pricing" || fullPath === "/land-credit-score") {
-        res.setHeader("X-Prerender-Reqpath", req.path);
-        res.setHeader("X-Prerender-Fullpath", fullPath);
-        res.setHeader("X-Prerender-Candidate", _dbgCandidate || "(none)");
-        res.setHeader("X-Prerender-Exists", String(_dbgExists));
-        res.setHeader("X-Prerender-Shell", shellPath === indexPath ? "root" : "per-route");
       }
       let html = fs.readFileSync(shellPath, "utf-8");
       const nonce: string = res.locals.cspNonce || "";
@@ -278,7 +266,7 @@ export function serveStatic(app: Express) {
       // Cloudflare-cacheable for marketing-style SPA routes; no-cache
       // for everything else so deploys take effect immediately for
       // authenticated app surfaces.
-      const edgeRule = EDGE_CACHEABLE_SPA_PATHS.find((r) => r.rx.test(req.path));
+      const edgeRule = EDGE_CACHEABLE_SPA_PATHS.find((r) => r.rx.test(fullPath));
       if (edgeRule) {
         res.setHeader(
           "Cache-Control",
