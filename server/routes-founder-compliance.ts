@@ -177,7 +177,10 @@ export function registerFounderComplianceRoutes(app: Express): void {
     requireFounder,
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
-        const { runReconciliation } = await import("./services/reconciliation");
+        const { runReconciliation, ensureDefaultRules } = await import("./services/reconciliation");
+        // Tier 2B — self-provision the default Stripe rules so a manual run
+        // works even before the daily cron's first pass.
+        await ensureDefaultRules();
         const results = await runReconciliation();
         return res.json({ results });
       } catch (err) {
