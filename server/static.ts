@@ -234,29 +234,31 @@ export function serveStatic(app: Express) {
       // are injected below exactly as for the root shell (same </head> +
       // data-csp-nonce markers, since prerender only swaps the head metadata).
       let shellPath = indexPath;
-      // TEMP DIAGNOSTIC (remove after): expose what the container resolves so the
-      // per-route prerender-serving can be debugged without Fly shell access.
+      // IMPORTANT: this handler is mounted via app.use("{*splat}", …), which
+      // rewrites req.path to "/" inside the handler — so the real request path
+      // must come from req.originalUrl (matching how the API-route guard above
+      // uses req.originalUrl, not req.path). Using req.path here silently made
+      // the per-route lookup always fall back to the root shell.
+      const fullPath = (req.originalUrl || req.url || "/").split("?")[0].split("#")[0];
       let _dbgCandidate = "";
       let _dbgExists = false;
-      let _dbgGuard = false;
       {
-        const cleanPath = req.path.replace(/\/+$/, "");
+        const cleanPath = fullPath.replace(/\/+$/, "");
         if (cleanPath && cleanPath !== "/" && !cleanPath.includes("..")) {
           const candidate = path.resolve(distPath, "." + cleanPath, "index.html");
           _dbgCandidate = candidate;
-          _dbgGuard = candidate.startsWith(distPath + path.sep);
-          _dbgExists = _dbgGuard && fs.existsSync(candidate);
           // Path-traversal guard: candidate must stay within distPath.
-          if (_dbgGuard && fs.existsSync(candidate)) {
+          if (candidate.startsWith(distPath + path.sep) && fs.existsSync(candidate)) {
+            _dbgExists = true;
             shellPath = candidate;
           }
         }
       }
-      if (req.path === "/pricing" || req.path === "/land-credit-score") {
-        res.setHeader("X-Prerender-Distpath", distPath);
-        res.setHeader("X-Prerender-Indexpath", indexPath);
+      // TEMP DIAGNOSTIC (remove next commit): confirm the originalUrl fix.
+      if (fullPath === "/pricing" || fullPath === "/land-credit-score") {
+        res.setHeader("X-Prerender-Reqpath", req.path);
+        res.setHeader("X-Prerender-Fullpath", fullPath);
         res.setHeader("X-Prerender-Candidate", _dbgCandidate || "(none)");
-        res.setHeader("X-Prerender-Guard", String(_dbgGuard));
         res.setHeader("X-Prerender-Exists", String(_dbgExists));
         res.setHeader("X-Prerender-Shell", shellPath === indexPath ? "root" : "per-route");
       }
