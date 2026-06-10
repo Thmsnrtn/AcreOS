@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useId, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { clientLogger } from "@/lib/clientLogger";
 import {
   MapPin,
@@ -16,8 +19,6 @@ import {
   Phone,
   MessageSquare,
   Navigation,
-  Star,
-  StarOff,
   Plus,
   Search,
   Wifi,
@@ -38,8 +39,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { format } from "date-fns";
-import { relative, usd } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
+import { usd } from "@/lib/format";
 import { InspectionChecklist, type ChecklistResults } from "@/components/field-scout/inspection-checklist";
 import { PhotoGallery, type ScoutPhoto } from "@/components/field-scout/photo-gallery";
 import { ScoutReportCard, type FieldScoutVisit } from "@/components/field-scout/scout-report-card";
@@ -231,6 +232,7 @@ function clearOfflineQueue(): void {
 export default function FieldScout() {
   useDocumentTitle("Field scout");
   const { toast } = useToast();
+  const quickAddId = useId();
   const queryClient = useQueryClient();
   const { coords, error: gpsError, loading: gpsLoading, getCurrentPosition } = useGPS();
   const compass = useCompass();
@@ -342,8 +344,15 @@ export default function FieldScout() {
     }
   }, [queryClient, toast]);
 
-  // Recent leads query
-  const { data: recentLeads = [] } = useQuery<ScoutLead[]>({
+  // Recent leads query — offline-first: when the truck loses signal we fall
+  // back to the localStorage cache instead of erroring.
+  const {
+    data: recentLeads = [],
+    isLoading: leadsLoading,
+    error: leadsError,
+    refetch: refetchLeads,
+    isRefetching: leadsRefetching,
+  } = useQuery<ScoutLead[]>({
     queryKey: ["/api/leads", { limit: 20, source: "field" }],
     queryFn: async () => {
       if (!isOnline) {
@@ -363,7 +372,9 @@ export default function FieldScout() {
   });
 
   // Parcel lookup by GPS coordinates
-  const parcelLookupMutation = useMutation({
+  const parcelLookupMutation =
+    // allow-no-invalidation: read-only parcel lookup — populates a local form draft, no server state changes
+    useMutation({
     mutationFn: async (coords: { lat: number; lng: number }) => {
       const resp = await apiRequest(
         "GET",
@@ -444,8 +455,14 @@ export default function FieldScout() {
     },
   });
 
-  // Past visits query
-  const { data: pastVisits = [] } = useQuery<FieldScoutVisit[]>({
+  // Past visits query — same offline-first cache fallback as leads.
+  const {
+    data: pastVisits = [],
+    isLoading: visitsLoading,
+    error: visitsError,
+    refetch: refetchVisits,
+    isRefetching: visitsRefetching,
+  } = useQuery<FieldScoutVisit[]>({
     queryKey: ["/api/field-scout/visits"],
     queryFn: async () => {
       if (!isOnline) {
@@ -513,26 +530,6 @@ export default function FieldScout() {
     },
   });
 
-  // Photo upload mutation
-  const uploadPhotoMutation = useMutation({
-    mutationFn: async ({ leadId, file }: { leadId: number; file: File }) => {
-      const formData = new FormData();
-      formData.append("photo", file);
-      const resp = await fetch(`/api/leads/${leadId}/photos`, {
-        method: "POST",
-        body: formData,
-      });
-      return resp.json();
-    },
-    onError: () => {
-      toast({
-        variant: "destructive",
-        title: "Couldn't upload photo",
-        description: "The photo is still on this device. Try again, or finish the visit and it'll queue for sync.",
-      });
-    },
-  });
-
   // Handle adding a photo from camera
   const handleAddPhoto = useCallback(() => {
     const input = document.createElement("input");
@@ -583,9 +580,6 @@ export default function FieldScout() {
   // Handle "Complete Visit" flow
   const handleCompleteVisit = useCallback(() => {
     const endedAt = new Date().toISOString();
-    const startMs = new Date(visitStartTime).getTime();
-    const endMs = new Date(endedAt).getTime();
-    const durationMinutes = Math.round((endMs - startMs) / 60000);
 
     saveVisitMutation.mutate({
       lead: newLeadForm,
@@ -682,17 +676,43 @@ export default function FieldScout() {
     }
   };
 
+  // GPS → parcel lookup. The old implementation read `coords` from a stale
+  // closure after a 1s setTimeout, so the FIRST tap (before any fix existed)
+  // silently did nothing — the cardinal sin on an in-the-truck capture
+  // surface. Now: if we already have a fix, look up immediately; otherwise
+  // arm pendingLookupRef and the effect below fires the lookup the moment
+  // the GPS watch delivers coordinates.
+  const pendingLookupRef = useRef(false);
+
   const handleGPSLookup = () => {
+    if (coords) {
+      parcelLookupMutation.mutate({ lat: coords.latitude, lng: coords.longitude });
+      return;
+    }
+    pendingLookupRef.current = true;
     getCurrentPosition();
-    setTimeout(() => {
-      if (coords) {
-        parcelLookupMutation.mutate({
-          lat: coords.latitude,
-          lng: coords.longitude,
-        });
-      }
-    }, 1000);
   };
+
+  useEffect(() => {
+    if (coords && pendingLookupRef.current) {
+      pendingLookupRef.current = false;
+      parcelLookupMutation.mutate({ lat: coords.latitude, lng: coords.longitude });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coords]);
+
+  // If GPS errors out while a lookup is armed, surface it — never fail silent.
+  useEffect(() => {
+    if (gpsError && pendingLookupRef.current) {
+      pendingLookupRef.current = false;
+      toast({
+        variant: "destructive",
+        title: "Couldn't get a GPS fix",
+        description: `${gpsError}. Check location permissions, or add the lead manually below.`,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpsError]);
 
   const filteredLeads = recentLeads.filter(
     (l) =>
@@ -724,7 +744,7 @@ export default function FieldScout() {
     : null;
 
   return (
-    <div className="min-h-screen bg-acr-bg-sunken text-white pb-20">
+    <div className="min-h-dvh bg-acr-bg-sunken text-white pb-20">
       {/* Header */}
       <div className="sticky top-0 z-50 bg-acr-bg-sunken border-b border-border px-4 py-3">
         <div className="flex items-center justify-between">
@@ -740,10 +760,12 @@ export default function FieldScout() {
                   transition: "transform 0.3s ease",
                 }}
               >
-                <svg viewBox="0 0 36 36" className="w-full h-full">
-                  <polygon points="18,4 15,18 21,18" fill="#ef4444" />
-                  <polygon points="18,32 15,18 21,18" fill="rgba(255,255,255,0.5)" />
-                  <circle cx="18" cy="18" r="2.5" fill="white" />
+                <svg viewBox="0 0 36 36" className="w-full h-full" aria-hidden="true">
+                  {/* Token-based fills (was hardcoded hex) — needle north reads
+                      as the negative/alert hue, south + hub follow the theme. */}
+                  <polygon points="18,4 15,18 21,18" fill="var(--acr-neg)" />
+                  <polygon points="18,32 15,18 21,18" fill="hsl(var(--muted-foreground))" opacity="0.6" />
+                  <circle cx="18" cy="18" r="2.5" fill="hsl(var(--foreground))" />
                 </svg>
               </div>
               {compass.heading !== null && (
@@ -754,9 +776,13 @@ export default function FieldScout() {
             </div>
             <div>
               <div className="font-bold text-sm">Field Scout</div>
-              <div className="text-micro text-muted-foreground font-mono">
-                {gpsDMSDisplay ?? gpsDisplay}
-              </div>
+              {gpsLoading && !coords ? (
+                <Skeleton className="h-3 w-36 mt-0.5" announceText="Acquiring GPS fix" />
+              ) : (
+                <div className="text-micro text-muted-foreground font-mono">
+                  {gpsDMSDisplay ?? gpsDisplay}
+                </div>
+              )}
               {gpsAccuracyInfo && (
                 <div className={`text-[9px] ${gpsAccuracyInfo.color}`}>
                   {gpsAccuracyInfo.label}
@@ -801,10 +827,10 @@ export default function FieldScout() {
             aria-selected={activeView === key}
             onClick={() => setActiveView(key as any)}
             className={cn(
-              "flex-1 py-3 text-xs font-medium flex flex-col items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acr-pos",
+              "flex-1 py-3 min-h-12 text-xs font-medium flex flex-col items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acr-pos",
               activeView === key
                 ? "text-acr-pos border-b-2 border-acr-pos"
-                : "text-muted-foreground hover:text-muted-foreground"
+                : "text-muted-foreground hover:text-foreground active:text-foreground"
             )}
           >
             <Icon className="w-4 h-4" />
@@ -841,18 +867,27 @@ export default function FieldScout() {
                 Standing near a property? GPS-identify the parcel instantly — get owner,
                 tax status, and estimated value in seconds.
               </p>
+              {/* Primary capture action — deliberately oversized (h-14) for
+                  work-gloves-in-a-truck use. Never below 44px. */}
               <Button
                 onClick={handleGPSLookup}
                 disabled={gpsLoading || parcelLookupMutation.isPending}
-                className="w-full bg-acr-pos hover:bg-acr-pos"
+                aria-busy={gpsLoading || parcelLookupMutation.isPending}
+                className="w-full h-14 text-base font-semibold bg-acr-pos hover:opacity-90 active:opacity-80"
               >
-                <MapPin className="w-4 h-4 mr-2" />
+                <MapPin className="w-5 h-5 mr-2" aria-hidden="true" />
                 {gpsLoading
-                  ? "Getting GPS..."
+                  ? "Getting GPS fix…"
                   : parcelLookupMutation.isPending
-                  ? "Looking up parcel..."
+                  ? "Looking up parcel…"
                   : "Identify This Parcel"}
               </Button>
+              {(gpsLoading || parcelLookupMutation.isPending) && (
+                <div className="space-y-1.5" aria-hidden="true">
+                  <Skeleton className="h-3 w-3/4" announce={false} />
+                  <Skeleton className="h-3 w-1/2" announce={false} />
+                </div>
+              )}
 
               {coords && (
                 <div className="text-xs text-muted-foreground flex items-center gap-1">
@@ -881,59 +916,66 @@ export default function FieldScout() {
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs text-muted-foreground">Owner Name</Label>
+                    <Label htmlFor={`${quickAddId}-owner`} className="text-xs text-muted-foreground">Owner Name</Label>
                     <Input
+                      id={`${quickAddId}-owner`}
                       value={newLeadForm.ownerName || ""}
                       onChange={(e) =>
                         setNewLeadForm((p) => ({ ...p, ownerName: e.target.value }))
                       }
-                      className="bg-acr-bg-sunken border-border text-white text-sm"
+                      className="bg-acr-bg-sunken border-border text-white text-sm min-h-11"
                       placeholder="Owner name"
+                      autoCapitalize="words"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">APN</Label>
+                    <Label htmlFor={`${quickAddId}-apn`} className="text-xs text-muted-foreground">APN</Label>
                     <Input
+                      id={`${quickAddId}-apn`}
                       value={newLeadForm.apn || ""}
                       onChange={(e) =>
                         setNewLeadForm((p) => ({ ...p, apn: e.target.value }))
                       }
-                      className="bg-acr-bg-sunken border-border text-white text-sm"
+                      className="bg-acr-bg-sunken border-border text-white text-sm min-h-11"
                       placeholder="Parcel number"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">County</Label>
+                    <Label htmlFor={`${quickAddId}-county`} className="text-xs text-muted-foreground">County</Label>
                     <Input
+                      id={`${quickAddId}-county`}
                       value={newLeadForm.county || ""}
                       onChange={(e) =>
                         setNewLeadForm((p) => ({ ...p, county: e.target.value }))
                       }
-                      className="bg-acr-bg-sunken border-border text-white text-sm"
+                      className="bg-acr-bg-sunken border-border text-white text-sm min-h-11"
                       placeholder="County"
+                      autoCapitalize="words"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground">State</Label>
+                    <Label htmlFor={`${quickAddId}-state`} className="text-xs text-muted-foreground">State</Label>
                     <Input
+                      id={`${quickAddId}-state`}
                       value={newLeadForm.state || ""}
                       onChange={(e) =>
                         setNewLeadForm((p) => ({ ...p, state: e.target.value }))
                       }
-                      className="bg-acr-bg-sunken border-border text-white text-sm"
+                      className="bg-acr-bg-sunken border-border text-white text-sm min-h-11"
                       placeholder="TX"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <Label className="text-xs text-muted-foreground">Address</Label>
+                  <Label htmlFor={`${quickAddId}-address`} className="text-xs text-muted-foreground">Address</Label>
                   <Input
+                    id={`${quickAddId}-address`}
                     value={newLeadForm.address || ""}
                     onChange={(e) =>
                       setNewLeadForm((p) => ({ ...p, address: e.target.value }))
                     }
-                    className="bg-acr-bg-sunken border-border text-white text-sm"
+                    className="bg-acr-bg-sunken border-border text-white text-sm min-h-11"
                     placeholder="Property address"
                     autoComplete="street-address"
                     autoCapitalize="words"
@@ -942,11 +984,12 @@ export default function FieldScout() {
 
                 {/* Voice note area */}
                 <div>
-                  <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Label htmlFor={`${quickAddId}-notes`} className="text-xs text-muted-foreground flex items-center gap-1">
                     Notes
                     <span className="text-muted-foreground">· Voice memo supported</span>
                   </Label>
                   <Textarea
+                    id={`${quickAddId}-notes`}
                     value={currentNote}
                     onChange={(e) => setCurrentNote(e.target.value)}
                     className="bg-acr-bg-sunken border-border text-white text-sm h-20 resize-none"
@@ -961,7 +1004,7 @@ export default function FieldScout() {
                     size="sm"
                     onClick={isRecording ? stopRecording : startRecording}
                     className={cn(
-                      "flex-1 border-border",
+                      "flex-1 min-h-11 border-border",
                       isRecording && "border-acr-neg text-acr-neg"
                     )}
                   >
@@ -980,7 +1023,7 @@ export default function FieldScout() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1 border-border"
+                    className="flex-1 min-h-11 border-border"
                     onClick={handleAddPhoto}
                   >
                     <Camera className="w-4 h-4 mr-1" />
@@ -1002,9 +1045,9 @@ export default function FieldScout() {
                       setNewLeadForm({});
                       setCurrentNote("");
                     }}
-                    className="flex-1 text-muted-foreground"
+                    className="flex-1 min-h-11 text-muted-foreground"
                   >
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                   <Button
                     size="sm"
@@ -1015,7 +1058,7 @@ export default function FieldScout() {
                       })
                     }
                     disabled={createLeadMutation.isPending || !newLeadForm.ownerName}
-                    className="flex-1 bg-acr-pos hover:bg-acr-pos"
+                    className="flex-1 min-h-11 bg-acr-pos hover:opacity-90 active:opacity-80"
                   >
                     {createLeadMutation.isPending ? "Saving..." : "Add Lead"}
                   </Button>
@@ -1077,7 +1120,7 @@ export default function FieldScout() {
             <Button
               onClick={handleCompleteVisit}
               disabled={saveVisitMutation.isPending}
-              className="w-full bg-acr-pos hover:bg-acr-pos h-12 text-sm font-medium"
+              className="w-full bg-acr-pos hover:opacity-90 active:opacity-80 h-12 text-sm font-medium"
             >
               <Save className="w-4 h-4 mr-2" />
               {saveVisitMutation.isPending ? "Saving Visit..." : "Complete Visit"}
@@ -1110,7 +1153,8 @@ export default function FieldScout() {
                     variant="ghost"
                     size="sm"
                     onClick={() => setSelectedLead(null)}
-                    className="text-muted-foreground h-6 w-6 p-0"
+                    aria-label="Close lead details"
+                    className="text-muted-foreground h-11 w-11 -my-2 -mr-2 p-0 text-base"
                   >
                     ×
                   </Button>
@@ -1188,46 +1232,66 @@ export default function FieldScout() {
                   {offlineQueue.length} action{offlineQueue.length > 1 ? "s" : ""} waiting to sync
                 </div>
               )}
-              {filteredLeads.slice(0, 5).map((lead, i) => (
-                <button
-                  key={lead.id || i}
-                  type="button"
-                  onClick={() => setSelectedLead(lead)}
-                  aria-label={lead.ownerName ? `View lead ${lead.ownerName}` : "View lead"}
-                  className="w-full flex items-center justify-between p-2 rounded hover:bg-acr-bg-sunken text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acr-pos"
-                >
-                  <div>
-                    <div className="text-sm font-medium">{lead.ownerName || "Unknown"}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {lead.county}, {lead.state}
+              {leadsLoading ? (
+                <div className="space-y-2 py-1" aria-busy="true" aria-label="Loading recent field activity">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex items-center justify-between p-2">
+                      <div className="space-y-1.5">
+                        <Skeleton className="h-4 w-32" announce={i === 0} announceText="Loading recent field activity" />
+                        <Skeleton className="h-3 w-24" announce={false} />
+                      </div>
+                      <Skeleton className="h-3 w-8" announce={false} />
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {(lead as any).isOffline && (
-                      <WifiOff className="w-3 h-3 text-acr-warn" />
-                    )}
-                    {lead.score !== undefined && (
-                      <span
-                        className={cn(
-                          "text-xs font-bold",
-                          lead.score >= 80
-                            ? "text-acr-neg"
-                            : lead.score >= 60
-                            ? "text-acr-warn"
-                            : "text-muted-foreground"
-                        )}
-                      >
-                        {lead.score}
-                      </span>
-                    )}
-                    <Eye className="w-3 h-3 text-muted-foreground" />
-                  </div>
-                </button>
-              ))}
-              {filteredLeads.length === 0 && (
+                  ))}
+                </div>
+              ) : leadsError ? (
+                <QueryErrorState
+                  error={leadsError as Error}
+                  onRetry={() => refetchLeads()}
+                  isRetrying={leadsRefetching}
+                  compact
+                />
+              ) : filteredLeads.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-4">
-                  No field leads yet. Use GPS parcel identify to get started.
+                  No field leads yet — tap “Identify This Parcel” above to capture your first one.
                 </p>
+              ) : (
+                filteredLeads.slice(0, 5).map((lead, i) => (
+                  <button
+                    key={lead.id || i}
+                    type="button"
+                    onClick={() => setSelectedLead(lead)}
+                    aria-label={lead.ownerName ? `View lead ${lead.ownerName}` : "View lead"}
+                    className="w-full min-h-11 flex items-center justify-between p-2 rounded hover:bg-acr-bg-raised active:bg-acr-bg-raised text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acr-pos"
+                  >
+                    <div>
+                      <div className="text-sm font-medium">{lead.ownerName || "Unknown"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {lead.county}, {lead.state}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {(lead as any).isOffline && (
+                        <WifiOff className="w-3 h-3 text-acr-warn" />
+                      )}
+                      {lead.score !== undefined && (
+                        <span
+                          className={cn(
+                            "text-xs font-bold",
+                            lead.score >= 80
+                              ? "text-acr-neg"
+                              : lead.score >= 60
+                              ? "text-acr-warn"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          {lead.score}
+                        </span>
+                      )}
+                      <Eye className="w-3 h-3 text-muted-foreground" />
+                    </div>
+                  </button>
+                ))
               )}
             </CardContent>
           </Card>
@@ -1237,7 +1301,7 @@ export default function FieldScout() {
             <Button
               onClick={() => setShowQuickAdd(true)}
               variant="outline"
-              className="w-full border-dashed border-border text-muted-foreground hover:text-white hover:border-acr-pos"
+              className="w-full min-h-11 border-dashed border-border text-muted-foreground hover:text-white hover:border-acr-pos active:text-white active:border-acr-pos"
             >
               <Plus className="w-4 h-4 mr-2" />
               Add Lead Manually
@@ -1255,16 +1319,58 @@ export default function FieldScout() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search leads…"
-              className="pl-9 bg-acr-bg-sunken border-border text-white"
+              className="pl-9 min-h-11 bg-acr-bg-sunken border-border text-white"
             />
           </div>
 
+          {leadsLoading ? (
+            <div className="space-y-2" aria-busy="true" aria-label="Loading field leads">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Card key={i} className="bg-acr-bg-sunken border-border">
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-36" announce={i === 0} announceText="Loading your field leads" />
+                        <Skeleton className="h-3 w-28" announce={false} />
+                        <Skeleton className="h-3 w-20" announce={false} />
+                      </div>
+                      <Skeleton className="h-6 w-10" announce={false} />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : leadsError ? (
+            <QueryErrorState
+              error={leadsError as Error}
+              onRetry={() => refetchLeads()}
+              isRetrying={leadsRefetching}
+            />
+          ) : filteredLeads.length === 0 ? (
+            searchQuery ? (
+              <EmptyState
+                icon={Search}
+                headline="No leads match your search"
+                subtitle={`Nothing in your field leads matches “${searchQuery}”.`}
+                cta={{ label: "Clear search", onClick: () => setSearchQuery("") }}
+                actionIcon={null}
+              />
+            ) : (
+              <EmptyState
+                icon={MapPin}
+                headline="No field leads yet"
+                subtitle="Drive your territory and GPS-identify parcels — every capture lands here, even offline."
+                cta={{ label: "Start scouting", onClick: () => setActiveView("scout") }}
+                actionIcon={null}
+              />
+            )
+          ) : (
           <div className="space-y-2">
             {filteredLeads.map((lead, i) => (
               <Card
                 key={lead.id || i}
                 className={cn(
-                  "bg-acr-bg-sunken border-border cursor-pointer hover:border-border",
+                  "bg-acr-bg-sunken border-border cursor-pointer transition-colors hover:border-acr-pos/50 active:border-acr-pos/70",
                   selectedLead?.id === lead.id && "border-acr-pos"
                 )}
                 onClick={() => setSelectedLead(lead)}
@@ -1309,7 +1415,7 @@ export default function FieldScout() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs text-acr-pos px-2"
+                      className="min-h-11 text-xs text-acr-pos px-3"
                       onClick={(e) => {
                         e.stopPropagation();
                         window.location.href = `tel:${(lead as any).phone || ""}`;
@@ -1321,7 +1427,7 @@ export default function FieldScout() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs text-acr-accent px-2"
+                      className="min-h-11 text-xs text-acr-accent px-3"
                       onClick={(e) => {
                         e.stopPropagation();
                         window.location.href = `sms:${(lead as any).phone || ""}`;
@@ -1340,6 +1446,7 @@ export default function FieldScout() {
               </Card>
             ))}
           </div>
+          )}
         </div>
       )}
 
@@ -1358,7 +1465,7 @@ export default function FieldScout() {
               )}
               <Button
                 size="sm"
-                className="mt-3 bg-acr-pos hover:bg-acr-pos text-xs"
+                className="mt-3 min-h-11 bg-acr-pos hover:opacity-90 active:opacity-80 text-xs"
                 onClick={getCurrentPosition}
               >
                 <Navigation className="w-3 h-3 mr-1" />
@@ -1393,29 +1500,39 @@ export default function FieldScout() {
         <div className="p-4 space-y-3">
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-xs text-muted-foreground uppercase tracking-wide">Past Scout Visits</h2>
-            <Badge variant="secondary" className="text-micro bg-acr-bg-sunken text-muted-foreground">
-              {pastVisits.length} visit{pastVisits.length !== 1 ? "s" : ""}
-            </Badge>
+            {!visitsLoading && !visitsError && (
+              <Badge variant="secondary" className="text-micro bg-acr-bg-sunken text-muted-foreground">
+                {pastVisits.length} visit{pastVisits.length !== 1 ? "s" : ""}
+              </Badge>
+            )}
           </div>
 
-          {pastVisits.length === 0 ? (
-            <Card className="bg-acr-bg-sunken border-border">
-              <CardContent className="py-8 text-center">
-                <FileText className="w-10 h-10 mx-auto mb-2 text-foreground" />
-                <p className="text-sm text-muted-foreground">No visits recorded yet</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Complete a scout visit to see it here.
-                </p>
-                <Button
-                  size="sm"
-                  className="mt-3 bg-acr-pos hover:bg-acr-pos text-xs"
-                  onClick={() => setActiveView("scout")}
-                >
-                  <Navigation className="w-3 h-3 mr-1" />
-                  Start Scouting
-                </Button>
-              </CardContent>
-            </Card>
+          {visitsLoading ? (
+            <div className="space-y-3" aria-busy="true" aria-label="Loading past visits">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <Card key={i} className="bg-acr-bg-sunken border-border">
+                  <CardContent className="p-4 space-y-2">
+                    <Skeleton className="h-4 w-40" announce={i === 0} announceText="Loading your past visits" />
+                    <Skeleton className="h-3 w-28" announce={false} />
+                    <Skeleton className="h-16 w-full" announce={false} />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : visitsError ? (
+            <QueryErrorState
+              error={visitsError as Error}
+              onRetry={() => refetchVisits()}
+              isRetrying={visitsRefetching}
+            />
+          ) : pastVisits.length === 0 ? (
+            <EmptyState
+              icon={FileText}
+              headline="No visits recorded yet"
+              subtitle="Complete a scout visit — photos, checklist, and notes roll up into a shareable report."
+              cta={{ label: "Start scouting", onClick: () => setActiveView("scout") }}
+              actionIcon={null}
+            />
           ) : (
             <div className="space-y-3">
               {pastVisits.map((visit) => (
