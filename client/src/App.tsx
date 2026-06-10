@@ -214,6 +214,10 @@ const ParcelCheckPage = React.lazy(() => import("@/pages/tools/parcel-check"));
 const ParcelCheckEmbedPage = React.lazy(() =>
   import("@/pages/tools/parcel-check").then((m) => ({ default: m.ParcelCheckEmbedPage })),
 );
+// Public /p/:state/:county/:apn — saved, shareable parcel report permalink
+// with the partial Land Credit Score (Tier 3A). No auth; server injects
+// per-report head meta for crawlers.
+const PublicParcelReportPage = React.lazy(() => import("@/pages/public-parcel-report"));
 const SkipTracingPage = React.lazy(() => import("@/pages/skip-tracing"));
 // TerritoryManagerPage archived 2026-06-01 — no nav entry, no callers.
 const ZoningLookupPage = React.lazy(() => import("@/pages/zoning-lookup"));
@@ -714,6 +718,9 @@ function Router() {
           bare route (wouter first-match on the more-specific /embed URL). */}
       <Route path="/tools/parcel-check/embed" component={ParcelCheckEmbedPage} />
       <Route path="/tools/parcel-check" component={ParcelCheckPage} />
+      {/* Public parcel report permalinks — saved, shareable, free-data-only
+          reports with the partial Land Credit Score (Tier 3A). */}
+      <Route path="/p/:state/:county/:apn" component={PublicParcelReportPage} />
       {/* Public Land Investor glossary — sitemap-promised + prerendered
           long-tail SEO surface (restored 2026-06-10, T0-8). */}
       <Route path="/glossary" component={GlossaryPage} />

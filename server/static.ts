@@ -109,6 +109,36 @@ function buildEnvScriptTag(nonce: string): string {
   return `<script${nonceAttr}>window.__ENV__=${payload}</script>`;
 }
 
+/**
+ * Finalize an SPA shell HTML string for sending: inject the runtime env
+ * script (window.__ENV__) before </head> and stamp the per-request CSP
+ * nonce onto tags marked data-csp-nonce. Shared by the static catch-all
+ * below and any route that serves the shell with custom head metadata
+ * (e.g. the /p/:state/:county/:apn public parcel report pages in
+ * server/routes-public-parcel-report.ts) — keeps env/nonce handling in
+ * one place so a CSP change can't silently break one path.
+ */
+export function finalizeShellHtml(html: string, nonce: string): string {
+  const envScript = buildEnvScriptTag(nonce);
+  if (envScript) {
+    html = html.replace("</head>", `${envScript}\n</head>`);
+  }
+  if (nonce) {
+    html = html.replace(/data-csp-nonce/g, `nonce="${nonce}" data-csp-nonce`);
+  }
+  return html;
+}
+
+/**
+ * Resolve the built SPA shell (dist/public/index.html). Returns null when
+ * the client build doesn't exist (dev — Vite middleware serves the shell
+ * instead, so callers should next() and let the dev pipeline handle it).
+ */
+export function resolveShellPath(): string | null {
+  const indexPath = path.resolve(__dirname, "public", "index.html");
+  return fs.existsSync(indexPath) ? indexPath : null;
+}
+
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "public");
   if (!fs.existsSync(distPath)) {
@@ -250,17 +280,10 @@ export function serveStatic(app: Express) {
           }
         }
       }
-      let html = fs.readFileSync(shellPath, "utf-8");
+      const rawHtml = fs.readFileSync(shellPath, "utf-8");
       const nonce: string = res.locals.cspNonce || "";
-      // Inject runtime env vars (with CSP nonce) before </head>
-      const envScript = buildEnvScriptTag(nonce);
-      if (envScript) {
-        html = html.replace("</head>", `${envScript}\n</head>`);
-      }
-      // Inject CSP nonce into existing script/style tags
-      if (nonce) {
-        html = html.replace(/data-csp-nonce/g, `nonce="${nonce}" data-csp-nonce`);
-      }
+      // Inject runtime env vars + CSP nonce (shared with /p report pages).
+      const html = finalizeShellHtml(rawHtml, nonce);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
 
       // Cloudflare-cacheable for marketing-style SPA routes; no-cache

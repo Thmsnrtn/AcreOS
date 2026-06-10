@@ -87,6 +87,9 @@ function buildRobots(): string {
     ...PUBLIC_ROUTES.map((r) => `Allow: ${r.path}`),
     // Programmatic SEO content trees — let crawlers reach every /learn page.
     "Allow: /learn/",
+    // Public parcel report permalinks (Tier 3A). Indexable only when a
+    // report exists — the server serves noindex shells for absent ones.
+    "Allow: /p/",
   ].join("\n");
   return [
     "User-agent: *",
@@ -111,6 +114,10 @@ function buildRobots(): string {
     "",
     "# Sitemap",
     `Sitemap: ${SITE_BASE_URL}/sitemap.xml`,
+    // Dynamic sitemap of public parcel reports that ACTUALLY exist —
+    // served by server/routes-public-parcel-report.ts from the
+    // public_parcel_reports table (Tier 3A). Never fabricated coverage.
+    `Sitemap: ${SITE_BASE_URL}/sitemap-reports.xml`,
     "",
   ].join("\n");
 }

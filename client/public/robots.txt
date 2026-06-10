@@ -33,6 +33,8 @@ Allow: /privacy
 Allow: /tools/parcel-check
 Allow: /tools/calculator
 Allow: /learn/
+Allow: /p/
 
 # Sitemap
 Sitemap: https://acreos.io/sitemap.xml
+Sitemap: https://acreos.io/sitemap-reports.xml

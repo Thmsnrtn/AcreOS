@@ -66,6 +66,13 @@ const acquisitionUtmSchema = z
       .optional(),
     plan: z.enum(["free", "starter", "pro", "scale"]).optional(),
     billing: z.enum(["monthly", "yearly"]).optional(),
+    // Tier 3A — public parcel report first-touch carry ("ST/county-slug/APN").
+    // Bounded segments mirror normalizeReportKey's limits so abuse traffic
+    // can't jam arbitrary blobs into the snapshot.
+    parcel: z
+      .string()
+      .regex(/^[A-Z]{2}\/[a-z0-9-]{1,64}\/[A-Za-z0-9 ._-]{2,64}$/)
+      .optional(),
   })
   .strict();
 

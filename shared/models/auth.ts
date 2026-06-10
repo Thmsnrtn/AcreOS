@@ -236,6 +236,12 @@ export interface AcquisitionUtm {
   ref?: string;
   plan?: string;
   billing?: string;
+  // Tier 3A — the public parcel report that brought this user in. Format
+  // "ST/county-slug/APN" (e.g. "TX/travis/0123456789"), captured client-side
+  // from the /p/:state/:county/:apn pathname on first touch. Lets cohort
+  // analysis answer "which shared reports convert?" and lets onboarding
+  // carry the parcel into the new workspace.
+  parcel?: string;
 }
 
 export type UpsertUser = typeof users.$inferInsert;
