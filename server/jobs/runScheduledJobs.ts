@@ -2353,12 +2353,15 @@ function startTransparencyReportAggregationJob() {
     if (now.getUTCHours() !== 5) return;
 
     void withJobLock('transparency_report_aggregation', TTL_SECONDS, async () => {
-      const { runTransparencyReportAggregation } = await import(
+      const { runTransparencyReportAggregation, checkTransparencyDraftStaleness } = await import(
         './transparencyReportAggregator'
       );
       const reportId = await runTransparencyReportAggregation();
+      // Tier 1D dark signal: drafts >30d unpublished → alignment finding
+      // via the alert spine (info severity — findings only).
+      const staleDraft = await checkTransparencyDraftStaleness();
       log(
-        `[transparency-report] daily: report_id=${reportId ?? 'null'}`,
+        `[transparency-report] daily: report_id=${reportId ?? 'null'} staleDraft=${staleDraft}`,
         'sovereign',
       );
     }).catch((err) => {
@@ -4186,6 +4189,41 @@ export async function runScheduledJobs(): Promise<void> {
             await externalStatusMonitor.notifyUsersOfOutage(outage.service, outage.impact);
           }
         }
+        // Tier 1D — FOUNDER-side signal: customers were told about vendor
+        // outages (per-org system_alerts above) but the founder never was.
+        // Route every outage/degradation through the alert spine: hard
+        // outage = critical (P1 page, throttled per service inside the
+        // spine), degraded = warning (finding + system_alerts, no page).
+        // alertType is deliberately NOT "external_outage" — that type keys
+        // notifyUsersOfOutage's per-org dedupe query, and a founder-level
+        // row (organization_id NULL) must never poison it.
+        if (outages.length > 0) {
+          const { raiseAlert } = await import("../services/alertSpine");
+          for (const outage of outages) {
+            const isOutage = outage.status.status === "outage";
+            await raiseAlert({
+              severity: isOutage ? "critical" : "warning",
+              source: "external_status_monitor",
+              title: `External service ${isOutage ? "OUTAGE" : "degraded"}: ${outage.status.name}`,
+              detail:
+                `${outage.status.name} is ${outage.status.status}` +
+                `${outage.status.message ? ` (${outage.status.message})` : ""}. ${outage.impact}.`,
+              dedupeKey: `vendor:${outage.service}`,
+              domain: "reliability",
+              citedReason:
+                "The founder must learn about vendor outages from the platform, not from customers.",
+              alertType: "vendor_outage_founder",
+              pagePriority: "P1",
+              metadata: {
+                service: outage.service,
+                status: outage.status.status,
+                latencyMs: outage.status.latency ?? null,
+              },
+            }).catch((err: any) =>
+              log(`Founder-side vendor alert failed for ${outage.service}: ${err}`, "external-monitor"),
+            );
+          }
+        }
         // Auto-resolve recovered services in the same locked tick.
         const recoveryResult = await externalStatusMonitor.resolveRecoveredServices();
         if (recoveryResult.resolved > 0) {
@@ -4420,16 +4458,28 @@ export async function runScheduledJobs(): Promise<void> {
             const results = await runAllSyntheticChecks();
             const failing = results.filter((r) => r.status === "failing");
             if (failing.length > 0) {
-              const keys = failing.map((r) => r.checkKey).join(", ");
-              const { notifyOnCall } = await import("../services/oncall");
-              await notifyOnCall(
-                "P1",
-                `Synthetic check failing: ${keys}`,
-                `Synthetic vendor check(s) reported status=failing: ${keys}. ` +
-                  `A failing probe means a core dependency (email/Stripe webhook/Clerk proxy/DB/Twilio) ` +
-                  `is unreachable or erroring. See synthetic_check_runs for detail.`,
-                { failing: failing.map((r) => ({ checkKey: r.checkKey, status: r.status })) },
-              ).catch(() => {/* notifyOnCall is internally best-effort */});
+              // Tier 1D: route through the alert spine instead of a raw
+              // notifyOnCall — the spine's dedupe window means a check that
+              // stays failing pages once an hour, not every 15 minutes, and
+              // the failure also lands as a finding + system_alerts row.
+              const { raiseAlert } = await import("../services/alertSpine");
+              for (const r of failing) {
+                await raiseAlert({
+                  severity: "critical",
+                  source: "synthetic_checks",
+                  title: `Synthetic check failing: ${r.checkKey}`,
+                  detail:
+                    `Synthetic vendor check "${r.checkKey}" reported status=failing. ` +
+                    `A failing probe means a core dependency (email/Stripe webhook/Clerk proxy/DB/Twilio) ` +
+                    `is unreachable or erroring. See synthetic_check_runs for detail.`,
+                  dedupeKey: `failing:${r.checkKey}`,
+                  domain: "reliability",
+                  citedReason: "Synthetic vendor probes assert core dependencies stay reachable (FW-OLU-2).",
+                  alertType: "synthetic_check_failing",
+                  pagePriority: "P1",
+                  metadata: { checkKey: r.checkKey, status: r.status },
+                }).catch(() => {/* raiseAlert is internally best-effort */});
+              }
             }
           });
         },
@@ -5172,26 +5222,22 @@ export async function runScheduledJobs(): Promise<void> {
               `This means an audit_events row was tampered with, reordered, or lost its hash — ` +
               `a tamper-evidence / integrity violation.`;
             log(`[audit-chain] ${body}`, "audit-chain");
-            const [{ notifyOnCall }, { recordFinding }] = await Promise.all([
-              import("../services/oncall"),
-              import("../services/audit/domainAudit"),
-            ]);
-            await recordFinding({
-              domain: "compliance",
-              detector: "audit_chain_verify",
+            // Tier 1D: one spine call replaces the recordFinding +
+            // notifyOnCall pair (the spine pages critical findings itself).
+            const { raiseAlert } = await import("../services/alertSpine");
+            await raiseAlert({
               severity: "critical",
+              source: "audit_chain_verify",
               title,
               detail: body,
-              citedReason: "SOC 2 CC7.2/CC7.3 — the audit_events chain must be tamper-evident.",
               dedupeKey: `audit_chain_broken:${f?.auditEventId ?? "unknown"}`,
+              domain: "compliance",
+              citedReason: "SOC 2 CC7.2/CC7.3 — the audit_events chain must be tamper-evident.",
               subjectRef: f?.auditEventId ?? null,
+              alertType: "audit_chain_broken",
+              pagePriority: "P1",
               metadata: { scanned: result.scanned, failure: f },
-            }).catch(() => {/* finding is best-effort */});
-            await notifyOnCall("P1", title, body, {
-              auditEventId: f?.auditEventId,
-              seq: f?.seq,
-              reason: f?.reason,
-            }).catch(() => {/* notifyOnCall is internally best-effort */});
+            }).catch(() => {/* raiseAlert is internally best-effort */});
           });
         },
       });

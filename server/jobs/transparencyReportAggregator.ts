@@ -229,3 +229,90 @@ async function collectAlignmentDriftFindings(): Promise<Record<string, unknown>>
   }
   return out;
 }
+
+/**
+ * Tier 1D (alert spine) — transparency-draft staleness detector.
+ *
+ * The aggregator refreshes a DRAFT row nightly; publication (setting
+ * published_at) is a deliberate manual founder gesture. Nothing ever watched
+ * whether that gesture happens — drafts could pile up unpublished forever
+ * and the public /transparency surface would silently rot. Policy (blueprint
+ * 1D): drafts sitting unpublished >30 days with NO publication inside the
+ * window = a finding (info severity — findings only, no page).
+ *
+ * Fires when BOTH hold:
+ *   1. at least one draft (published_at IS NULL) was created before the
+ *      cutoff — guards the brand-new-platform case where drafts only
+ *      started accumulating days ago;
+ *   2. no row was published within the window — a recent publication means
+ *      the cadence is healthy and older superseded drafts are expected.
+ *
+ * @returns true if the staleness finding was raised.
+ */
+export async function checkTransparencyDraftStaleness(opts: {
+  staleDays?: number;
+} = {}): Promise<boolean> {
+  const staleDays = opts.staleDays ?? 30;
+  const cutoff = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000);
+
+  try {
+    const draftRows = await db.execute(sql`
+      SELECT id, created_at AS created_at
+      FROM transparency_reports
+      WHERE published_at IS NULL
+        AND created_at < ${cutoff.toISOString()}
+      ORDER BY created_at ASC
+      LIMIT 1
+    `);
+    const oldestDraft = (draftRows as unknown as {
+      rows?: Array<{ id: number; created_at: string | Date }>;
+    }).rows?.[0];
+    if (!oldestDraft) return false;
+
+    const pubRows = await db.execute(sql`
+      SELECT MAX(published_at) AS last_published
+      FROM transparency_reports
+    `);
+    const lastPublishedRaw = (pubRows as unknown as {
+      rows?: Array<{ last_published: string | Date | null }>;
+    }).rows?.[0]?.last_published;
+    const lastPublished = lastPublishedRaw ? new Date(lastPublishedRaw) : null;
+    if (lastPublished && lastPublished >= cutoff) return false;
+
+    const oldestCreatedAt = new Date(oldestDraft.created_at);
+    const daysStale = Math.floor(
+      (Date.now() - oldestCreatedAt.getTime()) / (24 * 60 * 60 * 1000),
+    );
+
+    const { raiseAlert } = await import("../services/alertSpine");
+    await raiseAlert({
+      severity: "info",
+      source: "transparency_draft_staleness",
+      title: `Transparency report unpublished for ${daysStale} days`,
+      detail:
+        `The oldest transparency_reports draft (id=${oldestDraft.id}) has sat unpublished for ` +
+        `${daysStale} days and ${lastPublished ? `the last publication was ${lastPublished.toISOString().slice(0, 10)}` : "NO report has ever been published"}. ` +
+        `The nightly aggregator keeps refreshing drafts, but publication is a manual founder gesture ` +
+        `that has not happened inside the ${staleDays}-day window.`,
+      dedupeKey: "transparency:draft_stale",
+      domain: "alignment",
+      citedReason:
+        "Alignment-as-product: the public /transparency surface must be refreshed; drafts >30d unpublished mean the cadence broke (blueprint 1D).",
+      subjectRef: String(oldestDraft.id),
+      metadata: {
+        oldestDraftId: oldestDraft.id,
+        oldestDraftCreatedAt: oldestCreatedAt.toISOString(),
+        lastPublishedAt: lastPublished ? lastPublished.toISOString() : null,
+        staleDays,
+        daysStale,
+      },
+    });
+    return true;
+  } catch (err) {
+    logger.warn(
+      "[transparencyReportAggregator] draft-staleness check failed (non-fatal)",
+      err instanceof Error ? err : undefined,
+    );
+    return false;
+  }
+}

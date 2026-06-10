@@ -87,30 +87,39 @@ export async function runReconciliation(): Promise<ReconciliationResult[]> {
       );
     }
 
-    // Gap-close: write a system_alerts row on divergent runs so the
-    // founder sees the alert in /admin/alerts. Tolerated if alerts
-    // table is unreachable.
+    // Tier 1D: divergence goes through the ONE alert spine — a >$100 gap is
+    // critical (pages, throttled) and any divergence lands as a finding +
+    // the same system_alerts row /admin/alerts always showed. Tolerated if
+    // the spine itself fails.
     if (status === "divergent" && differenceDollars != null) {
       try {
-        const { systemAlerts } = await import("@shared/schema");
-        await db.insert(systemAlerts).values({
-          type: "reconciliation_divergent",
-          alertType: "system_error",
+        const { raiseAlert } = await import("./alertSpine");
+        await raiseAlert({
           severity: Math.abs(differenceDollars) > 100 ? "critical" : "warning",
+          source: "reconciliation",
           title: `Reconciliation divergence: ${rule.sourceSystem} ${rule.aggregationKey}`,
-          message:
+          detail:
             `Source total $${sourceTotal} vs AcreOS total $${acreosTotal} ` +
             `(diff $${differenceDollars.toFixed(2)}). Tolerance was $${rule.toleranceDollars}.`,
+          dedupeKey: `divergent:${rule.sourceSystem}:${rule.entityType}:${rule.aggregationKey}`,
+          domain: "finance",
+          citedReason:
+            "Source-of-truth totals must reconcile within tolerance (Panel-300 #9; blueprint 2B: divergence pages via 1D).",
+          alertType: "reconciliation_divergent",
+          pagePriority: "P1",
           metadata: {
             ruleId: rule.id,
             sourceSystem: rule.sourceSystem,
             entityType: rule.entityType,
             aggregationKey: rule.aggregationKey,
+            sourceTotal,
+            acreosTotal,
+            differenceDollars,
           },
         });
       } catch (alertErr) {
         logger.warn(
-          "[reconciliation] system_alerts write failed",
+          "[reconciliation] alert spine raise failed",
           alertErr instanceof Error ? alertErr : undefined,
         );
       }
