@@ -27,6 +27,11 @@ interface CacheEntry {
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
   estimatedCost?: number;
   cachedAt: number;
+  // 2026-06-10 T0-4 cross-tenant fix: the org that produced this entry, or
+  // null for platform-level calls (no org context). Cached answers can embed
+  // org-specific lead/deal data, so an entry must NEVER be served to a
+  // different org — both cache layers are partitioned by this field.
+  orgId: number | null;
   // For semantic dedup
   queryTokens?: Set<string>;
 }
@@ -52,8 +57,14 @@ const MAX_CACHE_SIZE = 500;
 // 0.72 balances precision vs recall well for domain-specific queries.
 const SEMANTIC_SIMILARITY_THRESHOLD = 0.72;
 
-function getCacheKey(task: AITask): string {
+// 2026-06-10 T0-4: the exact-match key now includes the org dimension.
+// Before this, the key was derived purely from the messages payload, so two
+// different orgs asking the same question shared one cache slot — and a
+// cached answer containing Org A's lead/deal data could be replayed to Org B.
+// Calls with no org context get the dedicated "platform" bucket.
+function getCacheKey(task: AITask, orgId: number | null): string {
   const payload = JSON.stringify({
+    org: orgId ?? "platform",
     messages: task.messages,
     taskType: task.taskType,
     responseFormat: task.responseFormat,
@@ -104,7 +115,7 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
  * Find a semantically equivalent cached response.
  * Only used for SIMPLE/MODERATE tasks with temperature ≤ 0.3 (deterministic).
  */
-function findSemanticCacheHit(task: AITask): CacheEntry | null {
+function findSemanticCacheHit(task: AITask, orgId: number | null): CacheEntry | null {
   const queryText = (task.messages ?? []).map(m => m.content).join(" ");
   const queryTokens = tokenize(queryText);
   const now = Date.now();
@@ -112,6 +123,12 @@ function findSemanticCacheHit(task: AITask): CacheEntry | null {
   for (const [key, entry] of AI_CACHE.entries()) {
     // Skip expired
     if (now - entry.cachedAt > CACHE_TTL_MS) { AI_CACHE.delete(key); continue; }
+    // 2026-06-10 T0-4 cross-tenant fix: only entries from the SAME org are
+    // candidates. Jaccard similarity over joined message text used to scan
+    // ALL entries, so a paraphrase of Org A's question by Org B could be
+    // answered with Org A's cached (org-specific) response. Platform-level
+    // entries (orgId === null) match only platform-level requests.
+    if (entry.orgId !== orgId) continue;
     // Skip entries without token index
     if (!entry.queryTokens || entry.queryTokens.size === 0) continue;
 
@@ -1130,9 +1147,13 @@ export async function routeAITask(
     && (task.temperature ?? 0.7) <= 0.3;
   let cacheKey = '';
   const cacheCheckStart = Date.now();
+  // T0-4: the org dimension for both cache layers. Callers without org
+  // context (cron jobs, platform-level tasks) land in the "platform" bucket
+  // (null) and can only ever hit other platform-level entries.
+  const cacheOrgId = config.orgId ?? null;
 
   if (isCacheable) {
-    cacheKey = getCacheKey(task);
+    cacheKey = getCacheKey(task, cacheOrgId);
     const cached = getCachedResponse(cacheKey);
     if (cached) {
       cacheHits++;
@@ -1156,7 +1177,7 @@ export async function routeAITask(
     }
 
     // ── Layer 2: Semantic dedup cache (catches paraphrased queries) ────────────
-    const semanticHit = findSemanticCacheHit(task);
+    const semanticHit = findSemanticCacheHit(task, cacheOrgId);
     if (semanticHit) {
       semanticCacheHits++;
       const semanticLatency = Date.now() - cacheCheckStart;
@@ -1422,6 +1443,7 @@ export async function routeAITask(
     setCachedResponse(cacheKey, {
       ...result,
       cachedAt: Date.now(),
+      orgId: cacheOrgId,
       queryTokens: tokenize(queryText),
     });
   }
