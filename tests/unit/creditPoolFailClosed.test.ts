@@ -90,7 +90,10 @@ function mockModules() {
     isByokEnabled: async () => state.byokActive,
   }));
 
-  vi.doMock("@shared/billing/credit-weights", () => ({
+  // Tier 1C moved creditCost out of shared/ into server/services/creditCost
+  // (it reaches into server settings). Mock the server module — creditPool
+  // imports it from there now.
+  vi.doMock("../../server/services/creditCost", () => ({
     creditCost: async () => 1.5, // ai_turn_avg weight — ceil(1.5) = 2¢/turn
   }));
 
