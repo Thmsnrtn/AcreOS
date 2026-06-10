@@ -93,6 +93,11 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
+          # This is the lint/typecheck job's build smoke-test, not the deploy
+          # build — the deploy workflow owns sourcemap upload. Without this,
+          # script/build.ts hard-fails on the missing SENTRY_AUTH_TOKEN and
+          # CI can never go green (the failure the sitemap fix unmasked).
+          SENTRY_SOURCEMAPS: skip
 
       - name: Run Playwright E2E tests
         run: npm run test:e2e
