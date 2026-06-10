@@ -96,7 +96,9 @@ describe("due-diligence template tenant isolation (T0-2)", () => {
 
       const res = await request(app).get("/api/due-diligence/templates/7");
 
-      expect(getDueDiligenceTemplate).toHaveBeenCalledWith(7);
+      // Tier 1F: the storage fetch itself is now org-pinned — the route passes
+      // the caller's org id alongside the template id.
+      expect(getDueDiligenceTemplate).toHaveBeenCalledWith(ORG_A, 7);
       expect(res.status).toBe(404);
       expect(JSON.stringify(res.body)).not.toContain("secret playbook");
     });

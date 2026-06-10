@@ -153,7 +153,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid template ID");
       }
 
-      const template = await storage.getDocumentTemplate(id);
+      const template = await storage.getDocumentTemplate(org.id, id);
       // 2026-06-10 (T0-2 sweep): org check was on PUT/PATCH/DELETE but missed
       // on GET — cross-tenant read of another org's contract templates.
       // System templates stay shared (same gate as the preview route).
@@ -206,7 +206,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid template ID");
       }
 
-      const existing = await storage.getDocumentTemplate(id);
+      const existing = await storage.getDocumentTemplate(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Template");
       }
@@ -223,7 +223,7 @@ export function registerDocSystemRoutes(app: Express): void {
 
       const { name, type, category, content, variables, isActive } = req.body;
 
-      const updated = await storage.updateDocumentTemplate(id, {
+      const updated = await storage.updateDocumentTemplate(org.id, id, {
         ...(name && { name }),
         ...(type && { type }),
         ...(category && { category }),
@@ -249,7 +249,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid template ID");
       }
 
-      const existing = await storage.getDocumentTemplate(id);
+      const existing = await storage.getDocumentTemplate(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Template");
       }
@@ -266,7 +266,7 @@ export function registerDocSystemRoutes(app: Express): void {
 
       const { name, type, category, content, variables, isActive } = req.body;
 
-      const updated = await storage.updateDocumentTemplate(id, {
+      const updated = await storage.updateDocumentTemplate(org.id, id, {
         ...(name && { name }),
         ...(type && { type }),
         ...(category && { category }),
@@ -292,7 +292,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid template ID");
       }
 
-      const existing = await storage.getDocumentTemplate(id);
+      const existing = await storage.getDocumentTemplate(org.id, id);
       if (!existing) {
         return Errors.notFound(res, "Template");
       }
@@ -325,7 +325,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid template ID");
       }
 
-      const template = await storage.getDocumentTemplate(id);
+      const template = await storage.getDocumentTemplate(org.id, id);
       if (!template) {
         return Errors.notFound(res, "Template");
       }
@@ -448,7 +448,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid template ID");
       }
 
-      const template = await storage.getDocumentTemplate(id);
+      const template = await storage.getDocumentTemplate(org.id, id);
       if (!template) {
         return Errors.notFound(res, "Template");
       }
@@ -542,7 +542,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid version ID");
       }
 
-      const version = await storage.getDocumentVersion(versionId);
+      const version = await storage.getDocumentVersion(org.id, versionId);
       if (!version) {
         return Errors.notFound(res, "Version");
       }
@@ -612,7 +612,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Template ID is required");
       }
 
-      const template = await storage.getDocumentTemplate(templateId);
+      const template = await storage.getDocumentTemplate(org.id, templateId);
       // 2026-06-10 (T0-2 sweep): templateId comes from the body — without an
       // org check this rendered another org's template content into a document.
       // System templates (org NULL) stay shared.
@@ -716,7 +716,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Template ID is required");
       }
 
-      const template = await storage.getDocumentTemplate(templateId);
+      const template = await storage.getDocumentTemplate(org.id, templateId);
       // 2026-06-10 (T0-2 sweep): same body-supplied templateId IDOR as
       // /api/documents/generate — enforce org ownership (system templates shared).
       if (!template || (!template.isSystemTemplate && template.organizationId !== org.id)) {
@@ -1446,7 +1446,7 @@ export function registerDocSystemRoutes(app: Express): void {
           continue;
         }
         
-        const template = await storage.getDocumentTemplate(docItem.templateId);
+        const template = await storage.getDocumentTemplate(org.id, docItem.templateId);
         if (!template) {
           generatedDocs.push({ ...docItem, status: "error" });
           continue;

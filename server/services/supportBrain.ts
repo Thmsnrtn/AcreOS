@@ -157,7 +157,8 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     message: string,
     organizationId: number
   ): Promise<{ response: string; actionsTaken: string[]; escalated: boolean }> {
-    const supportCase = await storage.getSupportCase(caseId);
+    // Tier 1F: org-pinned — a caseId from another tenant resolves to not-found.
+    const supportCase = await storage.getSupportCase(organizationId, caseId);
     if (!supportCase) {
       throw new Error("Support case not found");
     }

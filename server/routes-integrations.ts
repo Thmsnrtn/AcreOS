@@ -464,7 +464,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const org = req.organization;
       const domainId = Number(req.params.id);
       
-      const domainRecord = await storage.getVerifiedEmailDomain(domainId);
+      const domainRecord = await storage.getVerifiedEmailDomain(org.id, domainId);
       if (!domainRecord || domainRecord.organizationId !== org.id) {
         return Errors.notFound(res, "Domain");
       }
@@ -538,7 +538,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const domainId = Number(req.params.id);
       const { fromEmail, fromName, isDefault } = req.body;
       
-      const domainRecord = await storage.getVerifiedEmailDomain(domainId);
+      const domainRecord = await storage.getVerifiedEmailDomain(org.id, domainId);
       if (!domainRecord || domainRecord.organizationId !== org.id) {
         return Errors.notFound(res, "Domain");
       }
@@ -585,7 +585,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const org = req.organization;
       const domainId = Number(req.params.id);
 
-      const domainRecord = await storage.getVerifiedEmailDomain(domainId);
+      const domainRecord = await storage.getVerifiedEmailDomain(org.id, domainId);
       if (!domainRecord || domainRecord.organizationId !== org.id) {
         return Errors.notFound(res, "Domain");
       }
@@ -799,7 +799,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const phoneId = Number(req.params.id);
       const { friendlyName, isDefault } = req.body;
 
-      const phoneRecord = await storage.getProvisionedPhoneNumber(phoneId);
+      const phoneRecord = await storage.getProvisionedPhoneNumber(org.id, phoneId);
       if (!phoneRecord || phoneRecord.organizationId !== org.id) {
         return Errors.notFound(res, "Phone number");
       }
@@ -845,7 +845,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const org = req.organization;
       const phoneId = Number(req.params.id);
 
-      const phoneRecord = await storage.getProvisionedPhoneNumber(phoneId);
+      const phoneRecord = await storage.getProvisionedPhoneNumber(org.id, phoneId);
       if (!phoneRecord || phoneRecord.organizationId !== org.id) {
         return Errors.notFound(res, "Phone number");
       }
