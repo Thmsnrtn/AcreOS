@@ -28,7 +28,18 @@ import {
   Bar,
 } from 'recharts';
 
-import { chartColor } from "@/lib/chartPalette";
+import {
+  CHART_COLORS,
+  chartColorVar,
+  CHART_POS,
+  CHART_NEG,
+  CHART_WARN,
+  CHART_GRID,
+} from '@/lib/chart-colors';
+import { format } from 'date-fns';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/empty-state';
+import { QueryErrorState } from '@/components/query-error-state';
 import {
   TrendingUp,
   TrendingDown,
@@ -46,8 +57,6 @@ import {
   Info,
   SlidersHorizontal,
 } from 'lucide-react';
-
-const PIE_COLORS = ['#d97541', '#4f8ef7', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'];
 
 const ACTION_STYLES: Record<string, { color: string; icon: JSX.Element }> = {
   sell: { color: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg', icon: <TrendingDown className="w-4 h-4" /> },
@@ -201,7 +210,14 @@ export default function PortfolioOptimizerPage() {
   // Custom stress test state
   const [customScenario, setCustomScenario] = useState({ priceChange: '-10', liquidityChange: '-20', label: 'Custom' });
 
-  const { data: metricsData, isLoading: metricsLoading } = useQuery({
+  const {
+    data: metricsData,
+    isLoading: metricsLoading,
+    isError: metricsIsError,
+    error: metricsError,
+    refetch: refetchMetrics,
+    isRefetching: metricsRefetching,
+  } = useQuery({
     queryKey: ['portfolio-optimizer', 'metrics'],
     queryFn: async () => {
       const res = await fetch('/api/portfolio-optimizer/metrics', { credentials: 'include' });
@@ -210,7 +226,14 @@ export default function PortfolioOptimizerPage() {
     },
   });
 
-  const { data: simulationsData, isLoading: simsLoading } = useQuery({
+  const {
+    data: simulationsData,
+    isLoading: simsLoading,
+    isError: simsIsError,
+    error: simsError,
+    refetch: refetchSims,
+    isRefetching: simsRefetching,
+  } = useQuery({
     queryKey: ['portfolio-optimizer', 'simulations'],
     queryFn: async () => {
       const res = await fetch('/api/portfolio-optimizer/simulations', { credentials: 'include' });
@@ -219,7 +242,14 @@ export default function PortfolioOptimizerPage() {
     },
   });
 
-  const { data: recsData, isLoading: recsLoading } = useQuery({
+  const {
+    data: recsData,
+    isLoading: recsLoading,
+    isError: recsIsError,
+    error: recsError,
+    refetch: refetchRecs,
+    isRefetching: recsRefetching,
+  } = useQuery({
     queryKey: ['portfolio-optimizer', 'recommendations'],
     queryFn: async () => {
       const res = await fetch('/api/portfolio-optimizer/recommendations', { credentials: 'include' });
@@ -347,7 +377,7 @@ export default function PortfolioOptimizerPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <BarChart2 className="w-8 h-8 text-primary" aria-hidden="true" />
@@ -357,7 +387,7 @@ export default function PortfolioOptimizerPage() {
             Monte Carlo simulation, diversification analysis, and optimization recommendations.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             variant="outline"
             aria-label="Export portfolio report as PDF"
@@ -406,6 +436,42 @@ export default function PortfolioOptimizerPage() {
       </div>
 
       {/* Metrics row */}
+      {metricsLoading && (
+        <div className="space-y-6" aria-busy="true" aria-label="Loading portfolio metrics">
+          {/* Shaped like the metric cards + tab content this replaces. */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="pt-5 space-y-2">
+                  <Skeleton className="h-4 w-24" announce={i === 0} announceText="Loading portfolio metrics" />
+                  <Skeleton className="h-8 w-28" announce={false} />
+                  <Skeleton className="h-3 w-32" announce={false} />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <Skeleton className="h-10 w-full max-w-2xl" announce={false} />
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-64" announce={false} />
+              <Skeleton className="h-4 w-80 max-w-full" announce={false} />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-64 w-full" announce={false} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {metricsIsError && !metricsLoading && (
+        <QueryErrorState
+          error={metricsError as Error}
+          onRetry={() => refetchMetrics()}
+          isRetrying={metricsRefetching}
+          title="Couldn't load your portfolio"
+        />
+      )}
+
       {metrics && (
         <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 m-0">
           <MetricCard
@@ -435,12 +501,18 @@ export default function PortfolioOptimizerPage() {
         </dl>
       )}
 
-      {!metrics && !metricsLoading && (
-        <div className="text-center py-20 text-muted-foreground" role="status">
-          <BarChart2 className="w-12 h-12 mx-auto mb-4 opacity-30" aria-hidden="true" />
-          <p className="text-lg font-medium">No portfolio holdings found</p>
-          <p className="text-sm mt-1">Add properties with "owned" status to run portfolio analysis.</p>
-        </div>
+      {!metrics && !metricsLoading && !metricsIsError && (
+        <EmptyState
+          icon={BarChart2}
+          headline="No portfolio holdings yet"
+          subtitle='Mark a property as "owned" and the optimizer takes it from there — Monte Carlo projections, diversification scoring, and rebalancing recommendations.'
+          cta={{
+            label: 'Add your first property',
+            href: '/properties',
+            'data-testid': 'optimizer-empty-add-property',
+          }}
+          testId="optimizer-empty-state"
+        />
       )}
 
       {/* Advanced Risk Metrics Row */}
@@ -519,12 +591,49 @@ export default function PortfolioOptimizerPage() {
               </Button>
               {latestSim && (
                 <span className="text-sm text-muted-foreground">
-                  Last run: {new Date(latestSim.createdAt).toLocaleDateString()}
+                  Last run: {format(new Date(latestSim.createdAt), 'MMM d, yyyy')}
                 </span>
               )}
             </div>
 
-            {latestSim ? (
+            {simsLoading && (
+              <div className="space-y-6" aria-busy="true" aria-label="Loading simulation results">
+                {/* Shaped like the scenario cards + timeline chart below. */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Card key={i}>
+                      <CardHeader className="pb-2">
+                        <Skeleton className="h-4 w-36" announce={i === 0} announceText="Loading simulation results" />
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <Skeleton className="h-8 w-24" announce={false} />
+                        <Skeleton className="h-4 w-20" announce={false} />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+                <Card>
+                  <CardHeader>
+                    <Skeleton className="h-5 w-72 max-w-full" announce={false} />
+                  </CardHeader>
+                  <CardContent>
+                    <Skeleton className="h-72 w-full" announce={false} />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {simsIsError && !simsLoading && (
+              <QueryErrorState
+                error={simsError as Error}
+                onRetry={() => refetchSims()}
+                isRetrying={simsRefetching}
+                title="Couldn't load simulation results"
+                compact
+              />
+            )}
+
+            {!simsLoading && !simsIsError && (latestSim ? (
               <>
                 {/* Scenario summary */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -570,18 +679,20 @@ export default function PortfolioOptimizerPage() {
                       <div role="img" aria-label={`Portfolio value distribution over ${timelineData.length} years with 10th–90th percentile bands from Monte Carlo simulation`}>
                       <ResponsiveContainer width="100%" height={300}>
                         <AreaChart data={timelineData} margin={{ top: 10, right: 10 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
+                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                           <XAxis dataKey="year" />
                           <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
                           <Tooltip
                             formatter={((v: any, name: string) => [formatDollar(v), name.replace('p', 'P').replace(/(\d+)/, '$1th %ile')]) as any}
                           />
                           <Legend />
-                          <Area type="monotone" dataKey="p90" stackId="a" stroke={chartColor(0)} fill={chartColor(1)} name="p90" />
-                          <Area type="monotone" dataKey="p75" stackId="b" stroke={chartColor(2)} fill={chartColor(3)} name="p75" />
-                          <Area type="monotone" dataKey="p50" stackId="c" stroke={chartColor(4)} fill={chartColor(5)} name="p50" strokeWidth={2} />
-                          <Area type="monotone" dataKey="p25" stackId="d" stroke={chartColor(6)} fill={chartColor(7)} name="p25" />
-                          <Area type="monotone" dataKey="p10" stackId="e" stroke={chartColor(8)} fill={chartColor(9)} name="p10" />
+                          {/* Percentile fan: one themed color per band, translucent
+                              fills so overlapping bands read as a distribution. */}
+                          <Area type="monotone" dataKey="p90" stackId="a" stroke={chartColorVar(0)} fill={chartColorVar(0)} fillOpacity={0.12} name="p90" />
+                          <Area type="monotone" dataKey="p75" stackId="b" stroke={chartColorVar(1)} fill={chartColorVar(1)} fillOpacity={0.16} name="p75" />
+                          <Area type="monotone" dataKey="p50" stackId="c" stroke={chartColorVar(2)} fill={chartColorVar(2)} fillOpacity={0.2} name="p50" strokeWidth={2} />
+                          <Area type="monotone" dataKey="p25" stackId="d" stroke={chartColorVar(3)} fill={chartColorVar(3)} fillOpacity={0.16} name="p25" />
+                          <Area type="monotone" dataKey="p10" stackId="e" stroke={chartColorVar(4)} fill={chartColorVar(4)} fillOpacity={0.12} name="p10" />
                         </AreaChart>
                       </ResponsiveContainer>
                       </div>
@@ -626,11 +737,19 @@ export default function PortfolioOptimizerPage() {
                 </div>
               </>
             ) : (
-              <div className="text-center py-16 text-muted-foreground">
-                <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p>No simulation data yet. Run Monte Carlo to see projections.</p>
-              </div>
-            )}
+              <EmptyState
+                icon={Activity}
+                headline="No simulation data yet"
+                subtitle="Run Monte Carlo to project this portfolio forward — 10,000 simulated paths produce percentile bands, value-at-risk, and drawdown estimates."
+                cta={{
+                  label: simulateMutation.isPending ? 'Running simulations…' : 'Run Monte Carlo',
+                  onClick: () => simulateMutation.mutate(),
+                  'data-testid': 'optimizer-empty-simulate',
+                }}
+                actionIcon={RefreshCw}
+                testId="optimizer-sims-empty"
+              />
+            ))}
           </TabsContent>
 
           {/* ── EFFICIENT FRONTIER ── */}
@@ -732,7 +851,7 @@ export default function PortfolioOptimizerPage() {
                             label={({ state, percentage }: any) => `${state} ${percentage.toFixed(0)}%`}
                           >
                             {diversification.byState.map((_: any, i: number) => (
-                              <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                              <Cell key={i} fill={chartColorVar(i)} />
                             ))}
                           </Pie>
                           <Tooltip formatter={(v: any) => [`${v.toFixed(1)}%`, 'Share']} />
@@ -771,11 +890,11 @@ export default function PortfolioOptimizerPage() {
                       <div role="img" aria-label={`Portfolio distribution by acreage range across ${diversification.byAcreSize.length} buckets`}>
                       <ResponsiveContainer width="100%" height={200}>
                         <BarChart data={diversification.byAcreSize}>
-                          <CartesianGrid strokeDasharray="3 3" />
+                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                           <XAxis dataKey="range" tick={{ fontSize: 11 }} />
                           <YAxis tickFormatter={(v) => `${v.toFixed(0)}%`} />
                           <Tooltip formatter={(v: any) => [`${v.toFixed(1)}%`, 'Share']} />
-                          <Bar dataKey="percentage" fill={chartColor(4)} radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="percentage" fill={CHART_COLORS[2]} radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                       </div>
@@ -812,32 +931,67 @@ export default function PortfolioOptimizerPage() {
                 </div>
               </>
             ) : (
-              <div className="text-center py-16 text-muted-foreground">
-                <Layers className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p>Run the full analysis to see diversification data.</p>
-              </div>
+              <EmptyState
+                icon={Layers}
+                headline="No diversification data yet"
+                subtitle="Run the full analysis to break your holdings down by state, property type, and acreage — and get a concentration-risk score."
+                cta={{
+                  label: analyzeAllMutation.isPending ? 'Analyzing…' : 'Run full analysis',
+                  onClick: () => analyzeAllMutation.mutate(),
+                  'data-testid': 'optimizer-diversification-analyze',
+                }}
+                actionIcon={RefreshCw}
+                testId="optimizer-diversification-empty"
+              />
             )}
           </TabsContent>
 
           {/* ── RECOMMENDATIONS ── */}
           <TabsContent value="recommendations" className="space-y-4">
             {recsLoading && (
-              <div className="text-center py-12 text-muted-foreground">Loading recommendations…</div>
+              <div className="space-y-4" aria-busy="true" aria-label="Loading recommendations">
+                {/* Shaped like the recommendation cards below. */}
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="pt-5 pb-4">
+                      <div className="flex items-start gap-4">
+                        <Skeleton className="h-5 w-5 rounded-full shrink-0 mt-0.5" announce={i === 0} announceText="Loading recommendations" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-5 w-48 max-w-full" announce={false} />
+                          <Skeleton className="h-4 w-full" announce={false} />
+                          <Skeleton className="h-4 w-2/3" announce={false} />
+                        </div>
+                        <Skeleton className="h-9 w-24 shrink-0" announce={false} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             )}
 
-            {!recsLoading && recommendations.length === 0 && (
-              <div className="text-center py-16 text-muted-foreground">
-                <CheckCircle className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p>No pending recommendations. Run the full analysis to generate suggestions.</p>
-                <Button
-                  className="mt-4"
-                  onClick={() => analyzeAllMutation.mutate()}
-                  disabled={analyzeAllMutation.isPending}
-                >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${analyzeAllMutation.isPending ? 'animate-spin' : ''}`} />
-                  Run Full Analysis
-                </Button>
-              </div>
+            {recsIsError && !recsLoading && (
+              <QueryErrorState
+                error={recsError as Error}
+                onRetry={() => refetchRecs()}
+                isRetrying={recsRefetching}
+                title="Couldn't load recommendations"
+                compact
+              />
+            )}
+
+            {!recsLoading && !recsIsError && recommendations.length === 0 && (
+              <EmptyState
+                icon={CheckCircle}
+                headline="No pending recommendations"
+                subtitle="Run the full analysis and the optimizer will propose sell / hold / refinance moves ranked by priority and confidence."
+                cta={{
+                  label: analyzeAllMutation.isPending ? 'Analyzing…' : 'Run full analysis',
+                  onClick: () => analyzeAllMutation.mutate(),
+                  'data-testid': 'optimizer-recs-analyze',
+                }}
+                actionIcon={RefreshCw}
+                testId="optimizer-recs-empty"
+              />
             )}
 
             {recommendations.map((rec: any) => {
@@ -978,10 +1132,18 @@ export default function PortfolioOptimizerPage() {
                     </table>
                   </div>
                 ) : (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                    <p>Run full analysis to see performance attribution.</p>
-                  </div>
+                  <EmptyState
+                    icon={Activity}
+                    headline="No attribution data yet"
+                    subtitle="Run the full analysis to see which holdings are driving portfolio value, cash flow, and appreciation."
+                    cta={{
+                      label: analyzeAllMutation.isPending ? 'Analyzing…' : 'Run full analysis',
+                      onClick: () => analyzeAllMutation.mutate(),
+                      'data-testid': 'optimizer-attribution-analyze',
+                    }}
+                    actionIcon={RefreshCw}
+                    testId="optimizer-attribution-empty"
+                  />
                 )}
               </CardContent>
             </Card>
@@ -1008,21 +1170,29 @@ export default function PortfolioOptimizerPage() {
                       ]}
                       margin={{ top: 10, right: 10, left: 0, bottom: 5 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" />
+                      <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                       <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                       <YAxis tickFormatter={v => `${v}%`} />
                       <Tooltip formatter={(v: any) => [`${v}%`, '']} />
                       <Legend />
-                      <Bar dataKey="current" name="Current %" fill={chartColor(4)} radius={[3, 3, 0, 0]} />
-                      <Bar dataKey="optimized" name="AI-Optimized %" fill={chartColor(10)} radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="current" name="Current %" fill={CHART_COLORS[0]} radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="optimized" name="AI-Optimized %" fill={CHART_COLORS[1]} radius={[3, 3, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                   </div>
                 ) : (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <BarChart2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                    <p>Run full analysis to see AI-optimized comparison.</p>
-                  </div>
+                  <EmptyState
+                    icon={BarChart2}
+                    headline="No comparison data yet"
+                    subtitle="Run the full analysis to see your current allocation beside the AI-optimized target, state by state."
+                    cta={{
+                      label: analyzeAllMutation.isPending ? 'Analyzing…' : 'Run full analysis',
+                      onClick: () => analyzeAllMutation.mutate(),
+                      'data-testid': 'optimizer-comparison-analyze',
+                    }}
+                    actionIcon={RefreshCw}
+                    testId="optimizer-comparison-empty"
+                  />
                 )}
               </CardContent>
             </Card>
@@ -1042,7 +1212,7 @@ const STRESS_SCENARIOS = [
     description: "10-15% land price decline, credit tightening",
     priceImpact: -0.12,
     liquidityImpact: -0.25,
-    color: "#f59e0b",
+    color: CHART_WARN,
   },
   {
     id: "recession_severe",
@@ -1050,7 +1220,7 @@ const STRESS_SCENARIOS = [
     description: "25-35% price decline, 2008-level market freeze",
     priceImpact: -0.30,
     liquidityImpact: -0.60,
-    color: "#ef4444",
+    color: CHART_NEG,
   },
   {
     id: "rate_shock",
@@ -1058,7 +1228,7 @@ const STRESS_SCENARIOS = [
     description: "Fed rates jump 300bps, financing dries up",
     priceImpact: -0.15,
     liquidityImpact: -0.40,
-    color: "#8b5cf6",
+    color: CHART_COLORS[3],
   },
   {
     id: "drought",
@@ -1066,7 +1236,7 @@ const STRESS_SCENARIOS = [
     description: "Severe drought reducing agricultural land values",
     priceImpact: -0.20,
     liquidityImpact: -0.30,
-    color: "#d97706",
+    color: CHART_COLORS[1],
   },
   {
     id: "inflation_surge",
@@ -1074,7 +1244,7 @@ const STRESS_SCENARIOS = [
     description: "High inflation — land as hard asset may appreciate",
     priceImpact: 0.08,
     liquidityImpact: -0.15,
-    color: "#10b981",
+    color: CHART_POS,
   },
 ];
 
@@ -1113,7 +1283,7 @@ function StressTestTab() {
                   onClick={() => setSelectedScenario(s)}
                   aria-pressed={selectedScenario.id === s.id}
                   className={`w-full text-left p-3 rounded-card border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                    selectedScenario.id === s.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
+                    selectedScenario.id === s.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40 active:bg-muted/60"
                   }`}
                 >
                   <div className="flex items-center gap-2">
@@ -1214,7 +1384,7 @@ function StressTestTab() {
           <div role="img" aria-label={`All scenarios price impact comparison across ${barData.length} scenarios: ${barData.map(b => `${b.name} ${b.impact}%`).join(", ")}`}>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={barData}>
-              <CartesianGrid strokeDasharray="3 3" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
               <Tooltip formatter={(v: any) => [`${v}%`, "Price Impact"]} />
