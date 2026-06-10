@@ -135,8 +135,10 @@ export class ProviderCircuitBreaker {
           s.hydrated = true;
         });
     }
-    const pending = s.hydrated;
-    if (pending !== true) await pending;
+    // At this point `hydrated` is the in-flight promise: the `=== true` fast
+    // path returned above, and the block just filled the `null` case.
+    // (`await true` would be a harmless no-op regardless.)
+    await s.hydrated;
   }
 
   private persist(name: string, s: InternalState): void {

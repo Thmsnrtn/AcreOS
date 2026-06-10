@@ -33,11 +33,14 @@ import { logger } from "../../utils/logger";
  * order. OpenRouter first (it serves every model the platform router can
  * pick), then Anthropic direct, then OpenAI direct.
  */
-export const AI_BYOK_CHANNELS: readonly ByokChannel[] = [
+// `satisfies` (not a `readonly ByokChannel[]` annotation) so AiByokChannel
+// stays the narrow three-literal union — the switches below are exhaustive
+// by construction and tsc proves it.
+export const AI_BYOK_CHANNELS = [
   "openrouter",
   "anthropic",
   "openai",
-] as const;
+] as const satisfies readonly ByokChannel[];
 
 export type AiByokChannel = (typeof AI_BYOK_CHANNELS)[number];
 
