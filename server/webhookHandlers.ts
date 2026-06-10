@@ -755,22 +755,33 @@ export class WebhookHandlers {
       // to amount_paid via the canonical allocation policy. Idempotent by
       // externalEventId (stripe:invoice:<id>); fully isolated in try/catch so
       // a ledger failure can NEVER 5xx the webhook back to Stripe.
-      try {
-        if (invoice.amount_paid > 0 && invoice.id) {
+      // Tier 2B — a failed postRevenue dead-letters into ledger_dead_letters
+      // for hourly replay instead of vanishing into the log stream.
+      if (invoice.amount_paid > 0 && invoice.id) {
+        const revenueArgs = {
+          organizationId: org.id,
+          amountCents: invoice.amount_paid,
+          externalEventId: `stripe:invoice:${invoice.id}`,
+          providerEventId: invoice.id,
+          notes: `Stripe invoice ${invoice.id}`,
+        };
+        try {
           const { postRevenue } = await import('./services/financial-ledger');
-          await postRevenue({
+          await postRevenue(revenueArgs);
+        } catch (ledgerErr) {
+          logger.warn(
+            '[webhook] financial-ledger.postRevenue failed (non-fatal) — dead-lettering',
+            ledgerErr instanceof Error ? ledgerErr : undefined,
+          );
+          const { recordLedgerDeadLetter } = await import('./services/ledgerDeadLetter');
+          await recordLedgerDeadLetter({
+            kind: 'revenue',
+            externalEventId: revenueArgs.externalEventId,
             organizationId: org.id,
-            amountCents: invoice.amount_paid,
-            externalEventId: `stripe:invoice:${invoice.id}`,
-            providerEventId: invoice.id,
-            notes: `Stripe invoice ${invoice.id}`,
+            payload: revenueArgs,
+            error: ledgerErr,
           });
         }
-      } catch (ledgerErr) {
-        logger.warn(
-          '[webhook] financial-ledger.postRevenue failed (non-fatal)',
-          ledgerErr instanceof Error ? ledgerErr : undefined,
-        );
       }
     } catch (err) {
       logger.error('Error processing invoice paid', err instanceof Error ? err : undefined);
@@ -808,32 +819,42 @@ export class WebhookHandlers {
 
       // Pillar 1.5 — financial ledger refund debit against refund_reserve.
       // Idempotent by externalEventId; never propagates failure to Stripe.
-      try {
-        const refundCents = charge.amount_refunded ?? 0;
-        // Stripe issues one charge.refunded event per refund object. Prefer the
-        // latest refund's id for a stable externalEventId per refund event.
-        const latestRefund =
-          (charge as any).refunds?.data?.[(charge as any).refunds?.data?.length - 1];
-        const refundId: string = latestRefund?.id || `charge_${charge.id}`;
-        if (refundCents > 0) {
+      // Tier 2B — failed postRefund dead-letters for hourly replay.
+      const refundCents = charge.amount_refunded ?? 0;
+      // Stripe issues one charge.refunded event per refund object. Prefer the
+      // latest refund's id for a stable externalEventId per refund event.
+      const latestRefund =
+        (charge as any).refunds?.data?.[(charge as any).refunds?.data?.length - 1];
+      const refundId: string = latestRefund?.id || `charge_${charge.id}`;
+      if (refundCents > 0) {
+        const refundArgs = {
+          organizationId: org.id,
+          amountCents: refundCents,
+          externalEventId: `stripe:refund:${refundId}`,
+          originalRevenueEventId:
+            typeof chargeInvoice === 'string'
+              ? `stripe:invoice:${chargeInvoice}`
+              : chargeInvoice?.id
+              ? `stripe:invoice:${chargeInvoice.id}`
+              : undefined,
+        };
+        try {
           const { postRefund } = await import('./services/financial-ledger');
-          await postRefund({
+          await postRefund(refundArgs);
+        } catch (ledgerErr) {
+          logger.warn(
+            '[webhook] financial-ledger.postRefund failed (non-fatal) — dead-lettering',
+            ledgerErr instanceof Error ? ledgerErr : undefined,
+          );
+          const { recordLedgerDeadLetter } = await import('./services/ledgerDeadLetter');
+          await recordLedgerDeadLetter({
+            kind: 'refund',
+            externalEventId: refundArgs.externalEventId,
             organizationId: org.id,
-            amountCents: refundCents,
-            externalEventId: `stripe:refund:${refundId}`,
-            originalRevenueEventId:
-              typeof chargeInvoice === 'string'
-                ? `stripe:invoice:${chargeInvoice}`
-                : chargeInvoice?.id
-                ? `stripe:invoice:${chargeInvoice.id}`
-                : undefined,
+            payload: refundArgs,
+            error: ledgerErr,
           });
         }
-      } catch (ledgerErr) {
-        logger.warn(
-          '[webhook] financial-ledger.postRefund failed (non-fatal)',
-          ledgerErr instanceof Error ? ledgerErr : undefined,
-        );
       }
     } catch (err) {
       logger.error('[webhook] Error processing charge.refunded', err instanceof Error ? err : undefined);
@@ -874,23 +895,33 @@ export class WebhookHandlers {
       }
 
       if (feeCents <= 0) return;
+      // Tier 2B — failed fee posting dead-letters for hourly replay.
+      const feeArgs = {
+        organizationId: org.id,
+        amountCents: feeCents,
+        category: 'stripe_fee',
+        feature: 'subscription',
+        providerName: 'stripe',
+        providerEventId: charge.id,
+        externalEventId: `stripe:fee:${charge.id}`,
+        notes: `Stripe processing fee for charge ${charge.id}`,
+      };
       try {
         const { postOpexSpent } = await import('./services/financial-ledger');
-        await postOpexSpent({
-          organizationId: org.id,
-          amountCents: feeCents,
-          category: 'stripe_fee',
-          feature: 'subscription',
-          providerName: 'stripe',
-          providerEventId: charge.id,
-          externalEventId: `stripe:fee:${charge.id}`,
-          notes: `Stripe processing fee for charge ${charge.id}`,
-        });
+        await postOpexSpent(feeArgs);
       } catch (ledgerErr) {
         logger.warn(
-          '[webhook] financial-ledger.postOpexSpent (stripe_fee) failed',
+          '[webhook] financial-ledger.postOpexSpent (stripe_fee) failed — dead-lettering',
           ledgerErr instanceof Error ? ledgerErr : undefined,
         );
+        const { recordLedgerDeadLetter } = await import('./services/ledgerDeadLetter');
+        await recordLedgerDeadLetter({
+          kind: 'opex',
+          externalEventId: feeArgs.externalEventId,
+          organizationId: org.id,
+          payload: feeArgs,
+          error: ledgerErr,
+        });
       }
     } catch (err) {
       logger.error('[webhook] Error processing charge.succeeded', err instanceof Error ? err : undefined);

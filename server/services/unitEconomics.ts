@@ -12,15 +12,28 @@
  *     for each. Wired into the self-rescheduling framework via
  *     server/index.ts → startCustomerUnitEconomicsJob.
  *
- * Cost sources (trailing 30 days unless noted):
+ * Cost sources (trailing 30 days) — Tier 2B "one money spine":
  *
- *   - AI:           ai_usage_daily.totalUsd               (already in USD)
- *   - Direct mail:  mailing_orders.totalCost (cents)      → /100 → USD
- *   - SMS:          messages where conversation.channel='sms' & direction='outbound'
- *                   times TWILIO_COST_PER_SMS ($0.0079) — matches smsProvider.ts.
- *   - Email:        messages where conversation.channel='email' & direction='outbound'
- *                   times $0.0001 (SendGrid per-message cost).
- *   - Skip trace:   skip_traces.cost_cents                → /100 → USD.
+ *   ALL variable costs are summed from `financial_ledger` (the system of
+ *   record — see financial-ledger.ts; every postOpexSpent call site lands
+ *   there with real provider-billed cents). One grouped query per org:
+ *
+ *   - AI:           category 'ai_tokens' (OpenRouter, actual billed cents)
+ *                   + category 'voice' (ElevenLabs) folded into aiCostUsd.
+ *   - Direct mail:  category 'mail' (Lob / PostGrid actual postage cents).
+ *   - SMS:          category 'sms' (Twilio actual cents — replaces the old
+ *                   hardcoded $0.0079 × outbound-message-count estimate).
+ *   - Email:        category 'email'.
+ *   - Skip trace:   category 'skip_trace'.
+ *
+ *   Counts (aiCallCount, smsCount, …) are ledger row counts per category —
+ *   one posting per billed provider event. Two deliberate semantic shifts vs
+ *   the pre-2B parallel-table reads: BYOK orgs post nothing to the ledger
+ *   (the customer pays the provider directly), so their variable COGS is
+ *   correctly $0 now; and $0-cost events (cached AI calls, mock sends)
+ *   no longer inflate counts. category 'stripe_fee' is deliberately
+ *   EXCLUDED — payment processing is netted at the revenue level, matching
+ *   the pre-2B definition of these six COGS columns.
  *
  * Fixed-cost share:
  *   Sum of FIXED_COST_INPUTS_USD_MONTHLY (Fly + Postgres + Clerk + Sentry) is
@@ -44,11 +57,7 @@ import { sql, eq, gte, and, desc, inArray } from "drizzle-orm";
 import { db } from "../db";
 import {
   organizations,
-  aiUsageDaily,
-  mailingOrders,
-  messages,
-  conversations,
-  skipTraces,
+  financialLedger,
   customerUnitEconomics,
   systemAlerts,
   FIXED_COST_INPUTS_USD_MONTHLY,
@@ -65,10 +74,21 @@ import {
 import { logger } from "../utils/logger";
 import { storage } from "../storage";
 
-// Per-message cost rates. Kept in sync with smsProvider.ts.
-const TWILIO_COST_PER_SMS_USD = 0.0079;
-const SENDGRID_COST_PER_EMAIL_USD = 0.0001;
 const DEFAULT_WINDOW_DAYS = 30;
+
+/**
+ * financial_ledger categories that constitute variable COGS, and which of
+ * the six output columns each one feeds. 'stripe_fee' is deliberately absent
+ * (netted at revenue level, not a per-feature COGS column — see header).
+ */
+const LEDGER_COST_CATEGORIES = [
+  "ai_tokens",
+  "voice",
+  "mail",
+  "sms",
+  "email",
+  "skip_trace",
+] as const;
 
 export interface UnitEconomicsResult {
   organizationId: number;
@@ -140,99 +160,102 @@ async function countPayingActiveOrgs(): Promise<number> {
   return Math.max(1, paying.length);
 }
 
-// ─── Per-org cost queries ───────────────────────────────────────────────────
+// ─── Per-org cost query (Tier 2B — financial_ledger is the ONE source) ──────
 
-async function aiCostFor(orgId: number, sinceIso: string): Promise<{ usd: number; calls: number; byFeature: Record<string, { usd: number; calls: number }> }> {
-  const rows = await db
-    .select({
-      totalUsd: aiUsageDaily.totalUsd,
-      callCount: aiUsageDaily.callCount,
-      byFeature: aiUsageDaily.byFeature,
-    })
-    .from(aiUsageDaily)
-    .where(and(eq(aiUsageDaily.organizationId, orgId), gte(aiUsageDaily.date, sinceIso)));
-
-  let usd = 0;
-  let calls = 0;
-  const byFeature: Record<string, { usd: number; calls: number }> = {};
-  for (const r of rows) {
-    usd += toNumber(r.totalUsd);
-    calls += r.callCount ?? 0;
-    const bf = (r.byFeature ?? {}) as Record<string, { usd: number; calls: number }>;
-    for (const [feature, val] of Object.entries(bf)) {
-      const existing = byFeature[feature] ?? { usd: 0, calls: 0 };
-      existing.usd += toNumber(val?.usd);
-      existing.calls += val?.calls ?? 0;
-      byFeature[feature] = existing;
-    }
-  }
-  return { usd: round6(usd), calls, byFeature };
+export interface LedgerCostRollup {
+  aiCostUsd: number;
+  directMailCostUsd: number;
+  smsCostUsd: number;
+  emailCostUsd: number;
+  skipTraceCostUsd: number;
+  aiCallCount: number;
+  smsCount: number;
+  emailCount: number;
+  directMailPieces: number;
+  skipTraceCount: number;
+  aiByFeature: Record<string, { usd: number; calls: number }>;
 }
 
-async function directMailCostFor(orgId: number, since: Date): Promise<{ usd: number; pieces: number }> {
+/**
+ * One grouped scan of financial_ledger per org. opex rows are stored as
+ * NEGATIVE signed cents (postOpexSpent negates), so costs are `-sum`.
+ * Grouped by (category, feature) so the AI per-feature breakdown comes from
+ * the same query. Exported for the unit-economics-from-ledger tests.
+ */
+export async function ledgerCostsFor(orgId: number, since: Date): Promise<LedgerCostRollup> {
   const rows = await db
     .select({
-      totalCost: mailingOrders.totalCost,
-      sentPieces: mailingOrders.sentPieces,
-      totalPieces: mailingOrders.totalPieces,
+      category: financialLedger.category,
+      feature: financialLedger.feature,
+      totalCents: sql<number>`COALESCE(SUM(${financialLedger.amountCents}), 0)::bigint`,
+      rowCount: sql<number>`COUNT(*)::int`,
     })
-    .from(mailingOrders)
-    .where(and(eq(mailingOrders.organizationId, orgId), gte(mailingOrders.createdAt, since)));
-
-  let cents = 0;
-  let pieces = 0;
-  for (const r of rows) {
-    cents += r.totalCost ?? 0;
-    pieces += r.sentPieces ?? r.totalPieces ?? 0;
-  }
-  return { usd: round6(cents / 100), pieces };
-}
-
-async function messageChannelCountsFor(
-  orgId: number,
-  since: Date,
-): Promise<{ smsCount: number; emailCount: number }> {
-  // We join on conversations to read its `channel` since messages.* doesn't
-  // carry channel directly. Outbound-only — inbound messages have no
-  // provider cost (we receive them for free).
-  const rows = await db
-    .select({
-      channel: conversations.channel,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(messages)
-    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .from(financialLedger)
     .where(
       and(
-        eq(messages.organizationId, orgId),
-        eq(messages.direction, "outbound"),
-        gte(messages.createdAt, since),
+        eq(financialLedger.organizationId, orgId),
+        inArray(financialLedger.category, [...LEDGER_COST_CATEGORIES]),
+        gte(financialLedger.postedAt, since),
       ),
     )
-    .groupBy(conversations.channel);
+    .groupBy(financialLedger.category, financialLedger.feature);
 
-  let smsCount = 0;
-  let emailCount = 0;
+  const rollup: LedgerCostRollup = {
+    aiCostUsd: 0,
+    directMailCostUsd: 0,
+    smsCostUsd: 0,
+    emailCostUsd: 0,
+    skipTraceCostUsd: 0,
+    aiCallCount: 0,
+    smsCount: 0,
+    emailCount: 0,
+    directMailPieces: 0,
+    skipTraceCount: 0,
+    aiByFeature: {},
+  };
+
   for (const r of rows) {
-    if (r.channel === "sms") smsCount += r.count ?? 0;
-    if (r.channel === "email") emailCount += r.count ?? 0;
+    // Signed cents: opex rows are negative; abs-guard so a stray positive
+    // correction row can't flip a cost negative.
+    const usd = Math.abs(toNumber(r.totalCents)) / 100;
+    const count = r.rowCount ?? 0;
+    switch (r.category) {
+      case "ai_tokens":
+      case "voice": {
+        rollup.aiCostUsd += usd;
+        rollup.aiCallCount += count;
+        const featureKey = r.feature ?? (r.category === "voice" ? "voice" : "unknown");
+        const existing = rollup.aiByFeature[featureKey] ?? { usd: 0, calls: 0 };
+        existing.usd = round6(existing.usd + usd);
+        existing.calls += count;
+        rollup.aiByFeature[featureKey] = existing;
+        break;
+      }
+      case "mail":
+        rollup.directMailCostUsd += usd;
+        rollup.directMailPieces += count;
+        break;
+      case "sms":
+        rollup.smsCostUsd += usd;
+        rollup.smsCount += count;
+        break;
+      case "email":
+        rollup.emailCostUsd += usd;
+        rollup.emailCount += count;
+        break;
+      case "skip_trace":
+        rollup.skipTraceCostUsd += usd;
+        rollup.skipTraceCount += count;
+        break;
+    }
   }
-  return { smsCount, emailCount };
-}
 
-async function skipTraceCostFor(orgId: number, since: Date): Promise<{ usd: number; count: number }> {
-  const rows = await db
-    .select({
-      costCents: skipTraces.costCents,
-    })
-    .from(skipTraces)
-    .where(and(eq(skipTraces.organizationId, orgId), gte(skipTraces.createdAt, since)));
-
-  let cents = 0;
-  for (const r of rows) {
-    cents += r.costCents ?? 0;
-  }
-  return { usd: round6(cents / 100), count: rows.length };
+  rollup.aiCostUsd = round6(rollup.aiCostUsd);
+  rollup.directMailCostUsd = round6(rollup.directMailCostUsd);
+  rollup.smsCostUsd = round6(rollup.smsCostUsd);
+  rollup.emailCostUsd = round6(rollup.emailCostUsd);
+  rollup.skipTraceCostUsd = round6(rollup.skipTraceCostUsd);
+  return rollup;
 }
 
 // ─── Last snapshot lookup (for consecutive-unprofitable streak) ─────────────
@@ -262,17 +285,9 @@ export async function computeUnitEconomicsForOrg(
   }
 
   const since = new Date(Date.now() - windowDays * 86_400_000);
-  const sinceIso = since.toISOString().slice(0, 10);
 
-  const [ai, dm, channels, st] = await Promise.all([
-    aiCostFor(orgId, sinceIso),
-    directMailCostFor(orgId, since),
-    messageChannelCountsFor(orgId, since),
-    skipTraceCostFor(orgId, since),
-  ]);
-
-  const smsCostUsd = round6(channels.smsCount * TWILIO_COST_PER_SMS_USD);
-  const emailCostUsd = round6(channels.emailCount * SENDGRID_COST_PER_EMAIL_USD);
+  // Tier 2B — all variable costs from the ONE money spine (financial_ledger).
+  const costs = await ledgerCostsFor(orgId, since);
 
   // Fixed-cost share — only paid active customers shoulder this.
   const activeCustomers = opts.activeCustomerCount ?? (await countPayingActiveOrgs());
@@ -285,7 +300,12 @@ export async function computeUnitEconomicsForOrg(
   const mrrUsd = round6(monthlyRevenueCentsFor(org.subscriptionTier, billingInterval) / 100);
 
   const totalCogsUsd = round6(
-    ai.usd + dm.usd + smsCostUsd + emailCostUsd + st.usd + fixedCostShareUsd,
+    costs.aiCostUsd +
+      costs.directMailCostUsd +
+      costs.smsCostUsd +
+      costs.emailCostUsd +
+      costs.skipTraceCostUsd +
+      fixedCostShareUsd,
   );
   const profitMarginUsd = round6(mrrUsd - totalCogsUsd);
   const profitMarginPct = mrrUsd > 0 ? Math.round((profitMarginUsd / mrrUsd) * 10000) / 100 : 0;
@@ -301,23 +321,26 @@ export async function computeUnitEconomicsForOrg(
     subscriptionTier: org.subscriptionTier,
     windowDays,
     mrrUsd,
-    aiCostUsd: ai.usd,
-    directMailCostUsd: dm.usd,
-    smsCostUsd,
-    emailCostUsd,
-    skipTraceCostUsd: st.usd,
+    aiCostUsd: costs.aiCostUsd,
+    directMailCostUsd: costs.directMailCostUsd,
+    smsCostUsd: costs.smsCostUsd,
+    emailCostUsd: costs.emailCostUsd,
+    skipTraceCostUsd: costs.skipTraceCostUsd,
     fixedCostShareUsd,
     totalCogsUsd,
     profitMarginUsd,
     profitMarginPct,
-    aiCallCount: ai.calls,
-    smsCount: channels.smsCount,
-    emailCount: channels.emailCount,
-    directMailPieces: dm.pieces,
-    skipTraceCount: st.count,
+    aiCallCount: costs.aiCallCount,
+    smsCount: costs.smsCount,
+    emailCount: costs.emailCount,
+    directMailPieces: costs.directMailPieces,
+    skipTraceCount: costs.skipTraceCount,
     consecutiveUnprofitableDays,
     breakdown: {
-      aiByFeature: ai.byFeature,
+      aiByFeature: costs.aiByFeature,
+      notes: [
+        "costs sourced from financial_ledger (Tier 2B one money spine); BYOK spend and stripe_fee excluded by design",
+      ],
       fixedCostInputs: {
         flyMonthlyUsd: FIXED_COST_INPUTS_USD_MONTHLY.fly,
         postgresMonthlyUsd: FIXED_COST_INPUTS_USD_MONTHLY.postgres,

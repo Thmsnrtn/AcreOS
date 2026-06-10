@@ -259,6 +259,10 @@ export const JOB_ROSTER: JobRosterEntry[] = [
       process.env.NODE_ENV !== "production" || !process.env.FLY_API_TOKEN },
   { name: "synthetic_checks", intervalMs: 15 * MIN, critical: true },
   { name: "reconciliation_cron", intervalMs: DAY, critical: true },
+  // Tier 2B — hourly replay of failed financial_ledger postings. Critical:
+  // if this goes dark while dead letters exist, money is silently missing
+  // from the system of record and nothing is retrying.
+  { name: "ledger_dead_letter_replay", intervalMs: HOUR, critical: true },
   { name: "disclosure_timing_dispatch", intervalMs: HOUR, critical: true },
   { name: "fair_lending_audit", intervalMs: MONTH, critical: true },
 

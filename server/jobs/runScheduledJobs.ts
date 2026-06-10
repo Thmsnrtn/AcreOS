@@ -4525,8 +4525,13 @@ export async function runScheduledJobs(): Promise<void> {
 
   // ─── Panel-300 #9: reconciliation cron (daily) ──────────────────
   // Compares Stripe MTD-paid total vs revenue_recognition_periods
-  // recognized_cents. Divergence > $1 → status='divergent' run row.
-  import("../services/reconciliation").then(({ runReconciliation }) => {
+  // recognized_cents AND vs financial_ledger revenue rows (Tier 2B money
+  // spine — divergence on that rule pages critical via the 1D alert spine).
+  // Divergence > tolerance → status='divergent' run row + raiseAlert.
+  // Tier 2B activation: ensureDefaultRules() self-provisions the two Stripe
+  // rules before every run — previously nothing ever seeded
+  // reconciliation_rules, so this cron was a registered no-op in prod.
+  import("../services/reconciliation").then(({ runReconciliation, ensureDefaultRules }) => {
     import("./scheduler").then(({ scheduleSelfRescheduling }) => {
       log("Reconciliation cron registered (self-rescheduling, 24h)", "billing");
       scheduleSelfRescheduling({
@@ -4536,6 +4541,7 @@ export async function runScheduledJobs(): Promise<void> {
         run: async () => {
           // Daily cadence; TTL = expected max duration + buffer (60m).
           await withJobLock("reconciliation_cron", 60 * 60, async () => {
+            await ensureDefaultRules();
             await runReconciliation();
           });
         },
@@ -4543,6 +4549,35 @@ export async function runScheduledJobs(): Promise<void> {
     });
   }).catch(err => {
     log(`Failed to import reconciliation cron: ${err}`, "billing");
+  });
+
+  // ─── Tier 2B: ledger dead-letter replay (hourly) ─────────────────
+  // Re-dispatches failed financial_ledger postings captured by the Stripe
+  // webhook catch blocks (ledger_dead_letters) through the same idempotent
+  // posting functions, and raises an alert-spine finding when entries
+  // accumulate (warning) or are abandoned after max attempts (critical).
+  import("../services/ledgerDeadLetter").then(({ runLedgerDeadLetterSweep }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("Ledger dead-letter replay registered (self-rescheduling, 1h)", "billing");
+      scheduleSelfRescheduling({
+        name: "ledger_dead_letter_replay",
+        intervalMs: 60 * 60 * 1000,
+        initialDelayMs: 5 * 60 * 1000,
+        run: async () => {
+          await withJobLock("ledger_dead_letter_replay", 30 * 60, async () => {
+            const r = await runLedgerDeadLetterSweep();
+            if (r.scanned > 0) {
+              log(
+                `[ledger-dlq] replayed=${r.replayed} failed=${r.failed} abandoned=${r.abandoned} pending=${r.pendingAfter}`,
+                "billing",
+              );
+            }
+          });
+        },
+      });
+    });
+  }).catch(err => {
+    log(`Failed to import ledger dead-letter replay: ${err}`, "billing");
   });
 
   // ─── Panel-300 #10: disclosure-timing dispatcher (every 1h) ──────
