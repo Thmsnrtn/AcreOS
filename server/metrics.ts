@@ -154,6 +154,19 @@ export const stripeWebhookFailedTotal = new Counter({
   registers: [registry],
 });
 
+// ── Public parcel reports (Tier 3A) ─────────────────────────────────────────
+// /p/:state/:county/:apn permalinks. `generated` is the cost-bearing event
+// (upstream county-GIS + free-geo lookups happen); everything else is a DB
+// read. The daily-spike alert in services/publicParcelReport.ts complements
+// this counter — the counter is the trend line, the alert is the tripwire.
+
+export const publicParcelReportEventsTotal = new Counter({
+  name: "acreos_public_parcel_report_events_total",
+  help: "Public /p parcel-report lifecycle events, labelled by event: generated | cache_hit | view | og_image | unavailable | capped. Tier 3A cost-guard telemetry.",
+  labelNames: ["event"] as const,
+  registers: [registry],
+});
+
 // ── Public helpers ──────────────────────────────────────────────────────────
 // These are the call-site interface other services should use. Direct
 // access to the metric objects above is fine inside this file but the

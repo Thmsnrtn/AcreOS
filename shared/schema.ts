@@ -6216,6 +6216,132 @@ export type InsertCountyDiscoveryQueue = z.infer<typeof insertCountyDiscoveryQue
 export type CountyDiscoveryQueue = typeof countyDiscoveryQueue.$inferSelect;
 
 // ============================================
+// PUBLIC PARCEL REPORTS (Tier 3A — /p/:state/:county/:apn permalinks)
+// ============================================
+//
+// Saved, shareable public parcel reports (migration 0156, elevation blueprint
+// 3A). Each row IS the cache for one permalink: free/government-data parcel
+// facts + the honest PARTIAL Land Credit Score computed from those facts only.
+// No org linkage by design — these are pre-signup acquisition surfaces.
+//
+// Honesty + licensing contract:
+//  - facts carry only free-tier sources (the generation path is hard-capped to
+//    maxTier:"free" through resolveParcel; paid/byok providers are structurally
+//    unreachable — see server/services/publicParcelReport.ts).
+//  - County-assessor attributes (owner, tax, assessed value) are persisted ONLY
+//    when the county's county_gis_endpoints row says redistributable in
+//    ('yes','attribution') (Beatrice rule: un-reviewed counties are
+//    live-passthrough only — a saved public page is redistribution).
+//  - lcs locked dimensions carry score:null, never an invented value.
+
+/** One free-data fact category as rendered on the public report. */
+export interface PublicReportFactCategory {
+  category: string; // flood_zone | soil | elevation | wetlands
+  available: boolean;
+  data: unknown; // raw free-source payload (zone, soilType, elevationFeet, …)
+  source: string | null; // e.g. "FEMA NFHL" — named even when empty
+  sourceAsOf: string | null;
+  classification: "authoritative" | "estimate" | "modeled" | "unknown";
+  fromCache: boolean;
+}
+
+export interface PublicReportFacts {
+  parcel: {
+    apn: string;
+    state: string;
+    county: string;
+    acres: number | null;
+    centroid: { lat: number; lng: number } | null;
+    /**
+     * included            — county attributes persisted (license allows)
+     * not-redistributable — county record exists; terms not yet reviewed →
+     *                       attributes intentionally omitted from the page
+     * unavailable         — no free county source matched this APN
+     */
+    countyAttributes: "included" | "not-redistributable" | "unavailable";
+    /** Required attribution string when countyAttributes === "included". */
+    attribution: string | null;
+    /** Present only when countyAttributes === "included". */
+    assessorData?: Record<string, unknown> | null;
+  };
+  categories: PublicReportFactCategory[];
+}
+
+export type PublicLcsDimensionKey =
+  | "location"
+  | "physical"
+  | "legal"
+  | "financial"
+  | "environmental"
+  | "market";
+
+export interface PublicLcsDimension {
+  key: PublicLcsDimensionKey;
+  label: string;
+  weight: number; // canonical LCS weight (sums to 100 across all six)
+  status: "scored" | "locked";
+  /** 0–100 when scored; ALWAYS null when locked (honesty invariant). */
+  score: number | null;
+  /** Sub-factors actually informed by free government data. */
+  coverage: string[];
+  /** Sub-factors that need full-AcreOS data — named, never guessed. */
+  missing: string[];
+  /** Government sources backing the scored sub-factors. */
+  sources: string[];
+}
+
+export interface PublicLcs {
+  kind: "partial";
+  basis: "government-data-only";
+  scoredDimensions: number;
+  totalDimensions: number;
+  /** 300–850 over scored dimensions only (weights renormalized); null when nothing scored. */
+  partialScore: number | null;
+  partialGrade: string | null;
+  dimensions: PublicLcsDimension[];
+  modelVersion: string;
+  computedAt: string;
+}
+
+export const publicParcelReports = pgTable("public_parcel_reports", {
+  id: serial("id").primaryKey(),
+
+  // Permalink identity: /p/:state/:county/:apn → (state, county_slug, apn_key).
+  state: text("state").notNull(), // 2-letter, uppercased
+  countySlug: text("county_slug").notNull(), // lowercased, hyphenated, no " county"
+  countyLabel: text("county_label").notNull(), // display form, e.g. "Travis"
+  apn: text("apn").notNull(), // display form as entered/normalized
+  apnKey: text("apn_key").notNull(), // comparison key: uppercase alphanumerics only
+
+  facts: jsonb("facts").$type<PublicReportFacts>().notNull(),
+  lcs: jsonb("lcs").$type<PublicLcs>().notNull(),
+
+  // Centroid duplicated out of facts for cheap geo queries / refresh.
+  latitude: real("latitude"),
+  longitude: real("longitude"),
+
+  // Server-side truth for report consumption (client analytics is supplemental).
+  viewCount: integer("view_count").notNull().default(0),
+  lastViewedAt: timestamp("last_viewed_at", { withTimezone: true }),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  refreshedAt: timestamp("refreshed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("public_parcel_reports_identity_uq").on(table.state, table.countySlug, table.apnKey),
+  // Daily generation-cap counts + sitemap ordering.
+  index("public_parcel_reports_created_idx").on(table.createdAt),
+  index("public_parcel_reports_refreshed_idx").on(table.refreshedAt),
+]);
+
+export const insertPublicParcelReportSchema = createInsertSchema(publicParcelReports).omit({
+  id: true,
+  createdAt: true,
+  refreshedAt: true,
+});
+export type InsertPublicParcelReport = z.infer<typeof insertPublicParcelReportSchema>;
+export type PublicParcelReport = typeof publicParcelReports.$inferSelect;
+
+// ============================================
 // COUNTY COVERAGE REQUEST (customer-facing "request this county" CTA)
 // ============================================
 //

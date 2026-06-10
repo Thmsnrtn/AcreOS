@@ -88,6 +88,7 @@ import needsOnboardingRouter from "./routes-needs-onboarding";
 import acquisitionUtmRouter from "./routes-acquisition-utm";
 import { registerMarketingTouchRoutes } from "./routes-marketing-touch";
 import publicParcelCheckRouter from "./routes-public-parcel-check";
+import publicParcelReportRouter, { registerPublicParcelReportPages } from "./routes-public-parcel-report";
 import aiDisclosureRouter from "./routes-ai-disclosure";
 import paxDisclosureRouter from "./routes-pax-disclosure";
 import featureFlagsRouter from "./routes-feature-flags";
@@ -545,6 +546,15 @@ export async function registerRoutes(
   // free-tier promise work before signing up. Hard-capped to free providers,
   // rate-limited by session/parcel NOT raw IP. See routes-public-parcel-check.ts.
   app.use("/api/public/parcel-check", publicParcelCheckRouter);
+
+  // Tier 3A — public parcel reports with the partial Land Credit Score.
+  // Saved /p/:state/:county/:apn permalinks: free/government data only
+  // (structurally pinned to maxTier:"free" — paid providers unreachable),
+  // session-keyed rate limits, daily cap + alert-spine tripwire. The page
+  // routes (HTML head injection / OG image / sitemap) are read-only and
+  // registered here so they win over the SPA-shell catch-all.
+  app.use("/api/public/parcel-report", publicParcelReportRouter);
+  registerPublicParcelReportPages(app);
 
   app.get("/api/health/cached", async (req: AuthenticatedRequest, res: Response) => {
     try {

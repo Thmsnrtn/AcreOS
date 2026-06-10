@@ -74,6 +74,41 @@ interface ScoringFactors {
   };
 }
 
+// ── Shared scoring constants (Tier 3A) ──────────────────────────────────────
+// Exported pure pieces of the Land Credit Score methodology so the PUBLIC
+// partial-LCS path (server/services/publicParcelReport.ts) reuses the exact
+// same weights / 300–850 scale / grade thresholds as the in-app score. One
+// methodology, two coverage levels — never two scales.
+
+/** Canonical dimension weights (must sum to 100). */
+export const LCS_DIMENSION_WEIGHTS = {
+  location: 25,
+  physical: 20,
+  legal: 15,
+  financial: 20,
+  environmental: 10,
+  market: 10,
+} as const;
+
+export type LcsGrade = 'A+' | 'A' | 'B+' | 'B' | 'C+' | 'C' | 'D' | 'F';
+
+/** Map a 0–100 weighted overall onto the 300–850 credit scale. */
+export function lcsCreditScale(overall0to100: number): number {
+  return Math.round(300 + (overall0to100 / 100) * 550);
+}
+
+/** Letter grade for a 300–850 credit score — single source of truth. */
+export function lcsGradeForScore(score: number): LcsGrade {
+  if (score >= 800) return 'A+';
+  if (score >= 740) return 'A';
+  if (score >= 700) return 'B+';
+  if (score >= 660) return 'B';
+  if (score >= 620) return 'C+';
+  if (score >= 580) return 'C';
+  if (score >= 500) return 'D';
+  return 'F';
+}
+
 interface CreditScoreConfidence {
   low: number;
   high: number;
@@ -93,15 +128,9 @@ interface CreditScore {
 }
 
 class LandCreditScoring {
-  // Scoring weights (must sum to 100)
-  private readonly WEIGHTS = {
-    location: 25,
-    physical: 20,
-    legal: 15,
-    financial: 20,
-    environmental: 10,
-    market: 10,
-  };
+  // Scoring weights (must sum to 100) — canonical copy exported above so the
+  // public partial-LCS path shares the identical methodology.
+  private readonly WEIGHTS = LCS_DIMENSION_WEIGHTS;
 
   /**
    * Calculate comprehensive land credit score
@@ -142,7 +171,7 @@ class LandCreditScoring {
       );
 
       // Convert to 300-850 scale (like FICO)
-      const creditScore = Math.round(300 + (overall / 100) * 550);
+      const creditScore = lcsCreditScale(overall);
 
       // Determine grade
       const grade = this.determineGrade(creditScore);
@@ -536,17 +565,11 @@ class LandCreditScoring {
   }
 
   /**
-   * Convert numeric score to letter grade
+   * Convert numeric score to letter grade — delegates to the exported
+   * single-source-of-truth thresholds (shared with the public partial LCS).
    */
   private determineGrade(score: number): CreditScore['grade'] {
-    if (score >= 800) return 'A+';
-    if (score >= 740) return 'A';
-    if (score >= 700) return 'B+';
-    if (score >= 660) return 'B';
-    if (score >= 620) return 'C+';
-    if (score >= 580) return 'C';
-    if (score >= 500) return 'D';
-    return 'F';
+    return lcsGradeForScore(score);
   }
 
   /**
@@ -921,7 +944,7 @@ class LandCreditScoring {
        environmental.score * this.WEIGHTS.environmental +
        market.score * this.WEIGHTS.market) / 100
     );
-    const creditScore = Math.round(300 + (overall / 100) * 550);
+    const creditScore = lcsCreditScale(overall);
 
     const improvementMap: Record<string, string> = {
       location: 'Target high-growth markets (TX, FL, GA) for better location scores. Proximity to highways and cities improves accessibility.',
