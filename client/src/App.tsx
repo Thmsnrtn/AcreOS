@@ -8,7 +8,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { useWhiteLabel } from "@/hooks/use-white-label";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
-import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { setSentryUser } from "@/lib/sentry";
 import { identifyUser, trackCanonicalEvent, trackEvent } from "@/lib/analytics";
@@ -54,6 +53,8 @@ import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { usePWA } from "@/hooks/use-pwa";
 import { usePersonaMode, isTypingTarget } from "@/hooks/use-persona-mode";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
+import { useRouteHeadingFocus } from "@/hooks/use-route-heading-focus";
+import { RouteFallback } from "@/components/route-fallback";
 import { MobileBottomNav, FounderMobileBottomNav } from "@/components/mobile";
 import { useIsMobile } from "@/hooks/use-mobile";
 // Phase D — Atlas Dock follows Tom across every founder surface. Lazy
@@ -561,11 +562,7 @@ function FlaggedRoute({ route, component: Component }: { route: string; componen
   const { isRouteEnabled, isLoading: flagsLoading } = useFeatureFlags();
 
   if (authLoading || flagsLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <RouteFallback />;
   }
 
   if (!user) return <Redirect to="/auth" />;
@@ -587,11 +584,7 @@ function PersonaRoute({
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <RouteFallback />;
   }
 
   if (!user) return <Redirect to="/auth" />;
@@ -652,12 +645,14 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 function Router() {
   const [pathname] = useLocation();
   useNextRoutePrefetch(pathname);
+  // Tier 3C keyboard layer: after a client-side navigation (G-chord, link,
+  // bottom-nav tap) move focus to the new page's H1 so the destination is
+  // announced and keyboard focus starts at the top of the new surface.
+  useRouteHeadingFocus(pathname);
   return (
-    <React.Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    }>
+    // Door-shaped fallback (Tier 3C perceived speed) — Skeletons in the
+    // PageShell silhouette, not a spinner, while a lazy chunk downloads.
+    <React.Suspense fallback={<RouteFallback />}>
     <Switch>
       <Route path="/auth" component={AuthPage} />
       <Route path="/terms" component={TermsOfService} />

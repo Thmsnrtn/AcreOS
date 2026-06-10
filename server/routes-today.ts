@@ -30,7 +30,7 @@
 
 import { Router, type Response } from "express";
 import { and, desc, eq, gte, gt, sql, inArray } from "drizzle-orm";
-import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable, todayQueueState } from "@shared/schema";
+import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable, todayQueueState, paxSends, paxScheduledTaskRuns } from "@shared/schema";
 import type { Persona } from "@shared/models/auth";
 import { db, storage } from "./storage";
 import { runPortfolioHealthJob, getActiveAlerts } from "./services/portfolioHealth";
@@ -69,6 +69,20 @@ type InlineAction =
     }
   | { kind: "navigate" };
 
+// ── Urgency classes (Tier 3C — the ranked spine) ────────────────────────────
+// Every queue item belongs to exactly one urgency class, derived from REAL
+// signals at the gather site (a past-due timestamp, a dollar consequence, a
+// staleness clock). Items whose builder can't honestly claim urgency default
+// to "routine" — no fabricated urgency, ever.
+export type QueueUrgency = "overdue" | "money" | "time" | "routine";
+
+export const URGENCY_ORDER: Record<QueueUrgency, number> = {
+  overdue: 0, // a real deadline already passed (task past due)
+  money: 1,   // dollars on the table now (offer expiring, live negotiation, late note)
+  time: 2,    // a real clock is running (due today, staleness window closing)
+  routine: 3, // everything else — honest default
+};
+
 interface DecisionItem {
   id: string;
   source: DecisionSource;
@@ -80,6 +94,35 @@ interface DecisionItem {
   rank: number;
   confidence?: number | null;
   inlineAction?: InlineAction;
+  // Urgency class set by the gather site that owns the underlying signal.
+  // Absent → classified "routine" by the comparator (never upgraded).
+  urgency?: QueueUrgency;
+}
+
+/** Honest classification: an item is only as urgent as its builder could prove. */
+export function classifyUrgency(item: Pick<DecisionItem, "urgency">): QueueUrgency {
+  return item.urgency ?? "routine";
+}
+
+/**
+ * The one ranking function for the Today queue (Tier 3C). Explainable order:
+ *   1. urgency class — overdue → money-touching → time-sensitive → routine
+ *   2. priority      — high → medium → low (within a class)
+ *   3. rank          — the legacy per-source ordinal (stable within-class tiebreak)
+ *   4. id            — lexicographic, so the full order is deterministic
+ */
+export function compareQueueItems(
+  a: Pick<DecisionItem, "urgency" | "priority" | "rank" | "id">,
+  b: Pick<DecisionItem, "urgency" | "priority" | "rank" | "id">,
+): number {
+  const ua = URGENCY_ORDER[classifyUrgency(a)];
+  const ub = URGENCY_ORDER[classifyUrgency(b)];
+  if (ua !== ub) return ua - ub;
+  const pa = priorityRank[a.priority] ?? 1;
+  const pb = priorityRank[b.priority] ?? 1;
+  if (pa !== pb) return pa - pb;
+  if (a.rank !== b.rank) return a.rank - b.rank;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 // Snooze duration for the "Snooze 3d" inline action (Maren CPO #2).
@@ -162,6 +205,136 @@ export function isQueueItemHidden(
     return !!state.snoozedUntil && new Date(state.snoozedUntil).getTime() > now.getTime();
   }
   return false;
+}
+
+// ── Receipts (Tier 3C) — "what Pax/the system DID while you were away" ──────
+// Every receipt is derived from real rows (pax_sends, completed payments,
+// successful pax_scheduled_task_runs). No rows → empty array → the client
+// renders nothing. Receipts are COMPLETED events only; attention-needing
+// items belong in the queue, not here.
+//
+// Deliberately EXCLUDED: outbound_email_log lifecycle mail. Those rows are
+// real, but they're mail sent TO the operator (welcome, trial-ending) — the
+// operator already has them in their own inbox, so surfacing them as "work
+// done for you" would be padding, not a receipt.
+export interface ReceiptItem {
+  id: string;
+  label: string;
+  count: number;
+  /** ISO timestamp of the most recent underlying row. */
+  latestAt: string | null;
+  /** Door-relative deep link to where the evidence lives. */
+  href: string;
+}
+
+interface ReceiptsInput {
+  sends: Array<{ id: number; channel: string; sentAt: Date | string | null }>;
+  payments: Array<{ id: number; amount: string | number | null; processedAt: Date | string | null }>;
+  /** Successful pax_scheduled_task_runs rows (the "jobs" receipt source). */
+  taskRuns?: Array<{ id: number; runAt: Date | string | null }>;
+}
+
+function latestIso(stamps: Array<Date | string | null>): string | null {
+  let max = -Infinity;
+  for (const s of stamps) {
+    if (!s) continue;
+    const t = new Date(s).getTime();
+    if (Number.isFinite(t) && t > max) max = t;
+  }
+  return max === -Infinity ? null : new Date(max).toISOString();
+}
+
+const SEND_CHANNEL_NOUNS: Record<string, [string, string]> = {
+  email: ["follow-up email", "follow-up emails"],
+  sms: ["text", "texts"],
+};
+
+export function deriveReceipts(input: ReceiptsInput): ReceiptItem[] {
+  const receipts: ReceiptItem[] = [];
+
+  // Witnessed sends, grouped by channel — each group traces to pax_sends rows.
+  const byChannel = new Map<string, Array<Date | string | null>>();
+  for (const s of input.sends) {
+    const channel = s.channel || "other";
+    const arr = byChannel.get(channel) ?? [];
+    arr.push(s.sentAt);
+    byChannel.set(channel, arr);
+  }
+  for (const [channel, stamps] of byChannel) {
+    const nouns = SEND_CHANNEL_NOUNS[channel] ?? ["send", "sends"];
+    const count = stamps.length;
+    receipts.push({
+      id: `sends-${channel}`,
+      label: `Pax sent ${count} ${count === 1 ? nouns[0] : nouns[1]}`,
+      count,
+      latestAt: latestIso(stamps),
+      // The Pax door is /ai (/pax is a legacy redirect — skip the hop).
+      href: "/ai",
+    });
+  }
+
+  // Scheduled jobs that ran — traces to pax_scheduled_task_runs rows with
+  // status "success". Failed runs are NOT receipts (nothing got done).
+  if (input.taskRuns && input.taskRuns.length > 0) {
+    const count = input.taskRuns.length;
+    receipts.push({
+      id: "task-runs",
+      label: `Pax ran ${count} scheduled ${count === 1 ? "task" : "tasks"}`,
+      count,
+      latestAt: latestIso(input.taskRuns.map((r) => r.runAt)),
+      href: "/ai",
+    });
+  }
+
+  // Completed payments — traces to payments rows with status "completed".
+  if (input.payments.length > 0) {
+    const total = input.payments.reduce(
+      (sum, p) => sum + (parseFloat(String(p.amount ?? "0") || "0") || 0),
+      0,
+    );
+    const count = input.payments.length;
+    receipts.push({
+      id: "payments-posted",
+      label: `${count} ${count === 1 ? "payment" : "payments"} posted — $${Math.round(total).toLocaleString("en-US")}`,
+      count,
+      latestAt: latestIso(input.payments.map((p) => p.processedAt)),
+      href: "/money",
+    });
+  }
+
+  // Most recent activity first; null timestamps sink. Deterministic via id tiebreak.
+  receipts.sort((a, b) => {
+    const ta = a.latestAt ? new Date(a.latestAt).getTime() : -Infinity;
+    const tb = b.latestAt ? new Date(b.latestAt).getTime() : -Infinity;
+    if (ta !== tb) return tb - ta;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  return receipts;
+}
+
+// ── Receipts window + user-local day boundary (Tier 3C) ─────────────────────
+// The client sends `since` (epoch ms of its last recorded visit) and `tz`
+// (minutes, Date#getTimezoneOffset). Both are advisory; the server clamps.
+const RECEIPTS_MIN_WINDOW_MS = 12 * 60 * 60 * 1000; // always show at least "overnight"
+const RECEIPTS_MAX_WINDOW_MS = 7 * DAY_MS;           // never dig further than a week
+
+export function clampReceiptsSince(sinceMs: number | undefined, now: Date): Date {
+  const floor = now.getTime() - RECEIPTS_MAX_WINDOW_MS;
+  const ceil = now.getTime() - RECEIPTS_MIN_WINDOW_MS;
+  const requested = Number.isFinite(sinceMs) ? (sinceMs as number) : ceil;
+  return new Date(Math.min(Math.max(requested, floor), ceil));
+}
+
+/**
+ * Start of the user's local calendar day. `tzOffsetMin` is the value of
+ * Date#getTimezoneOffset() in the user's browser (positive west of UTC).
+ * Falls back to the server's local midnight when absent/invalid.
+ */
+export function startOfUserDay(now: Date, tzOffsetMin: number | undefined): Date {
+  const offset = Number.isFinite(tzOffsetMin) ? (tzOffsetMin as number) : now.getTimezoneOffset();
+  const shifted = new Date(now.getTime() - offset * 60_000);
+  shifted.setUTCHours(0, 0, 0, 0);
+  return new Date(shifted.getTime() + offset * 60_000);
 }
 
 function isOverdue(due: Date, now: Date) {
@@ -276,6 +449,9 @@ async function gatherPaxPriorities(orgId: number, now: Date): Promise<DecisionIt
     actionLabel: p.actionLabel,
     actionUrl: p.actionUrl,
     rank: idx,
+    // Only the stale-follow-up priority sits on a real clock (28-day silence
+    // window). Scoring/campaign/review prompts are honest routine.
+    urgency: (p.id === "follow-up" ? "time" : "routine") as QueueUrgency,
   }));
 }
 
@@ -320,6 +496,9 @@ async function gatherPaxNoticed(orgId: number, now: Date): Promise<DecisionItem[
         actionLabel: "Review",
         actionUrl: "/pax#insights",
         rank: 300 + priorityRank[sev],
+        // High-severity observations carry a real degradation signal; the
+        // rest are informational → routine.
+        urgency: sev === "high" ? "time" : "routine",
       });
     });
 
@@ -365,6 +544,8 @@ async function gatherPaxNoticed(orgId: number, now: Date): Promise<DecisionItem[
         actionLabel: "Follow up",
         actionUrl: "/leads",
         rank: 310,
+        // Backed by a real lastContactedAt staleness clock (21+ days).
+        urgency: "time",
       });
     });
 
@@ -413,6 +594,8 @@ async function gatherPaxNoticed(orgId: number, now: Date): Promise<DecisionItem[
       actionLabel: "View deal",
       actionUrl: "/deals",
       rank: 250,
+      // A live offer with a 72-hour clock is money on the table.
+      urgency: "money",
     });
   });
 
@@ -526,6 +709,9 @@ async function gatherPaxSuggests(orgId: number, now: Date): Promise<DecisionItem
     actionUrl: s.actionUrl,
     rank: 400 + (1 - s.confidence) * 10,
     confidence: s.confidence,
+    // Stale-lead suggestions ride a real 21-day silence clock; observation
+    // suggestions are opportunities, not deadlines → routine.
+    urgency: (s.id.startsWith("stale-") ? "time" : "routine") as QueueUrgency,
   }));
 }
 
@@ -618,6 +804,14 @@ async function gatherAiQueue(
     actionLabel: a.actionLabel,
     actionUrl: a.actionUrl,
     rank: 500 + priorityRank[a.priority],
+    // review-deal-* = a live offer/negotiation (money on the table);
+    // follow-up-* = real 7+/14+ day contact staleness (time-sensitive);
+    // stale listings get no manufactured clock → routine.
+    urgency: (a.id.startsWith("review-deal-")
+      ? "money"
+      : a.id.startsWith("follow-up-")
+        ? "time"
+        : "routine") as QueueUrgency,
   }));
 }
 
@@ -896,6 +1090,9 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
           actionLabel: "Open task",
           actionUrl: "/pipeline",
           rank: 100 + (overdue ? 0 : 10) + (priorityRank[t.priority] ?? 1),
+          // The only class that can honestly claim "overdue": a real dueDate
+          // already in the past. Due-today tasks are time-sensitive.
+          urgency: (overdue ? "overdue" : "time") as QueueUrgency,
         };
       });
 
@@ -912,11 +1109,20 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
         actionLabel: alertLinkLabelByType[a.type] ?? "View",
         actionUrl: alertHrefByType[a.type] ?? "/",
         rank: 200 + priorityRank[sev],
+        // Overdue notes are missed dollars; critical alerts ride a real
+        // degradation signal; the rest are routine watch items.
+        urgency: (a.type === "note_overdue"
+          ? "money"
+          : sev === "high"
+            ? "time"
+            : "routine") as QueueUrgency,
       };
     });
 
     const aiQueue = await gatherAiQueue(orgId, now, allLeads, allDeals, allProperties);
 
+    // One ranking function (Tier 3C): overdue → money-touching →
+    // time-sensitive → routine; see compareQueueItems for the full contract.
     const mergedQueue: DecisionItem[] = [
       ...paxPriorities,
       ...taskItems,
@@ -924,7 +1130,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       ...paxNoticed,
       ...paxSuggests,
       ...aiQueue,
-    ].sort((a, b) => a.rank - b.rank);
+    ].sort(compareQueueItems);
 
     // ── Subtract inline-resolved items (Maren CPO #2) ──────────────────────
     // The queue is derived, so we hide anything the operator has already
@@ -960,6 +1166,80 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     const queue: DecisionItem[] = mergedQueue
       .filter((item) => !isQueueItemHidden(resolvedById.get(item.id), now))
       .map((item) => ({ ...item, inlineAction: deriveInlineAction(item) }));
+
+    // ── Finishability (Tier 3C): "N of M cleared" ──────────────────────────
+    // clearedToday counts REAL completions: today_queue_state rows the
+    // operator marked "done" since the start of THEIR local day (tz param).
+    // Persisted + org-scoped, so it survives reload and follows the org, not
+    // the device. Dismissals/snoozes shrink the queue but are not completions.
+    const tzOffsetMin = Number(req.query.tz);
+    const startOfDay = startOfUserDay(now, Number.isFinite(tzOffsetMin) ? tzOffsetMin : undefined);
+    let clearedToday = 0;
+    try {
+      const rows = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(todayQueueState)
+        .where(and(
+          eq(todayQueueState.organizationId, orgId),
+          eq(todayQueueState.status, "done"),
+          gte(todayQueueState.updatedAt, startOfDay),
+        ));
+      clearedToday = Number(rows[0]?.count) || 0;
+    } catch (e) {
+      logger.warn("Today: clearedToday derivation failed", {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+    const progress = { cleared: clearedToday, total: clearedToday + queue.length };
+
+    // ── Receipts (Tier 3C): completed events since the user's last visit ──
+    // Sources are real rows only: pax_sends (witnessed sends through the
+    // approval kernel), completed payments, and successful scheduled-task
+    // runs. Window clamped to [now-7d, now-12h] so a quick reload doesn't
+    // erase the overnight story.
+    const sinceMs = Number(req.query.since);
+    const receiptsSince = clampReceiptsSince(Number.isFinite(sinceMs) ? sinceMs : undefined, now);
+    let receipts: ReceiptItem[] = [];
+    try {
+      const [sendRows, paymentRows, taskRunRows] = await Promise.all([
+        db
+          .select({ id: paxSends.id, channel: paxSends.channel, sentAt: paxSends.sentAt })
+          .from(paxSends)
+          .where(and(
+            eq(paxSends.organizationId, orgId),
+            gte(paxSends.sentAt, receiptsSince),
+          ))
+          .limit(200),
+        db
+          .select({
+            id: paymentsTable.id,
+            amount: paymentsTable.amount,
+            processedAt: paymentsTable.processedAt,
+          })
+          .from(paymentsTable)
+          .where(and(
+            eq(paymentsTable.organizationId, orgId),
+            eq(paymentsTable.status, "completed"),
+            gte(paymentsTable.processedAt, receiptsSince),
+          ))
+          .limit(200),
+        db
+          .select({ id: paxScheduledTaskRuns.id, runAt: paxScheduledTaskRuns.runAt })
+          .from(paxScheduledTaskRuns)
+          .where(and(
+            eq(paxScheduledTaskRuns.organizationId, orgId),
+            eq(paxScheduledTaskRuns.status, "success"),
+            gte(paxScheduledTaskRuns.runAt, receiptsSince),
+          ))
+          .limit(200),
+      ]);
+      receipts = deriveReceipts({ sends: sendRows, payments: paymentRows, taskRuns: taskRunRows });
+    } catch (e) {
+      // Non-fatal: no receipts is an honest state; never break Today for it.
+      logger.warn("Today: receipts derivation failed", {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
 
     // ── Cash strip aggregates (mirrors today.tsx cashAggregates/pipeline) ──
     const activeDeals = allDeals.filter((d) => !["closed", "cancelled"].includes(d.status));
@@ -1112,6 +1392,8 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     res.json({
       queue,
       brief,
+      progress,
+      receipts,
       cash: {
         cashOnHand: projected90,
         openDealsValue: pipelineValue,
