@@ -500,6 +500,21 @@ export interface AIRouterConfig {
    * without mutating the AITask object.
    */
   taskTier?: TaskTier;
+  /**
+   * Tier 1I — BYOK routing (2026-06-10). When set, the call executes on the
+   * CUSTOMER's own AI key (resolved via `resolveAiByokClient`): their spend,
+   * $0 platform COGS. Consequences inside routeAITask:
+   *   - client is swapped for the customer's, model id mapped per channel
+   *   - platform quota / budget / cost-ceiling gates are skipped (no
+   *     platform spend to protect)
+   *   - estimated cost is recorded as 0 in telemetry — genuinely zero
+   *     PLATFORM cost, not a blind spot (the byok flag rides in metadata)
+   *   - cascade quality-escalation is skipped (would spend the customer's
+   *     key on platform-initiated re-asks, and escalation model ids are
+   *     OpenRouter-namespaced)
+   * The key lives only inside the client object — never log it.
+   */
+  byok?: import("./byok/aiByok").AiByokRouting;
 }
 
 const SIMPLE_TASKS = [
@@ -1061,6 +1076,12 @@ export async function routeAITask(
     };
   }
 
+  // Tier 1I — BYOK calls spend the CUSTOMER's key, not platform dollars, so
+  // the platform quota / budget / cost-ceiling gates do not apply.
+  if (config.byok) {
+    config = { ...config, skipQuota: true, skipBudget: true };
+  }
+
   // ── Phase 3 Week 9: per-org daily AI USD quota gate ─────────────────────────
   // Runs BEFORE the cache check so that even cached responses respect the cap
   // (a $0 cached call still counts as a call, but does not advance spend).
@@ -1230,7 +1251,15 @@ export async function routeAITask(
       }
     }
   }
-  logger.info(`[AIRouter] Routing ${task.taskType} (${task.complexity}) → ${provider}/${model}`);
+  // Tier 1I — BYOK client swap. The customer's client serves the call; the
+  // model id is mapped onto what their channel can serve. Never log the key.
+  if (config.byok) {
+    client = config.byok.client;
+    model = config.byok.mapModel(model);
+    if (config.byok.channel === "openai") provider = "openai" as AIProvider;
+  }
+
+  logger.info(`[AIRouter] Routing ${task.taskType} (${task.complexity}) → ${provider}/${model}${config.byok ? ` [byok:${config.byok.channel}]` : ""}`);
 
   // ── Primary generation ───────────────────────────────────────────────────────
   let content = '';
@@ -1351,6 +1380,7 @@ export async function routeAITask(
   // hasn't explicitly pinned a model.  Skipped when CASCADE_ENABLED = false.
   if (
     isCascadeEnabled() &&
+    !config.byok && // Tier 1I: never spend the customer's key on platform re-asks
     task.complexity !== TaskComplexity.COMPLEX &&
     task.complexity !== TaskComplexity.CRITICAL && // already top tier
     !config.forceModel && !config.forcePremium && !config.useVision && !config.useReasoning && !config.useCritical &&
@@ -1415,7 +1445,12 @@ export async function routeAITask(
 
   // ── Build result ─────────────────────────────────────────────────────────────
   const latencyMs = Date.now() - startTime;
-  const costEstimate = usage ? estimateCost(finalModel, usage.prompt_tokens, usage.completion_tokens, cachedInputTokens) : 0;
+  // Tier 1I: BYOK-routed calls are genuinely $0 PLATFORM cost — the
+  // customer's key paid the provider. Recording 0 keeps COGS telemetry
+  // truthful; the [byok:*] tag in the routing log preserves attribution.
+  const costEstimate = config.byok
+    ? 0
+    : usage ? estimateCost(finalModel, usage.prompt_tokens, usage.completion_tokens, cachedInputTokens) : 0;
 
   // Extract the model self-reported confidence from the FINAL content (after
   // any cascade replacement). When requested but absent/malformed → honest null.

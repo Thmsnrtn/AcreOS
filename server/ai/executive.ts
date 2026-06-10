@@ -1209,7 +1209,26 @@ export async function processChat(
     throw new Error("AI service temporarily unavailable. Please try again.");
   }
 
-  logger.info(`[AI Chat] Routing chat (${complexity}) -> ${provider}/${model}`);
+  // Tier 1I — BYOK routing. If the org holds an active AI key, route this
+  // turn through THEIR provider (their spend, $0 platform COGS) instead of
+  // the platform key. Resolution failure falls back to platform routing —
+  // a vault hiccup must never error the turn. The key itself lives only
+  // inside the client; never logged.
+  let byokChannel: string | null = null;
+  try {
+    const { resolveAiByokClient } = await import("../services/byok/aiByok");
+    const byok = await resolveAiByokClient(org.id);
+    if (byok) {
+      client = byok.client;
+      model = byok.mapModel(model);
+      byokChannel = byok.channel;
+      provider = (byok.channel === "openai" ? "openai" : provider) as AIProvider;
+    }
+  } catch (err) {
+    logger.warn("[AI Chat] BYOK resolution failed — using platform routing", err instanceof Error ? err : undefined);
+  }
+
+  logger.info(`[AI Chat] Routing chat (${complexity}) -> ${provider}/${model}${byokChannel ? ` [byok:${byokChannel}]` : ""}`);
 
   // P1-41: Anthropic prompt caching. The system prompt is large and stable
   // (>1024 chars including ATLAS core methodology); annotating it with
@@ -1280,7 +1299,9 @@ export async function processChat(
     const estimatedTokens = _totalInputChars / 4;
     // Authoritative estimate from the centralized pricing table. Round UP to a
     // whole cent for the usage ledger (never log $0 for a real paid call).
-    const estimatedCostCents = Math.max(1, Math.ceil(_predictedCents));
+    // Tier 1I: BYOK-routed turns are genuinely $0 PLATFORM cost — the
+    // customer's key paid the provider. Log 0 so COGS telemetry stays true.
+    const estimatedCostCents = byokChannel ? 0 : Math.max(1, Math.ceil(_predictedCents));
     await storage.logApiUsage({
       organizationId: org.id,
       service: provider,
@@ -1291,6 +1312,7 @@ export async function processChat(
         model,
         complexity,
         provider,
+        byokChannel: byokChannel ?? undefined,
         estimatedTokens: Math.round(estimatedTokens),
         // Persist the prompt-prefix cache savings forecast so the founder cost
         // dashboard can show what caching is buying on the hot Pax path.
@@ -1616,6 +1638,23 @@ export async function* processChatStream(
     return;
   }
 
+  // Tier 1I — BYOK routing (parity with processChat). Org's own AI key
+  // serves the turn: their spend, $0 platform COGS. Fall back to platform
+  // routing on any resolution failure; key never logged.
+  let streamByokChannel: string | null = null;
+  try {
+    const { resolveAiByokClient } = await import("../services/byok/aiByok");
+    const byok = await resolveAiByokClient(org.id);
+    if (byok) {
+      client = byok.client;
+      model = byok.mapModel(model);
+      streamByokChannel = byok.channel;
+      provider = (byok.channel === "openai" ? "openai" : provider) as AIProvider;
+    }
+  } catch (err) {
+    logger.warn("[AI Stream] BYOK resolution failed — using platform routing", err instanceof Error ? err : undefined);
+  }
+
   // Reasoning trace — for COMPLEX requests
   if (complexity === TaskComplexity.COMPLEX) {
     try {
@@ -1671,7 +1710,7 @@ export async function* processChatStream(
     }
   }
 
-  logger.info(`[AI Stream] Routing chat stream (${complexity}) -> ${provider}/${model}`);
+  logger.info(`[AI Stream] Routing chat stream (${complexity}) -> ${provider}/${model}${streamByokChannel ? ` [byok:${streamByokChannel}]` : ""}`);
 
   let fullResponse = "";
   const toolCallsExecuted: any[] = [];

@@ -6,7 +6,7 @@ import { properties } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { cacheResponse } from './middleware/responseCache';
 import { handleLandStatusError } from './utils/landStatus';
-import { poolDebit, refundPoolDebit } from './services/creditPool';
+import { poolDebit, refundPoolDebit, poolRefusalDetails } from './services/creditPool';
 import type { AuthenticatedRequest } from './types/request';
 
 const router = Router();
@@ -32,6 +32,11 @@ router.post('/generate', async (req: AuthenticatedRequest, res: Response) => {
       notes: 'AVM valuation (custom request)',
       isFounder: req.isFounder,
     });
+
+      // Tier 1I — pool refusals are surfaced, never swallowed.
+      if (!debit.allowed) {
+        return Errors.limitExceeded(res, poolRefusalDetails("ai_turn_avg", debit));
+      }
 
     let valuation;
     try {
@@ -120,6 +125,11 @@ router.post('/property/:propertyId', async (req: AuthenticatedRequest, res: Resp
       notes: `AVM valuation for property ${property.id}`,
       isFounder: req.isFounder,
     });
+
+      // Tier 1I — pool refusals are surfaced, never swallowed.
+      if (!debit.allowed) {
+        return Errors.limitExceeded(res, poolRefusalDetails("ai_turn_avg", debit));
+      }
 
     let valuation;
     try {

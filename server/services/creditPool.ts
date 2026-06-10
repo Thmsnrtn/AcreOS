@@ -20,11 +20,18 @@
  *     existing /api/outreach/mail/credits/summary gauge sums these.
  *   - Idempotency: the caller must supply a unique externalEventId so retries
  *     collapse to one ledger row (financial_ledger has a UNIQUE index on it).
- *   - Pool-empty: we still post the debit and return `allowed: false`. The
- *     caller decides whether to refuse the action (hard wall) or only soft-
- *     warn — at this stage we soft-warn for SMS/AI and hard-wall mail
- *     because mail has out-of-pocket cost to AcreOS regardless of customer
- *     tier.
+ *   - Pool-empty: FAIL CLOSED (Tier 1I, 2026-06-10). In the default
+ *     `enforce: "gate"` mode a genuinely-exhausted pool refuses the debit
+ *     (`allowed: false`, no ledger write) and a debit ERROR also refuses
+ *     for non-founder orgs — the prior fail-open behavior let heavy users
+ *     run unbounded COGS. Callers must check `allowed` and respond with
+ *     `Errors.limitExceeded` carrying `{ reason, remaining, byokAvailable }`.
+ *     Post-hoc recorders (provider registry, which debits AFTER the paid
+ *     lookup happened) pass `enforce: "record"` so the COGS ledger row is
+ *     always written regardless of pool state.
+ *   - BYOK bypass: orgs with an active BYOK credential for the channel that
+ *     serves the action never draw from the pool at all — their spend goes
+ *     straight to the provider, our COGS is $0 (see byok/toggle.ts).
  *   - Refunds: callers that fail mid-flight pass the inserted row id back to
  *     `refundPoolDebit` which posts a positive ledger row keyed on
  *     `${originalEventId}:refund`.
@@ -32,9 +39,10 @@
 
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
-import { financialLedger, organizations } from "@shared/schema";
+import { financialLedger, organizations, type ByokChannel } from "@shared/schema";
 import { TIER_LIMITS, type SubscriptionTier } from "@shared/billing/tier-limits";
 import { creditCost, type CreditAction } from "@shared/billing/credit-weights";
+import { isByokEnabled } from "./byok/toggle";
 import { logger } from "../utils/logger";
 
 /** TRACKED_CATEGORIES on the gauge query — must stay in sync. */
@@ -72,6 +80,31 @@ const PROVIDER_HINT_FOR_ACTION: Record<CreditAction, string> = {
   valuation_lookup: "data-provider",
 };
 
+/**
+ * Which BYOK channels, when active for the org, make an action free to the
+ * platform (the customer's own provider account absorbs the spend). When
+ * any listed channel has an active credential, poolDebit skips the pool
+ * entirely. Actions with an empty list never BYOK-bypass (e.g. paid data
+ * lookups, which run on platform provider contracts).
+ */
+const BYOK_CHANNELS_FOR_ACTION: Record<CreditAction, readonly ByokChannel[]> = {
+  sms_outbound: ["twilio", "telnyx"],
+  email_outbound: ["sendgrid", "ses"],
+  postcard_eddm: [],
+  postcard_postgrid: ["postgrid"],
+  postcard_lob: ["lob"],
+  letter_presort: [],
+  letter_lob: ["lob"],
+  skip_trace: ["batch_skiptracing"],
+  // Any AI-channel key makes Pax turns free to the platform — the router
+  // sends the call through the customer's key (see byok/aiByok.ts).
+  ai_turn_avg: ["anthropic", "openrouter", "openai"],
+  parcel_lookup_paid: [],
+  comps_lookup: [],
+  owner_lookup: [],
+  valuation_lookup: [],
+};
+
 export interface PoolDebitArgs {
   organizationId: number;
   action: CreditAction;
@@ -86,6 +119,13 @@ export interface PoolDebitArgs {
   notes?: string;
   /** Bypass entirely (founder paths set this). Defaults via DB lookup. */
   isFounder?: boolean;
+  /**
+   * "gate" (default): pre-action callers — refuses (no ledger write) when
+   * the pool is already exhausted, and FAILS CLOSED on debit errors.
+   * "record": post-hoc COGS recorders (provider registry) — always writes
+   * the ledger row even over-pool; `allowed` is advisory only.
+   */
+  enforce?: "gate" | "record";
 }
 
 export interface PoolDebitResult {
@@ -101,6 +141,10 @@ export interface PoolDebitResult {
   ledgerRowId: number | null;
   /** True when the debit pushed past the pool (caller may choose to soft-warn). */
   overPool: boolean;
+  /** Set when `allowed === false` — why the action was refused. */
+  reason?: "pool_exhausted" | "pool_debit_error";
+  /** True when an active BYOK credential made this action free to the platform. */
+  byokBypassed?: boolean;
 }
 
 async function fetchOrgTier(
@@ -165,6 +209,32 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
     };
   }
 
+  // BYOK bypass — when the org's own provider key serves this action, the
+  // customer pays the provider directly. No pool draw, no ledger row, and
+  // the action is always allowed (their key, their spend, zero COGS to us).
+  const byokChannels = BYOK_CHANNELS_FOR_ACTION[args.action] ?? [];
+  for (const channel of byokChannels) {
+    let active = false;
+    try {
+      active = await isByokEnabled(args.organizationId, channel);
+    } catch {
+      // Lookup hiccup → treat as no-BYOK and fall through to the pool.
+      active = false;
+    }
+    if (active) {
+      const poolMonthly = TIER_LIMITS[tier].creditPool;
+      return {
+        allowed: true,
+        debitedCents: 0,
+        remaining: poolMonthly, // untouched by this call
+        poolMonthly,
+        ledgerRowId: null,
+        overPool: false,
+        byokBypassed: true,
+      };
+    }
+  }
+
   const weight = await creditCost(args.action);
   const rawCost = weight * Math.max(0, args.units);
   // Round UP so fractional weights (email 0.02) never undercount.
@@ -187,8 +257,38 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
   // call idempotent — a retry of the same externalEventId is a no-op.
   const feature = POOL_FEATURE_FOR_ACTION[args.action];
   const provider = PROVIDER_HINT_FOR_ACTION[args.action];
+  const enforce = args.enforce ?? "gate";
 
   try {
+    // FAIL CLOSED on a genuinely-exhausted pool (gate mode only): when the
+    // month's pool is already fully spent BEFORE this debit, refuse without
+    // writing a ledger row. The boundary debit that merely pushes PAST the
+    // pool is still honored (generous edge — `overPool: true` flags it).
+    if (enforce === "gate") {
+      const poolMonthly = TIER_LIMITS[tier].creditPool;
+      const usedBefore = await poolUsageThisMonth(args.organizationId);
+      if (usedBefore >= poolMonthly) {
+        logger.warn("[credit-pool] debit refused — pool exhausted", {
+          metadata: {
+            organizationId: args.organizationId,
+            action: args.action,
+            usedBefore,
+            poolMonthly,
+            tier,
+          },
+        });
+        return {
+          allowed: false,
+          debitedCents: 0,
+          remaining: 0,
+          poolMonthly,
+          ledgerRowId: null,
+          overPool: true,
+          reason: "pool_exhausted",
+        };
+      }
+    }
+
     const inserted = await db
       .insert(financialLedger)
       .values({
@@ -221,18 +321,60 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
     };
   } catch (err) {
     logger.error("[credit-pool] debit failed", err instanceof Error ? err : undefined);
-    // Fail-OPEN — never block a customer action because the pool ledger
-    // misbehaved. The gauge will reconcile on the next successful debit.
     const poolMonthly = TIER_LIMITS[tier].creditPool;
+    if (enforce === "record") {
+      // Post-hoc recorder — the spend already happened; nothing to refuse.
+      return {
+        allowed: true,
+        debitedCents: 0,
+        remaining: poolMonthly,
+        poolMonthly,
+        ledgerRowId: null,
+        overPool: false,
+      };
+    }
+    // FAIL CLOSED (Tier 1I, 2026-06-10) — the prior fail-open here meant a
+    // broken ledger silently un-metered every paid lane. Non-founder orgs
+    // (founders returned earlier) get a refusal the route surfaces as a 429
+    // with a BYOK/upgrade path; remaining is reported 0 because we cannot
+    // know the true pool state mid-error.
     return {
-      allowed: true,
+      allowed: false,
       debitedCents: 0,
-      remaining: poolMonthly,
+      remaining: 0,
       poolMonthly,
       ledgerRowId: null,
       overPool: false,
+      reason: "pool_debit_error",
     };
   }
+}
+
+/**
+ * Whether an action has a self-serve BYOK escape hatch — used by routes to
+ * set `byokAvailable` on the 429 refusal payload so the client can point
+ * at /settings/byok instead of a dead-end "limit reached".
+ */
+export function byokAvailableForAction(action: CreditAction): boolean {
+  return (BYOK_CHANNELS_FOR_ACTION[action] ?? []).length > 0;
+}
+
+/**
+ * Standard `details` payload for the Errors.limitExceeded(429) a route
+ * returns when poolDebit refuses (`allowed: false`). One shape everywhere
+ * so the client banner/toast can render a single refusal component.
+ */
+export function poolRefusalDetails(action: CreditAction, debit: PoolDebitResult) {
+  return {
+    reason: debit.reason ?? "pool_exhausted",
+    resourceType: "credit_pool" as const,
+    remaining: debit.remaining,
+    poolMonthly: debit.poolMonthly,
+    byokAvailable: byokAvailableForAction(action),
+    byokSettingsUrl: "/settings/byok",
+    message:
+      "Your monthly AcreOS credit pool is used up. Add your own provider key in Settings → Your provider keys to keep going without limits, or wait for the monthly reset.",
+  };
 }
 
 /**

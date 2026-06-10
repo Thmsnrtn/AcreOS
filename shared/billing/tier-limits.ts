@@ -61,7 +61,47 @@ export interface TierLimits {
    * that bypass the pool entirely (see `byokSupport`).
    */
   creditPool: number;
+  /**
+   * Tier 1I — Economics guardrail (2026-06-10 founder decision: mandatory
+   * BYOK past a generous turn threshold, NOT a hard ceiling, NOT metered
+   * overage).
+   *
+   * Monthly Pax-turn count after which the org must bring their own AI key
+   * (Anthropic / OpenRouter / OpenAI) to keep chatting this month. With an
+   * active AI BYOK credential the threshold does not apply — usage routes
+   * through the customer's key and is unlimited (their spend, not our COGS).
+   * `null` = no BYOK threshold (the plain `ai_requests` cap, if any, governs).
+   *
+   * Rationale: a heavy Pro user at the 12,000/mo `ai_requests` cap costs
+   * ≈ $180/mo in AI COGS against $49/mo revenue. The threshold keeps the
+   * included allotment comfortably margin-positive (1,500 × 1.5¢ ≈ $22.50)
+   * while never walling anyone off — BYOK restores unlimited usage.
+   *
+   * TUNABLE — see AI_TURNS_BYOK_THRESHOLDS below for the per-tier values.
+   */
+  aiTurnsByokThreshold: number | null;
 }
+
+/**
+ * TUNABLE CONSTANTS — monthly included AI-turn allotments before BYOK is
+ * required. Deliberately generous: these cover the steady-state user with
+ * lots of headroom; only the COGS-inverting tail crosses them. Adjust here
+ * (single source of truth) — every gate, banner, and test reads this.
+ */
+export const AI_TURNS_BYOK_THRESHOLDS: Record<SubscriptionTier, number | null> = {
+  free: null,       // evaluation tier — the 75/mo ai_requests cap governs; no BYOK lane
+  starter: 750,     // ~25 turns/day avg; max included COGS ≈ $11.25 vs $29/mo
+  pro: 1500,        // ~50 turns/day avg; max included COGS ≈ $22.50 vs $49/mo
+  scale: 6000,      // multi-seat teams; max included COGS ≈ $90 vs $199/mo + seats
+  enterprise: null, // negotiated per-deal — no self-serve threshold
+};
+
+/**
+ * Warn ratio for the "approaching included AI usage" banner. At ≥ 80% of
+ * the BYOK threshold the usage API flags `warning: true` so the client can
+ * nudge toward adding a key before the wall is hit.
+ */
+export const AI_TURNS_BYOK_WARN_RATIO = 0.8;
 
 /**
  * Feature flags for higher tiers — Scale is on per Lens 3 (Pricing
@@ -93,6 +133,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     maxSeats: 1,
     seatPriceCents: null,
     creditPool: 50,
+    aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.free,
   },
   starter: {
     leads: 250,
@@ -111,6 +152,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     maxSeats: 1,
     seatPriceCents: null,
     creditPool: 750,
+    aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.starter,
   },
   pro: {
     leads: 500,
@@ -128,6 +170,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     maxSeats: 5,
     seatPriceCents: 2000, // $20/seat
     creditPool: 2500,
+    aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.pro,
   },
   scale: {
     leads: null,
@@ -143,6 +186,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     maxSeats: 100,
     seatPriceCents: 4000, // $40/seat
     creditPool: 8000,
+    aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.scale,
   },
   enterprise: {
     leads: null,
@@ -157,6 +201,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     seatPriceCents: 5000, // $50/seat (negotiable)
     // Enterprise pools are negotiated per-deal; this is the default floor.
     creditPool: 25000,
+    aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.enterprise,
   },
 };
 
@@ -175,6 +220,8 @@ export const FOUNDER_TIER_LIMITS: TierLimits = {
   // Founders are not metered — a very large pool serves as a sentinel for
   // any consumer that does not separately gate on `isFounder`.
   creditPool: 1_000_000,
+  // Founders are never BYOK-walled.
+  aiTurnsByokThreshold: null,
 };
 
 export function isTierVisible(tier: SubscriptionTier): boolean {

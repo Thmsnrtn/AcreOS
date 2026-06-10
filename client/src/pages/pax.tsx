@@ -532,6 +532,17 @@ interface UsageLimitsResponse {
   usage: {
     ai_requests: { current: number; limit: number | null; percentage: number | null };
   };
+  /** Tier 1I — monthly AI-turn BYOK threshold snapshot. */
+  aiTurns?: {
+    current: number;
+    threshold: number | null;
+    percentage: number | null;
+    warning: boolean;
+    blocked: boolean;
+    byokActive: boolean;
+    byokAvailable: boolean;
+    byokSettingsUrl: string;
+  };
 }
 
 function PaxDailyCapBadge() {
@@ -550,7 +561,52 @@ function PaxDailyCapBadge() {
   });
 
   if (!data) return null;
-  const { tier, usage } = data;
+  const { tier, usage, aiTurns } = data;
+
+  // ── Tier 1I — BYOK threshold banners (paid tiers) ────────────────────
+  // An active AI key means unlimited turns on the customer's own key — no
+  // badge at all. Otherwise: warn at ≥80% of the included allotment, and
+  // render a helpful blocked state (never a dead end) at/past it.
+  if (aiTurns?.byokActive) return null;
+  if (aiTurns && aiTurns.threshold !== null && (aiTurns.blocked || aiTurns.warning)) {
+    const blocked = aiTurns.blocked;
+    return (
+      <div
+        className={
+          blocked
+            ? "mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-acr-neg/40 bg-acr-neg-soft px-3 py-2"
+            : "mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-acr-warn/40 bg-acr-warn-soft px-3 py-2"
+        }
+        role={blocked ? "alert" : "status"}
+        aria-label={`Pax included AI usage: ${aiTurns.current} of ${aiTurns.threshold} turns this month`}
+      >
+        <div className="flex items-center gap-2 text-sm">
+          <Sparkles
+            className={blocked ? "h-4 w-4 text-acr-neg" : "h-4 w-4 text-acr-warn"}
+            aria-hidden="true"
+          />
+          <span className={blocked ? "font-medium tabular-nums text-acr-neg" : "font-medium tabular-nums text-acr-warn"}>
+            {aiTurns.current}/{aiTurns.threshold} included turns this month
+          </span>
+          <span className={blocked ? "text-acr-neg" : "text-acr-warn"}>
+            {blocked
+              ? aiTurns.byokAvailable
+                ? "Included AI usage is used up — add your own AI key to continue unlimited. Your data and drafts stay available."
+                : "Included AI usage is used up — upgrade to bring your own AI key. Your data and drafts stay available."
+              : "Approaching your included AI usage — add your own Anthropic key to continue unlimited."}
+          </span>
+        </div>
+        <Button size="sm" variant={blocked ? "destructive" : "outline"} asChild>
+          {aiTurns.byokAvailable ? (
+            <Link href={aiTurns.byokSettingsUrl || "/settings/byok"}>Add your key</Link>
+          ) : (
+            <Link href="/pricing">Upgrade</Link>
+          )}
+        </Button>
+      </div>
+    );
+  }
+
   const cap = usage.ai_requests;
   // Unlimited tier (Scale / founder) — no badge needed.
   if (cap.limit === null) return null;

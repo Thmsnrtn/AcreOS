@@ -14,7 +14,7 @@ import { Errors } from "./utils/errors";
 import { verifyTwilioSignature } from "./middleware/twilioSignature";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { withIdempotency } from "./services/webhook-idempotency";
-import { poolDebit, refundPoolDebit } from "./services/creditPool";
+import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
 
 export async function registerMiscRoutes(app: Express): Promise<void> {
   const api = app;
@@ -313,6 +313,11 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         notes: `SMS to ${cleanTo}`,
         isFounder: req.isFounder,
       });
+
+      // Tier 1I — pool refusals are surfaced, never swallowed.
+      if (!smsDebit.allowed) {
+        return Errors.limitExceeded(res, poolRefusalDetails("sms_outbound", smsDebit));
+      }
 
       const result = await smsServiceModule.sendOrgSMS(org.id, to, message);
 

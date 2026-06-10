@@ -33,7 +33,7 @@ import { sanitizePrompt, USER_DATA_SYSTEM_CLAUSE } from "./utils/sanitizePrompt"
 import { validatePaxResponse } from "./utils/validatePaxResponse";
 import { validateCompliance } from "./services/complianceValidator";
 import { recordAttemptIfDetected } from "./utils/injectionRateLimiter";
-import { poolDebit, refundPoolDebit } from "./services/creditPool";
+import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
 
 const router = Router();
 
@@ -166,12 +166,28 @@ ${sanitizePrompt(rawUserPayload, { maxLength: 6000, source: "pax.draft-reply" })
       isFounder: req.isFounder,
     });
 
+    // Tier 1I — pool refusals are surfaced, never swallowed.
+    if (!aiDebit.allowed) {
+      return Errors.limitExceeded(res, poolRefusalDetails("ai_turn_avg", aiDebit));
+    }
+
+    // Tier 1I — if the org holds an active AI BYOK key, route the draft
+    // through THEIR provider (poolDebit already bypassed the pool for them).
+    // Resolution failure falls back to platform routing silently.
+    let byokRouting = undefined;
+    try {
+      const { resolveAiByokClient } = await import("./services/byok/aiByok");
+      byokRouting = (await resolveAiByokClient(orgId)) ?? undefined;
+    } catch {
+      byokRouting = undefined;
+    }
+
     // Pax inbox draft replies are customer-facing — pin to critical tier.
     let response;
     let compliance;
     let validated;
     try {
-      response = await routeSimpleTask(SYSTEM_PROMPT, userPrompt, { taskTier: "critical" });
+      response = await routeSimpleTask(SYSTEM_PROMPT, userPrompt, { taskTier: "critical", byok: byokRouting });
       validated = validatePaxResponse(response.content.trim(), {
         source: "pax.draft-reply",
         organizationId: orgId,

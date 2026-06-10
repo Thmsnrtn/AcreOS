@@ -239,6 +239,7 @@ const TeamOfferApprovalsPage = React.lazy(() => import("@/pages/team-offer-appro
 const LeadAssignmentSettingsPage = React.lazy(() => import("@/pages/settings/lead-assignment"));
 const UnderwritingSettingsPage = React.lazy(() => import("@/pages/settings/underwriting"));
 const IntegrationsSettingsPage = React.lazy(() => import("@/pages/settings/integrations"));
+const ByokSettingsPage = React.lazy(() => import("@/pages/settings/byok"));
 
 // Analytics / Reporting
 // KPIDashboardPage archived 2026-06-01 — no nav entry, no callers.
@@ -880,6 +881,10 @@ function Router() {
       </Route>
       <Route path="/settings/integrations">
         {() => <ProtectedRoute component={IntegrationsSettingsPage} />}
+      </Route>
+      {/* Tier 1I — BYOK keys surface; the AI-turn threshold banners/CTAs deep-link here. */}
+      <Route path="/settings/byok">
+        {() => <ProtectedRoute component={ByokSettingsPage} />}
       </Route>
       <Route path="/team">
         {() => <ProtectedRoute component={TeamInboxPage} />}

@@ -568,6 +568,9 @@ class ProviderRegistry {
       units: 1,
       externalEventId: `datalookup:${fingerprint}:${Date.now()}`,
       notes: `${providerName} ${category} lookup (${costCents}¢ provider cost)`,
+      // Post-hoc COGS recorder: the paid lookup already happened, so the
+      // ledger row must be written even when the pool is over — never gate.
+      enforce: "record",
     });
   }
 

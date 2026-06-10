@@ -37,7 +37,7 @@ import {
 } from "@shared/schema";
 import { TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
 import { creditExamples, type CreditAction } from "@shared/billing/credit-weights";
-import { poolDebit, refundPoolDebit } from "./services/creditPool";
+import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
 import {
   mailRouter,
   type MailPiece,
@@ -376,6 +376,11 @@ export function registerOutreachMailRoutes(app: Express): void {
           notes: `Mail queue: ${pieceType} via ${quote.provider} (${quote.pieceCount} pieces)`,
           isFounder: req.isFounder,
         });
+
+        // Tier 1I — pool refusals are surfaced, never swallowed.
+        if (!mailDebit.allowed) {
+          return Errors.limitExceeded(res, poolRefusalDetails(poolAction, mailDebit));
+        }
 
         // Transaction: insert shipment header + per-piece rows.
         let shipmentId: number;
