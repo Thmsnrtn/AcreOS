@@ -6867,6 +6867,29 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "pax_drafts_org_idx" ON "pax_drafts" ("organization_id")`,
   `CREATE INDEX IF NOT EXISTS "pax_drafts_lookup_idx"
      ON "pax_drafts" ("organization_id", "lead_id", "channel", "status")`,
+
+  // ── 0154 — Tier 1G/1H (elevation blueprint) — shared-state stores + ──
+  //    job-runtime hardening. Mirrors migrations/0154_circuit_breaker_state.sql.
+  // circuit_breaker_state: provider-registry breaker trips were in-memory and
+  // reset on every deploy (a hard-down provider got re-hammered per machine
+  // per deploy). One row per provider persists trip state + the half-open
+  // probe claim across deploys. deadman_page_state: deadmanCheck.ts re-page
+  // throttle was an in-memory map; a deploy mid-incident re-paged every dark
+  // job. Idempotent (CREATE TABLE IF NOT EXISTS); self-contained block.
+  `CREATE TABLE IF NOT EXISTS "circuit_breaker_state" (
+     "provider_name" text PRIMARY KEY,
+     "state" text NOT NULL DEFAULT 'closed',
+     "failures" integer NOT NULL DEFAULT 0,
+     "opened_at" timestamp,
+     "last_failure_at" timestamp,
+     "half_open_probe_at" timestamp,
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE TABLE IF NOT EXISTS "deadman_page_state" (
+     "job_name" text PRIMARY KEY,
+     "last_paged_at" timestamp NOT NULL,
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

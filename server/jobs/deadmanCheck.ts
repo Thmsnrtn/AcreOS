@@ -44,7 +44,7 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { jobHealthLogs } from "@shared/schema";
+import { deadmanPageState, jobHealthLogs } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { notifyOnCall } from "../services/oncall";
 import { recordFinding } from "../services/audit/domainAudit";
@@ -56,6 +56,10 @@ const _processStartedAt = Date.now();
 
 // Re-page throttle: don't notifyOnCall for the same dark job more than once per
 // hour (the finding still re-fires each run via recordFinding's upsert).
+// Tier 1H / blueprint E11: the throttle is PERSISTED to deadman_page_state
+// (migration 0154) so a deploy mid-incident doesn't reset it and re-page
+// on-call for every still-dark job. The in-memory map remains as a fast
+// same-process cache and as the fallback when the DB read fails.
 const _lastPagedAt = new Map<string, number>();
 const REPAGE_THROTTLE_MS = 60 * 60 * 1000;
 
@@ -76,6 +80,21 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
   const now = Date.now();
   const uptimeMs = now - _processStartedAt;
   const dark: DeadmanResult["dark"] = [];
+
+  // Hydrate the persisted re-page throttle (one read per sweep). Best-effort:
+  // a failed read degrades to the in-memory map (worst case: one duplicate
+  // page after a deploy — the pre-persistence behavior).
+  const persistedPagedAt = new Map<string, number>();
+  try {
+    const rows = await db.select().from(deadmanPageState);
+    for (const row of rows) {
+      persistedPagedAt.set(row.jobName, new Date(row.lastPagedAt).getTime());
+    }
+  } catch (err) {
+    logger.warn("[deadman] failed to hydrate deadman_page_state — using in-memory throttle only", {
+      metadata: { error: String(err) },
+    });
+  }
 
   for (const entry of entries) {
     let lastSeenMs: number | null = null;
@@ -142,9 +161,26 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
     }
 
     // Page on-call, throttled per job so a sustained dark job rings once/hour.
-    const lastPaged = _lastPagedAt.get(entry.name) ?? 0;
+    // The throttle survives deploys via deadman_page_state (max of the
+    // in-memory cache and the persisted row).
+    const lastPaged = Math.max(
+      _lastPagedAt.get(entry.name) ?? 0,
+      persistedPagedAt.get(entry.name) ?? 0,
+    );
     if (now - lastPaged > REPAGE_THROTTLE_MS) {
       _lastPagedAt.set(entry.name, now);
+      // Persist the page timestamp (fire-and-forget — never block the page).
+      db.insert(deadmanPageState)
+        .values({ jobName: entry.name, lastPagedAt: new Date(now), updatedAt: new Date(now) })
+        .onConflictDoUpdate({
+          target: deadmanPageState.jobName,
+          set: { lastPagedAt: new Date(now), updatedAt: new Date(now) },
+        })
+        .catch((err) => {
+          logger.warn(`[deadman] failed to persist page state for ${entry.name}`, {
+            metadata: { error: String(err) },
+          });
+        });
       try {
         await notifyOnCall(entry.critical ? "P0" : "P1", title, body, {
           job: entry.name,

@@ -16,9 +16,14 @@ import type {
   LookupInput,
   LookupResult,
   ProviderTier,
-  CircuitBreakerState,
   ProviderHealthStatus,
 } from "./types";
+import { ProviderCircuitBreaker, type BreakerSnapshot } from "./circuit-breaker";
+import { dbBreakerStore } from "./circuit-breaker-store";
+// Static import (no cycle: providerIntelligence only pulls db/schema/logger).
+// Telemetry calls remain fire-and-forget at every callsite — only the module
+// loading is eager now, not the work.
+import * as providerIntel from "../providerIntelligence";
 
 /**
  * Build a deterministic cache key from provider + category + input.
@@ -98,7 +103,14 @@ const CB_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 class ProviderRegistry {
   private registrations: Registration[] = [];
-  private circuits: Map<string, CircuitBreakerState> = new Map();
+  // Tier 1G: trip state persists to circuit_breaker_state (migration 0154)
+  // so deploys don't reset the breaker, with half-open single-probe recovery.
+  private breaker = new ProviderCircuitBreaker({
+    failureThreshold: CB_FAILURE_THRESHOLD,
+    windowMs: CB_WINDOW_MS,
+    cooloffMs: CB_WINDOW_MS,
+    store: dbBreakerStore,
+  });
 
   /**
    * Register a provider for a category.
@@ -155,7 +167,10 @@ class ProviderRegistry {
 
       // Skip if circuit breaker is open — but first try serving stale cache so
       // a flaky federal endpoint degrades to "as-of date" data, not a blank.
-      if (this.isCircuitOpen(provider.name)) {
+      // After the cooloff, exactly one caller is let through as the half-open
+      // probe; its success/failure below closes or re-trips the breaker.
+      const gate = await this.breaker.shouldAllow(provider.name);
+      if (!gate.allowed) {
         logger.info(`Skipping ${provider.name}: circuit breaker open`, {
           source: "ProviderRegistry",
         });
@@ -193,21 +208,19 @@ class ProviderRegistry {
         this.recordSuccess(provider.name);
 
         // Provider-intelligence telemetry (non-blocking).
-        import("../providerIntelligence")
-          .then(({ recordLookup }) =>
-            recordLookup({
-              providerName: provider.name,
-              category,
-              inputType: input.type,
-              success: true,
-              cached: false,
-              latencyMs,
-              costCents,
-              organizationId,
-              state,
-              county,
-            }),
-          )
+        providerIntel
+          .recordLookup({
+            providerName: provider.name,
+            category,
+            inputType: input.type,
+            success: true,
+            cached: false,
+            latencyMs,
+            costCents,
+            organizationId,
+            state,
+            county,
+          })
           .catch(() => {});
 
         const finalResult: LookupResult = { ...result, latencyMs: result.latencyMs || latencyMs };
@@ -260,20 +273,18 @@ class ProviderRegistry {
         this.recordFailure(provider.name);
 
         // Provider-intelligence telemetry (non-blocking).
-        import("../providerIntelligence")
-          .then(({ recordLookup }) =>
-            recordLookup({
-              providerName: provider.name,
-              category,
-              inputType: input.type,
-              success: false,
-              cached: false,
-              errorCode: error instanceof Error ? error.message.slice(0, 100) : "unknown",
-              organizationId,
-              state,
-              county,
-            }),
-          )
+        providerIntel
+          .recordLookup({
+            providerName: provider.name,
+            category,
+            inputType: input.type,
+            success: false,
+            cached: false,
+            errorCode: error instanceof Error ? error.message.slice(0, 100) : "unknown",
+            organizationId,
+            state,
+            county,
+          })
           .catch(() => {});
 
         logger.warn(`Provider lookup failed: ${provider.name}`, {
@@ -305,11 +316,7 @@ class ProviderRegistry {
     // buy is data-driven (Iris/Lena). Only when all available candidates were
     // free; a paid-tier miss is a different signal.
     if (allFree && (state || county)) {
-      import("../providerIntelligence")
-        .then(({ recordFreeMiss }) =>
-          recordFreeMiss({ category, state, county, organizationId }),
-        )
-        .catch(() => {});
+      providerIntel.recordFreeMiss({ category, state, county, organizationId }).catch(() => {});
     }
 
     logger.warn(`All providers exhausted for category=${category}`, {
@@ -402,9 +409,9 @@ class ProviderRegistry {
     const now = Date.now();
     if (!hit || now - hit.fetchedAt > this.PERF_CACHE_TTL_MS) {
       // Kick off a refresh in the background; return stale/empty for now.
-      import("../providerIntelligence")
-        .then(async ({ getCategoryPerformance }) => {
-          const stats = await getCategoryPerformance(category, 7);
+      providerIntel
+        .getCategoryPerformance(category, 7)
+        .then((stats) => {
           const scores = new Map<string, number>();
           for (const [name, s] of stats.entries()) {
             // Require at least 5 lookups before trusting the score
@@ -497,44 +504,17 @@ class ProviderRegistry {
       });
   }
 
-  private isCircuitOpen(providerName: string): boolean {
-    const state = this.circuits.get(providerName);
-    if (!state || !state.open) return false;
-
-    // Auto-close after window expires (half-open)
-    if (state.lastFailure && Date.now() - state.lastFailure.getTime() > CB_WINDOW_MS) {
-      state.open = false;
-      state.failures = 0;
-      return false;
-    }
-
-    return true;
-  }
-
   private recordSuccess(providerName: string): void {
-    const state = this.circuits.get(providerName);
-    if (state) {
-      state.failures = 0;
-      state.open = false;
-    }
+    this.breaker.recordSuccess(providerName);
   }
 
   private recordFailure(providerName: string): void {
-    let state = this.circuits.get(providerName);
-    if (!state) {
-      state = { failures: 0, lastFailure: null, open: false };
-      this.circuits.set(providerName, state);
-    }
+    this.breaker.recordFailure(providerName);
+  }
 
-    state.failures += 1;
-    state.lastFailure = new Date();
-
-    if (state.failures >= CB_FAILURE_THRESHOLD) {
-      state.open = true;
-      logger.warn(`Circuit breaker opened for ${providerName} (${state.failures} failures)`, {
-        source: "ProviderRegistry",
-      });
-    }
+  /** Read-only breaker view for health surfaces and tests. */
+  getBreakerSnapshot(providerName: string): BreakerSnapshot {
+    return this.breaker.snapshot(providerName);
   }
 
   // ── Credit metering (Lena: close the paid-data margin leak) ──

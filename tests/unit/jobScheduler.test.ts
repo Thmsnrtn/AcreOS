@@ -12,40 +12,61 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// ── Mock db so the scheduler doesn't try real Postgres inserts ────────────────
+// ── Mock db so the scheduler doesn't try real Postgres ───────────────────────
+// The Tier 1H scheduler claims a lease row in job_locks (conditional
+// UPDATE … RETURNING, then INSERT fallback that loses by 23505), runs the
+// body OUTSIDE any transaction, and releases on completion. `leaseCtl`
+// simulates the cross-machine cases: when `otherHolder` is true, the claim's
+// UPDATE matches nothing and the INSERT hits the unique violation — i.e.
+// another Fly machine owns the lease, so this machine must skip the tick.
+const leaseCtl = vi.hoisted(() => ({ otherHolder: false }));
+
 vi.mock("../../server/db", () => {
-  const chainable = () => {
-    const obj: any = {};
-    obj.values = () => obj;
-    obj.returning = async () => [{ id: 1 }];
-    obj.set = () => obj;
-    obj.where = async () => undefined;
-    return obj;
-  };
-  const txMock: any = {
-    insert: () => chainable(),
-    update: () => chainable(),
-    // Lens 13 §3: simulate `pg_try_advisory_xact_lock` returning true so
-    // the scheduler's tick proceeds with `run()`. Returning false here
-    // would simulate "another machine holds the lock — skip".
-    execute: async (_q: unknown) => ({ rows: [{ pg_try_advisory_xact_lock: true }] }),
-  };
+  // Lease writes are identified by their payload (lockedBy ⇒ job_locks);
+  // other inserts/updates (job_runs, outbox_dlq) always succeed.
+  const isLeaseWrite = (vals: any) => vals && typeof vals === "object" && "lockedBy" in vals;
+
   return {
     db: {
-      insert: () => chainable(),
-      update: () => chainable(),
-      transaction: async (fn: (tx: any) => Promise<void>) => {
-        return fn(txMock);
-      },
+      update: (_table: unknown) => ({
+        set: (vals: any) => ({
+          where: (_cond: unknown) => {
+            const result: any = {
+              // claimJobLease: .where(...).returning(...) — match only when
+              // no other machine holds the lease.
+              returning: async (_sel: unknown) =>
+                isLeaseWrite(vals) ? (leaseCtl.otherHolder ? [] : [{ id: 1 }]) : [{ id: 1 }],
+              // updateJobRunEnd: `await ….where(...)` with no .returning().
+              then: (resolve: (v: unknown) => void) => resolve(undefined),
+            };
+            return result;
+          },
+        }),
+      }),
+      insert: (_table: unknown) => ({
+        values: (vals: any) => {
+          const thenable: any = {
+            then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+              if (isLeaseWrite(vals) && leaseCtl.otherHolder) {
+                const err: any = new Error("duplicate key value violates unique constraint");
+                err.code = "23505";
+                reject(err);
+              } else {
+                resolve(undefined);
+              }
+            },
+            // insertJobRunStart: .values(...).returning({ id })
+            returning: async (_sel: unknown) => [{ id: 1 }],
+          };
+          return thenable;
+        },
+      }),
+      delete: (_table: unknown) => ({
+        where: async (_cond: unknown) => undefined,
+      }),
     },
     pool: {},
   };
-});
-
-// drizzle-orm `eq` is dynamically imported inside scheduler.ts; stub it.
-vi.mock("drizzle-orm", async (orig) => {
-  const actual: any = await orig();
-  return { ...actual, eq: (..._a: unknown[]) => undefined };
 });
 
 import {
@@ -79,6 +100,7 @@ describe("computeBackoffMs", () => {
 
 describe("scheduleSelfRescheduling", () => {
   beforeEach(() => {
+    leaseCtl.otherHolder = false;
     vi.useFakeTimers();
   });
 
@@ -86,20 +108,10 @@ describe("scheduleSelfRescheduling", () => {
     vi.useRealTimers();
   });
 
-  it("skips the tick when pg_try_advisory_xact_lock returns false", async () => {
-    // Lens 13 §3: simulate another Fly machine already holding the lock.
-    // Re-import the db module via the existing mock and stub `execute`
-    // to return false for this test.
-    const dbMod = await import("../../server/db");
-    const realDb = (dbMod as any).db;
-    const realTransaction = realDb.transaction;
-    realDb.transaction = async (fn: (tx: any) => Promise<void>) => {
-      return fn({
-        execute: async () => ({ rows: [{ pg_try_advisory_xact_lock: false }] }),
-        insert: realDb.insert,
-        update: realDb.update,
-      });
-    };
+  it("skips the tick when another machine holds the lease", async () => {
+    // Simulate another Fly machine owning the job_locks row: the claim's
+    // conditional UPDATE matches nothing and the INSERT loses by 23505.
+    leaseCtl.otherHolder = true;
     try {
       const run = vi.fn().mockResolvedValue(undefined);
       const cancel = scheduleSelfRescheduling({
@@ -108,12 +120,18 @@ describe("scheduleSelfRescheduling", () => {
         run,
       });
       await vi.advanceTimersByTimeAsync(0);
-      // The job's `run()` should NOT have been called because the lock
-      // wasn't acquired.
+      // The job's `run()` should NOT have been called because the lease
+      // wasn't claimed.
       expect(run).toHaveBeenCalledTimes(0);
+
+      // A skipped tick is not a failure — the job reschedules on its normal
+      // cadence and runs once the lease frees up.
+      leaseCtl.otherHolder = false;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(run).toHaveBeenCalledTimes(1);
       cancel();
     } finally {
-      realDb.transaction = realTransaction;
+      leaseCtl.otherHolder = false;
     }
   });
 

@@ -40,22 +40,17 @@
  * function's own error path is unaffected.
  */
 
-import { sql } from "drizzle-orm";
+import crypto from "crypto";
+import { and, eq, lt, or } from "drizzle-orm";
 import { db } from "../db";
-import { jobRuns, outboxDlq } from "@shared/schema";
+import { jobLocks, jobRuns, outboxDlq } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { coerceTimerDelay } from "../utils/safeTimer";
 
 /**
- * Lens 13 / Kareem §3: FNV-1a 64-bit hash → signed bigint. Deterministic,
- * collision-resistant enough for ~hundreds of job names, and produces the
- * same bigint across every Fly machine in the process group. Used as the
- * key for `pg_advisory_xact_lock(int8)` so two machines polling the same
- * cron interval never double-fire the same job.
- *
- * Postgres' advisory-lock space is a single int64. We return a signed
- * BigInt (range −2^63 … 2^63−1) so it fits Postgres' expected int8. The
- * FNV-1a output is unsigned; we reinterpret the top bit as the sign bit.
+ * FNV-1a 64-bit hash → signed bigint. Kept exported for existing unit tests
+ * and any future advisory-lock use, but the scheduler itself no longer uses
+ * advisory locks (see the lease-row pattern below).
  */
 export function fnv1a64Signed(input: string): bigint {
   const FNV_OFFSET = 0xcbf29ce484222325n;
@@ -70,26 +65,112 @@ export function fnv1a64Signed(input: string): bigint {
   return h >= 0x8000000000000000n ? h - 0x10000000000000000n : h;
 }
 
+// ── Lease-row mutual exclusion (Tier 1H — job bodies OUT of transactions) ──
+//
+// The previous design held a `pg_try_advisory_xact_lock` for the ENTIRE
+// `run()` body by executing it inside `db.transaction(...)`. That pinned a
+// pool connection in `idle in transaction` for the full duration of every
+// scheduled job — the 60-second idle-in-transaction landmine: any ETL/AI job
+// body slower than the Postgres `idle_in_transaction_session_timeout` (or a
+// pgBouncer transaction-mode pool) gets its connection killed mid-run, and
+// a hung body wedges a pool slot indefinitely.
+//
+// The replacement is a LEASE ROW in the existing `job_locks` table:
+//
+//   1. CLAIM   — one short atomic statement (conditional UPDATE…RETURNING,
+//                INSERT fallback) sets locked_by/expires_at. No transaction
+//                is held open.
+//   2. RUN     — the job body executes OUTSIDE any transaction. A heartbeat
+//                timer re-extends the lease every HEARTBEAT_MS so long jobs
+//                keep ownership without a long TTL.
+//   3. RELEASE — completion (success or failure) deletes the lease row.
+//
+// Crash semantics: if the process dies mid-run the heartbeat stops and the
+// lease expires after LEASE_TTL_SECONDS — another machine picks the job up
+// on its next tick (the advisory lock released instantly on crash; a ≤2-min
+// pickup delay is the accepted cost of unpinning connections).
+//
+// The lease name is prefixed `sched:` so it can never collide with
+// `withJobLock(...)` entries that job bodies themselves take out under the
+// same logical name (same table, same instance — an unprefixed name would
+// let the body's `releaseJobLock` delete the scheduler's lease mid-run).
+
+const LEASE_TTL_SECONDS = 120;
+const HEARTBEAT_MS = 40_000; // extend at 3× the rate the TTL expires
+
+// One UUID per Node process — the lease-owner identity. Deliberately local
+// (not jobRuntime.instanceId) so importing the scheduler never drags in the
+// full storage layer.
+export const schedulerInstanceId = crypto.randomUUID();
+
 /**
- * Try to acquire a transaction-scoped advisory lock keyed by the job name.
- * Returns true if the lock was acquired (caller proceeds), false if some
- * other machine already holds it (caller should skip this tick). The lock
- * auto-releases on commit/rollback of the surrounding transaction.
- *
- * Why xact-scoped vs session-scoped: session locks would leak across
- * scheduler ticks because we hold the DB pool connection longer than the
- * tick itself. Transaction-scoped is the right granularity — once the
- * tick's transaction ends, the lock is gone.
+ * Atomically claim (or re-extend) the lease row for `leaseName`.
+ * Exactly one concurrent claimer wins: the conditional UPDATE only matches
+ * an expired row or one we already own, and the INSERT fallback loses by
+ * unique-constraint (23505) when another claimer got there first.
  */
-async function tryAcquireJobLock(name: string, tx: typeof db): Promise<boolean> {
-  const key = fnv1a64Signed(`acreos:job:${name}`);
-  const result = await tx.execute<{ pg_try_advisory_xact_lock: boolean }>(
-    sql`SELECT pg_try_advisory_xact_lock(${key}::bigint) AS pg_try_advisory_xact_lock`,
-  );
-  // drizzle's execute returns { rows } or array depending on driver. Handle both.
-  const rows = (result as { rows?: { pg_try_advisory_xact_lock: boolean }[] }).rows ?? (result as unknown as { pg_try_advisory_xact_lock: boolean }[]);
-  const row = rows?.[0];
-  return Boolean(row?.pg_try_advisory_xact_lock);
+export async function claimJobLease(
+  leaseName: string,
+  ownerId: string,
+  ttlSeconds: number = LEASE_TTL_SECONDS,
+): Promise<boolean> {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
+
+  const updated = await db
+    .update(jobLocks)
+    .set({ lockedBy: ownerId, lockedAt: now, expiresAt })
+    .where(
+      and(
+        eq(jobLocks.jobName, leaseName),
+        or(lt(jobLocks.expiresAt, now), eq(jobLocks.lockedBy, ownerId)),
+      ),
+    )
+    .returning({ id: jobLocks.id });
+  if (updated.length > 0) return true;
+
+  try {
+    await db.insert(jobLocks).values({ jobName: leaseName, lockedBy: ownerId, expiresAt });
+    return true;
+  } catch (err) {
+    // 23505 = unique violation: another claimer inserted between our UPDATE
+    // and INSERT — they own the lease.
+    if ((err as { code?: string })?.code === "23505") return false;
+    throw err;
+  }
+}
+
+/** Release the lease iff we still own it. Best-effort. */
+export async function releaseJobLease(leaseName: string, ownerId: string): Promise<void> {
+  await db
+    .delete(jobLocks)
+    .where(and(eq(jobLocks.jobName, leaseName), eq(jobLocks.lockedBy, ownerId)));
+}
+
+// ── Graceful-shutdown bookkeeping (Tier 1H) ─────────────────────────────────
+// The worker entrypoint needs to know which scheduled jobs are mid-body on
+// SIGTERM so it can drain them before exiting, and needs a way to stop new
+// ticks from being scheduled.
+
+const _inFlightJobs = new Set<string>();
+const _cancelFns = new Set<() => void>();
+
+/** Names of scheduled jobs whose body is currently executing. */
+export function getInFlightScheduledJobs(): string[] {
+  return Array.from(_inFlightJobs);
+}
+
+/** Cancel every registered scheduler — no further ticks will fire. */
+export function cancelAllScheduledJobs(): void {
+  for (const cancel of _cancelFns) {
+    try {
+      cancel();
+    } catch (err) {
+      logger.warn("[jobs] cancel fn threw during shutdown", {
+        metadata: { error: String(err) },
+      });
+    }
+  }
 }
 
 export interface SelfReschedulingOpts {
@@ -233,35 +314,59 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
   const tick = async (): Promise<void> => {
     if (status.cancelled) return;
 
-    // Lens 13 / Kareem §3: try to acquire a transaction-scoped advisory
-    // lock keyed by the job name. If we can't acquire it, another machine
-    // in the Fly process group is already running this tick — skip this
-    // round, reschedule normally. We open a *short* transaction just to
-    // hold the lock; the `run()` body executes inside that transaction so
-    // the lock is held for the duration of the work and auto-released on
-    // commit/rollback.
+    // Tier 1H lease-row pattern: a SHORT atomic claim takes the lease, the
+    // job body runs OUTSIDE any transaction (no idle-in-transaction pinning),
+    // a heartbeat re-extends the lease for long bodies, and completion
+    // releases it. See the module header above claimJobLease for rationale.
     status.lastRunStartedAt = new Date();
     status.lastStatus = "running";
 
     let nextDelayMs = intervalMs;
-    let acquiredLock = false;
+    let claimed = false;
     let runId: number | null = null;
+    let heartbeat: NodeJS.Timeout | null = null;
+    const leaseName = `sched:${name}`;
 
     try {
-      await db.transaction(async (tx) => {
-        acquiredLock = await tryAcquireJobLock(name, tx as unknown as typeof db);
-        if (!acquiredLock) {
-          logger.info(`[jobs:${name}] skipped tick — advisory lock held by another machine`, {
-            metadata: { jobName: name },
-          });
-          return;
-        }
+      claimed = await claimJobLease(leaseName, schedulerInstanceId);
+      if (!claimed) {
+        logger.info(`[jobs:${name}] skipped tick — lease held by another machine`, {
+          metadata: { jobName: name },
+        });
+        // Skipped tick — reset status and reschedule on the normal cadence.
+        status.lastStatus = null;
+        status.lastRunCompletedAt = new Date();
+      } else {
+        _inFlightJobs.add(name);
 
-        // Record the job_runs row inside the same transaction so the start
-        // marker is rolled back on lock-skip (cleaner job_runs ledger).
+        // Heartbeat: keep the lease alive while the body runs so a long job
+        // isn't stolen by another machine after LEASE_TTL_SECONDS. Losing
+        // the lease (e.g. a DB hiccup let it expire and another machine
+        // claimed it) is logged loudly but does not abort the body — the
+        // body's own withJobLock/idempotency guards are the second fence.
+        heartbeat = setInterval(() => {
+          claimJobLease(leaseName, schedulerInstanceId).then(
+            (ok) => {
+              if (!ok) {
+                logger.warn(`[jobs:${name}] lease heartbeat lost ownership — another machine may pick this job up`, {
+                  metadata: { jobName: name },
+                });
+              }
+            },
+            (err) => {
+              logger.warn(`[jobs:${name}] lease heartbeat failed (non-fatal)`, {
+                metadata: { error: String(err) },
+              });
+            },
+          );
+        }, HEARTBEAT_MS);
+        heartbeat.unref?.();
+
         runId = await insertJobRunStart();
 
+        // The body runs with NO transaction and NO advisory lock held.
         const recordsProcessed = await run();
+
         status.lastRunCompletedAt = new Date();
         status.lastStatus = "success";
         status.consecutiveFailures = 0;
@@ -269,12 +374,6 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
           status: "success",
           recordsProcessed: typeof recordsProcessed === "number" ? recordsProcessed : undefined,
         });
-      });
-
-      if (!acquiredLock) {
-        // Skipped tick — reset status and reschedule on the normal cadence.
-        status.lastStatus = null;
-        status.lastRunCompletedAt = new Date();
       }
     } catch (err) {
       status.lastRunCompletedAt = new Date();
@@ -286,9 +385,6 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
         metadata: { jobName: name, consecutiveFailures: status.consecutiveFailures },
       });
 
-      // `insertJobRunStart` runs on the shared db pool (not on `tx`), so
-      // the start-row commit is independent of the locked tx's rollback.
-      // updateJobRunEnd patches that row to status=failure.
       await updateJobRunEnd(runId, { status: "failure", errorMessage: message });
       await deadLetter(err);
 
@@ -301,6 +397,17 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
       }
 
       nextDelayMs = computeBackoffMs(intervalMs, status.consecutiveFailures, maxBackoffMs);
+    } finally {
+      if (heartbeat) clearInterval(heartbeat);
+      if (claimed) {
+        _inFlightJobs.delete(name);
+        await releaseJobLease(leaseName, schedulerInstanceId).catch((err) => {
+          // Best-effort: an unreleased lease simply expires after the TTL.
+          logger.warn(`[jobs:${name}] lease release failed (lease will expire)`, {
+            metadata: { error: String(err) },
+          });
+        });
+      }
     }
 
     if (status.cancelled) return;
@@ -326,11 +433,15 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
   }
   timer = setTimeout(tick, safeInitial);
 
-  return function cancel() {
+  const cancel = function cancel() {
     status.cancelled = true;
     if (timer) {
       clearTimeout(timer);
       timer = null;
     }
   };
+  // Registered so the worker's SIGTERM path (cancelAllScheduledJobs) can stop
+  // every scheduler from firing new ticks during drain.
+  _cancelFns.add(cancel);
+  return cancel;
 }
