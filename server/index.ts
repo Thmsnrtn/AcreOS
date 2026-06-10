@@ -20,8 +20,11 @@ import { responseTimeRingMiddleware } from "./middleware/responseTimeRing";
 import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
 import { createMcpServer } from "./mcp/index.js";
+import { resolveMcpAuth } from "./mcp/auth.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import rateLimit from "express-rate-limit";
+import { createHash } from "node:crypto";
+import { Errors } from "./utils/errors";
 import { initSentry, Sentry } from "./utils/sentry";
 import { validateEnv } from "./utils/validateEnv";
 
@@ -457,6 +460,29 @@ const apiLimiter = rateLimit({
 });
 app.use("/api", apiLimiter);
 
+// T0-3 (2026-06-10): /mcp previously sat OUTSIDE every limiter family (the
+// apiLimiter only covers /api), so an attacker could grind the bearer-key
+// check unmetered. Dedicated bucket keyed by a SHA-256 hash of the presented
+// credential (never the credential itself — see
+// memory/feedback_credential_value_handling.md) with IP fallback for
+// credential-less probes.
+const mcpLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const auth = req.headers["authorization"];
+    const provided = Array.isArray(auth) ? auth[0] : auth;
+    if (provided) {
+      return `mcpkey:${createHash("sha256").update(provided).digest("hex").slice(0, 16)}`;
+    }
+    return `mcpip:${req.ip || "unknown"}`;
+  },
+  message: { message: "MCP rate limit exceeded. Please slow down and try again shortly." },
+});
+app.use("/mcp", mcpLimiter);
+
 (async () => {
   // Migrations are NOT run from the server boot path. They run exclusively
   // via `scripts/migrate.mjs`, registered as Fly's `release_command` in
@@ -498,32 +524,53 @@ app.use("/api", apiLimiter);
   
   // ── MCP HTTP endpoint (stateless StreamableHTTP transport) ───────────────
   // Accessible at POST /mcp — Claude Desktop or any MCP client can connect here.
-  // Auth: requires Bearer token matching MCP_API_KEY env var.
-  const mcpServer = createMcpServer();
-
-  const mcpAuthMiddleware = (req: Request, res: Response, next: NextFunction) => {
-    const mcpApiKey = process.env.MCP_API_KEY;
-    if (!mcpApiKey) {
-      // Not configured — block all access until key is set
-      res.status(503).json({ error: "MCP endpoint not configured. Set MCP_API_KEY." });
-      return;
+  //
+  // T0-3 (2026-06-10) hardening:
+  //   • Auth lives in server/mcp/auth.ts — timing-safe compare for the
+  //     static MCP_API_KEY (crypto.timingSafeEqual over hashed sides) plus
+  //     a per-org api_keys path (ak_live_…/ak_test_…), replacing the old
+  //     plain `!==` check.
+  //   • Every session resolves to an org binding; org-scoped tools no
+  //     longer accept an organizationId argument (see server/mcp/index.ts).
+  //     The McpServer is therefore built per-request with the bound org.
+  //   • The /mcp mount sits behind mcpLimiter (defined with the other
+  //     limiter families above) — it was previously unmetered.
+  const mcpAuthMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const authHeader = req.headers["authorization"] ?? "";
+      const provided = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+      const auth = await resolveMcpAuth(provided);
+      if (auth.status === "unconfigured") {
+        // Not configured — block all access until a key is set.
+        res.status(503).json({
+          error: "service_unavailable",
+          message: "MCP endpoint not configured. Set MCP_API_KEY.",
+          statusCode: 503,
+        });
+        return;
+      }
+      if (auth.status !== "ok") {
+        Errors.unauthorized(res);
+        return;
+      }
+      res.locals.mcpOrganizationId = auth.organizationId;
+      next();
+    } catch (e) {
+      Errors.internal(res, e);
     }
-    const authHeader = req.headers["authorization"] ?? "";
-    const provided = Array.isArray(authHeader) ? authHeader[0] : authHeader;
-    if (provided !== `Bearer ${mcpApiKey}`) {
-      res.status(401).json({ error: "Invalid or missing MCP API key." });
-      return;
-    }
-    next();
   };
 
   app.post("/mcp", mcpAuthMiddleware, async (req, res) => {
     try {
+      const boundOrgId = res.locals.mcpOrganizationId as number | null;
+      const mcpServer = createMcpServer({
+        organizationId: boundOrgId ?? undefined,
+      });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       await mcpServer.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      Errors.internal(res, e);
     }
   });
   app.get("/mcp", mcpAuthMiddleware, (_req, res) => {

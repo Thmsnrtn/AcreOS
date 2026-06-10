@@ -26,7 +26,7 @@
  * Plaid takes for `secret`s.
  */
 
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 export type ApiScope =
   | "leads:read"
@@ -83,6 +83,21 @@ export function verifyHash(a: string, b: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * T0-3 (2026-06-10): constant-time compare of two arbitrary secrets.
+ *
+ * Used for static-token auth paths (e.g. the /mcp bearer key) where the
+ * stored side is a plaintext env secret rather than a persisted hash.
+ * Both sides are SHA-256'd first so the buffers handed to
+ * crypto.timingSafeEqual are always equal length — a length mismatch
+ * neither throws nor leaks the expected secret's length.
+ */
+export function verifySecret(provided: string, expected: string): boolean {
+  const a = createHash("sha256").update(provided).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
 }
 
 /**

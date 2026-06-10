@@ -19,6 +19,7 @@ import { z } from "zod";
 import { dataSourceBroker } from "../services/data-source-broker.js";
 import { propertyEnrichmentService } from "../services/propertyEnrichment.js";
 import { storage } from "../storage.js";
+import { logger } from "../utils/logger.js";
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
@@ -44,14 +45,66 @@ function err(message: string) {
 
 // ─── Server ──────────────────────────────────────────────────────────────────
 
-export function createMcpServer() {
+export interface McpServerOptions {
+  /**
+   * T0-3 (2026-06-10): the org this MCP session is authenticated for.
+   * Resolved server-side at auth time (server/mcp/auth.ts) — per-org API
+   * key → its org, static MCP_API_KEY → MCP_ORG_ID. Org-scoped tools no
+   * longer accept an organizationId argument from the client; they are
+   * forced to this binding and refuse when it's absent.
+   */
+  organizationId?: number;
+}
+
+export function createMcpServer(options: McpServerOptions = {}) {
+  const boundOrgId = options.organizationId;
+
   const server = new McpServer({
     name: "AcreOS",
     version: "1.0.0",
   });
 
+  // T0-3 (2026-06-10): every tool registration goes through this wrapper so
+  // each call emits a structured audit line — tool name, bound org, duration,
+  // error flag. Never the arguments, never any credential material.
+  const tool = (
+    name: string,
+    description: string,
+    schema: Record<string, z.ZodTypeAny>,
+    handler: (args: any) => Promise<any>,
+  ) => {
+    server.tool(name, description, schema, async (args: any) => {
+      const startedAt = Date.now();
+      let isError = false;
+      try {
+        const result = await handler(args);
+        isError = Boolean(result?.isError);
+        return result;
+      } catch (e) {
+        isError = true;
+        throw e;
+      } finally {
+        logger.info("[mcp] tool call", {
+          source: "mcp",
+          organizationId: boundOrgId,
+          metadata: { tool: name, durationMs: Date.now() - startedAt, isError },
+        });
+      }
+    });
+  };
+
+  /** Resolve the session's org binding or produce a uniform refusal. */
+  const requireBoundOrg = (): number => {
+    if (boundOrgId === undefined || boundOrgId === null) {
+      throw new Error(
+        "This MCP session is not bound to an organization. Authenticate with a per-org API key (ak_live_…) or set MCP_ORG_ID for the static key.",
+      );
+    }
+    return boundOrgId;
+  };
+
   // ── 1. Flood Zone ─────────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_flood_zone",
     "Look up the FEMA flood zone classification for a lat/lng coordinate. Returns zone label (e.g. Zone AE) and risk level. Free – uses FEMA NFHL ArcGIS REST service.",
     {
@@ -69,7 +122,7 @@ export function createMcpServer() {
   );
 
   // ── 2. Wetlands ───────────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_wetlands",
     "Check USFWS National Wetlands Inventory (NWI) for wetlands at a coordinate. Free API.",
     {
@@ -87,7 +140,7 @@ export function createMcpServer() {
   );
 
   // ── 3. Soil Data ─────────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_soil_data",
     "Retrieve USDA NRCS SSURGO soil survey data (soil type, hydrologic group, drainage class) for a coordinate. Free API.",
     {
@@ -105,7 +158,7 @@ export function createMcpServer() {
   );
 
   // ── 4. Demographics ───────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_demographics",
     "Fetch Census ACS 5-year demographic estimates (population, median income, home value, unemployment) for a coordinate's census tract. Free API.",
     {
@@ -124,7 +177,7 @@ export function createMcpServer() {
   );
 
   // ── 5. Public Lands ───────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_public_lands",
     "Check if a coordinate is on BLM, NPS, or USFS managed land. Returns managing agency and unit details. Free API.",
     {
@@ -142,7 +195,7 @@ export function createMcpServer() {
   );
 
   // ── 6. Natural Hazards ────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_natural_hazards",
     "Get natural hazard data: recent USGS earthquakes within 100km, active WFIGS wildfire perimeters within 50km, and FEMA flood information. Free APIs.",
     {
@@ -160,7 +213,7 @@ export function createMcpServer() {
   );
 
   // ── 7. Infrastructure ─────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_infrastructure",
     "Find hospitals, fire stations, and schools within 10 miles of a coordinate using HIFLD federal datasets. Free API.",
     {
@@ -178,7 +231,7 @@ export function createMcpServer() {
   );
 
   // ── 8. Transportation ─────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_transportation",
     "Find highways (NHPN), bridges (NBI), and railroads within 5 miles of a coordinate. Free DOT/ESRI APIs.",
     {
@@ -196,7 +249,7 @@ export function createMcpServer() {
   );
 
   // ── 9. Water Resources ────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_water_resources",
     "Fetch USGS stream gauge data, current flow conditions, and HUC12 watershed information near a coordinate. Free API.",
     {
@@ -214,7 +267,7 @@ export function createMcpServer() {
   );
 
   // ── 10. Elevation ─────────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_elevation",
     "Get precise elevation in feet and meters from USGS 3DEP National Elevation Dataset. Falls back to SRTM via Open-Elevation. Free API.",
     {
@@ -232,7 +285,7 @@ export function createMcpServer() {
   );
 
   // ── 11. Climate ───────────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_climate",
     "Get 30-year climate normals (1991-2020): average high/low temperatures and annual precipitation. Uses Open-Meteo ERA5 reanalysis. Free, no API key required.",
     {
@@ -250,7 +303,7 @@ export function createMcpServer() {
   );
 
   // ── 12. Agricultural Land Values ──────────────────────────────────────────
-  server.tool(
+  tool(
     "get_agricultural_values",
     "Get USDA farm real estate land values per acre at county, state, and national levels. Uses USDA ERS and NASS QuickStats. Free API.",
     {
@@ -270,7 +323,7 @@ export function createMcpServer() {
   );
 
   // ── 13. Land Cover ────────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_land_cover",
     "Get USGS National Land Cover Database (NLCD 2021) land cover class for a coordinate: cropland, forest, wetland, developed, etc. Free ArcGIS REST API.",
     {
@@ -288,7 +341,7 @@ export function createMcpServer() {
   );
 
   // ── 14. Full Property Enrichment ──────────────────────────────────────────
-  server.tool(
+  tool(
     "enrich_property",
     "Run a comprehensive free-data enrichment on a coordinate: floods, wetlands, soil, environmental, infrastructure, hazards, demographics, public lands, transportation, water, elevation, climate, ag values, and land cover — all from free public APIs in one call.",
     {
@@ -313,7 +366,7 @@ export function createMcpServer() {
   );
 
   // ── 15. Reverse Geocode ───────────────────────────────────────────────────
-  server.tool(
+  tool(
     "reverse_geocode",
     "Convert lat/lng coordinates to a street address using Nominatim (OpenStreetMap). Free, no API key required.",
     {
@@ -348,7 +401,7 @@ export function createMcpServer() {
   );
 
   // ── 16. Forward Geocode ───────────────────────────────────────────────────
-  server.tool(
+  tool(
     "geocode_address",
     "Convert a street address or place name to lat/lng coordinates using Nominatim (OpenStreetMap). Free, no API key required.",
     {
@@ -387,7 +440,7 @@ export function createMcpServer() {
   );
 
   // ── 17. EPA Environmental Query ───────────────────────────────────────────
-  server.tool(
+  tool(
     "get_epa_data",
     "Search EPA TRI (Toxic Release Inventory) facilities within 3 miles of a coordinate. Free EPA Envirofacts API.",
     {
@@ -405,18 +458,21 @@ export function createMcpServer() {
   );
 
   // ── 18. Search Organization Properties ───────────────────────────────────
-  server.tool(
+  // T0-3 (2026-06-10): organizationId removed from this and every other
+  // org-scoped tool schema below — the org is injected server-side from the
+  // authenticated session binding so a caller can never pick another org.
+  tool(
     "search_properties",
-    "Search properties in an AcreOS organization's portfolio by state, county, status, or free-text. Returns a list of matching properties.",
+    "Search properties in your AcreOS organization's portfolio by state, county, status, or free-text. Returns a list of matching properties.",
     {
-      organizationId: z.number().describe("AcreOS organization ID"),
       state: z.string().optional().describe("Filter by state (two-letter code)"),
       county: z.string().optional().describe("Filter by county name"),
       status: z.string().optional().describe("Filter by status (available, under_contract, sold, etc.)"),
       limit: z.number().optional().default(20).describe("Max results to return"),
     },
-    async ({ organizationId, state, county, status, limit }) => {
+    async ({ state, county, status, limit }) => {
       try {
+        const organizationId = requireBoundOrg();
         const all = await storage.getProperties(organizationId);
         let filtered = all;
         if (state) filtered = filtered.filter(p => p.state?.toUpperCase() === state.toUpperCase());
@@ -444,15 +500,15 @@ export function createMcpServer() {
   );
 
   // ── 19. Get Property Details ──────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_property",
-    "Get full details for a specific property by ID within an AcreOS organization.",
+    "Get full details for a specific property by ID within your AcreOS organization.",
     {
-      organizationId: z.number(),
       propertyId: z.number(),
     },
-    async ({ organizationId, propertyId }) => {
+    async ({ propertyId }) => {
       try {
+        const organizationId = requireBoundOrg();
         const property = await storage.getProperty(organizationId, propertyId);
         if (!property) return err(`Property ${propertyId} not found`);
         return ok(property, `Property #${propertyId}:`);
@@ -463,19 +519,19 @@ export function createMcpServer() {
   );
 
   // ── 20. Search Leads ──────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "search_leads",
-    "Search leads/sellers in an AcreOS organization by state, county, lead score range, or status.",
+    "Search leads/sellers in your AcreOS organization by state, county, lead score range, or status.",
     {
-      organizationId: z.number(),
       state: z.string().optional(),
       county: z.string().optional(),
       minScore: z.number().optional().describe("Minimum lead score (0-100)"),
       status: z.string().optional().describe("Lead status filter"),
       limit: z.number().optional().default(20),
     },
-    async ({ organizationId, state, county, minScore, status, limit }) => {
+    async ({ state, county, minScore, status, limit }) => {
       try {
+        const organizationId = requireBoundOrg();
         const all = await storage.getLeads(organizationId);
         let filtered: any[] = all;
         if (state) filtered = filtered.filter((l: any) => l.state?.toUpperCase() === state.toUpperCase());
@@ -501,16 +557,16 @@ export function createMcpServer() {
   );
 
   // ── 21. Get Deals ─────────────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_deals",
-    "Retrieve active deals in an AcreOS organization's pipeline. Optionally filter by stage.",
+    "Retrieve active deals in your AcreOS organization's pipeline. Optionally filter by stage.",
     {
-      organizationId: z.number(),
       stage: z.string().optional().describe("Pipeline stage filter (e.g. due_diligence, offer, closed)"),
       limit: z.number().optional().default(20),
     },
-    async ({ organizationId, stage, limit }) => {
+    async ({ stage, limit }) => {
       try {
+        const organizationId = requireBoundOrg();
         const all = await storage.getDeals(organizationId);
         let filtered = stage ? all.filter((d: any) => d.status === stage) : all;
         const sliced = filtered.slice(0, limit ?? 20);
@@ -531,14 +587,13 @@ export function createMcpServer() {
   );
 
   // ── 22. Portfolio Summary ─────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_portfolio_summary",
-    "Get a high-level summary of an organization's AcreOS portfolio: lead counts, property counts, deal pipeline, active seller-financed notes, and monthly cash flow.",
-    {
-      organizationId: z.number(),
-    },
-    async ({ organizationId }) => {
+    "Get a high-level summary of your organization's AcreOS portfolio: lead counts, property counts, deal pipeline, active seller-financed notes, and monthly cash flow.",
+    {},
+    async () => {
       try {
+        const organizationId = requireBoundOrg();
         const [org, leads, properties, deals, notes] = await Promise.all([
           storage.getOrganization(organizationId),
           storage.getLeads(organizationId),
@@ -580,7 +635,7 @@ export function createMcpServer() {
   );
 
   // ── 23. Cropland Data Layer ───────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_cropland",
     "Identify the crop type at a coordinate using USDA NASS CropScape Cropland Data Layer (CDL) 2023. Returns crop code, crop name, and land use classification. Free – no API key required.",
     {
@@ -598,7 +653,7 @@ export function createMcpServer() {
   );
 
   // ── 24. EPA Facility Registry Service ────────────────────────────────────
-  server.tool(
+  tool(
     "get_epa_facilities",
     "Find all EPA-registered facilities within 5 miles of a coordinate using the EPA Facility Registry Service (FRS). Covers Superfund, Clean Air Act, Clean Water Act, RCRA hazardous waste sites, and more. Free – no API key required.",
     {
@@ -616,7 +671,7 @@ export function createMcpServer() {
   );
 
   // ── 25. Storm History / Hazard Risk ──────────────────────────────────────
-  server.tool(
+  tool(
     "get_storm_history",
     "Get geographic storm risk estimates (tornado, hurricane, hail) for a coordinate based on NOAA historical storm event patterns. Returns county-level risk classifications. Free – no API key required.",
     {
@@ -635,7 +690,7 @@ export function createMcpServer() {
   );
 
   // ── 26. PLSS Legal Description ────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_plss",
     "Look up the Public Land Survey System (PLSS) legal description for a coordinate using BLM CadNSDI. Returns section, township, range, and formatted legal description (e.g. 'Sec. 14, T2N, R3E'). Critical for rural land title research. Free – no API key required.",
     {
@@ -653,7 +708,7 @@ export function createMcpServer() {
   );
 
   // ── 27. Watershed / HUC ───────────────────────────────────────────────────
-  server.tool(
+  tool(
     "get_watershed",
     "Get the NHD Plus watershed name and HUC-8/HUC-12 codes for a coordinate using EPA WATERS. Identifies the hydrologic unit containing the property. Free – no API key required.",
     {
@@ -671,7 +726,7 @@ export function createMcpServer() {
   );
 
   // ── 28. FEMA National Risk Index ─────────────────────────────────────────
-  server.tool(
+  tool(
     "get_fema_nri",
     "Get the official FEMA National Risk Index hazard risk ratings for a location. Returns composite risk score plus individual ratings for riverine flood, hurricane, tornado, hail, wildfire, lightning, earthquake, and drought at the county level. Free – no API key required.",
     {
@@ -689,7 +744,7 @@ export function createMcpServer() {
   );
 
   // ── 29. USDA FSA Common Land Units ───────────────────────────────────────
-  server.tool(
+  tool(
     "get_usda_clu",
     "Retrieve USDA FSA Common Land Unit (CLU) farm records for a coordinate. Returns farm number, tract number, CLU ID, and officially calculated acreage from USDA farm records. Free – no API key required.",
     {
@@ -714,7 +769,14 @@ export function createMcpServer() {
 // Then configure Claude Desktop to use this as an MCP server.
 
 if (process.argv[1]?.endsWith("mcp/index.ts") || process.argv[1]?.endsWith("mcp/index.js")) {
-  const server = createMcpServer();
+  // T0-3 (2026-06-10): stdio sessions bind via MCP_ORG_ID (there is no HTTP
+  // auth layer here — the binding is the operator's env, same as the static
+  // key path). Unset → public-data tools only.
+  const rawOrgId = process.env.MCP_ORG_ID;
+  const parsedOrgId = rawOrgId ? Number.parseInt(rawOrgId, 10) : Number.NaN;
+  const server = createMcpServer({
+    organizationId: Number.isFinite(parsedOrgId) ? parsedOrgId : undefined,
+  });
   const transport = new StdioServerTransport();
   server.connect(transport).then(() => {
     process.stderr.write("[AcreOS MCP] Server running on stdio\n");
