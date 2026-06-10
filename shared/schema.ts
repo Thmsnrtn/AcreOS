@@ -7287,6 +7287,40 @@ export type InsertJobLock = z.infer<typeof insertJobLockSchema>;
 export type JobLock = typeof jobLocks.$inferSelect;
 
 // ============================================
+// CIRCUIT BREAKER STATE (Tier 1G — persisted provider-registry breaker)
+// ============================================
+// One row per provider. Persists trip state across deploys so a hard-down
+// provider isn't re-hammered with a fresh failure budget per machine per
+// deploy. state: 'closed' | 'open' | 'half_open'. half_open_probe_at records
+// the single-probe claim taken after the cooloff window.
+
+export const circuitBreakerState = pgTable("circuit_breaker_state", {
+  providerName: text("provider_name").primaryKey(),
+  state: text("state").notNull().default("closed"),
+  failures: integer("failures").notNull().default(0),
+  openedAt: timestamp("opened_at"),
+  lastFailureAt: timestamp("last_failure_at"),
+  halfOpenProbeAt: timestamp("half_open_probe_at"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type CircuitBreakerStateRow = typeof circuitBreakerState.$inferSelect;
+
+// ============================================
+// DEADMAN PAGE STATE (Tier 1H — persisted re-page throttle)
+// ============================================
+// One row per roster job. server/jobs/deadmanCheck.ts throttles on-call
+// re-pages to once/hour per dark job; this table persists the last-paged
+// timestamp so a deploy mid-incident doesn't reset the throttle and re-page
+// every still-dark job.
+
+export const deadmanPageState = pgTable("deadman_page_state", {
+  jobName: text("job_name").primaryKey(),
+  lastPagedAt: timestamp("last_paged_at").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type DeadmanPageStateRow = typeof deadmanPageState.$inferSelect;
+
+// ============================================
 // EMAIL SENDER IDENTITIES
 // ============================================
 

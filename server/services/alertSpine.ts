@@ -69,6 +69,25 @@ export function __resetAlertSpineForTests(): void {
   _lastSystemAlertAt.clear();
 }
 
+/**
+ * Seed the page-throttle window from an externally persisted timestamp
+ * (Tier 1H): the in-process window resets on deploy, so callers that persist
+ * their own last-paged-at (e.g. the deadman's deadman_page_state) can carry
+ * the throttle across restarts. Only ever moves the window FORWARD — a stale
+ * persisted row can never un-throttle a page the live window already stamped.
+ */
+export function seedPageThrottle(
+  source: string,
+  dedupeKey: string,
+  lastPagedAtMs: number,
+): void {
+  const key = `${source}:${dedupeKey}`;
+  const existing = _lastPagedAt.get(key) ?? 0;
+  if (lastPagedAtMs > existing) {
+    _lastPagedAt.set(key, lastPagedAtMs);
+  }
+}
+
 export interface PageCriticalInput {
   /** Detector / subsystem id — half of the dedupe key. */
   source: string;

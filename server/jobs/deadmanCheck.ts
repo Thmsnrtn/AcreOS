@@ -38,6 +38,12 @@
  * reliability finding + a system_alerts row. A dark non-critical job lands
  * as a warning (finding + system_alerts, no page) per spine policy.
  *
+ * Tier 1H / blueprint E11: the spine's throttle window is in-process and
+ * resets on deploy, so the deadman PERSISTS page timestamps to
+ * deadman_page_state (migration 0154). Each sweep hydrates the persisted
+ * rows and seeds the spine's window (seedPageThrottle) before raising, so a
+ * deploy mid-incident doesn't re-page on-call for every still-dark job.
+ *
  * Dedupe: findings upsert on (detector, dedupeKey); the dedupeKey is
  * per-job, so a job that stays dark re-fires (bumps last_seen_at) rather
  * than spamming. The spine's page/system_alert windows additionally ensure
@@ -46,9 +52,9 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { jobHealthLogs } from "@shared/schema";
+import { deadmanPageState, jobHealthLogs } from "@shared/schema";
 import { logger } from "../utils/logger";
-import { raiseAlert } from "../services/alertSpine";
+import { raiseAlert, seedPageThrottle } from "../services/alertSpine";
 import { recordFinding } from "../services/audit/domainAudit";
 import { activeRosterEntries, configDormantEntries, type ConfigDormantEntry } from "./jobRegistry";
 
@@ -75,6 +81,21 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
   const now = Date.now();
   const uptimeMs = now - _processStartedAt;
   const dark: DeadmanResult["dark"] = [];
+
+  // Hydrate the persisted re-page throttle (one read per sweep). Best-effort:
+  // a failed read degrades to the in-memory map (worst case: one duplicate
+  // page after a deploy — the pre-persistence behavior).
+  const persistedPagedAt = new Map<string, number>();
+  try {
+    const rows = await db.select().from(deadmanPageState);
+    for (const row of rows) {
+      persistedPagedAt.set(row.jobName, new Date(row.lastPagedAt).getTime());
+    }
+  } catch (err) {
+    logger.warn("[deadman] failed to hydrate deadman_page_state — using in-memory throttle only", {
+      metadata: { error: String(err) },
+    });
+  }
 
   for (const entry of entries) {
     let lastSeenMs: number | null = null;
@@ -126,8 +147,17 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
     // pair: critical job dark → P0 page (throttled once/hour inside the
     // spine) + finding + system_alerts; non-critical dark → warning finding
     // + system_alerts, no page.
+    //
+    // Tier 1H / blueprint E11: the spine's page-throttle window is in-process
+    // and resets on deploy. Seed it from the persisted deadman_page_state row
+    // so a deploy mid-incident doesn't re-page on-call for every still-dark
+    // job; when the spine DOES page, persist the timestamp back.
+    const persisted = persistedPagedAt.get(entry.name);
+    if (persisted != null) {
+      seedPageThrottle(DETECTOR_ID, `dark:${entry.name}`, persisted);
+    }
     try {
-      await raiseAlert({
+      const alertResult = await raiseAlert({
         severity: entry.critical ? "critical" : "warning",
         source: DETECTOR_ID,
         title,
@@ -140,6 +170,20 @@ export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
         alertType: "job_dark",
         metadata: { lastSeenMs, thresholdMs, critical: entry.critical, intervalMs: entry.intervalMs },
       });
+      if (alertResult.paged) {
+        // Persist the page timestamp (fire-and-forget — never block the sweep).
+        db.insert(deadmanPageState)
+          .values({ jobName: entry.name, lastPagedAt: new Date(now), updatedAt: new Date(now) })
+          .onConflictDoUpdate({
+            target: deadmanPageState.jobName,
+            set: { lastPagedAt: new Date(now), updatedAt: new Date(now) },
+          })
+          .catch((err) => {
+            logger.warn(`[deadman] failed to persist page state for ${entry.name}`, {
+              metadata: { error: String(err) },
+            });
+          });
+      }
     } catch (err) {
       // raiseAlert is internally best-effort, but never let an alerting
       // failure abort the rest of the sweep.

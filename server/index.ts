@@ -22,7 +22,9 @@ import { realtimeAlertsService } from "./services/realtimeAlerts";
 import { createMcpServer } from "./mcp/index.js";
 import { resolveMcpAuth } from "./mcp/auth.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { createLimiterStore } from "./middleware/limiterRedisStore";
+import { getClientIp } from "./utils/clientIp";
 import { createHash } from "node:crypto";
 import { Errors } from "./utils/errors";
 import { initSentry, Sentry } from "./utils/sentry";
@@ -165,8 +167,18 @@ app.use((req, _res, next) => {
 // F-A05-3: Remove x-powered-by header
 app.disable("x-powered-by");
 
-// Task #30: Trust first proxy hop — required on Fly.io so req.ip reflects the
-// actual client IP (for rate limiting and audit logging), not the Fly proxy.
+// Task #30 + Tier 1G (2026-06-10): trust exactly ONE proxy hop — the Fly edge
+// proxy, our only direct peer. NOTE the hop depth subtlety: production
+// traffic traverses Cloudflare BEFORE Fly (client → CF edge → Fly proxy →
+// app), so XFF arrives as "<client>, <cf-edge>" and depth-1 trust resolves
+// req.ip to the Cloudflare EDGE IP, not the client. We deliberately do NOT
+// raise this to 2: traffic that reaches Fly without Cloudflare (acreos.fly.dev
+// before the 301 above, direct-IP probes) carries client-controlled XFF
+// entries, and depth-2 trust would let an attacker choose their own req.ip.
+// Instead, anything needing the real client IP (rate-limiter IP components,
+// audit logging) goes through getClientIp() in server/utils/clientIp.ts,
+// which prefers CF-Connecting-IP (stamped by Cloudflare, the trusted hop in
+// front of Fly for all canonical-host traffic) and falls back to req.ip.
 app.set("trust proxy", 1);
 
 // ─── Compression — gzip + brotli (Wave: cost) ──────────────────────────────
@@ -282,7 +294,14 @@ const authLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => (req as any).auth?.userId || req.ip || "unknown",
+  // Tier 1G: budget enforced in Redis across the whole Fly process group when
+  // REDIS_URL is set (undefined store = stock per-instance MemoryStore, which
+  // on N machines silently grants N× the budget).
+  store: createLimiterStore("auth"),
+  // IP component goes through getClientIp (CF-Connecting-IP first — req.ip is
+  // the Cloudflare edge IP behind trust-proxy=1, see utils/clientIp.ts) and
+  // ipKeyGenerator for IPv6 /56 bucketing. userId stays the primary key.
+  keyGenerator: (req) => (req as any).auth?.userId || ipKeyGenerator(getClientIp(req)),
   skip: (req) => req.originalUrl.startsWith("/api/auth/user"),
   message: { message: "Too many requests. Please try again later." },
 });
@@ -309,6 +328,8 @@ const authAttemptLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  // Tier 1G: shared Redis budget across machines when REDIS_URL is set.
+  store: createLimiterStore("auth-attempt"),
   keyGenerator: (req) => {
     const body = (req as any).body ?? {};
     const submittedEmail =
@@ -317,10 +338,12 @@ const authAttemptLimiter = rateLimit({
       typeof body.identifier === "string" ? body.identifier.toLowerCase().trim() : "";
     // Prefer submitted email / identifier — the credential being targeted is
     // what we actually want to rate-limit. Fall back to IP for OAuth
-    // endpoints where the request body is empty (state callback).
+    // endpoints where the request body is empty (state callback). The IP
+    // component uses getClientIp (CF-Connecting-IP first — req.ip is the CF
+    // edge IP behind trust-proxy=1, see utils/clientIp.ts).
     if (submittedEmail) return `email:${submittedEmail}`;
     if (submittedIdentifier) return `id:${submittedIdentifier}`;
-    return `ip:${req.ip || "unknown"}`;
+    return `ip:${ipKeyGenerator(getClientIp(req))}`;
   },
   message: { message: "Too many sign-in attempts. Please try again later." },
 });

@@ -484,13 +484,33 @@ async function shutdown(signal: string): Promise<void> {
   stopping = true;
   logger.info(`[worker] received ${signal} — draining (inFlight=${inFlight})`);
 
+  // Tier 1H: stop the scheduled-job runners from firing NEW ticks, then
+  // drain both outbox jobs (inFlight) and any scheduled-job body currently
+  // executing (scheduler lease holders) within the same grace window.
+  let scheduledInFlight: () => string[] = () => [];
+  try {
+    const scheduler = await import("./jobs/scheduler");
+    scheduler.cancelAllScheduledJobs();
+    scheduledInFlight = scheduler.getInFlightScheduledJobs;
+  } catch (err) {
+    logger.warn(`[worker] could not cancel scheduled jobs during shutdown: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  // Clear interval-based background jobs registered via trackInterval so they
+  // don't fire mid-drain.
+  for (const handle of ((globalThis as any).__bgIntervals ?? []) as NodeJS.Timeout[]) {
+    clearInterval(handle);
+  }
+
   const deadline = Date.now() + SHUTDOWN_GRACE_MS;
-  while (inFlight > 0 && Date.now() < deadline) {
+  while ((inFlight > 0 || scheduledInFlight().length > 0) && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 250));
   }
 
-  if (inFlight > 0) {
-    logger.warn(`[worker] grace expired with ${inFlight} job(s) still in flight; exiting anyway`);
+  const stillRunning = scheduledInFlight();
+  if (inFlight > 0 || stillRunning.length > 0) {
+    logger.warn(
+      `[worker] grace expired with ${inFlight} outbox job(s) and ${stillRunning.length} scheduled job(s) [${stillRunning.join(", ")}] still in flight; exiting anyway`,
+    );
   }
 
   try {
@@ -510,14 +530,25 @@ async function shutdown(signal: string): Promise<void> {
 
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
-process.on("unhandledRejection", (reason) => {
-  logger.error("[worker] unhandledRejection", reason instanceof Error ? reason : undefined);
-  Sentry.captureException(reason);
-});
-process.on("uncaughtException", (err) => {
-  logger.error("[worker] uncaughtException", err);
+
+// Tier 1H crash discipline: after an uncaughtException or unhandledRejection
+// the process state is undefined — continuing risks half-written rows, a
+// wedged poll loop, and silent darkness (the heartbeat keeps pulsing while
+// the worker does nothing useful). Flush Sentry, then EXIT non-zero: Fly
+// restarts the machine into a clean state, and the deadman/heartbeat probes
+// cover the gap.
+let crashing = false;
+function crashExit(label: string, err: unknown): void {
+  if (crashing) return; // a second fault while flushing must not recurse
+  crashing = true;
+  logger.error(`[worker] ${label} — flushing Sentry and exiting for restart`, err instanceof Error ? err : undefined);
   Sentry.captureException(err);
-});
+  Sentry.close(2000).finally(() => process.exit(1));
+  // Hard backstop: if the Sentry flush itself hangs, force the exit.
+  setTimeout(() => process.exit(1), 5000).unref();
+}
+process.on("unhandledRejection", (reason) => crashExit("unhandledRejection", reason));
+process.on("uncaughtException", (err) => crashExit("uncaughtException", err));
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 

@@ -43,6 +43,7 @@
 
 import type { Request, Response, NextFunction } from "express";
 import { createRateLimiter, type RateLimitConfig } from "./rateLimit";
+import { getClientIp } from "../utils/clientIp";
 import { Errors } from "../utils/errors";
 import { logger } from "../utils/logger";
 
@@ -82,14 +83,13 @@ export function ipBucket(ip: string | undefined | null): string {
 }
 
 function reqIpBucket(req: Request): string {
-  // Honor X-Forwarded-For if Express trust proxy is set (Fly fronts us).
-  const fwd = req.headers["x-forwarded-for"];
-  const ip =
-    (typeof fwd === "string" ? fwd.split(",")[0].trim() : null) ??
-    req.ip ??
-    req.socket.remoteAddress ??
-    "";
-  return ipBucket(ip);
+  // Tier 1G: getClientIp prefers CF-Connecting-IP (stamped by Cloudflare,
+  // the trusted hop in front of Fly) and falls back to req.ip. The previous
+  // version read the LEFTMOST X-Forwarded-For entry, which is client-
+  // supplied (spoofable) on any request that reaches Fly without Cloudflare,
+  // and req.ip itself is the CF *edge* IP behind trust-proxy=1 — see
+  // server/utils/clientIp.ts for the full hop-depth analysis.
+  return ipBucket(getClientIp(req));
 }
 
 function submittedEmail(req: Request): string | null {

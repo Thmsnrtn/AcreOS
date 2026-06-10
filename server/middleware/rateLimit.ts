@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { getRedisClient } from "../utils/redis";
+import { getClientIp } from "../utils/clientIp";
 import { logger } from "../utils/logger";
 
 // ── Rate Limit Hit Monitoring ────────────────────────────────────────────────
@@ -103,8 +104,9 @@ export const authAttemptKeyFunction: KeyFunction = (req: Request) => {
   if (submittedIdentifier) return `auth:id:${submittedIdentifier}`;
   const userId = (req as any).user?.id;
   if (userId) return `auth:user:${userId}`;
-  const ip = req.ip || req.socket.remoteAddress || "unknown";
-  return `auth:ip:${ip}`;
+  // Tier 1G: IP component via getClientIp — req.ip is the Cloudflare EDGE IP
+  // behind trust-proxy=1; see server/utils/clientIp.ts for the hop analysis.
+  return `auth:ip:${getClientIp(req)}`;
 };
 
 /**
@@ -244,10 +246,7 @@ export function createRateLimiter(
 ) {
   const getKey =
     keyFunction ||
-    ((req: Request) => {
-      const ip = req.ip || req.socket.remoteAddress || "unknown";
-      return `ip:${ip}`;
-    });
+    ((req: Request) => `ip:${getClientIp(req)}`);
 
   return async (req: Request, res: Response, next: NextFunction) => {
     const key = getKey(req);
@@ -299,8 +298,9 @@ export const authenticatedKeyFunction: KeyFunction = (req: Request) => {
       return `user:${userId}`;
     }
   }
-  const ip = req.ip || req.socket.remoteAddress || "unknown";
-  return `ip:${ip}`;
+  // Tier 1G: IP fallback via getClientIp (CF-Connecting-IP first) — req.ip
+  // is the Cloudflare edge IP behind trust-proxy=1.
+  return `ip:${getClientIp(req)}`;
 };
 
 /**
