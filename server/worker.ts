@@ -70,6 +70,11 @@ const HANDLED_EVENT_TYPES = [
   "embedding_refresh",
   "recognition_run",
   "1099_batch_generate",
+  // Tier 2C (2026-06-10): lifecycle emails enqueued by
+  // services/lifecycleProgram.sendLifecycleMessage. The producer existed
+  // since Phase 4 but NO consumer did — every lifecycle send was queueing
+  // into a void. This handler is the missing drain.
+  "lifecycle_email",
   // CMO ad engine (2026-05-20)
   "cmo.manual-generate",      // founder hit "Generate" on /founder/cmo
   "cmo.render-script",        // a scored script is ready to render to 3 MP4s
@@ -92,11 +97,91 @@ const HANDLERS: Record<HandledEventType, JobHandler> = {
   embedding_refresh: handleEmbeddingRefresh,
   recognition_run: handleRecognitionRun,
   "1099_batch_generate": handle1099BatchGenerate,
+  lifecycle_email: handleLifecycleEmail,
   "cmo.manual-generate": handleCmoManualGenerate,
   "cmo.render-script": handleCmoRenderScript,
   "cmo.broadcast": handleCmoBroadcastEvent,
   "cmo.weekly-refresh": handleCmoWeeklyRefresh,
 };
+
+/**
+ * Tier 2C — drain one lifecycle_email outbox row. Payload shape is fixed by
+ * lifecycleProgram.sendLifecycleMessage: { templateKey, channel, category,
+ * organizationId, userId, recipientEmail, subject, body, … }. Suppression was
+ * already checked at enqueue time; the transport re-checks hard bounces.
+ * Sends via emailService with isCampaignEmail=true so every lifecycle email
+ * carries the List-Unsubscribe header + CAN-SPAM footer. On success the
+ * matching lifecycle_message_sends audit row flips queued → sent.
+ */
+async function handleLifecycleEmail(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const recipientEmail = String(payload.recipientEmail ?? "");
+  const subject = String(payload.subject ?? "");
+  const body = String(payload.body ?? "");
+  const templateKey = String(payload.templateKey ?? "");
+  const channel = String(payload.channel ?? "email");
+  const organizationId = typeof payload.organizationId === "number" ? payload.organizationId : null;
+
+  if (channel !== "email") {
+    // SMS lifecycle templates exist in the registry but no SMS transport is
+    // wired for them yet. Skip terminally (don't retry — retrying won't grow
+    // a transport) and keep the audit row honest.
+    logger.warn(`[worker] lifecycle_email: unsupported channel '${channel}' for ${templateKey} — skipped`);
+    return { skipped: true, reason: "unsupported_channel" };
+  }
+  if (!recipientEmail.includes("@") || !subject) {
+    throw new Error(`lifecycle_email payload missing recipientEmail/subject (templateKey=${templateKey})`);
+  }
+
+  const { emailService } = await import("./services/emailService");
+  // Templates are plain text with blank-line paragraph breaks; render a
+  // minimal HTML body (escaped) alongside the text part.
+  const escaped = body
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const html = escaped
+    .split("\n\n")
+    .map((p) => `<p style="margin:0 0 16px;line-height:1.7;">${p.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+
+  const result = await emailService.sendEmail({
+    to: recipientEmail,
+    subject,
+    html,
+    text: body,
+    organizationId: organizationId ?? undefined,
+    // Lifecycle = marketing-shaped: CAN-SPAM footer + List-Unsubscribe.
+    isCampaignEmail: true,
+  });
+
+  if (!result.success) {
+    // Throw so the outbox retry/DLQ machinery owns the failure.
+    throw new Error(result.error ?? `lifecycle_email send failed (${templateKey})`);
+  }
+
+  // Flip the audit row queued → sent (best-effort; the send already happened).
+  if (organizationId !== null) {
+    try {
+      const { lifecycleMessageSends } = await import("@shared/schema");
+      const { and, eq } = await import("drizzle-orm");
+      await db
+        .update(lifecycleMessageSends)
+        .set({ status: "sent" })
+        .where(
+          and(
+            eq(lifecycleMessageSends.organizationId, organizationId),
+            eq(lifecycleMessageSends.templateKey, templateKey),
+            eq(lifecycleMessageSends.recipientEmail, recipientEmail),
+            eq(lifecycleMessageSends.status, "queued"),
+          ),
+        );
+    } catch (auditErr) {
+      logger.warn("[worker] lifecycle_email audit status update failed", auditErr instanceof Error ? auditErr : undefined);
+    }
+  }
+
+  return { sent: true, messageId: result.messageId ?? null };
+}
 
 async function handleCmoManualGenerate(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { handleCmoGenerateEvent } = await import("./services/agents/cmoAgent");

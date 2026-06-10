@@ -210,6 +210,18 @@ export class WebhookHandlers {
           eventName: 'first_payment_processed',
           eventValue: { stripeSubscriptionId: subscriptionId, source: 'webhook:checkout.session.completed' },
         });
+        // Tier 2C — server-side funnel truth. trial_to_paid used to be a
+        // client-side PostHog event fired off the ?subscription=success
+        // redirect (spoofable, ad-blockable, lost when the tab closed before
+        // the redirect landed). The webhook is the only witness of the money
+        // actually moving, so the canonical funnel event is recorded HERE.
+        // Idempotent first-occurrence via the (org, eventName) unique index.
+        recordActivationEventAsync({
+          orgId: organizationId,
+          userId: null,
+          eventName: 'trial_to_paid',
+          eventValue: { stripeSubscriptionId: subscriptionId, source: 'webhook:checkout.session.completed' },
+        });
       } catch { /* non-fatal */ }
 
       // Renoir audit-log: capture the initial "subscribed" event with the
@@ -413,6 +425,43 @@ export class WebhookHandlers {
         }
       } catch (emailErr) {
         logger.warn('[webhook] Could not send cancellation confirmation email', emailErr instanceof Error ? emailErr : undefined);
+      }
+
+      // Tier 2C — cancellation_reason_ask at T+0 (the template's trigger).
+      // Only fires when the customer cancelled OUTSIDE the in-app flow (the
+      // in-app cancellation dialog already collects the reason into
+      // churn_reasons — asking again would be tone-deaf). Once-only per org
+      // via dispatchLifecycleOnce; the daily lifecycle_dispatch sweep is the
+      // catch-up if this inline dispatch fails. Best-effort, never blocks
+      // the webhook ack.
+      try {
+        const { churnReasons } = await import('@shared/schema');
+        const { users } = await import('@shared/models/auth');
+        const { eq } = await import('drizzle-orm');
+        const [existingReason] = await db
+          .select({ id: churnReasons.id })
+          .from(churnReasons)
+          .where(eq(churnReasons.organizationId, org.id))
+          .limit(1);
+        if (!existingReason) {
+          const [ownerUser] = await db
+            .select({ id: users.id, email: users.email })
+            .from(users)
+            .where(eq(users.clerkUserId, org.ownerId))
+            .limit(1);
+          if (ownerUser?.email) {
+            const { dispatchLifecycleOnce } = await import('./jobs/lifecycleDispatch');
+            await dispatchLifecycleOnce({
+              templateKey: 'cancellation_reason_ask',
+              organizationId: org.id,
+              recipientEmail: ownerUser.email,
+              userId: ownerUser.id,
+              metadata: { trigger: 'webhook:customer.subscription.deleted' },
+            });
+          }
+        }
+      } catch (askErr) {
+        logger.warn('[webhook] cancellation_reason_ask dispatch failed', askErr instanceof Error ? askErr : undefined);
       }
 
       // Magnus §1 — ML training: capture org's last-30-day usage snapshot

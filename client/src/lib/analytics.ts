@@ -108,27 +108,30 @@ export function trackEvent(name: string, props?: Record<string, unknown>): void 
 }
 
 /**
- * Canonical conversion funnel events. These five are the spine the
- * acquisition dashboard reads — every other captured event is supplemental.
- * If you're tempted to add a sixth, ask Soren first: the smaller this
- * set, the easier the funnel is to reason about.
+ * Canonical conversion funnel events. These are the spine the acquisition
+ * dashboard reads — every other captured event is supplemental. If you're
+ * tempted to add one, ask Soren first: the smaller this set, the easier
+ * the funnel is to reason about.
  *
  *   signup_started        — user enters sign-up mode in AuthPage (intent)
  *   signup_completed      — server-confirmed auth + UTM flushed (conversion)
- *   first_value_reached   — org onboarding marked complete (activation)
  *   pax_first_interaction — first time user lands on the Pax surface (engagement)
- *   trial_to_paid         — subscription transitions to active billing (revenue)
  *
- * Phase Zero-Two foundation: these five are the funnel Lena/Solene use to
- * answer "where do trial signups come from + what's their funnel
- * completion %" once 30 days of traffic accumulate.
+ * Tier 2C (2026-06-10) — `first_value_reached` and `trial_to_paid` are NO
+ * LONGER client events and were removed from this union ON PURPOSE so they
+ * cannot be re-emitted from the browser by accident. They are server-truth
+ * activation_events now:
+ *   trial_to_paid       — Stripe webhook (webhookHandlers.ts), where the
+ *                         money actually moves.
+ *   first_value_reached — approval kernel at the org's first witnessed
+ *                         send (the append-only pax_sends insert).
+ * The client may still emit SUPPLEMENTAL events around those moments
+ * (e.g. "stripe_checkout_return", "onboarding_completed") via trackEvent().
  */
 export type CanonicalEvent =
   | "signup_started"
   | "signup_completed"
-  | "first_value_reached"
   | "pax_first_interaction"
-  | "trial_to_paid"
   // Public /tools/calculator funnel — top-of-funnel acquisition surface.
   // calculator_completed fires once the math produces a meaningful output
   // after debounce; calculator_cta_click fires on the signup CTA. `embed`

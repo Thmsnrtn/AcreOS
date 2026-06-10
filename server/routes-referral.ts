@@ -8,6 +8,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { eq, count, sql } from "drizzle-orm";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { applyReferralCode } from "./services/referralService";
 
 // Generate a random 8-char alphanumeric referral code
 function generateCode(): string {
@@ -92,47 +93,44 @@ export function registerReferralRoutes(app: Express): void {
   /**
    * POST /api/referral/apply
    * Called after a new user registers if they came via ?ref=CODE.
-   * Links the new user to the referrer. Non-blocking — errors are swallowed.
+   * Links the AUTHENTICATED user (the referee is always the caller —
+   * Tier 2C removed the body-supplied refereeId, which let any authed
+   * user attribute arbitrary users to arbitrary codes) to the referrer.
    *
-   * Body: { code: string, refereeId: string }
+   * Body: { code: string }
+   *
+   * Note: the primary apply path is now server-side during the signup
+   * UTM flush (routes-acquisition-utm.ts); this route remains for
+   * explicit/manual application and is idempotent with that path.
    */
   app.post("/api/referral/apply", isAuthenticated, async (req, res) => {
     try {
-      const { code, refereeId } = req.body as { code?: string; refereeId?: string };
-      if (!code || !refereeId) return Errors.badRequest(res, "code and refereeId required");
+      const userId = (req.user as any)?.id;
+      if (!userId) return Errors.unauthorized(res);
 
-      // Find the referrer by code
-      const [referrer] = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.referralCode, code.toUpperCase()))
-        .limit(1);
-
-      if (!referrer) return res.status(404).json({ message: "Invalid referral code" });
-      if (referrer.id === refereeId) return Errors.badRequest(res, "Cannot refer yourself");
-
-      // Upsert the referral row — update status to signed_up if it was pending
-      const existing = await db
-        .select()
-        .from(referrals)
-        .where(eq(referrals.code, code.toUpperCase()))
-        .limit(1);
-
-      if (existing.length > 0) {
-        await db
-          .update(referrals)
-          .set({ refereeId, status: "signed_up" })
-          .where(eq(referrals.code, code.toUpperCase()));
-      } else {
-        await db.insert(referrals).values({
-          referrerId: referrer.id,
-          refereeId,
-          code: code.toUpperCase(),
-          status: "signed_up",
-        });
+      const { code } = req.body as { code?: string };
+      if (!code || typeof code !== "string") {
+        return Errors.badRequest(res, "code required");
       }
 
-      return res.json({ ok: true });
+      const result = await applyReferralCode(code, userId);
+      if (result.applied) return res.json({ ok: true });
+
+      switch (result.reason) {
+        case "unknown_code":
+          return Errors.notFound(res, "Referral code");
+        case "self_referral":
+          return Errors.badRequest(res, "Cannot refer yourself");
+        case "invalid_code":
+          return Errors.badRequest(res, "Invalid referral code");
+        case "already_referred":
+        case "code_exhausted":
+          // Not an error from the caller's perspective — attribution
+          // simply already belongs to someone. Don't leak who.
+          return res.json({ ok: false, reason: result.reason });
+        default:
+          return Errors.internal(res, new Error("Referral apply failed"));
+      }
     } catch (err) {
       logger.error("[referral] POST /apply error", err);
       return Errors.internal(res, new Error('Internal server error'));

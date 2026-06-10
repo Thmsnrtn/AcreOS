@@ -149,7 +149,7 @@ export function registerTransparencyRoutes(app: Express): void {
             message:
               "No transparency report has been published yet. The first published period will appear here.",
             immutables: IMMUTABLES_STAMP,
-            contact: "alignment@acreos.com",
+            contact: "alignment@acreos.io",
           });
           return;
         }
@@ -158,7 +158,7 @@ export function registerTransparencyRoutes(app: Express): void {
           status: "published",
           report: toPublishedShape(row),
           immutables: IMMUTABLES_STAMP,
-          contact: "alignment@acreos.com",
+          contact: "alignment@acreos.io",
         });
       } catch (err) {
         Errors.internal(res, err);
