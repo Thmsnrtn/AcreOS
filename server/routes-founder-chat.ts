@@ -67,6 +67,11 @@ import {
   selectModelForTurn,
   parseOverrideFromMessage,
 } from "./services/founder-chat/model-selector";
+// Tier 1B (elevation blueprint): the founder-side counterpart of the Pax
+// untrusted envelope — the <untrusted_data> doctrine in atlas-persona.ts is
+// now mechanically enforced by wrapping customer-content fields in tool
+// artifacts before they re-enter the model channel.
+import { wrapUntrustedFields } from "./ai/untrustedEnvelope";
 
 // Ensure tool side-effect registration on module import.
 import "./services/founder-chat/tools";
@@ -488,10 +493,15 @@ router.post("/stream", async (req: AuthenticatedRequest, res) => {
           }
 
           // Feed the tool result back into the chat history for the next LLM pass.
+          // Customer-content fields (notes, descriptions, bodies, …) inside the
+          // artifact are wrapped in the untrusted envelope first.
           chatMessages.push({
             role: "tool",
             tool_call_id: tc.id,
-            content: JSON.stringify({ artifact: outcome.artifact, followUp: outcome.followUp ?? null }),
+            content: JSON.stringify({
+              artifact: wrapUntrustedFields(outcome.artifact, `tool:${toolName}`),
+              followUp: outcome.followUp ?? null,
+            }),
           } as ChatMsg);
         } catch (err: any) {
           const errMsg = String(err?.message ?? err);
