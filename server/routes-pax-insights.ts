@@ -7,6 +7,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
+import { getUserId } from "./types/request";
 import { executeTool } from "./ai/tools";
 import { getOrgAutonomyLevel } from "./services/autonomyGuardrails";
 import {
@@ -14,6 +15,11 @@ import {
   claimDraftForSend,
   recordDraftSendResult,
 } from "./services/paxDraftService";
+import {
+  approvePendingAction,
+  rejectPendingAction,
+  toolChannel,
+} from "./services/approvalKernel";
 import { z } from "zod";
 
 const router = Router();
@@ -631,6 +637,129 @@ router.post("/first-follow-up/approve-and-send", async (req: AuthenticatedReques
     return res.json({ success: true, sent: true, data: result.data });
   } catch (error: any) {
     logger.error("Pax first-follow-up approve-and-send error", { error: error.message });
+    return Errors.internal(res, error);
+  }
+});
+
+// ── Approval kernel endpoints (2026-06-10, Tier 1A elevation blueprint) ─────
+// The ONLY path from a frozen pending_actions row to execution. executeTool
+// freezes every approval-required tool call as a pending_actions row; the
+// human tap lands here; the kernel re-verifies org ownership + expiry +
+// content hash against the FROZEN args and executes exactly that row with
+// the trusted server-side approval option. Idempotent: a double-tap returns
+// the first result instead of double-sending.
+
+function parsePendingActionId(raw: string): number | null {
+  const id = Number.parseInt(raw, 10);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+// POST /api/pax/pending-actions/:id/approve
+router.post("/pending-actions/:id/approve", async (req: AuthenticatedRequest, res) => {
+  try {
+    const org = req.organization!;
+    const pendingActionId = parsePendingActionId(req.params.id);
+    if (!pendingActionId) {
+      return Errors.badRequest(res, "Invalid pending action id");
+    }
+    const userId = getUserId(req);
+
+    const outcome = await approvePendingAction({
+      organizationId: org.id,
+      pendingActionId,
+      approvedByUserId: userId,
+      // The kernel executes EXACTLY the frozen row through the real tool
+      // path; trustedApproval is the server-side option the model can never
+      // set. Without it this same call would re-freeze instead of sending.
+      execute: (toolName, args) =>
+        executeTool(toolName, args as Record<string, any>, org, {
+          trustedApproval: true,
+          userId,
+        }),
+    });
+
+    switch (outcome.outcome) {
+      case "not_found":
+        return Errors.notFound(res, "Pending action");
+      case "expired":
+        return Errors.badRequest(
+          res,
+          "This action has expired. Ask Pax to draft it again so you can review a fresh version.",
+        );
+      case "rejected":
+        return Errors.badRequest(res, "This action was rejected and can no longer be executed.");
+      case "hash_mismatch":
+        return Errors.badRequest(
+          res,
+          "This action failed integrity verification and will not be executed. Ask Pax to draft it again.",
+        );
+      case "in_flight":
+        // Concurrent tap lost the race while the first is still executing.
+        return res.json({ success: true, executed: false, inFlight: true });
+      case "execution_failed":
+        return Errors.badRequest(res, outcome.error);
+      case "already_executed":
+        // Idempotency: the second tap returns the first result — no re-send.
+        return res.json({
+          success: true,
+          executed: true,
+          alreadyExecuted: true,
+          result: outcome.result,
+        });
+      case "executed": {
+        // Value event: a measurable record that Pax ACTED on a human's
+        // witnessed approval (same discipline as the first-follow-up send).
+        await storage.logActivity({
+          organizationId: org.id,
+          agentType: "pax",
+          action: "pax_value_event",
+          entityType: "pending_action",
+          entityId: outcome.action.id,
+          description: `Pax executed ${outcome.action.toolName} after human approval`,
+          metadata: {
+            valueEvent: "approved_action_executed",
+            toolName: outcome.action.toolName,
+            channel: toolChannel(outcome.action.toolName),
+            witnessed: true,
+            approvedByHuman: true,
+            pendingActionId: outcome.action.id,
+          },
+        });
+        return res.json({ success: true, executed: true, result: outcome.result });
+      }
+      default:
+        // Exhaustive switch — unreachable; satisfies noImplicitReturns.
+        return Errors.internal(res, new Error("Unhandled approval outcome"));
+    }
+  } catch (error: any) {
+    logger.error("Pax pending-action approve error", { error: error.message });
+    return Errors.internal(res, error);
+  }
+});
+
+// POST /api/pax/pending-actions/:id/reject
+router.post("/pending-actions/:id/reject", async (req: AuthenticatedRequest, res) => {
+  try {
+    const org = req.organization!;
+    const pendingActionId = parsePendingActionId(req.params.id);
+    if (!pendingActionId) {
+      return Errors.badRequest(res, "Invalid pending action id");
+    }
+
+    const outcome = await rejectPendingAction({
+      organizationId: org.id,
+      pendingActionId,
+    });
+
+    if (outcome.outcome === "not_found") {
+      return Errors.notFound(res, "Pending action");
+    }
+    if (outcome.outcome === "already_executed") {
+      return Errors.badRequest(res, "This action already executed and cannot be rejected.");
+    }
+    return res.json({ success: true, rejected: true });
+  } catch (error: any) {
+    logger.error("Pax pending-action reject error", { error: error.message });
     return Errors.internal(res, error);
   }
 });

@@ -1,7 +1,9 @@
 import OpenAI from "openai";
 import { db } from "../db";
 import { eq, desc } from "drizzle-orm";
-import { executeTool, APPROVAL_REQUIRED_TOOLS } from "./tools";
+// APPROVAL_REQUIRED_TOOLS is no longer consulted here — the Tier 1A approval
+// kernel enforces it INSIDE executeTool, so this call site cannot bypass it.
+import { executeTool } from "./tools";
 // Tahoe E8: the Pax tool list is now sourced from the App Intent registry
 // (single source of truth across Pax tool-use, command palette, external
 // agents) rather than a hand-maintained list in tools.ts.
@@ -1329,7 +1331,7 @@ export async function processChat(
       toolResults = await Promise.all(
         validToolCalls.map(async (toolCall) => {
           const args = JSON.parse(toolCall.function.arguments);
-          const result = await executeTool(toolCall.function.name, args, org);
+          const result = await executeTool(toolCall.function.name, args, org, { userId });
           toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
           return { role: "tool" as const, tool_call_id: toolCall.id, content: JSON.stringify(result) };
         })
@@ -1338,14 +1340,11 @@ export async function processChat(
       toolResults = [];
       for (const toolCall of validToolCalls) {
         const args = JSON.parse(toolCall.function.arguments);
-        // Block approval-required tools in non-streaming path (same gate as streaming)
-        if (APPROVAL_REQUIRED_TOOLS.has(toolCall.function.name)) {
-          const blockedResult = { success: false, error: `Tool "${toolCall.function.name}" requires user approval. Use the chat interface to approve this action.` };
-          toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result: blockedResult });
-          toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(blockedResult) });
-          continue;
-        }
-        const result = await executeTool(toolCall.function.name, args, org);
+        // Approval-required tools are gated INSIDE executeTool (Tier 1A
+        // approval kernel): without trustedApproval they freeze as a
+        // pending_actions row and return a pending artifact — no send fires
+        // from this path, structurally.
+        const result = await executeTool(toolCall.function.name, args, org, { userId });
         toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
         toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
       }
@@ -1779,7 +1778,7 @@ export async function* processChatStream(
         const parallelResults = await Promise.all(
           currentToolCalls.map(async (toolCall) => {
             const args = JSON.parse(toolCall.function.arguments);
-            const result = await executeTool(toolCall.function.name, args, org);
+            const result = await executeTool(toolCall.function.name, args, org, { userId });
             return { toolCall, args, result };
           })
         );
@@ -1801,23 +1800,20 @@ export async function* processChatStream(
           yield { type: "tool_start", toolCall: { name: toolCall.function.name } };
           const args = JSON.parse(toolCall.function.arguments);
 
-          // Pre-approval gate for communication/payment tools
-          if (APPROVAL_REQUIRED_TOOLS.has(toolCall.function.name)) {
-            yield { type: "approval_required", toolCallId: toolCall.id, toolName: toolCall.function.name, args } as any;
-            const syntheticResult = {
-              success: false,
-              requiresApproval: true,
-              message: `This action requires your explicit approval before it can be sent. The user will confirm in the chat.`,
-            };
-            toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result: syntheticResult });
-            yield { type: "tool_result", toolCall: { name: toolCall.function.name, result: syntheticResult } };
-            toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(syntheticResult) });
-            continue;
-          }
-
-          const result = await executeTool(toolCall.function.name, args, org);
+          // Approval-required tools are gated INSIDE executeTool (Tier 1A
+          // approval kernel): without trustedApproval the call freezes as a
+          // pending_actions row and the result is a pending artifact. We
+          // surface it as a dedicated stream event so the chat UI renders an
+          // Approve/Reject card wired to the kernel endpoints. (This
+          // replaces the old "approval_required" event + dead
+          // __paxPendingApprovals map + natural-language "Confirmed, please
+          // proceed" loop, which never actually executed anything.)
+          const result = await executeTool(toolCall.function.name, args, org, { userId });
           toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
           yield { type: "tool_result", toolCall: { name: toolCall.function.name, result } };
+          if ((result as any)?.data?.pendingApproval) {
+            yield { type: "pending_action", pendingAction: (result as any).data } as any;
+          }
           const artifactMeta = ARTIFACT_TOOLS[toolCall.function.name];
           if (artifactMeta) {
             try {

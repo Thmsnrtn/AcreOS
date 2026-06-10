@@ -2508,6 +2508,54 @@ export const paxDrafts = pgTable("pax_drafts", {
 ]);
 export type PaxDraft = typeof paxDrafts.$inferSelect;
 
+// 2026-06-10 (Tier 1A, elevation blueprint): the structural approval kernel.
+// Every approval-required tool invocation that arrives WITHOUT the trusted
+// server-side approval option freezes here as a pending_actions row — tool
+// name + frozen args + a sha256 content hash of the canonicalized args — and
+// returns a pending artifact instead of executing. The approve endpoint
+// executes THAT row (re-verifying the hash) and nothing else. Witnessed-send
+// becomes unbypassable by construction: there is no code path from a model
+// tool call to a live send that does not pass through a human tap on a
+// frozen, hash-verified row.
+export const pendingActions = pgTable("pending_actions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  toolName: text("tool_name").notNull(),
+  // Frozen at proposal time. The approve path executes EXACTLY these args —
+  // client-supplied content never touches the execution.
+  args: jsonb("args").notNull().$type<Record<string, unknown>>(),
+  contentHash: text("content_hash").notNull(), // sha256(toolName + "\n" + canonicalized args)
+  status: text("status").notNull().default("pending"), // "pending" | "approved" | "executed" | "expired" | "rejected"
+  expiresAt: timestamp("expires_at").notNull(),
+  createdByUserId: text("created_by_user_id"),
+  approvedByUserId: text("approved_by_user_id"),
+  executedAt: timestamp("executed_at"),
+  resultSummary: jsonb("result_summary").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("pending_actions_org_status_idx").on(t.organizationId, t.status),
+  index("pending_actions_org_dedupe_idx").on(t.organizationId, t.toolName, t.contentHash, t.status),
+]);
+export type PendingAction = typeof pendingActions.$inferSelect;
+
+// Append-only audit of every send executed through the approval kernel.
+// INSERT-only by contract — no UPDATE path exists anywhere in the codebase
+// (replacing the mutable agent_memory JSON blob as the send audit).
+export const paxSends = pgTable("pax_sends", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  pendingActionId: integer("pending_action_id").notNull(),
+  toolName: text("tool_name").notNull(),
+  channel: text("channel").notNull(), // "email" | "sms" | "slack" | "stripe" | "other"
+  recipientRef: text("recipient_ref"), // email / phone / "lead:<id>" / channel name — best-effort, never PII beyond what the org already holds
+  contentHash: text("content_hash").notNull(),
+  sentAt: timestamp("sent_at").defaultNow(),
+}, (t) => [
+  index("pax_sends_org_sent_idx").on(t.organizationId, t.sentAt),
+  index("pax_sends_org_action_idx").on(t.organizationId, t.pendingActionId),
+]);
+export type PaxSend = typeof paxSends.$inferSelect;
+
 export const aiConversations = pgTable("ai_conversations", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").notNull(),
