@@ -927,10 +927,12 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                           </ContentReveal>
                         </div>
                         <div
-                          className="flex justify-center gap-1.5 mt-3"
+                          className="flex justify-center mt-1"
                           role="tablist"
                           aria-label="Jump to stage"
                         >
+                          {/* 44px hit areas (negative margins keep the row visually compact);
+                              the 12px dot is a decorative span inside the real target. */}
                           {dealStages.map((s, idx) => (
                             <button
                               key={s.value}
@@ -939,13 +941,18 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                               role="tab"
                               aria-selected={idx === selectedStageIndex}
                               aria-label={`Show ${s.label}`}
-                              className={`w-3 h-3 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                                idx === selectedStageIndex
-                                  ? 'bg-primary'
-                                  : 'bg-muted-foreground/30 hover:bg-muted-foreground/50'
-                              }`}
+                              className="flex h-11 w-11 -my-2 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                               data-testid={`dot-stage-${s.value}`}
-                            />
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={`block w-3 h-3 rounded-full transition-colors ${
+                                  idx === selectedStageIndex
+                                    ? 'bg-primary'
+                                    : 'bg-muted-foreground/30 hover:bg-muted-foreground/50 active:bg-muted-foreground/60'
+                                }`}
+                              />
+                            </button>
                           ))}
                         </div>
                       </section>

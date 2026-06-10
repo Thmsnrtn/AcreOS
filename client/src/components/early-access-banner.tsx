@@ -35,10 +35,12 @@ export function EarlyAccessBanner() {
           <span className="text-foreground/80 truncate sm:whitespace-normal">
             Early access — your feedback shapes AcreOS.
           </span>
+          {/* 44px touch target via padding + negative margin so the banner
+              doesn't grow; active: companion gives iOS real press feedback. */}
           <button
             type="button"
             onClick={() => setFeedbackOpen(true)}
-            className="text-primary hover:text-primary/80 font-medium underline underline-offset-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+            className="inline-flex min-h-11 items-center px-2 -mx-2 -my-3.5 text-primary hover:text-primary/80 active:text-primary/70 font-medium underline underline-offset-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
           >
             Send Feedback
           </button>
@@ -47,7 +49,7 @@ export function EarlyAccessBanner() {
         <Button
           size="icon"
           variant="ghost"
-          className="h-11 w-11 shrink-0 text-muted-foreground hover:text-foreground"
+          className="h-11 w-11 shrink-0 text-muted-foreground hover:text-foreground active:text-foreground"
           onClick={handleDismiss}
           aria-label="Dismiss early access banner"
         >

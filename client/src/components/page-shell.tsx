@@ -108,12 +108,10 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
       // island / notch in standalone PWA mode. Desktop reads it as 0.
       style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
     >
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-2 focus:rounded-md focus:bg-background focus:text-foreground focus:shadow-md focus:ring-2 focus:ring-ring"
-      >
-        Skip to main content
-      </a>
+      {/* The global skip link lives in App.tsx (`.skip-to-content`, 44px
+          target). A second one here double-announces "skip" to screen
+          readers and trips the touch-target contract (1×1 sr-only rect),
+          so PageShell only provides the #main-content landmark. */}
       <Sidebar />
       <div
         className={`flex-1 flex flex-col min-w-0 content-spring will-change-[margin-left] transition-[margin-right] duration-200 ${

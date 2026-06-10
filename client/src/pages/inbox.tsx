@@ -1228,7 +1228,7 @@ export default function InboxPage() {
           <TabsList className="w-full justify-start rounded-none border-none h-12 p-0 bg-transparent" aria-label="Channel">
             <TabsTrigger
               value="all"
-              className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+              className="min-h-11 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
               data-testid="tab-channel-all"
             >
               <MessageSquare className="h-4 w-4 mr-1" aria-hidden="true" />
@@ -1236,7 +1236,7 @@ export default function InboxPage() {
             </TabsTrigger>
             <TabsTrigger
               value="email"
-              className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+              className="min-h-11 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
               data-testid="tab-channel-email"
             >
               <Mail className="h-4 w-4 mr-1" aria-hidden="true" />
@@ -1244,7 +1244,7 @@ export default function InboxPage() {
             </TabsTrigger>
             <TabsTrigger
               value="sms"
-              className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+              className="min-h-11 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
               data-testid="tab-channel-sms"
             >
               <Phone className="h-4 w-4 mr-1" aria-hidden="true" />
@@ -1255,17 +1255,17 @@ export default function InboxPage() {
 
         {channelFilter !== "sms" && (
           <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="border-b">
-            <TabsList className="w-full justify-start rounded-none border-none h-10 p-0 bg-transparent" aria-label="Status">
+            <TabsList className="w-full justify-start rounded-none border-none h-12 p-0 bg-transparent" aria-label="Status">
               <TabsTrigger
                 value="all"
-                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                className="min-h-11 min-w-11 px-3 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
                 data-testid="tab-status-all"
               >
                 All
               </TabsTrigger>
               <TabsTrigger
                 value="unread"
-                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                className="min-h-11 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
                 data-testid="tab-status-unread"
               >
                 Unread
@@ -1277,14 +1277,14 @@ export default function InboxPage() {
               </TabsTrigger>
               <TabsTrigger
                 value="starred"
-                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                className="min-h-11 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
                 data-testid="tab-status-starred"
               >
                 Starred
               </TabsTrigger>
               <TabsTrigger
                 value="archived"
-                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                className="min-h-11 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
                 data-testid="tab-status-archived"
               >
                 Archived

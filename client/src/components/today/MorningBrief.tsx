@@ -64,7 +64,7 @@ export function MorningBrief({ brief }: MorningBriefProps) {
           <div className="mt-2">
             <Link
               href="/settings/pax"
-              className="text-xs text-acr-ink-3 hover:text-acr-brand underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              className="inline-flex min-h-11 items-center px-2 -mx-2 -my-3 text-xs text-acr-ink-3 hover:text-acr-brand active:text-acr-brand underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
               data-testid="link-pax-controls-from-brief"
             >
               Pax controls →

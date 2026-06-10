@@ -418,9 +418,9 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               (FinanceBook). This is a section within the Finance door — not a
               new top-level nav entry. */}
           <Tabs defaultValue="portfolio" className="mt-2">
-            <TabsList className="grid w-full grid-cols-2 sm:w-auto sm:inline-grid">
-              <TabsTrigger value="portfolio" data-testid="tab-finance-portfolio">Portfolio</TabsTrigger>
-              <TabsTrigger value="book" data-testid="tab-finance-book">Book</TabsTrigger>
+            <TabsList className="grid h-12 w-full grid-cols-2 sm:w-auto sm:inline-grid">
+              <TabsTrigger value="portfolio" className="min-h-11" data-testid="tab-finance-portfolio">Portfolio</TabsTrigger>
+              <TabsTrigger value="book" className="min-h-11" data-testid="tab-finance-book">Book</TabsTrigger>
             </TabsList>
 
             <TabsContent value="portfolio" className="mt-4">

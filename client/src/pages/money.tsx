@@ -98,24 +98,24 @@ export default function FinancePageShell() {
       <NotesImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-money">
-        <TabsList className="w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-money">
-          <TabsTrigger value="notes" className="flex items-center gap-2 min-w-max" data-testid="tab-notes">
+        <TabsList className="h-12 w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-money">
+          <TabsTrigger value="notes" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-notes">
             <Banknote className="h-4 w-4" aria-hidden="true" />
             <span>Notes</span>
           </TabsTrigger>
-          <TabsTrigger value="portfolio" className="flex items-center gap-2 min-w-max" data-testid="tab-portfolio">
+          <TabsTrigger value="portfolio" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-portfolio">
             <PieChart className="h-4 w-4" aria-hidden="true" />
             <span>Portfolio</span>
           </TabsTrigger>
-          <TabsTrigger value="optimizer" className="flex items-center gap-2 min-w-max" data-testid="tab-optimizer">
+          <TabsTrigger value="optimizer" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-optimizer">
             <BarChart3 className="h-4 w-4" aria-hidden="true" />
             <span>Optimizer</span>
           </TabsTrigger>
-          <TabsTrigger value="forecast" className="flex items-center gap-2 min-w-max" data-testid="tab-forecast">
+          <TabsTrigger value="forecast" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-forecast">
             <TrendingUp className="h-4 w-4" aria-hidden="true" />
             <span>Forecast</span>
           </TabsTrigger>
-          <TabsTrigger value="capital" className="flex items-center gap-2 min-w-max" data-testid="tab-capital">
+          <TabsTrigger value="capital" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-capital">
             <Landmark className="h-4 w-4" aria-hidden="true" />
             <span>Capital</span>
           </TabsTrigger>

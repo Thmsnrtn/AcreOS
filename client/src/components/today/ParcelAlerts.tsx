@@ -245,7 +245,7 @@ export function ParcelAlerts() {
                     {href && (
                       <Link
                         href={href}
-                        className="text-[11px] font-medium text-primary underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
+                        className="inline-flex min-h-11 items-center px-2 -mx-2 -my-3.5 text-[11px] font-medium text-primary underline-offset-2 hover:underline active:underline focus-visible:underline focus-visible:outline-none"
                       >
                         View in pipeline
                       </Link>

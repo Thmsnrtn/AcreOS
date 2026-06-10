@@ -223,7 +223,7 @@ function GreetingBanner() {
         onClick={handleDismiss}
         disabled={ackMutation.isPending}
         aria-label="Dismiss greeting from Pax"
-        className="shrink-0 text-acr-brand/60 active:text-acr-brand transition-colors disabled:opacity-50"
+        className="shrink-0 flex h-11 w-11 -m-3 items-center justify-center text-acr-brand/60 active:text-acr-brand transition-colors disabled:opacity-50"
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>

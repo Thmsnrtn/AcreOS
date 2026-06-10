@@ -247,7 +247,7 @@ function PaxNotificationBadge() {
             clone+ref it → React "Function components cannot be given refs". */}
         <TooltipTrigger asChild>
           <PopoverTrigger
-            className="relative p-1.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+            className="relative p-1.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors"
             aria-label="Pax AI insights"
             data-testid="button-pax-notifications"
           >
@@ -300,7 +300,7 @@ function PaxNotificationBadge() {
                     </div>
                     <button
                       onClick={() => handleDismiss(obs.id)}
-                      className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted active:bg-muted transition-colors"
                       aria-label="Dismiss"
                     >
                       <X className="w-3 h-3" />
@@ -309,7 +309,7 @@ function PaxNotificationBadge() {
                   {obs.status === "detected" && (
                     <button
                       onClick={() => handleAcknowledge(obs.id)}
-                      className="mt-1.5 ml-5 text-micro text-primary hover:underline"
+                      className="mt-1.5 ml-5 text-micro text-primary hover:underline active:underline"
                     >
                       Mark as seen
                     </button>
@@ -1018,7 +1018,7 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
-                  className="flex items-center justify-center w-full p-2.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
+                  className="flex items-center justify-center w-full p-2.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px]"
                   aria-label="Search (⌘K)"
                   data-tour="cmd-palette-trigger"
                   data-testid="button-search-trigger"
@@ -1036,7 +1036,7 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => useModals.getState().openQuickOffer()}
-                  className="flex items-center justify-center w-full p-2.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
+                  className="flex items-center justify-center w-full p-2.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px]"
                   aria-label="Quick offer (⌘O)"
                   data-tour="quick-offer"
                   data-testid="button-quick-offer-trigger"
@@ -1055,7 +1055,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
               aria-label="Search or jump to anywhere (Cmd K)"
               data-tour="cmd-palette-trigger"
               data-testid="button-search-trigger"
@@ -1070,7 +1070,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => useModals.getState().openQuickOffer()}
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
               aria-label="Quick offer (Cmd O)"
               data-tour="quick-offer"
               data-testid="button-quick-offer-trigger"
@@ -1103,7 +1103,7 @@ export function Sidebar() {
             accentClass={
               location === "/founder" || location === "/founder-home"
                 ? "bg-acr-warn text-white shadow-md"
-                : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20"
+                : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20 active:bg-acr-warn/25"
             }
             iconClass={
               location === "/founder" || location === "/founder-home" ? "text-white" : "text-acr-warn"
@@ -1148,7 +1148,7 @@ export function Sidebar() {
                   "relative flex items-center gap-2 px-3 py-2 rounded-card transition-colors duration-150 group cursor-pointer min-h-[44px]",
                   active
                     ? "nav-item-active nav-item-active--animated"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                 )}
                 onClick={() => {
                   if (hasChildren) toggleModule(module.id);
@@ -1243,7 +1243,7 @@ export function Sidebar() {
                           "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] text-xs",
                           childActive
                             ? "nav-item-active"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                         )}
                         aria-current={childActive ? "page" : undefined}
                         onMouseEnter={() => handlePrefetch(child.href)}
@@ -1279,7 +1279,7 @@ export function Sidebar() {
                       <button
                         type="button"
                         onClick={() => toggleOverflow(module.id)}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 min-h-[34px] text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground w-full"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 min-h-[34px] text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground w-full"
                         data-testid={`button-overflow-${module.id}`}
                         aria-expanded={expandedOverflow.has(module.id)}
                       >
@@ -1305,7 +1305,7 @@ export function Sidebar() {
                               "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] text-xs",
                               childActive
                                 ? "nav-item-active"
-                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                             )}
                             aria-current={childActive ? "page" : undefined}
                             onMouseEnter={() => handlePrefetch(child.href)}
@@ -1358,7 +1358,7 @@ export function Sidebar() {
             <button aria-label="Tooltip"
               onClick={() => logout()}
               data-testid="button-logout"
-              className="flex items-center justify-center w-full p-2 rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+              className="flex items-center justify-center w-full p-2 rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:text-destructive active:bg-destructive/15 transition-colors min-h-[44px]"
             >
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
@@ -1369,7 +1369,7 @@ export function Sidebar() {
             </button>
             <button
               onClick={() => setIsCollapsed(false)}
-              className="flex items-center justify-center w-full p-2 rounded-card text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
+              className="flex items-center justify-center w-full p-2 rounded-card text-muted-foreground hover:bg-sidebar-accent active:bg-sidebar-accent transition-colors min-h-[44px]"
               aria-label="Expand sidebar"
             >
               <ChevronRight className="w-4 h-4" />
@@ -1384,14 +1384,14 @@ export function Sidebar() {
             <button
               onClick={() => logout()}
               data-testid="button-logout"
-              className="flex items-center gap-2 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+              className="flex items-center gap-2 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:text-destructive active:bg-destructive/15 transition-colors min-h-[44px]"
             >
               <LogOut className="w-4 h-4" />
               <span className="font-medium text-sm">Sign Out</span>
             </button>
             <button
               onClick={() => setIsCollapsed(true)}
-              className="flex items-center gap-2 px-3 py-2 w-full rounded-card text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
+              className="flex items-center gap-2 px-3 py-2 w-full rounded-card text-muted-foreground hover:bg-sidebar-accent active:bg-sidebar-accent transition-colors min-h-[44px]"
               aria-label="Collapse sidebar"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -1443,7 +1443,7 @@ export function Sidebar() {
             onNavClick?.();
             window.dispatchEvent(new CustomEvent("acreos:open-command-palette"));
           }}
-          className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
           aria-label="Search or jump to anywhere"
           data-tour="cmd-palette-trigger"
           data-testid="button-search-trigger-mobile"
@@ -1462,7 +1462,7 @@ export function Sidebar() {
               "flex items-center gap-3 px-3 py-2.5 rounded-card transition-colors duration-150 group mb-2 min-h-[44px]",
               location === "/founder" || location === "/founder-home"
                 ? "bg-acr-warn text-white shadow-md"
-                : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20"
+                : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20 active:bg-acr-warn/25"
             )}
             data-testid="link-founder-dashboard"
             data-tour-nav="founder-business"
@@ -1492,7 +1492,7 @@ export function Sidebar() {
                     ? "nav-item-active"
                     : active
                     ? "nav-item-active"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                 )}
                 onClick={() => {
                   if (hasChildren) toggleModule(module.id);
@@ -1567,7 +1567,7 @@ export function Sidebar() {
                           "flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[44px]",
                           childActive
                             ? "nav-item-active"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                         )}
                         data-testid={`link-nav-${child.href.replace("/", "")}`}
                       >
@@ -1589,7 +1589,7 @@ export function Sidebar() {
                       <button
                         type="button"
                         onClick={() => toggleOverflow(module.id)}
-                        className="flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[44px] text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground w-full"
+                        className="flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[44px] text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground w-full"
                         aria-expanded={expandedOverflow.has(module.id)}
                       >
                         {expandedOverflow.has(module.id) ? (
@@ -1615,7 +1615,7 @@ export function Sidebar() {
                               "flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[44px]",
                               childActive
                                 ? "nav-item-active"
-                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                             )}
                             data-testid={`link-nav-${child.href.replace("/", "")}`}
                           >
@@ -1655,7 +1655,7 @@ export function Sidebar() {
         <button
           onClick={() => logout()}
           data-testid="button-logout"
-          className="flex items-center gap-3 px-3 py-2.5 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+          className="flex items-center gap-3 px-3 py-2.5 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:text-destructive active:bg-destructive/15 transition-colors min-h-[44px]"
         >
           <LogOut className="w-5 h-5" />
           <span className="font-medium text-sm">Sign Out</span>
@@ -1714,7 +1714,7 @@ function CollapsedModuleItem({
               "flex items-center justify-center w-full p-2.5 rounded-card transition-colors duration-150 min-h-[44px] relative",
               isActive
                 ? "nav-item-active"
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
             )}
             onMouseEnter={() => onPrefetch(module.href)}
             data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
@@ -1753,7 +1753,7 @@ function CollapsedModuleItem({
               "flex items-center justify-center w-full p-2.5 rounded-card transition-colors duration-150 min-h-[44px] relative",
               isActive
                 ? "nav-item-active"
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
             )}
             onMouseEnter={() => onPrefetch(module.href)}
             data-testid={`module-${module.id}`}
@@ -1788,7 +1788,7 @@ function CollapsedModuleItem({
                 "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-150 text-sm",
                 childActive
                   ? "nav-item-active"
-                  : "text-foreground hover:bg-accent"
+                  : "text-foreground hover:bg-accent active:bg-accent"
               )}
               onMouseEnter={() => onPrefetch(child.href)}
             >
@@ -1814,7 +1814,7 @@ function CollapsedModuleItem({
                     "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-150 text-sm",
                     childActive
                       ? "nav-item-active"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground active:bg-accent"
                   )}
                   onMouseEnter={() => onPrefetch(child.href)}
                 >
@@ -2005,7 +2005,7 @@ function NewFounderSidebar({
               <TooltipTrigger asChild>
                 <Link
                   href="/founder/solene-chat"
-                  className="flex items-center justify-center w-full p-2.5 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px] shadow-sm"
+                  className="flex items-center justify-center w-full p-2.5 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors min-h-[44px] shadow-sm"
                   aria-label="Chat with Solene"
                   data-testid="button-chat-solene-collapsed"
                 >
@@ -2019,7 +2019,7 @@ function NewFounderSidebar({
           ) : (
             <Link
               href="/founder/solene-chat"
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px] text-sm font-medium shadow-sm"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors min-h-[44px] text-sm font-medium shadow-sm"
               aria-label="Chat with Solene"
               data-testid="button-chat-solene"
             >
@@ -2076,7 +2076,7 @@ function NewFounderSidebar({
           <button
             type="button"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="flex items-center gap-3 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
+            className="flex items-center gap-3 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent active:bg-sidebar-accent transition-colors min-h-[44px]"
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             data-testid="button-collapse-toggle"
           >
@@ -2092,7 +2092,7 @@ function NewFounderSidebar({
           <button
             onClick={onLogout}
             data-testid="button-logout"
-            className="flex items-center gap-3 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+            className="flex items-center gap-3 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:text-destructive active:bg-destructive/15 transition-colors min-h-[44px]"
             aria-label="Sign out"
           >
             <LogOut className="w-4 h-4 shrink-0" />
@@ -2128,7 +2128,7 @@ function FounderDoorItem({
               "relative flex items-center justify-center w-full p-2.5 rounded-card transition-colors min-h-[44px]",
               isActive
                 ? "nav-item-active nav-item-active--animated"
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
             )}
             data-testid={`founder-door-${door.label.toLowerCase()}`}
           >
@@ -2164,7 +2164,7 @@ function FounderDoorItem({
             "relative flex items-center gap-3 px-3 py-2.5 rounded-card transition-colors min-h-[44px]",
             isActive
               ? "nav-item-active nav-item-active--animated"
-              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
           )}
           data-testid={`founder-door-${door.label.toLowerCase()}`}
         >

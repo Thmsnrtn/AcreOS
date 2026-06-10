@@ -251,7 +251,9 @@ export function registerPublicParcelReportPages(app: Express): void {
         );
         const report = key ? await getExistingReport(key) : null;
         if (!report) {
-          return res.status(404).type("text/plain").send("report not found");
+          // Crawler/img-tag consumer — only the status code matters; the
+          // unified JSON error body keeps the ratchet contract intact.
+          return Errors.notFound(res, "Report");
         }
         const png = await sharp(Buffer.from(buildOgSvg(report))).png().toBuffer();
         publicParcelReportEventsTotal.inc({ event: "og_image" });
@@ -259,11 +261,8 @@ export function registerPublicParcelReportPages(app: Express): void {
         res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
         return res.send(png);
       } catch (err) {
-        logger.error(
-          "[public-parcel-report] og image render failed",
-          err instanceof Error ? err : undefined,
-        );
-        return res.status(500).type("text/plain").send("image unavailable");
+        // Errors.internal auto-logs — no separate logger.error needed.
+        return Errors.internal(res, err);
       }
     },
   );
@@ -332,11 +331,8 @@ export function registerPublicParcelReportPages(app: Express): void {
         `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`,
       );
     } catch (err) {
-      logger.error(
-        "[public-parcel-report] sitemap render failed",
-        err instanceof Error ? err : undefined,
-      );
-      return res.status(500).type("text/plain").send("sitemap unavailable");
+      // Errors.internal auto-logs — no separate logger.error needed.
+      return Errors.internal(res, err);
     }
   });
 }

@@ -118,13 +118,13 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
         {!isMobile && (
           <>
-            <Link href="/today" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+            <Link href="/today" className="inline-flex min-h-11 min-w-11 items-center justify-center -m-3 p-3 text-muted-foreground hover:text-foreground active:text-foreground transition-colors shrink-0">
               <Home className="w-4 h-4" aria-label="Home" />
             </Link>
             {crumbs?.map((c) => (
               <span key={c.href} className="flex items-center gap-1.5 shrink-0">
                 <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
-                <Link href={c.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Link href={c.href} className="inline-flex min-h-11 items-center -my-3 text-sm text-muted-foreground hover:text-foreground active:text-foreground transition-colors">
                   {c.label}
                 </Link>
               </span>

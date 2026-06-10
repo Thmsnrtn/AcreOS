@@ -255,9 +255,10 @@ export function ActivityFeed({ className, maxHeight = "500px", compact = false }
         <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
+                className="min-h-11 min-w-12 capitalize"
                 data-testid="activity-feed-entity-filter"
               >
                 {entityFilter === "all" ? "All" : entityFilter}

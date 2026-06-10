@@ -59,7 +59,7 @@ export function CoveragePage({
   const SecondaryIcon = secondaryAction?.icon;
   return (
     <div
-      className="min-h-screen w-full flex items-center justify-center px-4 py-16"
+      className="min-h-[100dvh] w-full flex items-center justify-center px-4 py-16"
       style={{ background: "var(--acr-bg)" }}
       data-testid={testId}
     >

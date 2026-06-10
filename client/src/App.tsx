@@ -494,7 +494,7 @@ const GlossaryPage = React.lazy(() => import("@/pages/glossary"));
 function PageLoader() {
   return (
     <div
-      className="min-h-screen flex items-center justify-center bg-background px-4"
+      className="min-h-[100dvh] flex items-center justify-center bg-background px-4"
       role="status"
       aria-label="Loading AcreOS"
     >
@@ -1754,7 +1754,7 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
         initial="initial"
         animate="animate"
         exit="exit"
-        className="min-h-screen"
+        className="min-h-[100dvh]"
         id="main-content"
       >
         {children}
