@@ -64,6 +64,9 @@ const SECRETS: SecretSpec[] = [
 
   // MCP
   { key: "MCP_API_KEY", required: false, description: "Bearer token for MCP endpoint authentication", productionOnly: true },
+  // T0-3 (2026-06-10): org binding for the static MCP key — org-scoped MCP
+  // tools refuse without it (per-org ak_ keys carry their own binding).
+  { key: "MCP_ORG_ID", required: false, description: "Organization id the static MCP_API_KEY is bound to" },
 
   // Error tracking
   { key: "SENTRY_DSN", required: false, description: "Sentry DSN for error tracking", productionOnly: true },

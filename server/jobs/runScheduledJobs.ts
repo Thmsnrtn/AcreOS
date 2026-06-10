@@ -480,30 +480,13 @@ function startJobQueueWorker() {
       }
     });
 
-    // Webhook job handler
+    // Webhook job handler — T0-11 (2026-06-10): extracted to
+    // webhookJobHandler.ts and routed through the shared SSRF guard
+    // (validateUrl), matching /api/webhooks/test + webhookDispatcher.
+    // Blocked URLs fail terminally — no retry storm.
     jobQueueService.registerHandler('webhook', async (job) => {
-      try {
-        const { url, method = 'POST', payload } = job.payload;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
-
-        const response = await fetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeout);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        return { statusCode: response.status };
-      } catch (err) {
-        throw new Error(`Webhook job failed: ${err}`);
-      }
+      const { handleWebhookJob } = await import('./webhookJobHandler');
+      return handleWebhookJob(job);
     });
 
     // Payment sync job handler
