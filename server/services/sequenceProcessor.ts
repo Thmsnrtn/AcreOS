@@ -353,40 +353,43 @@ export class SequenceProcessorService {
     try {
       const { checkSendRateLimit, recordAutonomousSend, checkTcpaBeforeSend } =
         await import("./autonomyGuardrails");
-      const tcpaGuard = await checkTcpaBeforeSend(lead.id);
+      // 2026-06-10 (T0-5): checkTcpaBeforeSend is now org-scoped, so resolve
+      // the org BEFORE the guard. A lead without an orgId never sent anyway
+      // (the send was already inside `if (orgId)`) — now it's explicit.
+      const orgId = (lead as any).organizationId as number | undefined;
+      if (!orgId) {
+        logger.warn("[sequence-processor] SMS skipped — lead has no organizationId", {
+          metadata: { leadId: lead.id },
+        });
+        return;
+      }
+      const tcpaGuard = await checkTcpaBeforeSend(orgId, lead.id);
       if (!tcpaGuard.allowed) {
         logger.warn("[sequence-processor] SMS blocked by guardrail", {
           metadata: { leadId: lead.id, reason: tcpaGuard.reason },
         });
         return;
       }
-      const orgId = (lead as any).organizationId as number | undefined;
-      if (orgId) {
-        const rate = await checkSendRateLimit(orgId, "sms");
-        if (!rate.allowed) {
-          logger.warn("[sequence-processor] SMS deferred — rate limit", {
-            metadata: { leadId: lead.id, reason: rate.reason },
-          });
-          return;
-        }
-        // Actually send via org-aware SMS path (handles BYOK + ledger).
-        const { sendOrgSMS } = await import("./smsService");
-        const result = await sendOrgSMS(orgId, lead.phone, content);
-        if (!result.success) {
-          logger.warn("[sequence-processor] SMS send failed", {
-            metadata: { leadId: lead.id, error: result.error },
-          });
-          return;
-        }
-        await recordAutonomousSend(orgId, "sms", lead.id, content);
-        logger.info("[sequence-processor] SMS sent", {
-          metadata: { phone: lead.phone, contentPreview: content.substring(0, 50), messageId: result.messageId },
+      const rate = await checkSendRateLimit(orgId, "sms");
+      if (!rate.allowed) {
+        logger.warn("[sequence-processor] SMS deferred — rate limit", {
+          metadata: { leadId: lead.id, reason: rate.reason },
         });
-      } else {
-        logger.warn("[sequence-processor] Lead has no organizationId — cannot send", {
-          metadata: { leadId: lead.id },
-        });
+        return;
       }
+      // Actually send via org-aware SMS path (handles BYOK + ledger).
+      const { sendOrgSMS } = await import("./smsService");
+      const result = await sendOrgSMS(orgId, lead.phone, content);
+      if (!result.success) {
+        logger.warn("[sequence-processor] SMS send failed", {
+          metadata: { leadId: lead.id, error: result.error },
+        });
+        return;
+      }
+      await recordAutonomousSend(orgId, "sms", lead.id, content);
+      logger.info("[sequence-processor] SMS sent", {
+        metadata: { phone: lead.phone, contentPreview: content.substring(0, 50), messageId: result.messageId },
+      });
     } catch (err: any) {
       logger.error("[sequence-processor] SMS send pipeline error", err, { metadata: { leadId: lead.id } });
     }

@@ -2481,6 +2481,33 @@ export const paxNudges = pgTable("pax_nudges", {
 ]);
 export type PaxNudge = typeof paxNudges.$inferSelect;
 
+// 2026-06-10 (T0-6, elevation blueprint): server-persisted Pax send drafts.
+// The witnessed-send loop previously trusted the CLIENT to re-supply
+// subject/message on approve-and-send, so the approval wasn't bound to the
+// draft Pax actually wrote, and a double-tap sent twice. The draft now lives
+// here from the moment it's generated; approval references draftId + a
+// content hash of exactly this row, and the pending→sent transition is the
+// idempotency claim (second tap finds status='sent' and returns the first
+// result instead of re-sending).
+export const paxDrafts = pgTable("pax_drafts", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  leadId: integer("lead_id").notNull(),
+  channel: text("channel").notNull().default("email"), // "email" | "sms"
+  toAddress: text("to_address").notNull(),
+  subject: text("subject").notNull().default(""),
+  message: text("message").notNull(),
+  contentHash: text("content_hash").notNull(), // sha256(subject + "\n" + message)
+  status: text("status").notNull().default("pending"), // "pending" | "sent"
+  sentAt: timestamp("sent_at"),
+  sentMessageId: text("sent_message_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("pax_drafts_org_idx").on(t.organizationId),
+  index("pax_drafts_lookup_idx").on(t.organizationId, t.leadId, t.channel, t.status),
+]);
+export type PaxDraft = typeof paxDrafts.$inferSelect;
+
 export const aiConversations = pgTable("ai_conversations", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").notNull(),

@@ -85,15 +85,18 @@ export async function checkSendRateLimit(
 
 /**
  * Check TCPA compliance for a lead before an autonomous SMS send.
- * Uses storage.getLead() to retrieve the lead and inspect consent fields.
+ *
+ * 2026-06-10 (T0-5, elevation blueprint): this used to look the lead up by
+ * bare id across ALL orgs — a latent cross-tenant read on the send path (an
+ * attacker-influenced lead_id could probe another org's consent state, and a
+ * wrong id could pass a check against someone else's lead). orgId is now a
+ * REQUIRED first parameter so the compiler forces every caller to scope it.
  */
 export async function checkTcpaBeforeSend(
+  orgId: number,
   leadId: number
 ): Promise<{ allowed: boolean; reason?: string }> {
   try {
-    // getLead requires orgId — we search by leadId across storage
-    // storage.getLead(orgId, id) — we need the lead's org first
-    // Use a raw db query to get the lead without knowing orgId up front
     const { leads } = await import("@shared/schema");
     const rows = await db
       .select({
@@ -103,12 +106,12 @@ export async function checkTcpaBeforeSend(
         status: leads.status,
       })
       .from(leads)
-      .where(eq(leads.id, leadId))
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, orgId)))
       .limit(1);
 
     const lead = rows[0];
     if (!lead) {
-      return { allowed: false, reason: `Lead ${leadId} not found` };
+      return { allowed: false, reason: `Lead ${leadId} not found in this organization` };
     }
 
     // Hard DNC flag

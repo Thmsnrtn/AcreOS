@@ -414,6 +414,10 @@ export function OnboardingWizard() {
     available: boolean;
     autonomyLevel?: string;
     lead?: { id: number; name: string; email: string };
+    // 2026-06-10 (T0-6): the draft is persisted server-side; approval is by
+    // draftId + contentHash so the tap is bound to exactly what Pax wrote.
+    draftId?: number;
+    contentHash?: string;
     draft?: { subject: string; message: string };
   }>({
     queryKey: ["/api/pax/first-follow-up/draft"],
@@ -421,7 +425,7 @@ export function OnboardingWizard() {
   });
 
   const approveSendMutation = useMutation({
-    mutationFn: async (payload: { leadId: number; subject: string; message: string }) => {
+    mutationFn: async (payload: { draftId: number; contentHash: string }) => {
       const res = await apiRequest("POST", "/api/pax/first-follow-up/approve-and-send", payload);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -1026,7 +1030,7 @@ export function OnboardingWizard() {
                   </span>
                 </div>
               </div>
-            ) : !fu?.available || !fu.draft || !fu.lead ? (
+            ) : !fu?.available || !fu.draft || !fu.lead || !fu.draftId || !fu.contentHash ? (
               <div
                 className="ob-card"
                 data-testid="follow-up-empty"
@@ -1114,9 +1118,8 @@ export function OnboardingWizard() {
                     className="ob-btn ob-btn-primary"
                     onClick={() =>
                       approveSendMutation.mutate({
-                        leadId: fu.lead!.id,
-                        subject: fu.draft!.subject,
-                        message: fu.draft!.message,
+                        draftId: fu.draftId!,
+                        contentHash: fu.contentHash!,
                       })
                     }
                     disabled={approveSendMutation.isPending}

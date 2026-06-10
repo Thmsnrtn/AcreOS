@@ -6840,6 +6840,33 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "support_tickets_ai_resolve_outcome_idx"
      ON "support_tickets" ("ai_resolution_outcome")
      WHERE "ai_handled" = true AND "ai_confidence_score" IS NOT NULL`,
+
+  // ── 0150 — T0-6 (elevation blueprint) — bind witnessed-send approval to ──
+  //    the exact draft + idempotency. Mirrors migrations/0150_pax_drafts.sql.
+  // The first-follow-up approve-and-send endpoint accepted client-resupplied
+  // subject/message (approval ≠ the draft Pax wrote) and double-tap sent
+  // twice. pax_drafts persists the draft server-side at generation time;
+  // approval presents draftId + content_hash and the server sends the STORED
+  // row; the pending→sent UPDATE (WHERE status = 'pending') is the
+  // idempotency claim — the losing tap returns the first result. Idempotent
+  // (CREATE TABLE/INDEX IF NOT EXISTS); self-contained block.
+  `CREATE TABLE IF NOT EXISTS "pax_drafts" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL,
+     "lead_id" integer NOT NULL,
+     "channel" text NOT NULL DEFAULT 'email',
+     "to_address" text NOT NULL,
+     "subject" text NOT NULL DEFAULT '',
+     "message" text NOT NULL,
+     "content_hash" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'pending',
+     "sent_at" timestamp,
+     "sent_message_id" text,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "pax_drafts_org_idx" ON "pax_drafts" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "pax_drafts_lookup_idx"
+     ON "pax_drafts" ("organization_id", "lead_id", "channel", "status")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -5,11 +5,18 @@
  *
  *   1. At the default "assisted" level, executeTool("send_email", …) returns a
  *      DRAFT and sends NOTHING — no email, no rate-limit consumption, no record.
- *   2. An EXPLICIT human approval (args._approved === true) unlocks the guarded
- *      send: it runs checkSendRateLimit → checkTcpaBeforeSend → emailService.send
- *      → recordAutonomousSend, in that order.
+ *   2. An EXPLICIT human approval ({ trustedApproval: true } executeTool
+ *      OPTION — server-side only, never a model-suppliable arg) unlocks the
+ *      guarded send: it runs checkSendRateLimit → checkTcpaBeforeSend →
+ *      emailService.send → recordAutonomousSend, in that order.
  *   3. A default org never auto-sends: the bare (unapproved) call is the only
  *      path the LLM tool loop can reach, and it never touches sendEmail().
+ *
+ * 2026-06-10 (T0-1, elevation blueprint): approval moved from args._approved
+ * (which the MODEL could emit itself) to the trustedApproval option, and the
+ * same kernel gate now covers send_sms, which previously had NO autonomy gate
+ * at all. New assertions: model-supplied _approved is stripped and ignored;
+ * send_sms drafts at assisted level and runs the full envelope on approval.
  *
  * Every external dependency of server/ai/tools.ts is stubbed so the test
  * isolates the send-path control flow, not the DB or SES.
@@ -24,6 +31,7 @@ const {
   checkTcpaBeforeSend,
   recordAutonomousSend,
   sendEmail,
+  sendOrgSMS,
   isConfigured,
   getLead,
 } = vi.hoisted(() => ({
@@ -32,10 +40,12 @@ const {
   checkTcpaBeforeSend: vi.fn(async () => ({ allowed: true }) as { allowed: boolean; reason?: string }),
   recordAutonomousSend: vi.fn(async () => undefined),
   sendEmail: vi.fn(async () => ({ success: true, messageId: "msg_witnessed_1" }) as { success: boolean; messageId?: string; error?: string }),
+  sendOrgSMS: vi.fn(async () => ({ success: true, messageId: "sms_witnessed_1" }) as { success: boolean; messageId?: string; error?: string }),
   isConfigured: vi.fn(async () => true),
   getLead: vi.fn(async () => ({
     id: 42,
     email: "stale.lead@example.com",
+    phone: "+16175550142",
     firstName: "Stale",
     lastName: "Lead",
     tcpaConsent: true,
@@ -83,7 +93,7 @@ vi.mock("../../server/services/aiOfferService", () => ({
 }));
 vi.mock("../../server/services/smsService", () => ({
   smsService: {},
-  sendOrgSMS: vi.fn(),
+  sendOrgSMS,
 }));
 vi.mock("../../server/services/comps", () => ({ getComparableProperties: vi.fn() }));
 vi.mock("../../server/services/data-source-broker", () => ({ DataSourceBroker: class {} }));
@@ -136,15 +146,16 @@ describe("witnessed send — assisted level returns a draft, never sends", () =>
   });
 
   it("default org never auto-sends — the LLM-reachable call only ever drafts", async () => {
-    // The tool loop never passes _approved; simulate that exact call shape.
+    // The tool loop never passes options; simulate that exact call shape.
     const result = await executeTool("send_email", { ...sendArgs }, org);
     expect((result.data as any)?.draft).toBe(true);
     expect(sendEmail).not.toHaveBeenCalled();
   });
-});
 
-describe("witnessed send — explicit human approval triggers the guarded send", () => {
-  it("runs rate-limit + TCPA + send + record, in order, on _approved:true", async () => {
+  it("ignores a model-supplied _approved:true arg — still drafts, never sends", async () => {
+    // 2026-06-10 (T0-1): approval used to be args._approved, which the model
+    // could emit itself. The kernel now strips it; only the server-side
+    // trustedApproval OPTION unlocks the send.
     const result = await executeTool(
       "send_email",
       { ...sendArgs, _approved: true },
@@ -152,11 +163,30 @@ describe("witnessed send — explicit human approval triggers the guarded send",
     );
 
     expect(result.success).toBe(true);
+    expect((result.data as any)?.draft).toBe(true);
+    expect((result.data as any)?.requiresApproval).toBe(true);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(recordAutonomousSend).not.toHaveBeenCalled();
+    expect(checkSendRateLimit).not.toHaveBeenCalled();
+  });
+});
+
+describe("witnessed send — explicit human approval triggers the guarded send", () => {
+  it("runs rate-limit + TCPA + send + record, in order, on trustedApproval", async () => {
+    const result = await executeTool(
+      "send_email",
+      { ...sendArgs },
+      org,
+      { trustedApproval: true },
+    );
+
+    expect(result.success).toBe(true);
     expect((result.data as any)?.messageId).toBe("msg_witnessed_1");
 
     // The full guarded path fired.
     expect(checkSendRateLimit).toHaveBeenCalledWith(7, "email");
-    expect(checkTcpaBeforeSend).toHaveBeenCalledWith(42);
+    // (T0-5: TCPA lookup is org-scoped now — orgId first, then leadId.)
+    expect(checkTcpaBeforeSend).toHaveBeenCalledWith(7, 42);
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(recordAutonomousSend).toHaveBeenCalledTimes(1);
     expect(recordAutonomousSend).toHaveBeenCalledWith(
@@ -181,8 +211,9 @@ describe("witnessed send — explicit human approval triggers the guarded send",
 
     const result = await executeTool(
       "send_email",
-      { ...sendArgs, _approved: true },
+      { ...sendArgs },
       org,
+      { trustedApproval: true },
     );
 
     expect(result.success).toBe(false);
@@ -196,13 +227,114 @@ describe("witnessed send — explicit human approval triggers the guarded send",
 
     const result = await executeTool(
       "send_email",
-      { ...sendArgs, _approved: true },
+      { ...sendArgs },
       org,
+      { trustedApproval: true },
     );
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("do-not-contact");
     expect(sendEmail).not.toHaveBeenCalled();
+    expect(recordAutonomousSend).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// send_sms — same kernel, same invariants (2026-06-10, T0-1). Before this,
+// send_sms had NO autonomy gate: one model tool call fired a live SMS.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const smsArgs = {
+  lead_id: 42,
+  message: "Hi Stale, just checking in about your land.",
+};
+
+describe("witnessed send — send_sms drafts at assisted level, never sends", () => {
+  it("returns a draft (no send) when no trusted approval is given", async () => {
+    const result = await executeTool("send_sms", { ...smsArgs }, org);
+
+    expect(result.success).toBe(true);
+    expect((result.data as any)?.draft).toBe(true);
+    expect((result.data as any)?.requiresApproval).toBe(true);
+    expect((result.data as any)?.channelType).toBe("sms");
+    expect((result.data as any)?.to).toBe("+16175550142");
+
+    // The invariant: NOTHING sent, no envelope consumed, no audit record.
+    expect(sendOrgSMS).not.toHaveBeenCalled();
+    expect(recordAutonomousSend).not.toHaveBeenCalled();
+    expect(checkSendRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("ignores a model-supplied _approved:true arg on send_sms too", async () => {
+    const result = await executeTool(
+      "send_sms",
+      { ...smsArgs, _approved: true },
+      org,
+    );
+
+    expect((result.data as any)?.draft).toBe(true);
+    expect(sendOrgSMS).not.toHaveBeenCalled();
+    expect(recordAutonomousSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("witnessed send — send_sms guarded send on trusted approval", () => {
+  it("runs rate-limit + org-scoped TCPA + send + record on trustedApproval", async () => {
+    const result = await executeTool(
+      "send_sms",
+      { ...smsArgs },
+      org,
+      { trustedApproval: true },
+    );
+
+    expect(result.success).toBe(true);
+    expect((result.data as any)?.messageId).toBe("sms_witnessed_1");
+
+    expect(checkSendRateLimit).toHaveBeenCalledWith(7, "sms");
+    expect(checkTcpaBeforeSend).toHaveBeenCalledWith(7, 42);
+    expect(sendOrgSMS).toHaveBeenCalledTimes(1);
+    expect(sendOrgSMS).toHaveBeenCalledWith(7, "+16175550142", smsArgs.message);
+    expect(recordAutonomousSend).toHaveBeenCalledWith(7, "sms", 42, smsArgs.message);
+
+    // Ordering: envelope + TCPA checked before the send; record after it.
+    const rateOrder = checkSendRateLimit.mock.invocationCallOrder[0];
+    const tcpaOrder = checkTcpaBeforeSend.mock.invocationCallOrder[0];
+    const sendOrder = sendOrgSMS.mock.invocationCallOrder[0];
+    const recordOrder = recordAutonomousSend.mock.invocationCallOrder[0];
+    expect(rateOrder).toBeLessThan(sendOrder);
+    expect(tcpaOrder).toBeLessThan(sendOrder);
+    expect(sendOrder).toBeLessThan(recordOrder);
+  });
+
+  it("blocks the approved SMS when the daily envelope is exhausted", async () => {
+    checkSendRateLimit.mockResolvedValue({ allowed: false, reason: "Daily autonomous send limit reached" });
+
+    const result = await executeTool(
+      "send_sms",
+      { ...smsArgs },
+      org,
+      { trustedApproval: true },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Daily autonomous send limit reached");
+    expect(sendOrgSMS).not.toHaveBeenCalled();
+    expect(recordAutonomousSend).not.toHaveBeenCalled();
+  });
+
+  it("blocks the approved SMS when TCPA disallows the lead", async () => {
+    checkTcpaBeforeSend.mockResolvedValue({ allowed: false, reason: "No TCPA consent on record for this lead" });
+
+    const result = await executeTool(
+      "send_sms",
+      { ...smsArgs },
+      org,
+      { trustedApproval: true },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("No TCPA consent");
+    expect(sendOrgSMS).not.toHaveBeenCalled();
     expect(recordAutonomousSend).not.toHaveBeenCalled();
   });
 });
