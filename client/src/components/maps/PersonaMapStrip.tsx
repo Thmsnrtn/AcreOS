@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { fetchJsonArray } from "@/lib/queryClient";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -143,6 +144,11 @@ function ParcelToolsStrip({
 }) {
   const { data: leads = [] } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
+    // /api/leads returns a paginated envelope ({ data: Lead[] }) — the default
+    // queryFn hands back raw JSON, which crashed every strip calling
+    // leads.filter(...) ("t.filter is not a function" -> ErrorBoundary on
+    // /maps, caught by the customer-surface journey monitor 2026-06-10).
+    queryFn: () => fetchJsonArray<Lead>("/api/leads"),
   });
 
   const mapped = useMemo(
@@ -231,6 +237,7 @@ function ParcelToolsStrip({
 function PortfolioYieldStrip() {
   const { data: notes = [] } = useQuery<Note[]>({
     queryKey: ["/api/notes"],
+    queryFn: () => fetchJsonArray<Note>("/api/notes"),
   });
 
   const activeNotes = useMemo(
@@ -333,6 +340,7 @@ function PortfolioYieldStrip() {
 function OriginationStrip() {
   const { data: notes = [] } = useQuery<Note[]>({
     queryKey: ["/api/notes"],
+    queryFn: () => fetchJsonArray<Note>("/api/notes"),
   });
 
   // For an originator, the meaningful figures are the paper they've created:
@@ -426,9 +434,15 @@ function OriginationStrip() {
 function ServicingStrip({ propertyLabel }: { propertyLabel: string }) {
   const { data: notes = [] } = useQuery<Note[]>({
     queryKey: ["/api/notes"],
+    queryFn: () => fetchJsonArray<Note>("/api/notes"),
   });
   const { data: leads = [] } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
+    // /api/leads returns a paginated envelope ({ data: Lead[] }) — the default
+    // queryFn hands back raw JSON, which crashed every strip calling
+    // leads.filter(...) ("t.filter is not a function" -> ErrorBoundary on
+    // /maps, caught by the customer-surface journey monitor 2026-06-10).
+    queryFn: () => fetchJsonArray<Lead>("/api/leads"),
   });
 
   const activeNotes = useMemo(
@@ -555,6 +569,11 @@ function CurbCaptureStrip({
 }) {
   const { data: leads = [] } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
+    // /api/leads returns a paginated envelope ({ data: Lead[] }) — the default
+    // queryFn hands back raw JSON, which crashed every strip calling
+    // leads.filter(...) ("t.filter is not a function" -> ErrorBoundary on
+    // /maps, caught by the customer-surface journey monitor 2026-06-10).
+    queryFn: () => fetchJsonArray<Lead>("/api/leads"),
   });
 
   const motivated = leads.filter((l) => l.type === "seller" || !l.type);

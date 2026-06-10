@@ -97,11 +97,18 @@ async function assertThemeContract(
   meta: ProjectFullMeta,
   stepName: string,
 ): Promise<void> {
+  // Harness-robustness: under headless WebKit a probe can land mid-render
+  // when document.body is momentarily null — getComputedStyle(null) throws
+  // "Argument 1 ('element') … must be an instance of Element" and fails the
+  // journey with a harness error instead of a product signal. Null-guard
+  // INSIDE the evaluate; a genuinely missing body still fails honestly via
+  // the blank-screen (innerText) assertion at this same checkpoint.
   const probe = await page.evaluate(() => {
-    const bodyStyle = window.getComputedStyle(document.body);
+    const body = document.body;
+    const bodyStyle = body ? window.getComputedStyle(body) : null;
     return {
-      backgroundColor: bodyStyle.backgroundColor,
-      color: bodyStyle.color,
+      backgroundColor: bodyStyle?.backgroundColor ?? "rgba(0, 0, 0, 0)",
+      color: bodyStyle?.color ?? "",
       htmlBackgroundColor: window.getComputedStyle(document.documentElement)
         .backgroundColor,
     };

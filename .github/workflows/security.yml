@@ -107,6 +107,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      # IMPORTANT: this build is scan-only, so it must be FRESH. The previous
+      # type=gha layer cache pinned months-old apt layers (vulnerable
+      # openssl/chromium) into every "new" scan image — the scanner was
+      # red-flagging packages a clean rebuild would already have patched.
+      # no-cache + pull trades a few minutes of build time for a scan that
+      # reflects what a real deploy build would actually ship today.
       - name: Build container image for scanning
         uses: docker/build-push-action@v7
         with:
@@ -114,8 +120,8 @@ jobs:
           push: false
           load: true
           tags: acreos:scan-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          no-cache: true
+          pull: true
 
       - name: Run Trivy vulnerability scanner (image)
         uses: aquasecurity/trivy-action@master
