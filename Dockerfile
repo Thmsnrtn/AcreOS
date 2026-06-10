@@ -19,6 +19,26 @@ LABEL fly_launch_runtime="Node.js"
 WORKDIR /app
 ENV NODE_ENV="production"
 
+# --- gh CLI build stage ---
+# gh IS required at runtime in the prod image: server/services/
+# evolutionPrGenerator.ts opens PRs via `gh pr list` / `gh pr create` from
+# the Fly machine (Rosy River C3), and server/routes-agent-prereqs.ts
+# health-checks `gh auth status`. So it can't be dropped from the final
+# stage — but the apt package (cli.github.com stable, v2.93.0) is compiled
+# with Go 1.26.3, whose stdlib carries CVE-2026-42504 (HIGH) +
+# CVE-2026-42507 / CVE-2026-27145 (MEDIUM) — all fixed in Go 1.26.4. No
+# upstream gh release has been rebuilt against 1.26.4 yet (v2.93.0 shipped
+# 2026-05-27), so we compile the SAME pinned gh release from source with
+# the patched toolchain. CGO_ENABLED=0 → static binary, no extra runtime
+# deps in the final stage. Bump GH_VERSION when upstream ships a release
+# built on a patched Go and this stage collapses to a version pin.
+# (Known residual: in-toto-golang v0.9.0 is vendored by gh upstream —
+# GHSA-pmwq-pjrm-6p5r, MEDIUM, below the image scan's CRITICAL/HIGH gate;
+# clears when gh bumps the dep.)
+FROM golang:1.26.4-bookworm AS gh-build
+ARG GH_VERSION=v2.93.0
+RUN CGO_ENABLED=0 go install github.com/cli/cli/v2/cmd/gh@${GH_VERSION}
+
 # --- Build stage ---
 FROM base AS build
 
@@ -45,24 +65,23 @@ FROM base
 ARG GIT_SHA
 ENV VITE_GIT_SHA=${GIT_SHA}
 
-# Chromium for puppeteer-core (browser automation features) +
-# gh CLI + git for Rosy River C3 — the evolution pipeline opens PRs via `gh`
-# from this machine, which requires both packages and GH_TOKEN (or
-# `gh auth login`) at runtime. node:slim ships without either.
+# Chromium for puppeteer-core (browser automation features) + git for
+# Rosy River C3 — the evolution pipeline pushes branches and opens PRs from
+# this machine, which needs git + gh + GH_TOKEN (or `gh auth login`) at
+# runtime. node:slim ships with neither. gh itself comes from the gh-build
+# stage above (compiled against the patched Go toolchain — see that stage's
+# comment), NOT from the cli.github.com apt repo, so the keyring/repo
+# bootstrap (and its gnupg dependency) is gone.
 # `apt-get upgrade` first: node:slim base tags lag Debian security updates
 # (e.g. openssl/libssl3 and chromium HIGH CVEs flagged by the Trivy image
 # gate), so we pull the current patch level at build time rather than
 # shipping whatever the base image froze.
 RUN apt-get update -qq && \
     apt-get upgrade -y -qq && \
-    apt-get install --no-install-recommends -y chromium chromium-sandbox git curl ca-certificates gnupg && \
-    install -m 0755 -d /etc/apt/keyrings && \
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && \
-    chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && \
-    apt-get update -qq && \
-    apt-get install --no-install-recommends -y gh && \
+    apt-get install --no-install-recommends -y chromium chromium-sandbox git curl ca-certificates && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+COPY --from=gh-build /go/bin/gh /usr/bin/gh
 
 # The npm CLI bundled with the node base image vendors its own copies of
 # tar/minimatch/glob/picomatch, which routinely trail their CVE fixes and

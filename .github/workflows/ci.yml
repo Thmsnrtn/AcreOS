@@ -99,54 +99,28 @@ jobs:
           # CI can never go green (the failure the sitemap fix unmasked).
           SENTRY_SOURCEMAPS: skip
 
-      - name: Run Playwright E2E tests
-        run: npm run test:e2e
-        env:
-          CI: true
-          PLAYWRIGHT_BASE_URL: http://localhost:5000
+      # NOTE — no Playwright step here, deliberately. The desktop E2E suite
+      # (`npm run test:e2e` → playwright.config.ts → tests/e2e/**) requires
+      # (a) a provisioned Postgres (this job has no service container, so the
+      # webServer `npm run start` exits 1 at boot — the exact chronic-red
+      # failure this removal fixes) and (b) REAL Clerk credentials
+      # (CLERK_SIGN_IN_TICKET or E2E_USER_EMAIL/PASSWORD — see
+      # tests/e2e/auth*.setup.ts and playwright.mobile.config.ts's header:
+      # "Separate from playwright.config.ts (which depends on real Clerk
+      # credentials)"). Neither exists in CI, so the step could never pass —
+      # it was a permanently-red non-gate. Unattended E2E coverage is owned
+      # by e2e-mobile.yml + customer-surface-monitor.yml (test-auth bypass +
+      # pgvector service, on every push/PR). The credentialed desktop suite
+      # is driven via scripts/playwright-clerk-runner.sh.
 
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 7
-
-  # ── 5. Security Scan (CodeQL) ───────────────────────────────────────────────
-  security-scan:
-    name: Security Scan (CodeQL)
-    runs-on: ubuntu-latest
-    needs: lint-and-typecheck
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: javascript-typescript
-          queries: security-extended
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
-        with:
-          category: "/language:javascript-typescript"
+  # NOTE — no CodeQL job here, deliberately. security.yml's `codeql` job runs
+  # on the same triggers (push main / PR / weekly cron) with a SUPERSET of
+  # queries (security-extended,security-and-quality) and uploads to the SAME
+  # SARIF category ("/language:javascript-typescript"). The copy that lived
+  # here was a duplicate of that analysis which, behind
+  # `needs: lint-and-typecheck`, sat permanently skipped while CI was red —
+  # duplicate compute when green, zero signal when red. Coverage owner:
+  # .github/workflows/security.yml.
 
   # ── 6. Build & Container Image ──────────────────────────────────────────────
   build:
@@ -169,6 +143,11 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
+          # CI smoke build + container build only — deploy.yml owns the real
+          # sourcemap upload (it gates/warns on SENTRY_AUTH_TOKEN itself).
+          # Without this, script/build.ts hard-fails in CI on the missing
+          # token the moment the lint job goes green and this job finally runs.
+          SENTRY_SOURCEMAPS: skip
 
       - name: Verify build output
         run: |

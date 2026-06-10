@@ -60,6 +60,44 @@ const DIALOG_RENDER_MS = 500;
 // stays self-contained.)
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Navigation-safe page.evaluate — harness robustness for two CI race
+ * signatures observed on the 2-core GHA runner (2026-06-10, main):
+ *
+ *   1. "Execution context was destroyed, most likely because of a
+ *      navigation" — the probe raced a client-side document navigation
+ *      (e.g. the version-check self-heal reload or an auth redirect landing
+ *      DURING the post-goto settle window). The identical commit passed on
+ *      another branch minutes later — a race, not a product signal.
+ *   2. "Target crashed" — headless WebKit's web process dying under runner
+ *      load. Also not a product signal.
+ *
+ * Recovery: wait for the NEW document to reach a stable load state (or
+ * reload the crashed one), then re-run the probe exactly once. The probe's
+ * ASSERTIONS are untouched — the blank-screen / theme contracts still run,
+ * now against the settled document instead of the torn-down one. A page
+ * that is genuinely blank after recovery still fails honestly; a second
+ * consecutive harness error propagates as a real failure.
+ */
+async function probeEvaluate<T>(page: Page, fn: () => T): Promise<T> {
+  try {
+    return await page.evaluate(fn);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/Execution context was destroyed/i.test(msg)) {
+      await page.waitForLoadState("domcontentloaded");
+      await page.waitForTimeout(POST_NAV_SETTLE_MS);
+      return await page.evaluate(fn);
+    }
+    if (/Target crashed|Page crashed/i.test(msg)) {
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(POST_NAV_SETTLE_MS);
+      return await page.evaluate(fn);
+    }
+    throw err;
+  }
+}
+
 interface ProjectFullMeta {
   formFactor: "mobile" | "desktop";
   colorScheme: "light" | "dark";
@@ -103,7 +141,10 @@ async function assertThemeContract(
   // journey with a harness error instead of a product signal. Null-guard
   // INSIDE the evaluate; a genuinely missing body still fails honestly via
   // the blank-screen (innerText) assertion at this same checkpoint.
-  const probe = await page.evaluate(() => {
+  // probeEvaluate additionally survives the context-destroyed /
+  // target-crashed races (see its doc comment) without weakening the
+  // transparent-body assertion below.
+  const probe = await probeEvaluate(page, () => {
     const body = document.body;
     const bodyStyle = body ? window.getComputedStyle(body) : null;
     return {
@@ -145,7 +186,7 @@ async function scanLightModeArtifacts(
   stepName: string,
 ): Promise<void> {
   if (meta.colorScheme !== "dark") return;
-  const hits = await page.evaluate(() => {
+  const hits = await probeEvaluate(page, () => {
     const matches: Array<{ tag: string; style: string }> = [];
     document.querySelectorAll("[style]").forEach((node) => {
       const style = (node as HTMLElement).getAttribute("style") ?? "";
@@ -239,13 +280,19 @@ async function checkpoint(
 ): Promise<void> {
   // Project-tag screenshots so a single artifact dir from a full-matrix run
   // doesn't overwrite the same step taken on a different device/theme.
+  // Best-effort: a screenshot is a diagnostic artifact, not an assertion —
+  // if it lands mid-navigation (context destroyed) or on a crashed WebKit
+  // target, the load-bearing probes below recover + assert; failing here
+  // would convert a harness race into a fake journey failure.
   const projectTag = testInfo
     ? `-${testInfo.project.name}`
     : "";
-  await page.screenshot({
-    path: `test-results/journey-${stepName.replace(/[^a-z0-9]/gi, "-")}${projectTag}.png`,
-    fullPage: false,
-  });
+  await page
+    .screenshot({
+      path: `test-results/journey-${stepName.replace(/[^a-z0-9]/gi, "-")}${projectTag}.png`,
+      fullPage: false,
+    })
+    .catch(() => {});
 
   if (testInfo) {
     const meta = resolveProjectMeta(testInfo);
@@ -253,7 +300,8 @@ async function checkpoint(
     await scanLightModeArtifacts(page, testInfo, meta, stepName);
   }
 
-  const bodyTextLen = await page.evaluate(
+  const bodyTextLen = await probeEvaluate(
+    page,
     () => (document.body?.innerText || "").trim().length,
   );
   expect(
@@ -331,7 +379,8 @@ test.describe("J1: founder daily loop", () => {
       // settings only (the shell still renders the page chrome) so this
       // journey detects regressions on the other six surfaces honestly.
       if (door.name === "settings") {
-        const len = await page.evaluate(
+        const len = await probeEvaluate(
+          page,
           () => (document.body?.innerText || "").trim().length,
         );
         expect(
@@ -405,7 +454,8 @@ test.describe("J2: customer onboarding form-load surface", () => {
     //   2. it surfaces EITHER the live clickwrap form (Clerk present) OR the
     //      ErrorBoundary fallback (Clerk blocked) — both are non-blank,
     //      navigable states. A truly-blank /auth fails.
-    const bodyTextLen = await page.evaluate(
+    const bodyTextLen = await probeEvaluate(
+      page,
       () => (document.body?.innerText || "").trim().length,
     );
     expect(
@@ -437,7 +487,8 @@ test.describe("J2: customer onboarding form-load surface", () => {
     // Clerk-present path (real browser / future CI with a working Clerk
     // handshake): enforce the full conversion contract — clickwrap copy MUST
     // be on the signup surface. Either substring satisfies it.
-    const bodyText = await page.evaluate(
+    const bodyText = await probeEvaluate(
+      page,
       () => (document.body?.innerText || "").toLowerCase(),
     );
     const hasClickwrap = /terms|privacy|agree/.test(bodyText);

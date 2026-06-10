@@ -133,6 +133,12 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
           vuln-type: "os,library"
+          # Without this, trivy-action's sarif path DROPS the severity
+          # filter ("Building SARIF report with all severities") and
+          # exit-code:1 then fires on ANY finding — MEDIUMs and LOWs were
+          # gating a job whose declared policy is CRITICAL,HIGH. This makes
+          # the gate match the policy as written; the policy is unchanged.
+          limit-severities-for-sarif: true
 
       - name: Upload Trivy image scan results to GitHub Security
         if: always()
@@ -162,6 +168,15 @@ jobs:
           severity: "CRITICAL,HIGH,MEDIUM"
           exit-code: "1"
           scanners: "vuln,secret,misconfig"
+          # Same sarif quirk as the image job above: without this the
+          # severity filter is dropped for sarif output and exit-code:1
+          # fires on ANY finding. Verified 2026-06-10 via the code-scanning
+          # API: this job's only open findings are LOW (2× pk_test
+          # stripe-publishable-token dummies in the E2E workflows + DS-0026
+          # in oz/Dockerfile) — they were gating a job whose declared policy
+          # is CRITICAL,HIGH,MEDIUM. The gate now matches the declared
+          # policy; the policy is unchanged.
+          limit-severities-for-sarif: true
 
       - name: Upload Trivy filesystem results to GitHub Security
         if: always()
