@@ -26,8 +26,16 @@ export default defineConfig({
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5000",
     trace: "on-first-retry",
-    screenshot: "on",
-    video: "retain-on-failure",
+    // only-on-failure: "on" captured a screenshot after EVERY action across
+    // ~250 test executions — on a 2-core CI runner that IO/CPU pressure
+    // manifested as page crashes, "#root never rendered", and WebKit fetch
+    // failures ("due to access control checks") in otherwise-sound tests.
+    screenshot: "only-on-failure",
+    // on-first-retry: retain-on-failure still RECORDS every test (the pass
+    // case merely deletes the file afterward) — recording is the expensive
+    // part. With retries=2 in CI, every real failure still gets a video on
+    // its first retry.
+    video: "on-first-retry",
     // Without this, a single detached/obstructed element makes click()'s
     // auto-wait run until the 200s TEST timeout — seen as C1's 3.4-minute
     // hangs on /settings. 15s is generous for a starved runner while keeping

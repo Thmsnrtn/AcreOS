@@ -122,7 +122,12 @@ export function CookieConsentBanner() {
             onClick={decline}
             aria-label="Decline optional cookies"
             data-testid="cookie-consent-decline"
-            className="min-h-11 flex-1 sm:flex-initial"
+            // sm:min-h-11 — the Button default carries sm:min-h-9 (36px,
+            // "desktop stays dense"), which tw-merge keeps alongside a bare
+            // min-h-11 and wins at >=640px. A 768px iPad is a TOUCH device on
+            // the desktop-density arm, and consent is a universal surface:
+            // 44px on every pointer type, every width.
+            className="min-h-11 sm:min-h-11 flex-1 sm:flex-initial"
           >
             Decline
           </Button>
@@ -131,7 +136,7 @@ export function CookieConsentBanner() {
             onClick={accept}
             aria-label="Accept optional cookies"
             data-testid="cookie-consent-accept"
-            className="min-h-11 flex-1 sm:flex-initial"
+            className="min-h-11 sm:min-h-11 flex-1 sm:flex-initial"
           >
             Accept
           </Button>

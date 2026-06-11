@@ -159,23 +159,38 @@ test.describe("mobile navigation smoke", () => {
     });
   }
 
-  test("bottom nav is present and every tab navigates", async ({ page, baseURL }) => {
+  test("primary nav is present and every tab navigates", async ({ page, baseURL }) => {
     await seedSessionCookie(page, baseURL!);
     await page.goto("/today", { waitUntil: "domcontentloaded" });
-    const nav = page.locator('[data-testid="mobile-bottom-nav"]');
-    await expect(nav, "mobile bottom nav did not render").toBeVisible({ timeout: 60000 });
 
-    const hrefs = (await nav.locator("a").evaluateAll((els) =>
+    // Arm-aware: the app's MOBILE_BREAKPOINT is 768 — STRICTLY below it the
+    // bottom nav renders; at >= 768 (Playwright's iPad Mini descriptor is
+    // exactly 768x1024) the desktop sidebar is the primary nav BY DESIGN.
+    // Asserting the bottom nav on ipad-mini was a wrong test premise, not an
+    // app bug. Both arms must expose the five doors and navigate.
+    const viewportWidth = page.viewportSize()?.width ?? 0;
+    const nav =
+      viewportWidth < 768
+        ? page.locator('[data-testid="mobile-bottom-nav"]')
+        : page.locator('nav[aria-label="Main navigation"]');
+    await expect(
+      nav,
+      `primary nav did not render (expected ${viewportWidth < 768 ? "mobile bottom nav" : "desktop sidebar nav"} at ${viewportWidth}px)`,
+    ).toBeVisible({ timeout: 60000 });
+
+    // :visible — the desktop sidebar nests child links inside collapsed
+    // modules; clicking a hidden anchor would burn the action timeout.
+    const hrefs = (await nav.locator("a:visible").evaluateAll((els) =>
       els.map((e) => e.getAttribute("href")).filter((h): h is string => !!h),
     ));
-    expect(hrefs.length, "bottom nav has no tabs").toBeGreaterThanOrEqual(3);
+    expect(hrefs.length, "primary nav has no tabs").toBeGreaterThanOrEqual(3);
 
     // Each tab navigates (client-side route change), not bounced to /auth.
     // Render correctness per destination is covered by the per-route tests
     // above, so here we only assert navigation — keeps this lightweight on
     // slow CI runners where deep per-tab render-polling overruns the budget.
     for (const href of hrefs) {
-      await nav.locator(`a[href="${href}"]`).first().click();
+      await nav.locator(`a[href="${href}"]:visible`).first().click();
       await expect(page).toHaveURL(new RegExp(`${href}(\\b|/|\\?|$)`), { timeout: 15000 });
       expect(page.url(), `tab ${href} bounced to /auth`).not.toMatch(/\/auth(\b|$)/);
     }
