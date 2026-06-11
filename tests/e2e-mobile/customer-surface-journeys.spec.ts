@@ -144,6 +144,30 @@ async function assertThemeContract(
   // probeEvaluate additionally survives the context-destroyed /
   // target-crashed races (see its doc comment) without weakening the
   // transparent-body assertion below.
+  //
+  // Stylesheet-application race (3 CI sightings by 2026-06-11, fast-fail
+  // ~1.7s into J1/J3 with passes interleaved on identical shas): the
+  // one-shot probe can land in the window between DOM-interactive and the
+  // main CSS chunk APPLYING on a cold loaded runner — body computes
+  // transparent for a few hundred ms and would resolve right after.
+  // Transient paint-time transparency was never the regression this
+  // contract exists to catch; "tokens never apply" is. So: bounded wait
+  // for the tokens to apply, THEN the one-shot probe + hard assertion —
+  // a stylesheet that genuinely never resolves still fails with the same
+  // honest signal, just deterministically instead of racily.
+  await page
+    .waitForFunction(
+      () => {
+        const body = document.body;
+        if (!body) return false;
+        const bg = window.getComputedStyle(body).backgroundColor;
+        return bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent";
+      },
+      undefined,
+      { timeout: 10_000 },
+    )
+    // Teardown/context races surface through the probe below instead.
+    .catch(() => {});
   const probe = await probeEvaluate(page, () => {
     const body = document.body;
     const bodyStyle = body ? window.getComputedStyle(body) : null;
