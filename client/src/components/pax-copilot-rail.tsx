@@ -1129,7 +1129,7 @@ export function PaxCopilotRail() {
         aria-label={isOpen ? "Pax copilot" : "Pax copilot (collapsed)"}
         className={cn(
           "fixed right-0 top-0 h-[100dvh] z-40 flex flex-col",
-          "border-l bg-background/95 backdrop-blur-sm",
+          "border-l bg-surface-chrome backdrop-blur-sm",
           "transition-[width] duration-200 ease-in-out",
           isOpen ? "w-[360px] shadow-2xl" : "w-12"
         )}

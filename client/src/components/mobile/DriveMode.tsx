@@ -223,7 +223,7 @@ export function DriveMode() {
       data-testid="drive-mode"
     >
       {/* Header — back button + title. Keep slim so the map dominates. */}
-      <header className="flex items-center gap-2 px-4 h-12 border-b border-border bg-background/95 backdrop-blur-md">
+      <header className="flex items-center gap-2 px-4 h-12 border-b border-border bg-surface-chrome backdrop-blur-md">
         <button
           type="button"
           onClick={() => setLocation("/")}

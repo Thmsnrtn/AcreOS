@@ -118,7 +118,7 @@ export function LeadDetailContent({
   return (
     <>
       {withHeader && (
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-6">
+        <div className="sticky top-0 z-10 bg-surface-chrome backdrop-blur border-b p-6">
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 flex-wrap">

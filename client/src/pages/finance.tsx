@@ -886,7 +886,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
         className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-6">
+        <div className="sticky top-0 z-10 bg-surface-chrome backdrop-blur border-b p-6">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
               <h2 id={drawerTitleId} className="text-xl font-bold" data-testid="text-note-title">

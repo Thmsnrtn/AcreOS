@@ -212,7 +212,7 @@ export default function BorrowerPortal() {
 function PortalLoadingSkeleton() {
   return (
     <div className="min-h-[100dvh] bg-gradient-to-br from-acr-portal-from to-acr-portal-to">
-      <header className="border-b bg-background/80 backdrop-blur sticky top-0 z-50">
+      <header className="border-b bg-surface-veil backdrop-blur sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3">
             <Building className="w-5 h-5 sm:w-6 sm:h-6 text-primary" aria-hidden="true" />
@@ -838,7 +838,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
 
   return (
     <div className="min-h-[100dvh] bg-gradient-to-br from-acr-portal-from to-acr-portal-to">
-      <header className="border-b bg-background/80 backdrop-blur sticky top-0 z-50">
+      <header className="border-b bg-surface-veil backdrop-blur sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3">
             <Building className="w-5 h-5 sm:w-6 sm:h-6 text-primary" aria-hidden="true" />
@@ -1615,7 +1615,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       </Dialog>
 
       <nav
-        className="fixed bottom-0 left-0 right-0 sm:hidden border-t bg-background/95 backdrop-blur"
+        className="fixed bottom-0 left-0 right-0 sm:hidden border-t bg-surface-chrome backdrop-blur"
         aria-label="Primary actions"
       >
         <div className="grid grid-cols-3 gap-1 p-2">

@@ -2426,7 +2426,7 @@ export function PropertyMap({
       {showControls && (
         <>
           <div className="absolute top-3 left-3 flex flex-col gap-2 z-10">
-            <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+            <div className="flex gap-1 bg-surface-veil backdrop-blur-sm rounded-md p-1 shadow-lg">
               <Button
                 size="icon"
                 variant={currentStyle === "satellite" ? "default" : "ghost"}
@@ -2459,7 +2459,7 @@ export function PropertyMap({
               </Button>
             </div>
 
-            <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+            <div className="flex gap-1 bg-surface-veil backdrop-blur-sm rounded-md p-1 shadow-lg">
               <Button
                 size="icon"
                 variant={is3DExtrudeMode ? "default" : "ghost"}
@@ -2502,7 +2502,7 @@ export function PropertyMap({
               </Button>
             </div>
 
-            <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+            <div className="flex gap-1 bg-surface-veil backdrop-blur-sm rounded-md p-1 shadow-lg">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -2568,7 +2568,7 @@ export function PropertyMap({
             </div>
 
             {selectedPropertyId && (
-              <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+              <div className="flex gap-1 bg-surface-veil backdrop-blur-sm rounded-md p-1 shadow-lg">
                 <Button
                   size="icon"
                   variant={showNearbyParcels ? "default" : "ghost"}
@@ -2598,7 +2598,7 @@ export function PropertyMap({
           {showNearbyParcels && nearbyParcels.length > 0 && (
             <div className="absolute top-3 right-14 z-10 w-64">
               <Collapsible open={nearbyPanelOpen} onOpenChange={setNearbyPanelOpen}>
-                <div className="bg-background/90 backdrop-blur-sm rounded-md shadow-lg">
+                <div className="bg-surface-haze backdrop-blur-sm rounded-md shadow-lg">
                   <CollapsibleTrigger asChild>
                     <Button
                       variant="ghost"
@@ -2688,7 +2688,7 @@ export function PropertyMap({
           {showComps && comps.length > 0 && (
             <div className="absolute bottom-3 right-3 z-10 w-72">
               <Collapsible open={compsPanelOpen} onOpenChange={setCompsPanelOpen}>
-                <div className="bg-background/90 backdrop-blur-sm rounded-md shadow-lg">
+                <div className="bg-surface-haze backdrop-blur-sm rounded-md shadow-lg">
                   <CollapsibleTrigger asChild>
                     <Button
                       variant="ghost"
@@ -2779,7 +2779,7 @@ export function PropertyMap({
                 an inferred footprint is never mistaken for a surveyed boundary. */}
             {hasApproximateBoundary && layerState.propertyHeatmap && (
               <div
-                className="flex items-center gap-2 bg-background/90 backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg"
+                className="flex items-center gap-2 bg-surface-haze backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg"
                 data-testid="legend-approximate-extent"
               >
                 <svg
@@ -2813,7 +2813,7 @@ export function PropertyMap({
 
           <div className="absolute bottom-3 left-3 z-10">
             <Collapsible open={isLayerPanelOpen} onOpenChange={setIsLayerPanelOpen}>
-              <div className="bg-background/90 backdrop-blur-sm rounded-md shadow-lg overflow-visible">
+              <div className="bg-surface-haze backdrop-blur-sm rounded-md shadow-lg overflow-visible">
                 <CollapsibleTrigger asChild>
                   <Button
                     variant="ghost"
@@ -3118,7 +3118,7 @@ export function PropertyMap({
           size="icon"
           variant="outline"
           onClick={toggleFullscreen}
-          className="absolute top-3 right-3 z-10 bg-background/80 backdrop-blur-sm"
+          className="absolute top-3 right-3 z-10 bg-surface-veil backdrop-blur-sm"
           aria-label="Exit fullscreen"
           data-testid="button-exit-fullscreen"
         >
@@ -3128,7 +3128,7 @@ export function PropertyMap({
 
       {measurementMode !== "none" && (
         <div 
-          className="absolute top-3 left-1/2 transform -translate-x-1/2 z-10 bg-background/90 backdrop-blur-sm rounded-md shadow-lg p-3 min-w-[200px]"
+          className="absolute top-3 left-1/2 transform -translate-x-1/2 z-10 bg-surface-haze backdrop-blur-sm rounded-md shadow-lg p-3 min-w-[200px]"
           data-testid="measurement-overlay"
         >
           <div className="flex items-center justify-between gap-3 mb-2">
@@ -3521,7 +3521,7 @@ export function SinglePropertyMap({
           inferred footprint is never mistaken for a surveyed boundary. */}
       {isApproximate && (
         <div
-          className="absolute bottom-2 left-2 z-10 flex items-center gap-2 bg-background/90 backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg pointer-events-none"
+          className="absolute bottom-2 left-2 z-10 flex items-center gap-2 bg-surface-haze backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg pointer-events-none"
           data-testid="legend-approximate-extent"
         >
           <svg width="20" height="6" viewBox="0 0 20 6" className="shrink-0 text-muted-foreground" aria-hidden="true">

@@ -1034,7 +1034,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
         className="fixed right-0 top-0 h-full w-full max-w-xl bg-background shadow-2xl overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-6">
+        <div className="sticky top-0 z-10 bg-surface-chrome backdrop-blur border-b p-6">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h2 id={titleId} className="text-xl font-bold">{campaign.name}</h2>

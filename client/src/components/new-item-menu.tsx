@@ -105,7 +105,7 @@ export function NewItemMenu() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-modal bg-black/40 backdrop-blur-sm"
+            className="fixed inset-0 z-modal bg-surface-scrim backdrop-blur-sm"
             onClick={() => setNewMenuOpen(false)}
             aria-hidden="true"
             data-testid="new-item-menu-backdrop"

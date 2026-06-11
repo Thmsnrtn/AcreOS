@@ -24,7 +24,7 @@ const DialogOverlay = React.forwardRef<
       // z-modal (60) sits above MobileBottomNav (z-floating/50) so the nav
       // doesn't paint over modal scrims on mobile.
       "fixed inset-0 z-modal",
-      "bg-black/40 backdrop-blur-[6px] backdrop-saturate-150",
+      "bg-surface-scrim backdrop-blur-[6px] backdrop-saturate-150",
       "data-[state=open]:animate-in data-[state=closed]:animate-out",
       "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className

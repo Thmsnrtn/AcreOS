@@ -99,6 +99,53 @@
   --glass-border-sm:   rgba(255, 255, 255, 0.40);
   --glass-specular:    linear-gradient(135deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 60%);
 
+  /* ── Surface-translucency scale (Tahoe F2 — 2026-06-11) ──────────────
+     SEMANTIC, role-named translucency for layered surfaces. The glass
+     material kit (.liquid-glass*) above is the depth ANCHOR — these
+     tokens are the opacity layer of the same house language, named by
+     the ROLE a surface plays, not by a raw `/NN` opacity number. Call
+     sites say `bg-surface-chrome`, never `bg-background/95`; the
+     `.surface-*` utility classes (defined with the elevation utilities
+     below) resolve to these vars. The `bg-*/NN` value each token
+     replaces is noted so the migration stays behavior-identical.
+
+       --surface-chrome   hsl(bg / .95)  glass chrome: topbars, navs, the
+                                         Pax rail, bottom nav, sticky
+                                         detail headers — the systematic
+                                         95%+backdrop-blur surface. Pair
+                                         with a `backdrop-blur*` utility
+                                         (the blur depth — sm/md/lg —
+                                         stays per-site; this token only
+                                         owns the translucent fill). Same
+                                         family as .liquid-glass.
+       --surface-haze     hsl(bg / .90)  map/canvas overlay chrome
+                                         (legends, floating control pods)
+                                         that sits over imagery and needs
+                                         a touch more opacity than veil.
+       --surface-veil     hsl(bg / .80)  secondary / lighter sticky
+                                         chrome: page-topbar, persona
+                                         switcher, map tool clusters —
+                                         lets more of the layer below
+                                         read through.
+       --surface-sheer    hsl(bg / .70)  sheerest tinted veil: full-bleed
+                                         loading/empty scrims over content
+                                         and the sidebar backdrop on
+                                         mobile. (Form-input fills keep
+                                         their own `inset-input` idiom.)
+       --surface-scrim         rgba(0,0,0,.40)  modal/dialog backdrop —
+                                         the dim layer behind a focused
+                                         surface (dialog, command palette,
+                                         new-item menu).
+       --surface-scrim-strong  rgba(0,0,0,.80)  heavy backdrop for the
+                                         most-blocking overlays
+                                         (alert-dialog, drawer). */
+  --surface-chrome:        hsl(var(--background) / 0.95);
+  --surface-haze:          hsl(var(--background) / 0.90);
+  --surface-veil:          hsl(var(--background) / 0.80);
+  --surface-sheer:         hsl(var(--background) / 0.70);
+  --surface-scrim:         rgba(0, 0, 0, 0.40);
+  --surface-scrim-strong:  rgba(0, 0, 0, 0.80);
+
   --shadow-1: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
   --shadow-2: 0 0 0 0.5px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.08), 0 8px 24px -4px rgba(0,0,0,0.06);
   --shadow-3: 0 0 0 0.5px rgba(0,0,0,0.08), 0 8px 40px rgba(0,0,0,0.12), 0 16px 48px -8px rgba(0,0,0,0.10);
@@ -1354,6 +1401,25 @@
 .elevation-2 { box-shadow: var(--shadow-2); }
 .elevation-3 { box-shadow: var(--shadow-3); }
 .elevation-4 { box-shadow: var(--shadow-4); }
+
+/* ── Surface-translucency utilities (Tahoe F2) ─────────────────────────
+   Role-named translucent fills — the opacity layer of the liquid-glass
+   house language. Each class sets only `background-color` from the
+   matching `--surface-*` var, so it composes with the existing
+   `backdrop-blur*` / border / shadow utilities exactly as the raw
+   `bg-*/NN` modifier it replaces did (behavior-identical migration).
+   Use the ROLE, not a number: chrome (95) for primary glass chrome,
+   haze (90) for canvas-overlay chrome, veil (80) for secondary sticky
+   chrome, sheer (70) for the lightest content veils, and the scrim
+   pair for modal backdrops. New translucent surfaces pick a role here
+   rather than re-introducing a raw `bg-background/NN` (enforced by
+   scripts/lint-translucency.mjs). */
+.bg-surface-chrome       { background-color: var(--surface-chrome); }
+.bg-surface-haze         { background-color: var(--surface-haze); }
+.bg-surface-veil         { background-color: var(--surface-veil); }
+.bg-surface-sheer        { background-color: var(--surface-sheer); }
+.bg-surface-scrim        { background-color: var(--surface-scrim); }
+.bg-surface-scrim-strong { background-color: var(--surface-scrim-strong); }
 
 /* ── Tahoe Typography ─────────────────────────────────────────────── */
 .heading-display  { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; }

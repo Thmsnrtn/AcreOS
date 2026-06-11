@@ -191,7 +191,7 @@ export default function WelcomeBackPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-40">
+      <nav className="border-b bg-surface-chrome backdrop-blur sticky top-0 z-40">
         <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link
             href="/"

@@ -104,7 +104,7 @@ export function OverlayLegend({ active }: { active: OverlayLegendActive }) {
 
   return (
     <div
-      className="bg-background/90 backdrop-blur-sm rounded-md shadow-lg border overflow-hidden max-w-[200px]"
+      className="bg-surface-haze backdrop-blur-sm rounded-md shadow-lg border overflow-hidden max-w-[200px]"
       data-testid="overlay-legend"
     >
       <button

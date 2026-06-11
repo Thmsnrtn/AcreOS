@@ -78,7 +78,7 @@ export default function CourthouseModePage() {
       data-testid="courthouse-mode-page"
     >
       {/* Slim header — back button + title. Same pattern as DriveMode. */}
-      <header className="flex items-center gap-2 px-4 h-12 border-b border-border bg-background/95 backdrop-blur-md">
+      <header className="flex items-center gap-2 px-4 h-12 border-b border-border bg-surface-chrome backdrop-blur-md">
         <button
           type="button"
           onClick={() => setLocation("/auction-worksheet")}

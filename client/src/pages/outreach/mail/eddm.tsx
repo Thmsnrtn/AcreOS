@@ -473,7 +473,7 @@ export default function EddmTab() {
 
         {/* Routes loading spinner */}
         {routesQuery.isLoading && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-background/95 rounded-full px-3 py-1 text-xs flex items-center gap-2 shadow">
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-surface-chrome rounded-full px-3 py-1 text-xs flex items-center gap-2 shadow">
             <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
             Loading carrier routes…
           </div>
@@ -482,7 +482,7 @@ export default function EddmTab() {
         {/* Side panel — layer toggles + filters */}
         {panelOpen && (
           <aside
-            className="absolute top-3 left-3 w-72 max-w-[calc(100%-1.5rem)] bg-background/95 rounded-card shadow-lg border p-3 space-y-3"
+            className="absolute top-3 left-3 w-72 max-w-[calc(100%-1.5rem)] bg-surface-chrome rounded-card shadow-lg border p-3 space-y-3"
             data-testid="eddm-side-panel"
           >
             <div className="flex items-center justify-between">

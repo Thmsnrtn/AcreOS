@@ -103,7 +103,7 @@ export function FounderMobileBottomNav() {
     <>
       <nav
         aria-label="Founder mobile navigation"
-        className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-t border-border"
+        className="fixed bottom-0 left-0 right-0 z-50 bg-surface-chrome backdrop-blur-lg border-t border-border"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
         data-testid="founder-mobile-bottom-nav"
       >

@@ -148,7 +148,7 @@ function TransparencyChrome({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <SkipToContent />
-      <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
+      <nav className="border-b bg-surface-chrome backdrop-blur sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link
             href="/"

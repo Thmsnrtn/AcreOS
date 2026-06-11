@@ -1196,7 +1196,7 @@ export default function MapsPage() {
     <PageShell label="Maps">
       <div className="-mx-4 -my-8 md:-mx-8 md:-my-8">
         {/* Header bar */}
-        <div className="flex items-center gap-2 px-4 md:px-6 py-2.5 border-b bg-background/90 backdrop-blur-sm sticky top-0 z-10">
+        <div className="flex items-center gap-2 px-4 md:px-6 py-2.5 border-b bg-surface-haze backdrop-blur-sm sticky top-0 z-10">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <MapPin className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
             <h1 className="text-section-h2 truncate">
@@ -1556,7 +1556,7 @@ export default function MapsPage() {
                   enable3DTerrain={false}
                   showControls
                 />
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-background/70 backdrop-blur-sm" role="status">
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-surface-sheer backdrop-blur-sm" role="status">
                   <div className="pointer-events-auto flex flex-col items-center max-w-sm">
                     <MapPin className="w-12 h-12 text-muted-foreground mb-4" aria-hidden="true" />
                     <h3 className="font-semibold text-lg">No parcel coordinates yet</h3>

@@ -67,7 +67,7 @@ export function PersonaSwitcher({ compact, className }: PersonaSwitcherProps) {
           data-testid="persona-switcher-trigger"
           style={{ minHeight: TOUCH_TARGET_PT }}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border border-border bg-background/80 px-3 text-xs font-medium text-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-veil px-3 text-xs font-medium text-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             compact && "px-2",
             className,
           )}

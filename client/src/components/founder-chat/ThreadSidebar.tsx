@@ -45,7 +45,7 @@ export function ThreadSidebar({
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-background/70 backdrop-blur-sm"
+          className="md:hidden fixed inset-0 z-40 bg-surface-sheer backdrop-blur-sm"
           onClick={onMobileClose}
           aria-hidden="true"
         />

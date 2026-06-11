@@ -235,7 +235,7 @@ export function LiveDemoMode({
       <div
         className={cn(
           "fixed bottom-20 left-1/2 -translate-x-1/2 z-max",
-          "bg-background/95 backdrop-blur-md",
+          "bg-surface-chrome backdrop-blur-md",
           "border border-border rounded-2xl shadow-2xl",
           "p-4 min-w-[400px]"
         )}
