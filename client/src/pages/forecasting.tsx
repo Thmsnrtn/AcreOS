@@ -18,9 +18,10 @@ import {
   DollarSign,
   AlertCircle,
   CheckCircle2,
-  Loader2,
   Target,
 } from "lucide-react";
+import { PageSkeleton } from "@/components/page-skeleton";
+import { EmptyState } from "@/components/empty-state";
 import { format, addMonths } from "date-fns";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
@@ -101,15 +102,16 @@ export default function ForecastingPage() {
   return (
     <PageShell label="Forecasting">
       {isLoading ? (
-        <div className="flex justify-center py-16" role="status" aria-live="polite">
-          <span className="sr-only">Loading forecast data…</span>
-          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" aria-hidden="true" />
-        </div>
+        <PageSkeleton variant="table" statCards={4} announceText="Loading forecast data" />
       ) : !summary ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <Target className="w-12 h-12 mx-auto mb-4 opacity-30" aria-hidden="true" />
-          <p>No active notes or properties found. Add notes to see forecasts.</p>
-        </div>
+        <EmptyState
+          icon={Target}
+          headline="No active notes or properties found."
+          subtitle="Add notes to see forecasts."
+          // TODO(cta): note origination lives behind Finance — forecast is a derived view
+          cta={{ label: "", _noOp: true }}
+          testId="empty-state-forecasting"
+        />
       ) : (
         <div className="space-y-6">
           <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -13,6 +13,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { usd, formatDate } from "@/lib/format";
 import { RefreshCw, Calendar, DollarSign, AlertTriangle, CheckCircle2, Clock, Loader2, Plus, Star, FileText, Bell } from "lucide-react";
 import { Verbs } from "@/lib/labels";
+import { PageSkeleton } from "@/components/page-skeleton";
+import { EmptyState } from "@/components/empty-state";
 
 interface Exchange1031 {
   id: number;
@@ -215,16 +217,19 @@ export default function Exchange1031Page() {
       )}
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading exchanges…
-        </div>
+        <PageSkeleton variant="list" announceText="Loading exchanges" />
       ) : exchanges.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <RefreshCw className="w-8 h-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
-            <p className="text-muted-foreground text-sm">No 1031 exchanges tracked yet.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          framed
+          icon={RefreshCw}
+          headline="No 1031 exchanges tracked yet."
+          cta={{
+            label: "New exchange",
+            onClick: () => setShowCreate(true),
+            "data-testid": "empty-state-exchanges-action",
+          }}
+          testId="empty-state-exchanges"
+        />
       ) : (
         <ul className="space-y-4" aria-label="Active 1031 exchanges">
           {exchanges.map(ex => {

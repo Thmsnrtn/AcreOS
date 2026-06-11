@@ -3,7 +3,8 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DollarSign, FileText, TrendingUp, Loader2, Download } from "lucide-react";
+import { DollarSign, FileText, TrendingUp, Download } from "lucide-react";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
@@ -105,9 +106,7 @@ export default function BookkeepingPage() {
       </div>
 
       {loadingReport || loadingSummary ? (
-        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading bookkeeping data…
-        </div>
+        <PageSkeleton variant="table" statCards={4} announceText="Loading bookkeeping data" />
       ) : (
         <>
           <dl className="grid grid-cols-2 md:grid-cols-4 gap-3">

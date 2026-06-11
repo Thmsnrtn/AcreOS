@@ -43,7 +43,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { SwipeableCard } from "@/components/mobile/SwipeableCard";
 import { QueryErrorState } from "@/components/query-error-state";
-import { ClearedEmpty } from "@/components/empty-states";
+import { ClearedEmpty } from "@/components/empty-state";
 import { apiRequest, fetchJsonArray } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { relative } from "@/lib/format";

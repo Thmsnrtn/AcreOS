@@ -9,6 +9,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { DocumentTemplate, GeneratedDocument, Deal, Property, DocumentPackage } from "@shared/schema";
 import { PageShell } from "@/components/page-shell";
+import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { TemplateEditor } from "@/components/template-editor";
@@ -177,6 +178,15 @@ export default function DocumentsPage() {
     retry: false,
   });
   const packages = toArray<DocumentPackage>(rawPackages);
+
+  // W2-6: remember the window-scroll offset per route. `ready` follows the
+  // ACTIVE tab's query — restoring before that tab's rows exist would clamp
+  // to the skeleton height. Tabs share one offset (key is the path).
+  const activeTabReady =
+    activeTab === "templates" ? !templatesLoading :
+    activeTab === "documents" ? !documentsLoading :
+    !packagesLoading;
+  useScrollRestoration(activeTabReady);
 
   useEffect(() => {
     if (templatesError) toast({ title: "Couldn't load templates", description: "Check your connection and try again.", variant: "destructive" });

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ContentReveal } from "@/components/ContentReveal";
-import { ClearedEmpty } from "@/components/empty-states";
+import { ClearedEmpty } from "@/components/empty-state";
 import { ConfidenceBar } from "@/components/today/ConfidenceBar";
 import { ConfidenceSparkline } from "@/components/today/ConfidenceSparkline";
 import { SwipeableCard } from "@/components/mobile/SwipeableCard";

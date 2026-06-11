@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Paperclip, Trash2, Loader2, BookOpen, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface KnowledgeFile {
   id: number;
@@ -169,8 +170,14 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
         {/* File list */}
         <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 mt-2">
           {isLoading && (
-            <div className="flex justify-center py-8">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            <div role="status" aria-busy="true" aria-live="polite" className="space-y-2">
+              <span className="sr-only">Loading knowledge files</span>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="rounded-card border p-3 space-y-2">
+                  <Skeleton announce={false} className="h-3.5 w-2/3" />
+                  <Skeleton announce={false} className="h-3 w-16" />
+                </div>
+              ))}
             </div>
           )}
           {!isLoading && files.length === 0 && (

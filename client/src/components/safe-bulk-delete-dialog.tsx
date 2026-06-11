@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Trash2, 
@@ -192,9 +193,17 @@ export function SafeBulkDeleteDialog({
               </div>
 
               {isLoadingPreview && (
-                <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+                <div className="space-y-2 py-2" role="status" aria-busy="true" aria-live="polite">
                   <span className="sr-only">Loading lead preview…</span>
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 p-2 rounded-md bg-muted/50">
+                      <Skeleton announce={false} className="w-8 h-8 rounded-full shrink-0" />
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <Skeleton announce={false} className="h-4 w-1/3 max-w-40" />
+                        <Skeleton announce={false} className="h-3 w-2/3 max-w-56" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 

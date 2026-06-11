@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -674,8 +675,13 @@ Sincerely,
                 </CardHeader>
                 <CardContent>
                   {isPreviewLoading ? (
-                    <div className="flex items-center justify-center py-12">
-                      <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                    <div role="status" aria-busy="true" aria-live="polite" className="h-[400px] border rounded-card p-4 space-y-3">
+                      <span className="sr-only">Loading preview</span>
+                      <Skeleton announce={false} className="h-4 w-full" />
+                      <Skeleton announce={false} className="h-4 w-5/6" />
+                      <Skeleton announce={false} className="h-4 w-3/4" />
+                      <Skeleton announce={false} className="h-4 w-4/5" />
+                      <Skeleton announce={false} className="h-4 w-2/3" />
                     </div>
                   ) : previewContent ? (
                     <ScrollArea className="h-[400px] border rounded-card p-4">

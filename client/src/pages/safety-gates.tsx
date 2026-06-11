@@ -8,8 +8,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  CheckCircle2, XCircle, AlertCircle, ShieldCheck, Loader2,
+  CheckCircle2, XCircle, AlertCircle, ShieldCheck,
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 
@@ -255,10 +256,7 @@ export default function SafetyGatesPage() {
               <CardTitle className="text-base flex items-center justify-between gap-2 flex-wrap">
                 <span>Gates for Deal #<span className="tabular-nums">{selectedDeal.id}</span></span>
                 {propLoading ? (
-                  <span role="status" aria-live="polite">
-                    <span className="sr-only">Loading property data…</span>
-                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" aria-hidden="true" />
-                  </span>
+                  <Skeleton announceText="Loading property data…" className="h-4 w-36" />
                 ) : (
                   <span
                     className={`text-sm font-normal tabular-nums ${

@@ -12,6 +12,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 import { AlertTriangle, DollarSign, Calendar, TrendingUp, Filter, Loader2, MapPin } from "lucide-react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 interface DelinquentLead {
   id: number;
@@ -165,9 +166,7 @@ export default function TaxDelinquentPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading delinquent leads…
-        </div>
+        <PageSkeleton variant="list" rows={6} announceText="Loading delinquent leads" />
       ) : leads.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">

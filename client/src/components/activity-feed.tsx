@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 import type { ActivityEvent, ActivityEventType } from "@shared/schema";
 import { ACTIVITY_EVENT_TYPES } from "@shared/schema";
@@ -328,8 +329,17 @@ export function ActivityFeed({ className, maxHeight = "500px", compact = false }
       </CardHeader>
       <CardContent className="p-0">
         {isLoading ? (
-          <div className="flex items-center justify-center py-8" data-testid="activity-feed-loading">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <div role="status" aria-busy="true" aria-live="polite" data-testid="activity-feed-loading">
+            <span className="sr-only">Loading activity feed</span>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex gap-3 p-3 border-b last:border-b-0">
+                <Skeleton announce={false} className="w-10 h-10 rounded-full shrink-0" />
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <Skeleton announce={false} className="h-4 w-1/2 max-w-48" />
+                  <Skeleton announce={false} className="h-3 w-3/4 max-w-64" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : error ? (
           <div className="py-8 text-center text-muted-foreground" data-testid="activity-feed-error">

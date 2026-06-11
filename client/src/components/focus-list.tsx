@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -301,9 +302,17 @@ export function FocusList() {
             Daily focus
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
-          <span className="sr-only">Loading…</span>
+        <CardContent className="space-y-3" role="status" aria-busy="true" aria-live="polite">
+          <span className="sr-only">Loading daily focus</span>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton announce={false} className="h-9 w-9 rounded-full shrink-0" />
+              <div className="flex-1 min-w-0 space-y-1.5">
+                <Skeleton announce={false} className="h-4 w-1/2 max-w-40" />
+                <Skeleton announce={false} className="h-3 w-3/4 max-w-56" />
+              </div>
+            </div>
+          ))}
         </CardContent>
       </Card>
     );

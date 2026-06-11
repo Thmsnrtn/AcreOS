@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { AbTest, AbTestVariant, Campaign } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge, type StatusKind } from "@/components/StatusBadge";
@@ -226,9 +227,20 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-8" role="status" aria-live="polite">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+      <div className="space-y-4" role="status" aria-busy="true" aria-live="polite">
         <span className="sr-only">Loading A/B tests…</span>
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Card key={i}>
+            <CardHeader className="space-y-2">
+              <Skeleton announce={false} className="h-5 w-40" />
+              <Skeleton announce={false} className="h-4 w-64" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Skeleton announce={false} className="h-4 w-full" />
+              <Skeleton announce={false} className="h-4 w-3/4" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
     );
   }
@@ -651,9 +663,18 @@ export function AbTestHistoryList() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-8" role="status" aria-live="polite">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+      <div className="space-y-4" role="status" aria-busy="true" aria-live="polite">
         <span className="sr-only">Loading A/B test results…</span>
+        <Card>
+          <CardHeader className="space-y-2">
+            <Skeleton announce={false} className="h-5 w-40" />
+            <Skeleton announce={false} className="h-4 w-64" />
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Skeleton announce={false} className="h-4 w-full" />
+            <Skeleton announce={false} className="h-4 w-3/4" />
+          </CardContent>
+        </Card>
       </div>
     );
   }

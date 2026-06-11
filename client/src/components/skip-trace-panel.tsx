@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -97,8 +98,10 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
   if (isLoading) {
     return (
       <Card className="glass-panel">
-        <CardContent className="pt-6 flex items-center justify-center">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        <CardContent className="pt-6 space-y-2" role="status" aria-busy="true" aria-live="polite">
+          <span className="sr-only">Loading skip trace</span>
+          <Skeleton announce={false} className="h-4 w-1/2 max-w-40" />
+          <Skeleton announce={false} className="h-4 w-3/4 max-w-64" />
         </CardContent>
       </Card>
     );

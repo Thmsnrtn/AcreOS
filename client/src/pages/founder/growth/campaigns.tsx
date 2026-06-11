@@ -26,6 +26,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
+import { EmptyState } from "@/components/empty-state";
 import { formatDate } from "@/lib/format";
 
 interface GrowthCampaignItem {
@@ -695,11 +696,16 @@ export default function FounderGrowthCampaignsPage() {
           </div>
 
           {(campaigns || []).length === 0 ? (
-            <div className="text-center py-8 border border-dashed rounded-card">
-              <Megaphone className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" aria-hidden="true" />
-              <p className="text-sm text-muted-foreground">No campaigns yet.</p>
-              <p className="text-xs text-muted-foreground mt-1">Click "Generate Campaign" to create your first one.</p>
-            </div>
+            <EmptyState
+              framed
+              icon={Megaphone}
+              headline="No campaigns yet."
+              subtitle={`Click "Generate Campaign" to create your first one.`}
+              // TODO(cta): the Generate Campaign button above is gated on a connected
+              // ad account — duplicating it here would bypass that gate
+              cta={{ label: "", _noOp: true }}
+              testId="empty-state-growth-campaigns"
+            />
           ) : (
             <div className="space-y-2">
               {(campaigns || []).map((c) => {

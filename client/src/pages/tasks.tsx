@@ -1,6 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
-import { TasksEmptyState } from "@/components/empty-states";
+import { EmptyState } from "@/components/empty-state";
 import { useId, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -31,9 +31,10 @@ import { z } from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
-  ListTodo, 
-  Plus, 
-  CheckCircle2, 
+  ListTodo,
+  Plus,
+  CheckCircle2,
+  CheckSquare,
   Clock, 
   AlertCircle, 
   Loader2, 
@@ -580,7 +581,22 @@ export default function TasksPage() {
                   <ListSkeleton count={4} />
                 </div>
               ) : !tasks?.length ? (
-                <TasksEmptyState onAddTask={() => setIsCreateOpen(true)} />
+                <EmptyState
+                  icon={CheckSquare}
+                  headline="Nothing on your list yet"
+                  subtitle="Add a task and link it to a lead, deal, or parcel — Pax slides follow-ups in automatically as deals age past 5 days."
+                  cta={{
+                    label: "Add a Task",
+                    onClick: () => setIsCreateOpen(true),
+                    "data-testid": "empty-state-tasks-action",
+                  }}
+                  tips={[
+                    "Wire a task to a lead, deal, or parcel — Pax surfaces it on Today the morning it's due",
+                    "Set a due date — Pax pings you the day before, not the day of",
+                    "Pax adds follow-up tasks on its own when a seller goes quiet past 5 days",
+                  ]}
+                  testId="empty-state-tasks"
+                />
               ) : (
                 <ul className="divide-y list-none p-0 m-0" aria-label="Tasks">
                   {tasks.map((task) => {

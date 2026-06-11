@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { subDays } from "date-fns";
 import { relative } from "@/lib/format";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 interface Lead {
   id: number;
@@ -245,14 +246,7 @@ export default function DecisionQueuePage() {
   if (isLoading) {
     return (
       <PageShell label="Decision queue">
-        <div
-          className="flex items-center justify-center py-16 text-muted-foreground"
-          role="status"
-          aria-live="polite"
-        >
-          <Loader2 className="w-5 h-5 animate-spin mr-2" aria-hidden="true" />
-          Loading queue…
-        </div>
+        <PageSkeleton variant="list" announceText="Loading queue" />
       </PageShell>
     );
   }

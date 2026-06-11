@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { InfoCard } from "@/components/info-card";
 import { 
@@ -463,9 +464,25 @@ export function IntegrationsSettings() {
         />
         
         {isLoading ? (
-          <div role="status" aria-busy="true" aria-label="Loading integrations" className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
-            <span className="sr-only">Loading…</span>
+          <div role="status" aria-busy="true" aria-live="polite" className="space-y-4">
+            <span className="sr-only">Loading integrations</span>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i}>
+                <CardHeader className="flex flex-row items-start justify-between gap-4 pb-2">
+                  <div className="flex items-center gap-3">
+                    <Skeleton announce={false} className="h-9 w-9 rounded-md shrink-0" />
+                    <div className="space-y-1.5">
+                      <Skeleton announce={false} className="h-4 w-28" />
+                      <Skeleton announce={false} className="h-3 w-48" />
+                    </div>
+                  </div>
+                  <Skeleton announce={false} className="h-5 w-24 rounded-full" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton announce={false} className="h-8 w-32" />
+                </CardContent>
+              </Card>
+            ))}
           </div>
         ) : (
           PROVIDERS.map(provider => (

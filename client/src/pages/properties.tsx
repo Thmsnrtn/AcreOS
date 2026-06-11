@@ -6,6 +6,7 @@ import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useProperties, usePropertiesPaginated, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
+import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { queryClient } from "@/lib/queryClient";
 import { telemetry } from "@/lib/telemetry";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -114,7 +115,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { DealCalculator } from "@/components/deal-calculator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-states";
+import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -171,6 +172,13 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
   const [viewMode, setViewMode] = useState<"list" | "map">(() => {
     try { return (localStorage.getItem("properties-view-mode") as "list" | "map") || "list"; } catch { return "list"; }
   });
+
+  // W2-6: remember the inventory list's window-scroll offset per route.
+  // Only meaningful in list mode — in map mode the rows don't exist, so a
+  // restore would clamp against the short map layout; gating `ready` on
+  // viewMode means a map-mode mount simply skips restoration. Disabled when
+  // embedded in /pipeline (several list pages share one route's scroll).
+  useScrollRestoration(!isLoading && viewMode === "list", { enabled: !embedded });
   const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new" || addFromLocation);
   const [deletingProperty, setDeletingProperty] = useState<Property | null>(null);
   const [isExporting, setIsExporting] = useState(false);

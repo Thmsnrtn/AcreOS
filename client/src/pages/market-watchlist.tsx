@@ -14,6 +14,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -326,20 +328,30 @@ export default function MarketWatchlistPage() {
 
         <TabsContent value="watchlist" className="space-y-3">
           {isLoading ? (
-            <div className="flex justify-center py-12" role="status" aria-live="polite">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3" role="status" aria-live="polite">
               <span className="sr-only">Loading watchlist…</span>
-              <Loader2 className="animate-spin text-muted-foreground" aria-hidden="true" />
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Card key={i}>
+                  <CardContent className="pt-4 pb-4 space-y-2">
+                    <Skeleton announce={false} className="h-5 w-48 max-w-full" />
+                    <Skeleton announce={false} className="h-3 w-32" />
+                    <div className="flex gap-1.5 pt-1">
+                      <Skeleton announce={false} className="h-5 w-16" />
+                      <Skeleton announce={false} className="h-5 w-20" />
+                      <Skeleton announce={false} className="h-5 w-14" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           ) : !watchlist?.length ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <MapPin className="w-8 h-8 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
-                <p className="text-sm text-muted-foreground">No counties on your watchlist yet.</p>
-                <Button variant="outline" className="mt-3" onClick={() => setAddOpen(true)}>
-                  <Plus className="w-4 h-4 mr-1" aria-hidden="true" /> Watch a county
-                </Button>
-              </CardContent>
-            </Card>
+            <EmptyState
+              framed
+              icon={MapPin}
+              headline="No counties on your watchlist yet."
+              cta={{ label: "Watch a county", onClick: () => setAddOpen(true) }}
+              testId="empty-state-watchlist"
+            />
           ) : (
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-3" aria-label="Watched counties">
               {watchlist.map(entry => {
@@ -417,12 +429,14 @@ export default function MarketWatchlistPage() {
           )}
 
           {!alerts?.length ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Bell className="w-8 h-8 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
-                <p className="text-sm text-muted-foreground">No alerts yet. Watch counties to receive market alerts.</p>
-              </CardContent>
-            </Card>
+            <EmptyState
+              framed
+              icon={Bell}
+              headline="No alerts yet"
+              subtitle="Watch counties to receive market alerts."
+              cta={{ label: "Watch a county", onClick: () => setAddOpen(true) }}
+              testId="empty-state-market-alerts"
+            />
           ) : (
             <ol className="space-y-3" aria-label="Market alerts, newest first">
               {alerts.map(alert => {

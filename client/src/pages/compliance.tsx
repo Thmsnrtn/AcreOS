@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Shield, AlertTriangle, CheckCircle, Clock, FileText } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { formatDate } from "@/lib/format";
 
 const SEVERITY_LABEL: Record<string, string> = {
@@ -176,13 +177,15 @@ export default function CompliancePage() {
 
         <TabsContent value="alerts" className="mt-4">
           {alerts.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center" role="status">
-                <CheckCircle className="w-12 h-12 mx-auto mb-3 text-acr-pos" aria-hidden="true" />
-                <p className="font-medium">All clear — no compliance alerts.</p>
-                <p className="text-sm text-muted-foreground mt-1">AcreOS is actively monitoring your portfolio for regulatory changes.</p>
-              </CardContent>
-            </Card>
+            <EmptyState
+              icon={CheckCircle}
+              tone="celebratory"
+              headline="All clear — no compliance alerts."
+              subtitle="AcreOS is actively monitoring your portfolio for regulatory changes."
+              // TODO(cta): system-monitored state — no user action available
+              cta={{ label: "", _noOp: true }}
+              testId="empty-state-compliance-alerts"
+            />
           ) : (
             <ul className="space-y-3" aria-label="Compliance alerts">
               {alerts.map((alert: any) => (
@@ -268,12 +271,14 @@ export default function CompliancePage() {
               ))}
             </ul>
           ) : (
-            <Card>
-              <CardContent className="py-10 text-center">
-                <FileText className="w-10 h-10 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
-                <p className="text-muted-foreground">No active compliance rules loaded.</p>
-              </CardContent>
-            </Card>
+            <EmptyState
+              framed
+              icon={FileText}
+              headline="No active compliance rules loaded."
+              // TODO(cta): rules are system-loaded per jurisdiction — no user action available
+              cta={{ label: "", _noOp: true }}
+              testId="empty-state-compliance-rules"
+            />
           )}
         </TabsContent>
 

@@ -5,6 +5,7 @@ import { DealJourney } from "@/components/ui/deal-journey";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useDeals, useDealsPaginated, useDealAggregates, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, useAdvanceDealStage, type BulkStageUpdateResult } from "@/hooks/use-deals";
+import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -55,7 +56,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, AlertCircle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Undo2, Send, Phone, ArrowRight, EllipsisVertical, ChevronsRight, Archive } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { FirstHelloEmpty } from "@/components/empty-states";
+import { FirstHelloEmpty } from "@/components/empty-state";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
 import type { SavedView } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -128,6 +129,13 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
   const [dealCurrentPage, setDealCurrentPage] = useState(1);
   const [dealPageSize, setDealPageSize] = useState(25);
   const { data: dealsResponse, isLoading, isError, error, refetch } = useDealsPaginated({ page: dealCurrentPage, pageSize: dealPageSize });
+
+  // W2-6: remember the board/list window-scroll offset per route so door
+  // switches reopen at the prior position. Restores once per mount after
+  // the deals query resolves; disabled when embedded in /pipeline, where
+  // several list pages share one route's window scroll.
+  useScrollRestoration(!isLoading, { enabled: !embedded });
+
   const rawDeals = dealsResponse?.data;
   const serverDealTotal = dealsResponse?.total ?? 0;
   const { data: propertiesRaw } = useProperties();

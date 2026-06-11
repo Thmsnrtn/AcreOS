@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -445,8 +446,24 @@ export default function RegulatoryIntelPage() {
         {/* State Profiles */}
         <TabsContent value="states" className="space-y-4">
           {statesLoading ? (
-            <div className="flex justify-center py-12" role="status" aria-label="Loading state regulatory profiles">
-              <Loader2 className="animate-spin text-muted-foreground" aria-hidden="true" />
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3" role="status" aria-live="polite">
+              <span className="sr-only">Loading state regulatory profiles…</span>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Card key={i}>
+                  <CardContent className="pt-4 pb-3 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <Skeleton announce={false} className="h-5 w-28" />
+                      <Skeleton announce={false} className="h-4 w-16" />
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Skeleton announce={false} className="h-5 w-20" />
+                      <Skeleton announce={false} className="h-5 w-24" />
+                      <Skeleton announce={false} className="h-5 w-16" />
+                    </div>
+                    <Skeleton announce={false} className="h-3 w-20" />
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           ) : (
             <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 list-none p-0 m-0" aria-label="State regulatory profiles">
@@ -490,8 +507,17 @@ export default function RegulatoryIntelPage() {
                       <DialogTitle>{state.name} ({state.code}) — regulatory profile</DialogTitle>
                     </DialogHeader>
                     {!stateDetail ? (
-                      <div className="flex justify-center py-8" role="status" aria-label="Loading state details">
-                        <Loader2 className="animate-spin" aria-hidden="true" />
+                      <div className="space-y-4" role="status" aria-live="polite">
+                        <span className="sr-only">Loading state details…</span>
+                        <div className="grid grid-cols-2 gap-3">
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <div key={i} className="space-y-1.5">
+                              <Skeleton announce={false} className="h-3 w-20" />
+                              <Skeleton announce={false} className="h-4 w-24" />
+                            </div>
+                          ))}
+                        </div>
+                        <Skeleton announce={false} className="h-16 w-full" />
                       </div>
                     ) : (
                       <div className="space-y-4 text-sm">

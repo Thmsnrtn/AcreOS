@@ -22,6 +22,7 @@ import {
   DollarSign, Clock, TrendingUp, ArrowUpRight, CheckCircle2,
   Send, Settings, Wallet, FileText,
 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -252,12 +253,14 @@ function SettlementsTab() {
           {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12" />)}
         </div>
       ) : settlements.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Wallet className="w-10 h-10 mx-auto mb-2 text-muted-foreground" aria-hidden="true" />
-            <p className="text-muted-foreground">No settlements found.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          framed
+          icon={Wallet}
+          headline="No settlements found."
+          // TODO(cta): read-only settlement ledger — entries are system-generated
+          cta={{ label: "", _noOp: true }}
+          testId="empty-state-settlements"
+        />
       ) : (
         <div className="rounded-md border" role="region" aria-label="Settlements" tabIndex={0}>
           <Table>
@@ -339,12 +342,14 @@ function LedgerTab() {
           {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12" />)}
         </div>
       ) : entries.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <FileText className="w-10 h-10 mx-auto mb-2 text-muted-foreground" aria-hidden="true" />
-            <p className="text-muted-foreground">No ledger entries yet.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          framed
+          icon={FileText}
+          headline="No ledger entries yet."
+          // TODO(cta): read-only fee ledger — entries are system-generated
+          cta={{ label: "", _noOp: true }}
+          testId="empty-state-fee-ledger"
+        />
       ) : (
         <div className="rounded-md border" role="region" aria-label="Fee ledger" tabIndex={0}>
           <Table>
@@ -595,12 +600,14 @@ function PayoutsTab() {
           {[1,2,3].map(i => <Skeleton key={i} className="h-12" />)}
         </div>
       ) : payouts.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <ArrowUpRight className="w-10 h-10 mx-auto mb-2 text-muted-foreground" aria-hidden="true" />
-            <p className="text-muted-foreground">No payouts yet.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          framed
+          icon={ArrowUpRight}
+          headline="No payouts yet."
+          // TODO(cta): read-only payout ledger — entries are system-generated
+          cta={{ label: "", _noOp: true }}
+          testId="empty-state-payouts"
+        />
       ) : (
         <div className="rounded-md border" role="region" aria-label="Payouts" tabIndex={0}>
           <Table>

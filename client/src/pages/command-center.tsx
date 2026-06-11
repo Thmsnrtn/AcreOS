@@ -2024,8 +2024,14 @@ export default function CommandCenterPage() {
                   <ScrollArea className="flex-1">
                     <div className="p-2 space-y-1" data-testid="list-conversations">
                       {conversationsLoading ? (
-                        <div className="flex items-center justify-center py-8" role="status" aria-label="Loading conversations">
-                          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
+                        <div className="space-y-1 py-1" role="status" aria-busy="true" aria-live="polite">
+                          <span className="sr-only">Loading conversations</span>
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <div key={i} className="p-2 space-y-1.5">
+                              <Skeleton announce={false} className="h-4 w-3/4" />
+                              <Skeleton announce={false} className="h-3 w-1/2" />
+                            </div>
+                          ))}
                         </div>
                       ) : conversations.length === 0 ? (
                         <div className="text-center py-8 text-sm text-muted-foreground">
@@ -2139,8 +2145,12 @@ export default function CommandCenterPage() {
                         )}
                       </div>
                     ) : messagesLoading ? (
-                      <div className="flex items-center justify-center py-20" role="status" aria-label="Loading messages">
-                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+                      <div className="space-y-4 py-4" role="status" aria-busy="true" aria-live="polite">
+                        <span className="sr-only">Loading messages</span>
+                        <Skeleton announce={false} className="h-16 w-3/4" />
+                        <Skeleton announce={false} className="h-12 w-2/3 ml-auto" />
+                        <Skeleton announce={false} className="h-16 w-3/4" />
+                        <Skeleton announce={false} className="h-12 w-1/2 ml-auto" />
                       </div>
                     ) : messages.length === 0 && !streamingContent ? (
                       <div className="flex flex-col items-center justify-center h-64 text-center">

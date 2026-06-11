@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { StatusBadge, type StatusKind } from "@/components/StatusBadge";
+import { EmptyState } from "@/components/empty-state";
+import { PageSkeleton } from "@/components/page-skeleton";
 import type { AbTest, AbTestVariant, Campaign } from "@shared/schema";
 
 type AbTestWithVariants = AbTest & { variants: AbTestVariant[] };
@@ -441,20 +443,18 @@ export function AbTestsContent() {
 
         <TabsContent value="all" className="space-y-4">
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin" />
-            </div>
+            <PageSkeleton variant="table" statCards={0} announceText="Loading A/B tests" />
           ) : abTests?.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <TestTube className="w-12 h-12 mb-4 opacity-50" />
-                <p className="mb-4">No A/B tests created yet</p>
-                <Button onClick={() => setIsCreateDialogOpen(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Your First Test
-                </Button>
-              </CardContent>
-            </Card>
+            <EmptyState
+              framed
+              icon={TestTube}
+              headline="No A/B tests created yet"
+              cta={{
+                label: "Create Your First Test",
+                onClick: () => setIsCreateDialogOpen(true),
+              }}
+              testId="empty-state-ab-tests"
+            />
           ) : (
             <TestTable
               tests={abTests || []}

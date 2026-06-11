@@ -15,6 +15,7 @@ import {
 } from "@/hooks/use-due-diligence";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { GlossaryTerm } from "@/components/Glossary";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -171,9 +172,15 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
   if (isLoading) {
     return (
       <Card data-testid="due-diligence-panel">
-        <CardContent className="py-8 flex justify-center" role="status" aria-busy="true" aria-label="Loading due-diligence checklist">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
-          <span className="sr-only">Loading…</span>
+        <CardContent className="py-6 space-y-3" role="status" aria-busy="true" aria-live="polite">
+          <span className="sr-only">Loading due-diligence checklist</span>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton announce={false} className="h-5 w-5 rounded-sm shrink-0" />
+              <Skeleton announce={false} className="h-4 flex-1 max-w-72" />
+              <Skeleton announce={false} className="h-5 w-20 shrink-0 ml-auto rounded-full" />
+            </div>
+          ))}
         </CardContent>
       </Card>
     );

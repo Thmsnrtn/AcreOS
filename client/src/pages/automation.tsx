@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -538,11 +539,26 @@ export default function AutomationPage() {
 
           <TabsContent value="rules" className="space-y-4">
             {isLoading ? (
-              <Card>
-                <CardContent className="flex items-center justify-center py-12" role="status" aria-label="Loading automation rules">
-                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" aria-hidden="true" />
-                </CardContent>
-              </Card>
+              <div className="grid gap-4" role="status" aria-busy="true" aria-live="polite">
+                <span className="sr-only">Loading automation rules</span>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Skeleton announce={false} className="h-5 w-40" />
+                            <Skeleton announce={false} className="h-5 w-14" />
+                          </div>
+                          <Skeleton announce={false} className="h-4 w-2/3 max-w-md" />
+                          <Skeleton announce={false} className="h-4 w-48" />
+                        </div>
+                        <Skeleton announce={false} className="h-6 w-11 rounded-full" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             ) : rules && rules.length > 0 ? (
               <ul className="grid gap-4 list-none p-0 m-0" aria-label="Your automation rules">
                 {rules.map((rule) => {

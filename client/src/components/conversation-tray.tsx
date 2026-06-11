@@ -11,6 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   MessageCircle, 
   Send, 
@@ -104,14 +105,17 @@ function ConversationList({
 
   if (isLoading) {
     return (
-      <div
-        role="status"
-        aria-busy="true"
-        aria-label="Loading conversation"
-        className="flex items-center justify-center h-40"
-      >
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
-        <span className="sr-only">Loading…</span>
+      <div role="status" aria-busy="true" aria-live="polite" className="p-3 space-y-2">
+        <span className="sr-only">Loading conversation</span>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 p-2">
+            <Skeleton announce={false} className="h-9 w-9 rounded-full shrink-0" />
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <Skeleton announce={false} className="h-4 w-1/2 max-w-40" />
+              <Skeleton announce={false} className="h-3 w-3/4 max-w-56" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -348,9 +352,11 @@ function ChatView({
 
       <ScrollArea className="flex-1 p-3">
         {isLoadingMessages ? (
-          <div className="flex items-center justify-center h-20" role="status" aria-busy="true" aria-label="Loading messages">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
-            <span className="sr-only">Loading messages…</span>
+          <div role="status" aria-busy="true" aria-live="polite" className="space-y-3">
+            <span className="sr-only">Loading messages</span>
+            <Skeleton announce={false} className="h-10 w-2/3 rounded-lg" />
+            <Skeleton announce={false} className="h-10 w-1/2 rounded-lg ml-auto" />
+            <Skeleton announce={false} className="h-10 w-3/5 rounded-lg" />
           </div>
         ) : sortedMessages.length === 0 ? (
           <div className="flex items-center justify-center h-20 text-muted-foreground" role="status">
@@ -520,9 +526,17 @@ function ConversationTrayContent({ onClose }: { onClose?: () => void }) {
 
   if (isSeatInfoLoading) {
     return (
-      <div className="flex items-center justify-center h-64" role="status" aria-busy="true" aria-label="Loading messaging settings">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
-        <span className="sr-only">Loading…</span>
+      <div role="status" aria-busy="true" aria-live="polite" className="p-3 space-y-2">
+        <span className="sr-only">Loading messaging settings</span>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 p-2">
+            <Skeleton announce={false} className="h-9 w-9 rounded-full shrink-0" />
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <Skeleton announce={false} className="h-4 w-1/2 max-w-40" />
+              <Skeleton announce={false} className="h-3 w-3/4 max-w-56" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }

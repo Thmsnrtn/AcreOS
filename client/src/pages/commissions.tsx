@@ -48,8 +48,8 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  Loader2,
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 
 interface CommissionTier {
@@ -447,8 +447,20 @@ export default function CommissionsPage() {
 
           <TabsContent value="agents" className="mt-4">
             {isLoading ? (
-              <div className="flex justify-center py-12" role="status" aria-label="Loading agent summaries">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4" role="status" aria-busy="true" aria-live="polite">
+                <span className="sr-only">Loading agent summaries</span>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i}>
+                    <CardHeader className="pb-2">
+                      <Skeleton announce={false} className="h-5 w-32" />
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <Skeleton announce={false} className="h-8 w-24" />
+                      <Skeleton announce={false} className="h-4 w-full" />
+                      <Skeleton announce={false} className="h-4 w-2/3" />
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             ) : safeSummaries.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
@@ -584,8 +596,16 @@ export default function CommissionsPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="flex justify-center py-8" role="status" aria-label="Loading tier configuration">
-                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
+                  <div className="space-y-3" role="status" aria-busy="true" aria-live="polite">
+                    <span className="sr-only">Loading tier configuration</span>
+                    <Skeleton announce={false} className="h-4 w-48" />
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="flex items-center gap-4">
+                        <Skeleton announce={false} className="h-4 w-32" />
+                        <Skeleton announce={false} className="h-4 w-20" />
+                        <Skeleton announce={false} className="h-4 w-16" />
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>

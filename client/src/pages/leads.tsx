@@ -7,6 +7,7 @@ import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useLeads, useLeadsPaginated, useCreateLead, useUpdateLead, useDeleteLead, useRescoreLead } from "@/hooks/use-leads";
+import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { useProperties } from "@/hooks/use-properties";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -82,7 +83,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield, CheckSquare, RefreshCw, TrendingUp, TrendingDown, Minus, History, Filter, ChevronDown, MoreVertical } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-states";
+import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -1029,6 +1030,12 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
   const leads = leadsResponse?.data;
   const serverTotal = leadsResponse?.total ?? 0;
   const serverTotalPages = leadsResponse?.totalPages ?? 1;
+
+  // W2-6: remember the list's window-scroll offset per route so door
+  // switches reopen at the prior position. Restores only once the rows can
+  // render (ContentReveal gates on !isLoading too); disabled when embedded
+  // in /pipeline, where several list pages share one route's window scroll.
+  useScrollRestoration(!isLoading, { enabled: !embedded });
 
   const filteredLeads = useMemo(() => {
     if (!leads) return [];

@@ -10,6 +10,7 @@ import {
   AlertTriangle, AlertCircle, Info, RefreshCw, X, Loader2, ShieldCheck
 } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface PortfolioAlert {
   id: number;
@@ -176,8 +177,20 @@ export default function PortfolioHealthPage() {
       </dl>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading alerts…
+        <div className="space-y-3" role="status" aria-live="polite">
+          <span className="sr-only">Loading alerts…</span>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4 flex items-start gap-3">
+                <Skeleton announce={false} className="h-5 w-5 rounded-full shrink-0" />
+                <div className="flex-1 min-w-0 space-y-2">
+                  <Skeleton announce={false} className="h-4 w-1/3 max-w-56" />
+                  <Skeleton announce={false} className="h-3 w-2/3 max-w-96" />
+                </div>
+                <Skeleton announce={false} className="h-6 w-16 shrink-0" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       ) : alerts.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center" role="status" aria-live="polite">

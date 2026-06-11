@@ -26,7 +26,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye, TestTube, Zap, AlertTriangle, DollarSign, Loader2, Lightbulb, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ListSkeleton } from "@/components/list-skeleton";
-import { FirstHelloEmpty } from "@/components/empty-states";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FirstHelloEmpty } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -349,9 +350,10 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
       {expanded && (
         <CardContent id={suggestionsRegionId} className="pt-0 space-y-3">
           {isLoading && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-              Loading suggestions…
+            <div role="status" aria-busy="true" aria-live="polite" className="space-y-2 py-2">
+              <span className="sr-only">Loading suggestions</span>
+              <Skeleton announce={false} className="h-4 w-3/4" />
+              <Skeleton announce={false} className="h-4 w-1/2" />
             </div>
           )}
 

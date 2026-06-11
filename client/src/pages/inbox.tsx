@@ -5,8 +5,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest, fetchJsonArray } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { InboxMessage, Lead, Conversation, Message } from "@shared/schema";
 import { format, isToday, isThisWeek } from "date-fns";
@@ -20,8 +21,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
-import { EmptyState } from "@/components/empty-state";
-import { ClearedEmpty, EmptyFilter } from "@/components/empty-states";
+import { EmptyState, ClearedEmpty, EmptyFilter } from "@/components/empty-state";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { ContentReveal } from "@/components/ContentReveal";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -986,6 +986,13 @@ export default function InboxPage() {
   const unreadCount = unreadCountData?.count ?? 0;
   const isLoading = isLoadingEmail || isLoadingSms;
 
+  // W2-6: the inbox page itself is height-locked (`main` is h-[100dvh]) —
+  // the message LIST scrolls inside a Radix ScrollArea. The ref sits on the
+  // stable list-column wrapper (the ScrollArea remounts across empty/error/
+  // filter states); the hook resolves the viewport beneath it at read time.
+  const listColumnRef = useRef<HTMLDivElement>(null);
+  useScrollRestoration(!isLoading, { containerRef: listColumnRef });
+
   // Surface a recoverable error only when a query that actually feeds the
   // current channel view fails — so an SMS-only failure doesn't blank the
   // Email tab, and vice versa.
@@ -1294,7 +1301,7 @@ export default function InboxPage() {
         )}
 
         <div className="flex-1 flex overflow-hidden">
-          <div className={`${selectedItem ? "hidden md:block" : ""} w-full md:w-96 border-r overflow-hidden flex flex-col`}>
+          <div ref={listColumnRef} className={`${selectedItem ? "hidden md:block" : ""} w-full md:w-96 border-r overflow-hidden flex flex-col`}>
             <ContentReveal
               ready={!isLoading}
               skeleton={<ListSkeleton count={5} />}
