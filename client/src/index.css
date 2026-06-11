@@ -1199,6 +1199,19 @@
   html {
     -webkit-tap-highlight-color: transparent;
   }
+  /* The fixed mobile bottom nav (72px + safe-area, md:hidden) overlays the
+     bottom edge of the scroll viewport. Without scroll padding, any
+     programmatic scroll that parks a target at the bottom edge — keyboard
+     focus scrolling, in-page anchor jumps, scrollIntoView — leaves the
+     target UNDER the nav, which then intercepts the tap (seen live: the
+     nav's "More" chip swallowing the Pax settings-gear click on iphone-se,
+     E2E run 27330994449). Gated to the nav's own breakpoint so desktop
+     keeps edge-to-edge scroll behavior. */
+  @media (max-width: 767px) {
+    html {
+      scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    }
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);

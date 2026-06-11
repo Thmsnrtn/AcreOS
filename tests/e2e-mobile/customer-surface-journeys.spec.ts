@@ -324,6 +324,28 @@ async function checkpoint(
     await scanLightModeArtifacts(page, testInfo, meta, stepName);
   }
 
+  // Blank-screen detector: bounded wait, then the hard assertion.
+  //
+  // The probe used to fire ONCE, POST_NAV_SETTLE_MS (800ms) after
+  // domcontentloaded. On a cold loaded CI runner the first door after login
+  // (j1-today) is still on its skeleton pass at that instant — Skeleton
+  // blocks render no innerText, so the probe read ~33 chars (the bottom
+  // nav) and fast-failed. 2026-06-11 run 27330994449: hard fail iphone-14 +
+  // flaky-pass iphone-se/14-pro-max/ipad-mini, all at j1-today, all
+  // innerText==33 — the page rendered fine on retry, so "never renders"
+  // (the target regression) was not what fired. Same class of bug as the
+  // theme-contract stylesheet race fixed in 56ccfdd4: one-shot probe racing
+  // a slow first paint. The bounded wait below absorbs slow-loading
+  // windows; a page that genuinely never renders content still fails the
+  // same assertion with the same message at the deadline.
+  await page
+    .waitForFunction(
+      (minLen) =>
+        (document.body?.innerText || "").trim().length > minLen,
+      MIN_BODY_TEXT_LEN,
+      { timeout: 10_000 },
+    )
+    .catch(() => {});
   const bodyTextLen = await probeEvaluate(
     page,
     () => (document.body?.innerText || "").trim().length,
