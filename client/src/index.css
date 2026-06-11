@@ -1776,14 +1776,30 @@ body[data-offline-banner="true"] [data-page-topbar] {
    element, which makes the first tap a "maybe a zoom gesture" no-op and forces
    a second tap to navigate/activate. `manipulation` keeps pan + pinch-zoom but
    drops the double-tap-zoom + its ~300ms delay, so links/buttons fire on the
-   first tap. Scoped to interactive elements so content (maps, etc.) keep their
-   own gestures. */
+   first tap.
+   This list MUST cover everything the user can tap — the earlier
+   role-only scoping missed the bulk of the app's navigable surfaces, which are
+   clickable DIVs/cards/rows (onClick handlers, no ARIA role). Those are caught
+   here by `.cursor-pointer` (the clickable affordance, 106+ files) and
+   `[tabindex]` (focusable interactives), plus the remaining interactive roles.
+   The map canvas keeps its own double-tap-zoom: it sets touch-action inline and
+   carries no `.cursor-pointer`/role from this list, so it is not matched. */
 a,
 button,
 [role="button"],
 [role="link"],
 [role="tab"],
 [role="menuitem"],
+[role="menuitemcheckbox"],
+[role="menuitemradio"],
+[role="option"],
+[role="switch"],
+[role="checkbox"],
+[role="radio"],
+[role="treeitem"],
+[role="gridcell"],
+.cursor-pointer,
+[tabindex],
 label,
 summary,
 select,
