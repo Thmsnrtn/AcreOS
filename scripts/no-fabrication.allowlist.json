@@ -261,9 +261,9 @@
     },
     {
       "file": "server/storage.ts",
-      "line": 3009,
+      "line": 3007,
       "category": "id",
-      "note": "Random referral/invite code character — entropy for a human-typeable code."
+      "note": "Random CAMP- campaign code character — entropy for a human-typeable code. (Line shifted 3009→3007 when auditRepo methods were extracted from the god-class, 3E Phase 1.)"
     }
   ]
 }

@@ -157,6 +157,18 @@ function countInFile(relPath, regex) {
   return { count, examples };
 }
 
+// mode "lineCount": the per-file count is the file's newline count (matches
+// `wc -l`), not regex matches. Used to ratchet a god-file's size DOWN as it is
+// progressively split into mixin repos. No comment-skipping (every line counts).
+function lineCountInFile(relPath) {
+  const text = readFileSync(join(REPO_ROOT, relPath), "utf8");
+  let count = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\n") count++;
+  }
+  return { count, examples: [`${relPath}:${count}`] };
+}
+
 // ----------------------------------------------------------------------------
 // Config loading + evaluation
 // ----------------------------------------------------------------------------
@@ -176,7 +188,11 @@ function loadConfigs() {
       console.error(`[ratchet] ${entry} is not valid JSON: ${err.message}`);
       process.exit(1);
     }
-    for (const field of ["name", "pattern", "globs", "baselineCount", "direction"]) {
+    // "pattern" is required for the default (regex-match) mode but irrelevant
+    // for mode "lineCount", which counts the file's newlines instead.
+    const required = ["name", "globs", "baselineCount", "direction"];
+    if (cfg.mode !== "lineCount") required.push("pattern");
+    for (const field of required) {
       if (cfg[field] === undefined) {
         console.error(`[ratchet] ${entry} missing required field "${field}"`);
         process.exit(1);
@@ -199,12 +215,15 @@ function loadConfigs() {
 }
 
 function evaluate(cfg) {
-  const regex = new RegExp(cfg.pattern, cfg.flags ?? "g");
+  const lineCountMode = cfg.mode === "lineCount";
+  const regex = lineCountMode ? null : new RegExp(cfg.pattern, cfg.flags ?? "g");
   const files = matchFiles(cfg.globs, cfg.exclude);
   let total = 0;
   let newExamples = [];
   for (const rel of files) {
-    const { count, examples } = countInFile(rel, regex);
+    const { count, examples } = lineCountMode
+      ? lineCountInFile(rel)
+      : countInFile(rel, regex);
     total += count;
     if (examples.length && newExamples.length < 10) {
       newExamples = newExamples.concat(examples).slice(0, 10);
@@ -238,9 +257,11 @@ function main() {
       );
     } else if (total > base) {
       failed = true;
+      const unit =
+        cfg.mode === "lineCount" ? "line(s)" : `occurrence(s) of /${cfg.pattern}/`;
       console.error(
         `[ratchet] ${cfg.name}: FAIL — ${total} > baseline ${base} ` +
-          `(+${total - base} new occurrence(s) of /${cfg.pattern}/).`,
+          `(+${total - base} new ${unit}).`,
       );
       console.error(
         `  Fix the new occurrence(s) instead of raising the baseline` +
