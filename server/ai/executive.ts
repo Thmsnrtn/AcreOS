@@ -29,11 +29,15 @@ import { logger } from "../utils/logger";
 import { sanitizePrompt } from "../middleware/promptInjection";
 import { composePaxSystemPrompt, type PaxPromptVersion } from "./paxPromptVersions";
 import { validatePaxResponse } from "../utils/validatePaxResponse";
-import { pickPaxModelForOrg } from "../services/paxModelTier";
+import { pickPaxModelForOrg, type PaxModelChoice } from "../services/paxModelTier";
 // Tahoe Andrei (#7): cost-aware task-type model routing (distinct from the
 // subscription-tier router above — this clamps the tier ceiling DOWN to the
 // cheapest eval-green model for the turn type).
 import { routePaxModelForTurn } from "./paxModelTier";
+// T3-3D sub-item 6 — unified model resolver, wired in SHADOW MODE. resolveModel
+// composes the same routing axes used above and emits a decisionTrace for later
+// reconciliation; the EXISTING selection above remains the live decider.
+import { resolveModel } from "../services/modelRouter";
 import { predictCostCents, computeCostUsd } from "../services/aiCostRates";
 import { evaluateLivePaxOutput } from "../services/aiEvalHarness";
 
@@ -251,6 +255,68 @@ function getChatProviderAndModel(complexity: TaskComplexity): { client: OpenAI; 
   } catch (error: any) {
     logger.error('[AI Chat] Failed to get AI provider', error);
     throw new Error("AI service not available. Please check configuration.");
+  }
+}
+
+/**
+ * T3-3D sub-item 6 — SHADOW-MODE model-resolution probe.
+ *
+ * Runs the unified `resolveModel` alongside the live selection and emits its
+ * `decisionTrace` (tagged `model_decision_trace`) for later reconciliation. The
+ * EXISTING `liveModel` passed in remains the decider — this function NEVER
+ * changes which model runs. It can only log. In dev/test it additionally warns
+ * when resolveModel's model disagrees with the live path. Every failure is
+ * swallowed: a shadow probe must never affect a customer turn.
+ */
+async function shadowResolveModel(args: {
+  organizationId: number;
+  paxChoice: PaxModelChoice;
+  complexity: TaskComplexity;
+  taskType: string;
+  userText: string;
+  surface: string;
+  liveModel: string;
+}): Promise<void> {
+  try {
+    const shadow = await resolveModel({
+      organizationId: args.organizationId,
+      paxChoice: args.paxChoice,
+      complexity: args.complexity,
+      taskType: args.taskType,
+      userText: args.userText,
+      surface: args.surface,
+    });
+    const agrees = shadow.model === args.liveModel;
+    logger.info("[pax] model_decision_trace", {
+      source: "pax.modelRouter.shadow",
+      metadata: {
+        organizationId: args.organizationId,
+        surface: args.surface,
+        liveModel: args.liveModel,
+        shadowModel: shadow.model,
+        agrees,
+        decisionTrace: shadow.decisionTrace,
+      },
+    });
+    if (!agrees && process.env.NODE_ENV !== "production") {
+      logger.warn(
+        "[pax] model_decision_trace DISAGREEMENT (shadow ≠ live; live still decides)",
+        {
+          source: "pax.modelRouter.shadow",
+          metadata: {
+            surface: args.surface,
+            liveModel: args.liveModel,
+            shadowModel: shadow.model,
+          },
+        },
+      );
+    }
+  } catch (err) {
+    // Shadow probe is best-effort; never let it touch the live turn.
+    logger.warn("[pax] model_decision_trace probe failed (swallowed)", {
+      source: "pax.modelRouter.shadow",
+      metadata: { detail: err instanceof Error ? err.message : String(err) },
+    });
   }
 }
 
@@ -1216,6 +1282,21 @@ export async function processChat(
     throw new Error("AI service temporarily unavailable. Please try again.");
   }
 
+  // T3-3D sub-item 6 — SHADOW-MODE only. Emit the unified resolveModel trace
+  // alongside the live `model` decided above. The live `model` is UNCHANGED —
+  // this never reassigns it; it only logs the trace + any disagreement. Run
+  // before BYOK so the trace reflects the platform routing decision (BYOK is a
+  // client/model-id remap layered on top of the same routing choice).
+  void shadowResolveModel({
+    organizationId: org.id,
+    paxChoice,
+    complexity,
+    taskType: "pax_chat",
+    userText: message,
+    surface: "processChat",
+    liveModel: model,
+  });
+
   // Tier 1I — BYOK routing. If the org holds an active AI key, route this
   // turn through THEIR provider (their spend, $0 platform COGS) instead of
   // the platform key. Resolution failure falls back to platform routing —
@@ -1641,6 +1722,19 @@ export async function* processChatStream(
     yield { type: "error", content: "AI service temporarily unavailable. Please try again." };
     return;
   }
+
+  // T3-3D sub-item 6 — SHADOW-MODE only (parity with processChat). Emits the
+  // unified resolveModel trace alongside the live `model`; the live `model`
+  // remains the decider and is never reassigned here.
+  void shadowResolveModel({
+    organizationId: org.id,
+    paxChoice,
+    complexity,
+    taskType: "pax_chat",
+    userText: message,
+    surface: "processChatStream",
+    liveModel: model,
+  });
 
   // Tier 1I — BYOK routing (parity with processChat). Org's own AI key
   // serves the turn: their spend, $0 platform COGS. Fall back to platform
