@@ -21,6 +21,8 @@ import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type Expor
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { assertUserIsOrgMember } from "./utils/orgScope";
+import { createLeadContract } from "@shared/contracts";
+import { validateResponse } from "./utils/contractResponse";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 
 // Partial update schema for PUT endpoints
@@ -410,7 +412,21 @@ export function registerLeadRoutes(app: Express): void {
         });
       }
       
-      const input = insertLeadSchema.parse({ ...req.body, organizationId: org.id });
+      // T3-3E Phase 3 — contract request validation. `leadCreateRequestSchema`
+      // is `insertLeadSchema.passthrough()`, so this is the canonical insert
+      // parse PLUS the transport-only extras the handler reads later
+      // (latitude/longitude for enrichment, consentText/pageUrl for the TCPA
+      // evidence chain). organizationId is attached from the authed org, not
+      // the wire body. On failure → 422 via Errors.validationFailed.
+      const parsedBody = createLeadContract.requestSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        return Errors.validationFailed(res, parsedBody.error.issues);
+      }
+      const input = parsedBody.data as typeof parsedBody.data & {
+        organizationId?: number;
+        assignedTo?: number | null;
+        state?: string | null;
+      };
 
       // Lens 48 — assignedTo from body must point at an active member
       // of the requesting org. Otherwise an attacker can create a lead
@@ -609,7 +625,18 @@ export function registerLeadRoutes(app: Express): void {
         })();
       }
 
-      res.status(201).json(lead);
+      // T3-3E Phase 3 — contract response validation. dev/test throws on a
+      // drift between this handler and the contract; prod warns + sends the
+      // payload unchanged. Does NOT alter the response shape.
+      res
+        .status(201)
+        .json(
+          validateResponse(
+            createLeadContract.responseSchema,
+            lead,
+            "POST /api/leads",
+          ),
+        );
     } catch (err) {
       if (err instanceof z.ZodError) {
         return Errors.badRequest(res, "Validation failed", err.issues.map(e => ({ field: e.path.join('.'), message: e.message })));

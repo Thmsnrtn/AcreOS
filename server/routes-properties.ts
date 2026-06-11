@@ -12,6 +12,8 @@ import { recordParcelObservations } from "./services/data-cache/observation-log"
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
+import { listPropertiesContract } from "@shared/contracts";
+import { validateResponse } from "./utils/contractResponse";
 import { compsGuard } from "./middleware/expensiveEndpointGuard";
 
 // Partial update schema for PUT endpoints.
@@ -133,13 +135,21 @@ export function registerPropertyRoutes(app: Express): void {
 
     const result = await storage.getPropertiesPaginated(org.id, { page, pageSize, sortBy, sortOrder });
 
-    res.json({
-      data: result.data,
-      total: result.total,
-      page: result.page,
-      pageSize: result.pageSize,
-      totalPages: result.totalPages,
-    });
+    // T3-3E Phase 3 — contract response validation. dev/test throws on drift,
+    // prod warns + sends unchanged. Same envelope shape as before.
+    res.json(
+      validateResponse(
+        listPropertiesContract.responseSchema,
+        {
+          data: result.data,
+          total: result.total,
+          page: result.page,
+          pageSize: result.pageSize,
+          totalPages: result.totalPages,
+        },
+        "GET /api/properties",
+      ),
+    );
   });
   
   // STR-023: GET /api/properties/by-location — registered BEFORE /:id so

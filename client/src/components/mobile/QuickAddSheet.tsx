@@ -53,6 +53,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiRequest, fetchJsonArray } from "@/lib/queryClient";
+import { contractRequest, contractQueryFn } from "@/lib/contractFetch";
+import { createLeadContract, listPropertiesContract } from "@shared/contracts";
 import { useToast } from "@/hooks/use-toast";
 import type { Persona } from "@shared/models/auth";
 
@@ -171,7 +173,10 @@ function LeadForm({ onDone }: { onDone: () => void }) {
 
   const mut = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/leads", {
+      // T3-3E Phase 3 — POST /api/leads through the shared contract:
+      // validates the response against `createLeadContract.responseSchema`
+      // (same zod the server validates with).
+      return contractRequest(createLeadContract, {
         firstName: firstName.trim() || "Unknown",
         lastName: lastName.trim() || "",
         phone: phone.trim() || undefined,
@@ -180,7 +185,6 @@ function LeadForm({ onDone }: { onDone: () => void }) {
         type: "seller",
         status: "new",
       });
-      return res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/leads"] });
@@ -470,11 +474,17 @@ interface Property {
 function MaintenanceForm({ onDone }: { onDone: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: properties = [], isLoading: propsLoading } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
-    queryFn: () => fetchJsonArray<Property>("/api/properties?pageSize=100"),
+  // T3-3E Phase 3 — GET /api/properties through the shared contract. The
+  // contract validates the full paginated envelope against
+  // `listPropertiesContract.responseSchema`; we then extract `.data` for the
+  // array this form consumes. queryFn fetches the bare path (the contract
+  // codifies /api/properties); pageSize is passed via the query key path.
+  const { data: propertiesEnvelope, isLoading: propsLoading } = useQuery({
+    queryKey: ["/api/properties?pageSize=100"],
+    queryFn: contractQueryFn(listPropertiesContract),
     staleTime: 60_000,
   });
+  const properties = (propertiesEnvelope?.data ?? []) as unknown as Property[];
 
   const [propertyId, setPropertyId] = useState<string>("");
   const [title, setTitle] = useState("");

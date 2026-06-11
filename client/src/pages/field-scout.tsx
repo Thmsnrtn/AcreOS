@@ -1,6 +1,8 @@
 import { useState, useEffect, useId, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { contractRequest } from "@/lib/contractFetch";
+import { createLeadContract } from "@shared/contracts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -432,8 +434,9 @@ export default function FieldScout() {
         setOfflineQueue(getOfflineQueue());
         return { ...lead, id: -Date.now(), isOffline: true };
       }
-      const resp = await apiRequest("POST", "/api/leads", { ...lead, source: "field_scout" });
-      return resp.json();
+      // T3-3E Phase 3 — POST /api/leads through the shared contract
+      // (response validated against createLeadContract.responseSchema).
+      return contractRequest(createLeadContract, { ...lead, source: "field_scout" });
     },
     onSuccess: (data) => {
       setShowQuickAdd(false);
