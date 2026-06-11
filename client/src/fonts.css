@@ -13,7 +13,7 @@
  *   modern    · Inter Tight (display) + Inter (body) + JetBrains Mono
  *   classic   · Source Serif 4 (display) + Inter (body) + JetBrains Mono
  *               (Source Serif 4 substituted for Charter at B.3 — JUDGMENT-CALLS.md B.3.1)
- *   native    · system stack only — no @font-face, zero font load
+ *   native    · system stack only — no @font-face, zero font load (opt-in)
  *   refined   · Newsreader (display) + Inter (body) + JetBrains Mono
  *
  * Imported BEFORE client/src/index.css in main.tsx so pairing variables
@@ -105,7 +105,16 @@
  * stack baked into each var. Zero font load.
  */
 
+:root,
 [data-font-pairing="editorial"]:root {
+  /* Default pairing — `editorial` (Fraunces display + Inter body), the
+   * brand-preferred editorial-mechanical identity (Phase 2 Wave F,
+   * founder-decided 2026-06-11). A fresh load — before theme-context.tsx sets
+   * [data-font-pairing] — resolves here, so headings show the Fraunces serif
+   * immediately. Fraunces/Inter use font-display: swap above, so the cold
+   * path is CLS-safe: text paints in the fallback stack, then swaps to the
+   * loaded face. Matches DEFAULT_CONFIG in theme-context.tsx and
+   * DEFAULT_PREFERENCES in server/routes-preferences.ts. */
   --font-display: "Fraunces", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, serif;
   --font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   --font-serif:   "Fraunces", "Times New Roman", Georgia, serif;
@@ -126,11 +135,12 @@
   --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 }
 
-:root,
 [data-font-pairing="native"]:root {
   /* Pure system stack — zero @font-face references, zero font load.
    * Apple platforms get SF Pro Display/Text/Mono; everywhere else
-   * falls through to the next available family. Default pairing. */
+   * falls through to the next available family. Opt-in (no longer the
+   * default — editorial is, see the :root block above); applies only when
+   * the user explicitly selects `native`. */
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
   --font-sans:    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   --font-serif:   ui-serif, "Times New Roman", Georgia, serif;

@@ -145,15 +145,28 @@ spring) · parcel slide-over reveal · deal-closed celebration.
 2. **Glass/depth commitment** — ✅ DECIDED 2026-06-11: **make liquid-glass/depth
    the systematic house language.** Tokenize translucency + z-index so depth is
    coherent everywhere; AcreOS commits to being a Tahoe-depth product.
-3. **Theme count at launch** — 6 themes × 2 modes = 12 QA surfaces/component.
-   Restrict to 2–3 customer-facing at launch?
-4. **Default font pairing** — code defaults to `native`; brand-preferred is
-   `editorial` (Fraunces). Ship which? (Kai recommended editorial.)
-5. **Storybook vs CI-ratchet** — a living browsable reference (ongoing cost) vs a
-   token-lint CI ratchet (enforcement, no catalog). Given the team's ratchet
-   pattern, the latter likely fits better.
-6. **Doc reconciliation** — bless SYSTEM-V1 as canonical + auto-generate/retire
-   the stale DESIGN-SYSTEM.md, or merge both into the new spec.
+3. **Theme count at launch** — ✅ DECIDED 2026-06-11: **focus 2–3 flagship themes**
+   for the re-skin (design + QA to the full bar); the other themes stay available
+   but flagged experimental/extended. Keeps re-skin QA tractable.
+4. **Default font pairing** — ✅ DECIDED 2026-06-11: **ship `editorial` (Fraunces)**
+   as the default — the brand-preferred editorial-mechanical identity. (Was
+   `native`.) Users can still switch among the 5 pairings.
+5. **Storybook vs CI-ratchet** — ✅ DECIDED (default): **CI-ratchet** (the team's
+   established enforcement pattern; no ongoing catalog cost). The hex/hover/
+   date-format/zindex/translucency lints already form this layer.
+6. **Doc reconciliation** — ✅ DECIDED (default): **bless SYSTEM-V1 as canonical**,
+   fold it + the new scales into `docs/design/design-language.md`, supersede the
+   stale DESIGN-SYSTEM.md.
+
+## Phase 2 progress
+- **Wave F (foundation):** F1 z-index ✅ (0652e326), F2 translucency ✅ (67e91c38) —
+  both behavior-identical token migrations, ratchet-locked. F3 spacing folds into
+  the canonical spec (Tailwind scale already coherent; gap is documentation). F4
+  canonical `design-language.md` + editorial-default font flip = in progress.
+- **Wave R (bold re-skin):** next — systematic glass/depth + editorial identity
+  against the 2–3 flagship themes, surface by surface, ratcheted convergence.
+- **Wave S (signature moments):** witnessed-send ceremony · Today done-beat ·
+  parcel reveal · deal-closed celebration.
 
 None block Phase 1.5 (the date-format 30→0 migration) — that proceeds on the
 established idiom regardless.

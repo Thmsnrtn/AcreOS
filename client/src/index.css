@@ -106,7 +106,7 @@
      the ROLE a surface plays, not by a raw `/NN` opacity number. Call
      sites say `bg-surface-chrome`, never `bg-background/95`; the
      `.surface-*` utility classes (defined with the elevation utilities
-     below) resolve to these vars. The `bg-*/NN` value each token
+     below) resolve to these vars. The `bg-…/NN` value each token
      replaces is noted so the migration stays behavior-identical.
 
        --surface-chrome   hsl(bg / .95)  glass chrome: topbars, navs, the
@@ -1407,7 +1407,7 @@
    house language. Each class sets only `background-color` from the
    matching `--surface-*` var, so it composes with the existing
    `backdrop-blur*` / border / shadow utilities exactly as the raw
-   `bg-*/NN` modifier it replaces did (behavior-identical migration).
+   `bg-…/NN` modifier it replaces did (behavior-identical migration).
    Use the ROLE, not a number: chrome (95) for primary glass chrome,
    haze (90) for canvas-overlay chrome, veil (80) for secondary sticky
    chrome, sheer (70) for the lightest content veils, and the scrim

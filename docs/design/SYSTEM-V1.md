@@ -1,3 +1,11 @@
+> **⚠️ SUPERSEDED (2026-06-11) by [`docs/design/design-language.md`](./design-language.md).**
+> That document is now the single canonical, code-synced source of truth — it
+> blesses + folds in this spec (typography §1.2, motion §2, color §3, components
+> §4) and adds the three green-field scales (spacing/grid, z-index, translucency),
+> the flagship-theme decision, the editorial-default font flip, and the
+> ratchet-enforcement layer. This file is preserved as history; when it disagrees
+> with `design-language.md`, that file wins. Do not edit this as authoritative.
+
 # AcreOS Design System V1
 *Kai Brennan, Principal Designer — 2026-06-01*
 *Aligned with: Iris Yamamoto (CTO), Thomas Norton (Founder)*

@@ -40,7 +40,13 @@ function getInitialMotion(): MotionPreference {
 const DEFAULT_CONFIG: ThemeConfig = {
   theme: "bedrock",
   mode: "auto",
-  fontPairing: "native",
+  // Brand default is `editorial` (Fraunces display + Inter body) — the
+  // editorial-mechanical identity (Phase 2 Wave F, founder-decided 2026-06-11).
+  // Matches the server-side DEFAULT_PREFERENCES (routes-preferences.ts) so a
+  // fresh client and a fresh server-synced account resolve to the same pairing.
+  // Fraunces is self-hosted (fonts.css) with font-display: swap, so the cold
+  // path stays CLS-safe. Users can still switch among all five pairings.
+  fontPairing: "editorial",
   density: "adaptive",
   motion: "full",
 };

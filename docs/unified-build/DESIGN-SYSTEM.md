@@ -1,5 +1,11 @@
 # AcreOS Design System (post-unified-build)
 
+> **⚠️ SUPERSEDED (2026-06-11) by [`docs/design/design-language.md`](../design/design-language.md).**
+> That document is the single canonical, code-synced design source of truth. The
+> Voice section here was ported into it (§6); its token tables are stale (theme
+> count + hex values drifted from `index.css`) — use `design-language.md` and the
+> live token files. Preserved as history; do not edit as authoritative.
+
 > Quick-reference for engineers extending AcreOS surfaces. Tokens, components, patterns, voice. The detailed origin story is in `COMPLETE.md`.
 
 ---
