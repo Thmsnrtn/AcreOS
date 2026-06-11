@@ -2,9 +2,14 @@
  * Global setup for the mobile E2E suite.
  *
  * Runs once before the suite. Pushes the Drizzle schema to the (CI or local)
- * Postgres in DATABASE_URL and seeds a single test user + org so the
- * test-auth bypass (server/auth/testAuth.ts) resolves to a real, onboarded
- * account. Idempotent — safe to re-run against an existing DB.
+ * Postgres in DATABASE_URL and seeds TWO test identities so the test-auth
+ * bypass (server/auth/testAuth.ts) resolves to real, onboarded accounts:
+ *   - customer:  e2e_test_user    / e2e@acreos.test         (any cookie value)
+ *   - founder:   e2e_founder_user / founder-e2e@acreos.test (cookie "e2e-founder")
+ * The workflow points FOUNDER_EMAIL/FOUNDER_EMAILS at the founder email ONLY,
+ * so the customer identity is genuinely a non-founder — pax-founder-gate's
+ * leak assertions and founder-positive specs can both run in one job.
+ * Idempotent — safe to re-run against an existing DB.
  *
  * Requires:
  *   DATABASE_URL    — points at a throwaway Postgres (CI service / local).
@@ -15,6 +20,8 @@ import pg from "pg";
 
 const TEST_CLERK_ID = process.env.E2E_TEST_USER_ID || "e2e_test_user";
 const TEST_EMAIL = "e2e@acreos.test";
+const FOUNDER_CLERK_ID = process.env.E2E_FOUNDER_USER_ID || "e2e_founder_user";
+const FOUNDER_EMAIL = "founder-e2e@acreos.test";
 
 export default async function globalSetup() {
   if (!process.env.DATABASE_URL) {
@@ -120,7 +127,41 @@ export default async function globalSetup() {
       [orgId, propertyId],
     );
 
-    console.log(`[e2e] seeded user=${userId} org=${orgId} + demo data`);
+    // 5. Seed the founder identity — own user + org + membership. Selected
+    // by the "e2e-founder" __session cookie (see server/auth/testAuth.ts);
+    // its email is the workflow's FOUNDER_EMAIL/FOUNDER_EMAILS value, so
+    // founder-positive specs see Tom's surfaces while the customer user
+    // above stays a genuine non-founder.
+    const { rows: founderRows } = await client.query(
+      `INSERT INTO users (clerk_user_id, email, first_name, last_name, persona)
+       VALUES ($1, $2, 'E2E', 'Founder', 'land_investor')
+       ON CONFLICT (clerk_user_id) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+      [FOUNDER_CLERK_ID, FOUNDER_EMAIL],
+    );
+    const founderUserId: string = founderRows[0].id;
+
+    const { rows: founderOrgRows } = await client.query(
+      `INSERT INTO organizations (name, slug, owner_id, onboarding_completed)
+       VALUES ('E2E Founder Org', 'e2e-founder-org', $1, true)
+       ON CONFLICT (slug) DO UPDATE SET owner_id = EXCLUDED.owner_id, onboarding_completed = true
+       RETURNING id`,
+      [founderUserId],
+    );
+    const founderOrgId: number = founderOrgRows[0].id;
+
+    await client.query(
+      `INSERT INTO team_members (organization_id, user_id, role, is_active)
+       SELECT $1, $2, 'owner', true
+       WHERE NOT EXISTS (
+         SELECT 1 FROM team_members WHERE organization_id = $1 AND user_id = $2
+       )`,
+      [founderOrgId, founderUserId],
+    );
+
+    console.log(
+      `[e2e] seeded customer user=${userId} org=${orgId} + demo data; founder user=${founderUserId} org=${founderOrgId}`,
+    );
   } finally {
     await client.end();
   }

@@ -701,15 +701,31 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (aiUnavailable) {
+    // Degrade the CHAT capability, not the whole surface. Tasks, the
+    // conversation list, and the founder tabs (Team / Agents / AI Ops) don't
+    // depend on the chat provider — replacing all of them with a dead-end
+    // EmptyState turned a provider blip into a full-page outage. Render a
+    // calm status banner and keep the surface alive; a send attempt while
+    // down gets the server's own error toast, and health re-polls clear the
+    // banner automatically.
     return (
-      <EmptyState
-        icon={Bot}
-        headline="Pax is temporarily unavailable"
-        subtitle="The AI service is not reachable right now. This usually clears in a minute or two."
-        // TODO(cta): auto-recovers — no manual action available
-        cta={{ label: "", _noOp: true }}
-        testId="pax-ai-unavailable"
-      />
+      <>
+        <div
+          role="status"
+          data-testid="pax-ai-unavailable"
+          className="flex items-center gap-3 rounded-card border border-border bg-muted/50 px-4 py-3 mb-4"
+        >
+          <Bot className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="text-sm">
+            <span className="font-medium">Pax is temporarily unavailable.</span>{" "}
+            <span className="text-muted-foreground">
+              The AI service is not reachable right now — this usually clears in
+              a minute or two. Your tasks and conversation history still work.
+            </span>
+          </div>
+        </div>
+        {children}
+      </>
     );
   }
 

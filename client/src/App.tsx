@@ -1747,19 +1747,29 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
   const variants = isMobile ? variantPageFadeMobile : pageTransition;
 
   return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={location}
-        variants={variants}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        className="min-h-[100dvh]"
-        id="main-content"
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
+    // overflow-x-clip: the desktop variant's x-translate transiently pushes
+    // the 100%-width page 8px past the viewport during every route change.
+    // On desktop that's a scrollbar flicker; on mobile browsers it expands
+    // the layout viewport at first paint (shrink-to-fit), which both zooms
+    // the page below CSS-pixel scale and — at 744px (iPad mini) — pushes
+    // innerWidth across the 768 breakpoint, flipping the app to the desktop
+    // arm. Clip (not hidden — no new scroll container) keeps the slide
+    // animation while the document never exceeds the viewport.
+    <div className="overflow-x-clip">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={location}
+          variants={variants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          className="min-h-[100dvh]"
+          id="main-content"
+        >
+          {children}
+        </motion.div>
+      </AnimatePresence>
+    </div>
   );
 }
 

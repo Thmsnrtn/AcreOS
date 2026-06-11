@@ -8,9 +8,12 @@
  *   - the "AI Ops" tab (founder-only operational tooling)
  * They DO see "Assistant" (Chat) and "Tasks".
  *
- * The E2E test-auth bypass seeds user `e2e@acreos.test`, which is NOT a
- * founder email (the workflow does not set FOUNDER_EMAIL / FOUNDER_EMAILS),
- * so this spec inherently runs as a customer / non-founder session.
+ * The test-auth bypass seeds TWO identities (tests/e2e-mobile/global-setup.ts):
+ * the customer `e2e@acreos.test` and the founder `founder-e2e@acreos.test`.
+ * The workflow's FOUNDER_EMAIL/FOUNDER_EMAILS names the founder email ONLY,
+ * and the bypass selects identity by `__session` cookie value — "e2e-founder"
+ * = founder, anything else = customer (server/auth/testAuth.ts). This spec
+ * seeds value "e2e", so it runs as a genuine non-founder customer session.
  *
  * What we assert:
  *   1. /ai renders (no auth bounce, no error fallback).

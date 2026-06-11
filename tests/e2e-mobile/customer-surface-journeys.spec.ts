@@ -526,35 +526,32 @@ test.describe("J3: pax interaction loop", () => {
     // credits in CI and create real ai_messages rows. The presence of the
     // composer affordance is the load-bearing structural check.
     //
-    // CI-harness reality: the composer lives inside <AiChatGuard> (client/src/
-    // pages/pax.tsx), which queries /api/health/cached and renders a GRACEFUL
-    // "Pax is temporarily unavailable" EmptyState (data-testid=
-    // "pax-ai-unavailable") when the AI provider reports `unconfigured`. The
-    // monitor workflow sets no AI_INTEGRATIONS_OPENROUTER_API_KEY, so health
-    // correctly reports the provider unconfigured and the composer is
-    // legitimately ABSENT — that is the doctrine-correct degrade (EmptyState,
-    // not a crash), NOT a regression. On production (OpenRouter configured,
-    // acreos.fly.dev healthy) the composer renders. So we accept EITHER the
-    // composer OR the honest unavailable-EmptyState; only a blank /ai (neither)
-    // is a real failure.
+    // CI-harness reality: <AiChatGuard> (client/src/pages/pax.tsx) queries
+    // /api/health/cached; the e2e/monitor workflows set no
+    // AI_INTEGRATIONS_OPENROUTER_API_KEY, so health correctly reports the
+    // provider `unconfigured`. The guard degrades the CHAT capability, not
+    // the surface: it renders a "Pax is temporarily unavailable" status
+    // banner (data-testid="pax-ai-unavailable") ABOVE its children — the
+    // composer, tabs, and panels still mount. So in CI we assert BOTH: the
+    // banner surfaces honest copy AND the composer is still present. On
+    // production (OpenRouter configured) the banner is absent and only the
+    // composer assertion applies.
     const aiUnavailable = await page
       .locator('[data-testid="pax-ai-unavailable"]')
       .isVisible()
       .catch(() => false);
 
     if (aiUnavailable) {
-      // Degraded-but-graceful: assert the EmptyState actually surfaces its
-      // copy (not a blank panel), then skip the composer-dependent steps.
-      const emptyText = await page
+      // Degraded-but-graceful: the banner must surface its copy (not render
+      // blank) — and the rest of the surface must still be alive below it.
+      const bannerText = await page
         .locator('[data-testid="pax-ai-unavailable"]')
         .textContent()
         .catch(() => "");
       expect(
-        (emptyText ?? "").trim().length,
-        "Pax unavailable-EmptyState rendered BLANK — even the degraded state must surface copy",
+        (bannerText ?? "").trim().length,
+        "Pax unavailable-banner rendered BLANK — even the degraded state must surface copy",
       ).toBeGreaterThan(0);
-      await checkpoint(page, ctx, "j3-pax-after-overflow", testInfo);
-      return;
     }
 
     const composer = page
@@ -567,7 +564,7 @@ test.describe("J3: pax interaction loop", () => {
       .catch(() => false);
     expect(
       composerVisible,
-      "pax composer affordance missing on /ai (and no graceful 'Pax unavailable' EmptyState either — surface is blank)",
+      "pax composer affordance missing on /ai — AiChatGuard must degrade chat with a banner, never unmount the surface",
     ).toBe(true);
 
     // Try overflow / kebab menu — common selectors. We don't fail if absent

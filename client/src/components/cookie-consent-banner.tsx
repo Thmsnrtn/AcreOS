@@ -97,7 +97,7 @@ export function CookieConsentBanner() {
         onClick={snooze}
         aria-label="Dismiss for now"
         data-testid="cookie-consent-dismiss"
-        className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
@@ -109,7 +109,7 @@ export function CookieConsentBanner() {
           taking no action) keeps optional cookies off. See our{" "}
           <Link
             href="/privacy"
-            className="underline hover:text-foreground inline-flex items-center min-h-11 px-1 -mx-1"
+            className="underline hover:text-foreground active:text-foreground inline-flex items-center min-h-11 px-1 -mx-1"
           >
             Privacy &amp; Cookie Policy
           </Link>

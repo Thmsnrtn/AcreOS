@@ -28,6 +28,11 @@ export default defineConfig({
     trace: "on-first-retry",
     screenshot: "on",
     video: "retain-on-failure",
+    // Without this, a single detached/obstructed element makes click()'s
+    // auto-wait run until the 200s TEST timeout — seen as C1's 3.4-minute
+    // hangs on /settings. 15s is generous for a starved runner while keeping
+    // one bad element from eating the whole test budget.
+    actionTimeout: 15_000,
   },
   // The real device classes founders + customers use. iOS Safari (WebKit)
   // dominates on Tom's audience; Android Chrome is the second-largest. The

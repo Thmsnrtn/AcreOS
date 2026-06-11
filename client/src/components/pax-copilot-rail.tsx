@@ -323,7 +323,13 @@ export function PaxCopilotRail() {
   // almost the entire viewport (360px rail on a 390px phone), so we
   // hide it there entirely. Mobile users reach chat via /ai, the
   // conversation tray button, or the command palette.
-  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  // Lazy initializer — reading matchMedia synchronously avoids a one-frame
+  // desktop-rail flash on phones (useState(false) mounted the rail on first
+  // render until the effect flipped it; the E2E touch-target gate caught the
+  // transient 32×32 expand button on a 390px viewport).
+  const [isMobileViewport, setIsMobileViewport] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches,
+  );
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
     const update = () => setIsMobileViewport(media.matches);
@@ -1166,7 +1172,7 @@ export function PaxCopilotRail() {
                   onClick={toggle}
                   aria-label={observations.length > 0 ? `Open Pax copilot (${observations.length} unread)` : "Open Pax copilot"}
                   aria-expanded={isOpen}
-                  className="w-8 h-8 rounded-card flex items-center justify-center hover:bg-primary/10 transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-11 h-11 rounded-card flex items-center justify-center hover:bg-primary/10 active:bg-primary/15 transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   data-testid="pax-rail-expand"
                 >
                   <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
