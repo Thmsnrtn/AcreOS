@@ -16,7 +16,7 @@ import {
 } from "recharts";
 import { chartColor } from "@/lib/chartPalette";
 import { useToast } from "@/hooks/use-toast";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   DollarSign, Clock, TrendingUp, ArrowUpRight, CheckCircle2,
@@ -71,10 +71,6 @@ interface Payout {
 // previous maximumFractionDigits: 0 which dropped up to $0.99 per line.
 function fmtCurrency(val: number) {
   return usd(val);
-}
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -282,7 +278,7 @@ function SettlementsTab() {
                   <TableCell className="font-semibold tabular-nums">{fmtCurrency(s.amount)}</TableCell>
                   <TableCell className="tabular-nums">{(s.feeRate * 100).toFixed(2)}%</TableCell>
                   <TableCell><StatusBadge status={s.status} /></TableCell>
-                  <TableCell className="text-xs text-muted-foreground tabular-nums">{fmtDate(s.createdAt)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground tabular-nums">{formatDate(s.createdAt)}</TableCell>
                   <TableCell>
                     {s.status === "held" && (
                       <Button
@@ -364,7 +360,7 @@ function LedgerTab() {
             <TableBody>
               {entries.map(e => (
                 <TableRow key={e.id}>
-                  <TableCell className="text-xs text-muted-foreground tabular-nums">{fmtDate(e.createdAt)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground tabular-nums">{formatDate(e.createdAt)}</TableCell>
                   <TableCell><StatusBadge status={e.type} /></TableCell>
                   <TableCell className="font-mono text-xs">{e.reference}</TableCell>
                   <TableCell className="text-sm">{e.description}</TableCell>
@@ -620,7 +616,7 @@ function PayoutsTab() {
             <TableBody>
               {payouts.map(p => (
                 <TableRow key={p.id}>
-                  <TableCell className="text-xs text-muted-foreground tabular-nums">{fmtDate(p.triggeredAt)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground tabular-nums">{formatDate(p.triggeredAt)}</TableCell>
                   <TableCell className="font-semibold tabular-nums">{fmtCurrency(p.amount)}</TableCell>
                   <TableCell className="font-mono text-xs">{p.bankAccountId}</TableCell>
                   <TableCell><StatusBadge status={p.status} /></TableCell>

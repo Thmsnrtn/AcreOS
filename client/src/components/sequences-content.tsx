@@ -18,6 +18,7 @@ import { Plus, Edit, Trash2, Users, Play, Pause, StopCircle, Eye, Loader2 } from
 import { SequenceBuilder, type SequenceStepData } from "@/components/sequence-builder";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { CampaignSequence, SequenceStep, SequenceEnrollment, Lead } from "@shared/schema";
+import { formatDate } from "@/lib/format";
 
 type SequenceWithSteps = CampaignSequence & { steps: SequenceStep[] };
 type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; lead: Lead };
@@ -461,7 +462,7 @@ export function SequencesContent() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {enrollment.enrolledAt ? new Date(enrollment.enrolledAt).toLocaleDateString() : "N/A"}
+                          {formatDate(enrollment.enrolledAt)}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">

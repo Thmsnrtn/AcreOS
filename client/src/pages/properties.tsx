@@ -1,6 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { useTerm } from "@/hooks/use-persona";
-import { usd, plural } from "@/lib/format";
+import { usd, plural, formatDate, formatDateTime } from "@/lib/format";
 import { clientLogger } from "@/lib/clientLogger";
 import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
@@ -1462,11 +1462,6 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   const utilities = currentProperty.utilities as { electric?: boolean; water?: boolean; sewer?: boolean; gas?: boolean } | null;
   const parcelData = currentProperty.parcelData as { regridId?: string; owner?: string; ownerAddress?: string; taxAmount?: string; lastUpdated?: string } | null;
 
-  const formatDate = (date: Date | string | null | undefined) => {
-    if (!date) return "N/A";
-    return new Date(date).toLocaleDateString();
-  };
-
   const formatCurrency = (value: string | number | null | undefined) => {
     if (value === null || value === undefined || value === "") return "—";
     const num = Number(value);
@@ -2582,7 +2577,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
           </h3>
           {lastEnrichedAt && (
             <p className="text-xs text-muted-foreground" data-testid="text-last-enriched">
-              Last updated: {new Date(lastEnrichedAt).toLocaleDateString()} at {new Date(lastEnrichedAt).toLocaleTimeString()}
+              Last updated: {formatDateTime(lastEnrichedAt)}
             </p>
           )}
         </div>

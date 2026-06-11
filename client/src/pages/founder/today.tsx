@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { formatRelative } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -130,19 +131,6 @@ interface DecisionsInboxResponse {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
-
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  const now = Date.now();
-  const diffMs = now - then;
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
 
 // ─── Section: Morning Pulse Banner ───────────────────────────────────────
 //
@@ -329,7 +317,7 @@ function ActiveAsksSection() {
                     {ask.questionSummary}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {relativeTime(ask.askedAt)}
+                    {formatRelative(ask.askedAt)}
                   </p>
                 </div>
               </li>
@@ -420,7 +408,7 @@ function ShippedOvernightSection() {
                   )}
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0 mt-0.5">
-                  {relativeTime(d.completedAt)}
+                  {formatRelative(d.completedAt)}
                 </span>
               </li>
             ))}
@@ -544,7 +532,7 @@ function DecisionsWaitingSection() {
                     </p>
                   </Link>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {relativeTime(item.createdAt)}
+                    {formatRelative(item.createdAt)}
                   </p>
                 </div>
               </li>

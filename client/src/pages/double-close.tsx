@@ -41,6 +41,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
 
 type Status =
   | "planned"
@@ -98,13 +99,6 @@ function fmtUsd(cents: number | null | undefined): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(Math.round(cents / 100));
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 export default function DoubleClosePage() {
@@ -285,8 +279,8 @@ function DoubleCloseDetail({ dealId }: { dealId: string }) {
           primary={fmtUsd(deal.aSidePurchasePriceCents)}
           rows={[
             ["Seller", deal.aSellerName],
-            ["Contract date", fmtDate(deal.aSideContractDate)],
-            ["Closing date", fmtDate(deal.aSideClosingDate)],
+            ["Contract date", formatDate(deal.aSideContractDate)],
+            ["Closing date", formatDate(deal.aSideClosingDate)],
             ["Title company", deal.aSideTitleCompany ?? "—"],
           ]}
         />
@@ -295,8 +289,8 @@ function DoubleCloseDetail({ dealId }: { dealId: string }) {
           primary={fmtUsd(deal.bcSidePurchasePriceCents)}
           rows={[
             ["Buyer", deal.bcBuyerName ?? "—"],
-            ["Contract date", fmtDate(deal.bcSideContractDate)],
-            ["Closing date", fmtDate(deal.bcSideClosingDate)],
+            ["Contract date", formatDate(deal.bcSideContractDate)],
+            ["Closing date", formatDate(deal.bcSideClosingDate)],
             ["Title company", deal.bcSideTitleCompany ?? "—"],
           ]}
         />

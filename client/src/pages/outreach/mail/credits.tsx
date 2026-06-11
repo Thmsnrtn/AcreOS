@@ -40,6 +40,7 @@ import {
   useCreditSummary,
   useRechargeCredits,
 } from "@/hooks/use-outreach-mail";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 const PACKS: Array<{ cents: number; label: string; subtitle: string }> = [
   { cents: 2000, label: "$20", subtitle: "~2,000 credits" },
@@ -253,11 +254,7 @@ function FuelGauge({ data }: { data: CreditSummary }) {
   const remaining = arcLength - filled;
 
   const runoutLabel = data.projectedRunoutDate
-    ? new Date(data.projectedRunoutDate).toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
+    ? formatDate(data.projectedRunoutDate)
     : "won't run out this month";
 
   return (
@@ -408,10 +405,7 @@ function HistoryView({ items }: { items: CreditHistoryItem[] }) {
             {items.map((row) => (
               <TableRow key={row.id} data-testid={`credit-row-${row.id}`}>
                 <TableCell className="whitespace-nowrap text-xs">
-                  {new Date(row.dateIso).toLocaleString(undefined, {
-                    dateStyle: "short",
-                    timeStyle: "short",
-                  })}
+                  {formatDateTime(row.dateIso)}
                 </TableCell>
                 <TableCell className="text-sm">{row.action}</TableCell>
                 <TableCell>
@@ -443,10 +437,7 @@ function HistoryView({ items }: { items: CreditHistoryItem[] }) {
             </div>
             <p className="text-sm font-medium truncate">{row.action}</p>
             <p className="text-xs text-muted-foreground">
-              {new Date(row.dateIso).toLocaleString(undefined, {
-                dateStyle: "short",
-                timeStyle: "short",
-              })}
+              {formatDateTime(row.dateIso)}
               {row.providerName ? ` · ${row.providerName}` : ""}
             </p>
           </li>

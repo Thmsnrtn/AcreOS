@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { formatDate } from "@/lib/format";
 
 type Status = "unrestricted" | "license_required" | "advertising_restricted" | "pending_legislation";
 
@@ -84,11 +85,7 @@ function StickyPreliminaryBanner({
   totalStates: number;
 }) {
   const stamp = rulesUpdatedAt
-    ? new Date(rulesUpdatedAt).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
+    ? formatDate(rulesUpdatedAt)
     : "before launch";
   return (
     <div
@@ -284,7 +281,7 @@ function RuleDetail({ state }: { state: string }) {
           }`}
         >
           {reviewed
-            ? `Reviewed ${new Date(r.attorneyReviewedAt!).toLocaleDateString()}`
+            ? `Reviewed ${formatDate(r.attorneyReviewedAt!)}`
             : "Preliminary"}
         </span>
       </div>

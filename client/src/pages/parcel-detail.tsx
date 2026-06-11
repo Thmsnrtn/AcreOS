@@ -50,7 +50,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useTerm } from "@/hooks/use-persona";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import {
   ArrowLeft,
   MapPin,
@@ -435,7 +435,7 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
                 <DetailRow label="Sold price" value={formatUsd(property.soldPrice)} />
                 <DetailRow
                   label="Purchase date"
-                  value={property.purchaseDate ? new Date(property.purchaseDate).toLocaleDateString() : "—"}
+                  value={formatDate(property.purchaseDate)}
                 />
               </CardContent>
             </Card>

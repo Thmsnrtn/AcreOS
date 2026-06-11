@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { motion } from "framer-motion";
 import { UserRoundCheck, Landmark, Bell, Check, MapPin } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format";
 
 // Mirrors the parcel_alerts row shape returned by GET /api/parcel-alerts.
 interface ParcelAlert {
@@ -239,7 +239,7 @@ export function ParcelAlerts() {
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="text-[11px] text-muted-foreground">
-                      {formatDistanceToNow(new Date(a.createdAt), { addSuffix: true })}
+                      {formatRelative(a.createdAt)}
                       {a.source ? ` · ${a.source}` : ""}
                     </span>
                     {href && (

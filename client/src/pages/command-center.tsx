@@ -81,7 +81,7 @@ import {
   Square,
 } from "lucide-react";
 import { AISettings } from "@/components/ai-settings";
-import { relative, usd } from "@/lib/format";
+import { relative, usd, formatDate } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 import { ReadAloudButton } from "@/components/ReadAloudButton";
@@ -2047,7 +2047,7 @@ export default function CommandCenterPage() {
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">{conv.title}</p>
                               <p className="text-xs text-muted-foreground">
-                                {new Date(conv.createdAt).toLocaleDateString()}
+                                {formatDate(conv.createdAt)}
                               </p>
                             </div>
                             <Button

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TeamConversation, TeamMessage } from "@shared/schema";
+import { formatDate } from "@/lib/format";
 
 interface ConversationWithDetails extends TeamConversation {
   participantNames?: string[];
@@ -146,7 +147,7 @@ function ConversationList({
             {conversations.map((conv) => {
               const displayName = getConversationDisplayName(conv);
               const lastActivity = conv.lastMessageAt
-                ? new Date(conv.lastMessageAt).toLocaleDateString()
+                ? formatDate(conv.lastMessageAt)
                 : "No messages yet";
               return (
                 <li key={conv.id} className="list-none">

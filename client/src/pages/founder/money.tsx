@@ -48,6 +48,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { staggerContainer, staggerItem } from "@/lib/animations";
+import { formatDate, formatRelative } from "@/lib/format";
 
 // ─── API contracts (provisional — Lena's surfaces land in Phase 1) ────────
 
@@ -200,19 +201,6 @@ function fmtRunwayMonths(value: number): string {
   return fmtMonths(value);
 }
 
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return "—";
-  const diffMs = Date.now() - then;
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
 // ─── Phase 0 banner ──────────────────────────────────────────────────────
 
 /**
@@ -269,7 +257,7 @@ function CfoPositionBanner({
               Lena&apos;s position
               {summary?.asOf ? (
                 <span className="ml-2 font-normal text-muted-foreground">
-                  as of {new Date(summary.asOf).toLocaleDateString()}
+                  as of {formatDate(summary.asOf)}
                 </span>
               ) : null}
             </h2>
@@ -790,7 +778,7 @@ function RecentEventsSection() {
                     {e.label}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {relativeTime(e.occurredAt)}
+                    {formatRelative(e.occurredAt)}
                     {e.envelopeId ? ` · ${e.envelopeId}` : ""}
                   </p>
                 </div>

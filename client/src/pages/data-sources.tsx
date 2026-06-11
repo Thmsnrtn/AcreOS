@@ -36,6 +36,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Link } from "wouter";
+import { formatDate } from "@/lib/format";
 
 type Classification = "authoritative" | "estimate" | "modeled" | "unknown";
 
@@ -299,7 +300,7 @@ export default function DataSourcesPage() {
           ) : null}
 
           <p className="text-xs text-muted-foreground">
-            Last updated {new Date(data.lastUpdated).toLocaleDateString()}.
+            Last updated {formatDate(data.lastUpdated)}.
           </p>
         </div>
       ) : null}

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { Search, FileCheck, AlertTriangle, XCircle, CheckCircle2, Loader2, DollarSign, Calendar, Info } from "lucide-react";
 
 interface TitleIssue {
@@ -184,7 +184,7 @@ export default function TitleSearchPage() {
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Owner since</dt>
-                  <dd className="font-medium tabular-nums">{new Date(result.ownerSince).toLocaleDateString()}</dd>
+                  <dd className="font-medium tabular-nums">{formatDate(result.ownerSince)}</dd>
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Blocking issues</dt>
@@ -234,7 +234,7 @@ export default function TitleSearchPage() {
                           {issue.recordedDate && (
                             <span className="flex items-center gap-1">
                               <Calendar className="w-3 h-3" aria-hidden="true" />
-                              <span className="tabular-nums">{new Date(issue.recordedDate).toLocaleDateString()}</span>
+                              <span className="tabular-nums">{formatDate(issue.recordedDate)}</span>
                             </span>
                           )}
                         </div>
@@ -258,8 +258,8 @@ export default function TitleSearchPage() {
                       <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" aria-hidden="true" />
                       <span className="font-medium">{entry.owner}</span>
                       <span className="text-muted-foreground tabular-nums">
-                        {new Date(entry.from).toLocaleDateString()}
-                        {entry.to ? ` — ${new Date(entry.to).toLocaleDateString()}` : " — Present"}
+                        {formatDate(entry.from)}
+                        {entry.to ? ` — ${formatDate(entry.to)}` : " — Present"}
                       </span>
                     </li>
                   ))}

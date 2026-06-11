@@ -37,6 +37,7 @@ import { NoteAssignmentsCard } from "@/components/note-assignments-card";
 import { NoteSplitsCard } from "@/components/note-splits-card";
 import { NoteComplianceCard } from "@/components/note-compliance-card";
 import { NoteLossMitCard } from "@/components/note-loss-mit-card";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 export interface AcquiredNote {
   id: string;
@@ -128,13 +129,6 @@ function fmtUsdRound(cents: number): string {
 
 function fmtPct(bps: number): string {
   return `${(bps / 100).toFixed(3)}%`;
-}
-
-function fmtDate(iso: string): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function statusKindFor(status: AcquiredNote["status"]): StatusKind {
@@ -282,7 +276,7 @@ function ReconciliationCard({ noteId }: { noteId: string }) {
               />
             </div>
             <p className="text-xs text-muted-foreground mt-3">
-              As of {new Date(data.asOf).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+              As of {formatDateTime(data.asOf)}
               {data.lastPostingId ? ` · last posting ${data.lastPostingId.slice(0, 8)}` : ""}
             </p>
           </>
@@ -438,13 +432,13 @@ export default function NoteDetailPage() {
         <StatCard
           label="Acquisition price"
           value={fmtUsdRound(note.acquisitionPriceCents)}
-          sub={`Bought ${fmtDate(note.acquisitionDate)}`}
+          sub={`Bought ${formatDate(note.acquisitionDate)}`}
           testid="note-detail-acquisition-price"
         />
         <StatCard
           label="Original face value"
           value={fmtUsdRound(note.originalPrincipalCents)}
-          sub={`Originated ${fmtDate(note.originationDate)}`}
+          sub={`Originated ${formatDate(note.originationDate)}`}
           testid="note-detail-face-value"
         />
         <StatCard
@@ -477,7 +471,7 @@ export default function NoteDetailPage() {
               sub={`Due day ${note.paymentDueDay}`}
             />
             <KV label="Term" value={`${note.termMonths} months`} />
-            <KV label="Maturity" value={fmtDate(note.maturityDate)} />
+            <KV label="Maturity" value={formatDate(note.maturityDate)} />
             <KV
               label="Original lender"
               value={note.originalLender || "—"}
@@ -586,7 +580,7 @@ export default function NoteDetailPage() {
 
       {/* Provenance footer */}
       <p className="text-xs text-muted-foreground">
-        Added {fmtDate(note.createdAt)} · Last updated {fmtDate(note.updatedAt)}
+        Added {formatDate(note.createdAt)} · Last updated {formatDate(note.updatedAt)}
         {note.assignmentDocS3Key && (
           <> · Assignment paperwork on file</>
         )}
@@ -693,7 +687,7 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
               p.principalCents + p.interestCents + p.escrowCents + p.lateFeeCents + p.unappliedCents;
             return (
               <tr key={p.id} className="border-t border-border/40">
-                <td className="px-2 py-2 whitespace-nowrap">{fmtDate(p.paymentDate)}</td>
+                <td className="px-2 py-2 whitespace-nowrap">{formatDate(p.paymentDate)}</td>
                 <td className="px-2 py-2">
                   <span className={`inline-block rounded-md px-2 py-0.5 text-xs ${PAYMENT_TYPE_TONE[p.paymentType]}`}>
                     {PAYMENT_TYPE_LABEL[p.paymentType]}

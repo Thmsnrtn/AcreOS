@@ -36,6 +36,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import type { NoteAcquisitionStage } from "@/pages/notes-pipeline";
+import { formatDate } from "@/lib/format";
 
 interface ChecklistItem {
   done?: boolean;
@@ -92,13 +93,6 @@ function fmtUsd(cents: number | null | undefined): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(Math.round(cents / 100));
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 export default function NoteAcquisitionDetailPage() {
@@ -278,7 +272,7 @@ export default function NoteAcquisitionDetailPage() {
           cents={acq.bpoValueCents}
           onSave={(cents) => patchMutation.mutate({ bpoValueCents: cents } as any)}
           disabled={!!acq.promotedToNoteId}
-          hint={acq.bpoReceivedAt ? `Received ${fmtDate(acq.bpoReceivedAt)}` : undefined}
+          hint={acq.bpoReceivedAt ? `Received ${formatDate(acq.bpoReceivedAt)}` : undefined}
         />
       </div>
 

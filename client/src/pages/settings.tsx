@@ -82,6 +82,7 @@ import { XCircle } from "lucide-react";
 import { CancellationDialog } from "@/components/cancellation-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import "./today.css";
+import { formatDate } from "@/lib/format";
 
 // ─────────────────────────────────────────────────────────────────────────
 // IA collapse — Phase 2 Week 4 (P1-26 / Reyna §2). 17 tabs → 7 canonical
@@ -523,7 +524,7 @@ export default function Settings() {
                         <div className="flex flex-col gap-2 pt-2">
                           <span className="text-sm text-muted-foreground">Current period</span>
                           <span className="text-sm tabular-nums" data-testid="text-subscription-period">
-                            {new Date(subscriptionData.subscription.current_period_start * 1000).toLocaleDateString()} &ndash; {new Date(subscriptionData.subscription.current_period_end * 1000).toLocaleDateString()}
+                            {formatDate(subscriptionData.subscription.current_period_start * 1000)} &ndash; {formatDate(subscriptionData.subscription.current_period_end * 1000)}
                           </span>
                           <div className="flex gap-2">
                             <Button
@@ -1220,7 +1221,7 @@ export default function Settings() {
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-sm text-muted-foreground">
-                                  {new Date(co.addedAt).toLocaleDateString()}
+                                  {formatDate(co.addedAt)}
                                 </TableCell>
                                 <TableCell>
                                   <Button

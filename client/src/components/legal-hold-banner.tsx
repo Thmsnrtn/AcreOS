@@ -14,6 +14,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ShieldAlert } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 interface BannerPayload {
   banner: {
@@ -52,7 +53,7 @@ export function LegalHoldBanner() {
         {banner.message}
         {banner.placedAt && (
           <span className="ml-2 text-xs opacity-80">
-            placed {new Date(banner.placedAt).toLocaleDateString()}
+            placed {formatDate(banner.placedAt)}
           </span>
         )}
       </AlertDescription>

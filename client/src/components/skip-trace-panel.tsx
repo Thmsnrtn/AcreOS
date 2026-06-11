@@ -21,6 +21,7 @@ import {
 import { GlossaryTerm } from "@/components/Glossary";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { Lead } from "@shared/schema";
+import { formatDate } from "@/lib/format";
 
 type SkipTraceResult = {
   phones?: Array<{ number: string; type: string; verified: boolean }>;
@@ -222,7 +223,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
             <div className="pt-3 border-t text-xs text-muted-foreground flex items-center justify-between">
               <span>Cost: ${((skipTrace.costCents || 50) / 100).toFixed(2)}</span>
               {skipTrace.completedAt && (
-                <span>Completed: {new Date(skipTrace.completedAt).toLocaleDateString()}</span>
+                <span>Completed: {formatDate(skipTrace.completedAt)}</span>
               )}
             </div>
 

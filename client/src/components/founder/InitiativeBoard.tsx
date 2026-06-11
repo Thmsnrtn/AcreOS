@@ -25,6 +25,7 @@ import {
   TrendingUp,
   ArrowUpRight,
 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 interface Initiative {
   id: number;
@@ -82,7 +83,7 @@ function InitiativeCard({ initiative }: { initiative: Initiative }) {
           <div className="flex items-center gap-1.5 mt-0.5">
             <span aria-hidden="true" className="text-sm">{avatar}</span>
             <span className="text-xs text-muted-foreground">Proposed by {role}</span>
-            <span className="text-xs text-muted-foreground">&middot; <time dateTime={initiative.createdAt} className="tabular-nums">{new Date(initiative.createdAt).toLocaleDateString()}</time></span>
+            <span className="text-xs text-muted-foreground">&middot; <time dateTime={initiative.createdAt} className="tabular-nums">{formatDate(initiative.createdAt)}</time></span>
           </div>
         </div>
         <Badge

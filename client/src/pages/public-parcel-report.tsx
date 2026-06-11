@@ -28,6 +28,7 @@ import { emitMarketingTouch, getAnonymousId } from "@/lib/marketing-touch";
 import { capturePendingParcel } from "@/lib/acquisition-utm";
 import { trackEvent } from "@/lib/analytics";
 import type { PublicLcs, PublicReportFacts } from "@shared/schema";
+import { formatDate } from "@/lib/format";
 
 // ─── API shapes (mirror server/routes-public-parcel-report.ts) ──────────────
 
@@ -571,7 +572,7 @@ export default function PublicParcelReportPage() {
               Screening report from public government data — not a survey, appraisal,
               or title search. Sources and retrieval dates are shown on each tile.
               {report.refreshedAt && (
-                <> Report data refreshed {new Date(report.refreshedAt).toLocaleDateString()}.</>
+                <> Report data refreshed {formatDate(report.refreshedAt)}.</>
               )}
             </p>
           </div>

@@ -14,30 +14,13 @@ import { Check, CircleCheck, Quote, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
+import { formatRelative } from "@/lib/format";
 import {
   type AuditFinding,
   type DomainSummary,
   SEVERITY_LABEL,
   severityChipClasses,
 } from "./logic";
-
-function relTime(iso: string): string {
-  try {
-    const d = new Date(iso).getTime();
-    const diff = Date.now() - d;
-    const h = Math.floor(diff / 3_600_000);
-    if (h < 1) return "just now";
-    if (h < 24) return `${h}h ago`;
-    const days = Math.floor(h / 24);
-    if (days < 30) return `${days}d ago`;
-    return new Date(iso).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return iso;
-  }
-}
 
 interface FindingCardProps {
   finding: AuditFinding;
@@ -98,7 +81,7 @@ function FindingCard({
           <Clock className="h-3 w-3" aria-hidden="true" />
           <span>{finding.detector}</span>
           <span aria-hidden="true">·</span>
-          <span>{relTime(finding.lastSeenAt)}</span>
+          <span>{formatRelative(finding.lastSeenAt)}</span>
           {acknowledged ? (
             <span className="ml-1 inline-flex items-center gap-1 text-acr-warn">
               <Check className="h-3 w-3" aria-hidden="true" />

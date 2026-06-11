@@ -251,17 +251,18 @@ Effort: S = <½ day, M = ~1 day, L = multi-day. Each item is executable without 
 
 | # | Item | Files | Effort |
 |---|---|---|---|
-| W2-1 | `CHART_COLORS` token export + migrate 7 chart-hex files | new `lib/chart-tokens.ts`; avm, portfolio-optimizer, eddm, reseller-dashboard, founder/bridge, founder-trends, founder/cost | M |
-| W2-2 | `formatDate`/`formatRelative` house helpers + codemod 77 toLocale sites | `lib/format.ts` + ~40 pages | M |
-| W2-3 | Unify the two empty-state systems (EmptyState primitive under persona variants; one visual idiom) | `components/empty-state.tsx`, `components/empty-states.tsx`, 76 consumers | L |
-| W2-4 | App-shell Suspense fallback (replace Loader2 at App.tsx:652-656 with nav-aware shell skeleton) | `App.tsx`, new `components/route-skeleton.tsx` | S |
-| W2-5 | Skeleton-by-default sweep: the ~50 C-grade "spinner-only" long-tail pages share 3 layouts (stat-cards+table, list, form). Build `PageSkeleton variant="table|list|form"` and sweep | new component + ~50 pages | L |
+| W2-1 | ✅ SHIPPED 3e58ead5 — `CHART_COLORS` already lived at `lib/chart-colors.ts` (W1, 325aeebb); founder-trends + founder/cost migrated; avm/optimizer/reseller verified clean; bridge cockpit bg + reseller white-label branding defaults are legitimate non-chart hex; eddm split out as W2-12 | — | M |
+| W2-2 | primitives ✅ SHIPPED 3e58ead5 (`formatDate`/`formatDateTime`/`formatRelative` in `lib/format.ts` + 14-test suite); 77-site codemod in flight | ~40 pages | M |
+| W2-3 | primitive ✅ SHIPPED 3e58ead5 (one EmptyState idiom; `empty-states.tsx` now a frozen-API deprecated shim that also shadows the legacy `empty-states/` dir). Remaining: migrate 76 consumer imports, then delete shim + legacy dir | 76 consumers | L |
+| W2-4 | ✅ ALREADY SHIPPED pre-census — App.tsx:655 uses `RouteFallback` (T3C, 93866765); this row was stale | — | S |
+| W2-5 | primitive ✅ SHIPPED 3e58ead5 (`PageSkeleton variant="table\|list\|form"`, shape-true, single `role="status"` announcement); ~50-page sweep remaining | ~50 pages | L |
 | W2-6 | `useScrollRestoration` on the 5 big list surfaces (leads, properties, deals, inbox, documents) | new hook + 5 pages | M |
 | W2-7 | Optimistic-update adoption on high-frequency mutations (lead status, deal-stage drag, task complete, settings toggles) using the proven `useOptimisticUpdate` factory | leads, deals, tasks, settings | M |
 | W2-8 | A11y pass: aria-labels on ar0 form pages (tax-identity, underwriting, redemption-clock, wholesaler-state-rules, notes-pipeline) + icon-button audit on leads/properties | 7 files | M |
 | W2-9 | Mobile table strategy: adopt `MobileCardList` (or card-at-`sm` pattern) on the 10 highest-traffic of the 61 overflow-x-auto tables | finance, leads, documents, offers, portfolio, rent-roll, … | L |
-| W2-10 | Stylelint/CI rule: no ungated `:hover` in `*.css`, no hex literals in `pages/**` | eslint-rules/, CI | S |
-| W2-11 | Pointer-density sweep: gate every remaining dense `sm:`/`md:` sizing arm behind `pointer-fine:` so touch tablets keep the 44px floor at desktop widths. The audited doors (today/maps/deals/inbox) + Button/coverage-page primitives shipped with the E2E-green wave (2026-06-11); the long tail remains: the `min-h-[44px] sm:min-h-8` family (properties ×5, gis-filters ×3), `h-11 w-11 sm:h-7/8/9 sm:w-*` icon buttons (properties ×3, support-content ×2, settings ×2, organization-sections), campaign-variants-panel `sm:min-h-7`. Cascade fact (verified in built CSS): `sm:` rules compile AFTER `pointer-coarse:` rules, so an element carrying both resolves dense on touch — `pointer-fine:` gating is the only safe idiom for dense arms | ~12 files | M |
+| W2-10 | Ratchet scripts: no ungated `:hover` in `*.css`, no hex literals in `pages/**` — in flight (baseline allowlist: reseller branding data defaults, bridge cockpit bg, eddm GL paint until W2-12 lands) | scripts/, package.json check chain | S |
+| W2-11 | ✅ SHIPPED 3e58ead5 — ~40 dense `sm:`/`md:` arms gated `pointer-fine:` across 15 files (properties, gis-filters, finance, settings ×3, support-content, page-topbar, campaign-variants-panel, batna-calculator, RequestCountyCTA, blind-offer-wizard, query-error-state) incl. 3 missed lines in audited deals.tsx bulk-action bar. Cascade fact (verified in built CSS): `sm:` rules compile AFTER `pointer-coarse:` rules, so an ungated dense arm silently wins on touch — `pointer-fine:` gating is the only safe idiom. Residual watch: properties.tsx:611 inner Checkbox renders `h-5 md:h-4` inside a non-interactive 44px wrapper | — | M |
+| W2-12 | NEW (split from W2-1): eddm.tsx GL-paint token bridge — ~9 hexes are MapLibre GL paint expressions; CSS vars can't resolve in WebGL, needs the maps.tsx:108 `getComputedStyle` token-bridge pattern + sequential density-ramp tokens (`--acr-heat-*` is 3-anchor activity-heat, wrong semantics) + theme-repaint wiring — in flight | `pages/outreach/mail/eddm.tsx`, index.css | S |
 
 ### Wave 3 — founder surfaces
 

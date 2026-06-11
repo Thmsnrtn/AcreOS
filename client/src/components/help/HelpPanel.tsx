@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatDate } from "@/lib/format";
 
 // Browser context capture types
 interface CapturedError {
@@ -816,7 +817,7 @@ export function HelpPanel() {
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm truncate">{ticket.subject}</p>
                             <p className="text-xs text-muted-foreground">
-                              {new Date(ticket.createdAt).toLocaleDateString()}
+                              {formatDate(ticket.createdAt)}
                             </p>
                           </div>
                           <Badge 

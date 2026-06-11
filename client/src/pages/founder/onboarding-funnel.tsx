@@ -15,7 +15,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format";
 import {
   Gauge,
   RefreshCw,
@@ -93,15 +93,6 @@ function fmtSeconds(s: number | null | undefined): string {
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${(s / 60).toFixed(1)}m`;
   return `${(s / 3600).toFixed(1)}h`;
-}
-
-function fmtRelative(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true });
-  } catch {
-    return "—";
-  }
 }
 
 function ttfvTone(
@@ -539,7 +530,7 @@ export default function FounderOnboardingFunnelPage() {
                               {o.vertical ?? "—"}
                             </td>
                             <td className="px-3 py-2 text-muted-foreground">
-                              {fmtRelative(o.signupAt)}
+                              {formatRelative(o.signupAt)}
                             </td>
                             <td
                               className={`px-3 py-2 text-right tabular-nums font-medium ${toneClass(

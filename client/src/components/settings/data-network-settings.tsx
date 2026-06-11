@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Eye, EyeOff, BarChart3 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 interface ContributionStats {
   totalContributions: number;
@@ -162,7 +163,7 @@ export function DataNetworkSettings() {
               )}
               {stats.lastContributionAt && (
                 <span className="block mt-1">
-                  Last contribution: {new Date(stats.lastContributionAt).toLocaleDateString()}
+                  Last contribution: {formatDate(stats.lastContributionAt)}
                 </span>
               )}
             </div>

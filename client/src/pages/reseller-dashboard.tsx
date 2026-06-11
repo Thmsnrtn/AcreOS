@@ -1,6 +1,6 @@
 import { useId, useState, useEffect, type FormEvent } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -71,10 +71,6 @@ function fmtCurrency(val: number) {
 }
 
 const reassurance = "Your form is unchanged — try again.";
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
 
 function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`bg-muted/50 rounded animate-pulse ${className}`} />;
@@ -389,7 +385,7 @@ function TenantTable({ tenants, loading }: { tenants: Tenant[]; loading: boolean
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {tenant.lastActiveAt
-                        ? <time dateTime={tenant.lastActiveAt}>{fmtDate(tenant.lastActiveAt)}</time>
+                        ? <time dateTime={tenant.lastActiveAt}>{formatDate(tenant.lastActiveAt)}</time>
                         : "Never"}
                     </TableCell>
                   </TableRow>

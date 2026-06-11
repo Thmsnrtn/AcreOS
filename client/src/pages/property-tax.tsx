@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { DollarSign, AlertTriangle, ExternalLink, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
@@ -191,7 +191,7 @@ export default function PropertyTaxPage() {
                     <li key={p.noteId} className="flex items-center justify-between text-sm">
                       <div>
                         <p className="font-medium text-xs">{p.propertyAddress}</p>
-                        <p className="text-xs text-muted-foreground tabular-nums">Due {new Date(p.dueDate).toLocaleDateString()}</p>
+                        <p className="text-xs text-muted-foreground tabular-nums">Due {formatDate(p.dueDate)}</p>
                       </div>
                       <Badge variant="secondary" className="tabular-nums">{usd(p.amount / 100)}</Badge>
                     </li>

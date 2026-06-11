@@ -41,6 +41,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage } from "@/lib/error-utils";
 import { Trash2, KeyRound, ShieldCheck } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 interface ChannelStatus {
   channel: string;
@@ -193,7 +194,7 @@ export default function ByokSettingsPage() {
                       <div className="text-xs text-muted-foreground">
                         {meta.help}
                         {row.lastUsedAt && (
-                          <> · last used {new Date(row.lastUsedAt).toLocaleDateString()}</>
+                          <> · last used {formatDate(row.lastUsedAt)}</>
                         )}
                       </div>
                     </div>

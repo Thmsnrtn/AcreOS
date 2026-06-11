@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { QueryErrorState } from "@/components/query-error-state";
 import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { Target, Calendar, Plus, X, Loader2 } from "lucide-react";
 
 interface GoalPayload {
@@ -239,7 +239,7 @@ export function GoalsSettings() {
                         <p className="text-xs text-muted-foreground tabular-nums">
                           {GOAL_TYPE_LABELS[goal.goalType as GoalPayload["goalType"]] ?? goal.goalType}
                           {" · "}
-                          {new Date(goal.periodStart).toLocaleDateString()} &ndash; {new Date(goal.periodEnd).toLocaleDateString()}
+                          {formatDate(goal.periodStart)} &ndash; {formatDate(goal.periodEnd)}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">

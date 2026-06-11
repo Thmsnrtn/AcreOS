@@ -10,7 +10,7 @@
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { CheckCircle2, ArrowRight } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 
 export interface ReceiptItem {
@@ -47,7 +47,7 @@ export function ReceiptsStrip({ receipts }: ReceiptsStripProps) {
               <span>{r.label}</span>
               {r.latestAt && (
                 <span className="text-acr-ink-3 tabular-nums">
-                  · {formatDistanceToNow(new Date(r.latestAt), { addSuffix: true })}
+                  · {formatRelative(r.latestAt)}
                 </span>
               )}
               <ArrowRight className="w-3 h-3 text-acr-ink-3 shrink-0" aria-hidden="true" />

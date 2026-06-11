@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { usd } from '@/lib/format';
+import { usd, formatDate } from '@/lib/format';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1094,9 +1094,7 @@ export default function MarketplacePage() {
                     const location = property
                       ? `${property.county ?? '—'}, ${property.state ?? '—'}`
                       : listing?.title ?? `Listing #${listing?.id ?? bid.listingId}`;
-                    const bidDate = bid.createdAt
-                      ? new Date(bid.createdAt).toLocaleDateString()
-                      : '—';
+                    const bidDate = formatDate(bid.createdAt);
 
                     return (
                       <TableRow key={bid.id}>

@@ -21,6 +21,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { Verbs } from "@/lib/labels";
 import { Code, Shield, Plus, X, CheckCircle2, Loader2 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 // ── API Key Manager ────────────────────────────────────────────────────────────
 
@@ -313,13 +314,13 @@ export function ApiKeyManager() {
                         <Badge variant="secondary" className="text-xs capitalize">{k.scope}</Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground tabular-nums">
-                        {k.createdAt ? new Date(k.createdAt).toLocaleDateString() : "—"}
+                        {formatDate(k.createdAt)}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground tabular-nums">
-                        {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : "Never"}
+                        {k.lastUsedAt ? formatDate(k.lastUsedAt) : "Never"}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground tabular-nums">
-                        {k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : "Never"}
+                        {k.expiresAt ? formatDate(k.expiresAt) : "Never"}
                       </TableCell>
                       <TableCell>
                         {revokeId === k.id ? (

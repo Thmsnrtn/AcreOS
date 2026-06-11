@@ -18,7 +18,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format";
 import {
   Workflow,
   RefreshCw,
@@ -112,15 +112,6 @@ const REVIEW_TONE: Record<
   flagged: "destructive",
   skipped: "outline",
 };
-
-function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true });
-  } catch {
-    return "—";
-  }
-}
 
 function fmtDuration(ms: number | null | undefined): string {
   if (ms == null || !Number.isFinite(ms)) return "—";
@@ -390,10 +381,10 @@ export default function FounderDispatchesPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-muted-foreground">
-                            {relativeTime(d.queuedAt)}
+                            {formatRelative(d.queuedAt)}
                           </td>
                           <td className="px-3 py-2 text-muted-foreground">
-                            {relativeTime(d.startedAt)}
+                            {formatRelative(d.startedAt)}
                           </td>
                           <td className="px-3 py-2 text-right">
                             {fmtCost(d.maxCostUsd)}
@@ -583,8 +574,8 @@ function TerminalRow({ dispatch: d }: { dispatch: DispatchRow }) {
                   Queued / Started / Completed
                 </div>
                 <div className="text-muted-foreground">
-                  {relativeTime(d.queuedAt)} · {relativeTime(d.startedAt)} ·{" "}
-                  {relativeTime(d.completedAt)}
+                  {formatRelative(d.queuedAt)} · {formatRelative(d.startedAt)} ·{" "}
+                  {formatRelative(d.completedAt)}
                 </div>
               </div>
               <div>

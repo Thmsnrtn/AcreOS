@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { RefreshCw, Calendar, DollarSign, AlertTriangle, CheckCircle2, Clock, Loader2, Plus, Star, FileText, Bell } from "lucide-react";
 import { Verbs } from "@/lib/labels";
 
@@ -295,7 +295,7 @@ export default function Exchange1031Page() {
                             {idDaysLeft} days left
                           </dd>
                           <p className="text-xs text-muted-foreground tabular-nums">
-                            {new Date(ex.identificationDeadline).toLocaleDateString()}
+                            {formatDate(ex.identificationDeadline)}
                           </p>
                         </div>
                         <div className={`p-2 rounded-md ${exchDaysLeft <= 7 ? "bg-acr-warn-soft border border-acr-warn-soft" : exchDaysLeft <= 20 ? "bg-acr-warn-soft" : "bg-muted"}`}>
@@ -308,7 +308,7 @@ export default function Exchange1031Page() {
                             {exchDaysLeft} days left
                           </dd>
                           <p className="text-xs text-muted-foreground tabular-nums">
-                            {new Date(ex.exchangeDeadline).toLocaleDateString()}
+                            {formatDate(ex.exchangeDeadline)}
                           </p>
                         </div>
                       </dl>

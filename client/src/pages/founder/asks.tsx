@@ -25,7 +25,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format";
 import {
   HelpCircle,
   RefreshCw,
@@ -140,15 +140,6 @@ const AGENT_ROLE_CLASS: Record<string, string> = {
 
 function agentClass(role: string): string {
   return AGENT_ROLE_CLASS[role] ?? "border-border text-muted-foreground";
-}
-
-function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true });
-  } catch {
-    return "—";
-  }
 }
 
 function truncate(s: string | null | undefined, n: number): string {
@@ -472,7 +463,7 @@ export default function FounderAsksPage() {
                               {truncate(a.questionSummary, 80)}
                             </td>
                             <td className="px-3 py-2 text-muted-foreground align-top">
-                              {relativeTime(a.askedAt)}
+                              {formatRelative(a.askedAt)}
                             </td>
                             <td className="px-3 py-2 align-top">
                               <Badge
@@ -674,7 +665,7 @@ function TerminalAskRow({ ask: a }: { ask: FounderAsk }) {
           </Badge>
         </td>
         <td className="px-3 py-2 text-muted-foreground align-top">
-          {relativeTime(resolvedAt)}
+          {formatRelative(resolvedAt)}
         </td>
         <td
           className="px-3 py-2 max-w-md text-foreground/80 align-top"
@@ -741,7 +732,7 @@ function TerminalAskRow({ ask: a }: { ask: FounderAsk }) {
                   Asked / Resolved
                 </div>
                 <div className="text-muted-foreground">
-                  {relativeTime(a.askedAt)} · {relativeTime(resolvedAt)}
+                  {formatRelative(a.askedAt)} · {formatRelative(resolvedAt)}
                 </div>
               </div>
               <div>

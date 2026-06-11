@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Shield, AlertTriangle, CheckCircle, Clock, FileText } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 const SEVERITY_LABEL: Record<string, string> = {
   critical: "Critical",
@@ -198,7 +199,7 @@ export default function CompliancePage() {
                           <SeverityBadge severity={alert.severity} />
                         </div>
                         <span className="text-xs text-muted-foreground tabular-nums">
-                          {alert.createdAt ? new Date(alert.createdAt).toLocaleDateString() : ""}
+                          {formatDate(alert.createdAt)}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground mb-3">{alert.description}</p>
@@ -259,7 +260,7 @@ export default function CompliancePage() {
                       </div>
                       <p className="text-xs text-muted-foreground">{rule.description}</p>
                       {rule.effectiveDate && (
-                        <p className="text-xs text-muted-foreground mt-1 tabular-nums">Effective: {new Date(rule.effectiveDate).toLocaleDateString()}</p>
+                        <p className="text-xs text-muted-foreground mt-1 tabular-nums">Effective: {formatDate(rule.effectiveDate)}</p>
                       )}
                     </CardContent>
                   </Card>

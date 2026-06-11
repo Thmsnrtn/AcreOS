@@ -44,6 +44,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { formatDateTime } from "@/lib/format";
 
 // ─── Types (mirror server/jobs/costOptimizer.ts) ────────────────────────────
 
@@ -98,20 +99,6 @@ function fmtUsd(n: number, digits = 2): string {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   })}`;
-}
-
-function fmtDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
 }
 
 function severityBadge(severity: Recommendation["severity"]) {
@@ -328,7 +315,7 @@ export default function FounderCostOptimizerPage() {
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <CardTitle className="flex items-center gap-2 text-base">
-                      Run #{run.id} <span className="text-sm font-normal text-muted-foreground">· {fmtDate(run.runAt)}</span>
+                      Run #{run.id} <span className="text-sm font-normal text-muted-foreground">· {formatDateTime(run.runAt)}</span>
                     </CardTitle>
                     <CardDescription className="mt-1">
                       {fmtUsd(run.mrrUsd)} MRR · {fmtUsd(run.totalAiCostUsd)} AI · {fmtUsd(run.totalFlyCostUsd)} Fly est ·
@@ -375,7 +362,7 @@ export default function FounderCostOptimizerPage() {
                               <div className="mt-2 flex items-center gap-1 text-xs text-emerald-600">
                                 <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
                                 Applied
-                                {rec.appliedAt ? ` ${fmtDate(rec.appliedAt)}` : ""}
+                                {rec.appliedAt ? ` ${formatDateTime(rec.appliedAt)}` : ""}
                                 {rec.appliedBy ? ` by ${rec.appliedBy}` : ""}
                               </div>
                             ) : null}

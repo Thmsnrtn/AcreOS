@@ -37,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { staggerContainer, staggerItem } from "@/lib/animations";
+import { formatDateTime } from "@/lib/format";
 
 interface AuditEntry {
   id: number;
@@ -77,17 +78,6 @@ const CATEGORY_TONE: Record<string, string> = {
 function humanizeAction(action: string): string {
   const tail = action.split(".").slice(1).join(" ") || action;
   return tail.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
-}
-
-function formatWhen(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  } catch {
-    return iso;
-  }
 }
 
 export function SecurityActivityLog() {
@@ -258,7 +248,7 @@ export function SecurityActivityLog() {
                     className="shrink-0 text-xs text-muted-foreground"
                     dateTime={entry.createdAt}
                   >
-                    {formatWhen(entry.createdAt)}
+                    {formatDateTime(entry.createdAt)}
                   </time>
                 </motion.li>
               );

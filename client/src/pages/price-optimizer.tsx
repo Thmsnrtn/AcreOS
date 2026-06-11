@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import {
   TrendingUp, TrendingDown, DollarSign, Target, BarChart3, CheckCircle, Loader2
 } from "lucide-react";
@@ -211,7 +211,7 @@ function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
           </Button>
         )}
 
-        <p className="text-xs text-muted-foreground tabular-nums">{new Date(rec.createdAt).toLocaleDateString()}</p>
+        <p className="text-xs text-muted-foreground tabular-nums">{formatDate(rec.createdAt)}</p>
       </CardContent>
     </Card>
   );

@@ -105,6 +105,21 @@
   --acr-heat-cold-soft: rgba(107,114,128,0.14);
   --acr-heat-warm-soft: rgba(185,122,30,0.14);
   --acr-heat-hot-soft:  rgba(142,43,22,0.14);
+
+  /* ── Sequential density tokens ───────────────────────────────────────
+     4-anchor perceptual light→dark ramp for choropleth-style map fills
+     (EDDM household density, future parcel-density surfaces). Distinct
+     from --acr-heat-* which is a 3-anchor activity-intensity stripe —
+     density encodes a monotone quantity, low→high. Each theme derives
+     its ramp from its primary hue (lightness ladder 93/68/48/33). Map
+     GL code resolves these at runtime via getComputedStyle — CSS var()
+     cannot reach WebGL paint expressions.
+
+     Default values match BEDROCK light. Per-theme blocks below override. */
+  --acr-density-1: #F8E7E2;
+  --acr-density-2: #DE937C;
+  --acr-density-3: #C45331;
+  --acr-density-4: #873922;
 }
 .dark {
   --glass-bg-light:  rgba(20, 14, 8, 0.78);
@@ -131,6 +146,13 @@
   --acr-heat-cold-soft: rgba(156,142,114,0.16);
   --acr-heat-warm-soft: rgba(217,162,74,0.16);
   --acr-heat-hot-soft:  rgba(191,76,46,0.18);
+
+  /* Density tokens — dark-mode global override (BEDROCK dark baseline).
+     Per-theme dark blocks below refine these further. */
+  --acr-density-1: #F6E8E4;
+  --acr-density-2: #D59485;
+  --acr-density-3: #B6543E;
+  --acr-density-4: #7D3A2B;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -226,6 +248,11 @@
   --acr-heat-cold-soft: rgba(107,92,66,0.14);
   --acr-heat-warm-soft: rgba(185,122,30,0.14);
   --acr-heat-hot-soft:  rgba(142,43,22,0.14);
+  /* Density tokens — BEDROCK light */
+  --acr-density-1: #F8E7E2;
+  --acr-density-2: #DE937C;
+  --acr-density-3: #C45331;
+  --acr-density-4: #873922;
 }
 
 /* ─────────────── BEDROCK · dark ─────────────── */
@@ -302,6 +329,11 @@
   --acr-heat-cold-soft: rgba(156,142,114,0.16);
   --acr-heat-warm-soft: rgba(217,162,74,0.16);
   --acr-heat-hot-soft:  rgba(191,76,46,0.18);
+  /* Density tokens — BEDROCK dark */
+  --acr-density-1: #F6E8E4;
+  --acr-density-2: #D59485;
+  --acr-density-3: #B6543E;
+  --acr-density-4: #7D3A2B;
 }
 
 /* ─────────────── Borrower portal — warm public identity ─────────────── */
@@ -396,6 +428,11 @@
   --acr-heat-cold-soft: rgba(120,102,68,0.14);
   --acr-heat-warm-soft: rgba(196,138,30,0.14);
   --acr-heat-hot-soft:  rgba(179,52,25,0.14);
+  /* Density tokens — Homestead light */
+  --acr-density-1: #FBE9E0;
+  --acr-density-2: #EB9970;
+  --acr-density-3: #D65C1F;
+  --acr-density-4: #933F15;
 }
 
 /* ─────────────── Homestead · dark ─────────────── */
@@ -474,6 +511,11 @@
   --acr-heat-cold-soft: rgba(143,126,98,0.16);
   --acr-heat-warm-soft: rgba(240,188,88,0.16);
   --acr-heat-hot-soft:  rgba(238,128,99,0.16);
+  /* Density tokens — Homestead dark */
+  --acr-density-1: #FCE9DF;
+  --acr-density-2: #EF9A6B;
+  --acr-density-3: #DE5D17;
+  --acr-density-4: #984010;
 }
 
 /* ─────────────── Quarry · light ─────────────── */
@@ -553,6 +595,11 @@
   --acr-heat-cold-soft: rgba(106,106,98,0.10);
   --acr-heat-warm-soft: rgba(143,106,0,0.10);
   --acr-heat-hot-soft:  rgba(158,30,23,0.10);
+  /* Density tokens — Quarry light */
+  --acr-density-1: #FBE1E0;
+  --acr-density-2: #EB7670;
+  --acr-density-3: #D6281F;
+  --acr-density-4: #931B15;
 }
 
 /* ─────────────── Quarry · dark ─────────────── */
@@ -632,6 +679,11 @@
   --acr-heat-cold-soft: rgba(135,132,122,0.14);
   --acr-heat-warm-soft: rgba(228,177,74,0.14);
   --acr-heat-hot-soft:  rgba(232,81,66,0.14);
+  /* Density tokens — Quarry dark */
+  --acr-density-1: #FBE2DF;
+  --acr-density-2: #ED786E;
+  --acr-density-3: #DA2B1B;
+  --acr-density-4: #961D13;
 }
 
 /* ─────────────── Nocturne · light ─────────────── */
@@ -711,6 +763,11 @@
   --acr-heat-cold-soft: rgba(109,109,109,0.10);
   --acr-heat-warm-soft: rgba(184,130,14,0.10);
   --acr-heat-hot-soft:  rgba(176,43,32,0.10);
+  /* Density tokens — Nocturne light */
+  --acr-density-1: #F9E3E1;
+  --acr-density-2: #E48077;
+  --acr-density-3: #CC3628;
+  --acr-density-4: #8D251C;
 }
 
 /* ─────────────── Nocturne · dark ─────────────── */
@@ -789,6 +846,11 @@
   --acr-heat-cold-soft: rgba(122,122,122,0.12);
   --acr-heat-warm-soft: rgba(250,200,77,0.12);
   --acr-heat-hot-soft:  rgba(255,74,56,0.12);
+  /* Density tokens — Nocturne dark */
+  --acr-density-1: #FFDEDB;
+  --acr-density-2: #FF695C;
+  --acr-density-3: #F51400;
+  --acr-density-4: #A80E00;
 }
 
 /* ─────────────── Meadow · light ─────────────── */
@@ -869,6 +931,11 @@
   --acr-heat-cold-soft: rgba(103,110,94,0.14);
   --acr-heat-warm-soft: rgba(216,149,40,0.16);
   --acr-heat-hot-soft:  rgba(200,86,50,0.14);
+  /* Density tokens — Meadow light */
+  --acr-density-1: #E9F4E6;
+  --acr-density-2: #9CCD8E;
+  --acr-density-3: #61AA4B;
+  --acr-density-4: #437533;
 }
 
 /* ─────────────── Meadow · dark ─────────────── */
@@ -947,6 +1014,11 @@
   --acr-heat-cold-soft: rgba(131,139,114,0.18);
   --acr-heat-warm-soft: rgba(242,191,85,0.18);
   --acr-heat-hot-soft:  rgba(234,132,96,0.18);
+  /* Density tokens — Meadow dark */
+  --acr-density-1: #EBF5E5;
+  --acr-density-2: #A2D289;
+  --acr-density-3: #6AB143;
+  --acr-density-4: #497A2E;
 }
 
 /* ─────────────── Slate · light ─────────────── */
@@ -1026,6 +1098,11 @@
   --acr-heat-cold-soft: rgba(95,107,128,0.12);
   --acr-heat-warm-soft: rgba(181,114,10,0.12);
   --acr-heat-hot-soft:  rgba(184,33,59,0.12);
+  /* Density tokens — Slate light (closest to the legacy hardcoded blues) */
+  --acr-density-1: #E0E7FA;
+  --acr-density-2: #7193EA;
+  --acr-density-3: #2053D5;
+  --acr-density-4: #163992;
 }
 
 /* ─────────────── Slate · dark ─────────────── */
@@ -1104,6 +1181,11 @@
   --acr-heat-cold-soft: rgba(119,130,148,0.18);
   --acr-heat-warm-soft: rgba(234,177,74,0.18);
   --acr-heat-hot-soft:  rgba(241,83,110,0.18);
+  /* Density tokens — Slate dark */
+  --acr-density-1: #DBE6FF;
+  --acr-density-2: #5C8DFF;
+  --acr-density-3: #0049F5;
+  --acr-density-4: #0032A8;
 }
 
 @layer base {

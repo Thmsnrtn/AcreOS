@@ -28,6 +28,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
 
 type InsuranceStatus = "verified" | "expiring_soon" | "lapsed" | "force_placed";
 
@@ -58,13 +59,6 @@ function fmtUsd(cents: number | null): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(Math.round(cents / 100));
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function daysUntil(iso: string | null): number | null {
@@ -175,7 +169,7 @@ export function NoteComplianceCard(props: ComplianceProps) {
                   <Row label="Policy #" value={props.insurancePolicyNumber || "—"} mono />
                   <Row
                     label="Expires"
-                    value={fmtDate(props.insuranceExpiresAt)}
+                    value={formatDate(props.insuranceExpiresAt)}
                     sub={expiresInDays !== null ? `${expiresInDays >= 0 ? `${expiresInDays} days` : `${Math.abs(expiresInDays)} days ago`}` : undefined}
                   />
                 </dl>
@@ -237,7 +231,7 @@ export function NoteComplianceCard(props: ComplianceProps) {
                   <Row label="Authority" value={props.taxAuthorityName || "—"} />
                   <Row
                     label="Next due"
-                    value={fmtDate(props.taxDisbursementDueDate)}
+                    value={formatDate(props.taxDisbursementDueDate)}
                     sub={
                       dueInDays !== null
                         ? dueInDays < 0

@@ -22,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { History, TrendingUp, TrendingDown, Minus, Users, Receipt } from "lucide-react";
 
@@ -97,13 +97,6 @@ interface ParcelBiographyProps {
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
-
-function formatDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
 
 function formatPct(pct: number | null): string | null {
   if (pct == null) return null;

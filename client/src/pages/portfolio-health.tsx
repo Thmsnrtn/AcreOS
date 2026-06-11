@@ -9,6 +9,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   AlertTriangle, AlertCircle, Info, RefreshCw, X, Loader2, ShieldCheck
 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 interface PortfolioAlert {
   id: number;
@@ -71,7 +72,7 @@ function AlertCard({ alert, onDismiss }: { alert: PortfolioAlert; onDismiss: (id
           </span>
         )}
         <span className="text-xs text-muted-foreground ml-auto tabular-nums">
-          {new Date(alert.createdAt).toLocaleDateString()}
+          {formatDate(alert.createdAt)}
         </span>
       </div>
     </div>

@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { DataProvenanceTag } from "@/components/data-provenance-tag";
 import { GlossaryTerm } from "@/components/Glossary";
 import type { Property } from "@shared/schema";
+import { formatDate } from "@/lib/format";
 
 interface ComparableProperty {
   id: string;
@@ -127,11 +128,6 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
       currency: "USD",
       maximumFractionDigits: 0,
     }).format(value);
-  };
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "N/A";
-    return new Date(dateStr).toLocaleDateString();
   };
 
   const saleDateStaleness = (dateStr: string | null): "fresh" | "aging" | "stale" | null => {

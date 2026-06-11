@@ -26,6 +26,7 @@ import {
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
 
 interface PerBlast {
   blastId: string;
@@ -58,13 +59,6 @@ interface FreshnessResponse {
   };
   stale: Array<{ id: number; name: string; email: string | null; lastContactDate: string | null }>;
   deactivationCandidates: Array<{ id: number; name: string; email: string | null; lastContactDate: string | null }>;
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function fmtPct(decimal: number): string {
@@ -263,7 +257,7 @@ function DeactivateRow({ buyer }: { buyer: FreshnessResponse["deactivationCandid
     <li className="flex items-center justify-between gap-3 py-1 text-xs">
       <span className="font-medium truncate">{buyer.name}</span>
       <span className="text-muted-foreground truncate">{buyer.email ?? "—"}</span>
-      <span className="text-muted-foreground whitespace-nowrap">Last: {fmtDate(buyer.lastContactDate)}</span>
+      <span className="text-muted-foreground whitespace-nowrap">Last: {formatDate(buyer.lastContactDate)}</span>
       <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => deactivate.mutate()} disabled={deactivate.isPending}>
         <ArrowDown className="w-3 h-3 mr-1" aria-hidden="true" /> Deactivate
       </Button>

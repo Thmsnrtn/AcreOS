@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { formatRelative } from "@/lib/format";
 
 interface JobStatus {
   jobName: string;
@@ -49,9 +50,8 @@ function formatInterval(ms: number): string {
 
 function formatMinutes(mins: number | null): string {
   if (mins === null) return "Never run";
-  if (mins < 60) return `${mins}m ago`;
-  if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
-  return `${Math.floor(mins / 1440)}d ago`;
+  // API reports minutes-since-run; reconstruct the timestamp for the house helper.
+  return formatRelative(Date.now() - mins * 60_000);
 }
 
 export function JobQueueHealth() {

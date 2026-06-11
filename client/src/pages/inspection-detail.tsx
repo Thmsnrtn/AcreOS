@@ -27,6 +27,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { formatDate } from "@/lib/format";
 
 interface ChecklistItem {
   area: string;
@@ -162,7 +163,7 @@ export default function InspectionDetailPage() {
           <div>
             <div className="text-xs text-muted-foreground">Tenant</div>
             {inspection.tenantSignedAt ? (
-              <Badge variant="default" className="text-xs">Signed {new Date(inspection.tenantSignedAt).toLocaleDateString()}</Badge>
+              <Badge variant="default" className="text-xs">Signed {formatDate(inspection.tenantSignedAt)}</Badge>
             ) : (
               <Button size="sm" variant="outline" onClick={() => signTenant.mutate()} disabled={signTenant.isPending}>
                 Record tenant signature
@@ -172,7 +173,7 @@ export default function InspectionDetailPage() {
           <div>
             <div className="text-xs text-muted-foreground">Landlord</div>
             {inspection.landlordSignedAt ? (
-              <Badge variant="default" className="text-xs">Signed {new Date(inspection.landlordSignedAt).toLocaleDateString()}</Badge>
+              <Badge variant="default" className="text-xs">Signed {formatDate(inspection.landlordSignedAt)}</Badge>
             ) : (
               <Button size="sm" variant="outline" onClick={() => signLandlord.mutate()} disabled={signLandlord.isPending}>
                 Record landlord signature

@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import {
   Swords, DollarSign, Brain, Clock, Gauge, GitBranch, Key, Radar,
   Loader2, AlertTriangle, ArrowRight,
@@ -654,7 +654,7 @@ function DelegationTokens() {
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">{t.reason}</p>
                   <p className="text-xs text-muted-foreground">
-                    Expires: <time dateTime={t.expiresAt}>{new Date(t.expiresAt).toLocaleDateString()}</time>
+                    Expires: <time dateTime={t.expiresAt}>{formatDate(t.expiresAt)}</time>
                   </p>
                 </CardContent>
               </Card>

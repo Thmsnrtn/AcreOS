@@ -122,6 +122,7 @@ import {
   Hammer,
   Workflow,
 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
 import { useBrandName } from "@/hooks/use-white-label";
 import { useModals } from "@/stores/modal-store";
@@ -295,7 +296,7 @@ function PaxNotificationBadge() {
                       <p className="text-xs font-semibold text-foreground leading-snug">{obs.title}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">{obs.description}</p>
                       <p className="text-micro text-muted-foreground/60 mt-1">
-                        {new Date(obs.detectedAt).toLocaleDateString()}
+                        {formatDate(obs.detectedAt)}
                       </p>
                     </div>
                     <button

@@ -53,6 +53,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
 
 interface Certificate {
   id: string;
@@ -100,13 +101,6 @@ function fmtUsd(cents: number): string {
     currency: "USD",
     maximumFractionDigits: 2,
   }).format(cents / 100);
-}
-
-function fmtDate(iso: string): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function fmtPct(bps: number): string {
@@ -299,7 +293,7 @@ export default function RedemptionClockPage() {
                     <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Deadline
                     </div>
-                    <div className="font-medium tabular-nums">{fmtDate(c.redemptionDeadline)}</div>
+                    <div className="font-medium tabular-nums">{formatDate(c.redemptionDeadline)}</div>
                   </div>
                   <div>
                     <div className="text-micro uppercase tracking-wide text-muted-foreground">
@@ -371,10 +365,10 @@ export default function RedemptionClockPage() {
                       <div className="text-xs text-muted-foreground font-mono">{c.apn}</div>
                     </td>
                     <td className="px-3 py-2.5 text-xs">
-                      <div>{fmtDate(c.saleDate)}</div>
+                      <div>{formatDate(c.saleDate)}</div>
                       <div className="text-muted-foreground capitalize">{c.saleType.replace("_", " ")}</div>
                     </td>
-                    <td className="px-3 py-2.5 text-xs">{fmtDate(c.redemptionDeadline)}</td>
+                    <td className="px-3 py-2.5 text-xs">{formatDate(c.redemptionDeadline)}</td>
                     <td className={`px-3 py-2.5 text-right text-xs ${dayCellTone(c.daysRemaining)}`}>
                       {c.daysRemaining < 0 ? `${Math.abs(c.daysRemaining)} overdue` : `${c.daysRemaining}`}
                     </td>

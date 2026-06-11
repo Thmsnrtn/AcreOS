@@ -38,6 +38,7 @@ import {
   BarChart2,
   Target,
 } from 'lucide-react';
+import { formatDate } from "@/lib/format";
 
 const reassurance = "Your selection is unchanged — try again.";
 
@@ -418,7 +419,7 @@ export default function LandCreditPage() {
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Last updated <time dateTime={latestScore.calculatedAt || latestScore.createdAt}>{new Date(latestScore.calculatedAt || latestScore.createdAt).toLocaleDateString()}</time>
+                    Last updated <time dateTime={latestScore.calculatedAt || latestScore.createdAt}>{formatDate(latestScore.calculatedAt || latestScore.createdAt)}</time>
                   </p>
                 </CardContent>
               </Card>

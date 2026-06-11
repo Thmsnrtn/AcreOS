@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Verbs } from "@/lib/labels";
+import { formatDate } from "@/lib/format";
 
 interface CredentialField {
   key: string;
@@ -280,7 +281,7 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
                               </p>
                               {isConnected && connector.instance?.lastTestedAt && (
                                 <p className="text-micro text-muted-foreground mt-1">
-                                  Last tested {new Date(connector.instance.lastTestedAt).toLocaleDateString()}
+                                  Last tested {formatDate(connector.instance.lastTestedAt)}
                                 </p>
                               )}
                             </div>

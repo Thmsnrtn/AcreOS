@@ -65,6 +65,7 @@ import {
   type CostMixCategory,
   type RecoveryTransferArgs,
 } from "@/hooks/use-finance";
+import { formatDate } from "@/lib/format";
 
 const BUCKET_ORDER = [
   "tax_reserve",
@@ -573,7 +574,7 @@ function ScaleUpHistorySection() {
                   return (
                     <tr key={d.id}>
                       <td className="py-1 tabular-nums">
-                        {new Date(d.createdAt).toLocaleDateString()}
+                        {formatDate(d.createdAt)}
                       </td>
                       <td className="py-1 tabular-nums">
                         {after.threshold != null

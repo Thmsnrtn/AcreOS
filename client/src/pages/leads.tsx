@@ -1,7 +1,7 @@
 import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useTerm } from "@/hooks/use-persona";
-import { plural } from "@/lib/format";
+import { plural, formatDate } from "@/lib/format";
 import { clientLogger } from "@/lib/clientLogger";
 import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
@@ -306,7 +306,7 @@ function ScoreDetailsDialog({
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground">
-                          {new Date(entry.scoredAt).toLocaleDateString()}
+                          {formatDate(entry.scoredAt)}
                         </span>
                         {historyRec && (
                           <Badge 
@@ -480,7 +480,7 @@ function ContactAgeBadge({ lead }: { lead: Lead }) {
       <TooltipContent>
         <span data-testid={`tooltip-contact-age-${lead.id}`}>
           {days === 0 ? 'Contacted today' : `${days} days since last contact`}
-          {lastContactDate && ` (${new Date(lastContactDate).toLocaleDateString()})`}
+          {lastContactDate && ` (${formatDate(lastContactDate)})`}
         </span>
       </TooltipContent>
     </Tooltip>
@@ -587,7 +587,7 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
         <TooltipContent>
           <span data-testid={`tooltip-tcpa-${lead.id}`}>
             Do Not Contact - Opted out
-            {lead.optOutDate && ` on ${new Date(lead.optOutDate).toLocaleDateString()}`}
+            {lead.optOutDate && ` on ${formatDate(lead.optOutDate)}`}
           </span>
         </TooltipContent>
       </Tooltip>
@@ -610,7 +610,7 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
         <TooltipContent>
           <span data-testid={`tooltip-tcpa-${lead.id}`}>
             TCPA consent on file
-            {lead.consentDate && ` since ${new Date(lead.consentDate).toLocaleDateString()}`}
+            {lead.consentDate && ` since ${formatDate(lead.consentDate)}`}
             {lead.consentSource && ` (${lead.consentSource})`}
           </span>
         </TooltipContent>
@@ -1629,7 +1629,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                   <TcpaConsentBadge lead={lead} />
 {lead.lastContactedAt && (
                                     <span className="text-xs text-muted-foreground bg-muted/50 rounded px-[6px] py-[2px]" title="Last contacted">
-                                      {new Date(lead.lastContactedAt).toLocaleDateString()}
+                                      {formatDate(lead.lastContactedAt)}
                                     </span>
                                   )}
                                 </div>
@@ -2454,7 +2454,7 @@ export function ScoreBreakdownCard({ leadId }: { leadId: number }) {
                   );
                 })}
                 <p className="text-xs text-muted-foreground text-center pt-2">
-                  Scored {scoreHistory?.[0]?.scoredAt ? new Date(scoreHistory[0].scoredAt).toLocaleDateString() : "recently"}
+                  Scored {scoreHistory?.[0]?.scoredAt ? formatDate(scoreHistory[0].scoredAt) : "recently"}
                 </p>
               </div>
             )}

@@ -46,6 +46,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatDateTime } from "@/lib/format";
 
 interface Blast {
   id: string;
@@ -88,12 +89,6 @@ const STATUS_TONE: Record<Recipient["status"], string> = {
   bounced:                "bg-acr-warning/10 text-acr-warning",
   failed:                 "bg-acr-neg/10 text-acr-neg",
 };
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
 
 export default function BuyerBlastsPage() {
   const [matchDetail, params] = useRoute<{ id: string }>("/buyer-blasts/:id");
@@ -179,7 +174,7 @@ function BlastIndex() {
                     <td className="px-3 py-2.5 text-right text-acr-pos">{b.sentCount}</td>
                     <td className="px-3 py-2.5 text-right text-primary">{b.repliedCount}</td>
                     <td className="px-3 py-2.5 text-xs capitalize">{b.status}</td>
-                    <td className="px-3 py-2.5 text-xs">{fmtDate(b.completedAt ?? b.createdAt)}</td>
+                    <td className="px-3 py-2.5 text-xs">{formatDateTime(b.completedAt ?? b.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -35,6 +35,7 @@ import {
   Package, FolderPlus, GripVertical, X, Play
 } from "lucide-react";
 import type { DocumentVersion } from "@shared/schema";
+import { formatDate } from "@/lib/format";
 
 const DOCUMENT_TYPES = [
   { value: "purchase_agreement", label: "Purchase Agreement" },
@@ -744,7 +745,7 @@ export default function DocumentsPage() {
                         {humanizeType(doc.type)}
                       </span>
                       <span className="text-xs text-muted-foreground tabular-nums">
-                        {doc.createdAt && new Date(doc.createdAt).toLocaleDateString()}
+                        {doc.createdAt && formatDate(doc.createdAt)}
                       </span>
                     </div>
                   </div>
@@ -888,7 +889,7 @@ export default function DocumentsPage() {
                         </Badge>
                       )}
                       <span className="text-xs text-muted-foreground tabular-nums">
-                        {pkg.createdAt && new Date(pkg.createdAt).toLocaleDateString()}
+                        {pkg.createdAt && formatDate(pkg.createdAt)}
                       </span>
                     </div>
                     {pkg.description && (
@@ -1455,7 +1456,7 @@ export default function DocumentsPage() {
                     <Badge variant="secondary" className="tabular-nums">Property #{selectedPackage.propertyId}</Badge>
                   )}
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    Created {selectedPackage.createdAt && new Date(selectedPackage.createdAt).toLocaleDateString()}
+                    Created {selectedPackage.createdAt && formatDate(selectedPackage.createdAt)}
                   </span>
                 </div>
 

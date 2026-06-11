@@ -23,6 +23,7 @@ import { OverlayLegend } from "@/components/maps/OverlayLegend";
 import { getMapEngine, STYLE_URLS, isMapEngineConfigured, type MapStyleName } from "@/lib/map-engine";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { formatDate } from "@/lib/format";
 
 // Rosy River B1 Phase 2 — engine-aware map renderer.
 //
@@ -1564,7 +1565,7 @@ export function PropertyMap({
           <div style="min-width: 180px; font-family: system-ui;">
             <div style="font-weight: 600; margin-bottom: 4px;">${comp.address || comp.apn || "Comp Property"}</div>
             ${comp.salePrice ? `<div style="color: #22c55e; font-weight: 500;">$${comp.salePrice.toLocaleString()}</div>` : ""}
-            ${comp.saleDate ? `<div style="font-size: 12px; color: #6b7280;">Sold: ${new Date(comp.saleDate).toLocaleDateString()}</div>` : ""}
+            ${comp.saleDate ? `<div style="font-size: 12px; color: #6b7280;">Sold: ${formatDate(comp.saleDate)}</div>` : ""}
             ${comp.acres ? `<div style="font-size: 12px; color: #6b7280;">Size: ${comp.acres.toFixed(2)} acres</div>` : ""}
             <div style="font-size: 12px; color: #6b7280;">$/Acre: ${pricePerAcre}</div>
             ${comp.distance ? `<div style="font-size: 12px; color: #6b7280;">Distance: ${comp.distance.toFixed(2)} mi</div>` : ""}
@@ -2735,7 +2736,7 @@ export function PropertyMap({
                                 <div className="text-acr-pos font-semibold">${comp.salePrice.toLocaleString()}</div>
                               )}
                               <div className="text-muted-foreground flex flex-wrap gap-2">
-                                {comp.saleDate && <span>{new Date(comp.saleDate).toLocaleDateString()}</span>}
+                                {comp.saleDate && <span>{formatDate(comp.saleDate)}</span>}
                                 {comp.acres && <span>{comp.acres.toFixed(2)} ac</span>}
                                 {comp.pricePerAcre && <span>${comp.pricePerAcre.toLocaleString()}/ac</span>}
                               </div>

@@ -6,7 +6,7 @@
  *   FounderChatHeader. Slides in over the chat (Sheet-style).
  */
 import { useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Plus, MessageCircle, MessagesSquare, ChevronLeft, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -163,7 +163,7 @@ function ThreadRow({
   try {
     const ts = new Date(thread.lastActivityAt);
     if (!Number.isNaN(ts.getTime()) && ts.getTime() > 0) {
-      relative = formatDistanceToNow(ts, { addSuffix: true });
+      relative = formatRelative(ts);
     }
   } catch {
     /* swallow */

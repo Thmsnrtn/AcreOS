@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/empty-state';
 import { QueryErrorState } from '@/components/query-error-state';
 import { MessageSquare, ChevronRight, Search } from 'lucide-react';
 import type { NegotiationSession } from './meta';
+import { formatDate } from "@/lib/format";
 
 interface SessionHistoryProps {
   dealId: string;
@@ -100,7 +101,7 @@ export function SessionHistory({
                 className="cursor-pointer transition-shadow hover:shadow-md active:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 role="button"
                 tabIndex={0}
-                aria-label={`Open session ${s.id}, started ${new Date(s.createdAt).toLocaleDateString()}${s.outcome ? `, outcome ${s.outcome}` : ", active"}`}
+                aria-label={`Open session ${s.id}, started ${formatDate(s.createdAt)}${s.outcome ? `, outcome ${s.outcome}` : ", active"}`}
                 onClick={() => onOpenSession(s.id)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenSession(s.id); } }}
               >
@@ -109,7 +110,7 @@ export function SessionHistory({
                     <div>
                       <p className="font-medium text-sm">Session #<span className="tabular-nums">{s.id}</span></p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Started <time dateTime={new Date(s.createdAt).toISOString()}>{new Date(s.createdAt).toLocaleDateString()}</time>
+                        Started <time dateTime={new Date(s.createdAt).toISOString()}>{formatDate(s.createdAt)}</time>
                         {s.outcome && ` · Outcome: ${s.outcome}`}
                       </p>
                     </div>

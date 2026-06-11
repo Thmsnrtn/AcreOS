@@ -41,6 +41,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
 
 type Status =
   | "pending"
@@ -89,13 +90,6 @@ function fmtUsd(cents: number): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(Math.round(cents / 100));
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function daysFromToday(iso: string): number {
@@ -266,9 +260,9 @@ export default function EarnestMoneyPage() {
                       <td className="px-3 py-2.5 text-xs">{h.titleCompany ?? "—"}</td>
                       <td className="px-3 py-2.5 text-xs font-mono">{h.referenceNumber ?? h.id.slice(0, 8)}</td>
                       <td className="px-3 py-2.5 text-right font-mono">{fmtUsd(h.amountCents)}</td>
-                      <td className="px-3 py-2.5 text-xs">{fmtDate(h.depositedAt)}</td>
+                      <td className="px-3 py-2.5 text-xs">{formatDate(h.depositedAt)}</td>
                       <td className="px-3 py-2.5 text-xs">
-                        {fmtDate(h.refundableUntilAt)}
+                        {formatDate(h.refundableUntilAt)}
                         {days !== null && (
                           <span className={`ml-1.5 text-micro ${days < 0 ? "text-acr-neg font-semibold" : days <= 2 ? "text-acr-warning" : "text-muted-foreground"}`}>
                             ({days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "today" : `${days}d`})

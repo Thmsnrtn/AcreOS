@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { Flame, Thermometer, Wind, Snowflake, Loader2, TrendingUp, DollarSign, Clock } from "lucide-react";
 
 interface SellerIntentPrediction {
@@ -124,7 +124,7 @@ function IntentCard({ prediction }: { prediction: SellerIntentPrediction }) {
           </div>
         )}
 
-        <p className="text-xs text-muted-foreground tabular-nums">{new Date(prediction.createdAt).toLocaleDateString()}</p>
+        <p className="text-xs text-muted-foreground tabular-nums">{formatDate(prediction.createdAt)}</p>
       </CardContent>
     </Card>
   );

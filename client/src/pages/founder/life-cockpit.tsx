@@ -57,6 +57,7 @@ import { staggerContainer, staggerItem } from "@/lib/animations";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
 
 // ─── Types (mirror routes-founder-life-cockpit.ts) ───────────────────────────
 
@@ -236,7 +237,7 @@ function fmtBytes(n: number): string {
 }
 function fmtDate(s: string | null): string {
   if (!s) return "No date";
-  return new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return formatDate(s);
 }
 
 // ─── Section: Taxes ──────────────────────────────────────────────────────────

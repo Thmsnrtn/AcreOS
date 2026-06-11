@@ -26,6 +26,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
+import { formatDate } from "@/lib/format";
 
 interface GrowthCampaignItem {
   id: number;
@@ -770,7 +771,7 @@ export default function FounderGrowthCampaignsPage() {
                   <span className="text-muted-foreground shrink-0">
                     {s.utmSource ? `${s.utmSource}${s.utmCampaign ? ` › ${s.utmCampaign}` : ""}` : "organic"}
                   </span>
-                  <span className="text-muted-foreground shrink-0">{new Date(s.createdAt).toLocaleDateString()}</span>
+                  <span className="text-muted-foreground shrink-0">{formatDate(s.createdAt)}</span>
                 </div>
               ))}
             </div>
