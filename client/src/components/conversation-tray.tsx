@@ -594,7 +594,7 @@ export function ConversationTray() {
           <Button
             type="button"
             size="icon"
-            className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-[49] rounded-full shadow-lg safe-area-bottom"
+            className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-slot-tray rounded-full shadow-lg safe-area-bottom"
             aria-label="Open conversations"
             data-testid="button-open-conversations"
           >
@@ -617,7 +617,7 @@ export function ConversationTray() {
         <Button
           type="button"
           size="icon"
-          className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-[49] rounded-full shadow-lg safe-area-bottom"
+          className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-slot-tray rounded-full shadow-lg safe-area-bottom"
           onClick={() => setIsOpen(true)}
           aria-label="Open conversations"
           data-testid="button-open-conversations"
@@ -627,7 +627,7 @@ export function ConversationTray() {
       )}
 
       {isOpen && (
-        <section role="dialog" aria-label="Team messages" className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-[49] w-[360px] h-[500px] bg-background border rounded-card shadow-xl flex flex-col overflow-hidden safe-area-bottom">
+        <section role="dialog" aria-label="Team messages" className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-slot-tray w-[360px] h-[500px] bg-background border rounded-card shadow-xl flex flex-col overflow-hidden safe-area-bottom">
           <div className="absolute top-2 right-2 z-10">
             <Button
               type="button"

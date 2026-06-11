@@ -8,22 +8,24 @@
  * of them knew about each other. This registry exists so new code can
  * pick a deliberately-numbered layer instead of guessing.
  *
- * Reference these constants from JSX:
- *   import { Z } from "@/lib/z-index"
- *   <div style={{ zIndex: Z.FAB }} />
+ * PREFER the Tailwind semantic tokens. The canonical scale now lives in
+ * tailwind.config.ts (`theme.extend.zIndex`) and as `--z-*` custom
+ * properties in index.css. In JSX, say:
+ *   <div className="fixed bottom-4 right-4 z-floating" />   // not z-50
+ *   <div className="z-modal" />  <div className="z-toast" />
  *
- * Or with Tailwind's arbitrary-value syntax:
- *   <div className={`fixed bottom-4 right-4 z-[${Z.FAB}]`} />
+ * This `Z` registry is the runtime mirror of that scale, for the rare
+ * case that needs a numeric zIndex in an inline `style` (e.g. a value
+ * computed in JS). The token names below map 1:1 to the Tailwind tokens:
+ *   FAB/BOTTOM_NAV/… (50) → z-floating · MODAL_SCRIM/… (60) → z-modal
+ *   TOAST (100) → z-toast · DYNAMIC_ISLAND (9998) → z-island, etc.
+ *   <div style={{ zIndex: Z.FAB }} />          // or "var(--z-floating)"
  *
- * IMPORTANT — Migration policy:
- *   Components currently using inline `z-50` / `z-[60]` literals are
- *   NOT auto-migrated by introducing this file — adopting it across
- *   the existing surface area is intentionally a separate track to
- *   avoid merge conflicts with parallel UI work. New code MUST use
- *   this registry; existing code adopts it on next touch.
- *
- *   To find migration candidates, run:
- *     grep -rn 'z-\[\?[0-9]' client/src
+ * Migration is now DONE (Tahoe Wave F1): the arbitrary `z-[60]`/`z-[100]`/
+ * `z-[9998]`/`z-[9999]` escapees were renamed to semantic tokens, and a
+ * ratchet (scripts/lint-zindex.mjs) blocks any new raw `z-[…]` in
+ * client/src .tsx. New code MUST use the semantic tokens, never a
+ * numeric literal or arbitrary value.
  *
  * Layer numbering policy (low → high). Gaps left between bands so
  * future layers can slot in without renumbering the world.

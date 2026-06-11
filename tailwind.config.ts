@@ -47,6 +47,40 @@ export default {
         "acr-spring": "cubic-bezier(.22, 1, .36, 1)",
         "acr-standard": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
       },
+      // ── Z-index / layering scale ──────────────────────────────────────
+      // Single SEMANTIC stacking scale for the whole app. Before this,
+      // z-index was entirely ad-hoc (52 × `z-50`, 44 × `z-10`, plus
+      // arbitrary escalations `z-[60]`/`z-[100]`/`z-[9998]`/`z-[9999]`)
+      // and the same numbers were reused for unrelated roles, which caused
+      // stacking bugs (FAB-over-FAB; founder tab list over the settings
+      // gear). Future code must say `z-modal`, not `z-50`.
+      //
+      // The numeric values are derived from the EXISTING anchors so the
+      // migration is a behavior-identical RENAME, never a re-layer: every
+      // distinct legacy layer keeps its own token at its own value, and
+      // the documented stacking order (low → high) is preserved exactly.
+      //
+      // Mirrored as CSS custom properties (--z-*) in index.css for the
+      // handful of non-Tailwind / inline-style consumers, and as the
+      // runtime `Z` registry in client/src/lib/z-index.ts.
+      zIndex: {
+        base: "0",          // in-flow default content
+        raised: "1",        // card hover-lift; thin in-flow raise
+        docked: "10",       // sticky subheaders, table headers, raised cards
+        dropdown: "20",     // in-page dropdowns / popper menus
+        sticky: "30",       // page topbar
+        overlay: "40",      // autopilot status bar, top notifications, cookie banner
+        "slot-help": "48",  // floating help slot (just under the FAB stack)
+        "slot-tray": "49",  // floating conversation tray slot
+        floating: "50",     // FAB, bottom nav, base dialogs/sheets, PWA prompt
+        modal: "60",        // modal scrim, command palette, new-item menu, escalated dialogs/sheets
+        toast: "100",       // toasts / transient banners above modals
+        offline: "110",     // offline indicator above toasts
+        tour: "9990",       // product tour scrim
+        island: "9998",     // dynamic island, tour/demo highlight rings
+        spotlight: "9999",  // demo orb / highlight focus above the island
+        max: "10000",       // absolute top — demo control panel
+      },
       colors: {
         // Flat / base colors (regular buttons)
         background: "hsl(var(--background) / <alpha-value>)",

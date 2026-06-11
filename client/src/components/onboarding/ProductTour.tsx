@@ -142,7 +142,7 @@ function TourTooltip({ step, stepIndex, totalSteps, onNext, onPrev, onSkip, targ
 
   const content = (
     <div
-      className={`z-[9999] bg-background border border-border rounded-xl shadow-xl p-5 ${isCenter ? "w-[380px]" : "w-[320px]"}`}
+      className={`z-spotlight bg-background border border-border rounded-xl shadow-xl p-5 ${isCenter ? "w-[380px]" : "w-[320px]"}`}
       style={!isCenter ? tooltipStyle : undefined}
     >
       <div className="flex items-start justify-between mb-3">
@@ -206,7 +206,7 @@ function TourTooltip({ step, stepIndex, totalSteps, onNext, onPrev, onSkip, targ
 
   if (isCenter) {
     return createPortal(
-      <div className="fixed inset-0 z-[9998] flex items-center justify-center">
+      <div className="fixed inset-0 z-island flex items-center justify-center">
         <div className="absolute inset-0 bg-black/30" onClick={onSkip} aria-hidden="true" />
         <div className="relative">{content}</div>
       </div>,
@@ -215,7 +215,7 @@ function TourTooltip({ step, stepIndex, totalSteps, onNext, onPrev, onSkip, targ
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[9998] pointer-events-none">
+    <div className="fixed inset-0 z-island pointer-events-none">
       {/* Highlight box around target */}
       {targetRect && (
         <div

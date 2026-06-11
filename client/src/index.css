@@ -32,12 +32,32 @@
   --acr-ease-spring:   cubic-bezier(.22, 1, .36, 1);
   --acr-ease-standard: cubic-bezier(0.25, 0.46, 0.45, 0.94);
 
-  /* Z-index layers */
-  --acr-z-sidebar: 10;
-  --acr-z-topbar:  20;
-  --acr-z-drawer:  30;
-  --acr-z-modal:   9100;
-  --acr-z-toast:   9999;
+  /* ── Z-index / layering scale ───────────────────────────────────────
+     Canonical stacking scale, mirrored from theme.extend.zIndex in
+     tailwind.config.ts and the runtime Z registry in lib/z-index.ts.
+     Tailwind classes (`z-modal`, `z-toast`, …) are preferred; these
+     custom properties exist for the rare non-Tailwind / inline-style
+     consumer so it can say `style={{ zIndex: "var(--z-modal)" }}`
+     instead of hardcoding a number. Role-named, low → high; values are
+     the existing anchors so adopting a token never re-layers anything.
+     (Replaces the old, unused --acr-z-* block whose values had drifted
+     out of sync with the real anchors.) */
+  --z-base:      0;     /* in-flow default content                       */
+  --z-raised:    1;     /* card hover-lift; thin in-flow raise           */
+  --z-docked:    10;    /* sticky subheaders, table headers, raised cards*/
+  --z-dropdown:  20;    /* in-page dropdowns / popper menus              */
+  --z-sticky:    30;    /* page topbar                                   */
+  --z-overlay:   40;    /* autopilot bar, top notifications, cookie banner*/
+  --z-slot-help: 48;    /* floating help slot (just under the FAB stack) */
+  --z-slot-tray: 49;    /* floating conversation tray slot               */
+  --z-floating:  50;    /* FAB, bottom nav, base dialogs/sheets, PWA prompt*/
+  --z-modal:     60;    /* modal scrim, command palette, escalated sheets*/
+  --z-toast:     100;   /* toasts / transient banners above modals       */
+  --z-offline:   110;   /* offline indicator above toasts                */
+  --z-tour:      9990;  /* product tour scrim                            */
+  --z-island:    9998;  /* dynamic island, tour/demo highlight rings     */
+  --z-spotlight: 9999;  /* demo orb / highlight focus above the island   */
+  --z-max:       10000; /* absolute top — demo control panel             */
 
   /* Card radius — locked at 14px per design-system §0.2 */
   --radius: 1rem;

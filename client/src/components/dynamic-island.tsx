@@ -92,7 +92,7 @@ export function DynamicIsland() {
     <div
       aria-live="polite"
       aria-atomic="true"
-      className="pointer-events-none fixed inset-x-0 top-4 z-[9998] flex justify-center"
+      className="pointer-events-none fixed inset-x-0 top-4 z-island flex justify-center"
     >
       <AnimatePresence mode="wait">
         {message && (
