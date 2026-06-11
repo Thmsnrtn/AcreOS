@@ -683,6 +683,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", description: "Daily-during-launch progress checklist" },
       { label: "API telemetry", icon: Activity, href: "/founder/telemetry", description: "In-process per-route 2xx/4xx/5xx + p95 latency" },
       { label: "Providers", icon: Database, href: "/founder/providers", description: "Data-layer cost + quality" },
+      { label: "Market reports", icon: Newspaper, href: "/founder/market-reports", description: "Quarterly data-co-op market report DRAFTS (k≥5 floor) — review only, no publish" },
       { label: "Founder settings", icon: Settings2, href: "/founder/settings", description: "Live-apply operational knobs" },
       { label: "Recovery console", icon: LifeBuoy, href: "/founder/recovery-console", description: "Last-resort account recovery — 2FA, sessions, autopay, ownership" },
       { label: "Feedback inbox", icon: Inbox, href: "/founder/feedback", description: "Public support/feedback/question submissions from landing pages" },
