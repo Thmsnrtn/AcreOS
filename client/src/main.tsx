@@ -112,8 +112,23 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
         clientLogger.info('SW registration failed:', error);
       });
 
+    // Reload on controller change ONLY for updates, not first install.
+    // On a first visit, controller goes null → SW when clients.claim()
+    // (sw.js) takes the page; the document already came straight from the
+    // network and IS the newest build, so reloading is a gratuitous
+    // white-flash ~2s after first paint. (Caught by the Customer Surface
+    // Monitor: the first-install reload of /today raced the next
+    // navigation — "goto /maps interrupted by another navigation to
+    // /today" — runs 27334034673/27336406568.)
     let reloaded = false;
+    let hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) {
+        // First install just claimed this page — no reload needed. Arm the
+        // flag so a real update later in this page's lifetime still reloads.
+        hadController = true;
+        return;
+      }
       if (reloaded) return;
       reloaded = true;
       window.location.reload();
