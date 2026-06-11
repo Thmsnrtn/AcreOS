@@ -65,6 +65,16 @@ async function seedSessionCookie(page: Page, baseURL: string) {
   await page.context().addCookies([
     { name: "__session", value: "e2e", domain: hostname, path: "/" },
   ]);
+  // Returning-user consent state — keeps the first-visit cookie banner
+  // (fixed z-40 over the bottom strip) from intercepting taps. Same
+  // rationale + incident as customer-surface-journeys.spec.ts.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("acreos_cookie_consent", "declined");
+    } catch {
+      /* storage unavailable — banner shows, test degrades visibly */
+    }
+  });
 }
 
 test.describe("mobile navigation smoke", () => {

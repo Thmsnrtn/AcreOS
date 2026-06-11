@@ -36,13 +36,25 @@ export function MobileBottomNav() {
     return null;
   }
 
+  // Surfaces whose primary action lives in the page chrome — on these the
+  // FAB stacks OVER the working area (Pax's composer + settings gear,
+  // inbox message actions). Mirrors the FloatingActionButton suppression
+  // list in App.tsx ("the global FAB overlaps the chat input on mobile");
+  // this newer FAB repeated that mistake — E2E run 27334034694 caught it
+  // intercepting the tap on Pax's settings gear on iphone-se. Exact-or-
+  // subpath match so /ai-* siblings (e.g. /ai-observatory) keep the FAB.
+  const FAB_SUPPRESSED_PREFIXES = ["/ai", "/inbox", "/field-scout", "/founder"];
+  const fabSuppressed = FAB_SUPPRESSED_PREFIXES.some(
+    (p) => location === p || location.startsWith(p + "/"),
+  );
+
   return (
     <>
       {/* Quick-add FAB — thumb-reachable capture (lead / payment / ticket /
           note) tailored to the user's persona. Floats above the fixed
           five-door bar so it never becomes a sixth door. Hidden while the
           More drawer is open to avoid stacking over its overlay. */}
-      {!isDrawerOpen && (
+      {!isDrawerOpen && !fabSuppressed && (
         <button
           type="button"
           aria-label="Quick add"

@@ -14,13 +14,16 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertOctagon, Zap, Rocket, Sparkles,
-  Loader2, ListChecks, Check, X, CircleDot,
+  ListChecks, Check, X, CircleDot,
   ChevronRight, RefreshCw, ArrowRight,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 interface ReadinessItem {
@@ -69,6 +72,53 @@ const PRIORITY_CONFIG = {
   },
 } as const;
 
+/** Shaped skeleton mirroring the readiness layout: score header bar + 2-col grid of priority cards. */
+function ReadinessSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-live="polite"
+      className="mt-4"
+      data-testid="skeleton-launch-readiness"
+    >
+      <span className="sr-only">Loading launch readiness</span>
+      <div className="flex items-center gap-3 p-4 rounded-xl border">
+        <Skeleton announce={false} className="w-10 h-10 rounded-card shrink-0" />
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex items-center gap-2">
+            <Skeleton announce={false} className="h-4 w-40" />
+            <Skeleton announce={false} className="h-5 w-20 rounded-full" />
+          </div>
+          <Skeleton announce={false} className="h-1.5 w-full max-w-sm rounded-full" />
+        </div>
+        <Skeleton announce={false} className="h-7 w-7 shrink-0" />
+      </div>
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+        {[0, 1, 2, 3].map((card) => (
+          <div key={card} className="p-4 rounded-xl border">
+            <div className="flex items-center gap-2 mb-3">
+              <Skeleton announce={false} className="w-4 h-4" />
+              <Skeleton announce={false} className="h-3 w-24" />
+            </div>
+            <div className="space-y-2">
+              {[0, 1, 2].map((row) => (
+                <div key={row} className="flex items-start gap-2.5 p-2.5">
+                  <Skeleton announce={false} className="w-5 h-5 rounded-full shrink-0" />
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <Skeleton announce={false} className="h-4 w-2/3" />
+                    <Skeleton announce={false} className="h-3 w-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function FounderReadinessPage() {
   useDocumentTitle("Launch readiness — AcreOS");
   const [dismissed, setDismissed] = useState(() => {
@@ -76,7 +126,7 @@ export default function FounderReadinessPage() {
   });
   const [expanded, setExpanded] = useState(true);
 
-  const { data, isLoading, refetch } = useQuery<LaunchReadiness>({
+  const { data, isLoading, error, refetch } = useQuery<LaunchReadiness>({
     queryKey: ["/api/founder/launch-readiness"],
     refetchInterval: 10 * 60_000,
   });
@@ -123,6 +173,15 @@ export default function FounderReadinessPage() {
             >re-show</button> to see the full checklist.
           </p>
         </div>
+      ) : isLoading ? (
+        <ReadinessSkeleton />
+      ) : error ? (
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          title="Couldn't load launch readiness"
+          testId="error-launch-readiness"
+        />
       ) : (
         <div className="mt-4">
           {/* Header bar */}
@@ -139,9 +198,7 @@ export default function FounderReadinessPage() {
             <div className={`w-10 h-10 rounded-card flex items-center justify-center shrink-0 ${
               isLive ? "bg-acr-pos/20" : criticalIncomplete > 0 ? "bg-acr-neg/20" : "bg-acr-warn/20"
             }`}>
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-              ) : isLive ? (
+              {isLive ? (
                 <Rocket className={`w-5 h-5 text-acr-pos`} />
               ) : (
                 <ListChecks className={`w-5 h-5 ${criticalIncomplete > 0 ? "text-acr-neg" : "text-acr-warn"}`} />
@@ -153,34 +210,30 @@ export default function FounderReadinessPage() {
                 <span className="font-semibold text-sm">
                   {isLive ? "AcreOS is live-ready" : "App Launch Checklist"}
                 </span>
-                {!isLoading && (
-                  <Badge
-                    className={`text-xs ${
-                      isLive
-                        ? "bg-acr-pos/10 text-acr-pos border-acr-pos/20"
-                        : criticalIncomplete > 0
-                        ? "bg-acr-neg/10 text-acr-neg border-acr-neg/20"
-                        : "bg-acr-warn/10 text-acr-warn border-acr-warn/20"
-                    }`}
-                  >
-                    {score}% ready
-                  </Badge>
-                )}
+                <Badge
+                  className={`text-xs ${
+                    isLive
+                      ? "bg-acr-pos/10 text-acr-pos border-acr-pos/20"
+                      : criticalIncomplete > 0
+                      ? "bg-acr-neg/10 text-acr-neg border-acr-neg/20"
+                      : "bg-acr-warn/10 text-acr-warn border-acr-warn/20"
+                  }`}
+                >
+                  {score}% ready
+                </Badge>
                 {incompleteCount > 0 && (
                   <span className="text-xs text-muted-foreground">{incompleteCount} item{incompleteCount !== 1 ? "s" : ""} remaining</span>
                 )}
               </div>
 
-              {!isLoading && (
-                <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden w-full max-w-sm">
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ${
-                      isLive ? "bg-acr-pos" : criticalIncomplete > 0 ? "bg-acr-neg" : "bg-acr-warn"
-                    }`}
-                    style={{ width: `${score}%` }}
-                  />
-                </div>
-              )}
+              <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden w-full max-w-sm">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${
+                    isLive ? "bg-acr-pos" : criticalIncomplete > 0 ? "bg-acr-neg" : "bg-acr-warn"
+                  }`}
+                  style={{ width: `${score}%` }}
+                />
+              </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -207,6 +260,23 @@ export default function FounderReadinessPage() {
               />
             </div>
           </div>
+
+          {expanded && (data?.items ?? []).length === 0 && (
+            <EmptyState
+              framed
+              icon={ListChecks}
+              headline="No readiness checks reported"
+              subtitle="The readiness endpoint returned no checklist items. Refresh to re-run the checks."
+              actionIcon={RefreshCw}
+              cta={{
+                label: "Refresh",
+                onClick: () => refetch(),
+                "data-testid": "empty-state-launch-readiness-refresh",
+              }}
+              className="mt-3"
+              testId="empty-state-launch-readiness"
+            />
+          )}
 
           {expanded && (
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">

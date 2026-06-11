@@ -287,6 +287,19 @@ async function seedSessionCookie(page: Page, baseURL: string): Promise<void> {
       path: "/",
     },
   ]);
+  // Model a RETURNING user: consent already answered. The first-visit
+  // cookie banner is a fixed z-40 card spanning the strip above the bottom
+  // nav — run 27334034694 (iphone-se) showed it intercepting the tap on
+  // Pax's settings gear, failing J1 3/3. "declined" (not "accepted") so
+  // nothing optional (Sentry etc.) initializes in CI. The banner's own
+  // rendering stays exercised by fresh-context specs that don't call this.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("acreos_cookie_consent", "declined");
+    } catch {
+      /* storage unavailable — banner shows, journey degrades visibly */
+    }
+  });
 }
 
 /**
