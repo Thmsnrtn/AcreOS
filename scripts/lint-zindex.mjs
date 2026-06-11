@@ -97,7 +97,6 @@ const BASELINE = new Map([
   ["client/src/components/notification-banner.tsx", 2],
   ["client/src/components/onboarding/OnboardingProgress.tsx", 1],
   ["client/src/components/onboarding/OnboardingWizard.tsx", 1],
-  ["client/src/components/page-topbar.tsx", 1],
   ["client/src/components/pax-command-palette.tsx", 1],
   ["client/src/components/pax-copilot-rail.tsx", 3],
   ["client/src/components/pax-entity-picker.tsx", 1],
