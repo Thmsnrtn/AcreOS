@@ -140,6 +140,12 @@ const META_BY_PATH: Record<string, RouteMeta> = {
       "Plain-English definitions of the vocabulary every Land Investor needs — yellow letter, skip trace, AVM, BPO, executory contract, balloon, escrow shortfall, and more.",
     ogType: "website",
   },
+  "/learn": {
+    title: "Learn — land investing guides by state & county · AcreOS",
+    description:
+      "Field guides for Land Investors: state and county primers on parcel data, flood and soil signals, buy-box criteria, and the diligence behind every offer.",
+    ogType: "website",
+  },
 };
 
 function escapeAttr(s: string): string {
