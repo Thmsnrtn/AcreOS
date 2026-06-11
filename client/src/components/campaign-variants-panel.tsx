@@ -396,7 +396,7 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-9 sm:h-7 text-xs min-h-9 sm:min-h-7"
+                          className="h-9 pointer-fine:sm:h-7 text-xs min-h-9 pointer-fine:sm:min-h-7"
                           disabled={declareWinnerMutation.isPending || !hasEnoughData}
                           onClick={() => declareWinnerMutation.mutate(variant.id)}
                           data-testid={`button-declare-winner-${variant.id}`}

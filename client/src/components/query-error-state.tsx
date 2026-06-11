@@ -168,7 +168,7 @@ export function QueryErrorState({
           <Button
             onClick={onRetry}
             disabled={isRetrying}
-            className="min-h-[44px] md:min-h-9"
+            className="min-h-[44px] pointer-fine:md:min-h-9"
             data-testid={`${testId}-retry-button`}
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${isRetrying ? "animate-spin" : ""}`} aria-hidden="true" />

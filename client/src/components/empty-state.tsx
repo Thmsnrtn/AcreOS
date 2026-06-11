@@ -10,12 +10,21 @@
  * `cta` "no-op" escape hatch: `cta={{ label: "", _noOp: true }}`.
  *
  * Variant wrappers (FirstHelloEmpty, ClearedEmpty, EmptyFilter, surface-specific
- * states) in `empty-states/` compose this primitive — they are the right import
- * for known surfaces. Use this primitive directly only for novel or ad-hoc surfaces.
+ * states) compose this primitive — they are the right import for known surfaces.
+ * Use this primitive directly only for novel or ad-hoc surfaces.
+ * (W2-3: wrappers currently live in the deprecated `empty-states.tsx` shim and
+ * will fold into per-surface modules after the consumer sweep.)
+ *
+ * PERSONA VARIANTS layer ON TOP of this primitive: persona/surface changes
+ * COPY and ICON only — never layout. Build a `PersonaContentMap` and resolve
+ * it with `resolveEmptyStateContent`, then spread the result into the
+ * primitive. There is exactly one visual idiom (icon circle, type scale, CTA
+ * row, spacing); forking layout per persona is a regression, not a variant.
  */
 
 import { type LucideIcon, ExternalLink, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { Persona } from "@shared/models/auth";
 
 // ---------------------------------------------------------------------------
 // CTA shape
@@ -80,9 +89,46 @@ export interface EmptyStateProps {
    * Pass `null` to suppress the icon (for non-create actions like "Connect").
    */
   actionIcon?: LucideIcon | null;
+  /**
+   * Wrap the empty state in a dashed-border container. Use when the empty
+   * state stands in for a content region (table body, list, board) so the
+   * surface keeps its visual footprint. The internal idiom — icon treatment,
+   * type scale, CTA placement, spacing — is identical framed or not.
+   */
+  framed?: boolean;
   className?: string;
   /** Root element data-testid. Defaults to "empty-state". */
   testId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Persona-variant layer
+// ---------------------------------------------------------------------------
+
+/**
+ * The content slice a persona/surface variant is allowed to change.
+ * Deliberately excludes layout-affecting props (`framed`, `className`) and
+ * the CTA (the call site owns the action wiring).
+ */
+export type EmptyStateContent = Pick<
+  EmptyStateProps,
+  "icon" | "headline" | "subtitle" | "tips"
+>;
+
+/**
+ * Persona → content map. `default` is required and serves both as the
+ * land_investor baseline and the fallback for personas without an override.
+ */
+export type PersonaContentMap = {
+  default: EmptyStateContent;
+} & Partial<Record<Persona, EmptyStateContent>>;
+
+/** Resolve persona-specific copy/icon, falling back to the default content. */
+export function resolveEmptyStateContent(
+  variants: PersonaContentMap,
+  persona: Persona | undefined,
+): EmptyStateContent {
+  return (persona && variants[persona]) || variants.default;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +162,7 @@ export function EmptyState({
   learnMoreUrl,
   learnMoreLabel = "Learn more",
   actionIcon,
+  framed = false,
   className = "",
   testId = "empty-state",
 }: EmptyStateProps) {
@@ -165,7 +212,9 @@ export function EmptyState({
 
   return (
     <div
-      className={`flex flex-col items-center justify-center py-16 px-4 ${className}`}
+      className={`flex flex-col items-center justify-center py-16 px-4 ${
+        framed ? "rounded-lg border border-dashed border-border bg-muted/30" : ""
+      } ${className}`}
       data-testid={testId}
     >
       <div

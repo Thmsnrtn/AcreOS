@@ -1226,7 +1226,7 @@ export default function Settings() {
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-11 w-11 sm:h-8 sm:w-8"
+                                    className="h-11 w-11 pointer-fine:sm:h-8 pointer-fine:sm:w-8"
                                     onClick={() =>
                                       removeCoOwnerMutation.mutate(
                                         { userId: co.userId },

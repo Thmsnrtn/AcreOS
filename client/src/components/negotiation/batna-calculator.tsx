@@ -75,7 +75,7 @@ export function BATNACalculator() {
                     id={id}
                     type="number"
                     inputMode="decimal"
-                    className="w-full border rounded-md pl-6 pr-2 py-1.5 min-h-11 sm:min-h-0 text-sm tabular-nums bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full border rounded-md pl-6 pr-2 py-1.5 min-h-11 pointer-fine:sm:min-h-0 text-sm tabular-nums bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                     value={value}
                     onChange={(e) => set(e.target.value)}
                     placeholder={prefix === "$" ? "0" : "20"}

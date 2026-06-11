@@ -646,7 +646,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
                   <button
                     type="button"
                     onClick={() => removeComp(comps.indexOf(comp))}
-                    className="text-muted-foreground hover:text-destructive active:text-destructive text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive rounded px-2 py-2 -my-2 min-h-11 sm:min-h-0"
+                    className="text-muted-foreground hover:text-destructive active:text-destructive text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive rounded px-2 py-2 -my-2 min-h-11 pointer-fine:sm:min-h-0"
                     aria-label={`Remove ${fmt(comp.pricePerAcre)} per acre comp from ${sourceLabel}`}
                   >
                     Remove

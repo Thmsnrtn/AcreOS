@@ -485,7 +485,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
               <div className="flex items-center rounded-card border overflow-hidden" role="group" aria-label="View mode">
                 <button
                   onClick={() => { setViewMode("list"); try { localStorage.setItem("properties-view-mode", "list"); } catch {} }}
-                  className={`min-h-[44px] md:min-h-9 px-3 text-sm font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                  className={`min-h-[44px] pointer-fine:md:min-h-9 px-3 text-sm font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
                   aria-pressed={viewMode === "list"}
                   data-testid="button-view-list"
                 >
@@ -493,7 +493,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 </button>
                 <button
                   onClick={() => { setViewMode("map"); try { localStorage.setItem("properties-view-mode", "map"); } catch {} }}
-                  className={`min-h-[44px] md:min-h-9 px-3 text-sm font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === "map" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                  className={`min-h-[44px] pointer-fine:md:min-h-9 px-3 text-sm font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === "map" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
                   aria-pressed={viewMode === "map"}
                   data-testid="button-view-map"
                 >
@@ -504,7 +504,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 variant="outline" 
                 onClick={handleExport} 
                 disabled={isExporting}
-                className="min-h-[44px] md:min-h-9"
+                className="min-h-[44px] pointer-fine:md:min-h-9"
                 data-testid="button-export-properties"
               >
                 {isExporting ? <Loader2 className="w-4 h-4 md:mr-2 animate-spin" /> : <Download className="w-4 h-4 md:mr-2" />}
@@ -513,7 +513,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
               <Button 
                 variant="outline" 
                 onClick={() => setIsImportOpen(true)}
-                className="min-h-[44px] md:min-h-9"
+                className="min-h-[44px] pointer-fine:md:min-h-9"
                 data-testid="button-import-properties"
               >
                 <Upload className="w-4 h-4 md:mr-2" />
@@ -523,7 +523,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 variant="outline" 
                 onClick={() => fetchAllParcels()}
                 disabled={isFetchingAllParcels}
-                className="min-h-[44px] md:min-h-9"
+                className="min-h-[44px] pointer-fine:md:min-h-9"
                 data-testid="button-fetch-all-parcels"
               >
                 {isFetchingAllParcels ? <Loader2 className="w-4 h-4 md:mr-2 animate-spin" /> : <MapIcon className="w-4 h-4 md:mr-2" />}
@@ -531,7 +531,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
               </Button>
               <ResponsiveModal open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <ResponsiveModalTrigger asChild>
-                  <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px] md:min-h-9" data-testid="button-add-property">
+                  <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px] pointer-fine:md:min-h-9" data-testid="button-add-property">
                     <Plus className="w-4 h-4 mr-2" /> Add {propertyLabel}
                   </Button>
                 </ResponsiveModalTrigger>
@@ -566,13 +566,13 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 </Button>
               </div>
               <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:gap-2 md:ml-auto">
-                <Button variant="outline" className="min-h-[44px] md:min-h-8" onClick={handleBulkExportProperties} data-testid="button-bulk-export-properties">
+                <Button variant="outline" className="min-h-[44px] pointer-fine:md:min-h-8" onClick={handleBulkExportProperties} data-testid="button-bulk-export-properties">
                   <Download className="w-4 h-4 mr-1" /> Export
                 </Button>
                 {selectedPropertyIds.size >= 2 && (
                   <Button
                     variant="outline"
-                    className="min-h-[44px] md:min-h-8"
+                    className="min-h-[44px] pointer-fine:md:min-h-8"
                     onClick={() => {
                       const ids = Array.from(selectedPropertyIds).slice(0, 4);
                       navigate(`/properties/compare?ids=${ids.join(",")}`);
@@ -583,7 +583,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                   </Button>
                 )}
                 <Select onValueChange={handleBulkStatusChange} disabled={isBulkUpdating}>
-                  <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[150px]" data-testid="select-bulk-status-properties">
+                  <SelectTrigger className="min-h-[44px] pointer-fine:md:min-h-8 w-full md:w-[150px]" data-testid="select-bulk-status-properties">
                     <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Status"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -595,7 +595,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                     <SelectItem value="listed">Listed</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="destructive" className="min-h-[44px] md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-properties">
+                <Button variant="destructive" className="min-h-[44px] pointer-fine:md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-properties">
                   <Trash2 className="w-4 h-4 mr-1" /> Delete
                 </Button>
                 <Button aria-label="Checkbox" variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties">
@@ -1013,7 +1013,7 @@ function PropertyCard({ property, onDelete }: {
               <MapPin className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" aria-hidden="true" />
               <Button
                 variant="outline"
-                className="min-h-[44px] sm:min-h-8"
+                className="min-h-[44px] pointer-fine:sm:min-h-8"
                 onClick={(e) => {
                   e.stopPropagation();
                   fetchParcel(property.id);
@@ -1040,7 +1040,7 @@ function PropertyCard({ property, onDelete }: {
           <Button
             variant="destructive"
             size="icon"
-            className="h-11 w-11 sm:h-7 sm:w-7"
+            className="h-11 w-11 pointer-fine:sm:h-7 pointer-fine:sm:w-7"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
@@ -1053,7 +1053,7 @@ function PropertyCard({ property, onDelete }: {
           <Button
             variant="secondary"
             size="icon"
-            className="h-11 w-11 sm:h-7 sm:w-7"
+            className="h-11 w-11 pointer-fine:sm:h-7 pointer-fine:sm:w-7"
             onClick={handleDownloadDeed}
             disabled={isDownloading}
             aria-label="Download deed"
@@ -1067,7 +1067,7 @@ function PropertyCard({ property, onDelete }: {
             <Button
               variant="secondary"
               size="icon"
-              className="h-11 w-11 sm:h-7 sm:w-7"
+              className="h-11 w-11 pointer-fine:sm:h-7 pointer-fine:sm:w-7"
               onClick={(e) => {
                 e.stopPropagation();
                 fetchParcel(property.id);
@@ -1150,7 +1150,7 @@ function PropertyCard({ property, onDelete }: {
           <Button
             variant="outline"
             onClick={() => setIsDetailOpen(true)}
-            className="flex-1 min-h-[44px] sm:min-h-8"
+            className="flex-1 min-h-[44px] pointer-fine:sm:min-h-8"
             data-testid={`button-view-details-${property.id}`}
           >
             <ClipboardCheck className="w-4 h-4 sm:w-3.5 sm:h-3.5 mr-1.5" aria-hidden="true" />
@@ -1159,7 +1159,7 @@ function PropertyCard({ property, onDelete }: {
           <Button
             variant="outline"
             size="icon"
-            className="min-h-[44px] min-w-[44px] sm:min-h-8 sm:min-w-8"
+            className="min-h-[44px] min-w-[44px] pointer-fine:sm:min-h-8 pointer-fine:sm:min-w-8"
             onClick={() => setIsCalculatorOpen(true)}
             aria-label="Open calculator"
             data-testid={`button-calculator-${property.id}`}
@@ -1293,7 +1293,7 @@ function PropertyForm({
           <div className="border rounded-md">
             <button
               type="button"
-              className="w-full min-h-[44px] md:min-h-9 flex items-center justify-between px-3 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+              className="w-full min-h-[44px] pointer-fine:md:min-h-9 flex items-center justify-between px-3 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
               onClick={() => setShowLandDetails((v) => !v)}
               aria-expanded={showLandDetails}
               aria-controls="land-details-panel"
@@ -1416,7 +1416,7 @@ function PropertyForm({
         />
 
         <div className="pt-2">
-          <Button type="submit" className="w-full min-h-[44px] md:min-h-9" disabled={isPending} data-testid="button-submit-property">
+          <Button type="submit" className="w-full min-h-[44px] pointer-fine:md:min-h-9" disabled={isPending} data-testid="button-submit-property">
             {isPending ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
@@ -1593,7 +1593,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   (Jupyter, PostgreSQL, etc). Copy-JSON keeps zero infra cost. */}
               <Button
                 variant="outline"
-                className="min-h-[44px] sm:min-h-8 w-full sm:w-auto"
+                className="min-h-[44px] pointer-fine:sm:min-h-8 w-full sm:w-auto"
                 onClick={() => {
                   const json = JSON.stringify(currentProperty, null, 2);
                   navigator.clipboard?.writeText(json).then(
@@ -1609,7 +1609,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
               </Button>
               <Button
                 variant="default"
-                className="min-h-[44px] sm:min-h-8 w-full sm:w-auto"
+                className="min-h-[44px] pointer-fine:sm:min-h-8 w-full sm:w-auto"
                 onClick={() => setIsAnalysisChatOpen(true)}
                 data-testid="button-analyze-with-ai"
               >

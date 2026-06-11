@@ -915,7 +915,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-11 w-11 sm:h-9 sm:w-9"
+                  className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9"
                   onClick={handleDownloadPdf}
                   disabled={isDownloading}
                   aria-label={`Download note PDF for ${borrowerName}`}
@@ -932,7 +932,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-11 w-11 sm:h-9 sm:w-9"
+                className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9"
                 onClick={onDelete}
                 aria-label={`Delete note for ${borrowerName}`}
                 data-testid="button-delete-note"
@@ -942,7 +942,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-11 w-11 sm:h-9 sm:w-9"
+                className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9"
                 onClick={onClose}
                 aria-label="Close note details"
                 data-testid="button-close-drawer"
@@ -1096,7 +1096,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                         <Button
                           size="icon"
                           variant="outline"
-                          className="h-11 w-11 sm:h-9 sm:w-9 shrink-0"
+                          className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9 shrink-0"
                           onClick={handleCopyPaymentLink}
                           aria-label="Copy payment link to clipboard"
                           data-testid="button-copy-payment-link"

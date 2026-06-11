@@ -249,7 +249,7 @@ export function GoalsSettings() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-destructive active:text-destructive"
+                          className="h-11 w-11 pointer-fine:sm:h-7 pointer-fine:sm:w-7 text-muted-foreground hover:text-destructive active:text-destructive"
                           onClick={() => deleteGoal.mutate(goal.id)}
                           disabled={deleteGoal.isPending}
                           aria-label={`Delete goal: ${goal.label}`}

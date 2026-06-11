@@ -136,7 +136,7 @@ export function RequestCountyCTA({
             value={county}
             onChange={(e) => setCounty(e.target.value)}
             placeholder="County"
-            className="h-11 sm:h-9"
+            className="h-11 pointer-fine:sm:h-9"
             autoComplete="off"
           />
         </div>
@@ -150,7 +150,7 @@ export function RequestCountyCTA({
             onChange={(e) => setState(e.target.value.slice(0, 2))}
             placeholder="ST"
             maxLength={2}
-            className="h-11 sm:h-9 uppercase"
+            className="h-11 pointer-fine:sm:h-9 uppercase"
             autoComplete="off"
           />
         </div>

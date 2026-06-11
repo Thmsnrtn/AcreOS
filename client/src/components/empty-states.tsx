@@ -1,21 +1,270 @@
-import { EmptyState } from "@/components/empty-state";
-import { Users, Map, Handshake, CheckSquare, Megaphone, Banknote, FileSpreadsheet, Target } from "lucide-react";
+/**
+ * @deprecated shim — W2-3 consumer sweep will migrate imports to
+ * empty-state.tsx, then this file is deleted.
+ *
+ * Every export here is a thin wrapper over the canonical `EmptyState`
+ * primitive (`@/components/empty-state`) — one visual idiom, with
+ * persona/surface variants changing copy and icon only, never layout.
+ *
+ * Export names and prop signatures are frozen for back-compat; do not add
+ * new wrappers here. New surfaces compose the primitive directly (or a
+ * `PersonaContentMap` + `resolveEmptyStateContent` when copy varies by
+ * persona).
+ *
+ * Note: the `empty-states/` DIRECTORY (legacy second visual system) is now
+ * unreferenced — this file shadows it at the `@/components/empty-states`
+ * import path. The sweep deletes the directory along with this shim.
+ */
+
+import {
+  EmptyState,
+  type EmptyStateContent,
+} from "@/components/empty-state";
+import {
+  Users,
+  Map,
+  Handshake,
+  CheckSquare,
+  Megaphone,
+  Banknote,
+  FileSpreadsheet,
+  Target,
+  Inbox,
+  Archive,
+  CheckCircle2,
+  Filter,
+  X,
+} from "lucide-react";
 import { useBrandName } from "@/hooks/use-white-label";
 
 // ---------------------------------------------------------------------------
-// Archetype re-exports
+// Archetype #1 — FirstHelloEmpty
 // ---------------------------------------------------------------------------
-// The three reusable empty-state archetypes — prefer these over the
-// surface-specific components below for new code:
-//   - FirstHelloEmpty: new orgs with no data yet
-//   - ClearedEmpty:    inbox-zero / queue-cleared affirming state
-//   - EmptyFilter:     filters returned nothing, data exists overall
-export {
-  FirstHelloEmpty,
-  ClearedEmpty,
-  EmptyFilter,
-  type FirstHelloSurface,
-} from "@/components/empty-states/index";
+// For *new* organizations with zero data on a given surface. Optimistic,
+// onboarding-flavored, with one or two purposeful CTAs.
+//
+// Use this when `records.length === 0` AND the org has never had records
+// (no archived items, no filters applied). For "you cleared everything"
+// use `<ClearedEmpty>`. For "filters returned nothing" use `<EmptyFilter>`.
+
+export type FirstHelloSurface =
+  | "leads"
+  | "properties"
+  | "deals"
+  | "campaigns"
+  | "inbox";
+
+interface FirstHelloCta {
+  label: string;
+  onClick: () => void;
+}
+
+interface FirstHelloEmptyProps {
+  surface: FirstHelloSurface;
+  cta: {
+    primary: FirstHelloCta;
+    secondary?: FirstHelloCta;
+  };
+  /** Optional override for the headline copy. */
+  headline?: string;
+  /** Optional override for the subtitle copy. */
+  subtitle?: string;
+  className?: string;
+}
+
+// Surface-variant content layer: copy + icon only — layout lives in the
+// primitive. Agency-frame archetype copy (Joanna): name what the user
+// hasn't done, name what Pax does the moment they do it, name when.
+const FIRST_HELLO_CONTENT: Record<
+  FirstHelloSurface,
+  EmptyStateContent & { testIdSuffix: string }
+> = {
+  leads: {
+    icon: Users,
+    headline: "Tell Pax which counties to watch",
+    subtitle:
+      "You haven't told Pax which counties to watch yet. Paste a county list or upload a CSV — Pax scores every new record within 90 seconds and surfaces the top three on Today by 6am.",
+    testIdSuffix: "leads",
+  },
+  properties: {
+    icon: Map,
+    headline: "No properties in inventory",
+    subtitle:
+      "Add your first parcel — Pax pulls comps and a flood-zone read inside 90 seconds.",
+    testIdSuffix: "properties",
+  },
+  deals: {
+    icon: Handshake,
+    headline: "No open deals",
+    subtitle:
+      "The moment you send an offer, Pax tracks the reply window and pings you on day 5 if the seller goes quiet.",
+    testIdSuffix: "deals",
+  },
+  campaigns: {
+    icon: Megaphone,
+    headline: "Reach motivated sellers",
+    subtitle:
+      "Pick a list and a letter — Pax handles addresses, mail merge, and tracking, and flags every reply against the right lead.",
+    testIdSuffix: "campaigns",
+  },
+  inbox: {
+    icon: Inbox,
+    headline: "Wire up an inbox",
+    subtitle:
+      "Connect a mailbox or phone number — Pax threads every reply against the right lead and drafts the response by the time you read it.",
+    testIdSuffix: "inbox",
+  },
+};
+
+export function FirstHelloEmpty({
+  surface,
+  cta,
+  headline,
+  subtitle,
+  className = "",
+}: FirstHelloEmptyProps) {
+  const content = FIRST_HELLO_CONTENT[surface];
+  const testId = `first-hello-${content.testIdSuffix}`;
+
+  return (
+    <EmptyState
+      framed
+      icon={content.icon}
+      headline={headline ?? content.headline}
+      subtitle={subtitle ?? content.subtitle}
+      cta={{
+        label: cta.primary.label,
+        onClick: cta.primary.onClick,
+        "data-testid": `${testId}-cta-primary`,
+      }}
+      secondaryCta={
+        cta.secondary
+          ? {
+              label: cta.secondary.label,
+              onClick: cta.secondary.onClick,
+              "data-testid": `${testId}-cta-secondary`,
+            }
+          : undefined
+      }
+      className={className}
+      testId={testId}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Archetype #2 — ClearedEmpty
+// ---------------------------------------------------------------------------
+// "Inbox zero" feeling. Used when the user has *cleared* their queue and
+// nothing demands attention right now, but archived/older items still exist.
+// Tone: affirming and quiet. Don't oversell.
+
+interface ClearedEmptyProps {
+  /** Headline copy. e.g. "All clear — nothing needs you right now". */
+  headline: string;
+  /** Optional subtitle. */
+  subtitle?: string;
+  /** When provided, renders a small "View archived" CTA with the count. */
+  archiveCount?: number;
+  /** Click handler for the archive CTA. */
+  onShowArchive?: () => void;
+  /** Custom label for the archive CTA (defaults to "View archived"). */
+  archiveLabel?: string;
+  className?: string;
+}
+
+export function ClearedEmpty({
+  headline,
+  subtitle,
+  archiveCount,
+  onShowArchive,
+  archiveLabel = "View archived",
+  className = "",
+}: ClearedEmptyProps) {
+  const ctaLabel =
+    archiveCount !== undefined && archiveCount > 0
+      ? `${archiveLabel} (${archiveCount.toLocaleString()})`
+      : archiveLabel;
+
+  return (
+    <EmptyState
+      icon={CheckCircle2}
+      headline={headline}
+      subtitle={subtitle}
+      tone="celebratory"
+      actionIcon={Archive}
+      cta={
+        onShowArchive
+          ? {
+              label: ctaLabel,
+              onClick: onShowArchive,
+              "data-testid": "cleared-empty-archive",
+            }
+          : {
+              // TODO(cta): no archive handler — cleared queue is self-contained
+              label: "",
+              _noOp: true,
+            }
+      }
+      className={className}
+      testId="cleared-empty"
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Archetype #3 — EmptyFilter
+// ---------------------------------------------------------------------------
+// Filtered list returned zero items, but data *does* exist in the system
+// overall. The fix is "clear filters", not "create new data."
+
+interface EmptyFilterProps {
+  /** Number of active filters. Used for copy ("2 filters"). */
+  filterCount: number;
+  /** Reset all active filters. */
+  onClearFilters: () => void;
+  /** Optional override for headline copy. */
+  headline?: string;
+  /** Optional override for subtitle copy. */
+  subtitle?: string;
+  /** Optional override for the CTA label. Defaults to "Clear filters". */
+  clearLabel?: string;
+  className?: string;
+}
+
+export function EmptyFilter({
+  filterCount,
+  onClearFilters,
+  headline,
+  subtitle,
+  clearLabel = "Clear filters",
+  className = "",
+}: EmptyFilterProps) {
+  const filterWord = filterCount === 1 ? "filter" : "filters";
+  const defaultHeadline =
+    filterCount > 0 ? `No matches for these ${filterWord}` : "No matches";
+  const defaultSubtitle =
+    filterCount > 0
+      ? `${filterCount} active ${filterWord} narrowed the results to nothing. Clear them to see everything again.`
+      : "Try adjusting your search terms or filters.";
+
+  return (
+    <EmptyState
+      framed
+      icon={Filter}
+      headline={headline ?? defaultHeadline}
+      subtitle={subtitle ?? defaultSubtitle}
+      actionIcon={X}
+      cta={{
+        label: clearLabel,
+        onClick: onClearFilters,
+        "data-testid": "empty-filter-clear",
+      }}
+      className={className}
+      testId="empty-filter"
+    />
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Surface-specific wrappers

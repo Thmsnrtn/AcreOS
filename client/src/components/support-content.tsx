@@ -630,7 +630,7 @@ export function SupportContent() {
                           key={star}
                           type="button"
                           onClick={() => setRating(star)}
-                          className="flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-md hover-elevate"
+                          className="flex h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9 items-center justify-center rounded-md hover-elevate"
                           aria-label={`Rate ${star} star${star === 1 ? "" : "s"}`}
                           aria-pressed={star <= rating}
                           data-testid={`button-rating-${star}`}
@@ -678,7 +678,7 @@ export function SupportContent() {
                     />
                     <Button
                       size="icon"
-                      className="h-11 w-11 sm:h-9 sm:w-9"
+                      className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9"
                       onClick={handleSendMessage}
                       disabled={!replyMessage.trim() || sendMessageMutation.isPending}
                       aria-label="Send message"

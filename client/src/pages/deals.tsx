@@ -700,14 +700,14 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                 </Button>
               </div>
               <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:gap-2 md:ml-auto">
-                <Button variant="outline" className="min-h-[44px] md:min-h-8" onClick={handleBulkExport} data-testid="button-bulk-export-deals">
+                <Button variant="outline" className="min-h-[44px] pointer-fine:md:min-h-8" onClick={handleBulkExport} data-testid="button-bulk-export-deals">
                   <Download className="w-4 h-4 mr-1" aria-hidden="true" /> Export
                 </Button>
                 <Select
                   value={bulkTargetStage}
                   onValueChange={setBulkTargetStage}
                 >
-                  <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[160px]" aria-label="Change stage for selected deals" data-testid="select-bulk-stage-deals">
+                  <SelectTrigger className="min-h-[44px] pointer-fine:md:min-h-8 w-full md:w-[160px]" aria-label="Change stage for selected deals" data-testid="select-bulk-stage-deals">
                     <SelectValue placeholder="Change stage" />
                   </SelectTrigger>
                   <SelectContent>
@@ -725,7 +725,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                   ) : null}
                   Update stage
                 </Button>
-                <Button variant="destructive" className="min-h-[44px] md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-deals">
+                <Button variant="destructive" className="min-h-[44px] pointer-fine:md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-deals">
                   <Trash2 className="w-4 h-4 mr-1" aria-hidden="true" /> Delete
                 </Button>
                 <Button variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedDealIds(new Set())} aria-label="Clear selection">

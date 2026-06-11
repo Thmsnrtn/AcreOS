@@ -169,7 +169,7 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
           size="icon"
           onClick={toggleMode}
           aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-          className={cn("min-h-[44px] min-w-[44px] md:h-9 md:w-9 md:min-h-9 md:min-w-9")}
+          className={cn("min-h-[44px] min-w-[44px] pointer-fine:md:h-9 pointer-fine:md:w-9 pointer-fine:md:min-h-9 pointer-fine:md:min-w-9")}
         >
           {isDark ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />}
         </Button>
@@ -182,7 +182,7 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
           variant="ghost"
           size="icon"
           aria-label="Notifications"
-          className={cn("min-h-[44px] min-w-[44px] md:h-9 md:w-9 md:min-h-9 md:min-w-9")}
+          className={cn("min-h-[44px] min-w-[44px] pointer-fine:md:h-9 pointer-fine:md:w-9 pointer-fine:md:min-h-9 pointer-fine:md:min-w-9")}
         >
           <Link href="/decision-queue" data-testid="topbar-notifications">
             <Bell className="w-4 h-4" aria-hidden="true" />
