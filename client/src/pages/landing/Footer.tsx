@@ -67,6 +67,7 @@ export function Footer() {
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-h">Learn</div>
+            <Link href="/learn">Guides by state &amp; county</Link>
             <Link href="/why">Why AcreOS</Link>
             <Link href="/glossary">Glossary</Link>
             <a href="https://acreos.substack.com" target="_blank" rel="noreferrer">Field notes</a>

@@ -157,6 +157,22 @@ function formatAssessorValue(field: string, value: unknown): string {
 
 // ─── Score presentation ──────────────────────────────────────────────────────
 
+/**
+ * Share of scoring weight the partial score covers. The server sets
+ * lcs.weightCoveredPct on every fresh report; this falls back to deriving it
+ * from the dimensions' own weights so a legacy row saved before the field
+ * existed still renders an honest number rather than "undefined%".
+ */
+function weightCoveredPct(lcs: PublicLcs): number {
+  if (typeof lcs.weightCoveredPct === "number") return lcs.weightCoveredPct;
+  const total = lcs.dimensions.reduce((s, d) => s + d.weight, 0);
+  if (total <= 0) return 0;
+  const scored = lcs.dimensions
+    .filter((d) => d.status === "scored")
+    .reduce((s, d) => s + d.weight, 0);
+  return Math.round((scored / total) * 100);
+}
+
 function ScoreHero({ report, onShare, shared }: {
   report: ReportDto;
   onShare: () => void;
@@ -185,8 +201,9 @@ function ScoreHero({ report, onShare, shared }: {
           )}
           <p className="mt-3 max-w-xl text-sm text-muted-foreground">
             Scored from {lcs.scoredDimensions} of {lcs.totalDimensions} dimensions —
-            government-data dimensions only. The full Land Credit Score runs inside
-            AcreOS, where paid county and market data fills the locked dimensions.
+            based on {weightCoveredPct(lcs)}% of scoring weight (government-data
+            dimensions only). The full Land Credit Score runs inside AcreOS, where
+            paid county and market data fills the locked dimensions.
           </p>
         </div>
         <button
@@ -437,6 +454,15 @@ export default function PublicParcelReportPage() {
                   <> · {report.facts.parcel.acres.toLocaleString()} acres (county GIS)</>
                 )}
               </p>
+              {report.refreshedAt && (
+                <p
+                  className="mt-2 text-xs text-muted-foreground"
+                  data-testid="report-freshness-stamp"
+                >
+                  Data retrieved {formatDate(report.refreshedAt)} — retrieval date
+                  only; federal sources don't publish an effective date.
+                </p>
+              )}
             </div>
 
             <ScoreHero report={report} onShare={handleShare} shared={shared} />

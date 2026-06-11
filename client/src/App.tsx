@@ -423,6 +423,9 @@ const StateVerticalLearnPage = React.lazy(() => import("@/pages/learn/state-vert
 // county-level long-tail queries. Public, lazy-loaded. Pages are only emitted
 // by the county-rollup generator when free-data completeness clears the bar.
 const CountyLearnPage = React.lazy(() => import("@/pages/learn/county"));
+// /learn — the hub that lists every authored vertical + county primer. Public,
+// lazy-loaded; gives the orphaned deep pages a crawlable + human path.
+const LearnHubPage = React.lazy(() => import("@/pages/learn/index"));
 const ParcelDetailPage = React.lazy(() => import("@/pages/parcel-detail"));
 const PermitsPage = React.lazy(() => import("@/pages/permits"));
 const LotPricingPage = React.lazy(() => import("@/pages/lot-pricing"));
@@ -707,6 +710,8 @@ function Router() {
       <Route path="/learn/county/:state/:county" component={CountyLearnPage} />
       {/* Programmatic SEO — state×vertical primers */}
       <Route path="/learn/:vertical/:state" component={StateVerticalLearnPage} />
+      {/* Learn hub — exact /learn; lists every vertical + county primer. */}
+      <Route path="/learn" component={LearnHubPage} />
       <Route path="/status" component={StatusPage} />
       <Route path="/changelog" component={ChangelogPage} />
       <Route path="/security" component={SecurityPage} />

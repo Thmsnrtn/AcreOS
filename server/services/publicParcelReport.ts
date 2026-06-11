@@ -294,13 +294,21 @@ export function computePartialLcs(
   });
 
   const scored = dimensions.filter((d) => d.status === "scored");
+  // Total LCS dimension weight (the in-app score's denominator — sums to 100
+  // across all six dimensions). Computed, not hardcoded, so it tracks any
+  // future weight change in landCredit.ts.
+  const totalWeight = dimensions.reduce((s, d) => s + d.weight, 0);
+  const scoredWeight = scored.reduce((s, d) => s + d.weight, 0);
+  // How much of the scoring weight the partial score actually covers — the
+  // honest quantification of partiality (truth-ratchet). 0 when nothing scored.
+  const weightCoveredPct =
+    totalWeight > 0 ? Math.round((scoredWeight / totalWeight) * 100) : 0;
   let partialScore: number | null = null;
   let partialGrade: string | null = null;
   if (scored.length > 0) {
-    const weightSum = scored.reduce((s, d) => s + d.weight, 0);
     const weighted =
       scored.reduce((s, d) => s + (d.score as number) * d.weight, 0) /
-      weightSum;
+      scoredWeight;
     partialScore = lcsCreditScale(Math.round(weighted));
     partialGrade = lcsGradeForScore(partialScore);
   }
@@ -310,6 +318,7 @@ export function computePartialLcs(
     basis: "government-data-only",
     scoredDimensions: scored.length,
     totalDimensions: dimensions.length,
+    weightCoveredPct,
     partialScore,
     partialGrade,
     dimensions,
@@ -705,6 +714,13 @@ function escapeXml(s: string): string {
  * Render the per-report OG card as SVG (1200×630). Pure string assembly from
  * the report's REAL values — the partial grade, the scored dimensions, and
  * the honest "government data only" framing. No fabricated numbers.
+ *
+ * NOTE on the hex color literals below (#16211a, #7c9a6d, …): these are
+ * INTENTIONAL OG-card paint, not a theming surface. This is a rasterized
+ * social-share image (SVG → PNG via sharp), rendered server-side outside the
+ * app's light/dark theme — there are no design tokens at the SVG layer. The
+ * no-hex ratchet (scripts/lint-page-hex.mjs) only scans client/src/pages/**.tsx
+ * and does not reach this server .ts string, so the literals stay as-is.
  */
 export function buildOgSvg(report: PublicParcelReport): string {
   const lcs = report.lcs;
@@ -713,6 +729,17 @@ export function buildOgSvg(report: PublicParcelReport): string {
   const title = `${report.countyLabel} County, ${report.state}`;
   const apn = `APN ${report.apn}`;
   const scoredDims = lcs.dimensions.filter((d) => d.status === "scored");
+  // Server sets weightCoveredPct on every fresh report; derive it from the
+  // dimension weights for any legacy row saved before the field existed.
+  const totalWeight = lcs.dimensions.reduce((s, d) => s + d.weight, 0);
+  const coveredPct =
+    typeof lcs.weightCoveredPct === "number"
+      ? lcs.weightCoveredPct
+      : totalWeight > 0
+        ? Math.round(
+            (scoredDims.reduce((s, d) => s + d.weight, 0) / totalWeight) * 100,
+          )
+        : 0;
   const dimLines = scoredDims
     .map(
       (d, i) =>
@@ -731,6 +758,7 @@ export function buildOgSvg(report: PublicParcelReport): string {
   <text x="80" y="356" font-size="96" font-weight="bold" fill="#e8e4d8" font-family="Helvetica, Arial, sans-serif">${escapeXml(score)}</text>
   <text x="${lcs.partialScore != null ? 80 + String(score).length * 56 + 24 : 80}" y="356" font-size="56" font-weight="bold" fill="#7c9a6d" font-family="Helvetica, Arial, sans-serif">${escapeXml(lcs.partialScore != null ? `(${grade})` : "")}</text>
   ${dimLines}
-  <text x="80" y="582" font-size="24" fill="#9aa896" font-family="Helvetica, Arial, sans-serif">Partial Land Credit Score — government-data dimensions only. Full score inside AcreOS.</text>
+  <text x="80" y="546" font-size="24" fill="#9aa896" font-family="Helvetica, Arial, sans-serif">Based on ${coveredPct}% of scoring weight — government-data dimensions only.</text>
+  <text x="80" y="582" font-size="24" fill="#9aa896" font-family="Helvetica, Arial, sans-serif">Partial Land Credit Score. Full score inside AcreOS.</text>
 </svg>`;
 }

@@ -46,6 +46,10 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   { path: "/land-credit-score", changefreq: "monthly", priority: 0.9, label: "Land Credit Score", prerender: true },
   { path: "/security", changefreq: "monthly", priority: 0.7, label: "Security", prerender: true },
   { path: "/glossary", changefreq: "monthly", priority: 0.7, label: "Glossary", prerender: true },
+  // Learn hub — lists every authored state×vertical + county primer. Fully
+  // static (registries resolve at build time, no client fetch), so it
+  // pre-renders and is the crawlable parent of the /learn/* deep pages.
+  { path: "/learn", changefreq: "weekly", priority: 0.8, label: "Learn hub", prerender: true },
   // Comparison landers — high-intent "[competitor] alternative" search
   // traffic. prerender:false because the page mounts a noindex meta tag
   // until the founder fills in positioning copy (see ComparisonPage.tsx).

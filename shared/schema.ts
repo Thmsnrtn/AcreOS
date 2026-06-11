@@ -6295,6 +6295,13 @@ export interface PublicLcs {
   basis: "government-data-only";
   scoredDimensions: number;
   totalDimensions: number;
+  /**
+   * Share of total LCS dimension weight covered by the scored dimensions,
+   * 0–100 rounded (sum of scored-dimension weights ÷ total weight × 100).
+   * Quantifies HOW partial the partial score is — a 2-of-6 score that covers
+   * 30% of scoring weight is honestly different from one that covers 70%.
+   */
+  weightCoveredPct: number;
   /** 300–850 over scored dimensions only (weights renormalized); null when nothing scored. */
   partialScore: number | null;
   partialGrade: string | null;
