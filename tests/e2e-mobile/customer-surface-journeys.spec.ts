@@ -554,18 +554,19 @@ test.describe("J3: pax interaction loop", () => {
       ).toBeGreaterThan(0);
     }
 
+    // The composer lives inside the lazy Suspense(CommandCenterPage) chunk
+    // while the banner above is part of the eager pax.tsx chunk — on a
+    // starved CI runner the chunk fetch can lose the race against an
+    // immediate isVisible(), so this MUST auto-retry rather than snapshot.
     const composer = page
       .locator(
         'textarea, [contenteditable="true"], [data-testid*="composer"], [data-testid*="message-input"]',
       )
       .first();
-    const composerVisible = await composer
-      .isVisible()
-      .catch(() => false);
-    expect(
-      composerVisible,
+    await expect(
+      composer,
       "pax composer affordance missing on /ai — AiChatGuard must degrade chat with a banner, never unmount the surface",
-    ).toBe(true);
+    ).toBeVisible({ timeout: 60_000 });
 
     // Try overflow / kebab menu — common selectors. We don't fail if absent
     // (UI variant); we DO fail if it opens to a blank popover.
