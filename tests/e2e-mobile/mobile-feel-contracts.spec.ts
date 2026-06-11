@@ -249,7 +249,21 @@ async function collectTouchTargetViolations(
   page: Page,
 ): Promise<TouchTargetViolation[]> {
   return await page.evaluate(
-    ({ minPx }) => {
+    async ({ minPx }) => {
+      // Settle running animations/transitions before measuring. Entrance
+      // staggers (framer-motion) and active:scale transforms shrink
+      // getBoundingClientRect mid-flight — a 44px-by-design target at
+      // scale(.99) measures 43.56px and false-fails the contract (run
+      // 27338170893: min-h-11 TabsTriggers on /money + the 44×44 Pax
+      // overflow button reported as "44×44" violations — display rounded,
+      // comparison didn't). Race-guarded: infinite animations (pulse/ping)
+      // never resolve `finished`.
+      await Promise.race([
+        Promise.all(
+          document.getAnimations().map((a) => a.finished.catch(() => {})),
+        ),
+        new Promise((r) => setTimeout(r, 2000)),
+      ]);
       const out: Array<TouchTargetViolation> = [];
       const sels = ['button', 'a', '[role="button"]', '[role="link"]'];
       const nodes = document.querySelectorAll(sels.join(","));
@@ -268,7 +282,13 @@ async function collectTouchTargetViolations(
         const rect = el.getBoundingClientRect();
         // Skip offscreen / collapsed elements (rect 0x0 = not currently rendered).
         if (rect.width === 0 && rect.height === 0) return;
-        if (rect.width < minPx || rect.height < minPx) {
+        // Compare what we report: round-to-nearest so sub-pixel rendering
+        // of an exactly-minPx target (43.6–43.99 at fractional DPR / end
+        // of a scale animation) isn't a violation, while a genuinely
+        // undersized 43px target still is.
+        const width = Math.round(rect.width);
+        const height = Math.round(rect.height);
+        if (width < minPx || height < minPx) {
           out.push({
             tag: el.tagName.toLowerCase(),
             label: (
@@ -277,8 +297,8 @@ async function collectTouchTargetViolations(
               el.getAttribute("href") ??
               "(unlabeled)"
             ).replace(/\s+/g, " "),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
+            width,
+            height,
           });
         }
       });
