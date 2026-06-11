@@ -42,7 +42,6 @@ import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
 import { DealModalsHost } from "@/components/modals";
-import { FloatingActionButton } from "@/components/floating-action-button";
 import { EarlyAccessBanner } from "@/components/early-access-banner";
 const CommandPalette = React.lazy(() => import("@/components/command-palette").then(m => ({ default: m.CommandPalette })));
 // IA consolidation (Lens 4 Fix 3): the founder-only ⌘⇧K palette was
@@ -2037,14 +2036,13 @@ function AppContent() {
           slot 2 (bottom-176):  help (also hosts feedback)
           Feedback was slot 3 until the consolidation pass — now it
           lives inside the help sheet + settings + command palette. */}
-      {/* FloatingActionButton hidden on desktop — desktop has ⌘K + sidebar
-          New-Item menu; mobile keeps the FAB as a tap target.
-          Also hidden on /ai (chat surface has its own send button — the
-          global FAB overlaps the chat input on mobile) and on /inbox
-          (primary action lives in the page chrome there too). */}
-      {user && !location.startsWith("/ai") && !location.startsWith("/inbox") && !location.startsWith("/field-scout") && !location.startsWith("/founder") && (
-        <div className="md:hidden"><FloatingActionButton /></div>
-      )}
+      {/* Legacy FloatingActionButton retired 2026-06-11 — it duplicated the
+          persona-aware quick-add FAB in MobileBottomNav (QuickAddSheet) at the
+          exact same fixed bottom-right slot, so on customer surfaces (e.g.
+          /maps) the two "+" FABs stacked and overlapped (founder-reported).
+          The QuickAddSheet is the canonical capture FAB; its menu's nav
+          shortcuts (New Property/Deal/Documents/AI/Search) are all reachable
+          via the five doors + More drawer + topbar search. */}
       {/* ConversationTray removed 2026-05-20 — the floating chat button opened
           to a frosted/empty sheet on every screen (team-messaging feature isn't
           mature enough to surface as a global FAB yet). When team messaging
