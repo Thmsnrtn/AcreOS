@@ -125,7 +125,7 @@ export function ApiKeyManager() {
         </div>
         <Button
           size="sm"
-          className="min-h-11 sm:min-h-9"
+          className="min-h-11 pointer-fine:sm:min-h-9"
           onClick={() => setShowCreate(true)}
           data-testid="button-create-api-key"
         >
@@ -156,7 +156,7 @@ export function ApiKeyManager() {
               <Button
                 size="sm"
                 variant="outline"
-                className="min-h-11 sm:min-h-9 shrink-0"
+                className="min-h-11 pointer-fine:sm:min-h-9 shrink-0"
                 onClick={() => {
                   navigator.clipboard.writeText(createdKey);
                   toast({ title: "API key copied to clipboard" });
@@ -241,14 +241,14 @@ export function ApiKeyManager() {
               <div className="flex gap-2">
                 <Button
                   type="submit"
-                  className="min-h-11 sm:min-h-9"
+                  className="min-h-11 pointer-fine:sm:min-h-9"
                   disabled={!newKeyName.trim() || createKey.isPending}
                   data-testid="button-create-api-key-submit"
                 >
                   {createKey.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : null}
                   Create
                 </Button>
-                <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => setShowCreate(false)}>{Verbs.CANCEL}</Button>
+                <Button type="button" variant="outline" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => setShowCreate(false)}>{Verbs.CANCEL}</Button>
               </div>
             </form>
           </CardContent>
@@ -331,7 +331,7 @@ export function ApiKeyManager() {
                             <Button
                               size="sm"
                               variant="destructive"
-                              className="min-h-11 sm:min-h-9"
+                              className="min-h-11 pointer-fine:sm:min-h-9"
                               onClick={() => revokeKey.mutate(k.id)}
                               disabled={revokeKey.isPending}
                               data-testid={`button-confirm-revoke-${k.id}`}
@@ -343,7 +343,7 @@ export function ApiKeyManager() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="min-h-11 sm:min-h-9"
+                              className="min-h-11 pointer-fine:sm:min-h-9"
                               onClick={() => setRevokeId(null)}
                               aria-label={`Cancel revoke of ${k.name}`}
                             >
@@ -354,7 +354,7 @@ export function ApiKeyManager() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="text-destructive hover:text-destructive active:text-destructive min-h-11 sm:min-h-9"
+                            className="text-destructive hover:text-destructive active:text-destructive min-h-11 pointer-fine:sm:min-h-9"
                             onClick={() => setRevokeId(k.id)}
                             data-testid={`button-revoke-${k.id}`}
                             aria-label={`Revoke ${k.name}`}

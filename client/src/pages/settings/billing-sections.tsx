@@ -337,7 +337,7 @@ export function StripeConnectSettings() {
             <Button
               onClick={() => connectMutation.mutate()}
               disabled={connectMutation.isPending}
-              className="min-h-11 sm:min-h-9"
+              className="min-h-11 pointer-fine:sm:min-h-9"
               data-testid="button-connect-stripe"
             >
               {connectMutation.isPending ? (
@@ -353,7 +353,7 @@ export function StripeConnectSettings() {
                 <Button
                   onClick={() => connectMutation.mutate()}
                   disabled={connectMutation.isPending}
-                  className="min-h-11 sm:min-h-9"
+                  className="min-h-11 pointer-fine:sm:min-h-9"
                   data-testid="button-complete-onboarding"
                 >
                   {connectMutation.isPending ? (
@@ -369,7 +369,7 @@ export function StripeConnectSettings() {
                 variant="outline"
                 onClick={() => refreshMutation.mutate()}
                 disabled={refreshMutation.isPending}
-                className="min-h-11 sm:min-h-9"
+                className="min-h-11 pointer-fine:sm:min-h-9"
                 data-testid="button-refresh-stripe-status"
               >
                 {refreshMutation.isPending ? (
@@ -384,7 +384,7 @@ export function StripeConnectSettings() {
                 variant="outline"
                 onClick={() => setShowDisconnectConfirm(true)}
                 disabled={disconnectMutation.isPending}
-                className="min-h-11 sm:min-h-9"
+                className="min-h-11 pointer-fine:sm:min-h-9"
                 data-testid="button-disconnect-stripe"
               >
                 {disconnectMutation.isPending ? (
@@ -629,7 +629,7 @@ export function SeatManagement() {
               <Button
                 onClick={handlePurchaseSeats}
                 disabled={purchaseSeatsMutation.isPending || !seatQuantity}
-                className="min-h-11 sm:min-h-9"
+                className="min-h-11 pointer-fine:sm:min-h-9"
                 data-testid="button-purchase-seats"
                 aria-label={`Add ${seatQuantity} ${billingPeriod} seat${seatQuantity === 1 ? "" : "s"}`}
               >

@@ -323,7 +323,7 @@ export function HelpContent({ onNavigateToSupport }: HelpContentProps) {
               Contact our support team for personalized assistance.
             </p>
           </div>
-          <Button className="min-h-11 sm:min-h-9" onClick={onNavigateToSupport} data-testid="button-contact-support">
+          <Button className="min-h-11 pointer-fine:sm:min-h-9" onClick={onNavigateToSupport} data-testid="button-contact-support">
             <Headphones className="w-4 h-4 mr-2" />
             Contact Support
           </Button>

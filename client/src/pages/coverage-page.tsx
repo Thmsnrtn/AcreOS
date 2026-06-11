@@ -107,23 +107,38 @@ export function CoveragePage({
           </div>
         </div>
 
+        {/* min-h-11 sm:min-h-11 — the Button default carries sm:min-h-9
+            (36px, "desktop stays dense"), which tw-merge keeps alongside a
+            bare min-h-11 and wins at >=640px. Error/coverage pages are
+            universal surfaces reached from EVERY device class — a 768px
+            iPad is a touch device on the desktop-density arm, so the CTAs
+            hold 44px at every width (same rationale as the cookie banner). */}
         <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
           {primaryAction.href ? (
-            <Button asChild data-testid={`${testId}-primary`}>
+            <Button asChild className="min-h-11 sm:min-h-11" data-testid={`${testId}-primary`}>
               <Link href={primaryAction.href}>
                 {PrimaryIcon && <PrimaryIcon className="w-4 h-4 mr-2" aria-hidden="true" />}
                 {primaryAction.label}
               </Link>
             </Button>
           ) : (
-            <Button onClick={primaryAction.onClick} data-testid={`${testId}-primary`}>
+            <Button
+              onClick={primaryAction.onClick}
+              className="min-h-11 sm:min-h-11"
+              data-testid={`${testId}-primary`}
+            >
               {PrimaryIcon && <PrimaryIcon className="w-4 h-4 mr-2" aria-hidden="true" />}
               {primaryAction.label}
             </Button>
           )}
           {secondaryAction &&
             (secondaryAction.href ? (
-              <Button variant="ghost" asChild data-testid={`${testId}-secondary`}>
+              <Button
+                variant="ghost"
+                asChild
+                className="min-h-11 sm:min-h-11"
+                data-testid={`${testId}-secondary`}
+              >
                 <Link href={secondaryAction.href}>
                   {SecondaryIcon && (
                     <SecondaryIcon className="w-4 h-4 mr-2" aria-hidden="true" />
@@ -135,6 +150,7 @@ export function CoveragePage({
               <Button
                 variant="ghost"
                 onClick={secondaryAction.onClick}
+                className="min-h-11 sm:min-h-11"
                 data-testid={`${testId}-secondary`}
               >
                 {SecondaryIcon && (

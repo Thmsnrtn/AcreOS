@@ -51,8 +51,12 @@ export default defineConfig({
   projects: [
     { name: "iphone-14", use: { ...devices["iPhone 14"] } },
     { name: "pixel-5", use: { ...devices["Pixel 5"] } },
-    // iPhone SE (3rd gen) — 375x667. The narrowest current-spec iPhone;
-    // catches buttons that wrap-and-collide at the smallest viewport.
+    // Playwright's "iPhone SE" descriptor is the ORIGINAL 2016 SE:
+    // 320x568, iOS 10 UA — NOT the 375x667 3rd-gen. Even stricter than
+    // intended: catches buttons that wrap-and-collide at the absolute
+    // smallest viewport any customer could bring. (Verified against
+    // playwright deviceDescriptors, 2026-06-10 — same descriptor-
+    // assumption error class as the iPad Mini 768x1024-vs-744 mixup.)
     { name: "iphone-se", use: { ...devices["iPhone SE"] } },
     // iPhone 14 Pro Max — 430x932. The widest iPhone in production; catches
     // surfaces that assume <= 414px width and stretch awkwardly.

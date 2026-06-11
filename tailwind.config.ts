@@ -226,5 +226,22 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+  plugins: [
+    require("tailwindcss-animate"),
+    require("@tailwindcss/typography"),
+    // pointer-coarse: — touch-target sizing must follow POINTER TYPE, not
+    // viewport width. The Button scale's "desktop stays dense" arm keyed
+    // density to sm: (>=640px), which silently under-sized every control on
+    // touch tablets: a 768px iPad lands on the desktop-density arm with a
+    // finger as the pointer (caught by the ipad-mini Krieger touch-target
+    // contract, 2026-06-10 — 38px CTAs on the 404 page / cookie banner).
+    // `pointer-coarse:min-h-11` lets a control stay dense for mouse users at
+    // ANY width while holding the 44px Apple-HIG floor whenever the primary
+    // input is a finger. (Tailwind v4 ships this variant natively; this is
+    // the v3 equivalent.)
+    function pointerVariants({ addVariant }: { addVariant: (name: string, def: string) => void }) {
+      addVariant("pointer-coarse", "@media (pointer: coarse)");
+      addVariant("pointer-fine", "@media (pointer: fine)");
+    },
+  ],
 } satisfies Config;

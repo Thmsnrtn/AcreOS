@@ -227,7 +227,7 @@ function EmailMessageRow({
             starMutation.mutate({ id: message.id, isStarred: !!message.isStarred });
           }}
           disabled={starMutation.isPending}
-          className={`min-h-11 min-w-11 sm:h-7 sm:w-7 sm:min-h-0 sm:min-w-0 ${message.isStarred ? "text-[color:var(--acr-warn)]" : "text-[color:var(--acr-ink-3)]"}`}
+          className={`min-h-11 min-w-11 pointer-fine:sm:h-7 pointer-fine:sm:w-7 pointer-fine:sm:min-h-0 pointer-fine:sm:min-w-0 ${message.isStarred ? "text-[color:var(--acr-warn)]" : "text-[color:var(--acr-ink-3)]"}`}
           aria-label={message.isStarred ? `Unstar email from ${senderLabel}` : `Star email from ${senderLabel}`}
         >
           <Star className={`h-4 w-4 sm:h-3.5 sm:w-3.5 ${message.isStarred ? "fill-current" : ""}`} aria-hidden="true" />
@@ -242,7 +242,7 @@ function EmailMessageRow({
               archiveMutation.mutate({ id: message.id });
             }}
             disabled={archiveMutation.isPending}
-            className="min-h-11 min-w-11 sm:h-7 sm:w-7 sm:min-h-0 sm:min-w-0 text-[color:var(--acr-ink-3)]"
+            className="min-h-11 min-w-11 pointer-fine:sm:h-7 pointer-fine:sm:w-7 pointer-fine:sm:min-h-0 pointer-fine:sm:min-w-0 text-[color:var(--acr-ink-3)]"
             aria-label={`Archive email from ${senderLabel}`}
           >
             <Archive className="h-4 w-4 sm:h-3.5 sm:w-3.5" aria-hidden="true" />

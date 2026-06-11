@@ -42,7 +42,13 @@ import { test, expect, type Page } from "@playwright/test";
 
 const ROUTES_TO_AUDIT = [
   "/today",
-  "/map",
+  // The Map door's canonical route is /maps (nav-items.ts href:"/maps") —
+  // "/map" has NO route and falls through to the 404 catch-all, so this
+  // suite spent its Map-door budget measuring the not-found page (which is
+  // how it caught the 38px coverage-page CTAs, but it never once audited
+  // the real Map surface). Same wrong-premise class as J1's /map → /maps
+  // correction in customer-surface-journeys.spec.ts.
+  "/maps",
   "/deals",
   "/money",
   "/ai",

@@ -38,7 +38,7 @@ export function MorningBrief({ brief }: MorningBriefProps) {
         aria-expanded={expanded}
         aria-controls={contentId}
         data-testid="button-morning-brief-toggle"
-        className="w-full flex items-center gap-2 p-4 md:p-3.5 text-left min-h-11 sm:min-h-9 rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="w-full flex items-center gap-2 p-4 md:p-3.5 text-left min-h-11 pointer-fine:sm:min-h-9 rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span
           className="acr-pax-heartbeat shrink-0"

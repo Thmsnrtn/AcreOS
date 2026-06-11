@@ -343,7 +343,7 @@ function PropertyIntelligencePanel({
             type="button"
             onClick={onClose}
             aria-label="Close property intelligence panel"
-            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 -mr-1 -mt-1 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+            className="min-h-11 min-w-11 pointer-fine:sm:min-h-9 pointer-fine:sm:min-w-9 -mr-1 -mt-1 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -1103,14 +1103,14 @@ export default function MapsPage() {
               placeholder="Search…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-7 h-7 text-xs"
+              className="pl-7 h-7 pointer-coarse:min-h-11 text-xs"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
                 aria-label="Clear search"
-                className="absolute right-1 top-1/2 -translate-y-1/2 min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                className="absolute right-1 top-1/2 -translate-y-1/2 min-h-11 min-w-11 pointer-fine:sm:min-h-9 pointer-fine:sm:min-w-9 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
               >
                 <X className="w-3.5 h-3.5" aria-hidden="true" />
               </button>
@@ -1119,7 +1119,10 @@ export default function MapsPage() {
 
           {/* Status filter */}
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-32 h-7 text-xs hidden md:flex" aria-label="Filter by property status">
+            {/* h-7 keeps the toolbar dense for mouse users; pointer-coarse:min-h-11
+                holds the 44px Apple-HIG floor on touch tablets (min-height beats
+                height, so the floor wins on coarse pointers at any width). */}
+            <SelectTrigger className="w-32 h-7 pointer-coarse:min-h-11 text-xs hidden md:flex" aria-label="Filter by property status">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -1138,7 +1141,7 @@ export default function MapsPage() {
                 variant="outline"
                 size="sm"
                 aria-label="Open map filters"
-                className="gap-1.5 shrink-0 min-h-11 min-w-11 sm:min-h-9 sm:min-w-0 sm:h-7 text-xs px-2.5"
+                className="gap-1.5 shrink-0 min-h-11 min-w-11 sm:min-w-0 pointer-fine:sm:min-h-9 pointer-fine:sm:h-7 text-xs px-2.5"
               >
                 <SlidersHorizontal className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                 <span className="hidden sm:inline">Filters</span>

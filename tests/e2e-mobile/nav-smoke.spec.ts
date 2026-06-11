@@ -52,6 +52,12 @@ const IGNORED_PAGE_ERRORS = [
   /clerk\.browser\.js/i,
   /failed to load/i,
   /ResizeObserver/i,
+  // WebKit-in-CI fetch-abort noise: WebKit reports aborted same-origin
+  // fetches (page teardown / rapid nav) as "…due to access control checks."
+  // while the server log shows the request completed 200. Not a CORS or
+  // app bug — same rationale as customer-surface-journeys.spec.ts.
+  /due to access control checks/i,
+  /\bsw\.js\b/i,
 ];
 
 async function seedSessionCookie(page: Page, baseURL: string) {

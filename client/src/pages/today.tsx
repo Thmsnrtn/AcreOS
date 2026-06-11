@@ -500,7 +500,7 @@ export default function TodayPage() {
           {pendingDecisionCount > 0 && (
             <Link
               href="/decision-queue"
-              className="inline-flex items-center gap-2 mt-3 md:mt-2 min-h-11 sm:min-h-9 md:min-h-0 px-3 py-1.5 md:px-2.5 md:py-1 rounded-full bg-acr-neg-soft border border-[color:var(--acr-neg)]/30 text-sm md:text-xs text-acr-neg hover:opacity-80 active:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-2 mt-3 md:mt-2 min-h-11 pointer-fine:sm:min-h-9 pointer-fine:md:min-h-0 px-3 py-1.5 md:px-2.5 md:py-1 rounded-full bg-acr-neg-soft border border-[color:var(--acr-neg)]/30 text-sm md:text-xs text-acr-neg hover:opacity-80 active:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
             >
               <Clock className="w-4 h-4 md:w-3.5 md:h-3.5" aria-hidden="true" />
@@ -527,13 +527,13 @@ export default function TodayPage() {
                 Add a parcel, import a lead list, or explore with a realistic sample dataset — your workspace is yours to shape.
               </p>
               <div className="flex flex-wrap gap-2 justify-center pt-2">
-                <Button asChild size="sm" className="min-h-11 sm:min-h-9">
+                <Button asChild size="sm" className="min-h-11 pointer-fine:sm:min-h-9">
                   <Link href="/properties">
                     <Map className="w-4 h-4 mr-1.5" aria-hidden="true" />
                     Add your first parcel
                   </Link>
                 </Button>
-                <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-9">
+                <Button asChild size="sm" variant="outline" className="min-h-11 pointer-fine:sm:min-h-9">
                   <Link href="/leads">
                     <Users className="w-4 h-4 mr-1.5" aria-hidden="true" />
                     Import leads
@@ -542,7 +542,7 @@ export default function TodayPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="min-h-11 sm:min-h-9"
+                  className="min-h-11 pointer-fine:sm:min-h-9"
                   onClick={() => loadSampleDataMutation.mutate()}
                   disabled={loadSampleDataMutation.isPending}
                   data-testid="button-try-sample-data"
@@ -630,7 +630,7 @@ export default function TodayPage() {
               <Button
                 asChild
                 size="sm"
-                className="min-h-11 sm:min-h-9 md:h-8"
+                className="min-h-11 pointer-fine:sm:min-h-9 pointer-fine:md:h-8"
                 data-testid="button-heading-out-open"
               >
                 <Link href={DRIVE_MODE_ROUTE}>Open Drive Mode</Link>
@@ -639,7 +639,7 @@ export default function TodayPage() {
                 type="button"
                 onClick={dismissHeadingOut}
                 aria-label="Dismiss Heading out card for today"
-                className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 md:h-8 md:w-8 -mr-1 flex items-center justify-center rounded-full text-muted-foreground hover:bg-background/60 active:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-h-11 min-w-11 pointer-fine:sm:min-h-9 pointer-fine:sm:min-w-9 pointer-fine:md:h-8 pointer-fine:md:w-8 -mr-1 flex items-center justify-center rounded-full text-muted-foreground hover:bg-background/60 active:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 data-testid="button-heading-out-dismiss"
               >
                 <XIcon className="w-4 h-4" aria-hidden="true" />
@@ -735,7 +735,7 @@ export default function TodayPage() {
                 asChild
                 size="sm"
                 variant="outline"
-                className="min-h-11 sm:min-h-9 md:h-8"
+                className="min-h-11 pointer-fine:sm:min-h-9 pointer-fine:md:h-8"
                 data-testid="button-referral-nudge-open"
               >
                 <Link href="/settings?tab=account">Get your link</Link>
@@ -744,7 +744,7 @@ export default function TodayPage() {
                 type="button"
                 onClick={dismissReferralNudge}
                 aria-label="Dismiss referral suggestion"
-                className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 md:h-8 md:w-8 -mr-1 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-h-11 min-w-11 pointer-fine:sm:min-h-9 pointer-fine:sm:min-w-9 pointer-fine:md:h-8 pointer-fine:md:w-8 -mr-1 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 data-testid="button-referral-nudge-dismiss"
               >
                 <XIcon className="w-4 h-4" aria-hidden="true" />

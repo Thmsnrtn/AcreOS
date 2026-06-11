@@ -630,7 +630,7 @@ export default function DocumentsPage() {
           <Button
             variant={templateFilter === "all" ? "default" : "outline"}
             size="sm"
-            className="min-h-11 sm:min-h-9"
+            className="min-h-11 pointer-fine:sm:min-h-9"
             aria-pressed={templateFilter === "all"}
             onClick={() => setTemplateFilter("all")}
             data-testid="button-filter-all"
@@ -640,7 +640,7 @@ export default function DocumentsPage() {
           <Button
             variant={templateFilter === "my" ? "default" : "outline"}
             size="sm"
-            className="min-h-11 sm:min-h-9"
+            className="min-h-11 pointer-fine:sm:min-h-9"
             aria-pressed={templateFilter === "my"}
             onClick={() => setTemplateFilter("my")}
             data-testid="button-filter-my"
@@ -650,7 +650,7 @@ export default function DocumentsPage() {
           <Button
             variant={templateFilter === "system" ? "default" : "outline"}
             size="sm"
-            className="min-h-11 sm:min-h-9"
+            className="min-h-11 pointer-fine:sm:min-h-9"
             aria-pressed={templateFilter === "system"}
             onClick={() => setTemplateFilter("system")}
             data-testid="button-filter-system"
@@ -753,7 +753,7 @@ export default function DocumentsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="min-h-11 sm:min-h-9"
+                    className="min-h-11 pointer-fine:sm:min-h-9"
                     onClick={() => handlePreviewDocument(doc)}
                     data-testid={`button-view-document-${doc.id}`}
                   >
@@ -763,7 +763,7 @@ export default function DocumentsPage() {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9"
+                    className="min-h-11 min-w-11 pointer-fine:sm:min-h-9 pointer-fine:sm:min-w-9"
                     onClick={() => handleOpenVersionHistory(doc.id, "generated", doc.name)}
                     aria-label={`Version history for ${doc.name}`}
                     data-testid={`button-version-history-document-${doc.id}`}
@@ -773,7 +773,7 @@ export default function DocumentsPage() {
                   {doc.status === "draft" && (
                     <Button
                       size="sm"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={() => setSignaturesFor(doc)}
                       data-testid={`button-send-for-signature-${doc.id}`}
                     >
@@ -900,7 +900,7 @@ export default function DocumentsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="min-h-11 sm:min-h-9"
+                    className="min-h-11 pointer-fine:sm:min-h-9"
                     onClick={(e) => { e.stopPropagation(); handleViewPackage(pkg); }}
                     data-testid={`button-view-package-${pkg.id}`}
                   >
@@ -910,7 +910,7 @@ export default function DocumentsPage() {
                   {pkg.status === "draft" && docsCount > 0 && (
                     <Button
                       size="sm"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={(e) => { e.stopPropagation(); generateAllDocsMutation.mutate({ id: pkg.id }); }}
                       disabled={generateAllDocsMutation.isPending}
                       data-testid={`button-generate-all-${pkg.id}`}
@@ -1254,7 +1254,7 @@ export default function DocumentsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="min-h-11 sm:min-h-9"
+                            className="min-h-11 pointer-fine:sm:min-h-9"
                             onClick={() => setVersionToRestore(version)}
                             disabled={restoreVersionMutation.isPending || isLatest}
                             aria-label={isLatest ? "This is the latest version" : `Restore version ${version.version}`}

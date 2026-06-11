@@ -1241,7 +1241,7 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
                       // [@media(hover:none)]:opacity-60 makes it visible
                       // (subdued) on touch — same pattern as the Pax
                       // delete-conversation button (contract test #4).
-                      className="min-h-11 min-w-11 sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
+                      className="min-h-11 min-w-11 pointer-fine:sm:h-8 pointer-fine:sm:w-8 pointer-fine:sm:min-h-0 pointer-fine:sm:min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
                       aria-label="More deal actions"
                     >
                       <EllipsisVertical className="h-4 w-4" aria-hidden="true" />

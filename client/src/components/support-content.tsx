@@ -555,7 +555,7 @@ export function SupportContent() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={handleResolve}
                       disabled={resolveCaseMutation.isPending}
                       data-testid="button-resolve-case"
@@ -647,7 +647,7 @@ export function SupportContent() {
                     </div>
                     <Button
                       size="sm"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={handleRate}
                       disabled={rating === 0 || rateCaseMutation.isPending}
                       data-testid="button-submit-rating"

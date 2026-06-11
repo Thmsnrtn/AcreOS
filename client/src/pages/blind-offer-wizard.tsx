@@ -530,7 +530,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
               <p className="font-semibold text-acr-pos">Loaded {autoLoadMeta.count} comps from {county} County</p>
               <p className="text-muted-foreground">Source: ATTOM Data recent sales (last 18 months, ±50% acreage). Add or remove any below.</p>
             </div>
-            <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-9" onClick={() => autoLoadComps(true)} aria-label="Refresh comps from county">
+            <Button variant="ghost" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => autoLoadComps(true)} aria-label="Refresh comps from county">
               <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> Refresh
             </Button>
           </>
@@ -542,7 +542,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
               <p className="font-semibold text-acr-warn">No recent comps auto-pulled for {county} County</p>
               <p className="text-muted-foreground">{autoLoadMeta?.fallback || "Add comps manually below — assessor records, LandWatch, or eBay sold listings."}</p>
             </div>
-            <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-9" onClick={() => autoLoadComps(true)} aria-label="Retry comp auto-pull">
+            <Button variant="ghost" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => autoLoadComps(true)} aria-label="Retry comp auto-pull">
               <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> {Verbs.RETRY}
             </Button>
           </>
@@ -554,7 +554,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
               <p className="font-semibold text-acr-warn">Comps couldn't load — paste manually</p>
               <p className="text-muted-foreground">Network or ATTOM hiccup. The manual form below works as the fallback.</p>
             </div>
-            <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-9" onClick={() => autoLoadComps(true)} aria-label="Retry comp auto-pull">
+            <Button variant="ghost" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => autoLoadComps(true)} aria-label="Retry comp auto-pull">
               <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> {Verbs.RETRY}
             </Button>
           </>
@@ -566,7 +566,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
               <p className="font-semibold">Pull comps automatically</p>
               <p className="text-muted-foreground">Recent land sales for {county || "this county"}, {state || "your state"} — ATTOM Data.</p>
             </div>
-            <Button variant="outline" size="sm" className="min-h-11 sm:min-h-9" onClick={() => autoLoadComps(true)} disabled={!state || !county}>
+            <Button variant="outline" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => autoLoadComps(true)} disabled={!state || !county}>
               <Sparkles className="w-3 h-3 mr-1" aria-hidden="true" /> Auto-load
             </Button>
           </>
@@ -740,7 +740,7 @@ function StepCalculate({ report, isLoading, error, onRetry, onNext, onBack }: St
           testId="blind-offer-calculate-error"
         />
         <div className="flex justify-center">
-          <Button variant="outline" onClick={onBack} className="min-h-11 sm:min-h-9">
+          <Button variant="outline" onClick={onBack} className="min-h-11 pointer-fine:sm:min-h-9">
             <ChevronLeft className="w-4 h-4 mr-1" aria-hidden="true" /> Back to comp research
           </Button>
         </div>
@@ -1103,10 +1103,10 @@ Private Real Estate Investor`;
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm">Offer letter template</CardTitle>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="min-h-11 sm:min-h-9" onClick={copyLetter} aria-label="Copy offer letter to clipboard">
+              <Button variant="outline" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={copyLetter} aria-label="Copy offer letter to clipboard">
                 <Copy className="w-3 h-3 mr-1" aria-hidden="true" /> {Verbs.COPY}
               </Button>
-              <Button variant="outline" size="sm" className="min-h-11 sm:min-h-9" onClick={downloadLetter} aria-label="Download offer letter as a text file">
+              <Button variant="outline" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={downloadLetter} aria-label="Download offer letter as a text file">
                 <Download className="w-3 h-3 mr-1" aria-hidden="true" /> Download
               </Button>
             </div>

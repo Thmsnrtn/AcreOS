@@ -239,11 +239,11 @@ export default function NegotiationCopilotPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex-wrap">
-          <TabsTrigger value="session" className="min-h-11 sm:min-h-9">Active session</TabsTrigger>
-          <TabsTrigger value="batna" className="min-h-11 sm:min-h-9">BATNA calculator</TabsTrigger>
-          <TabsTrigger value="sessions" className="min-h-11 sm:min-h-9">Deal history</TabsTrigger>
-          <TabsTrigger value="analytics" className="min-h-11 sm:min-h-9">Strategy analytics</TabsTrigger>
-          <TabsTrigger value="replay" className="min-h-11 sm:min-h-9">Session replay</TabsTrigger>
+          <TabsTrigger value="session" className="min-h-11 pointer-fine:sm:min-h-9">Active session</TabsTrigger>
+          <TabsTrigger value="batna" className="min-h-11 pointer-fine:sm:min-h-9">BATNA calculator</TabsTrigger>
+          <TabsTrigger value="sessions" className="min-h-11 pointer-fine:sm:min-h-9">Deal history</TabsTrigger>
+          <TabsTrigger value="analytics" className="min-h-11 pointer-fine:sm:min-h-9">Strategy analytics</TabsTrigger>
+          <TabsTrigger value="replay" className="min-h-11 pointer-fine:sm:min-h-9">Session replay</TabsTrigger>
         </TabsList>
 
         {/* ── ACTIVE SESSION ── */}
@@ -414,7 +414,7 @@ export default function NegotiationCopilotPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="w-full justify-start min-h-11 sm:min-h-9"
+                              className="w-full justify-start min-h-11 pointer-fine:sm:min-h-9"
                               onClick={() => handleGenerateResponse(objectionResult.id, strategy)}
                               disabled={analyzeMutation.isPending}
                               aria-label={`Generate ${STRATEGY_INFO[strategy]?.label || strategy} response to ${objectionResult.category} objection`}
@@ -507,7 +507,7 @@ export default function NegotiationCopilotPage() {
                       {responseText}
                     </div>
                     <Button
-                      className="mt-3 min-h-11 sm:min-h-9"
+                      className="mt-3 min-h-11 pointer-fine:sm:min-h-9"
                       size="sm"
                       onClick={async () => {
                         try {
@@ -569,7 +569,7 @@ export default function NegotiationCopilotPage() {
                 <div className="text-center py-8" role="status">
                   <History className="w-8 h-8 mx-auto mb-3 text-muted-foreground opacity-40" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground mb-4">Start a session and make moves to see the replay timeline here.</p>
-                  <Button variant="outline" onClick={goToStartNegotiation} className="min-h-11 sm:min-h-9">
+                  <Button variant="outline" onClick={goToStartNegotiation} className="min-h-11 pointer-fine:sm:min-h-9">
                     Start a negotiation
                   </Button>
                 </div>

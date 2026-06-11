@@ -1060,7 +1060,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     <Button
                       onClick={handleGeneratePaymentLink}
                       disabled={isGeneratingLink}
-                      className="flex-1 min-h-11 sm:min-h-9"
+                      className="flex-1 min-h-11 pointer-fine:sm:min-h-9"
                       data-testid="button-generate-payment-link"
                     >
                       {isGeneratingLink ? (
@@ -1073,7 +1073,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     <Button
                       onClick={() => setShowAcceptPayment(true)}
                       variant="outline"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       data-testid="button-accept-payment"
                     >
                       <DollarSign className="w-4 h-4 mr-2" aria-hidden="true" />
@@ -1115,10 +1115,10 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
           </Card>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <Button onClick={() => setShowRecordPayment(true)} className="flex-1 min-h-11 sm:min-h-9" data-testid="button-record-payment">
+            <Button onClick={() => setShowRecordPayment(true)} className="flex-1 min-h-11 pointer-fine:sm:min-h-9" data-testid="button-record-payment">
               <Receipt className="w-4 h-4 mr-2" aria-hidden="true" /> Record payment
             </Button>
-            <Button variant="outline" className="flex-1 min-h-11 sm:min-h-9" disabled title="Coming soon — use Generate payment link above">
+            <Button variant="outline" className="flex-1 min-h-11 pointer-fine:sm:min-h-9" disabled title="Coming soon — use Generate payment link above">
               <CreditCard className="w-4 h-4 mr-2" aria-hidden="true" /> Send payment link
             </Button>
           </div>
@@ -1216,7 +1216,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="min-h-11 sm:min-h-9"
+                  className="min-h-11 pointer-fine:sm:min-h-9"
                   onClick={handleRegenerateSchedule}
                   disabled={isRegenerating}
                   data-testid="button-regenerate-schedule"
@@ -1227,7 +1227,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="min-h-11 sm:min-h-9"
+                  className="min-h-11 pointer-fine:sm:min-h-9"
                   onClick={handleDownloadSchedulePdf}
                   disabled={isDownloadingSchedule || schedule.length === 0}
                   data-testid="button-export-schedule"
@@ -1376,7 +1376,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={() => handleSendReminder('due')}
                       disabled={isSendingReminder}
                       data-testid="button-send-reminder"
@@ -1384,7 +1384,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                       {isSendingReminder ? <Loader2 className="w-4 h-4 mr-1 animate-spin" aria-hidden="true" /> : <Send className="w-4 h-4 mr-1" aria-hidden="true" />}
                       Send reminder
                     </Button>
-                    <Button size="sm" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => handleSendReminder('final_warning')} disabled={isSendingReminder} data-testid="button-escalate">
+                    <Button size="sm" variant="outline" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => handleSendReminder('final_warning')} disabled={isSendingReminder} data-testid="button-escalate">
                       <ArrowUpRight className="w-4 h-4 mr-1" aria-hidden="true" /> Escalate
                     </Button>
                     {/* Log call: backend endpoint not yet shipped. Disable
@@ -1392,7 +1392,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       disabled
                       title="Coming soon — call logging will appear here"
                       data-testid="button-record-contact"
@@ -1443,7 +1443,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <p>Click to load dunning information.</p>
-                  <Button variant="outline" size="sm" className="mt-2 min-h-11 sm:min-h-9" onClick={fetchDunningData}>
+                  <Button variant="outline" size="sm" className="mt-2 min-h-11 pointer-fine:sm:min-h-9" onClick={fetchDunningData}>
                     Load dunning data
                   </Button>
                 </div>
@@ -1690,14 +1690,14 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
             )}
 
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={onClose} className="flex-1 min-h-11 sm:min-h-9">
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1 min-h-11 pointer-fine:sm:min-h-9">
                 {clientSecret ? 'Close' : 'Cancel'}
               </Button>
               {!clientSecret && (
                 <Button
                   type="submit"
                   disabled={isCreating || !amount}
-                  className="flex-1 min-h-11 sm:min-h-9"
+                  className="flex-1 min-h-11 pointer-fine:sm:min-h-9"
                   data-testid="button-create-payment-intent"
                 >
                   {isCreating ? (
@@ -1838,13 +1838,13 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
             </dl>
 
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={onClose} className="flex-1 min-h-11 sm:min-h-9" disabled={isPending}>
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1 min-h-11 pointer-fine:sm:min-h-9" disabled={isPending}>
                 Cancel
               </Button>
               <Button
                 type="submit"
                 disabled={isPending || !amount}
-                className="flex-1 min-h-11 sm:min-h-9"
+                className="flex-1 min-h-11 pointer-fine:sm:min-h-9"
                 data-testid="button-submit-payment"
               >
                 {isPending ? (

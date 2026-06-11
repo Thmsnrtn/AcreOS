@@ -96,7 +96,7 @@ export function GoalsSettings() {
             </div>
             <Button
               size="sm"
-              className="min-h-11 sm:min-h-9"
+              className="min-h-11 pointer-fine:sm:min-h-9"
               onClick={() => setShowForm(v => !v)}
               variant={showForm ? "outline" : "default"}
               data-testid="button-toggle-new-goal"
@@ -175,7 +175,7 @@ export function GoalsSettings() {
                 <Button
                   onClick={() => createGoal.mutate(form)}
                   disabled={!form.label || !form.targetValue || createGoal.isPending}
-                  className="min-h-11 sm:min-h-9"
+                  className="min-h-11 pointer-fine:sm:min-h-9"
                   data-testid="button-save-goal"
                 >
                   {createGoal.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}

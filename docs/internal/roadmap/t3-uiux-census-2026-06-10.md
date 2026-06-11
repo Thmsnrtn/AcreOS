@@ -261,6 +261,7 @@ Effort: S = <½ day, M = ~1 day, L = multi-day. Each item is executable without 
 | W2-8 | A11y pass: aria-labels on ar0 form pages (tax-identity, underwriting, redemption-clock, wholesaler-state-rules, notes-pipeline) + icon-button audit on leads/properties | 7 files | M |
 | W2-9 | Mobile table strategy: adopt `MobileCardList` (or card-at-`sm` pattern) on the 10 highest-traffic of the 61 overflow-x-auto tables | finance, leads, documents, offers, portfolio, rent-roll, … | L |
 | W2-10 | Stylelint/CI rule: no ungated `:hover` in `*.css`, no hex literals in `pages/**` | eslint-rules/, CI | S |
+| W2-11 | Pointer-density sweep: gate every remaining dense `sm:`/`md:` sizing arm behind `pointer-fine:` so touch tablets keep the 44px floor at desktop widths. The audited doors (today/maps/deals/inbox) + Button/coverage-page primitives shipped with the E2E-green wave (2026-06-11); the long tail remains: the `min-h-[44px] sm:min-h-8` family (properties ×5, gis-filters ×3), `h-11 w-11 sm:h-7/8/9 sm:w-*` icon buttons (properties ×3, support-content ×2, settings ×2, organization-sections), campaign-variants-panel `sm:min-h-7`. Cascade fact (verified in built CSS): `sm:` rules compile AFTER `pointer-coarse:` rules, so an element carrying both resolves dense on touch — `pointer-fine:` gating is the only safe idiom for dense arms | ~12 files | M |
 
 ### Wave 3 — founder surfaces
 

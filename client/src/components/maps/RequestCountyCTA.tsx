@@ -159,7 +159,7 @@ export function RequestCountyCTA({
       <Button
         type="submit"
         size="sm"
-        className="w-full min-h-11 sm:min-h-9"
+        className="w-full min-h-11 pointer-fine:sm:min-h-9"
         disabled={!canSubmit}
         data-testid="button-request-county"
       >

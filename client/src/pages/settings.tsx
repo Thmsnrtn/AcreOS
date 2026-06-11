@@ -528,7 +528,7 @@ export default function Settings() {
                           <div className="flex gap-2">
                             <Button
                               variant="outline"
-                              className="min-h-11 sm:min-h-9"
+                              className="min-h-11 pointer-fine:sm:min-h-9"
                               onClick={handleManageSubscription}
                               disabled={portalMutation.isPending}
                               data-testid="button-manage-subscription"
@@ -544,7 +544,7 @@ export default function Settings() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="min-h-11 sm:min-h-9 text-muted-foreground hover:text-destructive active:text-destructive"
+                              className="min-h-11 pointer-fine:sm:min-h-9 text-muted-foreground hover:text-destructive active:text-destructive"
                               onClick={() => setShowCancelDialog(true)}
                               aria-label="Cancel subscription"
                             >
@@ -662,7 +662,7 @@ export default function Settings() {
                                   </p>
                                   <Button
                                     size="sm"
-                                    className="mt-2 min-h-11 sm:min-h-9"
+                                    className="mt-2 min-h-11 pointer-fine:sm:min-h-9"
                                     onClick={() => document.getElementById("pricing-section")?.scrollIntoView({ behavior: "smooth" })}
                                     data-testid="button-upgrade-from-usage"
                                   >
@@ -793,7 +793,7 @@ export default function Settings() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={async () => {
                         try {
                           const res = await fetch("/api/onboarding/reset", {
@@ -925,7 +925,7 @@ export default function Settings() {
                               
                               {price && !isCurrent && (
                                 <Button
-                                  className="w-full min-h-11 sm:min-h-9"
+                                  className="w-full min-h-11 pointer-fine:sm:min-h-9"
                                   onClick={() => handleUpgrade(price.id)}
                                   disabled={checkoutMutation.isPending}
                                   data-testid={`button-upgrade-${product.id}`}
@@ -940,7 +940,7 @@ export default function Settings() {
                               {isCurrent && subscriptionData?.subscription && (
                                 <Button
                                   variant="outline"
-                                  className="w-full min-h-11 sm:min-h-9"
+                                  className="w-full min-h-11 pointer-fine:sm:min-h-9"
                                   onClick={handleManageSubscription}
                                   disabled={portalMutation.isPending}
                                   data-testid={`button-manage-${product.id}`}
@@ -993,7 +993,7 @@ export default function Settings() {
                 <CardContent>
                   <Button
                     variant="outline"
-                    className="min-h-11 sm:min-h-9"
+                    className="min-h-11 pointer-fine:sm:min-h-9"
                     onClick={() => setLocation("/settings/tax-identity")}
                     data-testid="button-open-tax-identity"
                   >
@@ -1325,7 +1325,7 @@ export default function Settings() {
                             );
                           }}
                           disabled={!coOwnerCandidate || addCoOwnerMutation.isPending}
-                          className="min-h-11 sm:min-h-9"
+                          className="min-h-11 pointer-fine:sm:min-h-9"
                           data-testid="button-add-co-owner"
                         >
                           <Plus className="w-4 h-4 mr-1" />
@@ -1468,7 +1468,7 @@ export default function Settings() {
                   </CardHeader>
                   <CardContent className="flex flex-wrap gap-3">
                     <Button
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={() => seedDataMutation.mutate()}
                       disabled={seedDataMutation.isPending}
                       data-testid="button-seed-demo-data"
@@ -1483,7 +1483,7 @@ export default function Settings() {
 
                     <Button
                       variant="destructive"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={() => setShowClearConfirm(true)}
                       disabled={clearDataMutation.isPending}
                       data-testid="button-clear-data"
@@ -1536,7 +1536,7 @@ export default function Settings() {
                 <CardContent>
                   <Button
                     variant="outline"
-                    className="min-h-11 sm:min-h-9"
+                    className="min-h-11 pointer-fine:sm:min-h-9"
                     onClick={() => setLocation("/settings/tax-identity")}
                     data-testid="button-tax-compliance-open-tax-identity"
                   >
@@ -1619,7 +1619,7 @@ export default function Settings() {
                   <CardContent>
                     <Button
                       variant="outline"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={() => setLocation("/data-sources")}
                       data-testid="button-view-data-sources"
                     >
@@ -1650,7 +1650,7 @@ export default function Settings() {
                   <CardContent>
                     <Button
                       variant="outline"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={() => setLocation("/transparency")}
                       data-testid="button-view-transparency"
                     >
@@ -1754,7 +1754,7 @@ function TwoFactorAuthSettings() {
         <Button
           size="sm"
           variant={twoFactorEnabled ? "outline" : "default"}
-          className="min-h-11 sm:min-h-9"
+          className="min-h-11 pointer-fine:sm:min-h-9"
           onClick={() => setShowProfile(true)}
           data-testid="button-manage-2fa"
         >

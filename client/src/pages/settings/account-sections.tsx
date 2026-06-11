@@ -123,7 +123,7 @@ export function ReferralSettings() {
                   variant="outline"
                   size="sm"
                   onClick={copyLink}
-                  className="shrink-0 min-h-11 sm:min-h-9"
+                  className="shrink-0 min-h-11 pointer-fine:sm:min-h-9"
                   aria-label="Copy referral link to clipboard"
                 >
                   <Link2 className="w-4 h-4 mr-1" aria-hidden="true" />
@@ -290,7 +290,7 @@ export function PrivacyDataSettings() {
             <Button
               onClick={() => exportMutation.mutate()}
               disabled={exportMutation.isPending}
-              className="w-full min-h-11 sm:min-h-9"
+              className="w-full min-h-11 pointer-fine:sm:min-h-9"
               data-testid="btn-export-data"
             >
               {exportMutation.isPending ? (
@@ -329,7 +329,7 @@ export function PrivacyDataSettings() {
             {!showDeleteForm ? (
               <Button
                 variant="destructive"
-                className="w-full min-h-11 sm:min-h-9"
+                className="w-full min-h-11 pointer-fine:sm:min-h-9"
                 onClick={() => setShowDeleteForm(true)}
                 data-testid="btn-request-deletion"
               >
@@ -358,7 +358,7 @@ export function PrivacyDataSettings() {
                 <div className="flex gap-2">
                   <Button
                     variant="destructive"
-                    className="flex-1 min-h-11 sm:min-h-9"
+                    className="flex-1 min-h-11 pointer-fine:sm:min-h-9"
                     disabled={deleteConfirmText !== "DELETE" || deleteMutation.isPending}
                     onClick={() => deleteMutation.mutate()}
                     data-testid="btn-confirm-deletion"
@@ -371,7 +371,7 @@ export function PrivacyDataSettings() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="min-h-11 sm:min-h-9"
+                    className="min-h-11 pointer-fine:sm:min-h-9"
                     onClick={() => { setShowDeleteForm(false); setDeleteConfirmText(""); }}
                   >
                     Cancel
