@@ -36,18 +36,41 @@
 //   Missing or unsourced => skip + log the reason.
 //
 // USAGE
-//   node scripts/generate-county-pages.mjs            # seed path, write files
-//   node scripts/generate-county-pages.mjs --dry-run  # report only, no writes
-//   LIVE_DATA=1 node scripts/generate-county-pages.mjs # try live broker first
+//   node scripts/generate-county-pages.mjs              # seed path, write files
+//   node scripts/generate-county-pages.mjs --dry-run    # report only, no writes
+//   LIVE_DATA=1 node scripts/generate-county-pages.mjs  # try live broker first
+//   node scripts/generate-county-pages.mjs --source=registry --dry-run
+//                                                       # enumerate from the
+//                                                       # county_gis_endpoints
+//                                                       # GIS registry instead
+//                                                       # of COUNTY_SEEDS
 //
 // Exit codes: 0 always for the seed path (skips are expected + logged). The
 // CI gate is voice-lint + the truth-engine audit on the emitted JSON, not
 // this generator's exit code.
+//
+// ─── BROKER-CONNECTED CONTENT FAN-OUT IS A SEPARATE RUNBOOK STEP ───────────
+// This script BUILDS the capability (registry enumeration + broker-payload
+// normalizer + FIPS-centroid fallback + Option-A subset guard) and is safe to
+// run offline against the seed table. The actual live content fan-out —
+// `--source=registry LIVE_DATA=1` against a populated county_gis_endpoints
+// table + a reachable data-source broker, then committing the emitted JSON —
+// is a DELIBERATELY SEPARATE, broker-connected runbook step. It is NOT run in
+// this phase because: (a) the broker needs a configured DB + network, (b)
+// county figures must never be fabricated, and (c) committing newly-emitted
+// JSON changes the eager-glob client bundle and must be a reviewed, bounded
+// (Option-A subset) commit. Do not wire this into CI as a generation step.
 // ============================================================================
 
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  normalizeBrokerPayload,
+  resolveCentroid,
+  normalizeFips,
+  applySubsetGuard,
+} from "./county-page-lib.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -185,14 +208,27 @@ async function resolveLiveRollup(seed) {
       broker.lookup("soil", opts),
       broker.lookup("elevation", opts),
     ]);
-    // The broker returns raw provider payloads; normalizing those into the
-    // display-figure shape is provider-specific. Until a normalizer ships,
-    // we record that the live call succeeded but keep the verified seed
-    // display strings (which already carry the correct sources). This makes
-    // the live path observable without risking an unverified rendered figure.
-    if (flood?.success || soil?.success || elevation?.success) {
-      console.log(`[county-gen] live broker responded for ${seed.countySlug} (flood:${!!flood?.success} soil:${!!soil?.success} elev:${!!elevation?.success}); retaining verified seed display values`);
+    // Normalize the raw broker payloads into the { value, note, source, asOf }
+    // figure shape the page consumes. The normalizer returns null for any
+    // figure lacking a real value + a real freshness date — never invents one.
+    // We overwrite the seed rollup ONLY for figures the normalizer grounded;
+    // ungrounded figures keep their verified seed value (or stay absent, which
+    // the quality bar then catches). This is the load-bearing piece that lets
+    // the LIVE path actually publish live data instead of discarding it.
+    const normalized = normalizeBrokerPayload({ flood, soil, elevation });
+    seed.rollup = seed.rollup ?? {};
+    let applied = 0;
+    for (const key of ["elevation", "soil", "flood"]) {
+      if (normalized[key]) {
+        seed.rollup[key] = normalized[key];
+        applied++;
+      }
     }
+    console.log(
+      `[county-gen] live broker for ${seed.countySlug} (flood:${!!flood?.success} soil:${!!soil?.success} elev:${!!elevation?.success}) — ${applied}/3 figures normalized + applied; remainder keeps seed value`,
+    );
+    // The asOf shape from the normalizer is per-figure (figure.asOf); buildFigure
+    // honors a figure-level asOf when present, falling back to TODAY otherwise.
     return null;
   } catch (err) {
     console.warn(`[county-gen] live lookup failed for ${seed.countySlug}: ${err?.message ?? err} — using seed rollup`);
@@ -241,7 +277,11 @@ function buildFigure(fig) {
     value: fig.value,
     note: fig.note,
     source: fig.source.name,
-    asOf: TODAY,
+    // Honor a figure-level asOf when the normalizer attached the upstream
+    // freshness date (LIVE path); seed figures with no asOf fall back to the
+    // generation date. The truth-ratchet rule is enforced in the normalizer
+    // (no asOf => the figure is null => never reaches here for live data).
+    asOf: ISO_DATE.test(fig.asOf ?? "") ? fig.asOf : TODAY,
     sourceUrl: fig.source.url,
   };
 }
@@ -301,20 +341,146 @@ function buildContent(seed) {
 }
 
 // ----------------------------------------------------------------------------
+// Registry-driven enumeration — source the county LIST from the
+// county_gis_endpoints GIS registry (distinct state+county+fipsCode) instead of
+// the hardcoded COUNTY_SEEDS. Gated behind --source=registry.
+//
+// Each registry row carries state/county/fipsCode but NO centroid + NO rollup,
+// so a registry seed starts with rollup={} and a centroid resolved from the row
+// (none today) or the FIPS-centroid asset (resolveCentroid). Counties with no
+// resolvable centroid are SKIPPED + logged (never fabricated). The list is then
+// bounded by applySubsetGuard (Option-A customer-market subset + hard cap) so a
+// registry run can never fan out the full ~3,100-county table into the bundle.
+//
+// A registry seed has an EMPTY rollup until LIVE_DATA=1 normalizes broker
+// figures into it, so a non-live registry run will quality-bar-skip every
+// county (logged). That is intentional: registry enumeration only produces
+// publishable pages on the broker-connected runbook step.
+//
+// Reads the DB via a guarded dynamic import (the generator is .mjs and must not
+// hard-depend on the TS server/db at parse time), mirroring resolveLiveRollup.
+// Returns [] (and logs) when the registry/DB is unreachable.
+// ----------------------------------------------------------------------------
+function slugify(s) {
+  return String(s)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+const STATE_NAME_BY_CODE = {
+  AZ: { slug: "arizona", name: "Arizona" },
+  TX: { slug: "texas", name: "Texas" },
+  NM: { slug: "new-mexico", name: "New Mexico" },
+  FL: { slug: "florida", name: "Florida" },
+  AR: { slug: "arkansas", name: "Arkansas" },
+  CA: { slug: "california", name: "California" },
+  GA: { slug: "georgia", name: "Georgia" },
+  OH: { slug: "ohio", name: "Ohio" },
+};
+
+async function resolveRegistrySeeds() {
+  let rows = [];
+  try {
+    const dbMod = await import("../server/db.ts").catch(() => import("../server/db.js"));
+    const schemaMod = await import("../shared/schema.ts").catch(() => import("../shared/schema.js"));
+    const drizzle = await import("drizzle-orm");
+    const db = dbMod.db;
+    const { countyGisEndpoints } = schemaMod;
+    if (!db || !countyGisEndpoints) {
+      console.warn("[county-gen] registry mode: DB/schema unavailable — empty registry list");
+      return [];
+    }
+    // Distinct state+county+fipsCode for ACTIVE endpoints. Centroid is not a
+    // column on this table, so it comes from the FIPS-centroid asset later.
+    rows = await db
+      .selectDistinct({
+        state: countyGisEndpoints.state,
+        county: countyGisEndpoints.county,
+        fipsCode: countyGisEndpoints.fipsCode,
+      })
+      .from(countyGisEndpoints)
+      .where(drizzle.eq(countyGisEndpoints.isActive, true));
+  } catch (err) {
+    console.warn(
+      `[county-gen] registry mode: lookup failed (${err?.message ?? err}) — empty registry list`,
+    );
+    return [];
+  }
+
+  // Option-A subset guard: bound to the customer-market allowlist + hard cap.
+  const { allowed, skipped } = applySubsetGuard(rows);
+  for (const s of skipped) {
+    const c = s.county ?? {};
+    console.warn(
+      `[county-gen] registry SKIP ${c.state ?? "?"}/${c.county ?? "?"} (fips ${c.fipsCode ?? "—"}) — ${s.reason}`,
+    );
+  }
+
+  const seeds = [];
+  for (const row of allowed) {
+    const code = String(row.state ?? "").toUpperCase();
+    const st = STATE_NAME_BY_CODE[code];
+    if (!st) {
+      console.warn(`[county-gen] registry SKIP ${row.state}/${row.county} — no state-name mapping for "${code}"`);
+      continue;
+    }
+    const centroid = resolveCentroid(row);
+    if (!centroid) {
+      console.warn(
+        `[county-gen] registry SKIP ${code}/${row.county} (fips ${normalizeFips(row.fipsCode) ?? "—"}) — no resolvable centroid (registry row + FIPS asset both empty); NOT fabricating coordinates`,
+      );
+      continue;
+    }
+    seeds.push({
+      stateSlug: st.slug,
+      stateName: st.name,
+      countySlug: slugify(row.county),
+      countyName: String(row.county).replace(/\s+county$/i, "").trim(),
+      centroid,
+      fipsCode: normalizeFips(row.fipsCode),
+      rollup: {}, // empty until the LIVE broker normalizer fills it
+    });
+  }
+  return seeds;
+}
+
+// ----------------------------------------------------------------------------
 // Main
 // ----------------------------------------------------------------------------
+function parseSource() {
+  const arg = process.argv.find((a) => a.startsWith("--source="));
+  const v = arg ? arg.split("=")[1] : "seeds";
+  return v === "registry" ? "registry" : "seeds";
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const tryLive = process.env.LIVE_DATA === "1";
+  const source = parseSource();
+
+  let seeds = COUNTY_SEEDS;
+  if (source === "registry") {
+    seeds = await resolveRegistrySeeds();
+    console.log(
+      `[county-gen] registry mode — ${seeds.length} counties survived the customer-market subset guard + centroid resolution`,
+    );
+  }
 
   console.log(
-    `[county-gen] starting — ${COUNTY_SEEDS.length} seed counties, ${tryLive ? "LIVE+seed" : "seed"} path${dryRun ? ", DRY RUN" : ""}`,
+    `[county-gen] starting — ${seeds.length} ${source} counties, ${tryLive ? "LIVE+seed" : "seed"} path${dryRun ? ", DRY RUN" : ""}`,
   );
+  if (source === "registry" && !tryLive) {
+    console.log(
+      "[county-gen] NOTE: registry counties ship an EMPTY rollup until LIVE_DATA=1; this non-live registry run will quality-bar-skip every county (expected).",
+    );
+  }
 
   let emitted = 0;
   const skipped = [];
 
-  for (const seed of COUNTY_SEEDS) {
+  for (const seed of seeds) {
     if (tryLive) {
       // Best-effort: may overwrite seed.rollup in place; null => keep seed.
       await resolveLiveRollup(seed);
@@ -344,7 +510,7 @@ async function main() {
 
   console.log("");
   console.log(
-    `[county-gen] done — ${emitted} emitted, ${skipped.length} skipped (of ${COUNTY_SEEDS.length}).`,
+    `[county-gen] done — ${emitted} emitted, ${skipped.length} skipped (of ${seeds.length}).`,
   );
   if (skipped.length > 0) {
     console.log("[county-gen] skipped counties (NOT silently dropped):");
