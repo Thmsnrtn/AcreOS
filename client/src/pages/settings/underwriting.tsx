@@ -207,9 +207,10 @@ export default function UnderwritingSettingsPage() {
                   onCheckedChange={(checked) =>
                     setDraft({ ...draft, balloon: !!checked })
                   }
+                  aria-describedby="uw-balloon-state"
                   data-testid="underwriting-balloon"
                 />
-                <span className="text-sm text-muted-foreground">
+                <span id="uw-balloon-state" className="text-sm text-muted-foreground">
                   {draft.balloon
                     ? "Balloon due at term end"
                     : "Fully amortizing"}

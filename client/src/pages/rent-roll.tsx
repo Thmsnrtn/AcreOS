@@ -126,6 +126,42 @@ export default function RentRollPage() {
               {aging.data.charges.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-6">All caught up.</p>
               ) : (
+                <>
+                {/* Mobile: stacked charge cards — the 7-column aging table
+                    side-scrolls at phone widths. md+ renders the table below. */}
+                <ul className="md:hidden divide-y divide-border/40" data-testid="list-rent-aging-mobile">
+                  {aging.data.charges.map((c) => (
+                    <li key={c.id} className="px-4 py-3" data-testid={`card-rent-charge-${c.id}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-mono text-xs">{c.lease_id.slice(0, 8)}…</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {c.charged_for_month} · due {c.due_date}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="font-mono font-semibold tabular-nums">{fmtUsd(c.balance_cents)}</div>
+                          {c.late_fee_cents > 0 && (
+                            <div className="text-xs text-muted-foreground tabular-nums">
+                              +{fmtUsd(c.late_fee_cents)} late fee
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 mt-2">
+                        <Badge variant={postureTone(c.legal_posture)} className="text-xs">
+                          {c.legal_posture.replace(/_/g, " ")}
+                        </Badge>
+                        <span className={`text-xs tabular-nums ${c.days_overdue > 0 ? "text-acr-warning" : "text-muted-foreground"}`}>
+                          {c.days_overdue > 0 ? `${c.days_overdue} days late` : "current"}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Desktop: full table. Hidden on mobile. */}
+                <div className="hidden md:block">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-xs text-muted-foreground border-b border-border bg-muted/30">
@@ -158,6 +194,8 @@ export default function RentRollPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
+                </>
               )}
             </CardContent>
           </Card>

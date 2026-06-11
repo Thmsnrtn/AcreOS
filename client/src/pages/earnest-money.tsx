@@ -239,7 +239,45 @@ export default function EarnestMoneyPage() {
         />
       ) : (
         <Card>
-          <div className="overflow-x-auto">
+          {/* Mobile: stacked EMD cards — the 7-column table side-scrolls at
+              phone widths. md+ renders the full table below. */}
+          <ul className="md:hidden divide-y divide-border/40" data-testid="list-emd-mobile">
+            {holds.map((h) => {
+              const days = h.status === "held" ? daysFromToday(h.refundableUntilAt) : null;
+              return (
+                <li key={h.id} className="px-4 py-3" data-testid={`card-emd-${h.id}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm truncate">{h.titleCompany ?? "—"}</div>
+                      <div className="font-mono text-xs text-muted-foreground mt-0.5">
+                        {h.referenceNumber ?? h.id.slice(0, 8)}
+                      </div>
+                    </div>
+                    <div className="font-mono font-semibold tabular-nums shrink-0">{fmtUsd(h.amountCents)}</div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 mt-2 text-xs">
+                    <span className="text-muted-foreground">
+                      Deposited {formatDate(h.depositedAt)} · Refundable until {formatDate(h.refundableUntilAt)}
+                      {days !== null && (
+                        <span className={`ml-1 ${days < 0 ? "text-acr-neg font-semibold" : days <= 2 ? "text-acr-warning" : ""}`}>
+                          ({days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "today" : `${days}d`})
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0">{STATUS_LABELS[h.status]}</span>
+                  </div>
+                  {(h.status === "held" || h.status === "non_refundable" || h.status === "pending") && (
+                    <div className="mt-2">
+                      <TerminalActions holdId={h.id} amountCents={h.amountCents} />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Desktop: full table. Hidden on mobile. */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted-foreground bg-muted/30">
@@ -339,7 +377,7 @@ function TerminalActions({ holdId, amountCents }: { holdId: string; amountCents:
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 text-xs text-acr-pos"
+        className="min-h-11 pointer-fine:min-h-7 pointer-fine:h-7 text-xs text-acr-pos"
         onClick={() => setPending("release")}
         disabled={action.isPending}
         data-testid={`emd-release-${holdId}`}
@@ -349,7 +387,7 @@ function TerminalActions({ holdId, amountCents }: { holdId: string; amountCents:
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 text-xs text-muted-foreground"
+        className="min-h-11 pointer-fine:min-h-7 pointer-fine:h-7 text-xs text-muted-foreground"
         onClick={() => setPending("refund")}
         disabled={action.isPending}
         data-testid={`emd-refund-${holdId}`}
@@ -359,7 +397,7 @@ function TerminalActions({ holdId, amountCents }: { holdId: string; amountCents:
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 text-xs text-acr-neg"
+        className="min-h-11 pointer-fine:min-h-7 pointer-fine:h-7 text-xs text-acr-neg"
         onClick={() => setPending("forfeit")}
         disabled={action.isPending}
         data-testid={`emd-forfeit-${holdId}`}

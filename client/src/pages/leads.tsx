@@ -11,7 +11,8 @@ import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { useProperties } from "@/hooks/use-properties";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useToast } from "@/hooks/use-toast";
 import { ListSkeleton, TableRowSkeleton } from "@/components/list-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -489,14 +490,17 @@ function ContactAgeBadge({ lead }: { lead: Lead }) {
 }
 
 export function TcpaConsentToggle({ lead }: { lead: Lead }) {
-  const { toast } = useToast();
-  
-  const consentMutation = useMutation({
-    mutationFn: async ({ tcpaConsent, consentSource, optOutReason }: { 
-      tcpaConsent: boolean; 
-      consentSource?: string;
-      optOutReason?: string;
-    }) => {
+  // Optimistic consent flip — the Grant/Opt Out/Restore button swaps
+  // instantly across every cached leads list, with snapshot + rollback on
+  // server reject (useOptimisticUpdate factory, the house pattern from
+  // useUpdateLead). The patch mirrors storage.updateLeadConsent exactly:
+  // granting clears the opt-out fields, opting out sets doNotContact.
+  const consentMutation = useOptimisticUpdate<{
+    tcpaConsent: boolean;
+    consentSource?: string;
+    optOutReason?: string;
+  }>({
+    mutationFn: async ({ tcpaConsent, consentSource, optOutReason }) => {
       const res = await apiRequest("PATCH", `/api/leads/${lead.id}/consent`, {
         tcpaConsent,
         consentSource,
@@ -505,19 +509,27 @@ export function TcpaConsentToggle({ lead }: { lead: Lead }) {
       if (!res.ok) throw new Error("Failed to update consent");
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
-      toast({
-        title: "Consent updated",
-        description: "TCPA consent status has been updated.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Couldn't update consent status",
-        description: "TCPA consent is unchanged. Try again.",
-        variant: "destructive",
-      });
+    listKeys: [["/api/leads"]],
+    getId: () => lead.id,
+    buildPatch: ({ tcpaConsent, consentSource, optOutReason }) =>
+      tcpaConsent
+        ? {
+            tcpaConsent: true,
+            doNotContact: false,
+            consentSource: consentSource || "manual",
+            consentDate: new Date().toISOString(),
+            optOutDate: null,
+            optOutReason: null,
+          }
+        : {
+            tcpaConsent: false,
+            doNotContact: true,
+            optOutDate: new Date().toISOString(),
+            optOutReason: optOutReason ?? null,
+          },
+    successToast: {
+      title: "Consent updated",
+      description: "TCPA consent status has been updated.",
     },
   });
 
@@ -1340,16 +1352,17 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                   />
                   <div className="relative flex-1 max-w-sm">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                      placeholder="Search leads…" 
+                    <Input
+                      placeholder="Search leads…"
                       className="pl-9 bg-muted border-none"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
+                      aria-label="Search leads"
                       data-testid="input-search-leads"
                     />
                   </div>
                   <Select value={stageFilter} onValueChange={handleStageFilterChange}>
-                    <SelectTrigger className="w-[160px]" data-testid="select-stage-filter">
+                    <SelectTrigger className="w-[160px]" aria-label="Filter by stage" data-testid="select-stage-filter">
                       <SelectValue placeholder="Filter by stage" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1378,7 +1391,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                   </Select>
                   {userPermissions && !userPermissions.permissions.viewOnlyAssignedLeads && teamMembers && teamMembers.length > 0 && (
                     <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-                      <SelectTrigger className="w-[180px]" data-testid="select-assignee-filter">
+                      <SelectTrigger className="w-[180px]" aria-label="Filter by assignee" data-testid="select-assignee-filter">
                         <SelectValue placeholder="Filter by assignee" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1405,11 +1418,12 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                     <div className="p-3 flex items-center gap-2">
                       <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input 
-                          placeholder="Search leads…" 
+                        <Input
+                          placeholder="Search leads…"
                           className="pl-9 bg-muted border-none min-h-[44px]"
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
+                          aria-label="Search leads"
                           data-testid="input-search-leads-mobile"
                         />
                       </div>
@@ -1453,7 +1467,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                           }}
                         />
                         <Select value={stageFilter} onValueChange={handleStageFilterChange}>
-                          <SelectTrigger className="w-full min-h-[44px]" data-testid="select-stage-filter-mobile">
+                          <SelectTrigger className="w-full min-h-[44px]" aria-label="Filter by stage" data-testid="select-stage-filter-mobile">
                             <SelectValue placeholder="Filter by stage" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1482,7 +1496,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                         </Select>
                         {userPermissions && !userPermissions.permissions.viewOnlyAssignedLeads && teamMembers && teamMembers.length > 0 && (
                           <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-                            <SelectTrigger className="w-full min-h-[44px]" data-testid="select-assignee-filter-mobile">
+                            <SelectTrigger className="w-full min-h-[44px]" aria-label="Filter by assignee" data-testid="select-assignee-filter-mobile">
                               <SelectValue placeholder="Filter by assignee" />
                             </SelectTrigger>
                             <SelectContent>
@@ -1517,7 +1531,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                         <Download className="w-4 h-4 mr-1" /> Export
                       </Button>
                       <Select onValueChange={handleBulkStatusChange} disabled={isBulkUpdating}>
-                        <SelectTrigger className="w-[150px]" data-testid="select-bulk-status">
+                        <SelectTrigger className="w-[150px]" aria-label="Change status for selected leads" data-testid="select-bulk-status">
                           <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Change Status"} />
                         </SelectTrigger>
                         <SelectContent>
@@ -1531,7 +1545,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                       <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete">
                         <Trash2 className="w-4 h-4 mr-1" /> Delete
                       </Button>
-                      <Button aria-label="Content Reveal" variant="ghost" size="sm" onClick={() => setSelectedLeadIds(new Set())} data-testid="button-clear-selection">
+                      <Button aria-label="Clear selection" variant="ghost" size="sm" onClick={() => setSelectedLeadIds(new Set())} data-testid="button-clear-selection">
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
@@ -1556,6 +1570,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                               <Checkbox
                                 checked={filteredLeads && filteredLeads.length > 0 && selectedLeadIds.size === filteredLeads.length}
                                 onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                                aria-label="Select all leads"
                                 data-testid="checkbox-select-all-leads"
                               />
                             </TableHead>
@@ -1616,6 +1631,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                 <Checkbox
                                   checked={selectedLeadIds.has(lead.id)}
                                   onCheckedChange={(checked) => handleSelectLead(lead.id, checked === true)}
+                                  aria-label={`Select ${lead.firstName} ${lead.lastName}`}
                                   data-testid={`checkbox-lead-${lead.id}`}
                                 />
                               </TableCell>

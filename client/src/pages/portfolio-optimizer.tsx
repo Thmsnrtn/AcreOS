@@ -1098,7 +1098,38 @@ export default function PortfolioOptimizerPage() {
               </CardHeader>
               <CardContent>
                 {holdings.length > 0 ? (
-                  <div className="overflow-x-auto">
+                  <>
+                  {/* Mobile: stacked holding cards — the 5-column attribution
+                      table side-scrolls at phone widths. md+ keeps the table. */}
+                  <ul className="md:hidden divide-y divide-border" data-testid="list-attribution-mobile">
+                    {holdings.map((h: any, i: number) => (
+                      <li key={i} className="py-3" data-testid={`card-attribution-${i}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{h.address || h.name || `Property ${i + 1}`}</p>
+                            <p className="text-xs text-muted-foreground">{h.county}, {h.state}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="font-mono font-medium tabular-nums">{formatDollar(h.currentValue || h.estimatedValue || 0)}</div>
+                            <div className="text-xs text-muted-foreground tabular-nums">
+                              {metrics?.totalValue ? ((h.currentValue / metrics.totalValue) * 100).toFixed(1) : '—'}% of portfolio
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 mt-1.5 text-xs">
+                          <span className={`font-mono tabular-nums ${(h.annualCashFlow || 0) >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
+                            {formatDollar(h.annualCashFlow || 0)}/yr cash flow
+                          </span>
+                          <span className={`tabular-nums ${(h.appreciationRate || 0) >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
+                            {(h.appreciationRate || 0).toFixed(1)}% appreciation
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* Desktop: full table. Hidden on mobile. */}
+                  <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b">
@@ -1131,6 +1162,7 @@ export default function PortfolioOptimizerPage() {
                       </tbody>
                     </table>
                   </div>
+                  </>
                 ) : (
                   <EmptyState
                     icon={Activity}

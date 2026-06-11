@@ -16,7 +16,8 @@ import { useFetchPropertyParcel, useFetchAllParcels } from "@/hooks/use-parcels"
 import { useState, useMemo, useEffect } from "react";
 import { useOrganization } from "@/hooks/use-organization";
 import { useSearch, useLocation } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPropertySchema, type Property } from "@shared/schema";
@@ -591,7 +592,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                   </Button>
                 )}
                 <Select onValueChange={handleBulkStatusChange} disabled={isBulkUpdating}>
-                  <SelectTrigger className="min-h-[44px] pointer-fine:md:min-h-8 w-full md:w-[150px]" data-testid="select-bulk-status-properties">
+                  <SelectTrigger className="min-h-[44px] pointer-fine:md:min-h-8 w-full md:w-[150px]" aria-label="Change status for selected properties" data-testid="select-bulk-status-properties">
                     <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Status"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -606,7 +607,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 <Button variant="destructive" className="min-h-[44px] pointer-fine:md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-properties">
                   <Trash2 className="w-4 h-4 mr-1" /> Delete
                 </Button>
-                <Button aria-label="Checkbox" variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties">
+                <Button aria-label="Clear selection" variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties">
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -621,6 +622,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                     checked={filteredProperties.length > 0 && selectedPropertyIds.size === filteredProperties.length}
                     onCheckedChange={(checked) => handleSelectAll(checked === true)}
                     className="h-5 w-5 md:h-4 md:w-4"
+                    aria-label="Select all properties"
                     data-testid="checkbox-select-all-properties"
                   />
                   <span className="text-sm text-muted-foreground">Select All</span>
@@ -651,7 +653,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 onReset={resetGisFilters}
               />
               <Select value={distressFilter} onValueChange={setDistressFilter}>
-                <SelectTrigger className="h-8 w-[160px]" data-testid="select-distress-filter">
+                <SelectTrigger className="h-8 w-[160px]" aria-label="Filter by distress score" data-testid="select-distress-filter">
                   <SelectValue placeholder="Distress Score" />
                 </SelectTrigger>
                 <SelectContent>
@@ -721,6 +723,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                     <Checkbox
                       checked={selectedPropertyIds.has(property.id)}
                       onCheckedChange={(checked) => handleSelectProperty(property.id, checked === true)}
+                      aria-label={`Select property ${property.county}, ${property.state}`}
                       data-testid={`checkbox-property-${property.id}`}
                       className="bg-background/80"
                     />
@@ -1535,41 +1538,46 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
     return { score, factors, signal, signalLabel, pricePerAcre };
   }, [currentProperty]);
 
-  // Verdict decision mutation (Pursue = due_diligence, Pass = rejected)
-  const verdictMutation = useMutation({
-    mutationFn: async (decision: "pursue" | "pass") => {
-      const newStatus = decision === "pursue" ? "due_diligence" : "rejected";
-      const existingDD = (currentProperty.dueDiligenceData as any) || {};
-      const res = await apiRequest("PATCH", `/api/properties/${currentProperty.id}`, {
-        status: newStatus,
-        dueDiligenceData: {
-          ...existingDD,
-          verdictDecision: decision,
-          verdictDecisionAt: new Date().toISOString(),
-          verdictScore: verdictData.score,
-        },
-      });
-      if (!res.ok) throw new Error("Failed to update property decision");
-      return res.json();
-    },
-    onSuccess: (_data, decision) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/properties", currentProperty.id] });
-      toast({
-        title: decision === "pursue" ? "Moved to Due Diligence" : "Marked as Passed",
-        description: decision === "pursue"
-          ? "This property is now in Due Diligence. Continue verifying title, taxes, and hazards."
-          : "You can still reopen this record — nothing is deleted.",
-      });
-    },
-    onError: (_err, decision) => {
-      toast({
-        title: "Couldn't save your decision",
-        description: `The ${decision === "pursue" ? "Pursue" : "Pass"} action didn't go through. Try again — your existing data is unchanged.`,
-        variant: "destructive",
-      });
+  // Verdict decision mutation (Pursue = due_diligence, Pass = rejected).
+  // Optimistic: the Pursue/Pass buttons collapse into the decision badge
+  // instantly — the ["/api/properties"] prefix walk patches every cached
+  // list AND the single-entity detail cache (["/api/properties", id])
+  // in place, with snapshot + rollback on server reject. Deliberately no
+  // detailKey here: the list-key prefix already matches the detail entry,
+  // and passing both would snapshot the already-patched value.
+  const buildVerdictPatch = (decision: "pursue" | "pass") => ({
+    status: decision === "pursue" ? "due_diligence" : "rejected",
+    dueDiligenceData: {
+      ...((currentProperty.dueDiligenceData as any) || {}),
+      verdictDecision: decision,
+      verdictDecisionAt: new Date().toISOString(),
+      verdictScore: verdictData.score,
     },
   });
+  const verdictMutation = useOptimisticUpdate<{ decision: "pursue" | "pass" }, Property>(
+    {
+      mutationFn: async ({ decision }) => {
+        const res = await apiRequest("PATCH", `/api/properties/${currentProperty.id}`, buildVerdictPatch(decision));
+        if (!res.ok) throw new Error("Failed to update property decision");
+        return res.json();
+      },
+      listKeys: [["/api/properties"]],
+      getId: () => currentProperty.id,
+      buildPatch: ({ decision }) => buildVerdictPatch(decision),
+      extraInvalidateKeys: [["/api/properties", currentProperty.id]],
+      successToast: false,
+    },
+    {
+      onSuccess: (_data, { decision }) => {
+        toast({
+          title: decision === "pursue" ? "Moved to Due Diligence" : "Marked as Passed",
+          description: decision === "pursue"
+            ? "This property is now in Due Diligence. Continue verifying title, taxes, and hazards."
+            : "You can still reopen this record — nothing is deleted.",
+        });
+      },
+    },
+  );
 
   const signalColors: Record<string, { bg: string; text: string; border: string; dot: string }> = {
     green: { bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/30", text: "text-acr-pos dark:text-acr-pos", border: "border-acr-pos-soft dark:border-acr-pos-soft", dot: "bg-acr-pos" },
@@ -1718,7 +1726,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       size="sm"
                       variant="default"
                       className="min-h-[36px]"
-                      onClick={() => verdictMutation.mutate("pursue")}
+                      onClick={() => verdictMutation.mutate({ decision: "pursue" })}
                       disabled={verdictMutation.isPending}
                       aria-label="Pursue this property"
                       data-testid="verdict-pursue-button"
@@ -1734,7 +1742,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       size="sm"
                       variant="outline"
                       className="min-h-[36px]"
-                      onClick={() => verdictMutation.mutate("pass")}
+                      onClick={() => verdictMutation.mutate({ decision: "pass" })}
                       disabled={verdictMutation.isPending}
                       aria-label="Pass on this property"
                       data-testid="verdict-pass-button"

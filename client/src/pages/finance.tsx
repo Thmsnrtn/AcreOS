@@ -1133,7 +1133,48 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             <TabsContent value="payments" className="mt-4">
               <Card>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
+                  {/* Mobile: stacked payment cards — the 5-column table forces a
+                      side-scroll at phone widths. md+ renders the full table below. */}
+                  <div className="md:hidden" data-testid="list-payments-mobile">
+                    {paymentsLoading ? (
+                      <div className="p-4 space-y-3" aria-busy="true" aria-label="Loading payments">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                          <div key={`payment-skeleton-card-${i}`} className="flex items-center justify-between gap-3" data-testid="payments-skeleton-card">
+                            <div className="space-y-2">
+                              <Skeleton className="h-4 w-24" announce={i === 0} announceText="Loading payments" />
+                              <Skeleton className="h-3 w-32" announce={false} />
+                            </div>
+                            <Skeleton className="h-5 w-16 rounded-full" announce={false} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : payments?.length === 0 ? (
+                      <p className="text-center text-sm text-muted-foreground py-6">No payments recorded yet.</p>
+                    ) : (
+                      <ul className="divide-y divide-border">
+                        {payments?.map((payment) => (
+                          <li key={payment.id} className="px-4 py-3" data-testid={`card-payment-${payment.id}`}>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm tabular-nums">
+                                {format(new Date(payment.paymentDate), 'MMM d, yyyy')}
+                              </span>
+                              <span className="font-mono font-medium tabular-nums">{usd(payment.amount)}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 mt-1.5">
+                              <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'} className="capitalize">
+                                {payment.status}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground font-mono tabular-nums">
+                                P {usd(payment.principalAmount)} · I {usd(payment.interestAmount)}
+                              </span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="hidden md:block overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -1242,8 +1283,57 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
               </div>
               <Card>
                 <CardContent className="p-0">
+                  {/* Mobile: stacked schedule cards — the 7-column amortization
+                      table is unreadable at phone widths. md+ keeps the table. */}
                   <div
-                    className="max-h-64 overflow-y-auto overflow-x-auto"
+                    className="md:hidden max-h-64 overflow-y-auto"
+                    tabIndex={0}
+                    role="region"
+                    aria-label="Amortization schedule"
+                    data-testid="list-amort-mobile"
+                  >
+                    {schedule.length === 0 ? (
+                      <p className="text-center text-sm text-muted-foreground py-6">No amortization schedule available.</p>
+                    ) : (
+                      <ul className="divide-y divide-border">
+                        {schedule.map((row) => {
+                          const statusLabel =
+                            row.status === 'paid' ? 'Paid' :
+                            row.status === 'late' ? 'Late' :
+                            'Pending';
+                          return (
+                            <li key={row.paymentNumber} className="px-4 py-3" data-testid={`card-amort-${row.paymentNumber}`}>
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-sm tabular-nums">
+                                  <span className="text-muted-foreground font-medium mr-2">#{row.paymentNumber}</span>
+                                  {format(new Date(row.dueDate), 'MMM d, yyyy')}
+                                </span>
+                                <span className="font-mono font-medium tabular-nums">{usd(row.payment)}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-3 mt-1.5">
+                                <span className="flex items-center gap-1.5 text-xs">
+                                  {row.status === 'paid' ? (
+                                    <CheckCircle className="w-4 h-4 text-acr-pos" aria-hidden="true" />
+                                  ) : row.status === 'late' ? (
+                                    <AlertTriangle className="w-4 h-4 text-acr-neg" aria-hidden="true" />
+                                  ) : (
+                                    <Clock className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                                  )}
+                                  {statusLabel}
+                                </span>
+                                <span className="text-xs text-muted-foreground font-mono tabular-nums">
+                                  P {usd(row.principal)} · I {usd(row.interest)} · Bal {usd(row.balance)}
+                                </span>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div
+                    className="hidden md:block max-h-64 overflow-y-auto overflow-x-auto"
                     tabIndex={0}
                     role="region"
                     aria-label="Amortization schedule"

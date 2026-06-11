@@ -198,7 +198,12 @@ function RulesIndex() {
               const meta = STATUS_META[r.status];
               const Icon = meta.Icon;
               return (
-                <Link key={r.state} href={`/wholesaler-state-rules/${r.state}`}>
+                <Link
+                  key={r.state}
+                  href={`/wholesaler-state-rules/${r.state}`}
+                  className="rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  aria-label={`${r.state} — ${STATUS_META[r.status].label}`}
+                >
                   <Card className="p-4 hover:bg-accent/50 transition-colors cursor-pointer">
                     <div className="flex items-start justify-between mb-2">
                       <span className="text-2xl font-bold">{r.state}</span>

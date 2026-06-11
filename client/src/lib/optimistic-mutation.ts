@@ -18,6 +18,7 @@
  */
 
 import {
+  hashKey,
   useMutation,
   useQueryClient,
   type QueryClient,
@@ -133,6 +134,35 @@ export function patchListCaches(
 }
 
 /**
+ * Snapshot + patch the per-entity detail cache — unless the prefix walk
+ * in `patchListCaches` already captured that exact key. When a listKeys
+ * prefix also matches detailKey (e.g. useUpdateDeal: listKeys
+ * [["/api/deals"]] + detailKey ["/api/deals", id]), getQueriesData
+ * snapshots+patches the detail entry first; reading it again here would
+ * snapshot the *already-patched* value, and the rollback loop would
+ * restore pre-patch then re-apply the failed optimistic state.
+ *
+ * Exported for unit testing — the real entry point is useOptimisticUpdate.
+ */
+export function patchDetailCache(
+  queryClient: QueryClient,
+  detailKey: QueryKey,
+  patch: Record<string, unknown>,
+  snapshots: Snapshot[],
+): void {
+  const detailHash = hashKey(detailKey);
+  const alreadyCaptured = snapshots.some(
+    ([key]) => hashKey(key as QueryKey) === detailHash,
+  );
+  if (alreadyCaptured) return;
+  const detail = queryClient.getQueryData<any>(detailKey);
+  if (detail) {
+    snapshots.push([detailKey, detail]);
+    queryClient.setQueryData(detailKey, { ...detail, ...patch });
+  }
+}
+
+/**
  * Build a useMutation hook that applies an optimistic patch, snapshots
  * every touched cache entry, rolls them back on error, toasts the
  * failure, and invalidates on settled.
@@ -190,12 +220,7 @@ export function useOptimisticUpdate<
       patchListCaches(queryClient, listKeys, id, patch, snapshots);
 
       if (config.detailKey) {
-        const detailKey = config.detailKey(variables);
-        const detail = queryClient.getQueryData<any>(detailKey);
-        if (detail) {
-          snapshots.push([detailKey, detail]);
-          queryClient.setQueryData(detailKey, { ...detail, ...patch });
-        }
+        patchDetailCache(queryClient, config.detailKey(variables), patch, snapshots);
       }
 
       return { snapshots };

@@ -10,7 +10,10 @@
 import { describe, it, expect } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 
-import { patchListCaches } from "../../client/src/lib/optimistic-mutation";
+import {
+  patchDetailCache,
+  patchListCaches,
+} from "../../client/src/lib/optimistic-mutation";
 
 type Snapshot = [readonly unknown[], unknown];
 
@@ -149,5 +152,54 @@ describe("patchListCaches — single-entity-as-value fallback", () => {
       id: 42,
       stage: "closed_won",
     });
+  });
+});
+
+describe("patchDetailCache — detail key overlapping a list prefix", () => {
+  // Regression: useUpdateDeal's config (listKeys [["/api/deals"]] +
+  // detailKey ["/api/deals", id]) made the prefix walk capture the detail
+  // entry first; the detail pass then snapshotted the *already-patched*
+  // value, so replaying snapshots in order restored pre-patch and then
+  // re-applied the failed optimistic state.
+  it("does not double-snapshot when the prefix walk already captured the key", () => {
+    const qc = makeClient();
+    const original = { id: 42, stage: "negotiation" };
+    qc.setQueryData(["/api/deals", 42], original);
+
+    const snapshots: Snapshot[] = [];
+    patchListCaches(qc, [["/api/deals"]], 42, { stage: "closed_won" }, snapshots);
+    patchDetailCache(qc, ["/api/deals", 42], { stage: "closed_won" }, snapshots);
+
+    // Exactly one snapshot for the detail key — the pre-patch value.
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0][1]).toEqual(original);
+
+    // Rollback (replayed in order, as onError does) restores pre-patch.
+    for (const [key, value] of snapshots) qc.setQueryData(key, value);
+    expect(qc.getQueryData(["/api/deals", 42])).toEqual(original);
+  });
+
+  it("still snapshots+patches a detail key the prefix walk did not touch", () => {
+    const qc = makeClient();
+    const original = { id: 7, name: "Alpha", stage: "new" };
+    qc.setQueryData(["/api/leads/detail", 7], original);
+
+    const snapshots: Snapshot[] = [];
+    patchDetailCache(qc, ["/api/leads/detail", 7], { stage: "contacted" }, snapshots);
+
+    expect(qc.getQueryData(["/api/leads/detail", 7])).toEqual({
+      id: 7,
+      name: "Alpha",
+      stage: "contacted",
+    });
+    expect(snapshots).toEqual([[["/api/leads/detail", 7], original]]);
+  });
+
+  it("is a no-op when the detail cache is empty", () => {
+    const qc = makeClient();
+    const snapshots: Snapshot[] = [];
+    patchDetailCache(qc, ["/api/leads/detail", 99], { stage: "x" }, snapshots);
+    expect(snapshots).toHaveLength(0);
+    expect(qc.getQueryData(["/api/leads/detail", 99])).toBeUndefined();
   });
 });

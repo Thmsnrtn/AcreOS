@@ -161,10 +161,17 @@ export default function NotesPipelinePage() {
             return (
               <div key={def.stage}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${def.tone}`}>
+                  <span
+                    role="heading"
+                    aria-level={2}
+                    className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${def.tone}`}
+                  >
                     {def.label}
                   </span>
-                  <span className="text-xs text-muted-foreground">{items.length}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {items.length}
+                    <span className="sr-only"> acquisitions in this stage</span>
+                  </span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {items.length === 0 ? (
@@ -301,12 +308,12 @@ function NewAcquisitionDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             <Label htmlFor="sourced">Sourced from</Label>
             <Input id="sourced" value={sourcedFrom} onChange={(e) => setSourcedFrom(e.target.value)} placeholder="Note broker / individual / tape" />
           </div>
-          <div className="space-y-1.5">
-            <Label>Property address</Label>
-            <Input value={propertyLine1} onChange={(e) => setPropertyLine1(e.target.value)} placeholder="Street" />
+          <div className="space-y-1.5" role="group" aria-labelledby="property-address-label">
+            <Label id="property-address-label" htmlFor="property-street">Property address</Label>
+            <Input id="property-street" aria-label="Street" value={propertyLine1} onChange={(e) => setPropertyLine1(e.target.value)} placeholder="Street" />
             <div className="grid grid-cols-2 gap-2">
-              <Input value={propertyCity} onChange={(e) => setPropertyCity(e.target.value)} placeholder="City" />
-              <Input value={propertyState} onChange={(e) => setPropertyState(e.target.value)} placeholder="State" maxLength={2} />
+              <Input aria-label="City" value={propertyCity} onChange={(e) => setPropertyCity(e.target.value)} placeholder="City" />
+              <Input aria-label="State" value={propertyState} onChange={(e) => setPropertyState(e.target.value)} placeholder="State" maxLength={2} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

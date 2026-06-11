@@ -204,7 +204,7 @@ export default function RedemptionClockPage() {
       {/* Filters */}
       <div className="flex items-center gap-3 mb-6">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-44" data-testid="status-filter"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-44" aria-label="Filter by status" data-testid="status-filter"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="active">Active</SelectItem>
             <SelectItem value="redeemed">Redeemed</SelectItem>
@@ -217,6 +217,7 @@ export default function RedemptionClockPage() {
           className="w-32"
           maxLength={2}
           placeholder="State"
+          aria-label="Filter by state"
           value={stateFilter}
           onChange={(e) => setStateFilter(e.target.value.toUpperCase())}
         />
@@ -257,7 +258,13 @@ export default function RedemptionClockPage() {
                 role="button"
                 tabIndex={0}
                 onClick={() => navigate(`/redemption-clock/${c.id}`)}
-                className={`p-4 cursor-pointer active:bg-muted/50 ${tone}`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/redemption-clock/${c.id}`);
+                  }
+                }}
+                className={`p-4 cursor-pointer active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${tone}`}
                 data-testid={`certificate-card-${c.id}`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -301,6 +308,7 @@ export default function RedemptionClockPage() {
                     </div>
                     <div className={`font-mono tabular-nums ${c.preliminary ? "text-amber-600 dark:text-amber-400" : ""}`}>
                       {fmtPct(c.appliedRateBps)}{c.preliminary && "*"}
+                      {c.preliminary && <span className="sr-only"> (preliminary rate — verify with the county clerk)</span>}
                     </div>
                   </div>
                   <div>
@@ -341,23 +349,30 @@ export default function RedemptionClockPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted-foreground bg-muted/30">
-                  <th className="px-3 py-2.5 text-left font-medium">Parcel</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Sale</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Deadline</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Days</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Principal</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Interest</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Total redemption</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Rate</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Status</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-medium">Parcel</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-medium">Sale</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-medium">Deadline</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Days</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Principal</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Interest</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Total redemption</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Rate</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {certs.map((c) => (
                   <tr
                     key={c.id}
-                    className="border-t border-border/40 hover:bg-accent/30 cursor-pointer"
+                    tabIndex={0}
+                    className="border-t border-border/40 hover:bg-accent/30 cursor-pointer focus-visible:outline-none focus-visible:bg-accent/30"
                     onClick={() => navigate(`/redemption-clock/${c.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(`/redemption-clock/${c.id}`);
+                      }
+                    }}
                     data-testid={`certificate-row-${c.id}`}
                   >
                     <td className="px-3 py-2.5">
@@ -379,7 +394,11 @@ export default function RedemptionClockPage() {
                       <span className={c.preliminary ? "text-acr-warning" : ""}>
                         {fmtPct(c.appliedRateBps)}
                       </span>
-                      {c.preliminary && <span className="ml-0.5">*</span>}
+                      {c.preliminary && (
+                        <span className="ml-0.5">
+                          *<span className="sr-only"> (preliminary rate — verify with the county clerk)</span>
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-xs">
                       <span className="capitalize">{STATUS_LABELS[c.status]}</span>

@@ -250,7 +250,41 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="overflow-x-auto" role="region" aria-label="Comparable sales" tabIndex={0}>
+        {/* Mobile: stacked comp cards — the 6-column table side-scrolls at
+            phone widths. md+ renders the full table below. */}
+        <ul className="md:hidden divide-y divide-border" data-testid="list-comps-mobile">
+          {comparables.map((c: any, i: number) => {
+            const diff = c.pricePerAcre - pricePerAcre;
+            const diffPct = ((diff / pricePerAcre) * 100).toFixed(1);
+            return (
+              <li key={i} className="px-4 py-3 text-xs" data-testid={`card-comp-${i}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground tabular-nums">
+                    #{i + 1} · {c.distance?.toFixed(1) ?? '—'} mi away
+                  </span>
+                  <span className="font-medium tabular-nums">{formatDollar(c.salePrice)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 mt-1.5">
+                  <span
+                    className={`px-1.5 py-0.5 rounded tabular-nums ${c.similarity >= 70 ? 'bg-acr-pos-soft text-acr-pos' : 'bg-muted text-muted-foreground'}`}
+                    aria-label={`${c.similarity}% similarity${c.similarity >= 70 ? ', high' : ''}`}
+                  >
+                    {c.similarity}% similar
+                  </span>
+                  <span className="tabular-nums">
+                    {formatDollar(c.pricePerAcre)}/ac
+                    <span className={`ml-1.5 font-semibold ${diff >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
+                      {diff >= 0 ? '+' : ''}{diffPct}%
+                    </span>
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* Desktop: full table. Hidden on mobile. */}
+        <div className="hidden md:block overflow-x-auto" role="region" aria-label="Comparable sales" tabIndex={0}>
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b bg-muted/40">

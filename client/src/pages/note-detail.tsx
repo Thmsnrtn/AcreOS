@@ -666,7 +666,76 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
     totals.principal + totals.interest + totals.escrow + totals.lateFee + totals.unapplied;
 
   return (
-    <div className="overflow-x-auto -mx-2">
+    <>
+      {/* Mobile: stacked ledger cards — the 9-column ledger side-scrolls at
+          phone widths. md+ renders the full reconciliation table below. */}
+      <div className="md:hidden" data-testid="list-payment-ledger-mobile">
+        <ul className="divide-y divide-border/40">
+          {payments.map((p) => {
+            const total =
+              p.principalCents + p.interestCents + p.escrowCents + p.lateFeeCents + p.unappliedCents;
+            return (
+              <li key={p.id} className="py-3" data-testid={`card-ledger-${p.id}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm whitespace-nowrap">{formatDate(p.paymentDate)}</div>
+                    <span className={`inline-block rounded-md px-2 py-0.5 text-xs mt-1 ${PAYMENT_TYPE_TONE[p.paymentType]}`}>
+                      {PAYMENT_TYPE_LABEL[p.paymentType]}
+                    </span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-mono font-semibold tabular-nums">{fmtCents(total)}</div>
+                    <div className="text-xs uppercase text-muted-foreground mt-0.5">{p.paymentMethod}</div>
+                  </div>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-0.5 mt-2 text-xs">
+                  {([
+                    ["Principal", p.principalCents],
+                    ["Interest", p.interestCents],
+                    ["Escrow", p.escrowCents],
+                    ["Late fee", p.lateFeeCents],
+                    ["Unapplied", p.unappliedCents],
+                  ] as const)
+                    .filter(([, cents]) => cents !== 0)
+                    .map(([label, cents]) => (
+                      <div key={label} className="flex items-center justify-between gap-2">
+                        <dt className="text-muted-foreground">{label}</dt>
+                        <dd className="font-mono tabular-nums">{fmtCents(cents)}</dd>
+                      </div>
+                    ))}
+                </dl>
+              </li>
+            );
+          })}
+        </ul>
+        {/* Totals — same reconciliation buckets as the desktop tfoot row. */}
+        <div
+          className="border-t-2 border-border bg-muted/30 rounded-b-md px-3 py-2 text-xs"
+          data-testid="payment-ledger-totals-card"
+        >
+          <div className="flex items-center justify-between gap-2 font-semibold">
+            <span>Totals · {payments.length} payment{payments.length === 1 ? "" : "s"}</span>
+            <span className="font-mono tabular-nums">{fmtCents(grandTotal)}</span>
+          </div>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-0.5 mt-1.5">
+            {([
+              ["Principal", totals.principal],
+              ["Interest", totals.interest],
+              ["Escrow", totals.escrow],
+              ["Late fee", totals.lateFee],
+              ["Unapplied", totals.unapplied],
+            ] as const).map(([label, cents]) => (
+              <div key={label} className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="font-mono tabular-nums">{fmtCents(cents)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </div>
+
+      {/* Desktop: full 9-column ledger. Hidden on mobile. */}
+      <div className="hidden md:block overflow-x-auto -mx-2">
       <table className="w-full text-sm">
         <thead>
           <tr className="text-xs text-muted-foreground">
@@ -722,7 +791,8 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
           </tr>
         </tfoot>
       </table>
-    </div>
+      </div>
+    </>
   );
 }
 

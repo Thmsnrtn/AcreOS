@@ -317,8 +317,9 @@ export default function TaxIdentitySettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Tax ID type</Label>
+              <Label id="tax-id-type-label">Tax ID type</Label>
               <RadioGroup
+                aria-labelledby="tax-id-type-label"
                 value={taxIdType}
                 onValueChange={(v) => {
                   setTaxIdType(v as TaxIdType);
@@ -374,6 +375,7 @@ export default function TaxIdentitySettingsPage() {
               />
               <p
                 id="tax-id-hint"
+                aria-live="polite"
                 className={`text-xs ${formError ? "text-destructive" : "text-muted-foreground"}`}
               >
                 {formError ?? taxIdFormatHint(taxIdType)}
