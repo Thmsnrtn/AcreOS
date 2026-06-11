@@ -63,6 +63,10 @@ import { PersonaMapStrip } from "@/components/maps/PersonaMapStrip";
 import { SampleParcelPreview } from "@/components/maps/SampleParcelPreview";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { deriveIntel, type PropertyIntelligence } from "@/pages/maps-intel";
+import { findStateWarning, isUplBlocked } from "@/lib/upl-gating";
+import { StateUplBanner } from "@/components/upl-gating-banner";
+import { usePaxRail } from "@/contexts/pax-rail-context";
+import { QueryErrorState } from "@/components/query-error-state";
 import { usePersona } from "@/hooks/use-persona";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
@@ -218,6 +222,212 @@ function ScoreRing({ score, label, color }: { score: number; label: string; colo
   );
 }
 
+// ─── Inline Blind-Offer Composer (T3-3B) ───────────────────────────────────────
+//
+// The signature interaction: parcel → Pax-drafted blind offer → witnessed Send,
+// without ever leaving the Map slide-over. This is a WIRING of existing
+// primitives — it reuses the SAME engine (POST /api/data-intel/blind-offer, with
+// propertyId so the server federal-trust gate fires), the SAME UPL gate
+// (lib/upl-gating + StateUplBanner, shared with the full wizard), and the SAME
+// witnessed-send kernel (usePaxRail().openWithContext → Pax composes a
+// send_email tool call → frozen pending_actions row → the user taps the existing
+// "Approve & send" in pax-copilot-rail.tsx). There is NO send code here.
+
+/** Subset of the wizard's OfferReport we render inline. */
+interface InlineOfferReport {
+  state: string;
+  county: string;
+  recommendedTier: "aggressive" | "standard" | "competitive";
+  recommendedOfferTotal: number;
+  recommendationReason: string;
+  compAnalysis: { compCount: number };
+  letterVariables: { offerAmount: number; offerAmountWords: string };
+  marketContext: { usdaLandValuePerAcre: number };
+  warnings: string[];
+}
+
+function InlineBlindOfferComposer({ property }: { property: Property }) {
+  const [expanded, setExpanded] = useState(false);
+  const { openWithContext } = usePaxRail();
+
+  const state = property.state ?? "";
+  const county = property.county ?? "";
+  const acres = parseFloat(String(property.sizeAcres || "0"));
+  const uplWarning = findStateWarning(state);
+  const uplBlocked = isUplBlocked(state);
+  const parcelLabel = property.address || `${county}, ${state}`;
+
+  // The engine. KEEP propertyId in the body so the server's
+  // assertFeeSimpleOrThrow federal-trust gate runs (Indian-Country / federal
+  // trust parcels are blocked server-side). Only fires once expanded.
+  const {
+    data: report,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useQuery<InlineOfferReport>({
+    queryKey: ["/api/data-intel/blind-offer", property.id],
+    enabled: expanded,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+    queryFn: async () => {
+      const res = await fetch("/api/data-intel/blind-offer", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        // propertyId is REQUIRED here — it's what arms the federal-trust gate.
+        body: JSON.stringify({ state, county, targetAcres: acres, propertyId: property.id }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || body?.error || `Couldn't draft an offer (${res.status})`);
+      }
+      return res.json();
+    },
+  });
+
+  // Honesty: comps depend on paywalled ATTOM. When the engine returns zero
+  // comps it falls back to USDA land-value benchmarks — say so plainly, never
+  // imply comp-backed precision.
+  const noComps = !!report && report.compAnalysis.compCount === 0;
+
+  // P3 — the witnessed-send HANDOFF. Hands Pax the parcel context + an offer-
+  // amount-bearing starter prompt. Pax composes the send_email tool call, freezes
+  // it as a pending_actions row, and the user approves it via the existing
+  // "Approve & send" button. This function NEVER sends anything itself.
+  function handToPax() {
+    if (uplBlocked || !report) return;
+    const offer = usd(report.recommendedOfferTotal, { noCents: true });
+    openWithContext({
+      entityType: "property",
+      entityId: property.id,
+      entityName: parcelLabel,
+      starterPrompt:
+        `Draft a blind-offer email to the owner of ${parcelLabel} ` +
+        `(${county} County, ${state}) at ${offer} and prepare it for my approval. ` +
+        (noComps
+          ? `Note: this offer is modeled from USDA land values — no recent comps were available — so keep the language honest about that. `
+          : ``) +
+        (uplWarning?.severity === "warn"
+          ? `Include the assignment-disclosure paragraph required in ${state}. `
+          : ``) +
+        `Do not send it — freeze it for my review so I can approve and send.`,
+    });
+  }
+
+  if (!expanded) {
+    return (
+      <Button
+        size="sm"
+        className="h-8 text-xs"
+        onClick={() => setExpanded(true)}
+        data-testid="inline-blind-offer-open"
+      >
+        <DollarSign className="w-3 h-3 mr-1" aria-hidden="true" />
+        Make Offer
+      </Button>
+    );
+  }
+
+  return (
+    <div className="col-span-2 rounded-card border bg-muted/20 p-3 space-y-3" data-testid="inline-blind-offer">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+          <DollarSign className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+          Blind offer
+        </p>
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          aria-label="Collapse blind offer composer"
+          className="min-h-11 min-w-11 pointer-fine:sm:min-h-7 pointer-fine:sm:min-w-7 -my-1 flex items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+        >
+          <X className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+      </div>
+
+      {/* UPL gate — same banner + severity rule as the full wizard. */}
+      <StateUplBanner state={state} />
+
+      {uplBlocked ? (
+        // Block-severity state: no draft, no handoff. The banner above explains
+        // why; we only offer the licensed-path off-ramp (the full wizard's
+        // double-close flow).
+        <div className="text-xs text-muted-foreground">
+          For-fee assignment is blocked in {state}. Use the double-close flow in the{" "}
+          <Link href={`/blind-offer-wizard?propertyId=${property.id}`} className="text-primary underline">
+            full wizard
+          </Link>
+          .
+        </div>
+      ) : isLoading ? (
+        <div className="space-y-2" aria-busy="true">
+          <Skeleton className="h-7 w-32" announceText="Modeling your offer" />
+          <Skeleton className="h-3 w-full" announce={false} />
+          <Skeleton className="h-3 w-3/4" announce={false} />
+        </div>
+      ) : isError || !report ? (
+        <QueryErrorState
+          error={error instanceof Error ? error : null}
+          onRetry={() => refetch()}
+          isRetrying={isFetching}
+          title="Couldn't draft the offer"
+          description="The parcel, county and acreage are preserved. Most retries succeed."
+          testId="inline-blind-offer-error"
+        />
+      ) : (
+        <div className="space-y-2.5">
+          <div className="flex items-end gap-2">
+            <span className="text-xl font-bold text-acr-pos tabular-nums">
+              {usd(report.recommendedOfferTotal, { noCents: true })}
+            </span>
+            <Badge variant="outline" className="text-[9px] capitalize mb-0.5">
+              {report.recommendedTier}
+            </Badge>
+          </div>
+          {/* Honest precision framing. */}
+          {noComps ? (
+            <p className="text-micro text-acr-warn flex items-start gap-1">
+              <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" aria-hidden="true" />
+              Offer modeled from USDA land values ({usd(report.marketContext.usdaLandValuePerAcre, { noCents: true })}/ac);
+              no recent comps available.
+            </p>
+          ) : (
+            <p className="text-micro text-muted-foreground">
+              Anchored on {report.compAnalysis.compCount} recent comp{report.compAnalysis.compCount === 1 ? "" : "s"} + USDA land values.
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground leading-snug">{report.recommendationReason}</p>
+
+          {/* P3 — witnessed-send handoff. Disabled in block-severity states
+              (already short-circuited above; defensive guard kept). */}
+          <Button
+            size="sm"
+            className="w-full h-8 text-xs"
+            onClick={handToPax}
+            disabled={uplBlocked}
+            data-testid="inline-blind-offer-hand-to-pax"
+          >
+            <Sparkles className="w-3 h-3 mr-1" aria-hidden="true" />
+            Hand to Pax to send
+          </Button>
+          <p className="text-[10px] text-muted-foreground text-center">
+            Pax drafts it and freezes it for your approval — nothing sends until you tap “Approve &amp; send.”
+          </p>
+        </div>
+      )}
+
+      <Button asChild size="sm" variant="outline" className="w-full h-7 text-xs">
+        <Link href={`/blind-offer-wizard?propertyId=${property.id}`}>
+          Open full wizard
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
 function PropertyIntelligencePanel({
   property,
   onClose,
@@ -334,6 +544,34 @@ function PropertyIntelligencePanel({
             {property.county}, {property.state}
             {property.apn && <> · APN: {property.apn}</>}
           </p>
+          {/* Owner row (T3-3B) — honest-null. Only renders a name when the
+              enrichment/assessor lookup actually returned one; otherwise the
+              same "Not yet pulled · Check now" affordance every other intel
+              field uses. We NEVER fabricate an owner-of-record. */}
+          <div className="flex items-center gap-1.5 mt-1 min-w-0" data-testid="intel-owner-row">
+            <Users className="w-3 h-3 text-muted-foreground shrink-0" aria-hidden="true" />
+            {intel.ownerName ? (
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs font-medium truncate">{intel.ownerName}</span>
+                {intel.ownerOccupied === false && (
+                  <Badge variant="outline" className="text-[9px] shrink-0">Absentee</Badge>
+                )}
+                {intel.ownerSource && (
+                  <DataProvenanceChip
+                    source={intel.ownerSource}
+                    sourceAsOf={intel.sourceAsOf}
+                    classification="authoritative"
+                  />
+                )}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <span>Owner</span>
+                <span aria-hidden="true" className="text-muted-foreground/60">·</span>
+                <UnknownValue onCheck={handleCheckNow} checking={checking} compact />
+              </span>
+            )}
+          </div>
         </div>
         {/* On mobile the Sheet shell owns the close affordance (top-right X +
             swipe-down + scrim tap), so we suppress the panel's own button to
@@ -748,12 +986,11 @@ function PropertyIntelligencePanel({
         <div className="p-3 space-y-2">
           <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-1">Quick Actions</p>
           <div className="grid grid-cols-2 gap-1.5">
-            <Button asChild size="sm" className="h-8 text-xs">
-              <Link href={`/blind-offer-wizard?propertyId=${property.id}`}>
-                <DollarSign className="w-3 h-3 mr-1" />
-                Make Offer
-              </Link>
-            </Button>
+            {/* T3-3B — the inline blind-offer composer replaces the old
+                navigate-away "Make Offer" Link. Collapsed it's a button in
+                this slot; expanded it spans both columns (col-span-2) with the
+                drafted offer + the witnessed-send handoff to Pax. */}
+            <InlineBlindOfferComposer property={property} />
             <Button asChild size="sm" variant="outline" className="h-8 text-xs">
               <Link href={`/negotiation-copilot?propertyId=${property.id}`}>
                 <MessageSquare className="w-3 h-3 mr-1" />

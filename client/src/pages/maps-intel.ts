@@ -32,6 +32,15 @@ export interface PropertyIntelligence {
   daysOnMarket?: number;
   lastAssessedValue?: number;
   annualTaxes?: number;
+  // Owner (T3-3B). Only ever set when the enrichment/assessor lookup ACTUALLY
+  // returned an owner name — an absent owner stays `undefined` and the UI shows
+  // the honest "Not yet pulled" affordance, never a fabricated name. ownerOccupied
+  // is tri-state (true/false/undefined) like the access flags: an unknown
+  // owner-occupancy is `undefined`, not silently `false`.
+  ownerName?: string;
+  ownerOccupied?: boolean;
+  /** Provenance for the owner row specifically (assessor / public-record source). */
+  ownerSource?: string;
   // Provenance (optional — populated when the data contract carries it).
   source?: string;
   sourceAsOf?: string | Date | null;
@@ -72,6 +81,10 @@ export function deriveIntel(
     listPrice?: string | number | null;
     sizeAcres?: string | number | null;
     zoning?: string | null;
+    // Owner (T3-3B). The honest owner-of-record source is the Regrid/assessor
+    // parcelData on the property row. `owner` is only present when the provider
+    // actually returned it; we never fabricate one.
+    parcelData?: { owner?: string | null; ownerAddress?: string | null } | null;
   },
 ): PropertyIntelligence {
   const avm = avmData?.valuation ?? undefined;
@@ -117,5 +130,21 @@ export function deriveIntel(
     daysOnMarket: avm?.daysOnMarket,
     lastAssessedValue: avm?.lastAssessedValue,
     annualTaxes: avm?.annualTaxes,
+    // Owner (T3-3B) — honest-null. Prefer an owner the AVM/enrichment contract
+    // returned; otherwise the Regrid/assessor owner-of-record carried on the
+    // property's parcelData. A missing owner stays `undefined`, never a
+    // plausible-sounding fabricated name. ownerOccupied is tri-state: we only
+    // know it when a boolean was returned (out-of-state owner ⇒ not occupied).
+    ownerName:
+      (typeof avm?.ownerName === "string" && avm.ownerName.trim() !== ""
+        ? avm.ownerName
+        : undefined) ??
+      (typeof property.parcelData?.owner === "string" && property.parcelData.owner.trim() !== ""
+        ? property.parcelData.owner
+        : undefined),
+    // Occupancy is only known when a boolean was actually returned (e.g. the
+    // AVM/enrichment contract carried it). Absent ⇒ `undefined`, never `false`.
+    ownerOccupied: typeof avm?.ownerOccupied === "boolean" ? avm.ownerOccupied : undefined,
+    ownerSource: avm?.ownerSource ?? (property.parcelData?.owner ? "Public record (assessor / Regrid)" : undefined),
   };
 }

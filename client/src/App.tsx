@@ -1826,7 +1826,7 @@ function AtlasDockHost() {
 function AppContent() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { isMobile } = useIsMobile();
   useSwipeNavigation();
   useWhiteLabel();
@@ -1913,6 +1913,20 @@ function AppContent() {
         plan: snap?.plan ?? null,
         billing: snap?.billing ?? null,
       });
+
+      // Tier 3A / T3-3B — a visitor who came in from a shared public parcel
+      // report (/p/:state/:county/:apn) carried that parcel through signup on
+      // snap.parcel. Close the loop: tell the new user Pax already has their
+      // parcel and drop them on the Map door so the signature parcel → offer
+      // flow is one tap away. The parcel rode the first-touch chain via
+      // capturePendingParcel(); we never fabricate a parcel that wasn't carried.
+      if (snap?.parcel) {
+        toast({
+          title: "Pax already has your parcel",
+          description: "We carried the parcel you were viewing into your account. Opening it on the map.",
+        });
+        setLocation("/maps");
+      }
     })();
   }, [user]);
 
