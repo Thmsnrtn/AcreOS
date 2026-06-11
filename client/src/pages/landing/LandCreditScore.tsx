@@ -61,6 +61,10 @@ export function LandCreditScoreBand({
 }) {
   const c = LANDING_COPY.landCreditScore;
   const Title = standalone ? "h1" : "h2";
+  // Subheads step exactly one level below the band title so the
+  // standalone route (h1) doesn't skip to h3. Visual style is owned
+  // by .lp-lcs-subhead either way.
+  const Subhead = standalone ? "h2" : "h3";
   return (
     <section className="lp-section" id="land-credit-score">
       <div className="lp-eyebrow">{c.eyebrow}</div>
@@ -86,7 +90,7 @@ export function LandCreditScoreBand({
         <p className="lp-lcs-gauge-note">{c.scaleNote}</p>
       </div>
 
-      <h3 className="lp-lcs-subhead">{c.dimensionsTitle}</h3>
+      <Subhead className="lp-lcs-subhead">{c.dimensionsTitle}</Subhead>
       <p className="lp-lcs-subsub">{c.dimensionsSub}</p>
       <div className="lp-data-sources">
         {c.dimensions.map((d) => (
@@ -100,7 +104,7 @@ export function LandCreditScoreBand({
       </div>
 
       <div className="lp-lcs-honest">
-        <h3 className="lp-lcs-subhead">{c.honestTitle}</h3>
+        <Subhead className="lp-lcs-subhead">{c.honestTitle}</Subhead>
         <ul className="lp-lcs-honest-list">
           {c.honest.map((line) => (
             <li key={line}>{line}</li>
@@ -189,7 +193,9 @@ function EmbedThisBox() {
   }
   return (
     <div className="lp-lcs-honest" id="embed-this">
-      <h3 className="lp-lcs-subhead">Embed the Land Credit Score</h3>
+      {/* h2: this box only renders on the standalone route, directly
+          under the page h1 — h3 would skip a level. */}
+      <h2 className="lp-lcs-subhead">Embed the Land Credit Score</h2>
       <p className="lp-lcs-subsub">
         Drop this snippet into any page. Free to use — the score carries its own
         honesty disclaimer, so it stays accurate wherever it lands. A backlink to

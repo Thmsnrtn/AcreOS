@@ -1970,3 +1970,51 @@
   color: var(--acr-ink-2);
   white-space: pre;
 }
+
+/* ─── Accessibility: heading-retag resets + visible focus (W4-3) ────────
+   Several visual labels were promoted to real heading tags (h2/h3) so the
+   document outline is navigable; these resets keep the rendered look
+   byte-identical (the divs/spans they replaced had no UA margin).        */
+
+.lp-positioning-primary {
+  margin: 0;
+}
+.lp-day-col-label {
+  margin: 0;
+}
+/* FAQ trigger heading wrapper — the <button> owns all visual styling. */
+.lp-faq-h {
+  margin: 0;
+  font: inherit;
+}
+
+/* Visible keyboard focus for every landing interactive element that
+   wasn't already covered by the nav rules above. House pattern:
+   suppress UA outline, show the brand ring token. */
+.lp-btn:focus-visible,
+.lp-agent-tab:focus-visible,
+.lp-faq-q:focus-visible,
+.lp-pricing-toggle button:focus-visible,
+.lp-logo:focus-visible,
+.lp-footer-logo:focus-visible,
+.lp-footer-col a:focus-visible,
+.lp-footer-col .lp-footer-link-btn:focus-visible,
+.lp-footer-fine a:focus-visible {
+  outline: none;
+  box-shadow: var(--acr-ring);
+}
+/* Flat text links/buttons get a small radius so the ring hugs cleanly. */
+.lp-faq-q:focus-visible,
+.lp-logo:focus-visible,
+.lp-footer-logo:focus-visible,
+.lp-footer-col a:focus-visible,
+.lp-footer-col .lp-footer-link-btn:focus-visible,
+.lp-footer-fine a:focus-visible {
+  border-radius: 6px;
+}
+/* The keyboard-focusable agent tabpanel (WAI-ARIA tabs pattern). */
+.lp-agent-panel:focus-visible {
+  outline: none;
+  box-shadow: var(--acr-ring);
+  border-radius: 12px;
+}

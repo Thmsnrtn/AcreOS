@@ -22,6 +22,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Search, MapPin, Loader2 } from "lucide-react";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { OpenGraph } from "@/components/seo/OpenGraph";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { SPRINGS, useReducedMotionPreference, respectReducedMotion } from "@/lib/motion-tokens";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
@@ -218,6 +219,49 @@ function StreamingTile({ tile }: { tile: TileState }) {
 }
 
 /**
+ * ResultsSkeleton — the pending result area between submit and the first SSE
+ * `meta` event (the `connecting` phase, before any tile exists). Shaped like
+ * the real result block: the "Showing data for…" header row, then one
+ * tile-shaped placeholder per federal source — label/blurb line, headline,
+ * provenance chip. Once tiles stream in, StreamingTile's own per-source
+ * "Querying…" state takes over.
+ */
+function ResultsSkeleton() {
+  const categories = Object.keys(CATEGORY_META) as Category[];
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      className="mt-6 space-y-6"
+      data-testid="parcel-check-results-skeleton"
+    >
+      <span className="sr-only">Looking up parcel data…</span>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <Skeleton announce={false} className="h-5 w-64 max-w-full" />
+        <Skeleton announce={false} className="h-4 w-32" />
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {categories.map((category) => (
+          <div
+            key={category}
+            className="rounded-lg border border-border bg-card p-4"
+            data-testid={`parcel-check-skeleton-tile-${category}`}
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <Skeleton announce={false} className="h-4 w-28" />
+              <Skeleton announce={false} className="h-3 w-24" />
+            </div>
+            <Skeleton announce={false} className="mt-3 h-6 w-32" />
+            <Skeleton announce={false} className="mt-1.5 h-4 w-40 max-w-full" />
+            <Skeleton announce={false} className="mt-3 h-5 w-36 rounded-full" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The parcel-check surface. Rendered two ways:
  *   - default: the full /tools/parcel-check marketing page (nav, hero, CTAs).
  *   - `embed`: the iframe-friendly /tools/parcel-check/embed surface — no
@@ -380,6 +424,11 @@ function ParcelCheckSurface({ embed = false }: { embed?: boolean }) {
             <p className="text-sm text-foreground">{stream.message}</p>
           </div>
         )}
+
+        {/* Pending lookup, pre-stream: between submit and the first `meta`
+            event there are no tiles yet — render a parcel-card-shaped skeleton
+            so the result area never sits blank while a visitor waits. */}
+        {loading && stream.tiles.length === 0 && <ResultsSkeleton />}
 
         {/* The streaming pull. Tiles appear the moment `meta` lands and flip
             from "Querying FEMA NFHL…" to their value source-by-named-source.

@@ -69,7 +69,7 @@ export function FinalCTA() {
           className="lp-btn lp-btn-ghost"
           data-testid="final-cta-contact"
         >
-          {c.cta2} →
+          {c.cta2} <span aria-hidden="true">→</span>
         </button>
         <SupportFeedbackModal
           open={feedbackOpen}

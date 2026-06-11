@@ -11,17 +11,12 @@
  * a definition there updates this page automatically.
  */
 import { Link } from "wouter";
-import { ArrowLeft, BookOpen } from "lucide-react";
-import { AcreosLogo } from "@/components/acreos-logo";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { SkipToContent } from "@/components/skip-to-content";
-import { PublicFooter } from "@/components/public-footer";
-import { usePageMeta } from "@/hooks/use-document-title";
+import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import { GLOSSARY } from "@/lib/glossary";
 import { JsonLd } from "@/components/seo/JsonLd";
-import { OpenGraph } from "@/components/seo/OpenGraph";
 import { glossarySchema, SITE } from "@/lib/jsonld-schemas";
 
 interface CrossReference {
@@ -54,16 +49,15 @@ function computeCrossReferences(): Record<string, CrossReference[]> {
   return refs;
 }
 
-export default function GlossaryPage() {
-  // Title/description must mirror META_BY_PATH["/glossary"] in
-  // script/prerender.ts — crawlers get the prerendered head, then
-  // hydration re-asserts the same values (useDocumentTitle appends
-  // " · AcreOS", yielding "Land investor glossary · AcreOS").
-  usePageMeta(
-    "Land investor glossary",
-    "Plain-English definitions of the vocabulary every Land Investor needs — yellow letter, skip trace, AVM, BPO, executory contract, balloon, escrow shortfall, and more.",
-  );
+// metaTitle/description must mirror META_BY_PATH["/glossary"] in
+// script/prerender.ts — crawlers get the prerendered head, then
+// hydration re-asserts the same values (the shell appends " · AcreOS",
+// yielding "Land investor glossary · AcreOS").
+const META_TITLE = "Land investor glossary";
+const META_DESCRIPTION =
+  "Plain-English definitions of the vocabulary every Land Investor needs — yellow letter, skip trace, AVM, BPO, executory contract, balloon, escrow shortfall, and more.";
 
+export default function GlossaryPage() {
   const entries = Object.entries(GLOSSARY)
     .map(([slug, e]) => ({ slug, ...e }))
     .sort((a, b) => a.term.localeCompare(b.term));
@@ -81,62 +75,39 @@ export default function GlossaryPage() {
   const letters = Object.keys(byLetter).sort();
 
   return (
-    <div className="min-h-screen bg-background">
-      <SkipToContent />
-
-      <OpenGraph
-        url={`${SITE.url}/glossary`}
-        title="Land investor glossary · AcreOS"
-        description="Plain-English definitions of the vocabulary every Land Investor needs — yellow letter, skip trace, AVM, BPO, executory contract, balloon, escrow shortfall, and more."
-        type="website"
-      />
-      <JsonLd
-        id="glossary-defined-term-set"
-        data={glossarySchema(
-          entries.map((e) => ({
-            slug: e.slug,
-            term: e.term,
-            definition: e.definition,
-          })),
-        )}
-      />
-
-      <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link
-            href="/"
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity min-h-11 py-1"
-            aria-label="Back to AcreOS home"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            <AcreosLogo size={30} />
-          </Link>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button asChild>
-              <Link href="/auth?mode=register" className="min-h-11">
-                Get started
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </nav>
-
-      <main id="main-content" className="max-w-3xl mx-auto px-6 py-16">
-        <header className="mb-10 space-y-3">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <BookOpen className="h-4 w-4" aria-hidden="true" />
-            <span>Glossary</span>
-          </div>
-          <h1 className="text-4xl font-bold">Land Investor glossary</h1>
-          <p className="text-muted-foreground max-w-2xl leading-relaxed">
-            Land investing has dense vocabulary. Plain-English
-            definitions for the {entries.length} terms you'll see across
-            AcreOS — and a handful you'll see on a closing statement, in
-            a title commitment, or in your county appraisal portal.
-          </p>
-        </header>
-
+    <SeoPageShell
+      title="Land Investor glossary"
+      metaTitle={META_TITLE}
+      description={META_DESCRIPTION}
+      canonicalUrl={`${SITE.url}/glossary`}
+      structuredData={
+        <JsonLd
+          id="glossary-defined-term-set"
+          data={glossarySchema(
+            entries.map((e) => ({
+              slug: e.slug,
+              term: e.term,
+              definition: e.definition,
+            })),
+          )}
+        />
+      }
+      eyebrow={
+        <p className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">
+          <BookOpen className="h-4 w-4" aria-hidden="true" />
+          <span>Glossary</span>
+        </p>
+      }
+      intro={
+        <p className="text-lg text-muted-foreground max-w-2xl leading-relaxed">
+          Land investing has dense vocabulary. Plain-English
+          definitions for the {entries.length} terms you'll see across
+          AcreOS — and a handful you'll see on a closing statement, in
+          a title commitment, or in your county appraisal portal.
+        </p>
+      }
+    >
+      <>
         {/* A-Z jump nav */}
         <nav
           aria-label="Jump to letter"
@@ -236,9 +207,7 @@ export default function GlossaryPage() {
             </Button>
           </div>
         </aside>
-      </main>
-
-      <PublicFooter />
-    </div>
+      </>
+    </SeoPageShell>
   );
 }

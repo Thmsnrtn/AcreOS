@@ -15,7 +15,8 @@
  * - https://schema.org/DefinedTerm
  */
 
-import { TIER_PRICES_CENTS, type Tier } from "@shared/billing/tier-pricing";
+import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
+import { PRICING_TIER_COPY } from "@/lib/pricing-copy";
 
 const SITE_URL = "https://acreos.io";
 const ORG_NAME = "AcreOS";
@@ -76,49 +77,26 @@ export function productLandingSchema() {
   } as const;
 }
 
-const TIER_DESCRIPTIONS: Record<Tier, { name: string; description: string }> = {
-  starter: { name: "Starter", description: "Replace your spreadsheet." },
-  pro: { name: "Pro", description: "For serious operators." },
-  scale: { name: "Scale", description: "For growing teams." },
-};
-
 export function pricingProductSchema() {
-  const offers = (Object.keys(TIER_PRICES_CENTS) as Tier[]).map((tier) => {
-    const tierPricing = TIER_PRICES_CENTS[tier];
-    const tierMeta = TIER_DESCRIPTIONS[tier];
-    return {
-      "@type": "Offer",
-      name: tierMeta.name,
-      description: tierMeta.description,
-      price: (tierPricing.priceMonthlyCents / 100).toFixed(2),
-      priceCurrency: "USD",
-      url: `${SITE_URL}/pricing`,
-      availability: "https://schema.org/InStock",
-      priceSpecification: {
-        "@type": "UnitPriceSpecification",
-        price: (tierPricing.priceMonthlyCents / 100).toFixed(2),
-        priceCurrency: "USD",
-        unitText: "MONTH",
-      },
-    };
-  });
-
-  // Free tier prepended explicitly — useful signal for crawler.
-  offers.unshift({
+  // Tier names + taglines come from the shared pricing-copy module — the
+  // same source the /pricing page and the landing Pricing section render —
+  // so the crawler never sees copy the human surfaces no longer show.
+  // PRICING_TIER_COPY includes the Free tier (useful crawler signal).
+  const offers = PRICING_TIER_COPY.map((tier) => ({
     "@type": "Offer",
-    name: "Free",
-    description: "Explore the platform.",
-    price: "0.00",
+    name: tier.name,
+    description: tier.tagline,
+    price: tier.priceMonthly.toFixed(2),
     priceCurrency: "USD",
     url: `${SITE_URL}/pricing`,
     availability: "https://schema.org/InStock",
     priceSpecification: {
       "@type": "UnitPriceSpecification",
-      price: "0.00",
+      price: tier.priceMonthly.toFixed(2),
       priceCurrency: "USD",
       unitText: "MONTH",
     },
-  });
+  }));
 
   return {
     "@context": "https://schema.org",

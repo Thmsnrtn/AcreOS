@@ -9,7 +9,7 @@
  * reach the section nav. The trigger collapses the panel on selection
  * (anchor click) and on Escape.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 
 const SECTION_LINKS = [
@@ -20,13 +20,18 @@ const SECTION_LINKS = [
 
 export function LandingNav() {
   const [open, setOpen] = useState(false);
+  const burgerRef = useRef<HTMLButtonElement>(null);
 
-  // Close on Escape, and lock body scroll while the sheet is open so the
+  // Close on Escape (returning focus to the trigger so keyboard users
+  // aren't stranded), and lock body scroll while the sheet is open so the
   // page underneath doesn't scroll-jack as the user taps a link.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        burgerRef.current?.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
@@ -63,6 +68,7 @@ export function LandingNav() {
         </div>
         <button
           type="button"
+          ref={burgerRef}
           className="lp-nav-burger"
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}

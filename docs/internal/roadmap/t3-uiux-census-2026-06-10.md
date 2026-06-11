@@ -278,11 +278,11 @@ Effort: S = <½ day, M = ~1 day, L = multi-day. Each item is executable without 
 
 | # | Item | Files | Effort |
 |---|---|---|---|
-| W4-1 | /status: status-page-shaped loading + error (a status page that fails silently is self-defeating) | `pages/status.tsx` | S |
-| W4-2 | /tools/parcel-check: parcel-card Skeleton during lookup (Hero proof surface) | `pages/tools/parcel-check.tsx` | S |
-| W4-3 | Landing a11y: aria on lp-nav burger/accordions; heading-hierarchy audit of section components | `pages/landing/*` | M |
-| W4-4 | Compare/learn/glossary: shared SEO-page shell so the idioms stop drifting (3 near-identical headers exist) | `pages/compare/*`, `pages/learn/*`, glossary | M |
-| W4-5 | Public pricing page (`pages/pricing.tsx` 416 ln) + landing/Pricing.tsx (191 ln) — two pricing renderings; converge on one source of pricing-tier copy | 2 files | M |
+| W4-1 | ✅ SHIPPED 2026-06-11 — status rows get a 6-row shaped skeleton (name left, badge right; role="status"+aria-busy+announce={false}); isError now renders QueryErrorState with retry + "Status check unavailable" header state (was: silent forever-"Checking…") | `pages/status.tsx` | S |
+| W4-2 | ✅ SHIPPED 2026-06-11 — ResultsSkeleton for the SSE `connecting` phase (pre-first-`meta`-event): "Showing data for…" header row + one tile-shaped placeholder per federal source; hands off to StreamingTile's own per-source querying state once tiles stream | `pages/tools/parcel-check.tsx` | S |
+| W4-3 | ✅ SHIPPED 2026-06-11 — lp-nav burger: aria-expanded/controls + Escape returns focus to trigger; FAQ accordion semantics; visual labels promoted to real h2/h3 across Agents/DayInLife/Positioning/LandCreditScore/FinalCTA (landing.css retag-resets keep render byte-identical); decorative icons aria-hidden | `pages/landing/*` (Pricing.tsx owned by W4-5) | M |
+| W4-4 | ✅ SHIPPED 2026-06-11 — components/seo/SeoPageShell.tsx (single-h1 slot, title/meta centralized, prerender META_BY_PATH note); ComparisonPage/glossary/learn-county/learn-state-vertical migrated onto it, net −80 lines of drifted shell idiom | shell + 4 pages | M |
+| W4-5 | ✅ SHIPPED 2026-06-11 — lib/pricing-copy.ts single source (prices from shared/billing/tier-pricing, limits from tier-limits, never hand-typed); killed two live drift fabrications: landing Free card said "10 leads" (real: 50 since 2026-05-11), Pro said "Unlimited seats" (real: 2 incl/5 max); jsonld-schemas.ts offers now derive from the same module so Google-indexed copy can't drift either | pricing.tsx −92, landing/Pricing.tsx −81, jsonld −46, +pricing-copy.ts | M |
 
 ---
 
