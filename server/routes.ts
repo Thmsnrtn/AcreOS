@@ -203,6 +203,7 @@ import { registerSubdivisionPlanRoutes } from "./routes-subdivision-plans";
 import { registerCcrTemplateRoutes } from "./routes-ccr-templates";
 import { registerRehabRoutes } from "./routes-rehabs";
 import { registerRehabPhotoRoutes } from "./routes-rehab-photos";
+import { registerDriveModeRoutes } from "./routes-drive-mode";
 import { registerContractorRoutes } from "./routes-contractors";
 import { registerArvRoutes } from "./routes-arv";
 import { registerBidEstimateRoutes } from "./routes-bid-estimates";
@@ -2127,6 +2128,13 @@ export async function registerRoutes(
   // Fix-and-flip vertical FF-7 — rehab photo evidence (before/during/after,
   // defect, lender_draw, tax basis).
   registerRehabPhotoRoutes(app);
+  // Drive Mode — POST /api/field-scout/quick-add (one-tap curb capture). The
+  // client DriveMode surface (linked from PersonaMapStrip for wholesaler/
+  // fix_flipper personas + the today.tsx CTA) calls this; it shipped in
+  // W5-10 but registerDriveModeRoutes was never wired, so quick-add 404'd in
+  // prod. Caught by the 3E route-manifest orphan test. (Its old 501 photo-
+  // stub was dropped — fieldScoutRouter already serves /api/leads/:id/photos.)
+  registerDriveModeRoutes(app);
   // Buy-and-hold vertical BH-2 — tenant + lease CRUD.
   registerRentalRoutes(app);
   // Buy-and-hold vertical BH-3 — rent ledger + state late-fee engine.
