@@ -9,6 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
+import { EmptyState } from "@/components/empty-state";
 import { FileSearch, Upload, AlertTriangle, CheckCircle, Tag, Search, BookOpen } from "lucide-react";
 
 const SEVERITY_LABEL: Record<string, string> = {
@@ -94,32 +97,43 @@ export default function DocumentIntelligencePage() {
       }),
   });
 
-  const { data: termsData } = useQuery({
+  const { data: termsData, isLoading: termsLoading, error: termsError, refetch: refetchTerms } = useQuery({
     queryKey: ["/api/document-intelligence/key-terms", selectedDocId],
     enabled: !!selectedDocId,
     queryFn: async () => {
       const res = await fetch(`/api/document-intelligence/documents/${selectedDocId}/key-terms`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load key terms");
       return res.json();
     },
   });
 
-  const { data: risksData } = useQuery({
+  const { data: risksData, isLoading: risksLoading, error: risksError, refetch: refetchRisks } = useQuery({
     queryKey: ["/api/document-intelligence/risks", selectedDocId],
     enabled: !!selectedDocId,
     queryFn: async () => {
       const res = await fetch(`/api/document-intelligence/documents/${selectedDocId}/risks`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load risk flags");
       return res.json();
     },
   });
 
-  const { data: summaryData } = useQuery({
+  const { data: summaryData, isLoading: summaryLoading, error: summaryError, refetch: refetchSummary } = useQuery({
     queryKey: ["/api/document-intelligence/summary", selectedDocId],
     enabled: !!selectedDocId,
     queryFn: async () => {
       const res = await fetch(`/api/document-intelligence/documents/${selectedDocId}/summary`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load summary");
       return res.json();
     },
   });
+
+  const resultsLoading = termsLoading || risksLoading || summaryLoading;
+  const resultsError = (termsError || risksError || summaryError) as Error | null;
+  const refetchResults = () => {
+    refetchTerms();
+    refetchRisks();
+    refetchSummary();
+  };
 
   const searchMutation = useMutation({
     mutationFn: async () => {
@@ -269,7 +283,24 @@ export default function DocumentIntelligencePage() {
         </TabsContent>
 
         <TabsContent value="results" className="mt-4 space-y-4">
-          {summary && (
+          {resultsLoading && (
+            <div role="status" aria-busy="true" className="space-y-4">
+              <span className="sr-only">Loading document analysis…</span>
+              <Skeleton announce={false} className="h-28 w-full" />
+              <Skeleton announce={false} className="h-40 w-full" />
+              <Skeleton announce={false} className="h-32 w-full" />
+            </div>
+          )}
+
+          {resultsError && !resultsLoading && (
+            <QueryErrorState
+              error={resultsError}
+              onRetry={refetchResults}
+              testId="document-intelligence-results-error"
+            />
+          )}
+
+          {!resultsLoading && !resultsError && summary && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -282,6 +313,7 @@ export default function DocumentIntelligencePage() {
             </Card>
           )}
 
+          {!resultsLoading && !resultsError && (
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -319,7 +351,9 @@ export default function DocumentIntelligencePage() {
               )}
             </CardContent>
           </Card>
+          )}
 
+          {!resultsLoading && !resultsError && (
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -344,6 +378,7 @@ export default function DocumentIntelligencePage() {
               )}
             </CardContent>
           </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="search" className="mt-4">
@@ -374,14 +409,33 @@ export default function DocumentIntelligencePage() {
               </form>
 
               {searchMutation.isPending && (
-                <div className="space-y-2" role="status" aria-live="polite">
+                <div className="space-y-2" role="status" aria-busy="true" aria-live="polite">
                   <span className="sr-only">Searching documents…</span>
-                  {[1, 2, 3].map(i => <div key={i} className="h-12 bg-muted/50 rounded animate-pulse" />)}
+                  {[1, 2, 3].map(i => <Skeleton announce={false} key={i} className="h-12 w-full" />)}
                 </div>
               )}
 
-              {searchMutation.data?.results?.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-6">No documents matched your search.</p>
+              {!searchMutation.isPending && searchMutation.error && (
+                <QueryErrorState
+                  error={searchMutation.error as Error}
+                  onRetry={() => { if (searchQuery) searchMutation.mutate(); }}
+                  compact
+                  testId="document-intelligence-search-error"
+                />
+              )}
+
+              {!searchMutation.isPending && !searchMutation.error && searchMutation.data?.results?.length === 0 && (
+                <EmptyState
+                  icon={Search}
+                  headline="No documents matched your search"
+                  subtitle="Try broader wording — Pax searches the full text of every deed, agreement, and title commitment you've uploaded."
+                  cta={{
+                    label: "Clear search",
+                    onClick: () => setSearchQuery(""),
+                    "data-testid": "document-intelligence-search-empty-cta",
+                  }}
+                  testId="document-intelligence-search-empty"
+                />
               )}
 
               {(searchMutation.data?.results ?? []).length > 0 && (

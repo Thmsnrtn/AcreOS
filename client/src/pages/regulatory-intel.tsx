@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 import {
   Dialog,
   DialogContent,
@@ -167,10 +168,9 @@ function RegulatoryChangeTimeline({ alerts }: { alerts: RegulatoryAlert[] }) {
               return (
                 <li key={alert.id} className="relative">
                   <div
-                    className="absolute -left-[1.1rem] top-0.5 w-3 h-3 rounded-full border-2 border-background"
-                    style={{
-                      background: alert.severity === 'critical' ? '#ef4444' : alert.severity === 'warning' ? '#f59e0b' : '#3b82f6',
-                    }}
+                    className={`absolute -left-[1.1rem] top-0.5 w-3 h-3 rounded-full border-2 border-background ${
+                      alert.severity === 'critical' ? 'bg-acr-neg' : alert.severity === 'warning' ? 'bg-acr-warn' : 'bg-acr-accent'
+                    }`}
                     aria-hidden="true"
                   />
                   <div className="text-xs text-muted-foreground mb-0.5">
@@ -351,21 +351,42 @@ export default function RegulatoryIntelPage() {
   const nearWaterId = useId();
   const coastalId = useId();
 
-  const { data: states, isLoading: statesLoading } = useQuery<StateProfile[]>({
+  const {
+    data: states,
+    isLoading: statesLoading,
+    isError: statesError,
+    error: statesErr,
+    refetch: refetchStates,
+  } = useQuery<StateProfile[]>({
     queryKey: ["/api/regulatory/states"],
   });
 
-  const { data: alerts } = useQuery<RegulatoryAlert[]>({
+  const {
+    data: alerts,
+    isError: alertsError,
+    error: alertsErr,
+    refetch: refetchAlerts,
+  } = useQuery<RegulatoryAlert[]>({
     queryKey: ["/api/regulatory/alerts"],
   });
 
-  const { data: stateDetail } = useQuery<StateFullProfile>({
+  const {
+    data: stateDetail,
+    isError: stateDetailError,
+    error: stateDetailErr,
+    refetch: refetchStateDetail,
+  } = useQuery<StateFullProfile>({
     queryKey: ["/api/regulatory/states", selectedState],
     queryFn: () => fetch(`/api/regulatory/states/${selectedState}`, { credentials: "include" }).then(r => r.json()),
     enabled: !!selectedState,
   });
 
-  const { data: checklist } = useQuery<Checklist>({
+  const {
+    data: checklist,
+    isError: checklistError,
+    error: checklistErr,
+    refetch: refetchChecklist,
+  } = useQuery<Checklist>({
     queryKey: ["/api/regulatory/checklist", checklistState],
     queryFn: () => fetch(`/api/regulatory/checklist/${checklistState}`, { credentials: "include" }).then(r => r.json()),
     enabled: !!checklistState,
@@ -445,7 +466,13 @@ export default function RegulatoryIntelPage() {
 
         {/* State Profiles */}
         <TabsContent value="states" className="space-y-4">
-          {statesLoading ? (
+          {statesError ? (
+            <QueryErrorState
+              error={statesErr as Error | null}
+              onRetry={() => refetchStates()}
+              testId="regulatory-states-error"
+            />
+          ) : statesLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3" role="status" aria-live="polite">
               <span className="sr-only">Loading state regulatory profiles…</span>
               {Array.from({ length: 6 }).map((_, i) => (
@@ -506,7 +533,14 @@ export default function RegulatoryIntelPage() {
                     <DialogHeader>
                       <DialogTitle>{state.name} ({state.code}) — regulatory profile</DialogTitle>
                     </DialogHeader>
-                    {!stateDetail ? (
+                    {stateDetailError ? (
+                      <QueryErrorState
+                        error={stateDetailErr as Error | null}
+                        onRetry={() => refetchStateDetail()}
+                        compact
+                        testId="regulatory-state-detail-error"
+                      />
+                    ) : !stateDetail ? (
                       <div className="space-y-4" role="status" aria-live="polite">
                         <span className="sr-only">Loading state details…</span>
                         <div className="grid grid-cols-2 gap-3">
@@ -563,7 +597,13 @@ export default function RegulatoryIntelPage() {
 
         {/* Alerts */}
         <TabsContent value="alerts" className="space-y-3">
-          {!alerts?.length ? (
+          {alertsError ? (
+            <QueryErrorState
+              error={alertsErr as Error | null}
+              onRetry={() => refetchAlerts()}
+              testId="regulatory-alerts-error"
+            />
+          ) : !alerts?.length ? (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground text-sm" role="status">
                 No active regulatory alerts.
@@ -620,7 +660,16 @@ export default function RegulatoryIntelPage() {
             </div>
           </div>
 
-          {checklist && (
+          {checklistError && (
+            <QueryErrorState
+              error={checklistErr as Error | null}
+              onRetry={() => refetchChecklist()}
+              compact
+              testId="regulatory-checklist-error"
+            />
+          )}
+
+          {checklist && !checklistError && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <h2 className="font-semibold">{checklist.stateName} due-diligence checklist</h2>
@@ -774,12 +823,30 @@ export default function RegulatoryIntelPage() {
 
         {/* Change History */}
         <TabsContent value="history" className="space-y-4">
-          <RegulatoryChangeTimeline alerts={alerts ?? []} />
+          {alertsError ? (
+            <QueryErrorState
+              error={alertsErr as Error | null}
+              onRetry={() => refetchAlerts()}
+              compact
+              testId="regulatory-history-error"
+            />
+          ) : (
+            <RegulatoryChangeTimeline alerts={alerts ?? []} />
+          )}
         </TabsContent>
 
         {/* Portfolio Impact */}
         <TabsContent value="impact" className="space-y-4">
-          <PortfolioImpactSection alerts={alerts ?? []} states={states ?? []} />
+          {alertsError ? (
+            <QueryErrorState
+              error={alertsErr as Error | null}
+              onRetry={() => refetchAlerts()}
+              compact
+              testId="regulatory-impact-error"
+            />
+          ) : (
+            <PortfolioImpactSection alerts={alerts ?? []} states={states ?? []} />
+          )}
         </TabsContent>
       </Tabs>
     </PageShell>

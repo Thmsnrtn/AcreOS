@@ -9,6 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Shield, AlertTriangle, CheckCircle, Clock, FileText } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 import { formatDate } from "@/lib/format";
 
 const SEVERITY_LABEL: Record<string, string> = {
@@ -44,18 +46,31 @@ export default function CompliancePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: dashboardData, isLoading } = useQuery({
+  const {
+    data: dashboardData,
+    isLoading,
+    isError: dashboardError,
+    error: dashboardErr,
+    refetch: refetchDashboard,
+  } = useQuery({
     queryKey: ["/api/compliance/dashboard"],
     queryFn: async () => {
       const res = await fetch("/api/compliance/dashboard", { credentials: "include" });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
       return res.json();
     },
   });
 
-  const { data: alertsData } = useQuery({
+  const {
+    data: alertsData,
+    isError: alertsError,
+    error: alertsErr,
+    refetch: refetchAlerts,
+  } = useQuery({
     queryKey: ["/api/compliance/alerts"],
     queryFn: async () => {
       const res = await fetch("/api/compliance/alerts", { credentials: "include" });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
       return res.json();
     },
   });
@@ -105,11 +120,47 @@ export default function CompliancePage() {
   const dashboard = dashboardData?.dashboard;
   const alerts = alertsData?.alerts ?? [];
 
+  if (dashboardError) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto">
+        <QueryErrorState
+          error={dashboardErr as Error | null}
+          onRetry={() => refetchDashboard()}
+          testId="compliance-dashboard-error"
+        />
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
-      <div className="p-6" role="status" aria-live="polite">
+      <div className="p-6 max-w-5xl mx-auto space-y-6" role="status" aria-busy="true">
         <span className="sr-only">Loading compliance dashboard…</span>
-        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-24 bg-muted/50 rounded-card animate-pulse" />)}</div>
+        <div className="space-y-2">
+          <Skeleton announce={false} className="h-8 w-56" />
+          <Skeleton announce={false} className="h-4 w-80" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i}>
+              <CardContent className="p-4 space-y-2">
+                <Skeleton announce={false} className="h-4 w-24" />
+                <Skeleton announce={false} className="h-7 w-16" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <Card key={i}>
+              <CardContent className="p-4 space-y-2">
+                <Skeleton announce={false} className="h-5 w-48" />
+                <Skeleton announce={false} className="h-4 w-full" />
+                <Skeleton announce={false} className="h-4 w-2/3" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }
@@ -176,7 +227,14 @@ export default function CompliancePage() {
         </TabsList>
 
         <TabsContent value="alerts" className="mt-4">
-          {alerts.length === 0 ? (
+          {alertsError ? (
+            <QueryErrorState
+              error={alertsErr as Error | null}
+              onRetry={() => refetchAlerts()}
+              compact
+              testId="compliance-alerts-error"
+            />
+          ) : alerts.length === 0 ? (
             <EmptyState
               icon={CheckCircle}
               tone="celebratory"

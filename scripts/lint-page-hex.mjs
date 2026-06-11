@@ -61,10 +61,10 @@ const BASELINE = new Map([
   ["client/src/pages/founder/bridge.tsx", 1],
   // outreach/mail/eddm.tsx (MapLibre GL paint hexes) was migrated to
   // chart-colors mid-W2-10 — entry removed 2026-06-11; it must stay at zero.
-  // Credit-score band colors — migrate to chart-colors.ts when touched.
-  ["client/src/pages/land-credit.tsx", 5],
-  // Alert-severity dot colors — should be Tailwind semantic tokens.
-  ["client/src/pages/regulatory-intel.tsx", 3],
+  // land-credit.tsx (credit-score band hexes) migrated to semantic
+  // CHART_POS/WARN/NEG and regulatory-intel.tsx (alert-severity dots)
+  // migrated to bg-acr-neg/warn/accent tokens in W5 (2026-06-11) — entries
+  // removed, both must stay at zero.
   // Landing art direction (SVG parcel-line stroke / Pax accent / feature
   // stroke). Landing renders outside the app theme, but these should still
   // centralize — drive down when the landing palette module lands.

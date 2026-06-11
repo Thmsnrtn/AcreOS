@@ -23,10 +23,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
+import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
-import { Trash2 } from "lucide-react";
+import { Trash2, Webhook } from "lucide-react";
 
 interface SlackIntegration {
   id: number;
@@ -49,7 +52,12 @@ export default function IntegrationsSettingsPage() {
   const [channelName, setChannelName] = useState("");
   const [eventTypes, setEventTypes] = useState<string[]>(["deal_closed", "big_lead_arrived"]);
 
-  const { data: integrations = [], isLoading } = useQuery<SlackIntegration[]>({
+  const {
+    data: integrations = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<SlackIntegration[]>({
     queryKey: ["/api/team-readiness/slack-integrations"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/team-readiness/slack-integrations");
@@ -93,7 +101,7 @@ export default function IntegrationsSettingsPage() {
   });
 
   return (
-    <PageShell isLoading={isLoading} label="Loading integrations">
+    <PageShell label="Integrations">
       <div className="space-y-6">
         <div>
           <h1 className="text-hero">Integrations</h1>
@@ -174,8 +182,38 @@ export default function IntegrationsSettingsPage() {
             <CardTitle>Configured webhooks</CardTitle>
           </CardHeader>
           <CardContent>
-            {integrations.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No webhooks configured yet.</p>
+            {isLoading ? (
+              <div role="status" aria-busy="true">
+                <span className="sr-only">Loading configured webhooks…</span>
+                <ul className="divide-y">
+                  {[0, 1, 2].map((i) => (
+                    <li key={i} className="flex items-center justify-between py-3">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-32" announce={false} />
+                        <Skeleton className="h-3 w-64" announce={false} />
+                        <Skeleton className="h-3 w-40" announce={false} />
+                      </div>
+                      <Skeleton className="h-9 w-9 rounded-md" announce={false} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : error ? (
+              <QueryErrorState
+                error={error as Error}
+                onRetry={() => refetch()}
+                title="Couldn't load integrations"
+                testId="integrations-error"
+              />
+            ) : integrations.length === 0 ? (
+              <EmptyState
+                icon={Webhook}
+                headline="No webhooks configured yet"
+                subtitle="Send AcreOS events to Slack or Microsoft Teams. Add a webhook above to start receiving deal-closed, big-lead, and approval notifications."
+                // TODO(cta): the "Add webhook" form is already on this page above — no separate action needed
+                cta={{ label: "", _noOp: true }}
+                testId="integrations-empty"
+              />
             ) : (
               <ul className="divide-y">
                 {integrations.map((i) => (

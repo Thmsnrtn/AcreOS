@@ -236,16 +236,18 @@ Effort: S = <½ day, M = ~1 day, L = multi-day. Each item is executable without 
 
 | # | Surface | Files | What Apple-level looks like | Effort |
 |---|---|---|---|---|
-| W1-1 | Borrower Portal (public) | `pages/borrower-portal.tsx` | Replace 9 spinners with payment-card/ledger-shaped Skeletons; QueryErrorState w/ retry on the token-resolve fetch; move `from-[#F5E6D3]…` gradients (:94,247,735) into tokens; EmptyState for zero-payment history | M |
-| W1-2 | Settings main | `pages/settings.tsx` | Convert the 19 spinner sites to section-shaped Skeletons; QueryErrorState per tab; then split per-tab into `pages/settings/` modules (pattern already exists with the 8 subpages) | L |
-| W1-3 | AVM / Valuations | `pages/avm.tsx` | Skeleton for history fetch (:327); EmptyState "Run your first valuation" CTA; QueryErrorState; chart fills (:61-66) → `CHART_COLORS` | M |
-| W1-4 | Negotiation Copilot | `pages/negotiation-copilot.tsx` | sessionsLoading (:444) → session-list Skeleton; EmptyState w/ "Start a negotiation" CTA; QueryErrorState; split 1,084-line file | M |
-| W1-5 | Portfolio Optimizer (3 routes) | `pages/portfolio-optimizer.tsx` | Skeletons for metrics/sims/recs queries (:204-222); EmptyState; `PIE_COLORS` (:50) → tokens | M |
-| W1-6 | Markets trio | `market-intelligence.tsx`, `capital-markets.tsx`, `vision-ai.tsx` | Same treatment ×3: shaped Skeleton + EmptyState + QueryErrorState (all currently render nothing while loading) | M |
-| W1-7 | Blind Offer Wizard | `pages/blind-offer-wizard.tsx` | Per-step loading states; error recovery on calculate step (:642 — also remove `any` props); EmptyState on report-less state | M |
-| W1-8 | Field Scout | `pages/field-scout.tsx` | GPS/visit list skeletons, error surfaces for the offline-prone mobile context (this is THE in-the-truck surface), aria on capture controls | L |
-| W1-9 | Landing hover gating | `pages/landing/landing.css` | Wrap the 18 raw `:hover` rules (:358-1781) in `@media (hover: hover)` per the today.css pattern | S |
-| W1-10 | Help/Support | `components/support-content.tsx`, `help-content.tsx` | Ticket-list Skeleton, EmptyState ("No open tickets"), QueryErrorState — the support surface must never silently fail | M |
+_Wave 1 shipped across d287dd20 (W1-1/9), 325aeebb (W1-3/5/6), ef76a0c3 (W1-2/10), 3be0fefc (W1-4/7/8); rows marked ✅ retroactively 2026-06-11 — work landed in-commit but the table markers were never flipped. Residual `animate-spin` sites in these files are all `mutation.isPending` button spinners (the deliberately-retained class per W2-5), verified not query-load spinners._
+
+| W1-1 | ✅ SHIPPED d287dd20 — Borrower Portal: payment-card/ledger Skeletons, QueryErrorState on token-resolve, gradient hex → tokens, zero-payment EmptyState | `pages/borrower-portal.tsx` | M |
+| W1-2 | ✅ SHIPPED ef76a0c3 — Settings: section-shaped Skeletons + per-tab QueryErrorState; monolith split into `pages/settings/` modules | `pages/settings.tsx` | L |
+| W1-3 | ✅ SHIPPED 325aeebb — AVM: history Skeleton, "Run your first valuation" EmptyState, QueryErrorState, chart fills → CHART_COLORS | `pages/avm.tsx` | M |
+| W1-4 | ✅ SHIPPED 3be0fefc — Negotiation Copilot: session-list Skeleton, "Start a negotiation" EmptyState, QueryErrorState, 1,084-line file decomposed | `pages/negotiation-copilot.tsx` | M |
+| W1-5 | ✅ SHIPPED 325aeebb — Portfolio Optimizer: metrics/sims/recs Skeletons, EmptyState, PIE_COLORS → tokens | `pages/portfolio-optimizer.tsx` | M |
+| W1-6 | ✅ SHIPPED 325aeebb — Markets trio: shaped Skeleton + EmptyState + QueryErrorState ×3 | `market-intelligence.tsx`, `capital-markets.tsx`, `vision-ai.tsx` | M |
+| W1-7 | ✅ SHIPPED 3be0fefc — Blind Offer Wizard: per-step loading, calculate-step error recovery + `any` props removed, report-less EmptyState | `pages/blind-offer-wizard.tsx` | M |
+| W1-8 | ✅ SHIPPED 3be0fefc — Field Scout: GPS/visit Skeletons, offline-context error surfaces, aria on capture controls | `pages/field-scout.tsx` | L |
+| W1-9 | ✅ SHIPPED d287dd20 — Landing hover gating: raw `:hover` rules wrapped in `@media (hover: hover)` (now ratchet-enforced by W2-10) | `pages/landing/landing.css` | S |
+| W1-10 | ✅ SHIPPED ef76a0c3 — Help/Support: ticket-list Skeleton, "No open tickets" EmptyState, QueryErrorState | `components/support-content.tsx`, `help-content.tsx` | M |
 
 ### Wave 2 — systemic coherence (one pattern, many files)
 
@@ -283,6 +285,23 @@ Effort: S = <½ day, M = ~1 day, L = multi-day. Each item is executable without 
 | W4-3 | ✅ SHIPPED 2026-06-11 — lp-nav burger: aria-expanded/controls + Escape returns focus to trigger; FAQ accordion semantics; visual labels promoted to real h2/h3 across Agents/DayInLife/Positioning/LandCreditScore/FinalCTA (landing.css retag-resets keep render byte-identical); decorative icons aria-hidden | `pages/landing/*` (Pricing.tsx owned by W4-5) | M |
 | W4-4 | ✅ SHIPPED 2026-06-11 — components/seo/SeoPageShell.tsx (single-h1 slot, title/meta centralized, prerender META_BY_PATH note); ComparisonPage/glossary/learn-county/learn-state-vertical migrated onto it, net −80 lines of drifted shell idiom | shell + 4 pages | M |
 | W4-5 | ✅ SHIPPED 2026-06-11 — lib/pricing-copy.ts single source (prices from shared/billing/tier-pricing, limits from tier-limits, never hand-typed); killed two live drift fabrications: landing Free card said "10 leads" (real: 50 since 2026-05-11), Pro said "Unlimited seats" (real: 2 incl/5 max); jsonld-schemas.ts offers now derive from the same module so Google-indexed copy can't drift either | pricing.tsx −92, landing/Pricing.tsx −81, jsonld −46, +pricing-copy.ts | M |
+
+### Wave 5 — D-grade tail (the 8 surfaces that escaped W1–W4)
+
+The §4 D-grade inventory (23) was mostly covered by W1 (field-scout, negotiation-copilot, avm, portfolio-optimizer, capital-markets, market-intelligence, vision-ai), W3-1 retire/refit (memory-browser, sovereign-v13, agent-collaboration, board-of-directors), W3-3 (founder/solene-chat), W4-1 (status), and W2-12 (eddm). A verify-pass on 2026-06-11 found **8 D-graders covered by no wave** — secondary/admin surfaces the traffic-weighted plan skipped. `pipeline.tsx` was the 9th candidate but is a stateful-child tab shell (embeds DealsPage/LeadsPage/PropertiesPage `embedded`, each carrying its own states) — a false D from the machine grader; excluded, not fixed.
+
+| # | Surface | What shipped 2026-06-11 | Files |
+|---|---|---|---|
+| W5-1 | Settings · Integrations | Was: `PageShell isLoading` generic skeleton, NO error branch. Now: shaped skeleton list + QueryErrorState + EmptyState; chrome stays interactive during load (webhooks.tsx state-machine pattern) | `settings/integrations.tsx` |
+| W5-2 | Settings · Lead assignment | Same conversion; EmptyState wired to a real "New rule" CTA (`setDraft(blankRule())`) | `settings/lead-assignment.tsx` |
+| W5-3 | Team manager dashboard | Leaderboard-shaped skeleton rows + QueryErrorState; inline empty `TableRow` → EmptyState; range selector stays live during load | `team-manager-dashboard.tsx` |
+| W5-4 | Team offer approvals | Both query-cards gated under one loading/error machine; threshold card always-on; `toLocaleString()` → `formatDateTime` | `team-offer-approvals.tsx` |
+| W5-5 | Land Credit | 3 spinner-text loads → shaped skeletons (incl. a feature-importance tab that silently masked its query behind static fallback data); 3 QueryErrorState; 2 EmptyState; score-tier hex ramp → semantic CHART_POS/WARN/NEG | `land-credit.tsx` |
+| W5-6 | Document Intelligence | Results/search skeletons (rendered nothing while loading); 2 QueryErrorState; 3 results queries hardened to throw on `!res.ok` (were swallowing failures); search EmptyState | `document-intelligence.tsx` |
+| W5-7 | Regulatory Intel | 10 existing skeletons verified correct; added 6 QueryErrorState across the 4 queries (had none); severity-dot inline hex → semantic bg-acr-neg/warn/accent tokens | `regulatory-intel.tsx` |
+| W5-8 | Compliance | bare `animate-pulse` block → shaped skeleton tree; full-page + alerts QueryErrorState; both queryFns hardened to throw on `!res.ok`; existing 3 EmptyStates kept | `compliance.tsx` |
+
+**Recurring fix across W5:** four files (land-credit, document-intelligence ×3, compliance ×2) had queryFns that resolved malformed JSON on `!res.ok` instead of throwing — same silent-failure class as the W3-1 sovereign hook. All now throw, so failures surface in QueryErrorState instead of rendering as forever-empty panels.
 
 ---
 
