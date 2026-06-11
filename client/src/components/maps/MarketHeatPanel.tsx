@@ -114,7 +114,7 @@ function CountyHeatCard({ c }: { c: CountyHeat }) {
   if (!c.hasData) {
     const needed = c.parcelsNeeded ?? 0;
     return (
-      <div className="rounded-md border p-3 space-y-1" data-testid={`heat-county-${c.county}`}>
+      <div className="rounded-card border border-border/50 p-3 space-y-1" data-testid={`heat-county-${c.county}`}>
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-medium">{c.county}, {c.state}</span>
           <Badge variant="outline" className="text-micro shrink-0">Building coverage</Badge>
@@ -129,7 +129,7 @@ function CountyHeatCard({ c }: { c: CountyHeat }) {
   }
   const m = c.metrics;
   return (
-    <div className="rounded-md border p-3 space-y-1.5" data-testid={`heat-county-${c.county}`}>
+    <div className="rounded-card border border-border/50 p-3 space-y-1.5" data-testid={`heat-county-${c.county}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium">{c.county}, {c.state}</span>
         <Badge variant="secondary" className="text-micro shrink-0 tabular-nums">
@@ -200,7 +200,14 @@ export function MarketHeatPanel({
   return (
     <Card
       className={cn(
-        "flex flex-col max-h-full overflow-hidden shadow-lg",
+        // Bold Tahoe re-skin (Wave R, §1.4 canvas-overlay chrome): this panel
+        // floats OVER the map canvas (positioned absolute by the parent), so it
+        // takes the canvas-overlay glass role — `bg-surface-haze` (.90), the
+        // bold `backdrop-blur-lg` depth read, a softened `border-border/50`
+        // edge-of-light hairline, `shadow-level-2` (Track-1, theme-neutral —
+        // floats over content on all sides) and `rounded-card`. Visual-only.
+        // See docs/design/reskin-treatment.md.
+        "flex flex-col max-h-full overflow-hidden bg-surface-haze backdrop-blur-lg border border-border/50 shadow-level-2 rounded-card",
         className,
       )}
       data-testid="market-heat-panel"
@@ -231,8 +238,8 @@ export function MarketHeatPanel({
           <h3 className="text-xs font-semibold">Your counties</h3>
           {myCounties.isLoading ? (
             <div className="space-y-2" aria-busy="true">
-              <Skeleton className="h-20 w-full rounded-md" />
-              <Skeleton className="h-20 w-full rounded-md" />
+              <Skeleton className="h-20 w-full rounded-card" />
+              <Skeleton className="h-20 w-full rounded-card" />
             </div>
           ) : myCounties.isError ? (
             <QueryErrorState
@@ -274,7 +281,7 @@ export function MarketHeatPanel({
           </div>
           {browseState && browse.isLoading ? (
             <div className="space-y-2" aria-busy="true">
-              <Skeleton className="h-20 w-full rounded-md" />
+              <Skeleton className="h-20 w-full rounded-card" />
             </div>
           ) : browseState && browse.isError ? (
             <QueryErrorState

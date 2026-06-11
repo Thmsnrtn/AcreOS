@@ -517,7 +517,7 @@ export default function TodayPage() {
       {/* ── Empty-state: single pathway ──────────────────────────────── */}
       {showEmptyState && (
         <div className="space-y-4">
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5">
+          <Card className="rounded-card border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 shadow-acr-2">
             <CardContent className="p-6 md:p-5 text-center space-y-3 md:space-y-2.5">
               <div className="inline-flex items-center justify-center w-12 h-12 md:w-10 md:h-10 rounded-full bg-primary/10">
                 <Target className="w-6 h-6 md:w-5 md:h-5 text-primary" aria-hidden="true" />
@@ -559,8 +559,8 @@ export default function TodayPage() {
 
       {/* ── Welcome back (returning user, single card) ───────────────── */}
       {showWelcomeBack && (
-        <Card className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft" data-testid="welcome-back-card">
-          <CardContent className="p-5 md:p-4 flex items-start justify-between gap-4 md:gap-3">
+        <Card className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft shadow-acr-2" data-testid="welcome-back-card">
+          <CardContent className="p-6 md:p-5 flex items-start justify-between gap-4 md:gap-3">
             <div className="flex items-center gap-3 md:gap-2.5">
               <div className="p-2.5 md:p-2 rounded-card bg-acr-brand-soft shrink-0">
                 <RefreshCw className="w-5 h-5 md:w-4 md:h-4 text-acr-brand" aria-hidden="true" />
@@ -608,7 +608,7 @@ export default function TodayPage() {
           least one drive-mode lead captured in the last 14 days. */}
       {!showEmptyState && !todayError && showHeadingOut && (
         <Card
-          className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft mb-4"
+          className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft shadow-acr-1 mb-4"
           data-testid="card-heading-out"
         >
           <CardContent className="p-4 md:p-3 flex items-start justify-between gap-3">
@@ -714,7 +714,7 @@ export default function TodayPage() {
           Sits low on the page on purpose — it's a quiet suggestion, not
           a banner competing with the operator's actual work. */}
       {!showEmptyState && !todayError && hasAnyData && !referralNudgeDismissed && (
-        <Card className="rounded-card" data-testid="card-referral-nudge">
+        <Card className="rounded-card shadow-acr-1" data-testid="card-referral-nudge">
           <CardContent className="p-4 md:p-3 flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 md:gap-2.5 min-w-0">
               <div className="p-2 rounded-card bg-primary/10 shrink-0">

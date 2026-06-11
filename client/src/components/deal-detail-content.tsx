@@ -262,7 +262,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
 
   return (
     <>
-        <div className="sticky top-0 z-10 bg-surface-chrome backdrop-blur border-b p-4 md:p-6">
+        <div className="sticky top-0 z-docked bg-surface-veil backdrop-blur-lg border-b border-border/50 p-4 md:p-6">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
@@ -312,7 +312,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
             </TabsList>
 
             <TabsContent value="details" className="space-y-6">
-              <Card className="glass-panel">
+              <Card className="shadow-acr-1">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">Update status</CardTitle>
                 </CardHeader>
@@ -344,7 +344,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
 
               {/* Close & Carry — bridge the closed deal into a serviced note. */}
               {deal.status === 'closed' && (
-                <Card className="glass-panel border-acr-pos/30">
+                <Card className="shadow-acr-1 border-acr-pos/30">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Banknote className="w-4 h-4 text-acr-pos" aria-hidden="true" /> Carry the note
@@ -384,7 +384,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
               <CarryNoteDialog deal={deal} open={isCarryOpen} onOpenChange={setIsCarryOpen} />
 
               <div className="grid grid-cols-2 gap-4">
-                <Card className="glass-panel">
+                <Card className="shadow-acr-1">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm text-muted-foreground">Offer amount</p>
@@ -408,7 +408,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                         </PopoverTrigger>
                         <PopoverContent className="w-80 p-0" align="end">
                           {pricingRecommendation && (
-                            <div className="glass-panel rounded-card overflow-hidden">
+                            <div className="bg-card rounded-card overflow-hidden">
                               <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-4 border-b">
                                 <div className="flex items-center gap-2">
                                   <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
@@ -536,7 +536,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                     </p>
                   </CardContent>
                 </Card>
-                <Card className="glass-panel">
+                <Card className="shadow-acr-1">
                   <CardContent className="p-4">
                     <p className="text-sm text-muted-foreground">Accepted amount</p>
                     <p className="acr-metric-value font-mono tabular-nums text-acr-pos mt-1">
@@ -549,7 +549,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
               </div>
 
               {deal.property && (
-                <Card className="glass-panel">
+                <Card className="shadow-acr-1">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base flex items-center gap-2">
                       <MapPin className="w-4 h-4" aria-hidden="true" /> Property details
@@ -578,7 +578,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                 </Card>
               )}
 
-              <Card className="glass-panel">
+              <Card className="shadow-acr-1">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
                     <Calendar className="w-4 h-4" aria-hidden="true" /> Timeline
@@ -607,7 +607,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
               </Card>
 
               {deal.titleCompany && (
-                <Card className="glass-panel">
+                <Card className="shadow-acr-1">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base">
                       Closing details · <GlossaryTerm slug="title_commitment">title commitment</GlossaryTerm> · <GlossaryTerm slug="earnest_money">earnest money</GlossaryTerm>
@@ -637,7 +637,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
               )}
 
               {deal.notes && (
-                <Card className="glass-panel">
+                <Card className="shadow-acr-1">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base flex items-center gap-2">
                       <FileText className="w-4 h-4" aria-hidden="true" /> Notes
@@ -649,7 +649,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                 </Card>
               )}
 
-              <Card className="glass-panel">
+              <Card className="shadow-acr-1">
                 <CardContent className="pt-6">
                   <CustomFieldValuesEditor entityType="deal" entityId={deal.id} />
                 </CardContent>
@@ -672,7 +672,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
               {packagesLoading ? (
                 <ListSkeleton count={2} variant="compact" />
               ) : !dealPackages || dealPackages.length === 0 ? (
-                <Card className="glass-panel">
+                <Card className="shadow-acr-1">
                   <CardContent className="p-6 text-center space-y-4">
                     <Package className="w-12 h-12 mx-auto text-muted-foreground" aria-hidden="true" />
                     <div>
@@ -700,7 +700,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                     };
 
                     return (
-                      <Card key={pkg.id} className="glass-panel" data-testid={`card-deal-package-${pkg.id}`}>
+                      <Card key={pkg.id} className="shadow-acr-1" data-testid={`card-deal-package-${pkg.id}`}>
                         <CardContent className="p-3 md:p-4">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -779,7 +779,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
               {isChecklistLoading ? (
                 <ListSkeleton count={4} variant="compact" />
               ) : !checklist ? (
-                <Card className="glass-panel">
+                <Card className="shadow-acr-1">
                   <CardContent className="p-6 text-center space-y-4">
                     <ClipboardCheck className="w-12 h-12 mx-auto text-muted-foreground" aria-hidden="true" />
                     <div>
@@ -810,7 +810,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                 </Card>
               ) : (
                 <>
-                  <Card className="glass-panel">
+                  <Card className="shadow-acr-1">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base flex items-center justify-between gap-2">
                         <span className="flex items-center gap-2">
@@ -838,7 +838,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                     {checklist.items.map((item: DealChecklistItem) => (
                       <Card 
                         key={item.id} 
-                        className={`glass-panel transition-colors ${item.checkedAt ? 'bg-acr-pos/5' : ''}`}
+                        className={`shadow-acr-1 transition-colors ${item.checkedAt ? 'bg-acr-pos/5' : ''}`}
                         data-testid={`checklist-item-${item.id}`}
                       >
                         <CardContent className="p-3 md:p-4">

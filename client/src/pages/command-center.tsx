@@ -2089,7 +2089,10 @@ export default function CommandCenterPage() {
                         <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
                           <Sparkles className="w-10 h-10 text-primary" />
                         </div>
-                        <h3 className="text-xl font-semibold mb-2" data-testid="text-assistant-welcome">Pax</h3>
+                        {/* Bold Tahoe re-skin (Wave R, §3.2): the welcome H1
+                            renders in the Fraunces `heading-section` grade
+                            rather than a raw `text-xl font-bold`. testid kept. */}
+                        <h3 className="heading-section mb-2" data-testid="text-assistant-welcome">Pax</h3>
                         <p className="text-sm text-acr-ink-2 max-w-md mb-4">
                           Ask about your pipeline, a specific deal, or anything across your portfolio.
                         </p>
@@ -2175,7 +2178,7 @@ export default function CommandCenterPage() {
                             data-testid={`message-${msg.id}`}
                           >
                             <div
-                              className={`max-w-[80%] rounded-card p-4 ${
+                              className={`max-w-[80%] rounded-card p-4 shadow-acr-1 ${
                                 msg.role === "user"
                                   ? "bg-primary text-primary-foreground"
                                   : "bg-card border"
@@ -2238,7 +2241,7 @@ export default function CommandCenterPage() {
 
                         {isStreaming && (
                           <div className="flex justify-start" data-testid="message-streaming">
-                            <div className="max-w-[80%] rounded-card p-4 bg-card border">
+                            <div className="max-w-[80%] rounded-card p-4 bg-card border shadow-acr-1">
                               {activeSkill && (
                                 <div className="flex items-center gap-2 mb-3 text-xs">
                                   <Badge variant="secondary" className="text-xs">

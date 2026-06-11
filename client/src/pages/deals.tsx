@@ -531,8 +531,8 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
 
           <DisclaimerBanner type="deals" />
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-            <Card className="glass-panel">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="bg-card shadow-acr-1 rounded-card hover-elevate">
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-acr-brand-soft flex-shrink-0">
@@ -550,7 +550,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
               </CardContent>
             </Card>
 
-            <Card className="glass-panel">
+            <Card className="bg-card shadow-acr-1 rounded-card hover-elevate">
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-acr-pos/10 flex-shrink-0">
@@ -568,7 +568,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
               </CardContent>
             </Card>
 
-            <Card className="glass-panel">
+            <Card className="bg-card shadow-acr-1 rounded-card hover-elevate">
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-primary/10 flex-shrink-0">
@@ -588,7 +588,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
               </CardContent>
             </Card>
 
-            <Card className="glass-panel">
+            <Card className="bg-card shadow-acr-1 rounded-card hover-elevate">
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-acr-pos/10 flex-shrink-0">
@@ -611,14 +611,14 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
 
           {/* Pipeline Health Bar — org-wide counts from /api/deals/aggregates (T0-10) */}
           {isAggregatesLoading ? (
-            <div className="rounded-xl border bg-card p-4 space-y-2" role="status" aria-live="polite" aria-busy="true">
+            <div className="rounded-card border bg-card shadow-acr-1 p-4 space-y-2" role="status" aria-live="polite" aria-busy="true">
               <span className="sr-only">Loading pipeline distribution…</span>
               <Skeleton className="h-4 w-48" />
               <Skeleton className="h-2 w-full rounded-full" />
               <Skeleton className="h-3 w-64" />
             </div>
           ) : totalDealCount > 0 && (
-            <div className="rounded-xl border bg-card p-4 space-y-2" aria-labelledby="pipeline-distribution-heading">
+            <div className="rounded-card border bg-card shadow-acr-1 p-4 space-y-2" aria-labelledby="pipeline-distribution-heading">
               <div className="flex items-center justify-between text-xs">
                 <span id="pipeline-distribution-heading" className="font-medium text-muted-foreground uppercase tracking-wide">
                   Pipeline stage distribution
@@ -699,7 +699,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
           </div>
 
           {selectedDealIds.size > 0 && (
-            <div className="p-3 bg-muted/50 border rounded-md space-y-3 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3" data-testid="bulk-actions-toolbar-deals">
+            <div className="p-3 bg-muted/50 border rounded-card space-y-3 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3" data-testid="bulk-actions-toolbar-deals">
               <div className="flex items-center gap-2">
                 <CheckSquare className="w-4 h-4" aria-hidden="true" />
                 <span className="text-sm font-medium">{plural(selectedDealIds.size, "deal")} selected</span>
@@ -837,7 +837,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                     if (stageDeals.length === 0) return null;
                     return (
                       <section key={stage.value} aria-labelledby={`mobile-list-stage-${stage.value}`}>
-                        <div className={`rounded-xl px-4 py-3 mb-2 ${stage.color}`}>
+                        <div className={`rounded-card px-4 py-3 mb-2 ${stage.color}`}>
                           <div className="flex items-center justify-between gap-2">
                             <h2 id={`mobile-list-stage-${stage.value}`} className="font-medium text-sm">
                               {stage.label}
@@ -896,7 +896,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                     const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
                     return (
                       <section aria-labelledby={`mobile-kanban-stage-${stage.value}`}>
-                        <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
+                        <div className={`rounded-t-card px-4 py-3 ${stage.color}`}>
                           <div className="flex items-center justify-between gap-2">
                             <h2 id={`mobile-kanban-stage-${stage.value}`} className="font-medium text-sm">
                               {stage.label}
@@ -906,7 +906,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                             </Badge>
                           </div>
                         </div>
-                        <div className="bg-muted/30 rounded-b-xl p-3 min-h-[300px] space-y-3">
+                        <div className="bg-muted/30 rounded-b-card p-3 min-h-[300px] space-y-3">
                           <ContentReveal
                             ready={!isLoading}
                             skeleton={
@@ -1094,7 +1094,7 @@ function KanbanColumn({
   const headingId = `kanban-stage-${stage.value}`;
   return (
     <section className="w-72 flex-shrink-0" aria-labelledby={headingId}>
-      <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
+      <div className={`rounded-t-card px-4 py-3 ${stage.color}`}>
         <div className="flex items-center justify-between gap-2">
           <h2 id={headingId} className="font-medium text-sm">
             {stage.label}
@@ -1109,7 +1109,7 @@ function KanbanColumn({
         role="list"
         aria-label={`${stage.label} drop zone`}
         aria-describedby={headingId}
-        className={`bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2 transition-colors ${isOver ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}`}
+        className={`bg-muted/30 rounded-b-card p-2 min-h-[400px] space-y-2 transition-colors ${isOver ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}`}
         data-testid={`column-${stage.value}`}
       >
         {isLoading ? (
@@ -1187,7 +1187,7 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
     <Card
       ref={setNodeRef}
       style={style}
-      className={`group floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${isDragging ? "opacity-40" : ""}`}
+      className={`group bg-card shadow-acr-1 rounded-card cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${isDragging ? "opacity-40" : ""}`}
       onClick={onSelect}
       data-testid={`card-deal-${deal.id}`}
     >

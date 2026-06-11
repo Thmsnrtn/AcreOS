@@ -305,7 +305,7 @@ function InsightsPanel() {
       {/* Pax Noticed */}
       {observations.length > 0 && (
         <section aria-labelledby="pax-noticed-heading">
-          <h2 id="pax-noticed-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3">
+          <h2 id="pax-noticed-heading" className="acr-eyebrow mb-4">
             Pax noticed
           </h2>
           <ul className="space-y-2 list-none p-0 m-0" aria-label="Observations Pax wants you to know about">
@@ -315,7 +315,7 @@ function InsightsPanel() {
               return (
                 <li
                   key={obs.id}
-                  className={`rounded-card border-l-4 border border-border ${SEVERITY_BORDER[obs.severity] ?? SEVERITY_BORDER.info} bg-card p-4`}
+                  className={`rounded-card border-l-4 border border-border ${SEVERITY_BORDER[obs.severity] ?? SEVERITY_BORDER.info} bg-card p-4 shadow-acr-1`}
                   role={isCritical ? "alert" : undefined}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -358,7 +358,7 @@ function InsightsPanel() {
       {/* Stale Leads */}
       {staleLeads.length > 0 && (
         <section aria-labelledby="stale-leads-heading">
-          <h2 id="stale-leads-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <h2 id="stale-leads-heading" className="acr-eyebrow mb-4 flex items-center gap-2">
             <Clock className="w-3.5 h-3.5 text-acr-warn" aria-hidden="true" />
             Stale leads
             <Badge variant="outline" className="text-micro tabular-nums" aria-label={`${staleLeads.length} stale lead${staleLeads.length === 1 ? "" : "s"}`}>{staleLeads.length}</Badge>
@@ -412,7 +412,7 @@ function InsightsPanel() {
       {/* Expiring Offers */}
       {expiringOffers.length > 0 && (
         <section aria-labelledby="expiring-offers-heading">
-          <h2 id="expiring-offers-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <h2 id="expiring-offers-heading" className="acr-eyebrow mb-4 flex items-center gap-2">
             <AlertCircle className="w-3.5 h-3.5 text-acr-neg" aria-hidden="true" />
             Expiring offers
             <Badge variant="destructive" className="text-micro tabular-nums" aria-label={`${expiringOffers.length} expiring offer${expiringOffers.length === 1 ? "" : "s"}`}>{expiringOffers.length}</Badge>
@@ -464,7 +464,7 @@ function InsightsPanel() {
       {/* Motivated Callers */}
       {motivatedCallers.length > 0 && (
         <section aria-labelledby="motivated-callers-heading">
-          <h2 id="motivated-callers-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <h2 id="motivated-callers-heading" className="acr-eyebrow mb-4 flex items-center gap-2">
             <Phone className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
             Motivated callers
             <Badge variant="outline" className="text-micro text-acr-pos border-acr-pos/30 tabular-nums" aria-label={`${motivatedCallers.length} motivated caller${motivatedCallers.length === 1 ? "" : "s"}`}>{motivatedCallers.length}</Badge>
@@ -872,16 +872,22 @@ export default function PaxPage() {
           fighting the chat composer's own scroll + input handling below.
           No-ops on pointer/desktop. */}
       <PullToRefresh onRefresh={handlePullRefresh}>
-        <div className="flex items-start justify-between gap-4">
+        {/* Bold Tahoe re-skin (Wave R, §3.1 signature editorial header):
+            the eyebrow + Fraunces greeting + soft trailing clause pattern.
+            `acr-cc-greeting` carries the Fraunces 600 / −0.03em identity that a
+            raw `text-hero` would lose; the subtitle becomes the muted
+            `acr-cc-greeting-soft` clause. data-testid preserved; visual-only. */}
+        <div className="acr-cc-hero">
           <div>
-            <h1 className="text-hero" data-testid="text-ai-hub-title">
-              Pax
+            <div className="acr-eyebrow">Pax</div>
+            <h1 className="acr-cc-greeting" data-testid="text-ai-hub-title">
+              Ask Pax{" "}
+              <span className="acr-cc-greeting-soft">
+                anything about your portfolio, deals, or leads.
+              </span>
             </h1>
-            <p className="text-sm text-acr-ink-2 mt-1">
-              Ask anything about your portfolio, deals, or leads.
-            </p>
           </div>
-          <div className="shrink-0">
+          <div className="acr-cc-hero-actions shrink-0">
             <PaxOverflowMenu insightsContent={<InsightsPanel />} />
           </div>
         </div>

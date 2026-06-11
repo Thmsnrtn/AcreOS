@@ -121,8 +121,8 @@ export function ParcelAlerts() {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader className="pb-3">
+      <Card className="rounded-card shadow-acr-1">
+        <CardHeader className="pb-4">
           <CardTitle className="text-base">Parcel alerts</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -142,7 +142,7 @@ export function ParcelAlerts() {
 
   if (isError) {
     return (
-      <Card>
+      <Card className="rounded-card shadow-acr-1">
         <CardContent className="py-6">
           <QueryErrorState error={error ?? null} onRetry={() => refetch()} />
         </CardContent>
@@ -155,7 +155,7 @@ export function ParcelAlerts() {
 
   if (alerts.length === 0) {
     return (
-      <Card>
+      <Card className="rounded-card shadow-acr-1">
         <CardContent className="py-2">
           <EmptyState
             icon={Bell}
@@ -175,8 +175,8 @@ export function ParcelAlerts() {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+    <Card className="rounded-card shadow-acr-1">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
         <CardTitle className="flex items-center gap-2 text-base">
           <Bell className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           Parcel alerts
@@ -212,7 +212,7 @@ export function ParcelAlerts() {
               <motion.li
                 key={a.id}
                 variants={staggerItem}
-                className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                className={`flex items-start gap-3 rounded-card border p-3 transition-colors ${
                   a.isRead ? "border-border bg-card" : "border-primary/30 bg-primary/5"
                 }`}
                 data-testid={`parcel-alert-${a.id}`}

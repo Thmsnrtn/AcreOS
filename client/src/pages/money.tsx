@@ -78,6 +78,12 @@ export default function FinancePageShell() {
 
   return (
     <PageShell>
+      {/* §2.3 generous editorial rhythm: the door header→content gap steps up to
+          the bold mb-8 (32px). The `.acr-cc-hero*` editorial wrapper is NOT used
+          here — those classes live only in page-scoped today.css, which this lazy
+          door shell does not import; the global `.acr-cc-greeting` H1 below already
+          carries the Fraunces editorial identity (index.css). Visible copy and the
+          activeTab-gated Import button are unchanged. */}
       <div className="flex items-start justify-between gap-4">
         <div>
           {/* §1.3: dual class + Tailwind utility for the page H1. */}
@@ -97,7 +103,10 @@ export default function FinancePageShell() {
       </div>
       <NotesImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-money">
+      {/* §2.3 generous editorial rhythm: the door's tab section stack steps up
+          from space-y-6 to the bold space-y-8 (32px), matching the PageShell
+          default. Layout-only. */}
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-8" data-testid="tabs-money">
         <TabsList className="h-12 w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-money">
           <TabsTrigger value="notes" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-notes">
             <Banknote className="h-4 w-4" aria-hidden="true" />

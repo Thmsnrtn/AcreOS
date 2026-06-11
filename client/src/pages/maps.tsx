@@ -513,9 +513,14 @@ function PropertyIntelligencePanel({
       className={cn(
         "bg-card flex flex-col",
         isMobile
-          ? // Inside a bottom Sheet: fill its height, let the body scroll.
+          ? // Inside a bottom Sheet: fill its height, let the body scroll. The
+            // Sheet owns its own elevation, so no shadow here.
             "h-full min-h-0 overflow-hidden"
-          : "w-80 border-l overflow-y-auto flex-shrink-0",
+          : // Bold Tahoe re-skin (Wave R, §2.1 L1 elevated card): the desktop
+            // side rail is a solid content surface flanking the map, so it earns
+            // Track-2 `shadow-acr-2` (theme-aware ink shadow) to read as an
+            // elevated plane against the canvas. Solid card → never shadow-level-*.
+            "w-80 border-l overflow-y-auto flex-shrink-0 shadow-acr-2",
       )}
       style={
         isMobile
@@ -524,7 +529,9 @@ function PropertyIntelligencePanel({
       }
     >
       {/* Header */}
-      <div className="p-3 border-b bg-gradient-to-r from-primary/5 to-primary/10 flex items-start justify-between gap-2 sticky top-0 z-10">
+      {/* Bold Tahoe re-skin (Wave R, §4 depth): semantic `z-docked` (= the 10 it
+          already had) for the sticky panel header instead of the raw z-10. */}
+      <div className="p-3 border-b bg-gradient-to-r from-primary/5 to-primary/10 flex items-start justify-between gap-2 sticky top-0 z-docked">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <Badge variant="outline" className="text-micro capitalize">
@@ -1196,7 +1203,15 @@ export default function MapsPage() {
     <PageShell label="Maps">
       <div className="-mx-4 -my-8 md:-mx-8 md:-my-8">
         {/* Header bar */}
-        <div className="flex items-center gap-2 px-4 md:px-6 py-2.5 border-b bg-surface-haze backdrop-blur-sm sticky top-0 z-10">
+        {/* Bold Tahoe re-skin (Wave R, §1.2 nested sticky chrome): this is the
+            map's own control bar, nested under the global PageTopbar — so it
+            takes the lighter `bg-surface-veil` (.80) translucency role so the
+            two planes read as distinct, the bold `backdrop-blur-lg` depth read,
+            and a softened `border-border/50` edge-of-light hairline. `z-docked`
+            (10) keeps the semantic layer it already had (z-10). No shadow — it
+            sits under the primary topbar's shadow. Visual-only; layout/sizing
+            unchanged. See docs/design/reskin-treatment.md. */}
+        <div className="flex items-center gap-2 px-4 md:px-6 py-2.5 border-b border-border/50 bg-surface-veil backdrop-blur-lg sticky top-0 z-docked">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <MapPin className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
             <h1 className="text-section-h2 truncate">
@@ -1535,7 +1550,7 @@ export default function MapsPage() {
               <div className="h-full w-full p-3" aria-busy="true">
                 {/* Shape-matched map skeleton: full-bleed basemap area with a
                     pin cluster + a side strip standing in for the legend. */}
-                <Skeleton className="h-full w-full rounded-lg relative overflow-hidden" announceText="Loading property intelligence map">
+                <Skeleton className="h-full w-full rounded-card relative overflow-hidden" announceText="Loading property intelligence map">
                   <div className="absolute inset-0 flex items-center justify-center">
                     <MapPin className="w-10 h-10 text-muted-foreground/40" aria-hidden="true" />
                   </div>
@@ -1556,7 +1571,11 @@ export default function MapsPage() {
                   enable3DTerrain={false}
                   showControls
                 />
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-surface-sheer backdrop-blur-sm" role="status">
+                {/* Bold Tahoe re-skin (Wave R, §1.4/§4): this empty-state wash
+                    floats over the live basemap, so it takes the bold
+                    `backdrop-blur-lg` depth read (up from -sm) over the existing
+                    `bg-surface-sheer` scrim. Visual-only. */}
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-surface-sheer backdrop-blur-lg" role="status">
                   <div className="pointer-events-auto flex flex-col items-center max-w-sm">
                     <MapPin className="w-12 h-12 text-muted-foreground mb-4" aria-hidden="true" />
                     <h3 className="font-semibold text-lg">No parcel coordinates yet</h3>
@@ -1612,7 +1631,11 @@ export default function MapsPage() {
             {showMarketHeat && (
               <MarketHeatPanel
                 onClose={() => setShowMarketHeat(false)}
-                className="absolute top-2 left-2 z-10 w-80 max-w-[calc(100%-1rem)] max-h-[calc(100%-1rem)]"
+                // Bold Tahoe re-skin (Wave R, §4 depth): keep the semantic
+                // stacking layer (`z-docked` = the 10 it already had) instead of
+                // the raw z-10; the panel's own canvas-overlay glass + shadow is
+                // applied in MarketHeatPanel.tsx. Position/size unchanged.
+                className="absolute top-2 left-2 z-docked w-80 max-w-[calc(100%-1rem)] max-h-[calc(100%-1rem)]"
               />
             )}
           </div>

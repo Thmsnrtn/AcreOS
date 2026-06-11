@@ -100,7 +100,7 @@ function LedeShell({
 }) {
   return (
     <Card
-      className="rounded-card border-l-2 mb-4"
+      className="rounded-card shadow-acr-1 border-l-2 mb-4"
       style={{ borderLeftColor: ACCENT_VAR[accent] }}
       data-testid={testId}
     >

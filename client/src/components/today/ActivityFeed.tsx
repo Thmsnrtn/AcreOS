@@ -10,7 +10,7 @@ import { ActivityFeed as BaseActivityFeed } from "@/components/activity-feed";
 export function TodayActivityFeed() {
   return (
     <div data-testid="section-activity-feed">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
           <h2 className="acr-section-h2 text-section-h2">Activity</h2>

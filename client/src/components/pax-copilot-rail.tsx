@@ -1128,10 +1128,19 @@ export function PaxCopilotRail() {
       <aside
         aria-label={isOpen ? "Pax copilot" : "Pax copilot (collapsed)"}
         className={cn(
-          "fixed right-0 top-0 h-[100dvh] z-40 flex flex-col",
-          "border-l bg-surface-chrome backdrop-blur-sm",
+          // Bold Tahoe re-skin (Wave R, §1.3 rails + §2.2 over-content glass):
+          // the Pax rail is a prime glass-depth showcase — an over-content side
+          // surface. Layered Tahoe glass: `bg-surface-chrome` (.95 role), the
+          // bold `backdrop-blur-xl` depth read, a softened `border-border/60`
+          // edge-of-light hairline, and Track-1 `shadow-level-3` (the over-
+          // content overlay grade — replaces the ad-hoc `shadow-2xl`; Track-1
+          // because the rail is theme-neutral glass). `z-overlay` (the semantic
+          // over-content chrome tier == old z-40), never the raw scale.
+          // Visual-only: width, position, transition, and behavior unchanged.
+          "fixed right-0 top-0 h-[100dvh] z-overlay flex flex-col",
+          "border-l border-border/60 bg-surface-chrome backdrop-blur-xl",
           "transition-[width] duration-200 ease-in-out",
-          isOpen ? "w-[360px] shadow-2xl" : "w-12"
+          isOpen ? "w-[360px] shadow-level-3" : "w-12"
         )}
         onDragOver={isOpen ? handleDragOver : undefined}
         onDragLeave={isOpen ? handleDragLeave : undefined}
@@ -1139,7 +1148,7 @@ export function PaxCopilotRail() {
       >
         {/* Drag-over overlay */}
         {isOpen && isDragOver && (
-          <div className="absolute inset-0 z-50 bg-primary/10 border-2 border-primary border-dashed rounded flex flex-col items-center justify-center gap-2 pointer-events-none">
+          <div className="absolute inset-0 z-floating bg-primary/10 border-2 border-primary border-dashed rounded flex flex-col items-center justify-center gap-2 pointer-events-none">
             <Paperclip className="w-8 h-8 text-primary" />
             <p className="text-sm font-medium text-primary">Drop files here</p>
             <p className="text-xs text-muted-foreground">PDF, DOCX, CSV, images · max 10 MB · up to 3 files</p>
@@ -1199,8 +1208,9 @@ export function PaxCopilotRail() {
         {/* ── Expanded panel ──────────────────────────────────── */}
         {isOpen && (
           <>
-            {/* Header */}
-            <div className="flex items-center gap-2 px-3 py-2.5 border-b flex-shrink-0 relative">
+            {/* Header — nested chrome plane on the rail glass (§1.2): the
+                softened `border-border/60` edge-of-light hairline. */}
+            <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/60 flex-shrink-0 relative">
               <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <Sparkles className="w-3.5 h-3.5 text-primary" />
               </div>
@@ -1343,7 +1353,7 @@ export function PaxCopilotRail() {
 
               {/* Conversation switcher dropdown */}
               {showConvSwitcher && (
-                <div className="absolute top-full right-0 left-0 z-50 bg-background border border-border rounded-b-lg shadow-lg">
+                <div className="absolute top-full right-0 left-0 z-floating bg-popover border border-border rounded-b-card shadow-acr-3">
                   <div className="px-3 py-2 border-b space-y-1.5">
                     <p className="text-caption font-medium text-muted-foreground uppercase tracking-wide">Recent conversations</p>
                     <Input
@@ -1665,9 +1675,12 @@ export function PaxCopilotRail() {
                               </TooltipContent>
                             </Tooltip>
                           )}
-                          {/* Approval-kernel card: the frozen pending action awaiting a witnessed tap */}
+                          {/* Approval-kernel card: the frozen pending action awaiting a witnessed tap.
+                              Bold Tahoe re-skin (Wave R) — CONTAINER STYLING ONLY: `rounded-card`
+                              for cardish-surface consistency (§2.3). The witnessed-send logic,
+                              status colors, button handlers, testids, and aria are all untouched. */}
                           {msg.pendingAction && (
-                            <div className="rounded-md border border-acr-warn-soft bg-acr-warn-soft dark:bg-acr-warn-soft/30 dark:border-acr-warn-soft p-3 text-xs space-y-2 mt-1">
+                            <div className="rounded-card border border-acr-warn-soft bg-acr-warn-soft dark:bg-acr-warn-soft/30 dark:border-acr-warn-soft p-3 text-xs space-y-2 mt-1">
                               <div className="flex items-center gap-1.5">
                                 {msg.pendingAction.status === "executed" ? (
                                   <CheckCircle2 className="w-3.5 h-3.5 text-acr-pos flex-shrink-0" aria-hidden="true" />
@@ -1764,8 +1777,8 @@ export function PaxCopilotRail() {
               </div>
             </ScrollArea>
 
-            {/* Input area */}
-            <div className="flex-shrink-0 border-t p-2.5 space-y-1.5">
+            {/* Input area — nested chrome plane on the rail glass (§1.2). */}
+            <div className="flex-shrink-0 border-t border-border/60 p-2.5 space-y-1.5">
               {/* Entity mention chips */}
               {mentionedEntities.length > 0 && (
                 <div className="flex flex-wrap gap-1">

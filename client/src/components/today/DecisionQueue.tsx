@@ -256,7 +256,7 @@ export function DecisionQueue({
 
   return (
     <div data-testid="section-decision-queue">
-      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Zap className="w-4 h-4 text-acr-brand" aria-hidden="true" />
           <h2 className="acr-section-h2 text-section-h2">Decision queue</h2>
@@ -427,13 +427,13 @@ export function DecisionQueue({
                     }}
                   >
                   <Card
-                    className="rounded-card hover:shadow-md transition-shadow border-l-2"
+                    className="rounded-card shadow-acr-1 hover-elevate border-l-2"
                     style={{ borderLeftColor: borderColor }}
                     data-auto-handled={auto ? "true" : undefined}
                     data-priority={item.priority}
                     data-testid={`decision-item-${item.id}`}
                   >
-                    <CardContent className="flex items-start gap-4 p-4">
+                    <CardContent className="flex items-start gap-4 p-6">
                       {auto && (
                         <div
                           className="shrink-0 mt-1.5 w-2 h-2 rounded-full ring-1"

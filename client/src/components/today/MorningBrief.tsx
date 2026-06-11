@@ -30,7 +30,7 @@ export function MorningBrief({ brief }: MorningBriefProps) {
     <section
       aria-label="Morning brief"
       data-testid="section-morning-brief"
-      className="rounded-card border border-[color:var(--acr-line-soft)] bg-acr-surface"
+      className="rounded-card border border-[color:var(--acr-line-soft)] bg-acr-surface shadow-acr-1"
     >
       <button
         type="button"

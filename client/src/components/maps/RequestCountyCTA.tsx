@@ -82,7 +82,7 @@ export function RequestCountyCTA({
     return (
       <div
         className={cn(
-          "flex items-center gap-2 rounded-lg border border-acr-pos/30 bg-acr-pos-soft/40 p-3 text-sm",
+          "flex items-center gap-2 rounded-card border border-acr-pos/30 bg-acr-pos-soft/40 p-3 text-sm",
           className,
         )}
         role="status"
@@ -103,7 +103,7 @@ export function RequestCountyCTA({
   return (
     <form
       className={cn(
-        "rounded-lg border bg-card p-3",
+        "rounded-card border bg-card p-3",
         compact ? "space-y-2" : "space-y-3",
         className,
       )}

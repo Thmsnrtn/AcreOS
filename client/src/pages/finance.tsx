@@ -876,17 +876,28 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+      // Bold Tahoe re-skin (§4 depth): tokenized modal scrim — `bg-surface-scrim`
+      // (the .40 backdrop role) instead of a raw `bg-black/50`, layered at the
+      // semantic `z-modal` instead of `z-50`. Behavior (onClick close, a11y)
+      // unchanged.
+      className="fixed inset-0 z-modal bg-surface-scrim backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby={drawerTitleId}
     >
       <div
-        className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto"
+        // §2.1 L3 over-backdrop panel: a slide-over floating above the scrim is an
+        // over-content surface — give it the glass material + Track-1
+        // `shadow-level-3` (mode-independent) instead of an opaque `bg-background`
+        // + raw `shadow-2xl`. Layout/sizing unchanged.
+        className="fixed right-0 top-0 h-full w-full max-w-2xl glass-panel shadow-level-3 overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 bg-surface-chrome backdrop-blur border-b p-6">
+        {/* §1.2 nested sticky chrome: this header sits inside the slide-over —
+            the secondary-plane glass role (veil) under the panel's own edge,
+            softened `border-border/50` hairline, `z-docked`. */}
+        <div className="sticky top-0 z-docked bg-surface-veil backdrop-blur-lg border-b border-border/50 p-6">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
               <h2 id={drawerTitleId} className="text-xl font-bold" data-testid="text-note-title">
@@ -1339,7 +1350,12 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     aria-label="Amortization schedule"
                   >
                     <Table>
-                      <TableHeader className="sticky top-0 bg-card">
+                      {/* §1.2 nested sticky chrome: the scrolling amortization
+                          header is a secondary plane — veil glass + blur +
+                          softened hairline + z-docked so it reads as a distinct
+                          layer floating over the dense rows beneath. Rows stay
+                          dense (recipe: keep dense rows dense). */}
+                      <TableHeader className="sticky top-0 z-docked bg-surface-veil backdrop-blur-lg border-b border-border/50">
                         <TableRow>
                           <TableHead className="min-w-[30px]">#</TableHead>
                           <TableHead className="min-w-[90px]">Due date</TableHead>
@@ -1683,7 +1699,10 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
 
   return (
     <div
-      className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center p-4"
+      // Bold Tahoe re-skin (§4 depth): tokenized modal scrim — `bg-surface-scrim`
+      // (.40 backdrop) over a raw `bg-black/50`, layered at the semantic `z-modal`
+      // (60, the escalated-sheet role) instead of the raw `z-60`. Behavior unchanged.
+      className="fixed inset-0 z-modal bg-surface-scrim flex items-center justify-center p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -1853,7 +1872,10 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
 
   return (
     <div
-      className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center p-4"
+      // Bold Tahoe re-skin (§4 depth): tokenized modal scrim — `bg-surface-scrim`
+      // (.40 backdrop) over a raw `bg-black/50`, layered at the semantic `z-modal`
+      // (60, the escalated-sheet role) instead of the raw `z-60`. Behavior unchanged.
+      className="fixed inset-0 z-modal bg-surface-scrim flex items-center justify-center p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
