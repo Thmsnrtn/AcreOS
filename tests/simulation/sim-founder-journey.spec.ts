@@ -257,11 +257,12 @@ test.describe.serial("Founder Thomas — Sovereign Control Plane Journey", () =>
 
   // ── Step 6: Approve or reject an AI decision ──────────────────────────
 
-  test("6. Decision queue or Board of Directors — review AI decisions", async () => {
-    // Try the Board of Directors first (has approve/reject for agent negotiations)
-    await page.goto("/board-of-directors");
+  test("6. Decision queue or Governance board — review AI decisions", async () => {
+    // Try the Governance board first (has approve/reject for agent negotiations).
+    // Census W3-1: /board-of-directors refit to /founder/governance.
+    await page.goto("/founder/governance");
     await page.waitForTimeout(2000);
-    await page.screenshot({ path: "tests/simulation/screenshots/founder-07-board-of-directors.png" });
+    await page.screenshot({ path: "tests/simulation/screenshots/founder-07-governance.png" });
 
     const hasBoardContent = await page.locator("[class*='Card'], [class*='card']")
       .first()
@@ -461,8 +462,9 @@ test.describe.serial("Founder Thomas — Sovereign Control Plane Journey", () =>
       .isVisible()
       .catch(() => false);
 
-    // Sovereign event log (event mesh)
-    await page.goto("/event-log");
+    // Sovereign event log (event mesh).
+    // Census W3-1: /event-log refit to /founder/event-log.
+    await page.goto("/founder/event-log");
     await page.waitForTimeout(2000);
     await page.screenshot({ path: "tests/simulation/screenshots/founder-18-event-log.png" });
 
@@ -485,35 +487,14 @@ test.describe.serial("Founder Thomas — Sovereign Control Plane Journey", () =>
     ).toBeTruthy();
   });
 
-  // ── Step 11: Sovereign dashboard (SCP) ─────────────────────────────────
+  // ── Step 11: Refit sovereign-legacy surfaces (Census W3-1) ─────────────
+  // sovereign-dashboard / sovereign-v13 / agent-collaboration retired
+  // 2026-06-11; their routes redirect to /founder/bridge. The surviving
+  // surfaces live at /founder/memory and /founder/scenarios.
 
-  test("11. Sovereign dashboard and SCP pages are accessible", async () => {
-    // Sovereign dashboard — main SCP entry point
-    await page.goto("/sovereign");
-    await page.waitForTimeout(2000);
-    await page.screenshot({ path: "tests/simulation/screenshots/founder-19-sovereign-dashboard.png" });
-
-    const hasSovereign = await page.locator("[class*='Card'], [class*='card']")
-      .first()
-      .isVisible()
-      .catch(() => false);
-    const hasSovereignText = await page.getByText(/sovereign|autonomy|agent|runtime|mesh|self.heal/i)
-      .first()
-      .isVisible()
-      .catch(() => false);
-
-    // V13 sovereign page
-    await page.goto("/founder/v13");
-    await page.waitForTimeout(2000);
-    await page.screenshot({ path: "tests/simulation/screenshots/founder-20-sovereign-v13.png" });
-
-    const hasV13 = await page.locator("[class*='Card'], [class*='card']")
-      .first()
-      .isVisible()
-      .catch(() => false);
-
-    // Memory browser — sovereign feature
-    await page.goto("/memory-browser");
+  test("11. Refit founder memory + scenarios surfaces are accessible", async () => {
+    // Memory browser — refit sovereign feature
+    await page.goto("/founder/memory");
     await page.waitForTimeout(2000);
     await page.screenshot({ path: "tests/simulation/screenshots/founder-21-memory-browser.png" });
 
@@ -526,15 +507,24 @@ test.describe.serial("Founder Thomas — Sovereign Control Plane Journey", () =>
       .isVisible()
       .catch(() => false);
 
-    // Agent collaboration — sovereign feature
-    await page.goto("/agent-collaboration");
+    // Scenario war room — refit org-consciousness surface
+    await page.goto("/founder/scenarios");
     await page.waitForTimeout(2000);
-    await page.screenshot({ path: "tests/simulation/screenshots/founder-22-agent-collaboration.png" });
+    await page.screenshot({ path: "tests/simulation/screenshots/founder-22-scenarios.png" });
 
-    const hasCollaboration = await page.locator("[class*='Card'], [class*='card']")
+    const hasScenarios = await page.locator("[class*='Card'], [class*='card']")
       .first()
       .isVisible()
       .catch(() => false);
+    const hasScenarioText = await page.getByText(/scenario|heartbeat|calibration|resilience/i)
+      .first()
+      .isVisible()
+      .catch(() => false);
+
+    // Retired routes should still resolve (redirect to /founder/bridge).
+    await page.goto("/sovereign");
+    await page.waitForTimeout(1000);
+    const redirectedAway = !page.url().includes("/sovereign");
 
     const accessDenied = await page.getByText(/access denied|not authorized/i)
       .first()
@@ -542,8 +532,8 @@ test.describe.serial("Founder Thomas — Sovereign Control Plane Journey", () =>
       .catch(() => false);
 
     expect(
-      hasSovereign || hasSovereignText || hasV13 ||
-      hasMemory || hasMemoryText || hasCollaboration || accessDenied
+      hasMemory || hasMemoryText || hasScenarios ||
+      hasScenarioText || redirectedAway || accessDenied
     ).toBeTruthy();
   });
 

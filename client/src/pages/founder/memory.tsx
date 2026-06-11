@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, EmptyFilter } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import {
   Brain, Database, Tag, Search, ChevronDown, ChevronUp,
   Lightbulb, History, Layers,
@@ -22,7 +25,7 @@ function useMemorySearch(query: string, memoryType: string) {
       if (!query || query.length < 2) return [];
       const params = new URLSearchParams({ q: query, type: memoryType });
       const res = await fetch(`/api/founder/v13/memory/search?${params}`, { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Memory search failed (${res.status})`);
       return res.json();
     },
     enabled: query.length >= 2,
@@ -143,17 +146,30 @@ function MemoryCard({ memory }: { memory: any }) {
   );
 }
 
-export default function MemoryBrowser() {
+export default function FounderMemoryPage() {
   useDocumentTitle("Memory browser");
   const searchId = useId();
   const [searchQuery, setSearchQuery] = useState("");
   const [memoryType, setMemoryType] = useState("all");
-  const { data: recentMemories = [], isLoading: recentLoading } = useCognitiveMemory();
-  const { data: searchResults = [], isLoading: searchLoading } = useMemorySearch(searchQuery, memoryType);
+  const {
+    data: recentMemories = [],
+    isLoading: recentLoading,
+    error: recentError,
+    refetch: refetchRecent,
+  } = useCognitiveMemory();
+  const {
+    data: searchResults = [],
+    isLoading: searchLoading,
+    error: searchError,
+    refetch: refetchSearch,
+  } = useMemorySearch(searchQuery, memoryType);
 
-  const isLoading = recentLoading;
+  const isSearching = searchQuery.length >= 2;
+  const isLoading = isSearching ? searchLoading : recentLoading;
+  const activeError = isSearching ? searchError : recentError;
+  const retry = isSearching ? refetchSearch : refetchRecent;
 
-  const displayMemories = searchQuery.length >= 2 ? searchResults : recentMemories;
+  const displayMemories = isSearching ? searchResults : recentMemories;
 
   const typeCounts = Array.isArray(displayMemories) ? displayMemories.reduce((acc: Record<string, number>, m: any) => {
     const type = m.type ?? "unknown";
@@ -166,7 +182,7 @@ export default function MemoryBrowser() {
     : [];
 
   return (
-    <PageShell isLoading={isLoading}>
+    <PageShell>
       <div className="space-y-6 md:space-y-8">
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
@@ -255,27 +271,47 @@ export default function MemoryBrowser() {
           </li>
         </ul>
 
-        {searchLoading ? (
-          <Card>
-            <CardContent className="pt-6 text-center text-sm text-muted-foreground" role="status" aria-live="polite">
-              <span className="sr-only">Searching memories…</span>
-              Searching memories…
-            </CardContent>
-          </Card>
+        {isLoading ? (
+          <div role="status" aria-busy="true" className="space-y-3">
+            <span className="sr-only">{isSearching ? "Searching memories…" : "Loading memories…"}</span>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} announce={false} className="h-20 w-full rounded-card" />
+            ))}
+          </div>
+        ) : activeError ? (
+          <QueryErrorState
+            error={activeError as Error}
+            onRetry={() => retry()}
+            testId="founder-memory-error"
+          />
         ) : filtered.length > 0 ? (
-          <ul className="space-y-3" aria-label={searchQuery.length >= 2 ? "Memory search results" : "Recent memories"}>
+          <ul className="space-y-3" aria-label={isSearching ? "Memory search results" : "Recent memories"}>
             {filtered.map((memory: any, i: number) => (
               <MemoryCard key={memory.id ?? i} memory={memory} />
             ))}
           </ul>
+        ) : isSearching || memoryType !== "all" ? (
+          <EmptyFilter
+            filterCount={(isSearching ? 1 : 0) + (memoryType !== "all" ? 1 : 0)}
+            onClearFilters={() => {
+              setSearchQuery("");
+              setMemoryType("all");
+            }}
+            headline="No memories match"
+            subtitle="Nothing in the cognitive memory layer matches this search and type filter."
+            clearLabel="Clear search"
+          />
         ) : (
-          <Card>
-            <CardContent className="pt-6 text-center text-sm text-muted-foreground">
-              {searchQuery.length >= 2
-                ? "No memories match your search."
-                : "No memories stored yet. The cognitive memory layer will populate as agents learn and make decisions."}
-            </CardContent>
-          </Card>
+          <EmptyState
+            framed
+            icon={Brain}
+            headline="No memories stored yet"
+            subtitle="The cognitive memory layer populates as agents learn and make decisions — episodic events, semantic insights, and working context will land here."
+            // TODO(cta): read-only inspector — memories are written by the
+            // agent runtime, not from this surface.
+            cta={{ label: "", _noOp: true }}
+            testId="founder-memory-empty"
+          />
         )}
       </div>
     </PageShell>

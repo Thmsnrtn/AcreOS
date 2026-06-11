@@ -46,7 +46,6 @@ import {
   Cog,
   FileCode,
   History,
-  Crown,
   Lightbulb,
   CheckCircle2,
   Rocket,
@@ -254,7 +253,7 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "Cost optimizer", icon: TrendingUp, href: "/founder/cost-optimizer", category: "engineering" },
   { label: "Providers", icon: Database, href: "/founder/providers", category: "engineering" },
   { label: "Job health", icon: Activity, href: "/job-health", category: "engineering" },
-  { label: "Event log", icon: FileCode, href: "/event-log", category: "engineering" },
+  { label: "Event log", icon: FileCode, href: "/founder/event-log", category: "engineering" },
 
   // ── AI / Agents ─────────────────────────────────────────────────────
   { label: "Pax traces", icon: FileCode, href: "/founder/pax-traces", category: "ai" },
@@ -265,9 +264,8 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "Agent asks", icon: HelpCircle, href: "/founder/asks", category: "ai" },
   { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", category: "ai" },
   { label: "Prompt history", icon: History, href: "/founder/prompt-history", category: "ai" },
-  { label: "Memory browser", icon: Database, href: "/memory-browser", category: "ai" },
+  { label: "Memory browser", icon: Database, href: "/founder/memory", category: "ai" },
   { label: "Agent performance", icon: Activity, href: "/agent-performance", category: "ai" },
-  { label: "Agent collaboration", icon: Bot, href: "/agent-collaboration", category: "ai" },
 
   // ── Customers ───────────────────────────────────────────────────────
   { label: "Customer health", icon: Heart, href: "/founder/customers/health", category: "customers" },
@@ -313,11 +311,12 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "Trust graduation", icon: Shield, href: "/founder/trust-graduation", category: "ops" },
 
   // ── Experimental ────────────────────────────────────────────────────
-  { label: "Sovereign dashboard", icon: Crown, href: "/sovereign", category: "experimental" },
-  { label: "Sovereign v13", icon: Sparkles, href: "/founder/v13", category: "experimental" },
-  { label: "Board of directors", icon: Shield, href: "/board-of-directors", category: "experimental" },
-  { label: "Conscious organization", icon: Brain, href: "/conscious-organization", category: "experimental" },
-  { label: "Anticipatory enterprise", icon: TrendingUp, href: "/anticipatory-enterprise", category: "experimental" },
+  // Census W3-1 (2026-06-11): sovereign-dashboard, sovereign-v13,
+  // anticipatory-enterprise, and agent-collaboration retired. Board of
+  // directors → /founder/governance, conscious organization →
+  // /founder/scenarios (refit surfaces).
+  { label: "Governance", icon: Shield, href: "/founder/governance", category: "experimental" },
+  { label: "Scenarios", icon: Brain, href: "/founder/scenarios", category: "experimental" },
   { label: "Data moat", icon: Database, href: "/data-moat", category: "experimental" },
   { label: "Reseller program", icon: Store, href: "/reseller", category: "experimental" },
   { label: "Executive dashboard", icon: BarChart3, href: "/executive-dashboard", category: "experimental" },

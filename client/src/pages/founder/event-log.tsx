@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, EmptyFilter } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import {
   Network, Zap, Search, AlertTriangle,
   ChevronDown, ChevronUp, Filter,
 } from "lucide-react";
-import { format } from "date-fns";
-import { relative } from "@/lib/format";
+import { formatDateTime, relative } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   useEventMeshEvents,
@@ -105,7 +107,7 @@ function EventRow({ event }: { event: any }) {
             {event.expiresAt && (
               <div className="flex gap-1">
                 <dt>Expires:</dt>
-                <dd className="tabular-nums">{format(new Date(event.expiresAt), "MMM d, HH:mm")}</dd>
+                <dd className="tabular-nums">{formatDateTime(event.expiresAt)}</dd>
               </div>
             )}
           </dl>
@@ -118,17 +120,22 @@ function EventRow({ event }: { event: any }) {
   );
 }
 
-export default function EventLog() {
+export default function FounderEventLogPage() {
   useDocumentTitle("Event log");
   const filterId = useId();
   const typeFilterId = useId();
   const [channelFilter, setChannelFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
-  const { data: events = [], isLoading: eventsLoading } = useEventMeshEvents(100);
-  const { data: stats } = useEventMeshStats();
+  const {
+    data: events = [],
+    isLoading: eventsLoading,
+    error: eventsError,
+    refetch: refetchEvents,
+  } = useEventMeshEvents(100);
+  const { data: stats, isLoading: statsLoading } = useEventMeshStats();
   const { data: subscriptions = [] } = useEventMeshSubscriptions();
 
-  const isLoading = eventsLoading;
+  const activeFilterCount = (channelFilter ? 1 : 0) + (typeFilter !== "all" ? 1 : 0);
 
   const filteredEvents = Array.isArray(events) ? events.filter((e: any) => {
     if (channelFilter && !e.channel?.includes(channelFilter) && !e.eventType?.includes(channelFilter)) return false;
@@ -138,7 +145,7 @@ export default function EventLog() {
   }) : [];
 
   return (
-    <PageShell isLoading={isLoading}>
+    <PageShell>
       <div className="space-y-6 md:space-y-8">
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
@@ -150,7 +157,14 @@ export default function EventLog() {
           </p>
         </div>
 
-        {stats && (
+        {statsLoading ? (
+          <div role="status" aria-busy="true" className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <span className="sr-only">Loading event-mesh stats…</span>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} announce={false} className="h-20 w-full rounded-card" />
+            ))}
+          </div>
+        ) : stats ? (
           <dl className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <Card>
               <CardContent className="pt-4">
@@ -185,7 +199,7 @@ export default function EventLog() {
               </CardContent>
             </Card>
           </dl>
-        )}
+        ) : null}
 
         <div className="flex gap-3 items-center flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
@@ -249,18 +263,46 @@ export default function EventLog() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {filteredEvents.length > 0 ? (
+            {eventsLoading ? (
+              <div role="status" aria-busy="true" className="space-y-2">
+                <span className="sr-only">Loading events…</span>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} announce={false} className="h-12 w-full rounded-card" />
+                ))}
+              </div>
+            ) : eventsError ? (
+              <QueryErrorState
+                error={eventsError as Error}
+                onRetry={() => refetchEvents()}
+                compact
+                testId="founder-event-log-error"
+              />
+            ) : filteredEvents.length > 0 ? (
               <ol className="max-h-[600px] overflow-y-auto" aria-label="Recent events, newest first">
                 {filteredEvents.map((event: any, i: number) => (
                   <EventRow key={event.id ?? event.eventId ?? i} event={event} />
                 ))}
               </ol>
+            ) : activeFilterCount > 0 ? (
+              <EmptyFilter
+                filterCount={activeFilterCount}
+                onClearFilters={() => {
+                  setChannelFilter("");
+                  setTypeFilter("all");
+                }}
+                headline="No events match your filters"
+              />
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                {channelFilter || typeFilter !== "all"
-                  ? "No events match your filters."
-                  : "No events published yet. Events will appear here as the system processes business operations."}
-              </p>
+              <EmptyState
+                framed
+                icon={Network}
+                headline="No events published yet"
+                subtitle="Events appear here as the system processes business operations — every decision and side effect lands on the mesh."
+                // TODO(cta): read-only firehose — events are published by the
+                // agent runtime, no user action available.
+                cta={{ label: "", _noOp: true }}
+                testId="founder-event-log-empty"
+              />
             )}
           </CardContent>
         </Card>

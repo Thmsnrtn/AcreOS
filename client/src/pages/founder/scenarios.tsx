@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { Label } from "@/components/ui/label";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -14,6 +14,9 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, ClearedEmpty } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
+import { relative } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import {
   Brain,
@@ -50,7 +53,7 @@ function ScenarioWarRoom() {
   const typeId = useId();
   const hypothesisId = useId();
 
-  const { data: scenarios, isLoading } = useQuery({
+  const { data: scenarios, isLoading, error, refetch } = useQuery({
     queryKey: ["/api/founder/v10/scenarios"],
     queryFn: () => apiRequest("GET", "/api/founder/v10/scenarios").then(r => r.json()),
   });
@@ -109,7 +112,31 @@ function ScenarioWarRoom() {
         </CardContent>
       </Card>
 
-      {isLoading ? <Skeleton className="h-40" /> : (
+      {isLoading ? (
+        <div role="status" aria-busy="true" className="space-y-3">
+          <span className="sr-only">Loading scenario simulations…</span>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} announce={false} className="h-28 w-full rounded-card" />
+          ))}
+        </div>
+      ) : error ? (
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          testId="founder-scenarios-error"
+        />
+      ) : (scenarios || []).length === 0 ? (
+        <EmptyState
+          framed
+          icon={Target}
+          headline="No scenarios simulated yet"
+          subtitle="Pose a hypothesis above — every agent models the outcome and the war room returns a consensus with confidence bounds."
+          // TODO(cta): the creation form sits directly above this list on
+          // the same surface — a duplicate CTA would be noise.
+          cta={{ label: "", _noOp: true }}
+          testId="founder-scenarios-empty"
+        />
+      ) : (
         <div className="space-y-3">
           {(scenarios || []).map((s: any) => (
             <Card key={s.id} className={s.status === "running" ? "border-acr-warn" : ""}>
@@ -162,7 +189,7 @@ function HeartbeatMonitor() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: heartbeat, isLoading } = useQuery({
+  const { data: heartbeat, isLoading, error, refetch } = useQuery({
     queryKey: ["/api/founder/v10/heartbeat"],
     queryFn: () => apiRequest("GET", "/api/founder/v10/heartbeat").then(r => r.json()),
   });
@@ -185,7 +212,32 @@ function HeartbeatMonitor() {
 
   const gradeColors: Record<string, string> = { A: "text-acr-pos", B: "text-acr-accent", C: "text-acr-warn", D: "text-acr-warn", F: "text-acr-neg" };
 
-  if (isLoading) return <Skeleton className="h-60" />;
+  if (isLoading) {
+    return (
+      <div role="status" aria-busy="true" className="space-y-4">
+        <span className="sr-only">Loading organizational heartbeat…</span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} announce={false} className="h-24 w-full rounded-card" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Skeleton announce={false} className="h-20 w-full rounded-card" />
+          <Skeleton announce={false} className="h-20 w-full rounded-card" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <QueryErrorState
+        error={error as Error}
+        onRetry={() => refetch()}
+        testId="founder-scenarios-heartbeat-error"
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -289,7 +341,7 @@ function SelfCalibration() {
     queryFn: () => apiRequest("GET", "/api/founder/v10/calibration/pending").then(r => r.json()),
   });
 
-  const { data: recent } = useQuery({
+  const { data: recent, error: recentError, refetch: refetchRecent } = useQuery({
     queryKey: ["/api/founder/v10/calibration"],
     queryFn: () => apiRequest("GET", "/api/founder/v10/calibration?limit=10").then(r => r.json()),
   });
@@ -358,7 +410,26 @@ function SelfCalibration() {
         </Card>
       )}
 
-      {isLoading ? <Skeleton className="h-40" /> : (
+      {isLoading ? (
+        <div role="status" aria-busy="true" className="space-y-2">
+          <span className="sr-only">Loading calibration history…</span>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} announce={false} className="h-16 w-full rounded-card" />
+          ))}
+        </div>
+      ) : recentError ? (
+        <QueryErrorState
+          error={recentError as Error}
+          onRetry={() => refetchRecent()}
+          compact
+          testId="founder-scenarios-calibration-error"
+        />
+      ) : (recent || []).length === 0 ? (
+        <ClearedEmpty
+          headline="No calibrations yet"
+          subtitle="Run a calibration cycle — agents self-adjust their parameters and queue changes here for your approval."
+        />
+      ) : (
         <div className="space-y-2">
           {(recent || []).map((c: any) => (
             <Card key={c.id}>
@@ -381,7 +452,7 @@ function SelfCalibration() {
 // ─── Decision Replay Tab ────────────────────────────────────────────────────
 
 function DecisionReplay() {
-  const { data: biases, isLoading } = useQuery({
+  const { data: biases, isLoading, error, refetch } = useQuery({
     queryKey: ["/api/founder/v10/decisions/biases"],
     queryFn: () => apiRequest("GET", "/api/founder/v10/decisions/biases").then(r => r.json()),
   });
@@ -391,7 +462,44 @@ function DecisionReplay() {
     queryFn: () => apiRequest("GET", "/api/founder/v10/decisions/replays?limit=10").then(r => r.json()),
   });
 
-  if (isLoading) return <Skeleton className="h-60" />;
+  if (isLoading) {
+    return (
+      <div role="status" aria-busy="true" className="space-y-4">
+        <span className="sr-only">Loading decision replays…</span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} announce={false} className="h-24 w-full rounded-card" />
+          ))}
+        </div>
+        <Skeleton announce={false} className="h-40 w-full rounded-card" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <QueryErrorState
+        error={error as Error}
+        onRetry={() => refetch()}
+        testId="founder-scenarios-decisions-error"
+      />
+    );
+  }
+
+  if ((!biases || !biases.replayedDecisions) && (replays || []).length === 0) {
+    return (
+      <EmptyState
+        framed
+        icon={Eye}
+        headline="No decisions replayed yet"
+        subtitle="The replay engine revisits past agent decisions with hindsight, scores their quality, and surfaces systematic biases here."
+        // TODO(cta): read-only analysis surface — replays run on the
+        // agent runtime's schedule, no user action available.
+        cta={{ label: "", _noOp: true }}
+        testId="founder-scenarios-decisions-empty"
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -485,7 +593,7 @@ function ResilienceTesting() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: tests, isLoading } = useQuery({
+  const { data: tests, isLoading, error, refetch } = useQuery({
     queryKey: ["/api/founder/v10/resilience"],
     queryFn: () => apiRequest("GET", "/api/founder/v10/resilience").then(r => r.json()),
   });
@@ -518,7 +626,31 @@ function ResilienceTesting() {
         </Button>
       </div>
 
-      {isLoading ? <Skeleton className="h-40" /> : (
+      {isLoading ? (
+        <div role="status" aria-busy="true" className="space-y-2">
+          <span className="sr-only">Loading resilience tests…</span>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} announce={false} className="h-20 w-full rounded-card" />
+          ))}
+        </div>
+      ) : error ? (
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          testId="founder-scenarios-resilience-error"
+        />
+      ) : (tests || []).length === 0 ? (
+        <EmptyState
+          framed
+          icon={Shield}
+          headline="No resilience tests run yet"
+          subtitle="Run the full suite — it stress-tests the autonomous org for single points of failure and grades overall resilience."
+          // TODO(cta): the "Run full suite" action sits in the header
+          // directly above this list — a duplicate CTA would be noise.
+          cta={{ label: "", _noOp: true }}
+          testId="founder-scenarios-resilience-empty"
+        />
+      ) : (
         <ul className="space-y-2 list-none p-0 m-0">
           {(tests || []).map((t: any) => (
             <li key={t.id}>
@@ -552,7 +684,7 @@ function ResilienceTesting() {
 // ─── Nervous System Tab ─────────────────────────────────────────────────────
 
 function NervousSystem() {
-  const { data: events, isLoading } = useQuery({
+  const { data: events, isLoading, error, refetch } = useQuery({
     queryKey: ["/api/founder/v10/nervous-system/events"],
     queryFn: () => apiRequest("GET", "/api/founder/v10/nervous-system/events?limit=30").then(r => r.json()),
     refetchInterval: 5000,
@@ -592,14 +724,28 @@ function NervousSystem() {
         <CardHeader><CardTitle className="flex items-center gap-2 text-sm"><Radio className="h-4 w-4 text-acr-pos animate-pulse" aria-hidden="true" /> Live event feed</CardTitle></CardHeader>
         <CardContent>
           <ScrollArea className="h-[400px]">
-            {isLoading ? <Skeleton className="h-40" /> : (
+            {isLoading ? (
+              <div role="status" aria-busy="true" className="space-y-2">
+                <span className="sr-only">Loading nervous-system events…</span>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} announce={false} className="h-8 w-full rounded-card" />
+                ))}
+              </div>
+            ) : error ? (
+              <QueryErrorState
+                error={error as Error}
+                onRetry={() => refetch()}
+                compact
+                testId="founder-scenarios-nervous-error"
+              />
+            ) : (
               <ol role="log" aria-live="polite" aria-label="Live nervous-system event feed" className="space-y-1 list-none p-0 m-0">
                 {(events || []).map((e: any) => (
                   <li key={e.id} className="flex items-center gap-2 py-1 border-b border-border/50 last:border-0">
                     <span className="text-sm" aria-hidden="true">{eventIcons[e.eventType] || "•"}</span>
                     <Badge variant="outline" className="text-xs">{e.agentCodename || "system"}</Badge>
                     <span className="text-xs font-mono text-muted-foreground">{e.eventType}</span>
-                    <time dateTime={new Date(e.createdAt).toISOString()} className="text-xs text-muted-foreground ml-auto tabular-nums">{new Date(e.createdAt).toLocaleTimeString()}</time>
+                    <time dateTime={new Date(e.createdAt).toISOString()} className="text-xs text-muted-foreground ml-auto tabular-nums">{relative(e.createdAt)}</time>
                   </li>
                 ))}
                 {(!events || events.length === 0) && <li className="text-sm text-muted-foreground text-center py-8 list-none">No events yet. Start the nervous-system heartbeat to see activity.</li>}
@@ -810,19 +956,17 @@ function LearningEngine() {
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
-export default function ConsciousOrganizationPage() {
-  useDocumentTitle("Conscious organization");
+export default function FounderScenariosPage() {
+  useDocumentTitle("Scenarios");
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-      <main className="flex-1 p-4 md:p-6 overflow-auto">
-        <div className="max-w-6xl mx-auto">
-          <div className="mb-6">
+    <PageShell maxWidth="6xl">
+      <div className="space-y-6">
+          <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Brain className="h-6 w-6" aria-hidden="true" /> Conscious organization
+              <Brain className="h-6 w-6" aria-hidden="true" /> Scenarios
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Sovereign Company Protocol v10 — Organizational self-awareness, closed-loop learning, and adaptive intelligence
+              Scenario war room + organizational self-awareness — closed-loop learning, calibration, and adaptive intelligence
             </p>
           </div>
 
@@ -847,8 +991,7 @@ export default function ConsciousOrganizationPage() {
             <TabsContent value="nervous"><NervousSystem /></TabsContent>
             <TabsContent value="surface"><AdaptiveSurface /></TabsContent>
           </Tabs>
-        </div>
-      </main>
-    </div>
+      </div>
+    </PageShell>
   );
 }

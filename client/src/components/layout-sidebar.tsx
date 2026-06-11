@@ -390,7 +390,7 @@ interface NavModule {
 // Flip, Subdivision) remain — each is `businessTypeOnly` and only
 // appears for a matching operator profile. The Founder module remains
 // `founderOnly` and is the ONLY place internal agent-codename surfaces
-// (sovereign, board-of-directors, anticipatory-enterprise, etc.) are
+// (/founder/governance, /founder/scenarios, /founder/memory, etc.) are
 // linked from. Customers never see them.
 // ─────────────────────────────────────────────────────────────────────
 const NAV_MODULES: NavModule[] = [
@@ -694,15 +694,14 @@ const NAV_MODULES: NavModule[] = [
       { label: "Experiments", icon: FlaskConical, href: "/founder/experiments", description: "A/B tests on decision playbooks" },
       { label: "Tool proposals", icon: Wrench, href: "/founder/tools", description: "Capability-growth queue" },
       // ── Sovereignty / experimental surfaces ────────────────────────
-      { label: "Sovereign dashboard", icon: Crown, href: "/sovereign", description: "Sovereign Protocol — top-level visibility into the autonomous org" },
-      { label: "Sovereign v13", icon: Sparkles, href: "/founder/v13", description: "Sovereign Protocol v13 — latest experimental surface" },
-      { label: "Board of directors", icon: Shield, href: "/board-of-directors", description: "AI board — strategic-review members + cadence" },
-      { label: "Conscious organization", icon: Brain, href: "/conscious-organization", description: "Org-consciousness agent surface (Atlas/Sophie/Forge taxonomy)" },
-      { label: "Anticipatory enterprise", icon: TrendingUp, href: "/anticipatory-enterprise", description: "Inter-agent negotiation / capability anticipation" },
+      // Census W3-1 (2026-06-11): sovereign-dashboard, sovereign-v13,
+      // anticipatory-enterprise, and agent-collaboration retired.
+      // The four refit survivors live under /founder/*.
+      { label: "Governance", icon: Shield, href: "/founder/governance", description: "Agent negotiations, delegation authority, trust enforcement, founder overrides" },
+      { label: "Scenarios", icon: Brain, href: "/founder/scenarios", description: "Scenario war room + org self-awareness (Atlas/Sophie/Forge taxonomy)" },
       { label: "Agent performance", icon: Activity, href: "/agent-performance", description: "Per-agent trust + decision quality metrics" },
-      { label: "Agent collaboration", icon: Bot, href: "/agent-collaboration", description: "Cross-wing agent collaboration patterns" },
-      { label: "Memory browser", icon: Database, href: "/memory-browser", description: "Per-agent semantic + episodic memory inspector" },
-      { label: "Event log", icon: FileCode, href: "/event-log", description: "Agent-event firehose — every decision and side effect" },
+      { label: "Memory browser", icon: Database, href: "/founder/memory", description: "Per-agent semantic + episodic memory inspector" },
+      { label: "Event log", icon: FileCode, href: "/founder/event-log", description: "Agent-event firehose — every decision and side effect" },
       { label: "Job health", icon: Activity, href: "/job-health", description: "Background worker queues — scheduled jobs, retries, failures" },
       { label: "Data moat", icon: Database, href: "/data-moat", description: "Proprietary data accumulation + competitive moat metrics" },
       { label: "Reseller program", icon: Store, href: "/reseller", description: "White-label reseller dashboard — partners, commissions" },

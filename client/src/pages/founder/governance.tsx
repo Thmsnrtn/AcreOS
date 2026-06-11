@@ -1,9 +1,12 @@
 import { useState, useId } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, ClearedEmpty } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Shield, AlertTriangle, CheckCircle, Clock,
@@ -178,30 +181,39 @@ function NegotiationCard({ negotiation }: { negotiation: any }) {
   );
 }
 
-export default function BoardOfDirectors() {
-  useDocumentTitle("Board of directors");
-  const { data: negotiations = [], isLoading: negLoading } = useAgentNegotiations();
-  const { data: tokens = [], isLoading: tokensLoading } = useDelegationTokens();
-  const { data: trustLog = [] } = useTrustEnforcement();
-  const { data: overrides = [] } = useFounderOverrides();
-  const { data: cascade = [] } = useConfidenceCascade();
+/** Shaped loading placeholder for a list of governance cards. */
+function ListSkeleton({ label, rows = 3 }: { label: string; rows?: number }) {
+  return (
+    <div role="status" aria-busy="true" className="space-y-4">
+      <span className="sr-only">{label}</span>
+      {Array.from({ length: rows }).map((_, i) => (
+        <Skeleton key={i} announce={false} className="h-24 w-full rounded-card" />
+      ))}
+    </div>
+  );
+}
 
-  const isLoading = negLoading || tokensLoading;
+export default function FounderGovernancePage() {
+  useDocumentTitle("Governance");
+  const { data: negotiations = [], isLoading: negLoading, error: negError, refetch: refetchNeg } = useAgentNegotiations();
+  const { data: tokens = [], isLoading: tokensLoading, error: tokensError, refetch: refetchTokens } = useDelegationTokens();
+  const { data: trustLog = [], isLoading: trustLoading, error: trustError, refetch: refetchTrust } = useTrustEnforcement();
+  const { data: overrides = [], isLoading: overridesLoading, error: overridesError, refetch: refetchOverrides } = useFounderOverrides();
+  const { data: cascade = [], isLoading: cascadeLoading, error: cascadeError, refetch: refetchCascade } = useConfidenceCascade();
 
   const escalated = Array.isArray(negotiations) ? negotiations.filter((n: any) => n.status === "escalated") : [];
-  const activeTokens = Array.isArray(tokens) ? tokens.filter((t: any) => t.status === "active") : [];
 
   return (
-    <PageShell isLoading={isLoading}>
+    <PageShell>
       <div className="space-y-6 md:space-y-8">
         {/* Header */}
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Shield className="w-6 h-6 text-primary" aria-hidden="true" />
-            Board of directors
+            Governance
           </h1>
           <p className="text-sm text-muted-foreground">
-            Agent negotiations, delegation authority, trust enforcement, and founder overrides.
+            The AI board — agent negotiations, delegation authority, trust enforcement, and founder overrides.
           </p>
         </div>
 
@@ -232,23 +244,38 @@ export default function BoardOfDirectors() {
           </TabsList>
 
           <TabsContent value="negotiations" className="space-y-4">
-            {Array.isArray(negotiations) && negotiations.length > 0 ? (
+            {negLoading ? (
+              <ListSkeleton label="Loading negotiations…" />
+            ) : negError ? (
+              <QueryErrorState
+                error={negError as Error}
+                onRetry={() => refetchNeg()}
+                testId="governance-negotiations-error"
+              />
+            ) : Array.isArray(negotiations) && negotiations.length > 0 ? (
               <ul className="space-y-4" aria-label="Active agent negotiations">
                 {negotiations.map((neg: any) => (
                   <li key={neg.id}><NegotiationCard negotiation={neg} /></li>
                 ))}
               </ul>
             ) : (
-              <Card>
-                <CardContent className="pt-6 text-center text-sm text-muted-foreground">
-                  No active negotiations. Agents are operating harmoniously.
-                </CardContent>
-              </Card>
+              <ClearedEmpty
+                headline="No active negotiations"
+                subtitle="Agents are operating harmoniously. Disagreements that need your call land here."
+              />
             )}
           </TabsContent>
 
           <TabsContent value="delegation" className="space-y-4">
-            {Array.isArray(tokens) && tokens.length > 0 ? (
+            {tokensLoading ? (
+              <ListSkeleton label="Loading delegation tokens…" />
+            ) : tokensError ? (
+              <QueryErrorState
+                error={tokensError as Error}
+                onRetry={() => refetchTokens()}
+                testId="governance-delegation-error"
+              />
+            ) : Array.isArray(tokens) && tokens.length > 0 ? (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">Active delegation tokens</CardTitle>
@@ -277,16 +304,29 @@ export default function BoardOfDirectors() {
                 </CardContent>
               </Card>
             ) : (
-              <Card>
-                <CardContent className="pt-6 text-center text-sm text-muted-foreground">
-                  No delegation tokens active. Grant tokens to allow agents autonomous spending authority.
-                </CardContent>
-              </Card>
+              <EmptyState
+                framed
+                icon={Shield}
+                headline="No delegation tokens active"
+                subtitle="Grant tokens to give agents bounded autonomous spending authority. Tokens are issued from agent conversations when an agent asks for budget."
+                // TODO(cta): read-only governance ledger — tokens are granted
+                // from agent conversations, not from this surface.
+                cta={{ label: "", _noOp: true }}
+                testId="governance-delegation-empty"
+              />
             )}
           </TabsContent>
 
           <TabsContent value="trust" className="space-y-4">
-            {Array.isArray(trustLog) && trustLog.length > 0 ? (
+            {trustLoading ? (
+              <ListSkeleton label="Loading trust enforcement log…" />
+            ) : trustError ? (
+              <QueryErrorState
+                error={trustError as Error}
+                onRetry={() => refetchTrust()}
+                testId="governance-trust-error"
+              />
+            ) : Array.isArray(trustLog) && trustLog.length > 0 ? (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">Trust enforcement events</CardTitle>
@@ -324,16 +364,29 @@ export default function BoardOfDirectors() {
                 </CardContent>
               </Card>
             ) : (
-              <Card>
-                <CardContent className="pt-6 text-center text-sm text-muted-foreground">
-                  No trust enforcement events recorded yet.
-                </CardContent>
-              </Card>
+              <EmptyState
+                framed
+                icon={CheckCircle}
+                headline="No trust enforcement events yet"
+                subtitle="Every allowed or blocked agent action is recorded here as agents operate against their trust tiers."
+                // TODO(cta): read-only audit log — populated by the trust
+                // enforcement layer, no user action available.
+                cta={{ label: "", _noOp: true }}
+                testId="governance-trust-empty"
+              />
             )}
           </TabsContent>
 
           <TabsContent value="overrides" className="space-y-4">
-            {Array.isArray(overrides) && overrides.length > 0 ? (
+            {overridesLoading ? (
+              <ListSkeleton label="Loading override history…" />
+            ) : overridesError ? (
+              <QueryErrorState
+                error={overridesError as Error}
+                onRetry={() => refetchOverrides()}
+                testId="governance-overrides-error"
+              />
+            ) : Array.isArray(overrides) && overrides.length > 0 ? (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">Override history</CardTitle>
@@ -359,16 +412,23 @@ export default function BoardOfDirectors() {
                 </CardContent>
               </Card>
             ) : (
-              <Card>
-                <CardContent className="pt-6 text-center text-sm text-muted-foreground">
-                  No founder overrides recorded. Use the agent conversation view to override decisions.
-                </CardContent>
-              </Card>
+              <ClearedEmpty
+                headline="No founder overrides recorded"
+                subtitle="When you override an agent decision from a conversation, it's logged here and the learning is applied forward."
+              />
             )}
           </TabsContent>
 
           <TabsContent value="cascade" className="space-y-4">
-            {Array.isArray(cascade) && cascade.length > 0 ? (
+            {cascadeLoading ? (
+              <ListSkeleton label="Loading confidence cascade…" />
+            ) : cascadeError ? (
+              <QueryErrorState
+                error={cascadeError as Error}
+                onRetry={() => refetchCascade()}
+                testId="governance-cascade-error"
+              />
+            ) : Array.isArray(cascade) && cascade.length > 0 ? (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">Confidence cascade — multi-layer resolution</CardTitle>
@@ -404,11 +464,10 @@ export default function BoardOfDirectors() {
                 </CardContent>
               </Card>
             ) : (
-              <Card>
-                <CardContent className="pt-6 text-center text-sm text-muted-foreground">
-                  No confidence cascade events. Decisions resolved at first layer.
-                </CardContent>
-              </Card>
+              <ClearedEmpty
+                headline="No confidence cascade events"
+                subtitle="Decisions are resolving at the first layer — nothing has needed multi-layer escalation."
+              />
             )}
           </TabsContent>
         </Tabs>

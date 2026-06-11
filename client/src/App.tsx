@@ -192,8 +192,10 @@ const DocumentIntelligencePage = React.lazy(() => import("@/pages/document-intel
 // Operations
 const MapsPage = React.lazy(() => import("@/pages/maps"));
 const CommandCenterPage = React.lazy(() => import("@/pages/command-center"));
-const ConsciousOrganizationPage = React.lazy(() => import("@/pages/conscious-organization"));
-const AnticipatoryEnterprisePage = React.lazy(() => import("@/pages/anticipatory-enterprise"));
+// ConsciousOrganizationPage refit 2026-06-11 (Census W3-1) — moved to
+// @/pages/founder/scenarios, served at /founder/scenarios (lazy import below).
+// AnticipatoryEnterprisePage retired 2026-06-11 (Census W3-1) — page deleted;
+// /anticipatory-enterprise redirects to /founder/bridge.
 // /real-runtime removed (Lens 4 Fix 4): customer-facing surface that
 // exposed runtime internals and had no nav link or referrers.
 const AutomationPage = React.lazy(() => import("@/pages/automation"));
@@ -367,7 +369,9 @@ const FounderTrustGraduationPage = React.lazy(() => import("@/pages/founder/trus
 // PropertiesComparePage archived 2026-06-01 — no callers.
 // DealUnderwritingPage archived 2026-06-01 — route is Redirect to /deals/discover.
 // TeamKPIPage archived 2026-06-01 — no nav entry, no callers.
-const SovereignV13Page = React.lazy(() => import("@/pages/sovereign-v13"));
+// SovereignV13Page retired 2026-06-11 (Census W3-1) — page deleted;
+// /founder/v13 redirects to /founder/bridge. Its API surface
+// (/api/founder/v13/*) is still consumed by the refit founder pages.
 const AgentDetailPage = React.lazy(() => import("@/pages/agent-detail"));
 const SafetyGatesPage = React.lazy(() => import("@/pages/safety-gates"));
 const DecisionQueuePage = React.lazy(() => import("@/pages/decision-queue"));
@@ -382,14 +386,21 @@ const ResellerDashboardPage = React.lazy(() => import("@/pages/reseller-dashboar
 // DataMoatDashboardPage archived 2026-06-01 — no nav entry (sidebar shows "/data-moat" which routes to it, but page is a founder deep-tool with no unique value vs other telemetry pages).
 const ExecutiveDashboardPage = React.lazy(() => import("@/pages/executive-dashboard"));
 
-// Sovereign Protocol — Phase A Visibility Layer
-const SovereignDashboardPage = React.lazy(() => import("@/pages/sovereign-dashboard"));
-const BoardOfDirectorsPage = React.lazy(() => import("@/pages/board-of-directors"));
+// Sovereign Protocol — Phase A Visibility Layer.
+// Census W3-1 (2026-06-11) retire/refit split: sovereign-dashboard,
+// sovereign-v13, anticipatory-enterprise, and agent-collaboration were
+// retired (pages deleted, routes redirect). The four surviving surfaces
+// moved under /founder/* as first-class founder deep-dives:
+//   board-of-directors    → /founder/governance
+//   memory-browser        → /founder/memory
+//   event-log             → /founder/event-log
+//   conscious-organization → /founder/scenarios
+const FounderGovernancePage = React.lazy(() => import("@/pages/founder/governance"));
 const AgentPerformancePage = React.lazy(() => import("@/pages/agent-performance"));
-const MemoryBrowserPage = React.lazy(() => import("@/pages/memory-browser"));
-const EventLogPage = React.lazy(() => import("@/pages/event-log"));
+const FounderMemoryPage = React.lazy(() => import("@/pages/founder/memory"));
+const FounderEventLogPage = React.lazy(() => import("@/pages/founder/event-log"));
 const JobHealthPage = React.lazy(() => import("@/pages/job-health"));
-const AgentCollaborationPage = React.lazy(() => import("@/pages/agent-collaboration"));
+const FounderScenariosPage = React.lazy(() => import("@/pages/founder/scenarios"));
 
 // Misc public
 const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
@@ -1544,17 +1555,12 @@ function Router() {
         {() => <Redirect to="/deals/discover" />}
       </Route>
       <Route path="/conscious-organization">
-        {/* Founder-gated 2026-05-11: this page exposes the org-consciousness
-            agent surface (Atlas/Sophie/Forge codenames) which must never
-            reach customer-facing users per the persona-architecture rule. */}
-        {() => <FounderProtectedRoute component={ConsciousOrganizationPage} />}
+        {/* Census W3-1 refit 2026-06-11 — page moved to /founder/scenarios. */}
+        {() => <Redirect to="/founder/scenarios" />}
       </Route>
       <Route path="/anticipatory-enterprise">
-        {/* Exposes internal agent-negotiation codenames (forge_revenue,
-            sophie_support, shield_compliance...). Founder-only to keep
-            the internal agent taxonomy off customer surfaces — customers
-            see one AI brand (Pax), not the dozen under the hood. */}
-        {() => <FounderProtectedRoute component={AnticipatoryEnterprisePage} />}
+        {/* Census W3-1 retire 2026-06-11 — page deleted; no nav entry. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       {/* /real-runtime removed (Lens 4 Fix 4) — see lazy-import note. */}
       <Route path="/agent-command-center">
@@ -1680,7 +1686,8 @@ function Router() {
 
       {/* Founder / Admin — additional */}
       <Route path="/founder/v13">
-        {() => <FounderProtectedRoute component={SovereignV13Page} />}
+        {/* Census W3-1 retire 2026-06-11 — SovereignV13Page deleted. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/founder/agents/:codename">
         {() => <FounderProtectedRoute component={AgentDetailPage} />}
@@ -1709,27 +1716,42 @@ function Router() {
         {() => <Redirect to="/founder/telemetry" />}
       </Route>
 
-      {/* Sovereign Protocol — Phase A Visibility Layer */}
-      <Route path="/sovereign">
-        {() => <FounderProtectedRoute component={SovereignDashboardPage} />}
+      {/* Sovereign Protocol — Census W3-1 retire/refit split (2026-06-11).
+          Refit surfaces live at their /founder/* routes; old paths 301. */}
+      <Route path="/founder/governance">
+        {() => <FounderProtectedRoute component={FounderGovernancePage} />}
       </Route>
+      <Route path="/founder/memory">
+        {() => <FounderProtectedRoute component={FounderMemoryPage} />}
+      </Route>
+      <Route path="/founder/event-log">
+        {() => <FounderProtectedRoute component={FounderEventLogPage} />}
+      </Route>
+      <Route path="/founder/scenarios">
+        {() => <FounderProtectedRoute component={FounderScenariosPage} />}
+      </Route>
+      {/* Old-path redirects for the refit surfaces. */}
       <Route path="/board-of-directors">
-        {() => <FounderProtectedRoute component={BoardOfDirectorsPage} />}
+        {() => <Redirect to="/founder/governance" />}
+      </Route>
+      <Route path="/memory-browser">
+        {() => <Redirect to="/founder/memory" />}
+      </Route>
+      <Route path="/event-log">
+        {() => <Redirect to="/founder/event-log" />}
+      </Route>
+      {/* Retired sovereign-legacy routes — pages deleted. */}
+      <Route path="/sovereign">
+        {() => <Redirect to="/founder/bridge" />}
+      </Route>
+      <Route path="/agent-collaboration">
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/agent-performance">
         {() => <FounderProtectedRoute component={AgentPerformancePage} />}
       </Route>
-      <Route path="/memory-browser">
-        {() => <FounderProtectedRoute component={MemoryBrowserPage} />}
-      </Route>
-      <Route path="/event-log">
-        {() => <FounderProtectedRoute component={EventLogPage} />}
-      </Route>
       <Route path="/job-health">
         {() => <FounderProtectedRoute component={JobHealthPage} />}
-      </Route>
-      <Route path="/agent-collaboration">
-        {() => <FounderProtectedRoute component={AgentCollaborationPage} />}
       </Route>
 
       <Route component={NotFound} />
