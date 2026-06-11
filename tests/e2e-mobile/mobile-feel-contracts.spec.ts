@@ -249,21 +249,16 @@ async function collectTouchTargetViolations(
   page: Page,
 ): Promise<TouchTargetViolation[]> {
   return await page.evaluate(
-    async ({ minPx }) => {
-      // Settle running animations/transitions before measuring. Entrance
-      // staggers (framer-motion) and active:scale transforms shrink
-      // getBoundingClientRect mid-flight — a 44px-by-design target at
-      // scale(.99) measures 43.56px and false-fails the contract (run
-      // 27338170893: min-h-11 TabsTriggers on /money + the 44×44 Pax
-      // overflow button reported as "44×44" violations — display rounded,
-      // comparison didn't). Race-guarded: infinite animations (pulse/ping)
-      // never resolve `finished`.
-      await Promise.race([
-        Promise.all(
-          document.getAnimations().map((a) => a.finished.catch(() => {})),
-        ),
-        new Promise((r) => setTimeout(r, 2000)),
-      ]);
+    ({ minPx }) => {
+      // NB: do NOT add an animation-settle wait here. A getAnimations()
+      // await was tried (to dodge a phone sub-pixel false-positive) and
+      // regressed ipad-mini: at 768px the DESKTOP sidebar is the primary
+      // nav (by design — see nav-smoke.spec.ts), and the extra wait let its
+      // collapsed 34px submodule children finish rendering so they got
+      // measured as touch-target violations on every route (run
+      // 27340175460). The synchronous measurement matches the state this
+      // contract has always audited. The phone sub-pixel issue is handled
+      // by round-then-compare below instead.
       const out: Array<TouchTargetViolation> = [];
       const sels = ['button', 'a', '[role="button"]', '[role="link"]'];
       const nodes = document.querySelectorAll(sels.join(","));
