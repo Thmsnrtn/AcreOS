@@ -26,7 +26,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLimiterStore } from "./middleware/limiterRedisStore";
 import { getClientIp } from "./utils/clientIp";
 import { createHash } from "node:crypto";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { initSentry, Sentry } from "./utils/sentry";
 import { validateEnv } from "./utils/validateEnv";
 
@@ -301,7 +301,7 @@ const authLimiter = rateLimit({
   // IP component goes through getClientIp (CF-Connecting-IP first — req.ip is
   // the Cloudflare edge IP behind trust-proxy=1, see utils/clientIp.ts) and
   // ipKeyGenerator for IPv6 /56 bucketing. userId stays the primary key.
-  keyGenerator: (req) => (req as any).auth?.userId || ipKeyGenerator(getClientIp(req)),
+  keyGenerator: (req) => req.auth?.userId || ipKeyGenerator(getClientIp(req)),
   skip: (req) => req.originalUrl.startsWith("/api/auth/user"),
   message: { message: "Too many requests. Please try again later." },
 });
@@ -331,7 +331,7 @@ const authAttemptLimiter = rateLimit({
   // Tier 1G: shared Redis budget across machines when REDIS_URL is set.
   store: createLimiterStore("auth-attempt"),
   keyGenerator: (req) => {
-    const body = (req as any).body ?? {};
+    const body = req.body ?? {};
     const submittedEmail =
       typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
     const submittedIdentifier =
@@ -404,7 +404,7 @@ const aiLimiter = rateLimit({
   max: 240,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => (req as any).auth?.userId || req.ip || "unknown",
+  keyGenerator: (req) => req.auth?.userId || req.ip || "unknown",
   skip: () => e2eTestAuthEnabled(), // never on Fly — see server/auth/testAuth.ts
   message: { message: "AI request limit reached. Please wait a moment." },
 });
@@ -447,8 +447,8 @@ const exportLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    const orgId = (req as any).organization?.id ?? "unknown-org";
-    const userId = (req as any).auth?.userId ?? req.ip ?? "unknown-user";
+    const orgId = req.organization?.id ?? "unknown-org";
+    const userId = req.auth?.userId ?? req.ip ?? "unknown-user";
     return `export:${orgId}:${userId}`;
   },
   message: { message: "Bulk-export rate limit exceeded. Per-org daily cap is 5. Email support@acreos.io for one-off lifts." },
@@ -474,7 +474,7 @@ const apiLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => (req as any).auth?.userId || req.ip || 'unknown',
+  keyGenerator: (req) => req.auth?.userId || req.ip || 'unknown',
   skip: (req) =>
     e2eTestAuthEnabled() || // E2E suite hammers many routes as one user; never on Fly
     req.originalUrl.startsWith("/api/auth/user") ||
@@ -565,11 +565,7 @@ app.use("/mcp", mcpLimiter);
       const auth = await resolveMcpAuth(provided);
       if (auth.status === "unconfigured") {
         // Not configured — block all access until a key is set.
-        res.status(503).json({
-          error: "service_unavailable",
-          message: "MCP endpoint not configured. Set MCP_API_KEY.",
-          statusCode: 503,
-        });
+        sendError(res, 503, "SERVICE_UNAVAILABLE", "MCP endpoint not configured. Set MCP_API_KEY.");
         return;
       }
       if (auth.status !== "ok") {
@@ -591,7 +587,15 @@ app.use("/mcp", mcpLimiter);
       });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       await mcpServer.connect(transport);
-      await transport.handleRequest(req, res, req.body);
+      // The MCP SDK types `auth` on the request as its own AuthInfo, which
+      // collides with the Clerk session shape in our Express augmentation.
+      // This route authenticates via API key (mcpAuthMiddleware) and never
+      // carries either, so strip the typing at the boundary.
+      await transport.handleRequest(
+        req as unknown as Parameters<typeof transport.handleRequest>[0],
+        res,
+        req.body,
+      );
     } catch (e: any) {
       Errors.internal(res, e);
     }

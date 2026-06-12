@@ -30,6 +30,14 @@ declare global {
       organizationId: number;
       permissionContext?: UserPermissionContext;
       isFounder?: boolean;
+      /**
+       * Clerk session, populated by the global clerkMiddleware (or the E2E
+       * test-auth shim) before app middleware runs. Optional — public routes
+       * and pre-auth contexts (rate-limiter keyGenerators) have no session.
+       * @clerk/express v2 does not augment Express.Request itself; this is
+       * the minimal shape the codebase reads.
+       */
+      auth?: { userId?: string | null; sessionId?: string | null };
     }
   }
 }

@@ -737,7 +737,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { apiKey } = req.body;
 
       if (!apiKey) {
-        return res.status(400).json({ valid: false, message: "API key is required" });
+        return Errors.badRequest(res, "API key is required", { valid: false });
       }
 
       // Make a simple API call to verify the key works
@@ -760,7 +760,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { apiKey } = req.body;
 
       if (!apiKey) {
-        return res.status(400).json({ valid: false, message: "API key is required" });
+        return Errors.badRequest(res, "API key is required", { valid: false });
       }
 
       // Make a simple API call to verify the key works
@@ -783,7 +783,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { apiKey } = req.body;
 
       if (!apiKey) {
-        return res.status(400).json({ valid: false, message: "API key is required" });
+        return Errors.badRequest(res, "API key is required", { valid: false });
       }
 
       // Twilio expects SID:TOKEN format, or just the auth token
@@ -815,7 +815,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { apiKey } = req.body;
 
       if (!apiKey) {
-        return res.status(400).json({ valid: false, message: "API key is required" });
+        return Errors.badRequest(res, "API key is required", { valid: false });
       }
 
       // Use a read-only endpoint to verify the key — GET /v3/scopes
@@ -839,7 +839,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const { apiKey } = req.body;
 
       if (!apiKey) {
-        return res.status(400).json({ valid: false, message: "API key is required" });
+        return Errors.badRequest(res, "API key is required", { valid: false });
       }
 
       // Make a simple API call to verify the key works

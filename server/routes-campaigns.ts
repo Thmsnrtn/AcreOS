@@ -17,7 +17,7 @@ const updateSequenceStepSchema = insertSequenceStepSchema.partial();
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requirePermission } from "./utils/permissions";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
 import { logger } from "./utils/logger";
 import { checkUsageLimit } from "./services/usageLimits";
@@ -699,8 +699,7 @@ export function registerCampaignRoutes(app: Express): void {
       if (!usingOrgLobCredentials) {
         const balance = await creditService.getBalance(org.id);
         if (balance < totalCost) {
-          return res.status(402).json({
-            error: "Insufficient credits",
+          return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
             required: totalCost / 100,
             balance: balance / 100,
             perPiece: costPerPiece / 100,
@@ -738,8 +737,7 @@ export function registerCampaignRoutes(app: Express): void {
       const validLeads = validLeadsRaw.filter(l => acceptedIds.has(l!.id));
 
       if (validLeads.length === 0) {
-        return res.status(409).json({
-          error: "All recipients were filtered by the pre-mail dedupe scanner",
+        return sendError(res, 409, "ALL_RECIPIENTS_FILTERED", "All recipients were filtered by the pre-mail dedupe scanner", {
           dedupe: {
             input: dedupe.totals.input,
             accepted: 0,
@@ -766,7 +764,7 @@ export function registerCampaignRoutes(app: Express): void {
         );
 
         if (!deductResult) {
-          return res.status(402).json({ error: "Insufficient credits" });
+          return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits");
         }
       } else {
         logger.info(`Skipping credit deduction for org - using org Lob credentials`, { orgId: org.id });

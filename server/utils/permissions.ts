@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import type { TeamMember, Organization } from "@shared/schema";
+import { Errors, sendError } from "./errors";
 
 // Phase 3 Week 14 (Liana §1+§3, Reyna §1): standardized to 4 pragmatic roles
 // + `va`. Legacy values (`acquisitions`, `marketing`, `finance`) are remapped
@@ -301,20 +302,19 @@ export function requirePermission(permission: keyof RolePermissions) {
     const org = req.organization as Organization;
 
     if (!user || !org) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return Errors.unauthorized(res);
     }
 
     const context = await getUserPermissionContext(user, org);
     if (!context) {
-      return res.status(403).json({ message: "You are not a member of this organization" });
+      return Errors.forbidden(res, "You are not a member of this organization");
     }
 
     req.permissionContext = context;
 
     if (!context.permissions[permission]) {
       const permissionLabel = permission.replace(/([A-Z])/g, " $1").toLowerCase();
-      return res.status(403).json({ 
-        message: `You don't have permission to ${permissionLabel}. Contact your organization admin for access.`,
+      return sendError(res, 403, "FORBIDDEN", `You don't have permission to ${permissionLabel}. Contact your organization admin for access.`, {
         requiredPermission: permission,
         userRole: context.role,
       });
@@ -330,19 +330,18 @@ export function requireAdminOrAbove() {
     const org = req.organization as Organization;
 
     if (!user || !org) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return Errors.unauthorized(res);
     }
 
     const context = await getUserPermissionContext(user, org);
     if (!context) {
-      return res.status(403).json({ message: "You are not a member of this organization" });
+      return Errors.forbidden(res, "You are not a member of this organization");
     }
 
     req.permissionContext = context;
 
     if (!isAdminOrAbove(context.role)) {
-      return res.status(403).json({ 
-        message: "This action requires admin or owner privileges.",
+      return sendError(res, 403, "FORBIDDEN", "This action requires admin or owner privileges.", {
         userRole: context.role,
       });
     }
@@ -357,19 +356,18 @@ export function requireOwner() {
     const org = req.organization as Organization;
 
     if (!user || !org) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return Errors.unauthorized(res);
     }
 
     const context = await getUserPermissionContext(user, org);
     if (!context) {
-      return res.status(403).json({ message: "You are not a member of this organization" });
+      return Errors.forbidden(res, "You are not a member of this organization");
     }
 
     req.permissionContext = context;
 
     if (!isOwner(context.role)) {
-      return res.status(403).json({ 
-        message: "This action requires owner privileges.",
+      return sendError(res, 403, "FORBIDDEN", "This action requires owner privileges.", {
         userRole: context.role,
       });
     }

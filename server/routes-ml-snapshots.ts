@@ -25,8 +25,8 @@ import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 
 function requireFounder(req: AuthenticatedRequest, res: any): boolean {
-  const user = req.user as any;
-  const userId = (req as any).auth?.userId ?? user?.clerkUserId ?? null;
+  const user = req.user;
+  const userId = req.auth?.userId ?? user?.clerkUserId ?? null;
   const email = user?.email ?? null;
   if (!isFounderIdentity({ email, userId })) {
     Errors.notFound(res, "Resource");

@@ -10,7 +10,7 @@ import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { splitPaymentCents, computeAppliedLateFeeCents } from "./services/notePaymentMath";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import {
   exchangeForBorrowerSession,
   verifyBorrowerSession,
@@ -115,17 +115,17 @@ async function validateBorrowerSession(req: Request, res: Response, next: NextFu
   try {
     const sessionToken = req.cookies?.borrower_session || req.headers['x-borrower-session'] as string;
     if (!sessionToken) {
-      return res.status(401).json({ message: "Session required" });
+      return Errors.unauthorized(res);
     }
     const session = await storage.getBorrowerSession(sessionToken);
     if (!session) {
       res.clearCookie('borrower_session');
-      return res.status(401).json({ message: "Invalid or expired session" });
+      return Errors.unauthorized(res);
     }
     if (new Date(session.expiresAt) < new Date()) {
       await storage.deleteBorrowerSession(sessionToken);
       res.clearCookie('borrower_session');
-      return res.status(401).json({ message: "Session expired" });
+      return Errors.unauthorized(res);
     }
 
     // SEC: re-assert org pin. session.organizationId is set at create-time
@@ -148,7 +148,7 @@ async function validateBorrowerSession(req: Request, res: Response, next: NextFu
         });
         await storage.deleteBorrowerSession(sessionToken);
         res.clearCookie('borrower_session');
-        return res.status(401).json({ message: "Session no longer valid" });
+        return Errors.unauthorized(res);
       }
     }
 
@@ -157,7 +157,7 @@ async function validateBorrowerSession(req: Request, res: Response, next: NextFu
     next();
   } catch (err) {
     logger.error("Borrower session validation error", err);
-    return res.status(500).json({ message: "Session validation failed" });
+    return Errors.internal(res, err);
   }
 }
 
@@ -172,7 +172,7 @@ export function registerBorrowerRoutes(app: Express): void {
       const { accessToken, email } = req.body;
       
       if (!accessToken || !email) {
-        return res.status(400).json({ message: "Access token and email are required" });
+        return Errors.badRequest(res, "Access token and email are required");
       }
       
       // Look up note by access token
@@ -181,18 +181,18 @@ export function registerBorrowerRoutes(app: Express): void {
       // Security: Use generic "not found" for all failure cases to avoid information leakage
       // Do NOT expose whether access token exists or email matches
       if (!note) {
-        return res.status(404).json({ message: "Loan not found or credentials invalid" });
+        return sendError(res, 404, "NOT_FOUND", "Loan not found or credentials invalid");
       }
       
       // Verify borrower email - return same generic error if mismatch
       if (note.borrowerId) {
         const borrower = await storage.getLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== email.toLowerCase()) {
-          return res.status(404).json({ message: "Loan not found or credentials invalid" });
+          return sendError(res, 404, "NOT_FOUND", "Loan not found or credentials invalid");
         }
       } else {
         // No borrower linked - cannot verify, treat as not found
-        return res.status(404).json({ message: "Loan not found or credentials invalid" });
+        return sendError(res, 404, "NOT_FOUND", "Loan not found or credentials invalid");
       }
       
       // Create a session for the borrower
@@ -243,7 +243,7 @@ export function registerBorrowerRoutes(app: Express): void {
         sessionToken, // Also return in response for clients that prefer header-based auth
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
@@ -330,7 +330,7 @@ export function registerBorrowerRoutes(app: Express): void {
         // Also try getting note by ID directly
         const noteById = await db.select().from(notes).where(eq(notes.id, session.noteId));
         if (noteById.length === 0) {
-          return res.status(404).json({ message: "Loan not found" });
+          return Errors.notFound(res, "Loan");
         }
         
         const foundNote = noteById[0];
@@ -388,7 +388,7 @@ export function registerBorrowerRoutes(app: Express): void {
         },
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
@@ -404,7 +404,7 @@ export function registerBorrowerRoutes(app: Express): void {
       res.clearCookie('borrower_session', { path: '/' });
       res.json({ message: "Logged out successfully" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
@@ -417,13 +417,13 @@ export function registerBorrowerRoutes(app: Express): void {
       // Get note by session's noteId
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
       if (noteResults.length === 0) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "Loan");
       }
       const note = noteResults[0];
       
       const paymentAmount = amount ? Number(amount) : Number(note.monthlyPayment || 0);
       if (paymentAmount <= 0) {
-        return res.status(400).json({ message: "Invalid payment amount" });
+        return Errors.badRequest(res, "Invalid payment amount");
       }
       
       // Get Stripe client
@@ -474,7 +474,7 @@ export function registerBorrowerRoutes(app: Express): void {
       res.json({ url: stripeSession.url, sessionId: stripeSession.id });
     } catch (err: any) {
       logger.error("Session-based portal payment error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -497,17 +497,17 @@ export function registerBorrowerRoutes(app: Express): void {
       const { amount } = req.body;
       
       if (!accessToken) {
-        return res.status(400).json({ message: "Access token is required" });
+        return Errors.badRequest(res, "Access token is required");
       }
       
       const note = await storage.getNoteByAccessToken(accessToken);
       if (!note) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "Loan");
       }
       
       const paymentAmount = amount ? Number(amount) : Number(note.monthlyPayment || 0);
       if (paymentAmount <= 0) {
-        return res.status(400).json({ message: "Invalid payment amount" });
+        return Errors.badRequest(res, "Invalid payment amount");
       }
       
       // Get Stripe client
@@ -558,7 +558,7 @@ export function registerBorrowerRoutes(app: Express): void {
       res.json({ url: session.url, sessionId: session.id });
     } catch (err: any) {
       logger.error("Portal payment error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
@@ -569,12 +569,12 @@ export function registerBorrowerRoutes(app: Express): void {
       const { sessionId } = req.body;
       
       if (!accessToken || !sessionId) {
-        return res.status(400).json({ message: "Access token and session ID are required" });
+        return Errors.badRequest(res, "Access token and session ID are required");
       }
       
       const note = await storage.getNoteByAccessToken(accessToken);
       if (!note) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "Loan");
       }
       
       // Verify Stripe session
@@ -584,7 +584,7 @@ export function registerBorrowerRoutes(app: Express): void {
       const session = await stripe.checkout.sessions.retrieve(sessionId);
       
       if (session.payment_status !== 'paid') {
-        return res.status(400).json({ message: "Payment not completed" });
+        return Errors.badRequest(res, "Payment not completed");
       }
       
       // Check if payment already recorded for this session
@@ -679,7 +679,7 @@ export function registerBorrowerRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Payment verification error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -690,10 +690,10 @@ export function registerBorrowerRoutes(app: Express): void {
     try {
       const session = (req as any).borrowerSession;
       const { sessionId } = req.body;
-      if (!sessionId) return res.status(400).json({ message: "Session ID is required" });
+      if (!sessionId) return Errors.badRequest(res, "Session ID is required");
 
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
-      if (noteResults.length === 0) return res.status(404).json({ message: "Loan not found" });
+      if (noteResults.length === 0) return Errors.notFound(res, "Loan");
       const note = noteResults[0];
 
       const { getUncachableStripeClient } = await import("./stripeClient");
@@ -701,7 +701,7 @@ export function registerBorrowerRoutes(app: Express): void {
       const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
 
       if (stripeSession.payment_status !== "paid") {
-        return res.status(400).json({ message: "Payment not completed" });
+        return Errors.badRequest(res, "Payment not completed");
       }
 
       const paymentAmount = stripeSession.amount_total
@@ -849,7 +849,7 @@ export function registerBorrowerRoutes(app: Express): void {
       res.json({ success: true, payment, newBalance, lateFeeApplied: lateFeeAmount });
     } catch (err: any) {
       logger.error("Payment verification error (session)", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -861,7 +861,7 @@ export function registerBorrowerRoutes(app: Express): void {
       const { enabled } = req.body;
 
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
-      if (noteResults.length === 0) return res.status(404).json({ message: "Loan not found" });
+      if (noteResults.length === 0) return Errors.notFound(res, "Loan");
       const note = noteResults[0];
 
       await storage.updateNote(
@@ -877,7 +877,7 @@ export function registerBorrowerRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Autopay toggle error (session)", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -888,22 +888,22 @@ export function registerBorrowerRoutes(app: Express): void {
       const { enabled, email } = req.body;
       
       if (!accessToken) {
-        return res.status(400).json({ message: "Access token is required" });
+        return Errors.badRequest(res, "Access token is required");
       }
       
       const note = await storage.getNoteByAccessToken(accessToken);
       if (!note) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "Loan");
       }
       
       // Verify borrower email for security
       if (note.borrowerId) {
         const borrower = await storage.getLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== email?.toLowerCase()) {
-          return res.status(403).json({ message: "Unauthorized" });
+          return Errors.forbidden(res, "Unauthorized");
         }
       } else {
-        return res.status(403).json({ message: "Unauthorized" });
+        return Errors.forbidden(res, "Unauthorized");
       }
       
       await storage.updateNote(note.id, {
@@ -917,7 +917,7 @@ export function registerBorrowerRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Autopay toggle error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
@@ -927,12 +927,12 @@ export function registerBorrowerRoutes(app: Express): void {
       const { accessToken, email } = req.query;
       
       if (!accessToken || !email) {
-        return res.status(400).json({ message: "Access token and email are required" });
+        return Errors.badRequest(res, "Access token and email are required");
       }
       
       const note = await storage.getNoteByAccessToken(accessToken as string);
       if (!note) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "Loan");
       }
       
       // Verify borrower email
@@ -940,10 +940,10 @@ export function registerBorrowerRoutes(app: Express): void {
       if (note.borrowerId) {
         borrower = await storage.getLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== (email as string).toLowerCase()) {
-          return res.status(403).json({ message: "Unauthorized" });
+          return Errors.forbidden(res, "Unauthorized");
         }
       } else {
-        return res.status(403).json({ message: "Unauthorized" });
+        return Errors.forbidden(res, "Unauthorized");
       }
 
       // Calculate payoff amount
@@ -1019,7 +1019,7 @@ export function registerBorrowerRoutes(app: Express): void {
       });
     } catch (err: any) {
       logger.error("Payoff quote error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
@@ -1176,7 +1176,7 @@ export function registerBorrowerRoutes(app: Express): void {
       }
     } catch (err: any) {
       logger.error("Statement generation error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
@@ -1226,7 +1226,7 @@ export function registerBorrowerRoutes(app: Express): void {
       res.json({ statements: rows });
     } catch (err) {
       logger.error("Failed to list periodic statements", err instanceof Error ? err : undefined);
-      res.status(500).json({ message: "Failed to load statements" });
+      Errors.internal(res, err);
     }
   });
 
@@ -1257,7 +1257,7 @@ export function registerBorrowerRoutes(app: Express): void {
           .limit(1);
 
         if (rows.length === 0) {
-          return res.status(404).json({ message: "Statement not found" });
+          return Errors.notFound(res, "Statement");
         }
 
         const statement = rows[0];
@@ -1300,7 +1300,7 @@ export function registerBorrowerRoutes(app: Express): void {
           "Failed to render periodic statement PDF",
           err instanceof Error ? err : undefined,
         );
-        res.status(500).json({ message: "Failed to render statement" });
+        Errors.internal(res, err);
       }
     },
   );
@@ -1318,7 +1318,7 @@ export function registerBorrowerRoutes(app: Express): void {
       await storage.markBorrowerMessagesRead(session.noteId, "lender");
       res.json(msgs);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1328,7 +1328,7 @@ export function registerBorrowerRoutes(app: Express): void {
       const session = (req as any).borrowerSession;
       const { content } = req.body as { content: string };
       if (!content || !content.trim()) {
-        return res.status(400).json({ message: "Message content is required" });
+        return Errors.badRequest(res, "Message content is required");
       }
       // Sanitize content — strip HTML tags and limit length to prevent XSS
       const sanitized = content.trim()
@@ -1336,12 +1336,12 @@ export function registerBorrowerRoutes(app: Express): void {
         .replace(/[<>]/g, '')   // Remove any remaining angle brackets
         .slice(0, 5000);        // Cap message length
       if (!sanitized) {
-        return res.status(400).json({ message: "Message content is required" });
+        return Errors.badRequest(res, "Message content is required");
       }
       // Look up org for the note
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
       if (noteResults.length === 0) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "Loan");
       }
       const note = noteResults[0];
       const msg = await storage.createBorrowerMessage({
@@ -1353,7 +1353,7 @@ export function registerBorrowerRoutes(app: Express): void {
       });
       res.status(201).json(msg);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1365,7 +1365,7 @@ export function registerBorrowerRoutes(app: Express): void {
       
       const note = await storage.getNote(org.id, noteId);
       if (!note) {
-        return res.status(404).json({ message: "Note not found" });
+        return Errors.notFound(res, "Note");
       }
       
       // Use the access token for the portal URL
@@ -1373,7 +1373,7 @@ export function registerBorrowerRoutes(app: Express): void {
       
       res.json({ url: portalUrl });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 

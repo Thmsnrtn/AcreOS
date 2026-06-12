@@ -9,7 +9,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getAllUsageLimits, type SubscriptionTier, TIER_LIMITS } from "./services/usageLimits";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { requirePermission } from "./utils/permissions";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
@@ -469,7 +469,7 @@ export function registerBillingRoutes(app: Express): void {
     } catch (err: any) {
       logger.error("Stripe Connect link error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
-        return res.status(503).json({ message: err.message });
+        return sendError(res, 503, "SERVICE_UNAVAILABLE", err.message);
       }
       Errors.internal(res, err);
     }
@@ -485,7 +485,7 @@ export function registerBillingRoutes(app: Express): void {
     } catch (err: any) {
       logger.error("Stripe Connect status error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
-        return res.status(503).json({ message: err.message });
+        return sendError(res, 503, "SERVICE_UNAVAILABLE", err.message);
       }
       Errors.internal(res, err);
     }
@@ -509,7 +509,7 @@ export function registerBillingRoutes(app: Express): void {
     } catch (err: any) {
       logger.error("Stripe Connect refresh error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
-        return res.status(503).json({ message: err.message });
+        return sendError(res, 503, "SERVICE_UNAVAILABLE", err.message);
       }
       Errors.internal(res, err);
     }
@@ -541,7 +541,7 @@ export function registerBillingRoutes(app: Express): void {
     } catch (err: any) {
       logger.error("Stripe Connect disconnect error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
-        return res.status(503).json({ message: err.message });
+        return sendError(res, 503, "SERVICE_UNAVAILABLE", err.message);
       }
       Errors.internal(res, err);
     }
@@ -580,7 +580,7 @@ export function registerBillingRoutes(app: Express): void {
     } catch (err: any) {
       logger.error("Stripe payment intent error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
-        return res.status(503).json({ message: err.message });
+        return sendError(res, 503, "SERVICE_UNAVAILABLE", err.message);
       }
       Errors.internal(res, err);
     }
@@ -604,7 +604,7 @@ export function registerBillingRoutes(app: Express): void {
     } catch (err: any) {
       logger.error("Stripe payment link error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
-        return res.status(503).json({ message: err.message });
+        return sendError(res, 503, "SERVICE_UNAVAILABLE", err.message);
       }
       Errors.internal(res, err);
     }
@@ -646,7 +646,7 @@ export function registerBillingRoutes(app: Express): void {
       res.json(status);
     } catch (error: any) {
       if (error.message.includes("already used")) {
-        return res.status(409).json({ message: error.message });
+        return sendError(res, 409, "TRIAL_ALREADY_USED", error.message);
       }
       Errors.internal(res, error);
     }

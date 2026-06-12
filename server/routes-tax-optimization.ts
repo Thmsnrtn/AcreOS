@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { taxOptimizationEngine as taxOptimizationService } from './services/taxOptimizationEngine';
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 
 const router = Router();
 
@@ -22,12 +22,12 @@ const router = Router();
 
 // GET /tax-optimization/strategies — list recommended strategies for org
 router.get('/tax-optimization/strategies', async (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'Strategies endpoint not implemented' });
+  sendError(res, 501, 'NOT_IMPLEMENTED', 'Strategies endpoint not implemented');
 });
 
 // GET /tax-optimization/strategies/:id — single strategy detail
 router.get('/tax-optimization/strategies/:id', async (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'Strategy detail endpoint not implemented' });
+  sendError(res, 501, 'NOT_IMPLEMENTED', 'Strategy detail endpoint not implemented');
 });
 
 // POST /tax-optimization/analyze — run full portfolio tax analysis
@@ -47,22 +47,22 @@ router.post('/tax-optimization/analyze', async (req: Request, res: Response) => 
 
 // GET /tax-optimization/scenarios — list tax forecast scenarios
 router.get('/tax-optimization/scenarios', async (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'Scenarios list endpoint not implemented' });
+  sendError(res, 501, 'NOT_IMPLEMENTED', 'Scenarios list endpoint not implemented');
 });
 
 // POST /tax-optimization/scenarios — create new tax scenario
 router.post('/tax-optimization/scenarios', async (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'Scenario create endpoint not implemented' });
+  sendError(res, 501, 'NOT_IMPLEMENTED', 'Scenario create endpoint not implemented');
 });
 
 // GET /tax-optimization/scenarios/:id — get scenario detail
 router.get('/tax-optimization/scenarios/:id', async (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'Scenario detail endpoint not implemented' });
+  sendError(res, 501, 'NOT_IMPLEMENTED', 'Scenario detail endpoint not implemented');
 });
 
 // DELETE /tax-optimization/scenarios/:id — delete scenario
 router.delete('/tax-optimization/scenarios/:id', async (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'Scenario delete endpoint not implemented' });
+  sendError(res, 501, 'NOT_IMPLEMENTED', 'Scenario delete endpoint not implemented');
 });
 
 // =====================
@@ -71,12 +71,12 @@ router.delete('/tax-optimization/scenarios/:id', async (_req: Request, res: Resp
 
 // GET /tax-optimization/cost-basis/:propertyId — cost basis for property
 router.get('/tax-optimization/cost-basis/:propertyId', async (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'Cost-basis get endpoint not implemented' });
+  sendError(res, 501, 'NOT_IMPLEMENTED', 'Cost-basis get endpoint not implemented');
 });
 
 // POST /tax-optimization/cost-basis — record cost basis
 router.post('/tax-optimization/cost-basis', async (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'Cost-basis record endpoint not implemented' });
+  sendError(res, 501, 'NOT_IMPLEMENTED', 'Cost-basis record endpoint not implemented');
 });
 
 // =====================
@@ -85,12 +85,12 @@ router.post('/tax-optimization/cost-basis', async (_req: Request, res: Response)
 
 // GET /tax-optimization/oz-holdings — opportunity zone holdings
 router.get('/tax-optimization/oz-holdings', async (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'OZ-holdings list endpoint not implemented' });
+  sendError(res, 501, 'NOT_IMPLEMENTED', 'OZ-holdings list endpoint not implemented');
 });
 
 // POST /tax-optimization/oz-holdings — add OZ holding
 router.post('/tax-optimization/oz-holdings', async (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'OZ-holding create endpoint not implemented' });
+  sendError(res, 501, 'NOT_IMPLEMENTED', 'OZ-holding create endpoint not implemented');
 });
 
 // =====================
@@ -99,7 +99,7 @@ router.post('/tax-optimization/oz-holdings', async (_req: Request, res: Response
 
 // GET /tax-optimization/depreciation/:propertyId — depreciation schedule
 router.get('/tax-optimization/depreciation/:propertyId', async (_req: Request, res: Response) => {
-  res.status(501).json({ error: 'Depreciation-schedule endpoint not implemented' });
+  sendError(res, 501, 'NOT_IMPLEMENTED', 'Depreciation-schedule endpoint not implemented');
 });
 
 export default router;

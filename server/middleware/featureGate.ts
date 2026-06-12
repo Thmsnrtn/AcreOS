@@ -19,26 +19,29 @@
 import type { Request, Response, NextFunction } from "express";
 import { featureFlagService, buildFlagContext } from "../services/featureFlags";
 import { isFounderEmail } from "../services/founder";
+import { sendError } from "../utils/errors";
 
 export function requireFlag(flagKey: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     // Founder bypass — provision-time access while flags are being set up.
-    const email = (req.user as any)?.email || (req.user as any)?.email;
+    // Optional chaining stays: this gate also mounts on public routes where
+    // the auth middleware (and therefore req.user) may be absent at runtime.
+    const email = req.user?.email;
     if (isFounderEmail(email)) return next();
 
     // Enterprise-tier orgs continue to bypass legacy reseller / white-label
     // routes (kept for back-compat with the original featureGate). Future
     // flags should not rely on this — set state to "tier:scale" or similar.
-    const tier = (req.organization as any)?.subscriptionTier;
+    const tier = req.organization?.subscriptionTier;
     if (tier === "enterprise") return next();
 
     try {
-      const ctx = buildFlagContext(req as any);
+      const ctx = buildFlagContext(req);
       // Prime isFounder if email matched but the request lacks organization.
       if (!ctx.isFounder && isFounderEmail(ctx.email)) ctx.isFounder = true;
       const enabled = await featureFlagService.isEnabled(flagKey, ctx);
       if (enabled) return next();
-      return res.status(404).json({ message: "Feature not available" });
+      return sendError(res, 404, "NOT_FOUND", "Feature not available");
     } catch {
       // DB unavailable — fail open to avoid breaking the app during initial
       // setup (mirrors the original behavior). Production should not hit

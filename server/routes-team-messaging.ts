@@ -14,7 +14,7 @@ import {
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { idempotencyMiddleware } from "./middleware/idempotency";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
 import * as listingSyndication from "./services/listingSyndication";
@@ -1319,7 +1319,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
           eq(teamConversations.name, name),
         ));
       if (dupe) {
-        return res.status(409).json({ message: `Channel ${name} already exists` });
+        return sendError(res, 409, "CHANNEL_ALREADY_EXISTS", `Channel ${name} already exists`);
       }
 
       const [channel] = await db

@@ -6,7 +6,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { logger } from "./utils/logger";
 import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 
 export function registerDocumentRoutes(app: Express): void {
   const api = app;
@@ -25,8 +25,7 @@ export function registerDocumentRoutes(app: Express): void {
       const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
       if (!hasCredits) {
         const balance = await creditService.getBalance(org.id);
-        return res.status(402).json({
-          error: "Insufficient credits",
+        return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
           required: pdfCost / 100,
           balance: balance / 100,
         });
@@ -45,9 +44,10 @@ export function registerDocumentRoutes(app: Express): void {
       res.send(pdfBuffer);
     } catch (err: any) {
       logger.error("PDF generation error", err);
-      res.status(err.message === "Note not found" ? 404 : 500).json({ 
-        message: err.message || "Failed to generate PDF" 
-      });
+      if (err.message === "Note not found") {
+        return Errors.notFound(res, "Note");
+      }
+      Errors.internal(res, err);
     }
   });
   
@@ -68,8 +68,7 @@ export function registerDocumentRoutes(app: Express): void {
       const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
       if (!hasCredits) {
         const balance = await creditService.getBalance(org.id);
-        return res.status(402).json({
-          error: "Insufficient credits",
+        return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
           required: pdfCost / 100,
           balance: balance / 100,
         });
@@ -89,9 +88,10 @@ export function registerDocumentRoutes(app: Express): void {
     } catch (err: any) {
       if (handleLandStatusError(res, err)) return;
       logger.error("PDF generation error", err);
-      res.status(err.message === "Property not found" ? 404 : 500).json({
-        message: err.message || "Failed to generate PDF"
-      });
+      if (err.message === "Property not found") {
+        return Errors.notFound(res, "Property");
+      }
+      Errors.internal(res, err);
     }
   });
 
@@ -115,8 +115,7 @@ export function registerDocumentRoutes(app: Express): void {
       const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
       if (!hasCredits) {
         const balance = await creditService.getBalance(org.id);
-        return res.status(402).json({
-          error: "Insufficient credits",
+        return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
           required: pdfCost / 100,
           balance: balance / 100,
         });
@@ -142,10 +141,13 @@ export function registerDocumentRoutes(app: Express): void {
     } catch (err: any) {
       if (handleLandStatusError(res, err)) return;
       logger.error("PDF generation error", err);
-      const notFound = err.message === "Lead not found" || err.message === "Property not found";
-      res.status(notFound ? 404 : 500).json({
-        message: err.message || "Failed to generate PDF"
-      });
+      if (err.message === "Lead not found") {
+        return Errors.notFound(res, "Lead");
+      }
+      if (err.message === "Property not found") {
+        return Errors.notFound(res, "Property");
+      }
+      Errors.internal(res, err);
     }
   });
   
@@ -169,8 +171,7 @@ export function registerDocumentRoutes(app: Express): void {
       const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
       if (!hasCredits) {
         const balance = await creditService.getBalance(org.id);
-        return res.status(402).json({
-          error: "Insufficient credits",
+        return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
           required: pdfCost / 100,
           balance: balance / 100,
         });
@@ -194,9 +195,10 @@ export function registerDocumentRoutes(app: Express): void {
     } catch (err: any) {
       if (handleLandStatusError(res, err)) return;
       logger.error("PDF generation error", err);
-      res.status(err.message === "Property not found" ? 404 : 500).json({
-        message: err.message || "Failed to generate PDF"
-      });
+      if (err.message === "Property not found") {
+        return Errors.notFound(res, "Property");
+      }
+      Errors.internal(res, err);
     }
   });
   
@@ -216,8 +218,7 @@ export function registerDocumentRoutes(app: Express): void {
       const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
       if (!hasCredits) {
         const balance = await creditService.getBalance(org.id);
-        return res.status(402).json({
-          error: "Insufficient credits",
+        return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
           required: pdfCost / 100,
           balance: balance / 100,
         });
@@ -240,9 +241,10 @@ export function registerDocumentRoutes(app: Express): void {
       res.send(pdfBuffer);
     } catch (err: any) {
       logger.error("PDF generation error", err);
-      res.status(err.message === "Property not found" ? 404 : 500).json({ 
-        message: err.message || "Failed to generate PDF" 
-      });
+      if (err.message === "Property not found") {
+        return Errors.notFound(res, "Property");
+      }
+      Errors.internal(res, err);
     }
   });
   
@@ -262,8 +264,7 @@ export function registerDocumentRoutes(app: Express): void {
       const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
       if (!hasCredits) {
         const balance = await creditService.getBalance(org.id);
-        return res.status(402).json({
-          error: "Insufficient credits",
+        return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
           required: pdfCost / 100,
           balance: balance / 100,
         });
@@ -282,9 +283,10 @@ export function registerDocumentRoutes(app: Express): void {
       res.send(pdfBuffer);
     } catch (err: any) {
       logger.error("PDF generation error", err);
-      res.status(err.message === "Note not found" ? 404 : 500).json({ 
-        message: err.message || "Failed to generate PDF" 
-      });
+      if (err.message === "Note not found") {
+        return Errors.notFound(res, "Note");
+      }
+      Errors.internal(res, err);
     }
   });
   
@@ -308,8 +310,7 @@ export function registerDocumentRoutes(app: Express): void {
       const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
       if (!hasCredits) {
         const balance = await creditService.getBalance(org.id);
-        return res.status(402).json({
-          error: "Insufficient credits",
+        return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
           required: pdfCost / 100,
           balance: balance / 100,
         });
@@ -329,9 +330,10 @@ export function registerDocumentRoutes(app: Express): void {
     } catch (err: any) {
       if (handleLandStatusError(res, err)) return;
       logger.error("PDF generation error", err);
-      res.status(err.message === "Property not found" ? 404 : 500).json({
-        message: err.message || "Failed to generate PDF"
-      });
+      if (err.message === "Property not found") {
+        return Errors.notFound(res, "Property");
+      }
+      Errors.internal(res, err);
     }
   });
   

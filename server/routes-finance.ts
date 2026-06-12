@@ -4,7 +4,7 @@ import { z } from "zod";
 import { insertNoteSchema, insertPaymentSchema, paymentReminders, notes as notesTable } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate } from "./middleware/usageLimitGate";
@@ -150,7 +150,7 @@ export function registerFinanceRoutes(app: Express): void {
       
       const usageCheck = await checkUsageLimit(org.id, "notes");
       if (!usageCheck.allowed) {
-        return res.status(429).json({
+        return Errors.limitExceeded(res, {
           message: `Note limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more notes.`,
           current: usageCheck.current,
           limit: usageCheck.limit,
@@ -165,9 +165,7 @@ export function registerFinanceRoutes(app: Express): void {
         if (property?.state) {
           const usury = checkUsury(property.state, Number(req.body.interestRate));
           if (usury.warningLevel === 'violation') {
-            return res.status(422).json({
-              message: `Interest rate ${req.body.interestRate}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`,
-              code: 'USURY_VIOLATION',
+            return sendError(res, 422, "USURY_VIOLATION", `Interest rate ${req.body.interestRate}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`, {
               limit: usury.maxAllowedRate,
               rate: req.body.interestRate,
               state: property.state,
@@ -224,15 +222,10 @@ export function registerFinanceRoutes(app: Express): void {
         note = await storage.createNote(input);
       } catch (e: any) {
         if (e?.code === "ATR_DETERMINATION_REQUIRED") {
-          return res.status(422).json({
-            error: "ATR_DETERMINATION_REQUIRED",
-            message: e.message,
-            details: {
-              regulatoryCite: "12 CFR §1026.43(c)",
-              acceptedExemptionCodes: ["raw_land", "business_purpose", "commercial_borrower"],
-              useEndpoint: "POST /api/notes/:id/originate",
-            },
-            statusCode: 422,
+          return sendError(res, 422, "ATR_DETERMINATION_REQUIRED", e.message, {
+            regulatoryCite: "12 CFR §1026.43(c)",
+            acceptedExemptionCodes: ["raw_land", "business_purpose", "commercial_borrower"],
+            useEndpoint: "POST /api/notes/:id/originate",
           });
         }
         throw e;
@@ -288,9 +281,7 @@ export function registerFinanceRoutes(app: Express): void {
       if (property?.state) {
         const usury = checkUsury(property.state, Number(rateToCheck));
         if (usury.warningLevel === 'violation') {
-          return res.status(422).json({
-            message: `Interest rate ${rateToCheck}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`,
-            code: 'USURY_VIOLATION',
+          return sendError(res, 422, "USURY_VIOLATION", `Interest rate ${rateToCheck}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`, {
             limit: usury.maxAllowedRate,
             rate: rateToCheck,
             state: property.state,
@@ -304,15 +295,10 @@ export function registerFinanceRoutes(app: Express): void {
       note = await storage.updateNote(noteId, validated, org.id);
     } catch (e: any) {
       if (e?.code === "ATR_DETERMINATION_REQUIRED") {
-        return res.status(422).json({
-          error: "ATR_DETERMINATION_REQUIRED",
-          message: e.message,
-          details: {
-            regulatoryCite: "12 CFR §1026.43(c)",
-            acceptedExemptionCodes: ["raw_land", "business_purpose", "commercial_borrower"],
-            useEndpoint: "POST /api/notes/:id/originate",
-          },
-          statusCode: 422,
+        return sendError(res, 422, "ATR_DETERMINATION_REQUIRED", e.message, {
+          regulatoryCite: "12 CFR §1026.43(c)",
+          acceptedExemptionCodes: ["raw_land", "business_purpose", "commercial_borrower"],
+          useEndpoint: "POST /api/notes/:id/originate",
         });
       }
       throw e;
@@ -407,11 +393,7 @@ export function registerFinanceRoutes(app: Express): void {
         const existing = await storage.getNote(orgId, noteId);
         if (!existing) return Errors.notFound(res, "Note");
         if (existing.status === "active") {
-          return res.status(409).json({
-            error: "ALREADY_ACTIVE",
-            message: "Note has already been originated; status is 'active'.",
-            statusCode: 409,
-          });
+          return sendError(res, 409, "ALREADY_ACTIVE", "Note has already been originated; status is 'active'.");
         }
 
         const parsed = originateBodySchema.safeParse(req.body);
@@ -429,12 +411,7 @@ export function registerFinanceRoutes(app: Express): void {
             await persistAtrDetermination(atrInput);
           } catch (atrErr) {
             if (atrErr instanceof AtrIncompleteError) {
-              return res.status(422).json({
-                error: "ATR_INCOMPLETE",
-                message: atrErr.message,
-                details: { code: atrErr.code, missing: atrErr.missing },
-                statusCode: 422,
-              });
+              return sendError(res, 422, "ATR_INCOMPLETE", atrErr.message, { code: atrErr.code, missing: atrErr.missing });
             }
             throw atrErr;
           }
@@ -457,11 +434,7 @@ export function registerFinanceRoutes(app: Express): void {
           activated = await storage.updateNote(noteId, { status: "active" }, orgId);
         } catch (e: any) {
           if (e?.code === "ATR_DETERMINATION_REQUIRED") {
-            return res.status(422).json({
-              error: "ATR_DETERMINATION_REQUIRED",
-              message: e.message,
-              statusCode: 422,
-            });
+            return sendError(res, 422, "ATR_DETERMINATION_REQUIRED", e.message);
           }
           throw e;
         }

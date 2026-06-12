@@ -42,7 +42,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 
 // ----------------------------------------------------------------------------
@@ -222,11 +222,7 @@ export function registerRentalRoutes(app: Express): void {
           });
         } catch (err: any) {
           if (err instanceof FcraAttestationStaleError || err instanceof TenantScreeningNotAttestedError) {
-            return res.status(422).json({
-              error: err.code,
-              message: err.message,
-              statusCode: 422,
-            });
+            return sendError(res, 422, err.code, err.message);
           }
           throw err;
         }
@@ -328,11 +324,7 @@ export function registerRentalRoutes(app: Express): void {
 
       const orgAttestation = await getCurrentAttestation(orgId, userId);
       if (!orgAttestation) {
-        return res.status(422).json({
-          error: "FCRA_ATTESTATION_REQUIRED",
-          message: `Annual FCRA attestation required (current version ${CURRENT_FCRA_ATTESTATION_VERSION}). Visit /account/fcra-attestation to attest first.`,
-          statusCode: 422,
-        });
+        return sendError(res, 422, "FCRA_ATTESTATION_REQUIRED", `Annual FCRA attestation required (current version ${CURRENT_FCRA_ATTESTATION_VERSION}). Visit /account/fcra-attestation to attest first.`);
       }
 
       const propertyIdRaw = req.body?.propertyId;
@@ -375,7 +367,7 @@ export function registerRentalRoutes(app: Express): void {
         });
       } catch (err: any) {
         if (err instanceof FcraAttestationStaleError || err instanceof TenantScreeningNotAttestedError) {
-          return res.status(422).json({ error: err.code, message: err.message, statusCode: 422 });
+          return sendError(res, 422, err.code, err.message);
         }
         throw err;
       }
