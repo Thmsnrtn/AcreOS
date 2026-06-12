@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { QueryErrorState } from "@/components/query-error-state";
 import { EmptyState } from "@/components/empty-state";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { PaxOverflowMenu } from "@/components/pax/pax-overflow-menu";
 import { PaxDisclosureRail } from "@/components/pax/pax-disclosure-rail";
 import { PullToRefresh } from "@/components/mobile/PullToRefresh";
@@ -49,6 +50,38 @@ function ChatFallback() {
     >
       <span className="text-sm text-acr-ink-3">Waking Pax…</span>
     </motion.div>
+  );
+}
+
+// Chat-crash fallback — a VISIBLE, recoverable state shown if the lazy chat
+// subtree (CommandCenterPage) throws at render. Without an error boundary
+// scoped to JUST the chat, a single chat-render crash bubbles to PageShell's
+// page-level boundary and blanks the WHOLE Pax surface (header + chat). This
+// keeps the editorial header alive and degrades only the chat, with a path
+// back (hard refresh pulls a fresh bundle if it was a stale-chunk crash).
+function ChatErrorFallback() {
+  return (
+    <div
+      role="alert"
+      data-testid="pax-chat-error"
+      className="flex flex-col items-center justify-center gap-3 rounded-card border border-border bg-muted/40 px-4 py-10 text-center"
+    >
+      <Bot className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+      <div className="text-sm">
+        <span className="font-medium">Pax couldn't open the conversation.</span>{" "}
+        <span className="text-muted-foreground">
+          This usually clears with a refresh. Your tasks and history are safe.
+        </span>
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => window.location.reload()}
+        data-testid="pax-chat-error-refresh"
+      >
+        Refresh
+      </Button>
+    </div>
   );
 }
 
@@ -888,19 +921,39 @@ export default function PaxPage() {
             </h1>
           </div>
           <div className="acr-cc-hero-actions shrink-0">
-            <PaxOverflowMenu insightsContent={<InsightsPanel />} />
+            {/* The overflow menu carries the only founder-divergent header
+                element (the isFounder-gated Agents entry) + the InsightsPanel
+                query. Scope a boundary here so a crash in the tools menu can't
+                blank the header or, via PageShell's page-level boundary, the
+                whole Pax door. It degrades to nothing — the menu is auxiliary;
+                the conversation below is the primary surface. */}
+            <ErrorBoundary fallback={null}>
+              <PaxOverflowMenu insightsContent={<InsightsPanel />} />
+            </ErrorBoundary>
           </div>
         </div>
 
-        <GreetingBanner />
+        {/* The disclosure banner is non-essential chrome; never let it blank
+            the surface. */}
+        <ErrorBoundary fallback={null}>
+          <GreetingBanner />
+        </ErrorBoundary>
       </PullToRefresh>
 
       <div data-testid="pax-conversation">
         <AiChatGuard>
           <SuggestedPrompts />
-          <Suspense fallback={<ChatFallback />}>
-            <CommandCenterPage />
-          </Suspense>
+          {/* Scoped boundary: a chat-render crash (incl. a stale lazy-chunk
+              reject post-deploy — ErrorBoundary.componentDidCatch self-heals
+              those by reloading) degrades ONLY the chat to a visible,
+              refreshable fallback. It can no longer bubble to PageShell's
+              page-level boundary and blank the whole Pax door (header +
+              chat). The editorial header above stays rendered regardless. */}
+          <ErrorBoundary fallback={<ChatErrorFallback />}>
+            <Suspense fallback={<ChatFallback />}>
+              <CommandCenterPage />
+            </Suspense>
+          </ErrorBoundary>
           {/* Standing AI-disclosure rail — always present beneath the composer
               on the Pax door. "Tool, not advisor" (doctrine pillar #1 +
               customer immutable #7). Calm, non-dismissible, copy sourced from a
