@@ -36,7 +36,7 @@ import { db, storage } from "./storage";
 import { runPortfolioHealthJob, getActiveAlerts } from "./services/portfolioHealth";
 import { routeAITask, TaskComplexity } from "./services/aiRouter";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganization, getUserId } from "./types/request";
+import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 
@@ -1037,6 +1037,167 @@ async function composeBriefWithPax(
   }
 }
 
+// ── Shared queue builder (single source of truth) ───────────────────────────
+// Both GET /api/today and POST /api/today/queue/clear MUST surface exactly the
+// same set of active decision items, so the gather → merge → rank → subtract-
+// resolved pipeline lives here once. GET uses both the resulting `items` (the
+// queue it renders) and the `gathered` raw pieces (for the cash strip + brief),
+// so calling this builder costs no extra round-trips. /queue/clear calls it to
+// learn precisely which item ids to permanently dismiss — clearing exactly what
+// the operator sees, regardless of client pagination.
+interface BuiltQueue {
+  /** Active decision items, ranked, with resolved/snoozed rows already subtracted. */
+  items: DecisionItem[];
+  /** Raw gather outputs the GET payload reuses for cash/brief (no re-fetch). */
+  gathered: {
+    paxPriorities: DecisionItem[];
+    tasks: Awaited<ReturnType<typeof storage.getTasks>>;
+    activeAlerts: Awaited<ReturnType<typeof getActiveAlerts>>;
+    allLeads: Awaited<ReturnType<typeof storage.getLeads>>;
+    allDeals: Awaited<ReturnType<typeof storage.getDeals>>;
+    allProperties: Awaited<ReturnType<typeof storage.getProperties>>;
+    allNotes: Awaited<ReturnType<typeof storage.getNotes>>;
+    taskItems: DecisionItem[];
+    alertItems: DecisionItem[];
+  };
+}
+
+async function buildActiveQueue(orgId: number, now: Date): Promise<BuiltQueue> {
+  const [
+    paxPriorities,
+    tasks,
+    activeAlerts,
+    paxNoticed,
+    paxSuggests,
+    allLeads,
+    allDeals,
+    allProperties,
+    allNotes,
+  ] = await Promise.all([
+    gatherPaxPriorities(orgId, now),
+    storage.getTasks(orgId),
+    getActiveAlerts(orgId),
+    gatherPaxNoticed(orgId, now),
+    gatherPaxSuggests(orgId, now),
+    storage.getLeads(orgId),
+    storage.getDeals(orgId),
+    storage.getProperties(orgId),
+    storage.getNotes(orgId),
+  ]);
+
+  // Today's tasks → ai-queue rows (mirrors today.tsx todayActions block).
+  const taskItems: DecisionItem[] = tasks
+    .filter((t) => {
+      if (t.status === "completed" || t.status === "done") return false;
+      if (!t.dueDate) return false;
+      return isTodayOrOverdue(new Date(t.dueDate), now);
+    })
+    .map((t) => {
+      const overdue = t.dueDate ? isOverdue(new Date(t.dueDate), now) : false;
+      return {
+        id: `task-${t.id}`,
+        source: "ai-queue" as const,
+        priority: (t.priority as "high" | "medium" | "low") ?? "medium",
+        title: t.title,
+        description: t.dueDate
+          ? `${overdue ? "Overdue · " : ""}Due ${new Date(t.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+          : (t.description ?? ""),
+        actionLabel: "Open task",
+        actionUrl: "/pipeline",
+        rank: 100 + (overdue ? 0 : 10) + (priorityRank[t.priority] ?? 1),
+        // The only class that can honestly claim "overdue": a real dueDate
+        // already in the past. Due-today tasks are time-sensitive.
+        urgency: (overdue ? "overdue" : "time") as QueueUrgency,
+      };
+    });
+
+  // Portfolio alerts → portfolio-alert rows.
+  const alertItems: DecisionItem[] = activeAlerts.map((a: any) => {
+    const sev: "high" | "medium" | "low" =
+      a.severity === "critical" ? "high" : a.severity === "warning" ? "medium" : "low";
+    return {
+      id: `alert-${a.id}`,
+      source: "portfolio-alert" as const,
+      priority: sev,
+      title: a.title,
+      description: a.message,
+      actionLabel: alertLinkLabelByType[a.type] ?? "View",
+      actionUrl: alertHrefByType[a.type] ?? "/",
+      rank: 200 + priorityRank[sev],
+      // Overdue notes are missed dollars; critical alerts ride a real
+      // degradation signal; the rest are routine watch items.
+      urgency: (a.type === "note_overdue"
+        ? "money"
+        : sev === "high"
+          ? "time"
+          : "routine") as QueueUrgency,
+    };
+  });
+
+  const aiQueue = await gatherAiQueue(orgId, now, allLeads, allDeals, allProperties);
+
+  // One ranking function (Tier 3C): overdue → money-touching →
+  // time-sensitive → routine; see compareQueueItems for the full contract.
+  const mergedQueue: DecisionItem[] = [
+    ...paxPriorities,
+    ...taskItems,
+    ...alertItems,
+    ...paxNoticed,
+    ...paxSuggests,
+    ...aiQueue,
+  ].sort(compareQueueItems);
+
+  // ── Subtract inline-resolved items (Maren CPO #2) ──────────────────────
+  // The queue is derived, so we hide anything the operator has already
+  // resolved in place: "done"/"dismissed" hide permanently; "snoozed" hides
+  // until snoozed_until passes (then the row re-surfaces naturally). We only
+  // look up state for ids actually present this request — keeps the read
+  // bounded to the live queue, and a single per-tenant index probe.
+  const presentIds = mergedQueue.map((q) => q.id);
+  let resolvedById = new Map<string, { status: string; snoozedUntil: Date | null }>();
+  if (presentIds.length > 0) {
+    try {
+      const rows = await db
+        .select({
+          itemId: todayQueueState.itemId,
+          status: todayQueueState.status,
+          snoozedUntil: todayQueueState.snoozedUntil,
+        })
+        .from(todayQueueState)
+        .where(and(
+          eq(todayQueueState.organizationId, orgId),
+          inArray(todayQueueState.itemId, presentIds),
+        ));
+      resolvedById = new Map(rows.map((r) => [r.itemId, { status: r.status, snoozedUntil: r.snoozedUntil }]));
+    } catch (e) {
+      // Non-fatal: if the resolution ledger read fails we show the full queue
+      // rather than break Today. Honest degradation.
+      logger.warn("Today: queue-state subtract failed — showing full queue", {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  const items: DecisionItem[] = mergedQueue
+    .filter((item) => !isQueueItemHidden(resolvedById.get(item.id), now))
+    .map((item) => ({ ...item, inlineAction: deriveInlineAction(item) }));
+
+  return {
+    items,
+    gathered: {
+      paxPriorities,
+      tasks,
+      activeAlerts,
+      allLeads,
+      allDeals,
+      allProperties,
+      allNotes,
+      taskItems,
+      alertItems,
+    },
+  };
+}
+
 router.get("/", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = getOrganization(req);
@@ -1048,124 +1209,18 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       logger.warn("Today: portfolio health refresh failed", { error: e instanceof Error ? e.message : String(e) }),
     );
 
-    const [
+    // Single source of truth: the shared builder gathers, merges, ranks, and
+    // subtracts resolved/snoozed rows. We reuse its raw gather outputs for the
+    // cash strip + brief below, so this costs no extra round-trips.
+    const { items: queue, gathered } = await buildActiveQueue(orgId, now);
+    const {
       paxPriorities,
-      tasks,
-      activeAlerts,
-      paxNoticed,
-      paxSuggests,
       allLeads,
       allDeals,
       allProperties,
       allNotes,
-    ] = await Promise.all([
-      gatherPaxPriorities(orgId, now),
-      storage.getTasks(orgId),
-      getActiveAlerts(orgId),
-      gatherPaxNoticed(orgId, now),
-      gatherPaxSuggests(orgId, now),
-      storage.getLeads(orgId),
-      storage.getDeals(orgId),
-      storage.getProperties(orgId),
-      storage.getNotes(orgId),
-    ]);
-
-    // Today's tasks → ai-queue rows (mirrors today.tsx todayActions block).
-    const taskItems: DecisionItem[] = tasks
-      .filter((t) => {
-        if (t.status === "completed" || t.status === "done") return false;
-        if (!t.dueDate) return false;
-        return isTodayOrOverdue(new Date(t.dueDate), now);
-      })
-      .map((t) => {
-        const overdue = t.dueDate ? isOverdue(new Date(t.dueDate), now) : false;
-        return {
-          id: `task-${t.id}`,
-          source: "ai-queue" as const,
-          priority: (t.priority as "high" | "medium" | "low") ?? "medium",
-          title: t.title,
-          description: t.dueDate
-            ? `${overdue ? "Overdue · " : ""}Due ${new Date(t.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-            : (t.description ?? ""),
-          actionLabel: "Open task",
-          actionUrl: "/pipeline",
-          rank: 100 + (overdue ? 0 : 10) + (priorityRank[t.priority] ?? 1),
-          // The only class that can honestly claim "overdue": a real dueDate
-          // already in the past. Due-today tasks are time-sensitive.
-          urgency: (overdue ? "overdue" : "time") as QueueUrgency,
-        };
-      });
-
-    // Portfolio alerts → portfolio-alert rows.
-    const alertItems: DecisionItem[] = activeAlerts.map((a: any) => {
-      const sev: "high" | "medium" | "low" =
-        a.severity === "critical" ? "high" : a.severity === "warning" ? "medium" : "low";
-      return {
-        id: `alert-${a.id}`,
-        source: "portfolio-alert" as const,
-        priority: sev,
-        title: a.title,
-        description: a.message,
-        actionLabel: alertLinkLabelByType[a.type] ?? "View",
-        actionUrl: alertHrefByType[a.type] ?? "/",
-        rank: 200 + priorityRank[sev],
-        // Overdue notes are missed dollars; critical alerts ride a real
-        // degradation signal; the rest are routine watch items.
-        urgency: (a.type === "note_overdue"
-          ? "money"
-          : sev === "high"
-            ? "time"
-            : "routine") as QueueUrgency,
-      };
-    });
-
-    const aiQueue = await gatherAiQueue(orgId, now, allLeads, allDeals, allProperties);
-
-    // One ranking function (Tier 3C): overdue → money-touching →
-    // time-sensitive → routine; see compareQueueItems for the full contract.
-    const mergedQueue: DecisionItem[] = [
-      ...paxPriorities,
-      ...taskItems,
-      ...alertItems,
-      ...paxNoticed,
-      ...paxSuggests,
-      ...aiQueue,
-    ].sort(compareQueueItems);
-
-    // ── Subtract inline-resolved items (Maren CPO #2) ──────────────────────
-    // The queue is derived, so we hide anything the operator has already
-    // resolved in place: "done"/"dismissed" hide permanently; "snoozed" hides
-    // until snoozed_until passes (then the row re-surfaces naturally). We only
-    // look up state for ids actually present this request — keeps the read
-    // bounded to the live queue, and a single per-tenant index probe.
-    const presentIds = mergedQueue.map((q) => q.id);
-    let resolvedById = new Map<string, { status: string; snoozedUntil: Date | null }>();
-    if (presentIds.length > 0) {
-      try {
-        const rows = await db
-          .select({
-            itemId: todayQueueState.itemId,
-            status: todayQueueState.status,
-            snoozedUntil: todayQueueState.snoozedUntil,
-          })
-          .from(todayQueueState)
-          .where(and(
-            eq(todayQueueState.organizationId, orgId),
-            inArray(todayQueueState.itemId, presentIds),
-          ));
-        resolvedById = new Map(rows.map((r) => [r.itemId, { status: r.status, snoozedUntil: r.snoozedUntil }]));
-      } catch (e) {
-        // Non-fatal: if the resolution ledger read fails we show the full queue
-        // rather than break Today. Honest degradation.
-        logger.warn("Today: queue-state subtract failed — showing full queue", {
-          error: e instanceof Error ? e.message : String(e),
-        });
-      }
-    }
-
-    const queue: DecisionItem[] = mergedQueue
-      .filter((item) => !isQueueItemHidden(resolvedById.get(item.id), now))
-      .map((item) => ({ ...item, inlineAction: deriveInlineAction(item) }));
+      alertItems,
+    } = gathered;
 
     // ── Finishability (Tier 3C): "N of M cleared" ──────────────────────────
     // clearedToday counts REAL completions: today_queue_state rows the
@@ -1475,6 +1530,68 @@ router.patch("/queue/:id", async (req: AuthenticatedRequest, res: Response) => {
     });
   } catch (error) {
     logger.error("Today queue resolve error", error instanceof Error ? error : undefined);
+    Errors.internal(res, error);
+  }
+});
+
+// ── POST /api/today/queue/clear — permanently clear the WHOLE active queue ───
+// The per-item PATCH above is for one row at a time. This route lets the
+// operator wipe the entire surfaced queue in one shot — the escape hatch for a
+// queue that has accumulated hundreds of derived items (dev/deploy noise).
+//
+// It is server-computes-ALL (not client-supplied ids): we call the SAME shared
+// buildActiveQueue() that GET /api/today renders from, so we dismiss exactly the
+// set the operator sees — independent of client pagination. Every active item
+// id is upserted to status="dismissed" (snoozedUntil=null) on the
+// (organization_id, item_id) unique index, in ONE batched insert (not N
+// queries). Idempotent: re-running on an already-clear queue is a no-op that
+// returns { cleared: 0 }. Org-scoped + authed exactly like the PATCH handler.
+router.post("/queue/clear", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const orgId = getOrganizationId(req);
+    const userId = getUserId(req);
+    const now = new Date();
+
+    const { items } = await buildActiveQueue(orgId, now);
+    if (items.length === 0) {
+      // Nothing surfaced — idempotent no-op.
+      return res.json({ cleared: 0 });
+    }
+
+    // Single batched upsert: one INSERT … VALUES (…),(…),… ON CONFLICT DO
+    // UPDATE, mirroring the PATCH handler's upsert shape (status="dismissed",
+    // snoozedUntil=null). Dedupe ids defensively so the VALUES list never
+    // carries a duplicate (the unique index would otherwise reject the batch).
+    const uniqueIds = Array.from(new Set(items.map((it) => it.id)));
+    const rows = uniqueIds.map((itemId) => ({
+      organizationId: orgId,
+      itemId,
+      status: "dismissed" as const,
+      snoozedUntil: null,
+      resolvedBy: userId,
+    }));
+
+    await db
+      .insert(todayQueueState)
+      .values(rows)
+      .onConflictDoUpdate({
+        target: [todayQueueState.organizationId, todayQueueState.itemId],
+        set: {
+          status: "dismissed",
+          snoozedUntil: null,
+          resolvedBy: userId,
+          updatedAt: now,
+        },
+      });
+
+    logger.info("Today: queue permanently cleared", {
+      orgId,
+      cleared: uniqueIds.length,
+    });
+
+    res.json({ cleared: uniqueIds.length });
+  } catch (error) {
+    logger.error("Today queue clear error", error instanceof Error ? error : undefined);
     Errors.internal(res, error);
   }
 });

@@ -281,6 +281,41 @@ export default function TodayPage() {
     [resolveItem],
   );
 
+  // ── Permanent clear-all (Founder ask) ──────────────────────────────────
+  // POST /api/today/queue/clear server-side dismisses the ENTIRE active queue
+  // (server-computes-all — independent of what the client paginated). On
+  // success we invalidate /api/today so the queue refetches empty. The
+  // DecisionQueue's confirm dialog gates this destructive action.
+  const clearQueue = useMutation<{ cleared: number }, Error, void>({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/today/queue/clear", {});
+      if (!res.ok) throw new Error("Failed to clear queue");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      const cleared = data?.cleared ?? 0;
+      toast({
+        title: "Queue cleared",
+        description:
+          cleared > 0
+            ? `${cleared} decision${cleared === 1 ? "" : "s"} cleared.`
+            : "Your queue was already clear.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/today"] });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't clear the queue",
+        description: "Nothing was changed — try again in a moment.",
+      });
+    },
+  });
+
+  const handleClearAll = React.useCallback(() => {
+    clearQueue.mutate();
+  }, [clearQueue]);
+
   // ── Pull-to-refresh (mobile only) ──────────────────────────────────────
   // A pull gesture at the top re-pulls the consolidated /api/today payload
   // and invalidates the sibling caches Today renders (parcel alerts, the
@@ -688,6 +723,8 @@ export default function TodayPage() {
           resolvingIds={resolvingIds}
           clearedToday={today?.progress?.cleared ?? 0}
           totalToday={today?.progress?.total ?? 0}
+          onClearAll={handleClearAll}
+          isClearing={clearQueue.isPending}
         />
       )}
 

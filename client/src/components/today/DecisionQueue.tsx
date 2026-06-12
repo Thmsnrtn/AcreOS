@@ -6,6 +6,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ContentReveal } from "@/components/ContentReveal";
 import { ClearedEmpty } from "@/components/empty-state";
 import { ConfidenceBar } from "@/components/today/ConfidenceBar";
@@ -26,6 +36,8 @@ import {
   Check,
   CalendarClock,
   X as XIcon,
+  Trash2,
+  Loader2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -140,6 +152,17 @@ interface DecisionQueueProps {
    */
   clearedToday?: number;
   totalToday?: number;
+  /**
+   * Permanently clear the ENTIRE active queue (POST /api/today/queue/clear).
+   * Destructive + irreversible, so the button is gated behind a confirm
+   * dialog before this fires. The parent owns the mutation + query
+   * invalidation (mirrors onResolve), so this component stays presentational.
+   * When omitted, the "Clear queue" control falls back to the local 24h
+   * snooze-all (temporary hide).
+   */
+  onClearAll?: () => void;
+  /** True while the clear-all POST is in flight — drives the confirm spinner. */
+  isClearing?: boolean;
 }
 
 // localStorage-backed snooze map. Keyed by item id, value is an ISO
@@ -186,8 +209,11 @@ export function DecisionQueue({
   resolvingIds,
   clearedToday = 0,
   totalToday = 0,
+  onClearAll,
+  isClearing = false,
 }: DecisionQueueProps) {
   const [snoozed, setSnoozed] = useState<Record<string, number>>(() => loadSnoozed());
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [, setLocation] = useLocation();
 
   // A Pax-sourced item is "auto-handled" when its confidence meets/exceeds the
@@ -200,6 +226,17 @@ export function DecisionQueue({
   useEffect(() => {
     persistSnoozed(snoozed);
   }, [snoozed]);
+
+  // Close the confirm dialog once the clear-all mutation finishes (isClearing
+  // falls back to false). The queue then refetches empty and the zero state
+  // renders. Tracks the previous value so we only act on the true→false edge.
+  const wasClearingRef = useRef(false);
+  useEffect(() => {
+    if (wasClearingRef.current && !isClearing) {
+      setConfirmClearOpen(false);
+    }
+    wasClearingRef.current = isClearing;
+  }, [isClearing]);
 
   function snoozeItem(id: string) {
     lightImpact();
@@ -290,17 +327,36 @@ export function DecisionQueue({
         </div>
         <div className="flex items-center gap-1">
           {visible.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1 text-xs"
-              onClick={() => snoozeAll(visible.map((v) => v.id))}
-              aria-label="Snooze all items for 24 hours"
-              data-testid="button-snooze-all-decisions"
-            >
-              <EyeOff className="w-3 h-3" aria-hidden="true" />
-              Clear queue
-            </Button>
+            onClearAll ? (
+              // Permanent clear — destructive, so it opens a confirm dialog
+              // before firing POST /api/today/queue/clear (server clears the
+              // WHOLE active queue, not just the rows loaded here).
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1 text-xs"
+                onClick={() => setConfirmClearOpen(true)}
+                aria-label={`Clear all ${visible.length} decisions permanently`}
+                data-testid="button-clear-queue"
+              >
+                <Trash2 className="w-3 h-3" aria-hidden="true" />
+                Clear queue
+              </Button>
+            ) : (
+              // Fallback: local 24h snooze-all (temporary hide) when no
+              // permanent-clear handler is wired.
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1 text-xs"
+                onClick={() => snoozeAll(visible.map((v) => v.id))}
+                aria-label="Snooze all items for 24 hours"
+                data-testid="button-snooze-all-decisions"
+              >
+                <EyeOff className="w-3 h-3" aria-hidden="true" />
+                Clear queue
+              </Button>
+            )
           )}
           {snoozedCount > 0 && (
             <Button
@@ -580,6 +636,61 @@ export function DecisionQueue({
           </motion.ul>
         )}
       </ContentReveal>
+
+      {/* ── Permanent clear confirm (destructive) ─────────────────────────
+          Gated behind the house AlertDialog — never window.confirm. Confirm
+          fires the parent's POST /api/today/queue/clear mutation; the button
+          shows the in-flight spinner while it runs. */}
+      {onClearAll && (
+        <AlertDialog
+          open={confirmClearOpen}
+          onOpenChange={(open) => {
+            // Don't let an outside-click close the dialog mid-clear.
+            if (isClearing) return;
+            setConfirmClearOpen(open);
+          }}
+        >
+          <AlertDialogContent data-testid="dialog-clear-queue">
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Clear all {visible.length} decision{visible.length === 1 ? "" : "s"} permanently?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This removes every item currently in your decision queue. It can't
+                be undone — cleared items won't come back. New leads, deals, and
+                signals will still show up here going forward.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                disabled={isClearing}
+                data-testid="cancel-clear-queue"
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isClearing}
+                onClick={(e) => {
+                  // Keep the dialog mounted while the mutation runs so the
+                  // spinner is visible; the parent closes it on success via
+                  // the queue refetching empty (visible.length → 0).
+                  e.preventDefault();
+                  onClearAll();
+                }}
+                className="gap-1.5"
+                data-testid="confirm-clear-queue"
+              >
+                {isClearing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
+                )}
+                Clear queue
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }
