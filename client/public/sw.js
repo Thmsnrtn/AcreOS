@@ -1,15 +1,14 @@
-// Bumped to v15 for Wave 2 of the AcreOS-Solene migration (2026-06-04):
-// founder UI got a new 5-door surface + Solene chat. Stale-v14 caches
-// were serving customer-installed SWs the pre-migration shell. Bumping
-// the name forces the `activate` handler to delete the v14 caches so
-// the next fetch goes to network and picks up the new bundle.
+// Bumped to v16 (2026-06-12): force every installed SW to drop its v15
+// caches on activate and re-pull from network — insurance against a stale
+// client shell while chasing a reported blank-Pax render. Content-hashed
+// assets already cache-bust per deploy, but bumping the name guarantees a
+// clean slate (the activate handler deletes any non-current acreos-* cache).
 //
-// v14 (2026-05-29) added /api/field-scout/quick-add to the
-// offline-queueable allowlist (a DriveMode save in a cellular dead zone
-// was silently dropped), and bumped the IndexedDB version to 2 so we
-// have an exercised migration path before the store fills up in
-// customer-installed SWs.
-const CACHE_NAME = 'acreos-v15';
+// v15 (2026-06-04, AcreOS-Solene migration Wave 2): founder UI got the new
+// 5-door surface + Solene chat; stale-v14 caches were serving the
+// pre-migration shell. v14 (2026-05-29) added /api/field-scout/quick-add to
+// the offline-queueable allowlist and bumped the IndexedDB version to 2.
+const CACHE_NAME = 'acreos-v16';
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const API_CACHE = `${CACHE_NAME}-api`;
 

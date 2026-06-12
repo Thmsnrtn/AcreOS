@@ -294,18 +294,26 @@ jobs:
             echo "::error title=DEPLOY_ALERT_WEBHOOK secret is NOT set::A production deploy just FAILED and no out-of-band alert was sent — this failure is only visible in CI. 🔑 Founder: gh secret set DEPLOY_ALERT_WEBHOOK --body \"https://ntfy.sh/<private-topic>\" (or a Slack/Discord incoming-webhook URL)."
             exit 1
           fi
-          # Slack/Discord want {"text": "..."}; ntfy accepts a raw body. Send
-          # JSON (ntfy ignores the wrapper and shows the text) so one command
-          # works for both styles. --fail surfaces a 4xx/5xx in the log, but we
-          # never fail the workflow on a notify miss.
-          curl --fail --silent --show-error --max-time 15 \
-            -H "Content-Type: application/json" \
-            -H "Title: AcreOS deploy failed" \
-            -H "Priority: urgent" \
-            -H "Tags: rotating_light" \
-            -d "$(jq -n --arg t "$MSG" '{text:$t, message:$t}')" \
-            "$DEPLOY_ALERT_WEBHOOK" \
-            || echo "Alert webhook POST failed — investigate (deploy already marked failed)."
+          # ntfy renders the raw POST body as the message, so a JSON wrapper
+          # shows up as literal {"text":...} on the phone. Send a PLAIN-TEXT
+          # body to ntfy (clean message + native Title/Priority/Tags headers);
+          # fall back to JSON for Slack/Discord webhooks. --fail surfaces a
+          # 4xx/5xx in the log, but we never fail the workflow on a notify miss.
+          if echo "$DEPLOY_ALERT_WEBHOOK" | grep -qi "ntfy"; then
+            curl --fail --silent --show-error --max-time 15 \
+              -H "Title: AcreOS deploy failed" \
+              -H "Priority: urgent" \
+              -H "Tags: rotating_light" \
+              -d "$MSG" \
+              "$DEPLOY_ALERT_WEBHOOK" \
+              || echo "Alert webhook POST failed — investigate (deploy already marked failed)."
+          else
+            curl --fail --silent --show-error --max-time 15 \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg t "$MSG" '{text:$t, message:$t, content:$t}')" \
+              "$DEPLOY_ALERT_WEBHOOK" \
+              || echo "Alert webhook POST failed — investigate (deploy already marked failed)."
+          fi
 
       # Tier 1E — alert-spine configuration gate, evaluated on EVERY deploy
       # (success or failure). The blueprint's rule: workflows FAIL, not
