@@ -41,16 +41,17 @@ primary_region = 'iad'
 [http_service]
   internal_port = 5000
   force_https = true
-  # Phase 0 (2026-05-22) — zero-capital survival mode. The previous config
-  # kept 2 performance-2x machines hot 24/7 (~$576/mo) for HA. With $0
-  # working capital pre-launch, we trade 1–2s cold-start latency on the
-  # first request after idle for $560/mo of recovered runway. Fly's
-  # auto_stop suspends machines after ~5 minutes of no traffic; the next
-  # request triggers a wake. Revisit at $200 MRR (revenue-trigger ladder
-  # in docs/financial-mail-platform/PLAN.md).
+  # min_machines_running = 1 (Tom, 2026-06-12) — keep ONE web machine hot so
+  # the first request after idle doesn't pay the suspend-wake latency Tom was
+  # feeling ("slow on first hit, snappy after"). This is NOT the old ~$576/mo
+  # HA config (that was 2× performance-2x hot 24/7); a single shared-cpu-4x/1GB
+  # app machine always-on is ~$5–10/mo — a deliberate, cheap UX buy. auto_stop
+  # stays 'suspend' so any machines scaled OUT under load still suspend on
+  # scale-in; we just floor the pool at 1 instead of 0. Supersedes the Phase-0
+  # zero-capital min=0 tradeoff. See memory project_cold_start_lag_fly_suspend.
   auto_stop_machines = 'suspend'
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   processes = ['app']
 
   [http_service.concurrency]
