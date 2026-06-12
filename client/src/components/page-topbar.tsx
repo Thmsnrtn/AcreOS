@@ -113,13 +113,13 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
       data-page-topbar
       // Bold Tahoe re-skin (Wave R0, §1.1 primary sticky chrome): layered glass
       // chrome — `bg-surface-chrome` (.95 role, not the sheerer veil), the bold
-      // `backdrop-blur-xl` depth read, a softened `border-border/60` edge-of-light
+      // `backdrop-blur-lg` depth read, a softened `border-border/60` edge-of-light
       // hairline, and `shadow-level-1` (Track-1, theme-neutral) so the bar casts a
       // faint shadow onto the content beneath it and reads as a floating plane.
       // `z-sticky` (the semantic page-topbar layer), never `z-30`. Visual-only:
       // layout, sizing, and the offline-banner push (data-page-topbar) are
       // unchanged. See docs/design/reskin-treatment.md.
-      className="sticky top-0 z-sticky flex items-center justify-between gap-4 px-4 md:px-6 h-14 backdrop-blur-xl bg-surface-chrome border-b border-border/60 shadow-level-1"
+      className="sticky top-0 z-sticky flex items-center justify-between gap-4 px-4 md:px-6 h-14 backdrop-blur-lg bg-surface-chrome border-b border-border/60 shadow-level-1"
       role="banner"
     >
       {/* Breadcrumb / title */}

@@ -51,13 +51,13 @@ with **layered glass**.
 Use this exact class composition:
 
 ```
-sticky top-0 z-sticky bg-surface-chrome backdrop-blur-xl border-b border-border/60 shadow-level-1
+sticky top-0 z-sticky bg-surface-chrome backdrop-blur-lg border-b border-border/60 shadow-level-1
 ```
 
 - **Translucency:** `bg-surface-chrome` (the `.95` role) — NEVER `bg-background/95`
   or `bg-surface-veil` for primary chrome. Veil (`.80`) is too sheer for the
   top-level bar over scrolling content.
-- **Blur:** `backdrop-blur-xl` (bumped from `-md`) — the bold depth read.
+- **Blur:** `backdrop-blur-lg` (bumped from `-md`) — the bold depth read.
 - **Border:** `border-b border-border/60` — a softened hairline, not a hard
   `border-border`. The `/60` alpha lets the glass edge feel like an edge of light,
   not a rule.
@@ -300,7 +300,7 @@ Slate (blue/teal). The rules that guarantee this:
 
 For each surface you re-skin:
 
-1. **Chrome** — sticky bars/headers → `bg-surface-chrome backdrop-blur-xl
+1. **Chrome** — sticky bars/headers → `bg-surface-chrome backdrop-blur-lg
    border-b border-border/60 shadow-level-1 z-sticky` (§1). Nested chrome →
    veil/`z-docked` (§1.2).
 2. **Cards** — assign shadow by nesting depth (`shadow-acr-1/2/3` for solid

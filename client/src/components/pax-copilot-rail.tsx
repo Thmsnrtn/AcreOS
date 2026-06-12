@@ -1131,14 +1131,14 @@ export function PaxCopilotRail() {
           // Bold Tahoe re-skin (Wave R, §1.3 rails + §2.2 over-content glass):
           // the Pax rail is a prime glass-depth showcase — an over-content side
           // surface. Layered Tahoe glass: `bg-surface-chrome` (.95 role), the
-          // bold `backdrop-blur-xl` depth read, a softened `border-border/60`
+          // bold `backdrop-blur-lg` depth read, a softened `border-border/60`
           // edge-of-light hairline, and Track-1 `shadow-level-3` (the over-
           // content overlay grade — replaces the ad-hoc `shadow-2xl`; Track-1
           // because the rail is theme-neutral glass). `z-overlay` (the semantic
           // over-content chrome tier == old z-40), never the raw scale.
           // Visual-only: width, position, transition, and behavior unchanged.
           "fixed right-0 top-0 h-[100dvh] z-overlay flex flex-col",
-          "border-l border-border/60 bg-surface-chrome backdrop-blur-xl",
+          "border-l border-border/60 bg-surface-chrome backdrop-blur-lg",
           "transition-[width] duration-200 ease-in-out",
           isOpen ? "w-[360px] shadow-level-3" : "w-12"
         )}

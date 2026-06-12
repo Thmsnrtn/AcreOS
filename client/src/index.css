@@ -1810,6 +1810,23 @@ input[type="radio"] {
   touch-action: manipulation;
 }
 
+/* Mobile perf: backdrop-filter blur re-composites every scroll/tap frame and is
+   the dominant cost on touch GPUs — the re-skin has 30+ sticky/fixed glass
+   surfaces (topbars, rails, panels). Blur cost scales ~quadratically with
+   radius, and the chrome surfaces are 80-95% opaque so a heavy blur is nearly
+   invisible yet pays full cost. On coarse pointers (touch), cap every blur
+   radius to a light 6px: the glass still reads, the GPU cost drops ~16x and
+   taps/scrolls go smooth. Desktop keeps the full radius. Tailwind v4 emits the
+   radius via --tw-backdrop-blur, so overriding that variable caps it while
+   leaving the rest of the backdrop-filter composite intact. */
+@media (pointer: coarse) {
+  .backdrop-blur-xl,
+  .backdrop-blur-lg,
+  .backdrop-blur-md {
+    --tw-backdrop-blur: blur(6px);
+  }
+}
+
 /* Shimmer skeleton for loading states */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
