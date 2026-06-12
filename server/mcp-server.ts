@@ -13,6 +13,7 @@
 
 import type { Request, Response } from 'express';
 import { db } from './db';
+import { Errors } from './utils/errors';
 import { storage } from './storage';
 import { organizationIntegrations, organizations } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
@@ -190,14 +191,14 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
   const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
 
   if (!bearerToken) {
-    res.status(401).json({ error: 'Missing Bearer token in Authorization header' });
+    Errors.unauthorized(res);
     return;
   }
 
   // 2. Resolve org from API key
   const orgId = await resolveOrgFromApiKey(bearerToken);
   if (!orgId) {
-    res.status(401).json({ error: 'Invalid API key' });
+    Errors.unauthorized(res);
     return;
   }
 
@@ -208,10 +209,7 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
   res.setHeader('X-RateLimit-Reset', String(Math.floor(rateCheck.resetAt / 1000)));
 
   if (!rateCheck.allowed) {
-    res.status(429).json({
-      error: 'Rate limit exceeded',
-      resetAt: new Date(rateCheck.resetAt).toISOString(),
-    });
+    Errors.limitExceeded(res, { resetAt: new Date(rateCheck.resetAt).toISOString() });
     return;
   }
 
@@ -219,13 +217,13 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
   const { tool, params = {}, orgId: bodyOrgId } = req.body ?? {};
 
   if (!tool || typeof tool !== 'string') {
-    res.status(400).json({ error: 'tool (string) is required in request body' });
+    Errors.badRequest(res, "tool (string) is required in request body");
     return;
   }
 
   // orgId in body must match the key's org if provided
   if (bodyOrgId !== undefined && Number(bodyOrgId) !== orgId) {
-    res.status(403).json({ error: 'orgId in body does not match API key organization' });
+    Errors.forbidden(res, "orgId in body does not match API key organization");
     return;
   }
 

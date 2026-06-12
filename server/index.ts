@@ -224,7 +224,7 @@ app.post(
     const signature = req.headers['stripe-signature'];
 
     if (!signature) {
-      return res.status(400).json({ error: 'Missing stripe-signature' });
+      return Errors.badRequest(res, "Missing stripe-signature header");
     }
 
     try {
@@ -232,7 +232,7 @@ app.post(
 
       if (!Buffer.isBuffer(req.body)) {
         log('STRIPE WEBHOOK ERROR: req.body is not a Buffer', 'stripe');
-        return res.status(500).json({ error: 'Webhook processing error' });
+        return Errors.internal(res, new Error('Stripe webhook body is not a Buffer'));
       }
 
       await WebhookHandlers.processWebhook(req.body as Buffer, sig);
@@ -254,7 +254,7 @@ app.post(
       ).catch((notifyErr) => {
         logger.error("[StripeWebhook] notifyOnCall failed", notifyErr);
       });
-      res.status(400).json({ error: 'Webhook processing error' });
+      Errors.badRequest(res, "Webhook processing error");
     }
   }
 );

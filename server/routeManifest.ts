@@ -192,7 +192,6 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-iris-perf.ts", mountPath: null, kind: "register", export: "registerIrisPerfRoutes" },
   { file: "routes-job-health.ts", mountPath: null, kind: "register", export: "registerJobHealthRoutes" },
   { file: "routes-kb.ts", mountPath: null, kind: "register", export: "registerKnowledgeBaseRoutes" },
-  { file: "routes-kpis.ts", mountPath: "/api/kpis", kind: "router", export: "default" },
   { file: "routes-land-credit.ts", mountPath: "/api/land-credit", kind: "router", export: "default" },
   { file: "routes-lead-enrichment.ts", mountPath: "/api/leads", kind: "router", export: "default" },
   { file: "routes-leads.ts", mountPath: null, kind: "register", export: "registerLeadRoutes" },

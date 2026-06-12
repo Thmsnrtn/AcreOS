@@ -6,6 +6,7 @@
 
 import { sql, eq } from "drizzle-orm";
 import { db } from "../db";
+import { logger } from "../utils/logger";
 import { organizations, type Organization, type InsertOrganization } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 
@@ -53,8 +54,7 @@ export const orgRepo = {
       import("../services/onboardingAutonomy")
         .then(({ startJourney }) => startJourney(newOrg.id))
         .catch((err) =>
-          // eslint-disable-next-line no-console
-          console.warn(`[onboarding] startJourney failed for org ${newOrg.id}: ${err?.message ?? err}`),
+          logger.warn(`[onboarding] startJourney failed for org ${newOrg.id}: ${err?.message ?? err}`),
         );
     }
     // Lavender §1 / Hilda §2 — every org gets a default 15-account chart
@@ -67,8 +67,7 @@ export const orgRepo = {
       import("../services/chartOfAccountsSeed")
         .then(({ seedChartOfAccountsForOrg }) => seedChartOfAccountsForOrg(newOrg.id))
         .catch((err) =>
-          // eslint-disable-next-line no-console
-          console.warn(`[chartOfAccountsSeed] failed for org ${newOrg.id}: ${err?.message ?? err}`),
+          logger.warn(`[chartOfAccountsSeed] failed for org ${newOrg.id}: ${err?.message ?? err}`),
         );
     }
     return newOrg;

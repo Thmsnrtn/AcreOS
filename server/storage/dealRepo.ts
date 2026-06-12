@@ -3,6 +3,7 @@
 
 import { and, asc, desc, eq, sql, count, inArray } from "drizzle-orm";
 import { db } from "../db";
+import { logger } from "../utils/logger";
 import {
   deals, properties,
   type Deal, type InsertDeal,
@@ -87,8 +88,7 @@ export const dealRepo = {
       if (triggerStatuses.has(updated.status ?? "")) {
         void this._autoGenerateClosingChecklist(updated.id, before?.propertyId ?? null).catch((err) => {
           // Never let a hook failure break the primary update.
-          // eslint-disable-next-line no-console
-          console.warn("[storage.updateDeal] auto-checklist skipped:", err?.message);
+          logger.warn(`[storage.updateDeal] auto-checklist skipped: ${err?.message}`);
         });
       }
     }

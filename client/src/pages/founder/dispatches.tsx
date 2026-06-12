@@ -17,6 +17,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatRelative } from "@/lib/format";
 import {
@@ -26,6 +27,7 @@ import {
   CircleSlash,
   ChevronDown,
   ChevronRight,
+  X,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -144,6 +146,12 @@ export default function FounderDispatchesPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
+  // /founder/dispatches?agent=<codename> — per-agent drill-down from the
+  // /founder/team cards. Filtering is client-side over the same 200-row
+  // window the unfiltered view uses.
+  const searchString = useSearch();
+  const agentFilter = new URLSearchParams(searchString).get("agent");
+
   const { data, isLoading, isError, refetch, isFetching } =
     useQuery<DispatchesResponse>({
       queryKey: ["/api/founder/dispatches?limit=200"],
@@ -180,7 +188,14 @@ export default function FounderDispatchesPage() {
     },
   });
 
-  const dispatches = data?.dispatches ?? [];
+  const allDispatches = data?.dispatches ?? [];
+  const dispatches = useMemo(
+    () =>
+      agentFilter
+        ? allDispatches.filter((d) => d.agentRole === agentFilter)
+        : allDispatches,
+    [allDispatches, agentFilter],
+  );
 
   const counts = useMemo(() => {
     let queued = 0;
@@ -231,6 +246,27 @@ export default function FounderDispatchesPage() {
             seconds. Queued rows can be cancelled; in-progress rows are
             mid-call and cannot be safely interrupted.
           </p>
+          {agentFilter && (
+            <Badge
+              variant="secondary"
+              className="mt-2 gap-1 pr-1"
+              data-testid="badge-agent-filter"
+            >
+              <span className="font-mono">{agentFilter}</span> only
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-5 w-5"
+                aria-label={`Clear ${agentFilter} filter and show all agents`}
+                data-testid="button-clear-agent-filter"
+                onClick={() =>
+                  window.history.replaceState(null, "", "/founder/dispatches")
+                }
+              >
+                <X className="w-3 h-3" aria-hidden="true" />
+              </Button>
+            </Badge>
+          )}
         </div>
         <Button
           size="sm"

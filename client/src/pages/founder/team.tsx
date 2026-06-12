@@ -9,8 +9,8 @@
  *   - Last-7d dispatch count (completed)
  *   - Open agent-asks count
  *
- * Click-through to a per-agent deep-dive is a TODO until `/founder/dive/agents/:id`
- * ships; cards are non-interactive for now (no broken nav).
+ * Each card links to `/founder/dispatches?agent=<codename>` — the dispatches
+ * deep-dive filtered to that agent's queue history.
  *
  * Data sources:
  *   - `CANONICAL_AGENT_CODENAMES` from shared/schema/agent-codenames.ts
@@ -143,8 +143,14 @@ function AgentCard({
   const dormant = meta.phase !== "active";
   return (
     <motion.div variants={staggerItem}>
+      <Link
+        href={`/founder/dispatches?agent=${meta.codename}`}
+        aria-label={`View ${meta.displayName}'s dispatch history`}
+        className="block rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        data-testid={`team-card-link-${meta.codename}`}
+      >
       <Card
-        className={dormant ? "opacity-70" : ""}
+        className={`hover-elevate transition-colors ${dormant ? "opacity-70" : ""}`}
         data-testid={`team-card-${meta.codename}`}
       >
         <CardContent className="p-4 flex items-start gap-3">
@@ -188,6 +194,7 @@ function AgentCard({
           </div>
         </CardContent>
       </Card>
+      </Link>
     </motion.div>
   );
 }
@@ -253,7 +260,8 @@ export default function FounderTeamPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             {activeCount} active · {ROSTER.length - activeCount} dormant. Counts
-            show completed dispatches in the last 7 days and open asks.
+            show completed dispatches in the last 7 days and open asks. Open a
+            card to see that agent's dispatch history.
           </p>
         </header>
 

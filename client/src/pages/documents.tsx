@@ -1212,10 +1212,7 @@ export default function DocumentsPage() {
           </DialogHeader>
           <ScrollArea className="flex-1">
             {versionsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
-                <span className="sr-only">Loading version history</span>
-              </div>
+              <ListSkeleton variant="compact" count={3} />
             ) : !versions || versions.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground" data-testid="text-no-versions">
                 <History className="w-12 h-12 mx-auto mb-3 opacity-50" aria-hidden="true" />

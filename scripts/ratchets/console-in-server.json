@@ -4,6 +4,6 @@
   "pattern": "console\\.(log|warn|error|info|debug|trace)\\(",
   "globs": ["server/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/*.spec.ts", "server/scripts/**"],
-  "baselineCount": 11,
+  "baselineCount": 7,
   "direction": "down"
 }

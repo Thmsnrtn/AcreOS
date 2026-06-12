@@ -96,7 +96,6 @@ import epicServicesRouter from "./routes-epic-services";
 import dataIntelligenceRouter from "./routes-data-intelligence";
 import taxDelinquentRouter from "./routes-tax-delinquent";
 import matchingRouter from "./routes-matching";
-import kpisRouter from "./routes-kpis";
 import cohortAnalysisRouter from "./routes-cohort-analysis";
 import propertyTaxRouter from "./routes-property-tax";
 import recordingFeesRouter from "./routes-recording-fees";
@@ -1999,7 +1998,6 @@ export async function registerRoutes(
 
   app.use('/api/tax-delinquent', isAuthenticated, getOrCreateOrg, taxDelinquentRouter);
   app.use('/api/matching', isAuthenticated, getOrCreateOrg, matchingRouter);
-  app.use('/api/kpis', isAuthenticated, getOrCreateOrg, kpisRouter);
   app.use('/api/analytics/cohorts', isAuthenticated, getOrCreateOrg, cohortAnalysisRouter);
   app.use('/api/property-tax', isAuthenticated, getOrCreateOrg, propertyTaxRouter);
   app.use('/api/recording-fees', isAuthenticated, recordingFeesRouter);
