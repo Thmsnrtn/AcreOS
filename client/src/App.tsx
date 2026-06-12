@@ -38,10 +38,13 @@ const NewItemMenu = React.lazy(() => import("@/components/new-item-menu").then(m
 // `OnboardingGate` (defined below), which redirects orgs with
 // `onboardingCompleted !== true` to `/onboarding-v2`. The dialog
 // component file remains on disk pending eventual deletion.
-import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
+// Cold-start: these shell-chrome pieces render after the first paint (most are
+// auth-gated and never appear pre-auth), so keep their code out of the entry
+// chunk. Each render site is wrapped in <Suspense fallback={null}>.
+const PWAInstallPrompt = React.lazy(() => import("@/components/pwa-install-prompt").then(m => ({ default: m.PWAInstallPrompt })));
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
-import { DealModalsHost } from "@/components/modals";
+const DealModalsHost = React.lazy(() => import("@/components/modals").then(m => ({ default: m.DealModalsHost })));
 import { EarlyAccessBanner } from "@/components/early-access-banner";
 const CommandPalette = React.lazy(() => import("@/components/command-palette").then(m => ({ default: m.CommandPalette })));
 // IA consolidation (Lens 4 Fix 3): the founder-only ⌘⇧K palette was
@@ -60,14 +63,14 @@ import { useIsMobile } from "@/hooks/use-mobile";
 // so non-founder users never download the chat bundle.
 const AtlasDock = React.lazy(() => import("@/components/founder-chat/Dock").then(m => ({ default: m.Dock })));
 import { usePageContext } from "@/hooks/use-page-context";
-import { BetaActivationDetector } from "@/components/beta-activation-detector";
+const BetaActivationDetector = React.lazy(() => import("@/components/beta-activation-detector").then(m => ({ default: m.BetaActivationDetector })));
 const PaxCopilotRail = React.lazy(() => import("@/components/pax-copilot-rail").then(m => ({ default: m.PaxCopilotRail })));
-import { DynamicIsland } from "@/components/dynamic-island";
+const DynamicIsland = React.lazy(() => import("@/components/dynamic-island").then(m => ({ default: m.DynamicIsland })));
 import { DynamicIslandProvider } from "@/contexts/dynamic-island-context";
 import { useCursorGlass } from "@/hooks/use-cursor-glass";
 import { TrialBanner } from "@/components/trial-banner";
 import { NotificationStack } from "@/components/notification-stack";
-import { NotificationBanner } from "@/components/notification-banner";
+const NotificationBanner = React.lazy(() => import("@/components/notification-banner").then(m => ({ default: m.NotificationBanner })));
 const NpsDialog = React.lazy(() => import("@/components/nps-dialog").then(m => ({ default: m.NpsDialog })));
 
 // Authed users hit /today and never see LandingPage; landing visitors never
@@ -2084,7 +2087,7 @@ function AppContent() {
           <AtlasDockHost />
         </Suspense>
       )}
-      {user && <BetaActivationDetector />}
+      {user && <Suspense fallback={null}><BetaActivationDetector /></Suspense>}
       {/* Hide the global PaxCopilotRail on /ai because that page has
           its own main-area chat UI ("AcreOS Assistant"). r3 Gabriel
           caught the dual-chat-UI confusion (UX-R3-001). Elsewhere
@@ -2094,8 +2097,8 @@ function AppContent() {
           <PaxCopilotRail />
         </Suspense>
       )}
-      {user && <DynamicIsland />}
-      {user && <NotificationBanner />}
+      {user && <Suspense fallback={null}><DynamicIsland /></Suspense>}
+      {user && <Suspense fallback={null}><NotificationBanner /></Suspense>}
       {user && npsData?.shouldShow && npsData.trigger && (
         <Suspense fallback={null}>
           <NpsDialog
@@ -2108,7 +2111,7 @@ function AppContent() {
       {/* PWA install prompt — gated on auth so it never overlaps the
           landing-page primary CTA (Chesky review finding). Unauthenticated
           visitors on landing should never see the install banner. */}
-      {user && <PWAInstallPrompt />}
+      {user && <Suspense fallback={null}><PWAInstallPrompt /></Suspense>}
     </>
   );
 }
@@ -2152,7 +2155,7 @@ function App() {
                   <Suspense fallback={null}>
                     <KeyboardShortcutsModal />
                   </Suspense>
-                  <DealModalsHost />
+                  <Suspense fallback={null}><DealModalsHost /></Suspense>
                 </KeyboardShortcutsProvider>
               </HintsProvider>
             </TooltipProvider>
