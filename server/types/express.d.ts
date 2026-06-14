@@ -38,6 +38,15 @@ declare global {
        * the minimal shape the codebase reads.
        */
       auth?: { userId?: string | null; sessionId?: string | null };
+      /** Compliance warnings attached by complianceGate middleware (non-strict mode). */
+      complianceWarnings?: unknown[];
+      /** Resolved team role, attached by roleGuard middleware. */
+      userRole?: string;
+      /** True when the request carries a valid DEPLOY_BOT_TOKEN (admin-compliance bot lane). */
+      isDeployBot?: boolean;
+      /** Data-API key id/provider, attached by the /api/data key-auth middleware. */
+      apiKeyId?: number;
+      apiKeyProvider?: string;
     }
   }
 }

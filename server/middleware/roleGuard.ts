@@ -110,7 +110,7 @@ export function requireRole(allowedRoles: OrgRole[] | OrgRole, ...rest: OrgRole[
       }
 
       // Attach role to request for downstream use
-      (req as any).userRole = userRole;
+      req.userRole = userRole;
       next();
     } catch (err: any) {
       Errors.internal(res, err);

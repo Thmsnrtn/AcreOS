@@ -284,8 +284,6 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // Set typed properties on the request
   req.organization = org;
   req.organizationId = org.id;
-  // Legacy alias — will be removed once all route files use AuthenticatedRequest
-  (req as any).org = org;
 
   // RS-5: fire-and-forget new-location detector. Bounded by an in-memory
   // Set keyed on sessionId so it touches the DB at most once per session

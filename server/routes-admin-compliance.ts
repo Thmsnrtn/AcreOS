@@ -39,7 +39,7 @@ function isAuthenticatedOrBotToken(req: Request, res: Response, next: NextFuncti
   const token = (req.header("x-deploy-bot-token") || "").trim();
   const expected = (process.env.DEPLOY_BOT_TOKEN || "").trim();
   if (expected && token && token === expected) {
-    (req as any).isDeployBot = true;
+    req.isDeployBot = true;
     return next();
   }
   // Fall through to normal auth — the founder gate runs as the next
@@ -48,7 +48,7 @@ function isAuthenticatedOrBotToken(req: Request, res: Response, next: NextFuncti
 }
 
 function requireFounderOrBot(req: Request, res: Response, next: NextFunction): void {
-  if ((req as any).isDeployBot) return next();
+  if (req.isDeployBot) return next();
   return requireFounder(req as AuthenticatedRequest, res, next);
 }
 
