@@ -181,7 +181,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
           return Errors.badRequest(res, "No eligible buyers matched the filters. Adjust minMatchScore or financingType.");
         }
 
-        const userId = (req.user as any)?.id || (req.user as any)?.id || null;
+        const userId = req.user?.id ?? null;
 
         // Insert the blast row.
         const [blast] = await db

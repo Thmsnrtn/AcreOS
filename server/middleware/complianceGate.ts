@@ -73,7 +73,7 @@ export function complianceGate(checkType: "note" | "deal") {
 
         // Log compliance event
         const org = req.organization;
-        const user = req.user as any;
+        const user = req.user;
         if (org) {
           const { storage } = await import("../storage");
           await storage.createAuditLogEntry({

@@ -153,7 +153,7 @@ export function registerBillingRoutes(app: Express): void {
       let customerId = org.stripeCustomerId;
       if (!customerId) {
         customerId = await withTransaction(async () => {
-          const user = req.user as any;
+          const user = req.user;
           const customer = await stripeService.createCustomer(
             user.email || '',
             user.id,
@@ -224,7 +224,7 @@ export function registerBillingRoutes(app: Express): void {
       );
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -314,7 +314,12 @@ export function registerBillingRoutes(app: Express): void {
       let customerId = org.stripeCustomerId;
       if (!customerId) {
         customerId = await withTransaction(async () => {
-          const user = req.user as any;
+          const user = req.user;
+          if (!user.email) {
+            // A Stripe customer requires an email; Clerk-authenticated users
+            // always have one, so this is a defensive invariant check.
+            throw new Error("Cannot create a billing customer without an email on file");
+          }
           const customer = await stripeService.createCustomer(
             user.email,
             user.id,
@@ -422,7 +427,7 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
 
       const parsed = connectLinkSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -523,7 +528,7 @@ export function registerBillingRoutes(app: Express): void {
       await stripeConnectService.disconnectAccount(org.id);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,

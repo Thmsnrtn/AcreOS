@@ -97,16 +97,16 @@ export async function hasRoleScope(req: AuthenticatedRequest, scope: Scope): Pro
   if (!req.user || !req.organization) return false;
   // Founders bypass — already gated upstream by requireFounder for
   // /founder/* routes; here we treat isFounder as "all scopes."
-  if ((req as any).isFounder) return true;
+  if (req.isFounder) return true;
   // Org owner shortcut.
-  if (req.organization.ownerId === (req.user as any).id) return true;
+  if (req.organization.ownerId === req.user.id) return true;
   try {
     const [member] = await db
       .select()
       .from(teamMembers)
       .where(and(
         eq(teamMembers.organizationId, req.organization.id),
-        eq(teamMembers.userId, (req.user as any).id),
+        eq(teamMembers.userId, req.user.id),
         eq(teamMembers.isActive, true),
       ))
       .limit(1);

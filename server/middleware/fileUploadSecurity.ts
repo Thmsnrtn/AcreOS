@@ -121,9 +121,9 @@ export function validateFileMiddleware(
   return (req: Request, res: Response, next: NextFunction) => {
     const files: Express.Multer.File[] = [];
 
-    if ((req as any).file) files.push((req as any).file);
-    if ((req as any).files) {
-      const f = (req as any).files;
+    if (req.file) files.push(req.file);
+    if (req.files) {
+      const f = req.files;
       if (Array.isArray(f)) files.push(...f);
       else Object.values(f).forEach((arr: any) => files.push(...arr));
     }

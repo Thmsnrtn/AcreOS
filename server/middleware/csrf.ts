@@ -51,7 +51,7 @@ function issueToken(): string {
 }
 
 function ensureCsrfCookie(req: Request, res: Response): void {
-  const existing = (req as any).cookies?.[CSRF_COOKIE];
+  const existing = req.cookies?.[CSRF_COOKIE];
   if (existing) return;
   const token = issueToken();
   res.cookie(CSRF_COOKIE, token, {
@@ -62,7 +62,7 @@ function ensureCsrfCookie(req: Request, res: Response): void {
     // No maxAge → session cookie, rotated per browser session.
   });
   // Ensure same-request reads see the new value.
-  (req as any).cookies = { ...((req as any).cookies ?? {}), [CSRF_COOKIE]: token };
+  req.cookies = { ...(req.cookies ?? {}), [CSRF_COOKIE]: token };
 }
 
 /**
@@ -91,7 +91,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return;
   }
 
-  const cookieToken: string = (req as any).cookies?.[CSRF_COOKIE] ?? "";
+  const cookieToken: string = req.cookies?.[CSRF_COOKIE] ?? "";
   const headerToken: string = (req.headers["x-csrf-token"] as string) ?? "";
 
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {

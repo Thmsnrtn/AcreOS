@@ -86,7 +86,7 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/support/cases", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       const parsed = createSupportCaseSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
@@ -696,8 +696,8 @@ export function registerAdminRoutes(app: Express): void {
       return;
     }
 
-    const user = req.user as any;
-    const userId = (req as any).auth?.userId ?? user.clerkUserId ?? user.id ?? null;
+    const user = req.user;
+    const userId = req.auth?.userId ?? user.clerkUserId ?? user.id ?? null;
     const userEmail = user.email;
 
     if (isFounderIdentity({ email: userEmail, userId })) {
@@ -2296,7 +2296,7 @@ export function registerAdminRoutes(app: Express): void {
         const { recordActivationEventAsync } = await import("./services/activation");
         recordActivationEventAsync({
           orgId: org.id,
-          userId: (req.user as any)?.id ?? null,
+          userId: req.user?.id ?? null,
           eventName: "first_lead_enriched",
           eventValue: { propertyId, source: "maps_lookup" },
         });
@@ -2356,7 +2356,7 @@ export function registerAdminRoutes(app: Express): void {
   // ─── User map layer preferences (DB-persisted per user) ──────────────────
   api.get("/api/user/map-layer-preferences", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = req.user;
       const userId: string = user?.id || user?.id;
       if (!userId) return Errors.unauthorized(res);
 
@@ -2377,7 +2377,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.put("/api/user/map-layer-preferences/:layerId", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = req.user;
       const userId: string = user?.id || user?.id;
       if (!userId) return Errors.unauthorized(res);
 
@@ -3902,7 +3902,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.post("/api/org/api-keys", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       const parsedKey = z.object({ name: z.string().min(1).max(100), scope: z.enum(["read", "write", "admin"]).optional(), expiresInDays: z.number().int().positive().nullable().optional() }).safeParse(req.body);
       if (!parsedKey.success) return Errors.validationFailed(res, parsedKey.error.issues);
@@ -4150,7 +4150,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   api.post("/api/admin/evolution/resume", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { evolutionCircuitBreaker } = await import("@shared/schema");
-      const user = req.user as any;
+      const user = req.user;
       await db.update(evolutionCircuitBreaker)
         .set({ isTripped: false, consecutiveReverts: 0, resumedBy: user?.email || "founder", updatedAt: new Date() })
         .where(eq(evolutionCircuitBreaker.id, 1));

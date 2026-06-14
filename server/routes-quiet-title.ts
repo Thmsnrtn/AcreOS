@@ -284,7 +284,7 @@ export function registerQuietTitleRoutes(app: Express): void {
         }).safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
 
-        const userId = (req.user as any)?.id || (req.user as any)?.id || null;
+        const userId = req.user?.id ?? null;
         const update: Partial<typeof quietTitleSteps.$inferInsert> = {
           requiredByDate: parsed.data.requiredByDate,
           documentS3Key: parsed.data.documentS3Key,

@@ -47,7 +47,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.get("/api/team-messaging/conversations", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       
       const conversations = await db
@@ -72,7 +72,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.post("/api/team-messaging/conversations", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       
       const createSchema = z.object({
@@ -136,7 +136,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.get("/api/team-messaging/conversations/:id/messages", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       const conversationId = parseInt(req.params.id, 10);
       
@@ -209,7 +209,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.post("/api/team-messaging/conversations/:id/messages", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       const conversationId = parseInt(req.params.id, 10);
       
@@ -323,7 +323,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.patch("/api/team-messaging/conversations/:id/read", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       const conversationId = parseInt(req.params.id, 10);
       
@@ -432,7 +432,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.patch("/api/team-messaging/presence", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       
       const presenceSchema = z.object({
@@ -1249,7 +1249,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.get("/api/team-messaging/channels", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
 
       // Ensure seed channels exist for this org
@@ -1296,7 +1296,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.post("/api/team-messaging/channels", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
 
       const schema = z.object({
@@ -1346,7 +1346,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   api.post("/api/team-messaging/channels/:id/join", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       const channelId = parseInt(req.params.id, 10);
 

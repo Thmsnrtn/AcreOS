@@ -126,7 +126,7 @@ export function registerImportExportRoutes(app: Express): void {
 
       // Large-file path: queue a job (Magdalena §1).
       if (data.length > MAX_CSV_IMPORT_ROWS) {
-        const user = req.user as any;
+        const user = req.user;
         const userId = user?.id || user?.id;
         let fieldMap: Record<string, string> | undefined;
         if (req.body?.fieldMap) {
@@ -161,7 +161,7 @@ export function registerImportExportRoutes(app: Express): void {
         result = await importDeals(data, org.id);
       }
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -237,7 +237,7 @@ export function registerImportExportRoutes(app: Express): void {
         ? await importAcquiredNotesFromCSV(data, org.id, userFieldMap)
         : await importNotesFromCSV(data, org.id, userFieldMap);
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -460,7 +460,7 @@ export function registerImportExportRoutes(app: Express): void {
   api.patch("/api/leads/:id/consent", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const leadId = parseInt(req.params.id);
       const { tcpaConsent, consentSource, optOutReason } = req.body;
       
@@ -518,7 +518,7 @@ export function registerImportExportRoutes(app: Express): void {
   api.patch("/api/compliance/retention-policies", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const org = req.organization!;
       const newPolicies = req.body;
       
@@ -555,7 +555,7 @@ export function registerImportExportRoutes(app: Express): void {
   api.post("/api/compliance/purge-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const { dataType, beforeDate } = req.body;
       
       if (!dataType || !beforeDate) {
@@ -655,7 +655,7 @@ export function registerImportExportRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = req.organization!;
-        const user = req.user as any;
+        const user = req.user;
         const userId = user?.id || user?.id;
         if (!req.file) return Errors.badRequest(res, "No file uploaded");
         if (req.file.size > HARD_BYTE_CAP) {
@@ -693,7 +693,7 @@ export function registerImportExportRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = req.organization!;
-        const user = req.user as any;
+        const user = req.user;
         const userId = user?.id || user?.id;
         if (!req.file) return Errors.badRequest(res, "No ZIP uploaded");
         // ZIP magic check: PK\x03\x04
@@ -763,7 +763,7 @@ export function registerImportExportRoutes(app: Express): void {
   api.post("/api/export/everything", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       const parsed = exportEverythingSchema.safeParse(req.body ?? {});
       if (!parsed.success) {

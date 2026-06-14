@@ -242,7 +242,7 @@ export function registerDealRoutes(app: Express): void {
 
       // Wrap deal creation + audit log in a transaction so both succeed or
       // both roll back — prevents orphaned deals with no audit trail.
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
 
       const deal = await withTransaction(async () => {
@@ -347,7 +347,7 @@ export function registerDealRoutes(app: Express): void {
 
       const deal = await storage.updateDeal(dealId, validated, undefined, org.id);
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -477,7 +477,7 @@ export function registerDealRoutes(app: Express): void {
         // Phase 3 Week 14 — Activation telemetry. First closed deal is a
         // major activation milestone (lead → close conversion).
         try {
-          const userIdForEvent = (req.user as any)?.id || (req.user as any)?.id;
+          const userIdForEvent = req.user?.id;
           const { recordActivationEventAsync } = await import("./services/activation");
           recordActivationEventAsync({
             orgId: org.id,
@@ -580,7 +580,7 @@ export function registerDealRoutes(app: Express): void {
         setImmediate(async () => {
           try {
             const { notifyDealAccepted } = await import("./services/pushNotificationService");
-            const user = req.user as any;
+            const user = req.user;
             const userId = user?.id ?? user?.id;
             if (userId) {
               const property = await storage.getProperty(org.id, deal.propertyId);
@@ -887,7 +887,7 @@ export function registerDealRoutes(app: Express): void {
     if (!parsed.success) {
       return Errors.validationFailed(res, parsed.error.issues);
     }
-    const user = req.user as any;
+    const user = req.user;
     const userId = user?.id || user?.id;
     const updates = { ...parsed.data } as any;
     if (updates.completed === true && userId) {
@@ -1845,7 +1845,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       // Task #2: Verify deal belongs to org (IDOR prevention)
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       const { checked, documentUrl } = req.body;
 
@@ -2166,7 +2166,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
 
       const deal = await storage.updateDeal(dealId, { status: nextStatus }, undefined, orgId);
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id;
       await storage.createAuditLogEntry({
         organizationId: orgId,

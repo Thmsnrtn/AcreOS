@@ -55,7 +55,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     return Errors.unauthorized(res);
   }
 
-  const user = req.user as any;
+  const user = req.user;
   const userId = user.id;
   const userEmail = user.email;
 
@@ -64,7 +64,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     return Errors.unauthorized(res);
   }
 
-  const isFounder = isFounderEmail(userEmail);
+  const isFounder = isFounderEmail(userEmail ?? undefined);
 
   let org: any = undefined;
 
@@ -72,7 +72,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // but only if the user is still a verified active member of that org.
   // A revoked seat cannot keep operating in someone else's org by holding
   // onto a stale cookie.
-  const activeOrgCookieRaw = (req as any).cookies?.[ACTIVE_ORG_COOKIE];
+  const activeOrgCookieRaw = req.cookies?.[ACTIVE_ORG_COOKIE];
   const activeOrgCookieId = activeOrgCookieRaw ? Number(activeOrgCookieRaw) : NaN;
   if (Number.isFinite(activeOrgCookieId) && activeOrgCookieId > 0) {
     try {
@@ -293,7 +293,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // RS-6: same memo pattern, detects an email change in Clerk vs our
   // local DB row and alerts both addresses.
   try {
-    const sessionId = (req as any).auth?.sessionId ?? null;
+    const sessionId = req.auth?.sessionId ?? null;
     const ip = req.ip ?? null;
     const userAgent = (req.headers["user-agent"] as string) ?? null;
     void import("../services/loginAnomalyDetector").then((m) =>

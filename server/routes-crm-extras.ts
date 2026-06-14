@@ -146,7 +146,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
   
   api.get("/api/notification-preferences", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const orgId = req.organization!.id;
       
       const preferences = await storage.getNotificationPreferences(userId, orgId);
@@ -159,7 +159,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
 
   api.post("/api/notification-preferences", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const orgId = req.organization!.id;
       
       const { eventType, emailEnabled, pushEnabled, inAppEnabled } = req.body;
@@ -252,7 +252,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
   api.post("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       
       const validated = insertTaskSchema.parse({
         ...req.body,
@@ -294,7 +294,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
   api.put("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const id = parseInt(req.params.id);
       
       const existingTask = await storage.getTask(orgId, id);
@@ -347,7 +347,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
         return Errors.notFound(res, "Task");
       }
       
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       
       await storage.deleteTask(id);
@@ -373,7 +373,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
   api.post("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const id = parseInt(req.params.id);
       
       const existingTask = await storage.getTask(orgId, id);

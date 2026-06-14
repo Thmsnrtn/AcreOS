@@ -88,7 +88,7 @@ fieldScoutRouter.get('/properties/parcel-lookup', async (req: Request, res: Resp
 
 fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (req: Request, res: Response) => {
   try {
-    const file = (req as any).file;
+    const file = req.file;
     if (!file) {
       return Errors.badRequest(res, 'No audio file provided. Upload as multipart field "audio".');
     }
@@ -98,7 +98,7 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
     if (openaiKey) {
       // Use OpenAI Whisper API for transcription
       try {
-        const blob = new Blob([file.buffer], { type: file.mimetype || 'audio/webm' });
+        const blob = new Blob([new Uint8Array(file.buffer)], { type: file.mimetype || 'audio/webm' });
         const formData = new FormData();
         formData.append('file', blob, file.originalname || 'audio.webm');
         formData.append('model', 'whisper-1');
@@ -163,7 +163,7 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
       return Errors.notFound(res, 'Lead');
     }
 
-    const files = (req as any).files as Express.Multer.File[] | undefined;
+    const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) {
       return Errors.badRequest(res, 'No photo files provided. Upload as multipart field "photos".');
     }

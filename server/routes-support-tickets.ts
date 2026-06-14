@@ -23,7 +23,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   api.post("/api/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const user = req.user as any;
+      const user = req.user;
       
       const { subject, description, category, priority, pageContext, errorContext } = req.body;
       
@@ -69,7 +69,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   api.get("/api/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const user = req.user as any;
+      const user = req.user;
       const { status } = req.query;
       
       const { getSupportTickets } = await import("./ai/supportAgent");
@@ -112,7 +112,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   api.post("/api/support/tickets/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const user = req.user as any;
+      const user = req.user;
       const ticketId = parseInt(req.params.id);
       const { message } = req.body;
       
@@ -276,7 +276,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   api.post("/api/support/tickets/:id/resolve-human", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const ticketId = parseInt(req.params.id);
-      const user = req.user as any;
+      const user = req.user;
       const { resolution, rating, feedback, addToKnowledgeBase, publishable } = req.body;
       // Accept either name; publishable wins when both present.
       const shouldCreateDraft = publishable === true || addToKnowledgeBase === true;
@@ -656,7 +656,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         })
         .where(eq(knowledgeBaseArticles.id, articleId));
 
-      logger.info(`[support] KB draft published`, { metadata: { articleId, userId: (req.user as any)?.id } });
+      logger.info(`[support] KB draft published`, { metadata: { articleId, userId: req.user?.id } });
       res.json({ success: true });
     } catch (error: any) {
       logger.error("[support] Error publishing KB draft", error);
@@ -699,7 +699,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         })
         .where(eq(knowledgeBaseArticles.id, articleId));
 
-      logger.info(`[support] KB draft dismissed`, { metadata: { articleId, userId: (req.user as any)?.id } });
+      logger.info(`[support] KB draft dismissed`, { metadata: { articleId, userId: req.user?.id } });
       res.json({ success: true });
     } catch (error: any) {
       logger.error("[support] Error dismissing KB draft", error);
@@ -1113,7 +1113,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
   api.post("/api/support/report-bug", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const user = req.user as any;
+      const user = req.user;
       
       const {
         title,

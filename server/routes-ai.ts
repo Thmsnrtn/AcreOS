@@ -216,7 +216,7 @@ export function registerAIRoutes(app: Express): void {
 
   api.post("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const user = req.user as any;
+    const user = req.user;
     const userId = user?.id || user.id;
     const parsed = createConversationSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -257,7 +257,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       step = "parse";
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       const parsed = aiChatSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -406,7 +406,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       step = "parse";
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       const parsed = aiChatStreamSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -1051,7 +1051,7 @@ export function registerAIRoutes(app: Express): void {
   api.get("/api/ai/nudges", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       const { paxNudges } = await import("@shared/schema");
       const { eq: _eq, and: _and, isNull, or: _or, lte: _lte, sql: _sql } = await import("drizzle-orm");
@@ -1590,7 +1590,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const { vaAgentService } = await import("./ai/vaService");
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       const actionId = parseInt(req.params.id);
 

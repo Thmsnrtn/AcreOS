@@ -90,7 +90,7 @@ export function registerAccountSecurityRoutes(app: Express): void {
             try {
               const list = await clerk.sessions.getSessionList({ userId: localUser.clerkUserId });
               const arr = Array.isArray(list) ? list : list?.data ?? [];
-              const currentSessionId = (req as any).auth?.sessionId ?? null;
+              const currentSessionId = req.auth?.sessionId ?? null;
               sessions = arr.map((s: any) => ({
                 sessionId: s.id,
                 createdAt: s.createdAt ? new Date(s.createdAt).toISOString() : null,
@@ -170,7 +170,7 @@ export function registerAccountSecurityRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const userId = getUserId(req);
-        const currentSessionId = (req as any).auth?.sessionId ?? null;
+        const currentSessionId = req.auth?.sessionId ?? null;
         const [localUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
         if (!localUser?.clerkUserId) return Errors.notFound(res, "User");
 

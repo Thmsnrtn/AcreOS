@@ -22,7 +22,7 @@ export function registerReferralRoutes(app: Express): void {
    */
   app.get("/api/referral/code", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.id;
+      const userId = req.user?.id;
       if (!userId) return Errors.unauthorized(res);
 
       const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
@@ -64,7 +64,7 @@ export function registerReferralRoutes(app: Express): void {
    */
   app.get("/api/referral/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const userId = (req.user as any)?.id;
+      const userId = req.user?.id;
       if (!userId) return Errors.unauthorized(res);
 
       const org = req.organization;
@@ -105,7 +105,7 @@ export function registerReferralRoutes(app: Express): void {
    */
   app.post("/api/referral/apply", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.id;
+      const userId = req.user?.id;
       if (!userId) return Errors.unauthorized(res);
 
       const { code } = req.body as { code?: string };
@@ -144,7 +144,7 @@ export function registerReferralRoutes(app: Express): void {
    */
   app.post("/api/referral/activate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const userId = (req.user as any)?.id;
+      const userId = req.user?.id;
       if (!userId) return Errors.unauthorized(res);
 
       // Find referral where this user is the referee
@@ -204,7 +204,7 @@ export function registerReferralRoutes(app: Express): void {
    */
   app.get("/api/referral/referees", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.id;
+      const userId = req.user?.id;
       if (!userId) return Errors.unauthorized(res);
 
       const refs = await db

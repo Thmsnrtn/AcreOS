@@ -59,7 +59,7 @@ export function registerCampaignRoutes(app: Express): void {
       });
       const campaign = await storage.createCampaign(input);
       
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -1746,7 +1746,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.post("/api/campaigns/:id/test-send", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const campaign = await storage.getCampaign(org.id, Number(req.params.id));
       if (!campaign) return Errors.notFound(res, "Campaign");
 

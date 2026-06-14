@@ -48,7 +48,7 @@ router.post("/leads/update", attachPermissionContext(), async (req: Authenticate
     // not just the single-record PATCH. Without this, a VA could push
     // every lead in the org to "deleted" status via /api/bulk/leads/update.
     const context = req.permissionContext;
-    const callerId = (req.user as any)?.id ?? null;
+    const callerId = req.user?.id ?? null;
     if (context?.permissions.viewOnlyAssignedLeads) {
       return Errors.forbidden(res, "Bulk lead updates are not available with assigned-only access");
     }

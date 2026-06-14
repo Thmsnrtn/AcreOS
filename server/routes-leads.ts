@@ -460,7 +460,7 @@ export function registerLeadRoutes(app: Express): void {
       // insertLeadSchema strips organizationId; the repo write requires it.
       const lead = await storage.createLead({ ...input, organizationId: org.id });
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -663,7 +663,7 @@ export function registerLeadRoutes(app: Express): void {
       // mutate any lead in the org by guessing the numeric id. Re-assert
       // here so the gate holds across read AND write.
       const context = (req as AuthenticatedRequest).permissionContext;
-      const callerId = (req.user as any)?.id ?? null;
+      const callerId = req.user?.id ?? null;
       if (context?.permissions.viewOnlyAssignedLeads) {
         const assignedTo = (existingLead as any).assignedTo;
         if (assignedTo == null || String(assignedTo) !== String(callerId)) {
@@ -685,7 +685,7 @@ export function registerLeadRoutes(app: Express): void {
 
       const lead = await storage.updateLead(leadId, validated, org.id);
       
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -748,7 +748,7 @@ export function registerLeadRoutes(app: Express): void {
     }
 
     // Soft delete: set deletedAt instead of hard deleting
-    const user = req.user as any;
+    const user = req.user;
     const userId = user?.id || user?.id;
     await db.update(leads).set({
       deletedAt: new Date(),
@@ -856,7 +856,7 @@ export function registerLeadRoutes(app: Express): void {
 
       const deletedCount = await storage.bulkDeleteLeads(org.id, ids);
       
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -887,7 +887,7 @@ export function registerLeadRoutes(app: Express): void {
 
       const updatedCount = await storage.bulkUpdateLeads(org.id, ids, updates);
       
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -940,7 +940,7 @@ export function registerLeadRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = (req as AuthenticatedRequest).organization;
-        const userId = (req.user as any)?.id ?? null;
+        const userId = req.user?.id ?? null;
         const leadId = Number(req.params.id);
         if (!Number.isFinite(leadId)) {
           return Errors.badRequest(res, "Invalid lead id");

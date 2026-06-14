@@ -38,7 +38,7 @@ export function registerCommunicationRoutes(app: Express): void {
   api.post("/api/email-identities", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const teamMember = await storage.getTeamMember(org.id, user?.id || user.id);
 
       const { type, fromEmail, fromName, replyToEmail, replyRoutingMode } = req.body;
@@ -129,7 +129,7 @@ export function registerCommunicationRoutes(app: Express): void {
       });
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -158,7 +158,7 @@ export function registerCommunicationRoutes(app: Express): void {
       await storage.setDefaultEmailSenderIdentity(org.id, id);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -192,7 +192,7 @@ export function registerCommunicationRoutes(app: Express): void {
       await storage.deleteEmailSenderIdentity(id);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -240,7 +240,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const identity = await storage.createMailSenderIdentity(parsed);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -291,7 +291,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const identity = await storage.updateMailSenderIdentity(id, req.body);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -320,7 +320,7 @@ export function registerCommunicationRoutes(app: Express): void {
       await storage.setDefaultMailSenderIdentity(org.id, id);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -354,7 +354,7 @@ export function registerCommunicationRoutes(app: Express): void {
       await storage.deleteMailSenderIdentity(id);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -483,7 +483,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const order = await storage.createMailingOrder(parsed);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -517,7 +517,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const order = await storage.updateMailingOrder(id, req.body);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -625,7 +625,7 @@ export function registerCommunicationRoutes(app: Express): void {
       if (!existing || existing.organizationId !== org.id) {
         return Errors.notFound(res, "Message");
       }
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       const message = await storage.markInboxMessageRead(id, userId);
       res.json(message);
@@ -709,7 +709,7 @@ export function registerCommunicationRoutes(app: Express): void {
 
       if (result.success) {
         try {
-          const user = req.user as any;
+          const user = req.user;
           await storage.createAuditLogEntry({
             organizationId: org.id,
             userId: (user?.id || user?.id)?.toString() || null,
@@ -757,7 +757,7 @@ export function registerCommunicationRoutes(app: Express): void {
   api.post("/api/activity-feed", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id ?? user?.id ?? "";
       const { entityType, entityId, content, eventType = "note_added" } = req.body;
 
@@ -778,7 +778,10 @@ export function registerCommunicationRoutes(app: Express): void {
 
       // Process @mentions asynchronously (non-blocking)
       if (content.includes("@")) {
-        const authorName = user?.displayName || user?.email?.split("@")[0] || "A team member";
+        const authorName =
+          [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+          user?.email?.split("@")[0] ||
+          "A team member";
         setImmediate(async () => {
           try {
             await processMentions(org.id, content, {
@@ -973,7 +976,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const workflow = await storage.createWorkflow(parsed);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1006,7 +1009,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const workflow = await storage.updateWorkflow(id, req.body);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1039,7 +1042,7 @@ export function registerCommunicationRoutes(app: Express): void {
       await storage.deleteWorkflow(id);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1073,7 +1076,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const workflow = await storage.toggleWorkflow(org.id, id, isActive);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1154,7 +1157,7 @@ export function registerCommunicationRoutes(app: Express): void {
       });
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1325,7 +1328,7 @@ export function registerCommunicationRoutes(app: Express): void {
       });
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1368,7 +1371,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const task = await storage.updateScheduledTask(id, updates);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1401,7 +1404,7 @@ export function registerCommunicationRoutes(app: Express): void {
       await storage.deleteScheduledTask(id);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,

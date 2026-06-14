@@ -72,8 +72,8 @@ export function requireRole(allowedRoles: OrgRole[] | OrgRole, ...rest: OrgRole[
 
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const user = (req as any).user;
-      const org = (req as any).organization;
+      const user = req.user;
+      const org = req.organization;
 
       if (!user || !org) {
         return Errors.unauthorized(res);

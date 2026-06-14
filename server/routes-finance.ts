@@ -231,7 +231,7 @@ export function registerFinanceRoutes(app: Express): void {
         throw e;
       }
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -304,7 +304,7 @@ export function registerFinanceRoutes(app: Express): void {
       throw e;
     }
 
-    const user = req.user as any;
+    const user = req.user;
     const userId = user?.id || user?.id;
     await storage.createAuditLogEntry({
       organizationId: org.id,
@@ -489,7 +489,7 @@ export function registerFinanceRoutes(app: Express): void {
 
     await storage.deleteNote(noteId, org.id);
 
-    const user = req.user as any;
+    const user = req.user;
     const userId = user?.id || user?.id;
     await storage.createAuditLogEntry({
       organizationId: org.id,
@@ -817,7 +817,7 @@ export function registerFinanceRoutes(app: Express): void {
       const updated = await storage.updatePaymentReminder(reminderId, updates);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         const userId = user?.id || user?.id;
         await storage.createAuditLogEntry({
           organizationId: org.id,
@@ -1227,7 +1227,7 @@ export function registerFinanceRoutes(app: Express): void {
       const payment = await storage.createPayment(parsed.data);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         const userId = user?.id || user?.id;
         await storage.createAuditLogEntry({
           organizationId: org.id,

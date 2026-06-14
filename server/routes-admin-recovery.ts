@@ -86,8 +86,8 @@ const transferOwnershipSchema = z.object({
  * when this returns false.
  */
 export function requireFounderForRecovery(req: AuthenticatedRequest, res: Response): boolean {
-  const user = req.user as any;
-  const userId = (req as any).auth?.userId ?? user?.clerkUserId ?? null;
+  const user = req.user;
+  const userId = req.auth?.userId ?? user?.clerkUserId ?? null;
   const email = user?.email ?? null;
 
   if (!isFounderIdentity({ email, userId })) {
@@ -109,8 +109,8 @@ async function writeAuditEvent(
   }
 ): Promise<void> {
   try {
-    const user = req.user as any;
-    const userId = (req as any).auth?.userId ?? user?.clerkUserId ?? null;
+    const user = req.user;
+    const userId = req.auth?.userId ?? user?.clerkUserId ?? null;
     const email = user?.email ?? null;
     const ip =
       (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ??
