@@ -11,7 +11,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireAdminOrAbove } from "./utils/permissions";
 import { insertAbTestSchema, insertAbTestVariantSchema, Z_SCORES } from "@shared/schema";
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 
 export function registerIntegrationRoutes(app: Express): void {
   const api = app;
@@ -1727,11 +1727,7 @@ export function registerIntegrationRoutes(app: Express): void {
         await validateUrl(url);
       } catch (err: any) {
         if (err instanceof SSRFBlockedError) {
-          return res.status(422).json({
-            error: "ssrf_blocked",
-            message: err.message,
-            statusCode: 422,
-          });
+          return sendError(res, 422, "ssrf_blocked", err.message);
         }
         throw err;
       }

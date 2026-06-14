@@ -39,7 +39,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 
 // ----------------------------------------------------------------------------
@@ -248,9 +248,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       // Imelda §2.5: "accepting partial rent after filing a notice to
       // vacate can void the notice." Check posture and warn if accepting.
       if (isPartial && openCharge && openCharge.legalPosture === "notice_served" && !parsed.data.acceptedDespitePartial) {
-        return res.status(409).json({
-          error: "partial_payment_voids_notice",
-          message: "Partial payment after notice-to-vacate may void the notice. Set acceptedDespitePartial=true to override and accept.",
+        return sendError(res, 409, "partial_payment_voids_notice", "Partial payment after notice-to-vacate may void the notice. Set acceptedDespitePartial=true to override and accept.", {
           openChargeId: openCharge.id,
           balanceCents: openCharge.balanceCents,
         });

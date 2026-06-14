@@ -7,7 +7,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { inArray, or } from "drizzle-orm";
 import { knowledgeBaseArticles, paxMemory, systemAlerts, organizations } from "@shared/schema";
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { costClass } from "./utils/costClass";
 import { notifyFounderOfTicket } from "./services/supportNotifications";
 import type { AuthenticatedRequest } from "./types/request";
@@ -975,7 +975,7 @@ This ticket was escalated by Pax (AI Support Agent) because it could not be reso
         .where(inArray(supportTickets.id, ticketIds));
       
       if (tickets.length === 0) {
-        return res.status(404).json({ message: "No tickets found" });
+        return sendError(res, 404, "NOT_FOUND", "No tickets found");
       }
       
       // Group tickets by category

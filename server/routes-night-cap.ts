@@ -98,7 +98,7 @@ function getTodaysQuote(): { quote: string; author: string } {
 router.get("/snapshot", async (req: Request, res: Response) => {
   try {
     const org = req.organization || req.organization;
-    if (!org) return res.status(401).json({ error: "Organization required" });
+    if (!org) return Errors.unauthorized(res);
 
     const orgId = org.id;
     const today = new Date();

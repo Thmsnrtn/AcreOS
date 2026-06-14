@@ -35,7 +35,7 @@ import { alertingService } from "./services/alerting";
 import { isFounderIdentity } from "./services/founder";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { getUserId, getOrganization, type AuthenticatedRequest } from "./types/request";
 
 // ── Zod validation schemas for admin endpoints ────────────────────────────────
@@ -3586,7 +3586,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       const { getOpenAIClient } = await import("./utils/openaiClient");
       const openai = getOpenAIClient();
-      if (!openai) return res.status(503).json({ message: "OpenAI not configured" });
+      if (!openai) return sendError(res, 503, "SERVICE_UNAVAILABLE", "OpenAI not configured");
 
       const conversation = messages.map((m: any) =>
         `${m.role === 'user' ? 'Customer' : 'Support'}: ${m.content}`

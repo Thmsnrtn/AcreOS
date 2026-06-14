@@ -26,7 +26,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 
 const mergeFieldSchema = z.object({
@@ -270,11 +270,7 @@ export function registerCcrTemplateRoutes(app: Express): void {
         const { rendered, missing } = renderTemplate(tpl.bodyMarkdown, fields, parsed.data.values);
 
         if (missing.length > 0) {
-          return res.status(422).json({
-            error: "missing_required_fields",
-            message: `Missing values for required fields: ${missing.join(", ")}`,
-            missing,
-          });
+          return sendError(res, 422, "missing_required_fields", `Missing values for required fields: ${missing.join(", ")}`, { missing });
         }
 
         return res.json({

@@ -90,7 +90,7 @@ async function getOrgIdForFounder(req: Request): Promise<number | null> {
 router.get("/", async (req: Request, res: Response) => {
   try {
     const orgId = await getOrgIdForFounder(req);
-    if (!orgId) return res.status(401).json({ error: "No organization context" });
+    if (!orgId) return Errors.unauthorized(res);
 
     const windowDays = parseInt((req.query.windowDays as string) ?? "30", 10);
     const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);

@@ -43,7 +43,7 @@ router.delete("/alerts/:id", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const alertId = parseInt(req.params.id);
-    if (isNaN(alertId)) return res.status(400).json({ error: "Invalid alert id" });
+    if (isNaN(alertId)) return Errors.badRequest(res, "Invalid alert id");
 
     await dismissAlert(org.id, alertId);
     res.json({ success: true });

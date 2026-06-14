@@ -28,6 +28,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { db } from "../storage";
 import { whitelabelTenants } from "@shared/schema";
+import { sendError } from "../utils/errors";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
@@ -244,10 +245,7 @@ export function requireTenant(
   next: NextFunction
 ): void {
   if (!req.tenantContext) {
-    res.status(404).json({
-      error: "Not found",
-      message: "No tenant configuration found for this domain.",
-    });
+    sendError(res, 404, "NOT_FOUND", "No tenant configuration found for this domain.");
     return;
   }
   next();

@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
+import { sendError } from "../utils/errors";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -94,7 +95,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
   const headerToken: string = (req.headers["x-csrf-token"] as string) ?? "";
 
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {
-    res.status(403).json({ message: "CSRF token validation failed" });
+    sendError(res, 403, "CSRF_VALIDATION_FAILED", "CSRF token validation failed");
     return;
   }
 

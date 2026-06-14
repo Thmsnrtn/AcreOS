@@ -46,7 +46,7 @@ async function getOrgIdForFounder(req: Request): Promise<number | null> {
 router.get("/", async (req: Request, res: Response) => {
   try {
     const orgId = await getOrgIdForFounder(req);
-    if (!orgId) return res.status(401).json({ error: "No organization context" });
+    if (!orgId) return Errors.unauthorized(res);
 
     // Read the cap from the org row (default 5).
     const [org] = await db

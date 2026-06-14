@@ -26,6 +26,7 @@
 import type { Request, Response, NextFunction } from "express";
 import type { AuthenticatedRequest } from "../types/request";
 import { logger } from "../utils/logger";
+import { sendError } from "../utils/errors";
 
 /**
  * Routes that remain reachable while paused. Reads (GET) are always
@@ -88,11 +89,11 @@ export function subscriptionPauseGate(
     })`,
   );
 
-  res.status(402).json({
-    error: "subscription_paused",
-    message:
-      "Your subscription is paused. Resume anytime from Settings → Billing to take new actions.",
-    subscriptionPauseEndsAt: org.subscriptionPauseEndsAt ?? null,
-    statusCode: 402,
-  });
+  sendError(
+    res,
+    402,
+    "subscription_paused",
+    "Your subscription is paused. Resume anytime from Settings → Billing to take new actions.",
+    { subscriptionPauseEndsAt: org.subscriptionPauseEndsAt ?? null },
+  );
 }

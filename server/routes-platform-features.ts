@@ -11,7 +11,7 @@ import type { Express } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { storage, db } from "./storage";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { sql, eq, desc } from "drizzle-orm";
 import { countyReviews } from "@shared/schema";
@@ -151,11 +151,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.get("/api/integrations/quickbooks/connect", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       if (!process.env.QBO_CLIENT_ID) {
-        return res.status(503).json({
-          error: "integration_not_configured",
-          message: "QuickBooks integration is not enabled on this deployment (QBO_CLIENT_ID is not set).",
-          statusCode: 503,
-        });
+        return sendError(res, 503, "integration_not_configured", "QuickBooks integration is not enabled on this deployment (QBO_CLIENT_ID is not set).");
       }
       const org = req.organization;
       const { getQboOAuthUrl } = await import("./services/bookkeeping");

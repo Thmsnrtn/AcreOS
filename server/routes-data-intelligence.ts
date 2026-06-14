@@ -42,7 +42,7 @@ import { db } from "./db";
 import { properties } from "../shared/schema";
 import { eq, and } from "drizzle-orm";
 import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
 
 const router = Router();
@@ -406,13 +406,12 @@ router.post("/campaign-sizing", async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 
 router.get("/freedom-snapshot", async (_req: Request, res: Response) => {
-  res.status(503).json({
-    error: "SERVICE_UNAVAILABLE",
-    message:
-      "Freedom snapshot is not available — there is no notes/amortization system of record to source it from. This surface will not return fabricated note income, balances, or a freedom score.",
-    statusCode: 503,
-    status: "unavailable",
-  });
+  sendError(
+    res,
+    503,
+    "SERVICE_UNAVAILABLE",
+    "Freedom snapshot is not available — there is no notes/amortization system of record to source it from. This surface will not return fabricated note income, balances, or a freedom score.",
+  );
 });
 
 // ---------------------------------------------------------------------------

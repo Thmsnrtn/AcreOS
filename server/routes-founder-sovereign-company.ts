@@ -18,7 +18,7 @@ import { performanceReviewService } from "./services/agentPerformanceReviews";
 import { playbookService } from "./services/agentPlaybooks";
 import { ceoAbsenceService } from "./services/ceoAbsenceMode";
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 
 export function registerFounderV6Routes(app: Express) {
 
@@ -200,7 +200,7 @@ export function registerFounderV6Routes(app: Express) {
   app.post("/api/founder/v6/playbooks/:id/toggle", async (req, res) => {
     try {
       const playbook = await playbookService.getById(parseInt(req.params.id));
-      if (!playbook) return res.status(404).json({ error: "Not found" });
+      if (!playbook) return sendError(res, 404, "NOT_FOUND", "Not found");
       if (playbook.isActive) {
         await playbookService.deactivate(playbook.id);
       } else {

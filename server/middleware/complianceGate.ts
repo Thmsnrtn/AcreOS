@@ -10,6 +10,7 @@
  */
 import type { Request, Response, NextFunction } from "express";
 import { logger } from "../utils/logger";
+import { sendError } from "../utils/errors";
 
 export interface ComplianceWarning {
   type: "dodd_frank" | "usury" | "tcpa";
@@ -90,8 +91,7 @@ export function complianceGate(checkType: "note" | "deal") {
         // In strict mode, block violations
         const hasViolation = warnings.some(w => w.severity === "violation");
         if (isStrictMode && hasViolation) {
-          return res.status(422).json({
-            message: "Compliance violation detected. Operation blocked in strict mode.",
+          return sendError(res, 422, "COMPLIANCE_VIOLATION", "Compliance violation detected. Operation blocked in strict mode.", {
             warnings,
             overrideInstructions: "Set X-Compliance-Override header with founder approval token to proceed.",
           });

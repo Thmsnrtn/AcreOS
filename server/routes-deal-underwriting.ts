@@ -12,7 +12,7 @@ router.post("/analyze", async (req, res) => {
     const results = await svc.analyzeScenarios(org.id, req.body);
     res.json({ results });
   } catch (e: any) {
-    res.status(400).json({ error: e.message });
+    Errors.badRequest(res, e.message);
   }
 });
 

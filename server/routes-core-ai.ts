@@ -4,7 +4,7 @@ import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 
@@ -219,7 +219,7 @@ export function registerCoreAIRoutes(app: Express): void {
 
       const existingFeedback = await storage.getAgentFeedbackByTask(agentTaskId);
       if (existingFeedback) {
-        return res.status(409).json({ message: "Feedback already submitted for this task" });
+        return sendError(res, 409, "FEEDBACK_ALREADY_SUBMITTED", "Feedback already submitted for this task");
       }
 
       const feedbackData = await storage.createAgentFeedback({

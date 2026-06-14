@@ -33,7 +33,7 @@ router.get("/:year", isAuthenticated, getOrCreateOrg, async (req: Request, res: 
     const org = req.organization;
     const year = parseInt(req.params.year);
     if (isNaN(year) || year < 2000 || year > 2100) {
-      return res.status(400).json({ error: "Invalid year" });
+      return Errors.badRequest(res, "Invalid year");
     }
     const report = await getPortfolioPnl(org.id, new Date(year, 0, 1), new Date(year, 11, 31, 23, 59, 59));
     res.json({ report });

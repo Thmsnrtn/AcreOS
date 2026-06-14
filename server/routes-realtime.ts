@@ -6,7 +6,7 @@ import { wsServer } from './websocket';
 import { CreditService } from './services/credits';
 import { requireOpenAIClient } from './utils/openaiClient';
 import { logger } from './utils/logger';
-import { Errors } from './utils/errors';
+import { Errors, sendError } from './utils/errors';
 const creditService = new CreditService();
 
 const router = Router();
@@ -40,7 +40,7 @@ router.post('/ask', async (req: AuthenticatedRequest, res: Response) => {
     if (org) {
       const hasCredits = await creditService.hasEnoughCredits(org.id, 2);
       if (!hasCredits) {
-        return res.status(402).json({ error: 'Insufficient credits for AI request' });
+        return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits for AI request");
       }
       // Deduct after response (fire-and-forget)
       res.on('finish', () => {

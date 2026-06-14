@@ -695,17 +695,12 @@ app.use("/mcp", mcpLimiter);
     // legal hold" panel rather than a generic error.
     if (err?.name === "LegalHoldViolationError") {
       if (!res.headersSent) {
-        res.status(423).json({
-          error: err.code || "LEGAL_HOLD_ACTIVE",
-          message: err.message || "Resource is under an active legal hold",
-          details: {
-            holdId: err.hold?.id,
-            caseRef: err.hold?.caseRef,
-            scope: err.hold?.scope,
-            resourceType: err.resourceType,
-            resourceId: err.resourceId,
-          },
-          statusCode: 423,
+        sendError(res, 423, err.code || "LEGAL_HOLD_ACTIVE", err.message || "Resource is under an active legal hold", {
+          holdId: err.hold?.id,
+          caseRef: err.hold?.caseRef,
+          scope: err.hold?.scope,
+          resourceType: err.resourceType,
+          resourceId: err.resourceId,
         });
       }
       return;
