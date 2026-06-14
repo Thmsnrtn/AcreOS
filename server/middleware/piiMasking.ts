@@ -161,6 +161,17 @@ export function installConsoleInterceptor(): void {
 
 // ─── Express middleware ───────────────────────────────────────────────────────
 
+declare global {
+  namespace Express {
+    interface Request {
+      /** PII-safe snapshot of req.body for structured logging. Set by piiMaskingMiddleware. */
+      maskedBody?: unknown;
+      /** PII-safe snapshot of req.query for structured logging. Set by piiMaskingMiddleware. */
+      maskedQuery?: Record<string, unknown>;
+    }
+  }
+}
+
 /**
  * Express middleware that masks PII in request body fields before processing.
  *
@@ -181,11 +192,11 @@ export function piiMaskingMiddleware(
   try {
     // Create a PII-safe copy of the body for logging purposes only
     if (req.body && typeof req.body === "object") {
-      (req as any).maskedBody = maskValue(req.body);
+      req.maskedBody = maskValue(req.body);
     } else if (typeof req.body === "string") {
-      (req as any).maskedBody = maskString(req.body);
+      req.maskedBody = maskString(req.body);
     } else {
-      (req as any).maskedBody = req.body;
+      req.maskedBody = req.body;
     }
 
     // Mask query string values for safe log snapshot
@@ -194,7 +205,7 @@ export function piiMaskingMiddleware(
       maskedQuery[k] =
         typeof v === "string" ? maskString(v) : maskValue(v);
     }
-    (req as any).maskedQuery = maskedQuery;
+    req.maskedQuery = maskedQuery;
   } catch {
     // Never let masking errors break the request
   }

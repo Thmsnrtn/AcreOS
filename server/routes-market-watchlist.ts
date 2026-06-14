@@ -16,6 +16,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { marketWatchlistService } from "./services/marketWatchlist";
 import { z } from "zod";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -45,22 +46,22 @@ router.post("/", isAuthenticated, getOrCreateOrg, (req, res) => {
     const entry = marketWatchlistService.addToWatchlist(org.id, String(user.id), data);
     res.status(201).json(entry);
   } catch (err: any) {
-    if (err.issues) return res.status(400).json({ message: "Validation failed", errors: err.issues });
-    res.status(500).json({ message: err.message });
+    if (err.issues) return Errors.validationFailed(res, err.issues);
+    Errors.internal(res, err);
   }
 });
 
 router.patch("/:id", isAuthenticated, getOrCreateOrg, (req, res) => {
   const org = req.organization;
   const entry = marketWatchlistService.updateEntry(org.id, req.params.id, req.body);
-  if (!entry) return res.status(404).json({ message: "Watchlist entry not found" });
+  if (!entry) return Errors.notFound(res, "Watchlist entry");
   res.json(entry);
 });
 
 router.delete("/:id", isAuthenticated, getOrCreateOrg, (req, res) => {
   const org = req.organization;
   const removed = marketWatchlistService.removeFromWatchlist(org.id, req.params.id);
-  if (!removed) return res.status(404).json({ message: "Watchlist entry not found" });
+  if (!removed) return Errors.notFound(res, "Watchlist entry");
   res.json({ success: true });
 });
 
@@ -73,7 +74,7 @@ router.get("/alerts", isAuthenticated, getOrCreateOrg, (req, res) => {
 router.post("/alerts/read", isAuthenticated, getOrCreateOrg, (req, res) => {
   const org = req.organization;
   const { alertIds } = req.body;
-  if (!Array.isArray(alertIds)) return res.status(400).json({ message: "alertIds must be an array" });
+  if (!Array.isArray(alertIds)) return Errors.badRequest(res, "alertIds must be an array");
   marketWatchlistService.markAlertsRead(org.id, alertIds);
   res.json({ success: true });
 });
@@ -86,7 +87,7 @@ router.get("/unread", isAuthenticated, getOrCreateOrg, (req, res) => {
 router.post("/:id/test", isAuthenticated, getOrCreateOrg, (req, res) => {
   const org = req.organization;
   const alert = marketWatchlistService.testAlert(org.id, req.params.id);
-  if (!alert) return res.status(404).json({ message: "Watchlist entry not found" });
+  if (!alert) return Errors.notFound(res, "Watchlist entry");
   res.json(alert);
 });
 

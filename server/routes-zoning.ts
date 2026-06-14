@@ -6,7 +6,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { zoningService } from "./services/zoningService";
 
 const router = Router();
@@ -16,13 +16,13 @@ router.post("/lookup", async (req: Request, res: Response) => {
   try {
     const { address, parcelId } = req.body;
     if (!address && !parcelId) {
-      return res.status(400).json({ error: "address or parcelId required" });
+      return Errors.badRequest(res, "address or parcelId required");
     }
 
     // zoningService exposes getZoning(address). Parcel-only lookups are not
     // supported by the underlying providers.
     if (!address) {
-      return res.status(400).json({ error: "address is required for zoning lookup" });
+      return Errors.badRequest(res, "address is required for zoning lookup");
     }
     const result = await zoningService.getZoning(address);
     res.json(result);
@@ -35,7 +35,7 @@ router.post("/lookup", async (req: Request, res: Response) => {
 // TODO(tsc): zoningService has no getZoningHistory method; zoning-change
 // history is not yet available from the providers.
 router.get("/history/:parcelId", async (_req: Request, res: Response) => {
-  res.status(501).json({ error: "Zoning history endpoint not implemented" });
+  sendError(res, 501, "NOT_IMPLEMENTED", "Zoning history endpoint not implemented");
 });
 
 export default router;

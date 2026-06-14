@@ -173,7 +173,7 @@ router.post('/usury-check', async (req: Request, res: Response) => {
   try {
     const { checkUsury } = await import('./services/usury');
     const { state, rate } = req.body;
-    if (!state || rate === undefined) return res.status(400).json({ error: 'state and rate required' });
+    if (!state || rate === undefined) return Errors.badRequest(res, 'state and rate required');
     const clearance = checkUsury(state, Number(rate));
     res.json(clearance);
   } catch (e: any) {
@@ -207,10 +207,10 @@ router.get('/usury-audit', async (req: Request, res: Response) => {
 router.get('/evidence-pack/:dealId', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    if (!org) return res.status(401).json({ error: 'No organization context' });
+    if (!org) return Errors.unauthorized(res);
     const dealId = parseInt(req.params.dealId, 10);
     if (!Number.isFinite(dealId)) {
-      return res.status(400).json({ error: 'Invalid dealId' });
+      return Errors.badRequest(res, 'Invalid dealId');
     }
 
     // Confirm the deal exists in this org.
@@ -220,7 +220,7 @@ router.get('/evidence-pack/:dealId', async (req: Request, res: Response) => {
       .where(and(eq(deals.id, dealId), eq(deals.organizationId, org.id)))
       .limit(1);
     if (!deal) {
-      return res.status(404).json({ error: 'Deal not found' });
+      return Errors.notFound(res, 'Deal');
     }
 
     // Audit events scoped to the deal itself OR the underlying property

@@ -94,8 +94,10 @@ export async function auditLog(input: AuditLogInput): Promise<void> {
  * unauthenticated requests (DSAR intake) and authenticated ones.
  */
 export function actorFromRequest(req: Request): AuditActor {
-  const user = (req as any).user as { id?: string; email?: string; clerkUserId?: string } | undefined;
-  const auth = (req as any).auth as { userId?: string } | undefined;
+  // Cast to optional: DSAR intake runs unauthenticated, so the augmented
+  // properties may be absent at runtime despite their non-optional typing.
+  const user = req.user as { id?: string; email?: string; clerkUserId?: string } | undefined;
+  const auth = req.auth;
   const userId = auth?.userId ?? user?.clerkUserId ?? user?.id ?? null;
   const email = user?.email ?? null;
   const fwd = req.headers["x-forwarded-for"];

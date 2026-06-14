@@ -66,7 +66,7 @@ router.post('/generate', async (req: AuthenticatedRequest, res: Response) => {
     });
   } catch (error: any) {
     if (handleLandStatusError(res, error)) return;
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message);
   }
 });
 
@@ -76,7 +76,7 @@ router.post('/property/:propertyId', async (req: AuthenticatedRequest, res: Resp
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId, 10);
     if (Number.isNaN(propertyId)) {
-      return res.status(400).json({ error: 'Invalid property id' });
+      return Errors.badRequest(res, 'Invalid property id');
     }
     const [property] = await db
       .select()
@@ -84,7 +84,7 @@ router.post('/property/:propertyId', async (req: AuthenticatedRequest, res: Resp
       .where(and(eq(properties.id, propertyId), eq(properties.organizationId, org.id)));
 
     if (!property) {
-      return res.status(404).json({ error: 'Property not found' });
+      return Errors.notFound(res, 'Property');
     }
 
     const enrichment = property.enrichmentData as
@@ -157,7 +157,7 @@ router.post('/property/:propertyId', async (req: AuthenticatedRequest, res: Resp
     });
   } catch (error: any) {
     if (handleLandStatusError(res, error)) return;
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message);
   }
 });
 
@@ -202,7 +202,7 @@ router.post('/record-transaction', async (req: Request, res: Response) => {
     await acreOSValuation.recordTransactionForTraining(org.id.toString(), req.body);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message);
   }
 });
 
@@ -217,7 +217,7 @@ router.post('/bulk', async (req: Request, res: Response) => {
     res.json({ success: true, message: 'Bulk valuation started for all owned properties' });
   } catch (error: any) {
     if (handleLandStatusError(res, error)) return;
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message);
   }
 });
 

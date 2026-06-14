@@ -542,6 +542,19 @@ export function maskApiKey(key: string | undefined | null): string {
 
 // ─── Express middleware ───────────────────────────────────────────────────────
 
+declare global {
+  namespace Express {
+    interface Request {
+      /** Field-encryption helpers. Set by encryptionMiddleware. */
+      encrypt?: typeof encrypt;
+      decrypt?: typeof decrypt;
+      isEncrypted?: typeof isEncrypted;
+      encryptFields?: typeof encryptFields;
+      decryptFields?: typeof decryptFields;
+    }
+  }
+}
+
 export function encryptionMiddleware(
   req: Request,
   _res: Response,
@@ -549,11 +562,11 @@ export function encryptionMiddleware(
 ): void {
   try {
     getKey();
-    (req as any).encrypt = encrypt;
-    (req as any).decrypt = decrypt;
-    (req as any).isEncrypted = isEncrypted;
-    (req as any).encryptFields = encryptFields;
-    (req as any).decryptFields = decryptFields;
+    req.encrypt = encrypt;
+    req.decrypt = decrypt;
+    req.isEncrypted = isEncrypted;
+    req.encryptFields = encryptFields;
+    req.decryptFields = decryptFields;
   } catch (err) {
     logger.error("[fieldEncryption] Encryption middleware error", err);
     if (process.env.NODE_ENV === "production") {

@@ -45,7 +45,7 @@ router.patch('/listings/:id', async (req: Request, res: Response) => {
       status: z.string().max(40).optional(),
       notes: z.string().max(4_000).optional(),
     }).safeParse(req.body);
-    if (!parsed.success) return res.status(422).json({ error: parsed.error.flatten() });
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
 
     const update = {
       ...parsed.data,
@@ -91,7 +91,7 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
       amountCents: z.number().int().nonnegative().optional(),
       notes: z.string().max(2_000).optional(),
     }).safeParse(req.body);
-    if (!parsed.success) return res.status(422).json({ error: parsed.error.flatten() });
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
 
     const [listing] = await drizzleDb
       .select({ id: taxSaleListings.id })

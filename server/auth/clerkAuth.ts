@@ -2,6 +2,7 @@ import { clerkMiddleware, createClerkClient } from "@clerk/express";
 import type { RequestHandler } from "express";
 import { db } from "../db";
 import { users } from "@shared/models/auth";
+import { Errors, sendError } from "../utils/errors";
 import { eq } from "drizzle-orm";
 import { isFounderEmail, isFounderIdentity } from "../services/founder";
 import { logger } from "../utils/logger";
@@ -212,7 +213,7 @@ async function hydrateUser(req: any, res: any, next: any) {
   }
 
   if (!userId) {
-    return res.status(401).json({ error: "Unauthorized", message: "No valid session" });
+    return Errors.unauthorized(res);
   }
 
   try {
@@ -328,7 +329,7 @@ export const isAuthenticated: RequestHandler = (req: any, res, next) => {
   }
 
   // No CLERK_JWT_KEY configured and no cookies at all — no auth possible.
-  return res.status(401).json({ error: "Unauthorized", message: "No valid session" });
+  return Errors.unauthorized(res);
 };
 
 /**
@@ -341,13 +342,13 @@ export const isAuthenticated: RequestHandler = (req: any, res, next) => {
  */
 export const requireFounder: RequestHandler = (req: any, res, next) => {
   if (!req.user) {
-    return res.status(404).json({ message: "Not found" });
+    return sendError(res, 404, "NOT_FOUND", "Not found");
   }
 
   const user = req.user as any;
   const userId = req.auth?.userId ?? user.clerkUserId ?? null;
   if (!isFounderIdentity({ email: user.email, userId })) {
-    return res.status(404).json({ message: "Not found" });
+    return sendError(res, 404, "NOT_FOUND", "Not found");
   }
 
   req.isFounder = true;

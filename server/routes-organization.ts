@@ -23,7 +23,7 @@ import {
   generateCommissionStatement,
 } from "./services/commissionService";
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
 import type { AuthenticatedRequest } from "./types/request";
@@ -1670,30 +1670,27 @@ export function registerOrganizationRoutes(app: Express): void {
           .where(and(eq(invTable.organizationId, org.id), eq(invTable.status, "pending")));
         const projected = (activeRow?.count ?? 0) + (pendingRow?.count ?? 0) + invites.length;
         if (!tier) {
-          return res.status(402).json({
-            error: "upgrade_required",
-            message: "Free tier cannot invite teammates. Upgrade to Pro or Scale to add seats.",
-            statusCode: 402,
-            details: { projected, seatCount, tier: null },
-          });
+          return sendError(res, 402, "upgrade_required", "Free tier cannot invite teammates. Upgrade to Pro or Scale to add seats.", { projected, seatCount, tier: null });
         }
         if (!canAddSeats(tier, projected)) {
-          return res.status(402).json({
-            error: "upgrade_required",
-            message: tier === "starter"
+          return sendError(
+            res,
+            402,
+            "upgrade_required",
+            tier === "starter"
               ? "Starter tier is single-user only. Upgrade to Pro or Scale to invite teammates."
               : `Tier ${tier} is capped at ${projected - 1} seats. Upgrade to add more.`,
-            statusCode: 402,
-            details: { projected, seatCount, tier },
-          });
+            { projected, seatCount, tier },
+          );
         }
         if (projected > seatCount) {
-          return res.status(402).json({
-            error: "seat_purchase_required",
-            message: `Inviting ${invites.length} teammate(s) would require ${projected} paid seats; you currently have ${seatCount}. Increase your seat count from billing first.`,
-            statusCode: 402,
-            details: { projected, seatCount, tier, additionalSeatsNeeded: projected - seatCount },
-          });
+          return sendError(
+            res,
+            402,
+            "seat_purchase_required",
+            `Inviting ${invites.length} teammate(s) would require ${projected} paid seats; you currently have ${seatCount}. Increase your seat count from billing first.`,
+            { projected, seatCount, tier, additionalSeatsNeeded: projected - seatCount },
+          );
         }
       } catch (err) {
         // Non-fatal: defensive — if the tier-pricing import fails, fall
@@ -2021,7 +2018,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // VAPID public key — returned to browser to create a PushSubscription
   api.get("/api/push/vapid-public-key", isAuthenticated, (_req, res) => {
     const key = process.env.VAPID_PUBLIC_KEY;
-    if (!key) return res.status(503).json({ message: "Push notifications not configured" });
+    if (!key) return sendError(res, 503, "SERVICE_UNAVAILABLE", "Push notifications not configured");
     res.json({ publicKey: key });
   });
 

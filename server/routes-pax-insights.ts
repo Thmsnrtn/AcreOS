@@ -283,7 +283,7 @@ router.get("/insights", async (req, res) => {
     });
   } catch (error: any) {
     logger.error("Pax insights error", { error: error.message });
-    res.status(500).json({ message: "Failed to load Pax insights" });
+    Errors.internal(res, error);
   }
 });
 
@@ -443,7 +443,7 @@ router.get("/pax-suggestions", async (req, res) => {
     res.json({ suggestions: suggestions.slice(0, 3), generatedAt: now.toISOString() });
   } catch (error: any) {
     logger.error("Pax suggestions error", { error: error.message });
-    res.status(500).json({ message: "Failed to load Pax suggestions" });
+    Errors.internal(res, error);
   }
 });
 

@@ -6,6 +6,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { checkDoddFrankCompliance } from "./services/doddFrankChecker";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -24,9 +25,10 @@ router.post("/check", (req: Request, res: Response) => {
     } = req.body;
 
     if (sellerFinancedDealsLast12Months == null || !sellerType || hasDwelling == null || !rateType || interestRate == null) {
-      return res.status(400).json({
-        error: "Required: sellerFinancedDealsLast12Months, sellerType, hasDwelling, rateType, interestRate",
-      });
+      return Errors.badRequest(
+        res,
+        "Required: sellerFinancedDealsLast12Months, sellerType, hasDwelling, rateType, interestRate",
+      );
     }
 
     const result = checkDoddFrankCompliance({
@@ -43,7 +45,7 @@ router.post("/check", (req: Request, res: Response) => {
 
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message);
   }
 });
 

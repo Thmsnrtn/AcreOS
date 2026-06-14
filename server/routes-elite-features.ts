@@ -32,7 +32,7 @@ import { db } from "./db";
 import { properties, notes, organizations, generatedDocuments, organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 
 const auth = [isAuthenticated, getOrCreateOrg];
 
@@ -447,10 +447,8 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       res.json({ taxYear, forms });
     } catch (err: any) {
       if (err instanceof bookkeeping.TaxIdentityError) {
-        return res.status(422).json({
-          error: "tax_identity_missing",
+        return sendError(res, 422, "TAX_IDENTITY_MISSING", err.message, {
           code: err.code,
-          message: err.message,
           orgId: err.orgId,
           noteId: err.noteId,
         });
@@ -473,11 +471,12 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   app.get("/api/bookkeeping/quickbooks/auth-url", ...auth, (req: Request, res: Response) => {
     try {
       if (!process.env.QBO_CLIENT_ID) {
-        return res.status(503).json({
-          error: "integration_not_configured",
-          message: "QuickBooks integration is not enabled on this deployment (QBO_CLIENT_ID is not set).",
-          statusCode: 503,
-        });
+        return sendError(
+          res,
+          503,
+          "INTEGRATION_NOT_CONFIGURED",
+          "QuickBooks integration is not enabled on this deployment (QBO_CLIENT_ID is not set).",
+        );
       }
       const org = req.organization;
       const url = bookkeeping.getQboOAuthUrl(org.id);

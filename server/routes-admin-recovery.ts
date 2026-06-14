@@ -41,7 +41,7 @@ import { chainAndInsertAuditEvent } from "./utils/auditEventsChain";
 import { users } from "@shared/models/auth";
 import { isAuthenticated } from "./auth";
 import { isFounderIdentity } from "./services/founder";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 
@@ -442,11 +442,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
                 clerkResult: "SDK_GAP",
               },
             });
-            return res.status(501).json({
-              error: "NOT_IMPLEMENTED",
-              message: "Clerk admin API not yet wired: sessions.revokeSession",
-              statusCode: 501,
-            });
+            return sendError(res, 501, "NOT_IMPLEMENTED", "Clerk admin API not yet wired: sessions.revokeSession");
           }
           logger.error(
             "[admin-recovery] Clerk revokeSession failed",
@@ -848,12 +844,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
         });
 
         if (clerkGap) {
-          return res.status(501).json({
-            error: "NOT_IMPLEMENTED",
-            message:
-              "Clerk admin API not yet wired: signInTokens.createSignInToken",
-            statusCode: 501,
-          });
+          return sendError(res, 501, "NOT_IMPLEMENTED", "Clerk admin API not yet wired: signInTokens.createSignInToken");
         }
 
         return res.json({ url });

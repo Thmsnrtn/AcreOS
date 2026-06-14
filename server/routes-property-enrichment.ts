@@ -21,7 +21,7 @@ router.post("/:id/enrich", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.id);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
     // enrichProperty(organizationId, propertyId) — args were previously swapped.
     const result = await propertyEnrichmentService.enrichProperty(org.id, propertyId);
@@ -38,7 +38,7 @@ router.post("/bulk-enrich", async (req: Request, res: Response) => {
     const { propertyIds, limit = 50 } = req.body;
 
     if (propertyIds && !Array.isArray(propertyIds)) {
-      return res.status(400).json({ error: "propertyIds must be an array" });
+      return Errors.badRequest(res, "propertyIds must be an array");
     }
 
     // TODO(tsc): propertyEnrichmentService has no batchEnrich method. Enrich
@@ -61,7 +61,7 @@ router.get("/:id/enrichment", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.id);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
     const [property] = await db
       .select()
@@ -69,7 +69,7 @@ router.get("/:id/enrichment", async (req: Request, res: Response) => {
       .where(and(eq(properties.id, propertyId), eq(properties.organizationId, org.id)))
       .limit(1);
 
-    if (!property) return res.status(404).json({ error: "Property not found" });
+    if (!property) return Errors.notFound(res, "Property");
 
     // TODO(tsc): propertyEnrichmentService has no getEnrichmentData method;
     // re-running enrichProperty returns the latest enrichment result.

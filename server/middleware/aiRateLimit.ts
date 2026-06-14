@@ -40,9 +40,11 @@ import { createRateLimiter } from "./rateLimit";
 //   user:<id>  — authenticated request without an org (rare; pre-onboarding)
 //   ip:<ip>    — unauthenticated request (the global IP limiter still applies)
 function orgKey(req: Request): string {
-  const orgId = (req as any).organizationId as number | undefined;
+  // Optional chaining: this limiter can run pre-auth, where the augmented
+  // properties aren't set yet despite their non-optional typing.
+  const orgId = req.organizationId as number | undefined;
   if (orgId) return `org:${orgId}`;
-  const user = (req as any).user;
+  const user = req.user;
   if (user?.id) return `user:${user.id}`;
   const ip = req.ip || req.socket.remoteAddress || "unknown";
   return `ip:${ip}`;
@@ -70,7 +72,7 @@ const hourLimiter = createRateLimiter(
  */
 export function aiRateLimit(req: Request, res: Response, next: NextFunction): void {
   // Founder bypass — req.isFounder is set by getOrCreateOrg / auth.
-  if ((req as any).isFounder) {
+  if (req.isFounder) {
     next();
     return;
   }

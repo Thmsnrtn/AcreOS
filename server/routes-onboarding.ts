@@ -16,7 +16,7 @@ import { logger } from "./utils/logger";
 import { db } from "./db";
 import { users } from "@shared/schema";
 import type { Persona } from "@shared/models/auth";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 
 const router = Router();
 
@@ -132,11 +132,11 @@ router.post("/skip", async (req: Request, res: Response) => {
 // directly. These endpoints return 501 until per-item checklist mutation is
 // implemented on the service.
 router.get("/checklist", async (_req: Request, res: Response) => {
-  res.status(501).json({ error: "Checklist endpoint not implemented" });
+  sendError(res, 501, "NOT_IMPLEMENTED", "Checklist endpoint not implemented");
 });
 
 router.post("/checklist/:item", async (_req: Request, res: Response) => {
-  res.status(501).json({ error: "Checklist item endpoint not implemented" });
+  sendError(res, 501, "NOT_IMPLEMENTED", "Checklist item endpoint not implemented");
 });
 
 // ============================================================================

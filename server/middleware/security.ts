@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
+import { Errors, sendError } from "../utils/errors";
 import { e2eTestAuthEnabled } from "../auth/testAuth";
 
 // ─── F-A05-1: Per-request CSP nonce ─────────────────────────────────────────
@@ -198,11 +199,9 @@ export function requestTimeout(req: Request, res: Response, next: NextFunction) 
         duration: Date.now() - startTime,
         timeoutMs,
       });
-      res.status(504).json({
-        error: "Gateway Timeout",
-        message: "Request took too long to process",
-        statusCode: 504,
-      });
+      // Wire-identical to the prior hand-rolled body — clerkProxy's 504
+      // documents that it mirrors this contract.
+      sendError(res, 504, "Gateway Timeout", "Request took too long to process");
     }
   }, timeoutMs);
 
@@ -229,7 +228,7 @@ export function validateContentType(req: Request, res: Response, next: NextFunct
     if (contentType && !contentType.includes("application/json") &&
         !contentType.includes("application/x-www-form-urlencoded") &&
         !contentType.includes("multipart/form-data")) {
-      return res.status(415).json({ message: "Unsupported Media Type" });
+      return sendError(res, 415, "UNSUPPORTED_MEDIA_TYPE", "Unsupported Media Type");
     }
   }
 
@@ -251,7 +250,7 @@ export function sanitizeQueryParams(req: Request, res: Response, next: NextFunct
         /on\w+\s*=/i.test(value) || // event handlers like onerror=, onclick=
         /[\r\n]/.test(value) // CRLF injection
       ) {
-        return res.status(400).json({ message: "Invalid query parameter" });
+        return Errors.badRequest(res, "Invalid query parameter");
       }
     }
   }

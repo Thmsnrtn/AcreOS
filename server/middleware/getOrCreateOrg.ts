@@ -6,7 +6,7 @@ import { organizations, teamMembers } from "@shared/schema";
 import { signupSignals } from "@shared/schema";
 import crypto from "crypto";
 import { logger } from "../utils/logger";
-import { Errors } from "../utils/errors";
+import { Errors, sendError } from "../utils/errors";
 import { signupLimiter } from "./authPathLimits";
 import { computeReqIpBucket, recordSignalsNotEmitted } from "./botSignals";
 import { subscriptionPauseGate } from "./subscriptionPauseGate";
@@ -52,7 +52,7 @@ function isFounderEmail(email: string | undefined): boolean {
  */
 export async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
-    return res.status(401).json({ message: "Unauthorized" });
+    return Errors.unauthorized(res);
   }
 
   const user = req.user as any;
@@ -61,7 +61,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
 
   if (!userId) {
     logger.warn("No user ID found in session", { source: "getOrCreateOrg" });
-    return res.status(401).json({ message: "Invalid user session" });
+    return Errors.unauthorized(res);
   }
 
   const isFounder = isFounderEmail(userEmail);
@@ -174,11 +174,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
               country: candidateCountry || null,
             },
           });
-          return res.status(403).json({
-            error: "SANCTIONS_BLOCK",
-            message: block.message,
-            statusCode: 403,
-          });
+          return sendError(res, 403, "SANCTIONS_BLOCK", block.message ?? "Access restricted under sanctions screening.");
         }
       } catch (err) {
         // Sanctions module unavailable: log + continue (fail open).

@@ -22,6 +22,7 @@ import { db } from "../db";
 import { users } from "@shared/models/auth";
 import type { AuthenticatedRequest } from "../types/request";
 import { logger } from "../utils/logger";
+import { Errors, sendError } from "../utils/errors";
 
 export async function requirePaxDisclosure(
   req: AuthenticatedRequest,
@@ -31,10 +32,7 @@ export async function requirePaxDisclosure(
   const clerkUserId = (req as AuthenticatedRequest & { auth?: { userId?: string } })
     .auth?.userId;
   if (!clerkUserId) {
-    res.status(401).json({
-      error: "Unauthorized",
-      message: "Session required for AI chat",
-    });
+    Errors.unauthorized(res);
     return;
   }
 
@@ -48,12 +46,13 @@ export async function requirePaxDisclosure(
     if (!row || row.ackAt === null) {
       // 428 Precondition Required — signals the client to show the
       // AiDisclosureDialog and retry only after ack.
-      res.status(428).json({
-        error: "DisclosureRequired",
-        message:
-          "AI disclosure must be acknowledged before using Pax chat. Please complete the disclosure prompt and retry.",
-        code: "PAX_DISCLOSURE_REQUIRED",
-      });
+      sendError(
+        res,
+        428,
+        "DisclosureRequired",
+        "AI disclosure must be acknowledged before using Pax chat. Please complete the disclosure prompt and retry.",
+        { code: "PAX_DISCLOSURE_REQUIRED" },
+      );
       return;
     }
     next();

@@ -150,7 +150,7 @@ function validateRequest<T extends z.ZodSchema>(schema: T) {
         field: issue.path.join("."),
         message: issue.message,
       }));
-      return res.status(400).json({ message: "Validation failed", errors });
+      return Errors.badRequest(res, "Validation failed", errors);
     }
     req.body = result.data;
     next();
@@ -162,10 +162,9 @@ function validateNumericParam(paramName: string) {
     const value = req.params[paramName];
     const parsed = parseInt(value, 10);
     if (isNaN(parsed)) {
-      return res.status(400).json({
-        message: "Validation failed",
-        errors: [{ field: paramName, message: `${paramName} must be a valid number` }],
-      });
+      return Errors.badRequest(res, "Validation failed", [
+        { field: paramName, message: `${paramName} must be a valid number` },
+      ]);
     }
     next();
   };

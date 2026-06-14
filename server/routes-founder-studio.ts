@@ -21,6 +21,7 @@ import { platformSettings, founderAudit } from "@shared/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { getSettingRow, setSetting, resetSetting, SettingsValidationError } from "./services/settings";
+import { Errors, sendError } from "./utils/errors";
 
 export function registerFounderStudioRoutes(app: Express) {
   // GET /api/founder/studio/dials — full catalog at global scope, grouped by category.
@@ -62,7 +63,7 @@ export function registerFounderStudioRoutes(app: Express) {
       const key = req.params.key;
       const globalRow = await getSettingRow(key, { scope: "global", scopeRef: null });
       if (!globalRow) {
-        return res.status(404).json({ error: `unknown key '${key}'` });
+        return Errors.notFound(res, `setting key '${key}'`);
       }
       const allRows = await db
         .select()
@@ -88,8 +89,8 @@ export function registerFounderStudioRoutes(app: Express) {
         scopeRef?: string | null;
         note?: string;
       };
-      if (!body.key) return res.status(400).json({ error: "key required" });
-      if (body.value === undefined) return res.status(400).json({ error: "value required" });
+      if (!body.key) return Errors.badRequest(res, "key required");
+      if (body.value === undefined) return Errors.badRequest(res, "value required");
 
       const founderEmail = req.user?.email as string | undefined;
       try {
@@ -106,9 +107,9 @@ export function registerFounderStudioRoutes(app: Express) {
         // F-D21: validRange violations return 422 so the UI can show a real
         // rejection message instead of pretending the save succeeded.
         if (err instanceof SettingsValidationError) {
-          return res.status(422).json({ error: "VALIDATION_FAILED", message });
+          return sendError(res, 422, "VALIDATION_FAILED", message);
         }
-        res.status(400).json({ error: message });
+        Errors.badRequest(res, message);
       }
     },
   );
@@ -124,7 +125,7 @@ export function registerFounderStudioRoutes(app: Express) {
         scope?: "global" | "org" | "agent" | "skill";
         scopeRef?: string | null;
       };
-      if (!body.key) return res.status(400).json({ error: "key required" });
+      if (!body.key) return Errors.badRequest(res, "key required");
 
       const founderEmail = req.user?.email as string | undefined;
       try {
@@ -135,7 +136,7 @@ export function registerFounderStudioRoutes(app: Express) {
         res.json({ ok: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        res.status(400).json({ error: message });
+        Errors.badRequest(res, message);
       }
     },
   );

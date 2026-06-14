@@ -20,7 +20,8 @@ router.post("/search", async (req: Request, res: Response) => {
     // The service searches by APN (+ optional state). Accept apn or parcelId.
     const apnValue = apn || parcelId;
     if (!apnValue) {
-      return res.status(400).json({ error: "apn or parcelId required" });
+      Errors.badRequest(res, "apn or parcelId required");
+      return;
     }
 
     const result = await titleSearchService.search(String(apnValue), state ? String(state) : undefined);
@@ -35,7 +36,7 @@ router.post("/search", async (req: Request, res: Response) => {
 // Results are returned synchronously from /search; saved-report retrieval
 // needs a persistence layer before this can return real data.
 router.get("/report/:id", async (_req: Request, res: Response) => {
-  res.status(404).json({ error: "Report not found" });
+  Errors.notFound(res, "report");
 });
 
 // GET /api/title-search/history

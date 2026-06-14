@@ -22,6 +22,7 @@
 import type { Response, NextFunction } from "express";
 import type { AuthenticatedRequest } from "../types/request";
 import { logger } from "../utils/logger";
+import { Errors } from "../utils/errors";
 
 /**
  * Loosely-typed request used by rate-limit middleware.
@@ -174,9 +175,8 @@ export function createOrgRateLimit(redisClient: any) {
         res.setHeader("X-RateLimit-Remaining", 0);
         res.setHeader("X-RateLimit-Reset", Math.floor(minuteResult.resetAt.getTime() / 1000));
         res.setHeader("Retry-After", Math.ceil((minuteResult.resetAt.getTime() - Date.now()) / 1000));
-        return res.status(429).json({
-          error: "rate_limit_exceeded",
-          message: `Too many requests. Limit: ${limits.perMinute}/minute for ${tier} tier.`,
+        return Errors.limitExceeded(res, {
+          reason: `Too many requests. Limit: ${limits.perMinute}/minute for ${tier} tier.`,
           retryAfter: Math.ceil((minuteResult.resetAt.getTime() - Date.now()) / 1000),
           upgradeUrl: "/settings/billing",
         });
@@ -190,9 +190,8 @@ export function createOrgRateLimit(redisClient: any) {
       });
 
       if (!hourResult.allowed) {
-        return res.status(429).json({
-          error: "hourly_rate_limit_exceeded",
-          message: `Hourly limit of ${limits.perHour} requests reached.`,
+        return Errors.limitExceeded(res, {
+          reason: `Hourly limit of ${limits.perHour} requests reached.`,
           retryAfter: Math.ceil((hourResult.resetAt.getTime() - Date.now()) / 1000),
         });
       }
@@ -232,9 +231,8 @@ export function createApiKeyRateLimit(redisClient: any) {
     });
 
     if (!minuteResult.allowed) {
-      return res.status(429).json({
-        error: "api_rate_limit_exceeded",
-        message: `API key rate limit exceeded. Max: ${limits.perMinute} requests/minute.`,
+      return Errors.limitExceeded(res, {
+        reason: `API key rate limit exceeded. Max: ${limits.perMinute} requests/minute.`,
         docs: "https://docs.acreos.io/api/rate-limits",
       });
     }
@@ -246,9 +244,8 @@ export function createApiKeyRateLimit(redisClient: any) {
     });
 
     if (!dayResult.allowed) {
-      return res.status(429).json({
-        error: "daily_api_limit_exceeded",
-        message: `Daily API limit of ${limits.perDay} requests reached.`,
+      return Errors.limitExceeded(res, {
+        reason: `Daily API limit of ${limits.perDay} requests reached.`,
       });
     }
 
@@ -291,9 +288,8 @@ export function createAIRateLimit(redisClient: any) {
     });
 
     if (!result.allowed) {
-      return res.status(429).json({
-        error: "ai_rate_limit_exceeded",
-        message: `AI request limit of ${maxAIPerHour}/hour reached for ${tier} tier.`,
+      return Errors.limitExceeded(res, {
+        reason: `AI request limit of ${maxAIPerHour}/hour reached for ${tier} tier.`,
         suggestion: "Upgrade your plan for higher AI limits.",
         upgradeUrl: "/settings/billing",
       });
@@ -328,9 +324,8 @@ export function createIpRateLimit(
     });
 
     if (!minuteResult.allowed) {
-      return res.status(429).json({
-        error: "too_many_requests",
-        message: "Too many requests from this IP address. Please slow down.",
+      return Errors.limitExceeded(res, {
+        reason: "Too many requests from this IP address. Please slow down.",
       });
     }
 
@@ -341,9 +336,8 @@ export function createIpRateLimit(
     });
 
     if (!hourResult.allowed) {
-      return res.status(429).json({
-        error: "too_many_requests",
-        message: "Hourly request limit exceeded for this IP address.",
+      return Errors.limitExceeded(res, {
+        reason: "Hourly request limit exceeded for this IP address.",
       });
     }
 
@@ -368,7 +362,7 @@ export function createWebhookRateLimit(redisClient: any) {
 
     if (!result.allowed) {
       logger.warn("Webhook flood detected — throttled", { organizationId: orgId });
-      return res.status(429).json({ error: "webhook_rate_limited" });
+      return Errors.limitExceeded(res, { reason: "webhook_rate_limited" });
     }
 
     return next();

@@ -53,10 +53,10 @@ router.get("/:id", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
     const lead = await taxDelinquentPipeline.getLead(id, org.id);
-    if (!lead) return res.status(404).json({ error: "Lead not found" });
+    if (!lead) return Errors.notFound(res, "Lead");
     res.json({ lead });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -67,12 +67,12 @@ router.post("/:id/contact", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
     const result = await taxDelinquentPipeline.addToOutreach(id, org.id);
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    Errors.badRequest(res, err.message);
   }
 });
 

@@ -56,7 +56,7 @@ router.get('/fees/settlements', async (req: Request, res: Response) => {
 router.get('/fees/settlements/:id', async (req: Request, res: Response) => {
   try {
     // Stub: replace with DB lookup
-    res.status(404).json({ error: 'Settlement not found' });
+    Errors.notFound(res, 'Settlement');
   } catch (error: any) {
     Errors.internal(res, error);
   }
@@ -67,7 +67,7 @@ router.post('/fees/settlements', async (req: Request, res: Response) => {
   try {
     const { transactionId, amount, feeRate, notes } = req.body;
     if (!transactionId || !amount) {
-      return res.status(400).json({ error: 'transactionId and amount are required' });
+      return Errors.badRequest(res, 'transactionId and amount are required');
     }
     // Stub: replace with service call
     const settlement = {
@@ -151,10 +151,10 @@ router.post('/fees/payouts/schedule', async (req: Request, res: Response) => {
   try {
     const { frequency, minimumAmount, bankAccountId, enabled } = req.body;
     if (!frequency) {
-      return res.status(400).json({ error: 'frequency is required (daily|weekly|monthly)' });
+      return Errors.badRequest(res, 'frequency is required (daily|weekly|monthly)');
     }
     if (!['daily', 'weekly', 'monthly'].includes(frequency)) {
-      return res.status(400).json({ error: 'frequency must be daily, weekly, or monthly' });
+      return Errors.badRequest(res, 'frequency must be daily, weekly, or monthly');
     }
     // Stub: persist schedule
     const schedule = {
@@ -175,7 +175,7 @@ router.post('/fees/payouts/trigger', async (req: Request, res: Response) => {
   try {
     const { amount, bankAccountId, note } = req.body;
     if (!amount || !bankAccountId) {
-      return res.status(400).json({ error: 'amount and bankAccountId are required' });
+      return Errors.badRequest(res, 'amount and bankAccountId are required');
     }
     // Stub: trigger payout via payment provider
     const payout = {

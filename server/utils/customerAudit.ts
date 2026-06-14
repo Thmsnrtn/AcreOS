@@ -118,10 +118,12 @@ export async function customerAuditFromRequest(
     "actorUserId" | "actorEmail" | "ipAddress" | "userAgent"
   >,
 ): Promise<void> {
-  const user = (req as any).user as
+  // Cast to optional: audit helpers also run on pre-auth/public requests
+  // where the augmented properties aren't populated.
+  const user = req.user as
     | { id?: string; email?: string; clerkUserId?: string }
     | undefined;
-  const auth = (req as any).auth as { userId?: string } | undefined;
+  const auth = req.auth;
   const actorUserId =
     auth?.userId ?? user?.clerkUserId ?? user?.id ?? null;
   const fwd = req.headers["x-forwarded-for"];

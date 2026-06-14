@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { marketPredictionService } from './services/marketPrediction';
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.get('/county/:state/:county', async (req: Request, res: Response) => {
     res.json({ success: true, prediction });
   } catch (error) {
     logger.error('Failed to get county prediction', error);
-    res.status(500).json({ error: 'Failed to get market prediction' });
+    Errors.internal(res, error);
   }
 });
 
@@ -48,7 +49,7 @@ router.get('/property/:id/trajectory', async (req: Request, res: Response) => {
     res.json({ success: true, trajectory });
   } catch (error) {
     logger.error('Failed to get property trajectory', error);
-    res.status(500).json({ error: 'Failed to get price trajectory' });
+    Errors.internal(res, error);
   }
 });
 
@@ -64,7 +65,7 @@ router.get('/opportunity-windows', async (req: Request, res: Response) => {
     res.json({ success: true, windows });
   } catch (error) {
     logger.error('Failed to get opportunity windows', error);
-    res.status(500).json({ error: 'Failed to detect opportunity windows' });
+    Errors.internal(res, error);
   }
 });
 
@@ -96,7 +97,7 @@ router.get('/market-timing/:state/:county', async (req: Request, res: Response) 
     });
   } catch (error) {
     logger.error('Failed to get market timing', error);
-    res.status(500).json({ error: 'Failed to get market timing' });
+    Errors.internal(res, error);
   }
 });
 
@@ -117,7 +118,7 @@ router.post('/refresh/:state/:county', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Failed to refresh predictions', error);
-    res.status(500).json({ error: 'Failed to refresh predictions' });
+    Errors.internal(res, error);
   }
 });
 
@@ -133,7 +134,7 @@ router.get('/hot-markets', async (req: Request, res: Response) => {
     res.json({ success: true, markets });
   } catch (error) {
     logger.error('Failed to get hot markets', error);
-    res.status(500).json({ error: 'Failed to get hot markets' });
+    Errors.internal(res, error);
   }
 });
 

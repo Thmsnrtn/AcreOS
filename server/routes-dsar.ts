@@ -27,7 +27,7 @@ import { db } from "./db";
 import { dsarRequests, type DsarStatus } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { isFounderIdentity } from "./services/founder";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import type { AuthenticatedRequest } from "./types/request";
@@ -272,11 +272,7 @@ export function registerDsarRoutes(app: Express): void {
         await runFanOutStub(row.id);
       } catch (stubErr) {
         // Stub always throws — return 501 so ops sees the gap.
-        return res.status(501).json({
-          error: "NOT_IMPLEMENTED",
-          message: (stubErr as Error).message,
-          statusCode: 501,
-        });
+        return sendError(res, 501, "NOT_IMPLEMENTED", (stubErr as Error).message);
       }
       return res.json({ ok: true });
     } catch (err) {
@@ -317,11 +313,7 @@ export function registerDsarRoutes(app: Express): void {
       try {
         await runErasureStub(row.id);
       } catch (stubErr) {
-        return res.status(501).json({
-          error: "NOT_IMPLEMENTED",
-          message: (stubErr as Error).message,
-          statusCode: 501,
-        });
+        return sendError(res, 501, "NOT_IMPLEMENTED", (stubErr as Error).message);
       }
       return res.json({ ok: true });
     } catch (err) {

@@ -18,6 +18,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { getCacheStats } from "./middleware/responseCache";
+import { Errors, sendError } from "./utils/errors";
 
 const router = Router();
 
@@ -339,14 +340,14 @@ function buildPrometheusOutput(): string {
 router.get("/", (req: Request, res: Response) => {
   const metricsToken = process.env.METRICS_TOKEN;
   if (!metricsToken) {
-    return res.status(503).json({ error: "Metrics endpoint not configured" });
+    return sendError(res, 503, "SERVICE_UNAVAILABLE", "Metrics endpoint not configured");
   }
 
   const authHeader = req.headers["authorization"] || "";
   const provided = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (provided !== metricsToken) {
     res.set("WWW-Authenticate", 'Bearer realm="AcreOS Metrics"');
-    return res.status(401).json({ error: "Unauthorized" });
+    return Errors.unauthorized(res);
   }
 
   res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");

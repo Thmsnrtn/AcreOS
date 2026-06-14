@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { storage, db } from "./storage";
 import { withTransaction } from "./db";
 import { eq, and, gte, desc } from "drizzle-orm";
-import { notes, payments } from "@shared/schema";
+import { notes, payments, type BorrowerSession } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
@@ -18,6 +18,17 @@ import {
   COOKIE_NAME as STMT_COOKIE_NAME,
   type BorrowerGrantResolver,
 } from "./services/borrower/statementAccess";
+
+/**
+ * Request carrying the validated borrower-portal session, attached by
+ * validateBorrowerSession. Borrower routes are session-token authenticated —
+ * they never carry a Clerk user/org, so this is a separate shape from
+ * AuthenticatedRequest. Non-optional: handlers only run behind the
+ * middleware, which guarantees the property.
+ */
+interface BorrowerRequest extends Request {
+  borrowerSession: BorrowerSession;
+}
 
 // Borrower portal rate-limiters. Keyed by accessToken when present (the
 // portal endpoints carry it as a URL param) and fall back to IP. Pure IP
@@ -153,7 +164,7 @@ async function validateBorrowerSession(req: Request, res: Response, next: NextFu
     }
 
     await storage.updateBorrowerSessionAccess(sessionToken);
-    (req as any).borrowerSession = session;
+    (req as BorrowerRequest).borrowerSession = session;
     next();
   } catch (err) {
     logger.error("Borrower session validation error", err);
@@ -322,7 +333,7 @@ export function registerBorrowerRoutes(app: Express): void {
   // Check borrower session status
   api.get("/api/borrower/session", validateBorrowerSession, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = (req as BorrowerRequest).borrowerSession;
       
       // Get the note associated with the session
       const note = await storage.getNoteByAccessToken(session.noteId.toString());
@@ -411,7 +422,7 @@ export function registerBorrowerRoutes(app: Express): void {
   // Session-based payment endpoint (preferred for security)
   api.post("/api/borrower/payment", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = (req as BorrowerRequest).borrowerSession;
       const { amount } = req.body;
       
       // Get note by session's noteId
@@ -688,7 +699,7 @@ export function registerBorrowerRoutes(app: Express): void {
   // accessToken in the URL → safer against log/referrer leakage.
   api.post("/api/borrower/verify-payment", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = (req as BorrowerRequest).borrowerSession;
       const { sessionId } = req.body;
       if (!sessionId) return Errors.badRequest(res, "Session ID is required");
 
@@ -857,7 +868,7 @@ export function registerBorrowerRoutes(app: Express): void {
   // no need to repeat borrowerEmail on every request.
   api.post("/api/borrower/autopay", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = (req as BorrowerRequest).borrowerSession;
       const { enabled } = req.body;
 
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
@@ -1198,7 +1209,15 @@ export function registerBorrowerRoutes(app: Express): void {
   // newest-cycle first. The portal page calls this on mount.
   api.get("/api/borrower/periodic-statements", validateBorrowerSession, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = (req as BorrowerRequest).borrowerSession;
+      // Sessions minted before migration 0081 carry no org pin. The prior
+      // untyped code compiled `eq(col, null)` to `= NULL` (never true), so
+      // these sessions always saw zero statements — keep that fail-closed
+      // behavior, now explicit.
+      if (session.organizationId == null) {
+        res.json({ statements: [] });
+        return;
+      }
       const { periodicStatements } = await import("@shared/schema/reg-z");
       const { desc: descOp } = await import("drizzle-orm");
 
@@ -1238,7 +1257,12 @@ export function registerBorrowerRoutes(app: Express): void {
     validateBorrowerSession,
     async (req, res) => {
       try {
-        const session = (req as any).borrowerSession;
+        const session = (req as BorrowerRequest).borrowerSession;
+        // Same fail-closed rule as the list endpoint: a pre-0081 session
+        // without an org pin could never match `= NULL`, so it 404s.
+        if (session.organizationId == null) {
+          return Errors.notFound(res, "Statement");
+        }
         const { periodicStatements } = await import("@shared/schema/reg-z");
         const { renderPeriodicStatementPdf } = await import(
           "./services/periodicStatements/pdf"
@@ -1312,7 +1336,7 @@ export function registerBorrowerRoutes(app: Express): void {
   // GET /api/borrower/messages — list message thread for the authenticated borrower
   api.get("/api/borrower/messages", validateBorrowerSession, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = (req as BorrowerRequest).borrowerSession;
       const msgs = await storage.getBorrowerMessages(session.noteId);
       // Mark lender messages as read since borrower is viewing them
       await storage.markBorrowerMessagesRead(session.noteId, "lender");
@@ -1325,7 +1349,7 @@ export function registerBorrowerRoutes(app: Express): void {
   // POST /api/borrower/messages — borrower sends a message
   api.post("/api/borrower/messages", validateBorrowerSession, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = (req as BorrowerRequest).borrowerSession;
       const { content } = req.body as { content: string };
       if (!content || !content.trim()) {
         return Errors.badRequest(res, "Message content is required");

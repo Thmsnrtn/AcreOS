@@ -11,7 +11,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { matchmaking } from "./services/matchmaking";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 
 const router = Router();
 
@@ -24,7 +24,7 @@ const router = Router();
 // service surface is reconciled.
 
 router.post("/run", async (_req: Request, res: Response) => {
-  res.status(501).json({ error: "Match run endpoint not implemented" });
+  sendError(res, 501, "NOT_IMPLEMENTED", "Match run endpoint not implemented");
 });
 
 router.get("/top-matches", async (req: Request, res: Response) => {
@@ -62,7 +62,7 @@ router.post("/:id/notify", async (req: Request, res: Response) => {
 });
 
 router.delete("/:id", async (_req: Request, res: Response) => {
-  res.status(501).json({ error: "Dismiss match endpoint not implemented" });
+  sendError(res, 501, "NOT_IMPLEMENTED", "Dismiss match endpoint not implemented");
 });
 
 export default router;

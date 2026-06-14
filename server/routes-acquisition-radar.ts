@@ -29,7 +29,7 @@ router.put('/config/:id', async (req: Request, res: Response) => {
     );
     res.json({ config });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message);
   }
 });
 
@@ -90,7 +90,7 @@ router.post('/score', async (req: Request, res: Response) => {
 
     res.json({ result });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message);
   }
 });
 
@@ -105,7 +105,7 @@ router.patch('/opportunities/:id/status', async (req: Request, res: Response) =>
     await acquisitionRadar.updateOpportunityStatus(parseInt(req.params.id), org.id, status, reviewNotes);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    Errors.badRequest(res, error.message);
   }
 });
 

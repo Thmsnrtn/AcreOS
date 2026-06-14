@@ -39,6 +39,7 @@ import client, {
 } from "prom-client";
 import { pool } from "./db";
 import { logger } from "./utils/logger";
+import { sendError } from "./utils/errors";
 
 // ── Registry ────────────────────────────────────────────────────────────────
 // One private registry — we deliberately do NOT use the global default
@@ -336,10 +337,7 @@ export async function metricsHandler(req: Request, res: Response): Promise<void>
       return;
     }
   } else if (process.env.NODE_ENV === "production") {
-    res.status(503).json({
-      error: "METRICS_TOKEN_NOT_SET",
-      message: "Prometheus exporter is closed in production without METRICS_TOKEN.",
-    });
+    sendError(res, 503, "METRICS_TOKEN_NOT_SET", "Prometheus exporter is closed in production without METRICS_TOKEN.");
     return;
   }
 

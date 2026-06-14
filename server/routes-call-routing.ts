@@ -81,9 +81,7 @@ router.patch('/call-routing/agents/:agentId/status', async (req: Request, res: R
     const { status } = req.body;
     const validStatuses = ['available', 'busy', 'away', 'offline'];
     if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({
-        error: `status must be one of: ${validStatuses.join(', ')}`,
-      });
+      return Errors.badRequest(res, `status must be one of: ${validStatuses.join(', ')}`);
     }
     // Stub: persist agent status
     const agent = {
@@ -130,7 +128,7 @@ router.post('/call-routing/route', async (req: Request, res: Response) => {
   try {
     const { callSid, from, to, callerId, skills } = req.body;
     if (!callSid || !from) {
-      return res.status(400).json({ error: 'callSid and from are required' });
+      return Errors.badRequest(res, 'callSid and from are required');
     }
     // Stub: determine routing based on config + agent availability
     const routing = {
@@ -155,7 +153,7 @@ router.post('/call-routing/transfer', async (req: Request, res: Response) => {
   try {
     const { callSid, fromAgentId, toAgentId, note } = req.body;
     if (!callSid || !toAgentId) {
-      return res.status(400).json({ error: 'callSid and toAgentId are required' });
+      return Errors.badRequest(res, 'callSid and toAgentId are required');
     }
     // Stub: execute transfer via telephony provider
     const transfer = {
@@ -222,7 +220,7 @@ router.post('/call-routing/skills', async (req: Request, res: Response) => {
   try {
     const { agentId, skill, proficiencyLevel } = req.body;
     if (!agentId || !skill) {
-      return res.status(400).json({ error: 'agentId and skill are required' });
+      return Errors.badRequest(res, 'agentId and skill are required');
     }
     // Stub: persist skill assignment
     const assignment = {

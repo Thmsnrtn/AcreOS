@@ -22,6 +22,7 @@ import type { Request, Response, NextFunction } from "express";
 import multer from "multer";
 import path from "path";
 import crypto from "crypto";
+import { Errors } from "../utils/errors";
 
 // ─── MIME type signatures (magic bytes) ──────────────────────────────────────
 
@@ -129,15 +130,13 @@ export function validateFileMiddleware(
 
     for (const file of files) {
       if (!file.buffer || file.buffer.length === 0) {
-        return res.status(400).json({ message: "Empty file rejected" });
+        return Errors.badRequest(res, "Empty file rejected");
       }
 
       const detected = detectMimeFromBuffer(file.buffer);
 
       if (!detected) {
-        return res
-          .status(400)
-          .json({ message: `Unable to determine file type for: ${file.originalname}` });
+        return Errors.badRequest(res, `Unable to determine file type for: ${file.originalname}`);
       }
 
       const allowed =
@@ -145,9 +144,7 @@ export function validateFileMiddleware(
         allowedCategories.includes(detected.category as AllowedCategory);
 
       if (!allowed) {
-        return res.status(400).json({
-          message: `File type not allowed: ${detected.mime}. Allowed: ${allowedCategories.join(", ")}`,
-        });
+        return Errors.badRequest(res, `File type not allowed: ${detected.mime}. Allowed: ${allowedCategories.join(", ")}`);
       }
 
       // Attach validated MIME to file object

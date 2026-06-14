@@ -1,6 +1,7 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
+import { sendError } from "./utils/errors";
 
 /**
  * HTTP/2-safe pre-compressed asset middleware. Sidesteps the
@@ -233,7 +234,7 @@ export function serveStatic(app: Express) {
     const fullPath = (req.originalUrl || req.url || "/").split("?")[0].split("#")[0];
     // Don't serve index.html for API routes — if we got here, the API route didn't match
     if (req.originalUrl.startsWith("/api/")) {
-      return res.status(404).json({ message: "Not found" });
+      return sendError(res, 404, "NOT_FOUND", "Not found");
     }
     // 301 legacy /letters[/:slug] → /field-notes[/:slug].
     {

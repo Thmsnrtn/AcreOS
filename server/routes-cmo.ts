@@ -37,7 +37,7 @@ import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { logger } from "./utils/logger";
 import { stampTraceContext } from "./utils/queueTraceContext";
 import { getStorage } from "./services/cmo/storage";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 
 export function registerCmoRoutes(app: Express) {
   // ─── Dashboard ──────────────────────────────────────────────────────────
@@ -187,10 +187,10 @@ export function registerCmoRoutes(app: Express) {
       where: eq(decisionsInboxItems.id, inboxItemId),
     });
     if (!item || item.itemType !== "cmo_ad_review") {
-      return res.status(404).json({ error: "inbox item not found or not a CMO bundle" });
+      return Errors.notFound(res, "CMO inbox item");
     }
     if (item.status !== "pending") {
-      return res.status(409).json({ error: `item is ${item.status}, not pending` });
+      return sendError(res, 409, "CONFLICT", `item is ${item.status}, not pending`);
     }
 
     const ctx = item.contextBundle as { renders?: Array<{ id: string }>; bundleId?: string } | null;

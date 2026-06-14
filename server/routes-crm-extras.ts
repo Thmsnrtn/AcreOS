@@ -24,9 +24,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       const propertyData: PropertyData = req.body;
 
       if (!propertyData.county || !propertyData.state || !propertyData.sizeAcres) {
-        return res.status(400).json({
-          message: "Missing required fields: county, state, and sizeAcres are required"
-        });
+        return Errors.badRequest(res, "Missing required fields: county, state, and sizeAcres are required");
       }
 
       // Aniyah §2 — block AI offer generation on Indian-Country parcels.
@@ -46,9 +44,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
     } catch (error: any) {
       if (handleLandStatusError(res, error)) return;
       logger.error("AI generate-offer error", error);
-      res.status(500).json({
-        message: error.message || "Failed to generate offer suggestions"
-      });
+      Errors.internal(res, error);
     }
   });
 
@@ -57,15 +53,11 @@ export function registerCRMExtrasRoutes(app: Express): void {
       const request: OfferLetterRequest = req.body;
 
       if (!request.property || !request.offerAmount || !request.buyerName || !request.tone) {
-        return res.status(400).json({
-          message: "Missing required fields: property, offerAmount, buyerName, and tone are required"
-        });
+        return Errors.badRequest(res, "Missing required fields: property, offerAmount, buyerName, and tone are required");
       }
 
       if (!["professional", "friendly", "urgent"].includes(request.tone)) {
-        return res.status(400).json({
-          message: "Tone must be one of: professional, friendly, urgent"
-        });
+        return Errors.badRequest(res, "Tone must be one of: professional, friendly, urgent");
       }
 
       // Aniyah §2 — block AI offer letter generation on Indian-Country parcels.
@@ -85,9 +77,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
     } catch (error: any) {
       if (handleLandStatusError(res, error)) return;
       logger.error("AI generate-letter error", error);
-      res.status(500).json({
-        message: error.message || "Failed to generate offer letter"
-      });
+      Errors.internal(res, error);
     }
   });
   
@@ -96,9 +86,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       const request: AcceptancePredictionRequest = req.body;
       
       if (!request.property || !request.offerAmount || !request.estimatedMarketValue) {
-        return res.status(400).json({ 
-          message: "Missing required fields: property, offerAmount, and estimatedMarketValue are required" 
-        });
+        return Errors.badRequest(res, "Missing required fields: property, offerAmount, and estimatedMarketValue are required");
       }
       
       const result = await predictAcceptanceProbability(request);
@@ -110,9 +98,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       res.json(result);
     } catch (error: any) {
       logger.error("AI predict-acceptance error", error);
-      res.status(500).json({ 
-        message: error.message || "Failed to predict acceptance probability" 
-      });
+      Errors.internal(res, error);
     }
   });
 
