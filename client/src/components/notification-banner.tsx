@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { formatRelative } from "@/lib/format";
 import { useWebSocketChannel } from "@/hooks/use-websocket-channel";
 import { useLocation } from "wouter";
 import {
@@ -195,7 +196,7 @@ export function NotificationBanner() {
                             {notif.message}
                           </p>
                           <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                            {new Date(notif.createdAt).toLocaleTimeString()}
+                            {formatRelative(notif.createdAt)}
                           </p>
                         </div>
                         {!notif.read && (

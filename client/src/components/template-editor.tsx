@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { formatDate } from "@/lib/format";
 import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -311,8 +312,8 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
       "deal.title": "Oak Lane Property Acquisition",
       "deal.offerAmount": "$40,000",
       "deal.earnestMoney": "$1,000",
-      "deal.closingDate": new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
-      "date.today": new Date().toLocaleDateString(),
+      "deal.closingDate": formatDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
+      "date.today": formatDate(new Date()),
       "date.current": new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
       "note.principal": "$35,000",
       "note.interestRate": "9.9%",

@@ -81,7 +81,7 @@ import {
   Square,
 } from "lucide-react";
 import { AISettings } from "@/components/ai-settings";
-import { relative, usd, formatDate } from "@/lib/format";
+import { relative, usd, formatDate, formatRelative } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 import { ReadAloudButton } from "@/components/ReadAloudButton";
@@ -1100,7 +1100,7 @@ function TasksTabContent() {
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <Badge variant="outline" className="capitalize">{task.agentType}</Badge>
                           <span className="text-xs text-muted-foreground">
-                            {task.createdAt ? new Date(task.createdAt).toLocaleTimeString() : 'Just now'}
+                            {task.createdAt ? formatRelative(task.createdAt) : 'Just now'}
                           </span>
                           {task.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-acr-pos" />}
                           {task.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-primary" aria-hidden="true" />}

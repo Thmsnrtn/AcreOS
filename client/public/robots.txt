@@ -22,6 +22,7 @@ Allow: /why
 Allow: /land-credit-score
 Allow: /security
 Allow: /glossary
+Allow: /learn
 Allow: /compare/acreos-vs-propstream
 Allow: /compare/acreos-vs-dealmachine
 Allow: /changelog

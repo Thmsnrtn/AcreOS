@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { formatRelative } from "@/lib/format";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,7 +96,7 @@ function MessageBubble({ message }: { message: WarRoomMessageData }) {
         <span className="text-xs font-semibold">{name}</span>
         <Badge variant="outline" className="text-micro h-4 px-1.5">{typeLabel}</Badge>
         <time dateTime={message.createdAt} className="text-micro text-muted-foreground ml-auto tabular-nums">
-          {new Date(message.createdAt).toLocaleTimeString()}
+          {formatRelative(message.createdAt)}
         </time>
       </div>
       <p className="text-sm whitespace-pre-wrap leading-relaxed m-0">{message.content}</p>
