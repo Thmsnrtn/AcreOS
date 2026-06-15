@@ -1383,6 +1383,8 @@ interface PricingRecommendation {
 function DealForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateDeal();
   const { data: properties, isLoading: propertiesLoading } = useProperties();
+  // Persona-correct word for the priced artefact (Offer / Bid / Note terms).
+  const offerLabel = useTerm("entity.offer");
 
   const form = useForm<z.infer<typeof dealFormSchema>, unknown, z.infer<typeof dealFormSchema>>({
     resolver: zodResolver(dealFormSchema),
@@ -1473,7 +1475,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             name="offerAmount"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Offer amount</FormLabel>
+                <FormLabel>{offerLabel} amount</FormLabel>
                 <FormControl>
                   <div className="relative">
                     <span
@@ -1504,7 +1506,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             name="offerDate"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Offer date</FormLabel>
+                <FormLabel>{offerLabel} date</FormLabel>
                 <FormControl>
                   <Input
                     type="date"

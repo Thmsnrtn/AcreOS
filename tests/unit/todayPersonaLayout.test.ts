@@ -60,16 +60,26 @@ describe("getTodayLayout — each persona gets its own lede", () => {
     expect(tax.key).toBe("tax_lien");
   });
 
-  it("falls through to the generic default (no lede) for untailored personas", () => {
-    const untailored: Persona[] = ["wholesaler", "subdivider", "fix_flipper", "landlord"];
-    for (const p of untailored) {
+  it("gives the deal-driven verticals their OWN ledes too (no persona left generic)", () => {
+    const dealVerticals: Persona[] = ["wholesaler", "subdivider", "fix_flipper", "landlord"];
+    for (const p of dealVerticals) {
       const layout = getTodayLayout(p);
-      expect(layout.key).toBe("generic");
-      expect(layout.Lede).toBeNull();
+      expect(layout.Lede, `${p} should have its own lede`).not.toBeNull();
+      expect(layout.key, `${p} should not be generic`).not.toBe("generic");
     }
   });
 
-  it("falls through to the generic default for undefined persona", () => {
+  it("gives all nine personas DISTINCT lede components", () => {
+    const all: Persona[] = [
+      "land_investor", "note_investor", "note_originator", "note_servicer",
+      "tax_delinquent", "wholesaler", "subdivider", "fix_flipper", "landlord",
+    ];
+    const ledes = all.map((p) => getTodayLayout(p).Lede);
+    expect(ledes.every((l) => l !== null)).toBe(true);
+    expect(new Set(ledes).size).toBe(9); // no two personas share a lede component
+  });
+
+  it("falls through to the generic default (no lede) only for undefined persona", () => {
     const layout = getTodayLayout(undefined);
     expect(layout.key).toBe("generic");
     expect(layout.Lede).toBeNull();

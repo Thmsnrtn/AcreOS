@@ -681,6 +681,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
   const HeadingTag = embedded ? ("h2" as const) : ("h1" as const);
   const leadsLabel = useTerm("entity.lead.plural");
   const leadLabel = useTerm("entity.lead");
+  const offerLabel = useTerm("entity.offer");
   useDocumentTitle(`${leadsLabel} — AcreOS`);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -2012,7 +2013,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor={offerAmountId} className="text-sm font-medium">Offer amount (optional)</Label>
+              <Label htmlFor={offerAmountId} className="text-sm font-medium">{offerLabel} amount (optional)</Label>
               <Input
                 id={offerAmountId}
                 type="number"

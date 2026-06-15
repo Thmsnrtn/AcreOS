@@ -94,6 +94,19 @@ export function PersonaMapStrip({ properties, hasAnyProperties }: Props) {
     case "fix_flipper":
     case "subdivider":
       return <InventoryStrip properties={properties} />;
+    // tax_delinquent buyers research parcels pre-auction — the parcel tools
+    // strip is their map workspace (same real data as land investors).
+    case "tax_delinquent":
+      return (
+        <ParcelToolsStrip
+          properties={properties}
+          hasAnyProperties={hasAnyProperties}
+        />
+      );
+    // Buy-and-hold landlords run an owned-door portfolio — the inventory strip
+    // (owned-property counts by status) is the relevant map lead.
+    case "landlord":
+      return <InventoryStrip properties={properties} />;
     default:
       return null;
   }
