@@ -177,6 +177,9 @@ export const organizations = pgTable("organizations", {
   churnRiskScore: integer("churn_risk_score").notNull().default(0),
   churnRiskUpdatedAt: timestamp("churn_risk_updated_at"),
   churnRescueSentAt: timestamp("churn_rescue_sent_at"),
+  // Real last-activity timestamp (stamped by the getOrCreateOrg heartbeat,
+  // throttled ~15 min). Powers churn/health signals; null = no activity yet.
+  lastActiveAt: timestamp("last_active_at"),
   // Milestone tracking for self-promotion nudges
   milestonesReached: jsonb("milestones_reached").$type<string[]>().default([]),
   referralNudgeSentAt: timestamp("referral_nudge_sent_at"),

@@ -291,6 +291,25 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // Legacy alias — will be removed once all route files use AuthenticatedRequest
   (req as any).org = org;
 
+  // Activity heartbeat: stamp lastActiveAt so churn/health signals reflect real
+  // last-seen time (it was never written, so every org read as "no activity" /
+  // high churn risk). Throttled to ~15 min and fire-and-forget — never block or
+  // fail the request on a heartbeat write miss.
+  const HEARTBEAT_MS = 15 * 60 * 1000;
+  const lastActiveTs = org.lastActiveAt ? new Date(org.lastActiveAt).getTime() : 0;
+  if (Date.now() - lastActiveTs > HEARTBEAT_MS) {
+    db.update(organizations)
+      .set({ lastActiveAt: new Date() })
+      .where(eq(organizations.id, org.id))
+      .catch((e) =>
+        logger.warn("Activity heartbeat write failed (non-fatal)", {
+          source: "getOrCreateOrg",
+          orgId: org.id,
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
+  }
+
   // RS-5: fire-and-forget new-location detector. Bounded by an in-memory
   // Set keyed on sessionId so it touches the DB at most once per session
   // per process — not on every authenticated request.

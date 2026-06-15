@@ -327,11 +327,12 @@ export async function getContextForReminder(reminder: CEOReminder): Promise<stri
         if (org.churnRiskScore !== undefined && org.churnRiskScore !== null) {
           parts.push(`Churn risk ${org.churnRiskScore}/100`);
         }
-        // TODO(tsc): organizations has no lastLoginAt column; using updatedAt
-        // as a recent-activity proxy until a login timestamp is added.
-        if (org.updatedAt) {
+        // Prefer the real activity heartbeat (lastActiveAt); fall back to
+        // updatedAt for orgs not yet stamped.
+        const activityAt = org.lastActiveAt ?? org.updatedAt;
+        if (activityAt) {
           const days = Math.floor(
-            (Date.now() - new Date(org.updatedAt).getTime()) / (24 * 60 * 60 * 1000),
+            (Date.now() - new Date(activityAt).getTime()) / (24 * 60 * 60 * 1000),
           );
           parts.push(`last activity ${days} day${days !== 1 ? "s" : ""} ago`);
         }

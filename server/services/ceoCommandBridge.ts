@@ -416,8 +416,8 @@ async function handleCustomerStatus(params: any): Promise<CommandResult> {
     .limit(1);
 
   const riskScore = risk[0]?.riskScore || "unknown";
-  // TODO(tsc): organizations has no lastLoginAt column; derive last activity from the
-  // churn score's daysSinceLastActive when available.
+  // Uses the churn score's precomputed daysSinceLastActive (ultimately derived
+  // from organizations.lastActiveAt, stamped by the getOrCreateOrg heartbeat).
   const daysSinceActive = risk[0]?.daysSinceLastActive;
   const lastLogin = daysSinceActive != null ? `${daysSinceActive}d ago` : "never";
 

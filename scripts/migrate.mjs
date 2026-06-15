@@ -7144,6 +7144,12 @@ const STATEMENTS = [
   `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "outcome_notes" text`,
   `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "intent" text`,
   `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "updated_at" timestamp`,
+
+  // 0165 — ensure organizations.last_active_at exists. The column was in the
+  // Drizzle schema + read by founder-intelligence, but never in migrate.mjs (so
+  // prod may have lacked it) and never WRITTEN. The activity heartbeat in
+  // getOrCreateOrg now stamps it. Additive + idempotent.
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "last_active_at" timestamp`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

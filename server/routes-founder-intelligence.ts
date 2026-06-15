@@ -912,9 +912,10 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
         name: organizations.name,
         tier: organizations.subscriptionTier,
         createdAt: organizations.createdAt,
-        // TODO(tsc): organizations has no lastActiveAt column; updatedAt is the
-        // closest activity proxy (bumped on org-scoped writes).
-        lastActiveAt: organizations.updatedAt,
+        // Real last-activity timestamp, stamped by the getOrCreateOrg heartbeat.
+        // Falls back to updatedAt for orgs not yet stamped (avoids a misleading
+        // "no activity / high churn" reading during the backfill window).
+        lastActiveAt: sql<Date | null>`COALESCE(${organizations.lastActiveAt}, ${organizations.updatedAt})`,
       })
       .from(organizations)
       .where(
