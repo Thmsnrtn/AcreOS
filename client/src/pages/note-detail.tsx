@@ -227,7 +227,7 @@ function ReconciliationCard({ noteId }: { noteId: string }) {
               <AlertCircle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
             )}
             <h2 className="text-sm font-semibold">
-              {driftIsZero ? "Ledger reconciled" : "Ledger drift detected"}
+              {driftIsZero ? "Payments reconciled" : "Payment drift detected"}
             </h2>
             <span
               className="text-xs text-muted-foreground tabular-nums"

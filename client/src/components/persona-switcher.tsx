@@ -35,7 +35,7 @@ const MODE_LABEL: Record<PersonaMode, string> = {
 };
 
 const MODE_DESC: Record<PersonaMode, string> = {
-  founder: "Atlas dashboard, agents, controls",
+  founder: "Founder dashboard, agents, controls",
   customer: "Today, leads, deals, money",
 };
 

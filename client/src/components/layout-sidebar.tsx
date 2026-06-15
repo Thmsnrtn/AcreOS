@@ -699,7 +699,7 @@ const NAV_MODULES: NavModule[] = [
       // anticipatory-enterprise, and agent-collaboration retired.
       // The four refit survivors live under /founder/*.
       { label: "Governance", icon: Shield, href: "/founder/governance", description: "Agent negotiations, delegation authority, trust enforcement, founder overrides" },
-      { label: "Scenarios", icon: Brain, href: "/founder/scenarios", description: "Scenario war room + org self-awareness (Atlas/Sophie/Forge taxonomy)" },
+      { label: "Scenarios", icon: Brain, href: "/founder/scenarios", description: "Scenario war room + org self-awareness (agent-role taxonomy)" },
       { label: "Agent performance", icon: Activity, href: "/agent-performance", description: "Per-agent trust + decision quality metrics" },
       { label: "Memory browser", icon: Database, href: "/founder/memory", description: "Per-agent semantic + episodic memory inspector" },
       { label: "Event log", icon: FileCode, href: "/founder/event-log", description: "Agent-event firehose — every decision and side effect" },

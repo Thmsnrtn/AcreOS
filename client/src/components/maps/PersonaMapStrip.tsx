@@ -205,7 +205,7 @@ function ParcelToolsStrip({
       shortTitle="Parcels"
       actions={
         <>
-          <Button asChild size="sm" className="h-7 text-xs">
+          <Button asChild size="sm" className="h-7 text-xs" aria-label="Find parcels">
             <Link href="/properties">
               <Search className="w-3 h-3 mr-1" aria-hidden="true" />
               <span className="hidden sm:inline">Find parcels</span>
@@ -307,7 +307,7 @@ function PortfolioYieldStrip() {
       title="Portfolio yield"
       shortTitle="Yield"
       actions={
-        <Button asChild size="sm" className="h-7 text-xs">
+        <Button asChild size="sm" className="h-7 text-xs" aria-label="Open the book">
           <Link href="/finance">
             <ExternalLink className="w-3 h-3 mr-1" aria-hidden="true" />
             <span className="hidden sm:inline">Open the book</span>
@@ -402,7 +402,7 @@ function OriginationStrip() {
       shortTitle="Originate"
       actions={
         <>
-          <Button asChild size="sm" className="h-7 text-xs">
+          <Button asChild size="sm" className="h-7 text-xs" aria-label="New origination">
             <Link href="/deals?action=new">
               <FileSignature className="w-3 h-3 mr-1" aria-hidden="true" />
               <span className="hidden sm:inline">New origination</span>
@@ -512,14 +512,14 @@ function ServicingStrip({ propertyLabel }: { propertyLabel: string }) {
       actions={
         worstLate ? (
           <>
-            <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+            <Button asChild size="sm" variant="outline" className="h-7 text-xs" aria-label="Send reminder">
               <Link href="/finance">
                 <Send className="w-3 h-3 mr-1" aria-hidden="true" />
                 <span className="hidden sm:inline">Send reminder</span>
                 <span className="sm:hidden">Remind</span>
               </Link>
             </Button>
-            <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+            <Button asChild size="sm" variant="outline" className="h-7 text-xs" aria-label="Pull payoff">
               <Link href="/finance">
                 <Wallet className="w-3 h-3 mr-1" aria-hidden="true" />
                 <span className="hidden md:inline">Pull payoff</span>
@@ -528,7 +528,7 @@ function ServicingStrip({ propertyLabel }: { propertyLabel: string }) {
             </Button>
           </>
         ) : (
-          <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+          <Button asChild size="sm" variant="outline" className="h-7 text-xs" aria-label="Open book">
             <Link href="/finance">
               <ExternalLink className="w-3 h-3 mr-1" aria-hidden="true" />
               <span className="hidden sm:inline">Open book</span>
@@ -616,7 +616,7 @@ function CurbCaptureStrip({
       shortTitle="Curb"
       actions={
         <>
-          <Button asChild size="sm" className="h-7 text-xs">
+          <Button asChild size="sm" className="h-7 text-xs" aria-label="Launch DriveMode">
             <Link href="/drivemode">
               <Navigation className="w-3 h-3 mr-1" aria-hidden="true" />
               <span className="hidden sm:inline">Launch DriveMode</span>
@@ -694,7 +694,7 @@ function InventoryStrip({ properties }: { properties: Property[] }) {
       title="Inventory + projects"
       shortTitle="Inventory"
       actions={
-        <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+        <Button asChild size="sm" variant="outline" className="h-7 text-xs" aria-label={projectPluralLabel}>
           <Link href="/properties">
             <Hammer className="w-3 h-3 mr-1" aria-hidden="true" />
             <span className="hidden sm:inline">{projectPluralLabel}</span>

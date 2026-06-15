@@ -93,7 +93,7 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "campaigns",     label: "Campaigns",       icon: Mail,        href: "/campaigns",      description: "Email, SMS, and direct mail" },
   { id: "tasks",         label: "Tasks",           icon: ListTodo,    href: "/tasks",          description: "Your action items" },
   { id: "inbox",         label: "Inbox",           icon: Inbox,       href: "/inbox",          description: "Messages and communications" },
-  { id: "finance",       label: "Note Ledger",     icon: Banknote,    href: "/finance",        description: "Seller-financed notes and loans (also the Notes tab under Finance)" },
+  { id: "finance",       label: "Note Register",   icon: Banknote,    href: "/finance",        description: "Seller-financed notes and loans (also the Notes tab under Finance)" },
   { id: "portfolio",     label: "Portfolio",       icon: PieChart,    href: "/portfolio",      description: "Investment portfolio overview" },
   { id: "analytics",     label: "Analytics",       icon: BarChart3,   href: "/analytics",      description: "Insights and reporting" },
   { id: "automation",    label: "Automation",      icon: Zap,         href: "/automation",     description: "Automated rules and triggers" },
