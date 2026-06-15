@@ -7136,6 +7136,14 @@ const STATEMENTS = [
      ON "negotiation_strategies" ("organization_id", "success_rate")`,
   `CREATE INDEX IF NOT EXISTS "negotiation_outcomes_org_idx"
      ON "negotiation_outcomes" ("organization_id", "created_at")`,
+
+  // 0164 — persist call outcome + intent on the call row (previously the
+  // /outcome endpoint could only write to agent_events, and /summary returned
+  // null outcome/intent). Additive + idempotent.
+  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "outcome" text`,
+  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "outcome_notes" text`,
+  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "intent" text`,
+  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "updated_at" timestamp`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
