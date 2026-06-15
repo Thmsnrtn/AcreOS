@@ -849,7 +849,16 @@ export const leads = pgTable("leads", {
   // unique index — multiple orgs may legitimately import the same
   // parcel as a lead).
   apn: text("apn"),
-  
+
+  // Parcel / property enrichment fields (populated from parcel-of-record data —
+  // county GIS or Regrid via the provider registry, or tax-delinquent imports).
+  // estimatedValue is a derived ESTIMATE, never a quoted comp.
+  county: text("county"),
+  propertyAddress: text("property_address"),
+  taxDelinquent: boolean("tax_delinquent"),
+  estimatedValue: numeric("estimated_value"),
+  acreage: numeric("acreage"),
+
   // Campaign attribution tracking
   sourceTrackingCode: text("source_tracking_code"), // Links to campaign.trackingCode
   sourceCampaignId: integer("source_campaign_id"), // Links to the campaign that generated this lead

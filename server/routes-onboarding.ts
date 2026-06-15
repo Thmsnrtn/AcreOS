@@ -205,16 +205,21 @@ router.get("/instant-deal-hunt", async (req: Request, res: Response) => {
     const { computeSellerMotivationScore } = await import("./services/sellerMotivationEngine");
     const { db } = await import("./db");
     const { leads } = await import("@shared/schema");
-    const { eq, and, desc } = await import("drizzle-orm");
+    const { eq, and, or, isNull, desc } = await import("drizzle-orm");
 
-    // Pull real leads for this state from the database.
-    // TODO(tsc): the leads table has no `county` column, so county-level
-    // filtering is not possible here — filtering by state only. A leads.county
-    // column (or a property join) is needed for true county scoping.
+    // Pull real leads for this state + county. county-scoping uses leads.county
+    // when present (populated from parcel data / tax-delinquent imports);
+    // leads without a county still match on state so the surface degrades
+    // gracefully during the backfill window.
     const countyLeads = await db
       .select()
       .from(leads)
-      .where(eq(leads.state, String(state)))
+      .where(
+        and(
+          eq(leads.state, String(state)),
+          or(isNull(leads.county), eq(leads.county, String(county))),
+        ),
+      )
       .orderBy(desc(leads.score))
       .limit(10);
 

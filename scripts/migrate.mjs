@@ -7150,6 +7150,15 @@ const STATEMENTS = [
   // prod may have lacked it) and never WRITTEN. The activity heartbeat in
   // getOrCreateOrg now stamps it. Additive + idempotent.
   `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "last_active_at" timestamp`,
+
+  // 0166 — leads parcel/enrichment columns. Unblocks county-scoped lead
+  // queries (instant-deal-hunt, tax-researcher counts) and parcel enrichment.
+  // Additive + idempotent.
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "county" text`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "property_address" text`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "tax_delinquent" boolean`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "estimated_value" numeric`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "acreage" numeric`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

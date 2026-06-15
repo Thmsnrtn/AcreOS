@@ -159,16 +159,18 @@ router.get('/county-summary', async (req: Request, res: Response) => {
     const { sql: sqlTag } = await import("drizzle-orm");
     const { leads: leadsTbl, taxCertificates, taxSaleListings, taxSaleAuctions } = await import("@shared/schema");
 
-    // TODO(tsc): the leads table has no taxDelinquent or county columns, so we
-    // cannot scope this count to tax-delinquent leads in a specific county.
-    // Counting org leads in the state only. Needs leads.county + a delinquency
-    // flag (or a property join) for accurate scoping.
+    // Scope the count to this org's leads in the requested county (leads.county
+    // is populated from parcel data / tax-delinquent imports). Falls back to
+    // including leads with no county recorded so it degrades gracefully during
+    // the backfill window.
+    const { or: orFn, isNull: isNullFn } = await import("drizzle-orm");
     const [{ leadsCount = 0 } = {}] = await drizzleDb
       .select({ leadsCount: sqlTag<number>`COUNT(*)::int` })
       .from(leadsTbl)
       .where(and(
         eq(leadsTbl.organizationId, org.id),
         eq(leadsTbl.state, state),
+        orFn(isNullFn(leadsTbl.county), eq(leadsTbl.county, county)),
       ));
 
     const [{ activeCerts = 0 } = {}] = await drizzleDb
