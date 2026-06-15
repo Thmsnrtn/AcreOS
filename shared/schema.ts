@@ -12163,7 +12163,10 @@ export const negotiationThreads = pgTable("negotiation_threads", {
   leadId: integer("lead_id").references(() => leads.id).notNull(),
   propertyId: integer("property_id").references(() => properties.id),
   dealId: integer("deal_id"),
-  
+  // Which strategy is driving this thread — enables per-strategy performance
+  // rollups scoped to a single strategy (not all of an org's threads).
+  strategyId: integer("strategy_id").references(() => negotiationStrategies.id),
+
   status: text("status").notNull().default("active"), // active, stalled, closed_won, closed_lost, archived
   
   // Current state
@@ -12252,8 +12255,13 @@ export type NegotiationMove = typeof negotiationMoves.$inferSelect;
 // Negotiation Outcomes - Learning data for AI improvement
 export const negotiationOutcomes = pgTable("negotiation_outcomes", {
   id: serial("id").primaryKey(),
+  // Tenant scope. Nullable for rows written before org-scoping landed; new
+  // rows always carry it, and org-scoped reads filter on it (NULL rows are
+  // never surfaced cross-org). Added 2026-06-15 with the negotiation
+  // tenant-isolation fix.
+  organizationId: integer("organization_id").references(() => organizations.id),
   threadId: integer("thread_id").references(() => negotiationThreads.id).notNull(),
-  
+
   outcome: text("outcome").notNull(), // deal_closed, seller_walked, buyer_walked, stalled
   
   // Final terms
@@ -12274,6 +12282,7 @@ export const negotiationOutcomes = pgTable("negotiation_outcomes", {
   
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
+  index("negotiation_outcomes_org_idx").on(table.organizationId, table.createdAt),
   index("negotiation_outcomes_outcome_idx").on(table.outcome),
 ]);
 
@@ -12284,7 +12293,11 @@ export type NegotiationOutcome = typeof negotiationOutcomes.$inferSelect;
 // Negotiation Strategies - A/B test variants
 export const negotiationStrategies = pgTable("negotiation_strategies", {
   id: serial("id").primaryKey(),
-  
+  // Tenant scope — see negotiationOutcomes. Nullable for pre-existing rows;
+  // org-scoped reads (getBestStrategy / updateStrategyPerformance) filter on it
+  // so one tenant's strategy performance can never influence another's.
+  organizationId: integer("organization_id").references(() => organizations.id),
+
   name: text("name").notNull(),
   description: text("description"),
   
@@ -12305,7 +12318,9 @@ export const negotiationStrategies = pgTable("negotiation_strategies", {
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("negotiation_strategies_org_idx").on(table.organizationId, table.successRate),
+]);
 
 export const insertNegotiationStrategySchema = createInsertSchema(negotiationStrategies).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertNegotiationStrategy = z.infer<typeof insertNegotiationStrategySchema>;

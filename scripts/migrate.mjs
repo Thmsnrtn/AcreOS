@@ -7123,6 +7123,19 @@ const STATEMENTS = [
      ON "ledger_dead_letters" ("organization_id", "status")`,
   `CREATE INDEX IF NOT EXISTS "ledger_dead_letters_status_created_idx"
      ON "ledger_dead_letters" ("status", "created_at")`,
+
+  // 0163 — negotiation tenant-isolation. Org-scope strategies + outcomes and
+  // link threads → strategy so per-strategy performance never bleeds across
+  // tenants (the orchestrator previously ranked strategies over ALL orgs).
+  // Additive + idempotent; pre-existing rows keep NULL org_id and are simply
+  // never surfaced by the now org-scoped reads.
+  `ALTER TABLE "negotiation_strategies" ADD COLUMN IF NOT EXISTS "organization_id" integer`,
+  `ALTER TABLE "negotiation_outcomes" ADD COLUMN IF NOT EXISTS "organization_id" integer`,
+  `ALTER TABLE "negotiation_threads" ADD COLUMN IF NOT EXISTS "strategy_id" integer`,
+  `CREATE INDEX IF NOT EXISTS "negotiation_strategies_org_idx"
+     ON "negotiation_strategies" ("organization_id", "success_rate")`,
+  `CREATE INDEX IF NOT EXISTS "negotiation_outcomes_org_idx"
+     ON "negotiation_outcomes" ("organization_id", "created_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
