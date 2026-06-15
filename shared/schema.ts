@@ -102,7 +102,7 @@ export const organizations = pgTable("organizations", {
   onboardingCompleted: boolean("onboarding_completed").default(false),
   onboardingStep: integer("onboarding_step").default(0),
   onboardingData: jsonb("onboarding_data").$type<{
-    businessType?: "land_flipper" | "note_investor" | "hybrid" | "residential_wholesaler" | "fix_and_flip" | "buy_and_hold" | "commercial" | "short_term_rental" | "creative_finance" | "developer" | "tax_lien_deed" | "multifamily" | "mobile_home" | "agent_investor";
+    businessType?: "land_flipper" | "note_investor" | "hybrid" | "residential_wholesaler" | "fix_and_flip" | "buy_and_hold" | "commercial" | "short_term_rental" | "creative_finance" | "developer" | "subdivider" | "tax_lien_deed" | "multifamily" | "mobile_home" | "agent_investor";
     dataImported?: boolean;
     stripeConnected?: boolean;
     campaignCreated?: boolean;

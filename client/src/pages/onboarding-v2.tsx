@@ -74,6 +74,7 @@ import {
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { clientLogger } from "@/lib/clientLogger";
 import type { Persona } from "@shared/models/auth";
+import { derivePersona, type BusinessType, type NoteRole } from "@shared/models/persona-mapping";
 import "./styles/onboarding-v2.css";
 
 // ---------------------------------------------------------------------------
@@ -83,22 +84,9 @@ import "./styles/onboarding-v2.css";
 // Settings after onboarding completes — we don't avalanche the first screen.
 // ---------------------------------------------------------------------------
 
-type BusinessType =
-  | "land_flipper"
-  | "note_investor"
-  | "hybrid"
-  | "residential_wholesaler"
-  | "fix_and_flip"
-  | "buy_and_hold"
-  | "commercial"
-  | "short_term_rental"
-  | "creative_finance"
-  | "developer"
-  | "subdivider"
-  | "tax_lien_deed"
-  | "multifamily"
-  | "mobile_home"
-  | "agent_investor";
+// BusinessType / NoteRole / persona derivation now come from the shared
+// source of truth (@shared/models/persona-mapping) — see import above. The UI
+// choice arrays below stay local (they carry labels + icons).
 
 const CORE_CHOICES = [
   {
@@ -144,57 +132,20 @@ const SECONDARY_CHOICES: { value: BusinessType; label: string; description: stri
 
 const SECONDARY_BUSINESS_TYPES = new Set<BusinessType>(SECONDARY_CHOICES.map((c) => c.value));
 
-// Persona map — mirrors OnboardingWizard.tsx BUSINESS_TYPE_TO_PERSONA.
-// Server /onboarding/complete derives the same map as a safety net.
-const BUSINESS_TYPE_TO_PERSONA: Record<BusinessType, Persona> = {
-  note_investor: "note_investor",
-  residential_wholesaler: "wholesaler",
-  fix_and_flip: "fix_flipper",
-  buy_and_hold: "landlord",
-  short_term_rental: "landlord",
-  multifamily: "landlord",
-  mobile_home: "landlord",
-  subdivider: "subdivider",
-  developer: "subdivider",
-  tax_lien_deed: "tax_delinquent",
-  land_flipper: "land_investor",
-  hybrid: "land_investor",
-  commercial: "land_investor",
-  creative_finance: "land_investor",
-  agent_investor: "land_investor",
-};
-
-// ---------------------------------------------------------------------------
-// Note role fork — the "Note Investor" businessType covers THREE distinct
-// jobs, and each maps to its own persona (which drives every persona-gated
-// surface). Without this fork, every note person was set to "note_investor"
-// and the originator + servicer surfaces — their actual jobs — were inert.
-// Only surfaced when businessType === "note_investor"; persisted via the
-// existing PUT /api/me/persona (same endpoint Settings › Persona uses).
-// ---------------------------------------------------------------------------
-
-type NoteRole = "invest" | "originate" | "service";
-
-const NOTE_ROLE_TO_PERSONA: Record<NoteRole, Persona> = {
-  invest: "note_investor",
-  originate: "note_originator",
-  service: "note_servicer",
-};
-
+// The "Note Investor" businessType covers THREE distinct jobs, each its own
+// persona (drives every persona-gated surface). Surfaced only when
+// businessType === "note_investor"; persisted via PUT /api/me/persona. The
+// role→persona mapping + derivation live in @shared/models/persona-mapping;
+// only the UI choice array (labels + icons) is local.
 const NOTE_ROLE_CHOICES: { value: NoteRole; label: string; description: string; icon: typeof Map }[] = [
   { value: "invest", label: "I buy notes", description: "Acquire existing notes for yield.", icon: TrendingUp },
   { value: "originate", label: "I create notes", description: "Seller-finance sales into new paper.", icon: FileSignature },
   { value: "service", label: "I service notes", description: "Collect & service notes for others.", icon: ClipboardCheck },
 ];
 
-/**
- * Resolve the canonical persona from the business type and (for note
- * investors) the chosen note role. Mirrors the server safety-net so a
- * dropped PUT still lands the right persona.
- */
+/** Canonical persona from businessType (+ note role). Shared with the server. */
 function resolvePersona(bt: BusinessType, noteRole: NoteRole): Persona {
-  if (bt === "note_investor") return NOTE_ROLE_TO_PERSONA[noteRole];
-  return BUSINESS_TYPE_TO_PERSONA[bt] ?? "land_investor";
+  return derivePersona(bt, undefined, noteRole);
 }
 
 // ---------------------------------------------------------------------------
@@ -373,12 +324,13 @@ export default function OnboardingV2() {
   });
 
   const personaMutation = useMutation({
-    // Accepts the already-resolved persona so the note-role fork
-    // (invest/originate/service) lands the right one. The server
-    // /onboarding/complete still derives a businessType-based default as a
-    // safety net if this PUT is dropped.
-    mutationFn: async (persona: Persona) => {
-      const res = await apiRequest("PUT", "/api/me/persona", { persona });
+    // Sends BOTH the resolved persona (note-role fork already applied) and the
+    // EXACT businessType. Passing businessType makes the server write the same
+    // specific value the parallel complete-step writes (no race / no coarsening)
+    // and derive the correct investorType (incl. "both" for hybrid). The server
+    // /onboarding/complete still derives all three as a safety net if dropped.
+    mutationFn: async ({ persona, businessType: bt }: { persona: Persona; businessType: BusinessType }) => {
+      const res = await apiRequest("PUT", "/api/me/persona", { persona, businessType: bt });
       return res.json();
     },
   });
@@ -533,7 +485,7 @@ export default function OnboardingV2() {
       // servicers land on their own persona, not the generic note_investor.
       await Promise.allSettled([
         provisionMutation.mutateAsync(businessType),
-        personaMutation.mutateAsync(resolvedPersona),
+        personaMutation.mutateAsync({ persona: resolvedPersona, businessType }),
         completeStepMutation.mutateAsync({
           stepId: 0,
           data: {

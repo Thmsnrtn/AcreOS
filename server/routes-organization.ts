@@ -9,6 +9,7 @@ import { requireAdminOrAbove, requireOwner } from "./utils/permissions";
 import { requireScope } from "./middleware/roleScope";
 import { checkUsageLimit } from "./services/usageLimits";
 import { onboardingService, type BusinessType } from "./services/onboarding";
+import { BUSINESS_TYPES } from "@shared/models/persona-mapping";
 import { SUBSCRIPTION_TIERS } from "@shared/schema";
 import { activityLogger } from "./services/activityLogger";
 import { getAllUsageLimits, TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
@@ -954,14 +955,13 @@ export function registerOrganizationRoutes(app: Express): void {
     }
   });
   
+  // Validate against the canonical 15-value businessType list (shared source of
+  // truth). The old inline enum had drifted — it listed "vacation_rental"
+  // (never a client value) and omitted "subdivider" + "agent_investor", so a
+  // user picking those secondary verticals got a silent 422 from provision
+  // (swallowed by the onboarding Promise.allSettled) and never got templates.
   const provisionSchema = z.object({
-    businessType: z.enum([
-      "land_flipper", "note_investor", "hybrid",
-      "residential_wholesaler", "fix_and_flip", "buy_and_hold",
-      "commercial", "short_term_rental", "creative_finance",
-      "developer", "tax_lien_deed", "multifamily",
-      "mobile_home", "vacation_rental",
-    ]),
+    businessType: z.enum(BUSINESS_TYPES as unknown as [string, ...string[]]),
   });
 
   api.post("/api/onboarding/provision", isAuthenticated, getOrCreateOrg, async (req, res) => {
