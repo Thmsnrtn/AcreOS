@@ -1,0 +1,8 @@
+{
+  "_comment": "Per-rule ceiling for the custom acreos/* ESLint rules over client/src. Ratcheted by scripts/lint-eslint-ratchet.mjs (runs in `npm run check`). Counts only move DOWN — a regression fails the gate; fixing violations requires lowering the count here in the same commit. Priority drive-to-zero targets are the two ERROR rules (founder-codenames, icon-button-aria).",
+  "acreos/no-founder-codenames-in-customer-jsx": 7,
+  "acreos/icon-button-needs-aria-label": 10,
+  "acreos/no-hardcoded-color-literals": 171,
+  "acreos/prefer-verbs-canon": 154,
+  "acreos/use-mutation-must-invalidate": 122
+}
