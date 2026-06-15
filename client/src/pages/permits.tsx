@@ -18,6 +18,7 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { formatDate } from "@/lib/format";
 
@@ -98,6 +99,16 @@ export default function PermitsPage() {
         <CardContent>
           {stalled.isLoading ? (
             <Skeleton className="h-20" />
+          ) : stalled.isError ? (
+            <QueryErrorState
+              error={stalled.error instanceof Error ? stalled.error : null}
+              onRetry={() => stalled.refetch()}
+              isRetrying={stalled.isRefetching}
+              compact
+              title="Couldn't load stalled gates"
+              description="We hit a snag loading your permit gates. Your data is safe — try again."
+              testId="permits-query-error"
+            />
           ) : stalled.data && stalled.data.count > 0 ? (
             <table className="w-full text-sm">
               <thead>

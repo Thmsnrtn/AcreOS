@@ -12,6 +12,7 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 interface AgingResponse {
@@ -86,6 +87,17 @@ export default function RentRollPage() {
 
       {aging.isLoading ? (
         <Skeleton className="h-32" />
+      ) : aging.isError ? (
+        <QueryErrorState
+          error={aging.error instanceof Error ? aging.error : null}
+          onRetry={() => aging.refetch()}
+          isRetrying={aging.isRefetching}
+          compact
+          title="Couldn't load aging buckets"
+          description="We hit a snag loading your rent aging data. Your data is safe — try again."
+          testId="rent-roll-query-error"
+          className="mb-6"
+        />
       ) : aging.data ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">

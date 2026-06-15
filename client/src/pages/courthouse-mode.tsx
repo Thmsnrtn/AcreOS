@@ -30,6 +30,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { CourthouseMode } from "@/components/mobile/CourthouseMode";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 
 interface Listing {
   id: number;
@@ -53,7 +54,7 @@ export default function CourthouseModePage() {
 
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery<{ listings: Listing[] }>({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<{ listings: Listing[] }>({
     queryKey: ["/api/tax-researcher/auction-worksheet", auctionId],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -103,6 +104,15 @@ export default function CourthouseModePage() {
               <Skeleton className="h-24 rounded-2xl" />
             </div>
           </div>
+        ) : isError ? (
+          <QueryErrorState
+            error={error instanceof Error ? error : null}
+            onRetry={() => refetch()}
+            isRetrying={isRefetching}
+            title="Couldn't load your worksheet"
+            description="We hit a snag loading this auction worksheet. Your data is safe — try again."
+            testId="courthouse-mode-query-error"
+          />
         ) : listings.length === 0 ? (
           <EmptyState
             icon={Gavel}
