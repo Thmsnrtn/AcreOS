@@ -17,6 +17,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { Link, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatRelative } from "@/lib/format";
 import {
@@ -180,7 +181,16 @@ export default function FounderDispatchesPage() {
     },
   });
 
-  const dispatches = data?.dispatches ?? [];
+  const allDispatches = data?.dispatches ?? [];
+
+  // Optional per-agent filter (?agent=<codename>) — the Team door's cards link
+  // here so the founder can drill from a roster card straight into that agent's
+  // dispatch history. agentRole on a dispatch IS the canonical codename.
+  const search = useSearch();
+  const agentFilter = new URLSearchParams(search).get("agent");
+  const dispatches = agentFilter
+    ? allDispatches.filter((d) => d.agentRole === agentFilter)
+    : allDispatches;
 
   const counts = useMemo(() => {
     let queued = 0;
@@ -231,6 +241,23 @@ export default function FounderDispatchesPage() {
             seconds. Queued rows can be cancelled; in-progress rows are
             mid-call and cannot be safely interrupted.
           </p>
+          {agentFilter && (
+            <div className="mt-2 flex items-center gap-2" data-testid="dispatches-agent-filter">
+              <Badge variant="secondary" className="capitalize">
+                {agentFilter}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                showing {dispatches.length} of {allDispatches.length} dispatches
+              </span>
+              <Link
+                href="/founder/dispatches"
+                className="text-xs text-primary underline-offset-2 hover:underline"
+                data-testid="dispatches-clear-filter"
+              >
+                Clear filter
+              </Link>
+            </div>
+          )}
         </div>
         <Button
           size="sm"

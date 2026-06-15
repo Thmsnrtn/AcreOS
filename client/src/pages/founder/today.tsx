@@ -7,14 +7,14 @@
  *
  * Sections (top-down):
  *   1. Morning pulse banner — the daily one-line Solene generates
- *      (Phase 7 wires the live endpoint; placeholder for now)
+ *      (live via server/routes-morning-pulse.ts)
  *   2. Active asks — up to 3 most-recent open agent asks (compact);
  *      "View all" routes to /founder/build
  *   3. What shipped overnight — recent completed dispatches
  *   4. Decisions waiting — top pending items from the decisions-inbox
  *      queue (approve / reject / defer happen on /founder/decisions)
- *   5. Chat with Solene — STUB until Phase 2 backend + Phase 3 frontend
- *      both land; until then, point Tom back to the Claude Code CLI
+ *   5. Chat with Solene — live via server/routes-solene-chat.ts
+ *      (ChatWithSoleneSection below)
  *
  * Krieger-bar A11y discipline:
  *   - mobile-first responsive (360 / 390 / 1280 / 1920)
@@ -223,6 +223,18 @@ function MorningPulseBanner() {
                       }
                     >
                       {pulse.envelopeStatus}
+                    </span>
+                  </li>
+                  <li>
+                    Spend 7d: <span className="text-foreground">${pulse.weeklySpendUsd}</span>
+                  </li>
+                  <li>
+                    Decisions: <span className="text-foreground">{pulse.decisionsWaitingCount}</span>
+                  </li>
+                  <li>
+                    Flagged 24h:{" "}
+                    <span className={pulse.dispatchesFlaggedLast24h > 0 ? "text-acr-warn" : "text-foreground"}>
+                      {pulse.dispatchesFlaggedLast24h}
                     </span>
                   </li>
                 </ul>
