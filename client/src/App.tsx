@@ -345,6 +345,9 @@ const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"
 // is the founder landing page; /founder now always renders it (the legacy
 // Pulse page at founder/index.tsx is retired).
 const FounderTodayPage = React.lazy(() => import("@/pages/founder/today"));
+// The daily "letter from your company" — the Founder Autopilot North-Star
+// surface (the Narration Engine rendered as calm editorial correspondence).
+const FounderAutopilotPage = React.lazy(() => import("@/pages/founder/autopilot"));
 // Categorized index of every founder deep-dive — the visible affordance
 // into the ~70 secondary /founder/* surfaces beyond the 5 primary doors.
 const FounderAllToolsPage = React.lazy(() => import("@/pages/founder/all-tools"));
@@ -1161,6 +1164,11 @@ function Router() {
           controls whether /founder defaults here. */}
       <Route path="/founder/today">
         {() => <FounderProtectedRoute component={FounderTodayPage} />}
+      </Route>
+      {/* The daily "letter from your company" — Founder Autopilot North-Star
+          surface. Direct URL always resolves; reachable from the founder nav. */}
+      <Route path="/founder/autopilot">
+        {() => <FounderProtectedRoute component={FounderAutopilotPage} />}
       </Route>
       {/* Categorized index of every founder deep-dive — reachable from the
           "All tools" entry in the founder sidebar. Keeps all ~70 secondary

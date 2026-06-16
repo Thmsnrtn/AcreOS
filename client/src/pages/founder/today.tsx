@@ -776,6 +776,33 @@ function CommandLink() {
   );
 }
 
+function AutopilotLink() {
+  return (
+    <Link
+      href="/founder/autopilot"
+      className="group flex items-center gap-4 rounded-card border border-primary/30 bg-primary/5 p-4 transition-colors hover:bg-primary/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary md:p-5"
+      data-testid="today-autopilot-link"
+    >
+      <div className="rounded-card bg-primary/10 p-2.5 shrink-0">
+        <Sparkles className="h-5 w-5 text-primary" aria-hidden="true" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-foreground">
+          Your company — the daily letter
+        </p>
+        <p className="text-xs text-muted-foreground">
+          One calm read: what was handled overnight, what (if anything) needs you,
+          and how much the company is trusted to do on its own.
+        </p>
+      </div>
+      <ArrowRight
+        className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+        aria-hidden="true"
+      />
+    </Link>
+  );
+}
+
 export default function FounderTodayPage() {
   useDocumentTitle("Today · Founder");
 
@@ -790,6 +817,8 @@ export default function FounderTodayPage() {
             Your daily pulse, what's waiting on you, and what shipped overnight.
           </p>
         </header>
+
+        <AutopilotLink />
 
         <MorningPulseBanner />
 
