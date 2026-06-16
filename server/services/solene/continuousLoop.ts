@@ -420,8 +420,40 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           const { classifyEscalation } = await import("../autopilot/escalation");
           const { enqueueDispatch } = await import("./dispatchQueue");
           const { askFounder } = await import("./founderCollab");
+
+          // Growth specialization: when the move is "grow owned channels," pick
+          // a CONCRETE owned, ~$0 play from the playbook (rotating by how many
+          // growth plays have already run) and enrich the move's rationale so
+          // the dispatch is a specific tasteful action, not a generic one.
+          let actMove = plannedTopMove;
+          if (actMove.kind === "grow_owned_channels") {
+            try {
+              const { listDispatches } = await import("./dispatchQueue");
+              const { selectNextGrowthPlay, growthPlayRationale } = await import(
+                "../autopilot/growthPlaybook"
+              );
+              const all = await listDispatches({ limit: 200 });
+              const priorGrowth = all.filter(
+                (r) =>
+                  r.queue.sourceType === "auto_dispatch" &&
+                  r.queue.sourceId.startsWith("autopilot:grow_owned_channels"),
+              ).length;
+              const play = selectNextGrowthPlay(priorGrowth);
+              actMove = { ...actMove, rationale: growthPlayRationale(play) };
+              logger.info("[continuousLoop] tick: growth play selected", {
+                play: play.id,
+                rotationIndex: priorGrowth,
+              });
+            } catch (playErr) {
+              logger.warn(
+                "[continuousLoop] tick: growth play selection failed; using generic move",
+                playErr instanceof Error ? playErr : undefined,
+              );
+            }
+          }
+
           const outcome = await planAndAct(
-            plannedTopMove,
+            actMove,
             { envelopeStatus: pulse.envelopeStatus, maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD },
             {
               runGate: (action) => runPolicyGateStack(action),
@@ -437,7 +469,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           if (outcome.status === "acted") dispatchesQueued += 1;
           if (outcome.status === "escalated") asksFiredToFounder += 1;
           logger.info("[continuousLoop] tick: brain act", {
-            move: plannedTopMove.kind,
+            move: actMove.kind,
             outcome: outcome.status,
           });
         }
