@@ -2533,6 +2533,48 @@ function startSoleneContinuousTickJob() {
 }
 
 /**
+ * Founder Autopilot — loop-stall watchdog.
+ *
+ * The autopilot's one un-silenceable failure is going dark. This independent
+ * observer reads the loop's heartbeat (latest morning pulse) + the dispatch
+ * queue and pages the founder if the loop has STALLED. It runs on its own
+ * interval (offset from the tick) so a wedged tick can't suppress its own
+ * alarm. Paging is debounced to once per 6h so a persistent stall doesn't spam.
+ */
+let lastStallPageAt = 0;
+function startSoleneLoopWatchdogJob() {
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  const SIX_HOURS = 6 * 60 * 60 * 1000;
+  const TTL_SECONDS = 5 * 60;
+  log('Registering Solene loop-stall watchdog (every 30 minutes)', 'solene-watchdog');
+  const runOnce = async () => {
+    await withJobLock('solene_loop_watchdog', TTL_SECONDS, async () => {
+      const { observeLoopHealth } = await import('../services/autopilot/loopStall');
+      const v = await observeLoopHealth();
+      if (v.severity !== 'healthy') {
+        log(`[solene-watchdog] ${v.summary}`, 'solene-watchdog');
+      }
+      if (v.shouldPageFounder && Date.now() - lastStallPageAt > SIX_HOURS) {
+        lastStallPageAt = Date.now();
+        const { sendSolenePage } = await import('../services/solene/pagerService');
+        await sendSolenePage({
+          severity: 'critical',
+          subject: 'Autopilot loop has stalled',
+          body: v.summary,
+        });
+        log('[solene-watchdog] paged founder: loop stalled', 'solene-watchdog');
+      }
+    }).catch((err) =>
+      log(`[solene-watchdog] failed: ${err}`, 'solene-watchdog'),
+    );
+  };
+  // First run 180s after boot (after the tick's first run at 120s) so a fresh
+  // pulse exists before we judge liveness.
+  setTimeout(() => void runOnce(), 180 * 1000);
+  trackInterval(() => void runOnce(), THIRTY_MINUTES);
+}
+
+/**
  * Solene (COO) — team-state map regenerator.
  *
  * Runs scripts/regenerate-team-state.mjs every 15 minutes so the auto-
@@ -3997,6 +4039,7 @@ export async function runScheduledJobs(): Promise<void> {
   // Phase 1+ consideration when revenue justifies the ops complexity.
   startSoleneMorningPulseJob();
   startSoleneContinuousTickJob();
+  startSoleneLoopWatchdogJob();
 
   // Iris — continuous p95 baseline (every 30 minutes). Drains the
   // response-time ring buffer for IRIS_TRACKED_ENDPOINTS, persists p50/
