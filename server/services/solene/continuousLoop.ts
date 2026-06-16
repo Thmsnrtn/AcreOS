@@ -27,6 +27,19 @@ import {
 } from "@shared/schema/solene-morning-pulse";
 import { logger } from "../../utils/logger";
 import { sensesFromPulse, rankMoves, type RankedMove } from "../autopilot/decide";
+import { planAndAct } from "../autopilot/act";
+
+/**
+ * Master switch for the autopilot HANDS. While false (default), the loop only
+ * THINKS — it computes + logs its plan but never routes a move into action.
+ * When true, the top move is routed through runPolicyGateStack + the Trust
+ * Ledger, which still fails safe (OBSERVE → block) until a domain earns autonomy.
+ */
+const SOLENE_DISPATCH_ENABLED = process.env.SOLENE_DISPATCH_ENABLED === "true";
+/** Lean-mode per-dispatch cap (the $50/mo envelope; keep autopilot work cheap). */
+const AUTOPILOT_DISPATCH_MAX_COST_USD = Number(
+  process.env.AUTOPILOT_DISPATCH_MAX_COST_USD ?? 5,
+);
 
 // ============================================================================
 // Types
@@ -80,6 +93,12 @@ export interface ContinuousTickResult {
    * the per-domain Trust Ledger. `null` only if pulse senses were unavailable.
    */
   plannedTopMove: RankedMove | null;
+  /**
+   * The outcome of routing the top move through governance this tick
+   * ("acted" | "escalated" | "suppressed" | "error"), or null when the hands
+   * are switched off (SOLENE_DISPATCH_ENABLED=false) and the loop only thinks.
+   */
+  actOutcomeStatus: string | null;
 }
 
 // ============================================================================
@@ -365,6 +384,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
   // genuinely-measured senses feed the decision — unmeasured ones default to
   // the truthful "none known" inside sensesFromPulse, never invented.
   let plannedTopMove: RankedMove | null = null;
+  let actOutcomeStatus: string | null = null;
   try {
     const pulse = await getLatestMorningPulse();
     if (pulse) {
@@ -389,6 +409,38 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           candidateCount: moves.length,
           dispatchBacklog,
         });
+
+        // ── The brain ACTS (only when the hands are switched on) ───────────
+        // Route the top move through the full governance spine. Safe even when
+        // enabled: at OBSERVE the autonomy gate blocks → "suppressed", nothing
+        // is enqueued; customer-facing moves escalate to a human tap. When a
+        // domain has earned autonomy, "acted" enqueues a governed dispatch.
+        if (SOLENE_DISPATCH_ENABLED) {
+          const { runPolicyGateStack } = await import("../autopilot/policyGate");
+          const { classifyEscalation } = await import("../autopilot/escalation");
+          const { enqueueDispatch } = await import("./dispatchQueue");
+          const { askFounder } = await import("./founderCollab");
+          const outcome = await planAndAct(
+            plannedTopMove,
+            { envelopeStatus: pulse.envelopeStatus, maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD },
+            {
+              runGate: (action) => runPolicyGateStack(action),
+              classify: classifyEscalation,
+              enqueue: enqueueDispatch,
+              ask: async (input) => {
+                const r = await askFounder(input);
+                return { askId: r.askId };
+              },
+            },
+          );
+          actOutcomeStatus = outcome.status;
+          if (outcome.status === "acted") dispatchesQueued += 1;
+          if (outcome.status === "escalated") asksFiredToFounder += 1;
+          logger.info("[continuousLoop] tick: brain act", {
+            move: plannedTopMove.kind,
+            outcome: outcome.status,
+          });
+        }
       }
     }
   } catch (err) {
@@ -407,6 +459,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     dispatchesQueued,
     asksFiredToFounder,
     errors,
+    actOutcomeStatus,
     plannedTopMove,
   };
 }
