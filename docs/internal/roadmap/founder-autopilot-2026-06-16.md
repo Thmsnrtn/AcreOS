@@ -265,7 +265,19 @@ The loop is now closed AND self-improving, with real engines + founder control:
   selection → Policy Inducer (proposes durable standing orders / autonomy bumps
   from patterns) → reflection in the daily letter. Strict real-signals-only.
 
-**Still ahead:** uptime sense (genuinely needs an external monitor — pinned 🔑).
+- **The uptime sense** (de-stubbed). Real, measured two ways: (1) an append-only
+  worker heartbeat-gap pulse (schema 0171 `uptime_samples`; the 5s poll writes
+  ~1/min; gaps = downtime), computed by the pure `computeUptimePct`; and (2) an
+  optional gold-standard external probe — a free GitHub Actions cron
+  (`.github/workflows/uptime-probe.yml`) → `POST /api/health/uptime-probe`
+  (token-gated), dormant until `UPTIME_PROBE_URL` + `UPTIME_PROBE_TOKEN` are set.
+  `getUptimePct` prefers external when present. Honest: too little data ⇒ keeps
+  the conservative default, never invents a number.
+
+**Nothing is stubbed anymore** — every sense the autopilot reasons on is real.
+The only remaining founder action is operational: enable the external probe
+(2 secrets) if outside-in SLA measurement is wanted, and flip
+`SOLENE_DISPATCH_ENABLED=true` to switch the hands on.
 
 ---
 
