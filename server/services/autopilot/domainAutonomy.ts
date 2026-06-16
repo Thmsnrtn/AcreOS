@@ -64,6 +64,31 @@ export function shouldPromote(level: DomainAutonomyLevel, cleanCount: number, th
  * approve the draft); execute_gated / autonomous_gated → pass (other gates still
  * apply).
  */
+/**
+ * Days-of-trust each level contributes to the autonomy horizon. A transparent,
+ * honest mapping — NOT a measurement of actual unattended uptime, but a
+ * derivation of how much the system has *earned* the right to run alone.
+ */
+const LEVEL_HORIZON_DAYS: Record<DomainAutonomyLevel, number> = {
+  observe: 0,
+  draft: 0.5,
+  execute_gated: 2,
+  autonomous_gated: 4,
+};
+
+const AUTONOMY_HORIZON_CAP_DAYS = 21;
+
+/**
+ * Derive the autonomy-horizon (how many days the company can run without
+ * needing the founder) from the Trust Ledger. Pure + total. Floored at 1 (an
+ * unproven system is glanced at daily) and capped at 21. Replaces the old hard
+ * stub with a real function of earned autonomy.
+ */
+export function deriveAutonomyHorizonDays(levels: DomainAutonomyLevel[]): number {
+  const sum = levels.reduce((acc, l) => acc + (LEVEL_HORIZON_DAYS[l] ?? 0), 0);
+  return Math.min(AUTONOMY_HORIZON_CAP_DAYS, Math.max(1, Math.round(1 + sum)));
+}
+
 export function gateResultForLevel(level: DomainAutonomyLevel): GateResult {
   switch (level) {
     case "observe":

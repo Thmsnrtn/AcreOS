@@ -6,6 +6,7 @@ import {
   prevLevel,
   shouldPromote,
   gateResultForLevel,
+  deriveAutonomyHorizonDays,
 } from "../../server/services/autopilot/domainAutonomy";
 
 describe("domain autonomy — pure state machine", () => {
@@ -48,6 +49,21 @@ describe("domain autonomy — pure state machine", () => {
     // the policy stack still runs); only the escalation VOLUME differs elsewhere.
     expect(gateResultForLevel("execute_gated").status).toBe("pass");
     expect(gateResultForLevel("autonomous_gated").status).toBe("pass");
+  });
+
+  it("derives the autonomy horizon honestly from earned trust (not a stub)", () => {
+    // An all-observing system is unproven → glanced at daily (floor of 1).
+    expect(deriveAutonomyHorizonDays(["observe", "observe", "observe", "observe", "observe"])).toBe(1);
+    // A fully-trusted system earns weeks of unattended runway (capped at 21).
+    expect(
+      deriveAutonomyHorizonDays(["autonomous_gated", "autonomous_gated", "autonomous_gated", "autonomous_gated", "autonomous_gated"]),
+    ).toBe(21);
+    // More earned autonomy ⇒ a longer horizon (monotonic).
+    const low = deriveAutonomyHorizonDays(["observe", "draft"]);
+    const high = deriveAutonomyHorizonDays(["execute_gated", "autonomous_gated"]);
+    expect(high).toBeGreaterThan(low);
+    // Empty ledger still yields the honest floor, never 0 or NaN.
+    expect(deriveAutonomyHorizonDays([])).toBe(1);
   });
 
   it("setDomainLevel rejects an unknown level before touching the DB (input contract)", async () => {

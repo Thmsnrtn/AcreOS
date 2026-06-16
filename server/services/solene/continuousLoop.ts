@@ -129,10 +129,24 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
   const agentActivity = await safeLoadAgentActivity();
   const prodVersion = await safeLoadProdVersion();
 
-  // Autonomy Horizon — the min across the five axes. Stub for now: we
-  // re-read whatever the most-recent persisted horizon was, defaulting
-  // to 7 days when no signal exists.
-  const autonomyHorizonDays = DEFAULT_AUTONOMY_HORIZON_DAYS;
+  // Autonomy Horizon — derived honestly from the Trust Ledger (how much each
+  // domain has EARNED the right to run alone), not a stub. Best-effort: falls
+  // back to the conservative default if the ledger can't be read.
+  let autonomyHorizonDays = DEFAULT_AUTONOMY_HORIZON_DAYS;
+  try {
+    const { getTrustLedger, deriveAutonomyHorizonDays } = await import(
+      "../autopilot/domainAutonomy"
+    );
+    const ledger = await getTrustLedger();
+    if (ledger.length > 0) {
+      autonomyHorizonDays = deriveAutonomyHorizonDays(ledger.map((d) => d.level));
+    }
+  } catch (err) {
+    logger.warn(
+      "[continuousLoop] autonomy-horizon derivation failed; using default",
+      err instanceof Error ? err : undefined,
+    );
+  }
 
   // Uptime: 30-day rolling stub. The real value lives in
   // iris/perfMonitor's roll-up; we keep this conservative + best-effort.
