@@ -443,6 +443,9 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           // growth plays have already run) and enrich the move's rationale so
           // the dispatch is a specific tasteful action, not a generic one.
           let actMove = plannedTopMove;
+          // The play this action runs (for the Experience Log / efficacy model);
+          // null for moves without a play (e.g. optimize).
+          let selectedPlayId: string | null = null;
           // Support specialization: real people are waiting — make the move a
           // concrete, craft-bound triage-and-draft pass (witnessed-send keeps
           // every reply behind the founder's tap).
@@ -450,6 +453,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             try {
               const { supportPlayRationale } = await import("../autopilot/supportPlaybook");
               actMove = { ...actMove, rationale: supportPlayRationale(supportBacklog) };
+              selectedPlayId = "support-triage";
             } catch (sErr) {
               logger.warn(
                 "[continuousLoop] tick: support play rationale failed; using generic move",
@@ -459,21 +463,26 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           }
           if (actMove.kind === "grow_owned_channels") {
             try {
-              const { listDispatches } = await import("./dispatchQueue");
-              const { selectNextGrowthPlay, growthPlayRationale } = await import(
-                "../autopilot/growthPlaybook"
+              const { GROWTH_PLAYS, growthPlayById, growthPlayRationale, selectNextGrowthPlay } =
+                await import("../autopilot/growthPlaybook");
+              const { getPlayStats } = await import("../autopilot/experienceLog");
+              const { selectPlay, makeSeededRng } = await import("../autopilot/efficacy");
+              // Evidence-weighted selection (Thompson sampling) over the REAL
+              // track record. Cold-start (no data) ⇒ ~uniform, i.e. equivalent to
+              // the old rotation; learning only emerges as outcomes accrue. The
+              // RNG is a seeded sampling source (per-tick seed), not Math.random.
+              const stats = await getPlayStats("growth");
+              const candidates = GROWTH_PLAYS.map(
+                (p) => stats.find((s) => s.playId === p.id) ?? { playId: p.id, successes: 0, failures: 0 },
               );
-              const all = await listDispatches({ limit: 200 });
-              const priorGrowth = all.filter(
-                (r) =>
-                  r.queue.sourceType === "auto_dispatch" &&
-                  r.queue.sourceId.startsWith("autopilot:grow_owned_channels"),
-              ).length;
-              const play = selectNextGrowthPlay(priorGrowth);
+              const pickedId = selectPlay(candidates, makeSeededRng(Date.now()));
+              const play = (pickedId && growthPlayById(pickedId)) || selectNextGrowthPlay(0);
+              selectedPlayId = play.id;
               actMove = { ...actMove, rationale: growthPlayRationale(play) };
-              logger.info("[continuousLoop] tick: growth play selected", {
+              const picked = stats.find((s) => s.playId === play.id);
+              logger.info("[continuousLoop] tick: growth play selected (efficacy-weighted)", {
                 play: play.id,
-                rotationIndex: priorGrowth,
+                trackRecord: picked ? `${picked.successes}/${picked.successes + picked.failures}` : "untested",
               });
             } catch (playErr) {
               logger.warn(
@@ -531,6 +540,29 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             move: actMove.kind,
             outcome: outcome.status,
           });
+
+          // Open an Experience Log row so real signals can accrete (dispatch
+          // result keyed by dispatchId, founder verdict keyed by askId). This
+          // is the learning loop's memory; it never fabricates — fields stay
+          // null until a genuine signal lands.
+          if (outcome.status !== "error") {
+            try {
+              const { recordExperience } = await import("../autopilot/experienceLog");
+              await recordExperience({
+                moveKind: actMove.kind,
+                domain: actMove.domain,
+                playId: selectedPlayId,
+                outcome: outcome.status,
+                dispatchId: outcome.status === "acted" ? outcome.dispatchId : null,
+                askId: outcome.status === "escalated" ? outcome.askId : null,
+              });
+            } catch (recErr) {
+              logger.warn(
+                "[continuousLoop] tick: experience record failed",
+                recErr instanceof Error ? recErr : undefined,
+              );
+            }
+          }
         }
       }
     }

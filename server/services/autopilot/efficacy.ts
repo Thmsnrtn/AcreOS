@@ -40,6 +40,22 @@ export interface ScoredPlay extends PlayStats {
 export type Rng = () => number;
 
 /**
+ * A seeded PRNG (mulberry32). Deterministic for a given seed → the production
+ * caller seeds it from the tick time so selection varies per tick while staying
+ * a pure, reproducible *sampling* source (not fabricated data, not Math.random).
+ */
+export function makeSeededRng(seed: number): Rng {
+  let a = (seed >>> 0) || 1;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
  * Sample from Beta(α, β) using two Gamma draws (Marsaglia–Tsang), Gamma via the
  * standard method. Pure given the rng. α, β ≥ 1 here (we always add the uniform
  * prior), so the shape>=1 path is sufficient and exact enough for selection.

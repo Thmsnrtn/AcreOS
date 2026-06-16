@@ -617,6 +617,13 @@ async function runSoleneDispatchLoop(): Promise<void> {
               success: result.success,
               terminationReason: result.terminationReason,
             });
+            // Learning-loop feedback: accrete the mechanical result onto the
+            // Experience Log row for this dispatch (no-op if none). Best-effort.
+            const { recordDispatchSignal } = await import("./services/autopilot/experienceLog");
+            await recordDispatchSignal(row.id, {
+              dispatchSuccess: result.success,
+              costUsd: result.costUsd,
+            });
           } catch (fbErr) {
             logger.warn("[worker] autonomy feedback failed", fbErr instanceof Error ? fbErr : undefined);
           }

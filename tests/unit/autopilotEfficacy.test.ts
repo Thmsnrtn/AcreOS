@@ -4,6 +4,7 @@ import {
   scorePlays,
   selectPlay,
   efficacyOf,
+  makeSeededRng,
   type PlayStats,
   type Rng,
 } from "../../server/services/autopilot/efficacy";
@@ -84,6 +85,20 @@ describe("autopilot efficacy — Thompson sampling over real outcomes", () => {
     expect(efficacyOf({ playId: "p", successes: 0, failures: 0 })).toEqual({ rate: 0.5, n: 0 });
     expect(efficacyOf({ playId: "p", successes: 4, failures: 0 }).rate).toBeCloseTo(5 / 6, 6);
     expect(efficacyOf({ playId: "p", successes: 4, failures: 0 }).n).toBe(4);
+  });
+
+  it("makeSeededRng is deterministic per seed and produces values in [0,1)", () => {
+    const a = makeSeededRng(12345);
+    const b = makeSeededRng(12345);
+    const seqA = Array.from({ length: 20 }, () => a());
+    const seqB = Array.from({ length: 20 }, () => b());
+    expect(seqA).toEqual(seqB);
+    for (const x of seqA) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThan(1);
+    }
+    // different seeds diverge
+    expect(makeSeededRng(1)()).not.toBe(makeSeededRng(2)());
   });
 
   it("is deterministic: same seed ⇒ identical selections", () => {

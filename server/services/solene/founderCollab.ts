@@ -291,6 +291,21 @@ export async function answerFounderAsk(
     answerFormat: format,
     chosenOptionId,
   });
+
+  // Learning-loop feedback: a yes/no answer to an autopilot ask is the founder's
+  // verdict (approve/decline) — accrete it onto the Experience Log. No-op for
+  // non-autopilot asks (no matching experience row). Best-effort.
+  if (format === "yes_no") {
+    try {
+      const { recordFounderVerdict } = await import("../autopilot/experienceLog");
+      await recordFounderVerdict(input.askId, answerText === "yes" ? "approved" : "declined");
+    } catch (err) {
+      logger.warn(
+        "[founderCollab] autopilot verdict accrete failed",
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
 }
 
 // ============================================
