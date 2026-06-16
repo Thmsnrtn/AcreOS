@@ -33,6 +33,7 @@ import { screenToolCall as realScreenToolCall } from "../solene/constitutionalGu
 import { assertWithinAiCostCeiling as realAssertCostCeiling } from "../aiCostCeiling";
 import { gateOutputOrThrow as realGateOutputOrThrow } from "../aiEvalHarness";
 import { APPROVAL_REQUIRED_TOOLS as realApprovalRequiredTools } from "../approvalKernel";
+import { checkDomainAutonomyGate as realCheckDomainAutonomy } from "./domainAutonomy";
 
 export type AutopilotDomain = "growth" | "support" | "deploy" | "ops" | "finance";
 export type GateStatus = "pass" | "block" | "escalate" | "skipped";
@@ -74,9 +75,9 @@ export interface PolicyGateDeps {
   gateOutputOrThrow: (opts: { surface: string; modelKey: string; output: string }) => Promise<void>;
   approvalRequiredTools: ReadonlySet<string>;
   /**
-   * Per-domain autonomy gate. Batch 3 wires the per-domain earned-autonomy
-   * state machine here; until then it passes (the OTHER gates still apply, so
-   * this is safe — no outward action escapes compliance/eval/budget/witnessed).
+   * Per-domain autonomy gate — the earned-autonomy state machine (batch 3).
+   * Defaults to the real Trust-Ledger gate, which fails SAFE: an unseeded /
+   * OBSERVE-level domain blocks, so no outward action escapes the ladder.
    */
   checkDomainAutonomy: (action: PolicyAction) => Promise<GateResult>;
 }
@@ -86,7 +87,7 @@ const defaultDeps: PolicyGateDeps = {
   assertWithinAiCostCeiling: realAssertCostCeiling,
   gateOutputOrThrow: realGateOutputOrThrow,
   approvalRequiredTools: realApprovalRequiredTools,
-  checkDomainAutonomy: async () => ({ gate: "autonomy", status: "pass" }),
+  checkDomainAutonomy: realCheckDomainAutonomy,
 };
 
 /**

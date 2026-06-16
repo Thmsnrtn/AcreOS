@@ -4041,6 +4041,21 @@ export async function runScheduledJobs(): Promise<void> {
   startSoleneContinuousTickJob();
   startSoleneLoopWatchdogJob();
 
+  // Founder Autopilot — seed the per-domain Trust Ledger at the safe default
+  // (every domain at OBSERVE) so the autonomy gate has rows to read + the
+  // founder UI has a ledger to show. Idempotent (onConflictDoNothing); fire-
+  // and-forget so a transient DB hiccup can't block job registration. The gate
+  // fails safe regardless — an absent row reads as OBSERVE → block.
+  void (async () => {
+    try {
+      const { ensureDomainsSeeded } = await import('../services/autopilot/domainAutonomy');
+      await ensureDomainsSeeded();
+      log('[autopilot] Trust Ledger domains seeded (OBSERVE)', 'autopilot');
+    } catch (err) {
+      log(`[autopilot] domain seed failed (gate still fails safe): ${err}`, 'autopilot');
+    }
+  })();
+
   // Iris — continuous p95 baseline (every 30 minutes). Drains the
   // response-time ring buffer for IRIS_TRACKED_ENDPOINTS, persists p50/
   // p95/p99 summaries to iris_perf_samples, and runs the regression
