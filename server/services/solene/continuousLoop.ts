@@ -453,7 +453,54 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           // a CONCRETE owned, ~$0 play from the playbook (rotating by how many
           // growth plays have already run) and enrich the move's rationale so
           // the dispatch is a specific tasteful action, not a generic one.
-          let actMove = plannedTopMove;
+          // Deliberation (neuro-symbolic): for a genuinely close call, a cheap
+          // LLM council re-weighs the top options — but only ever REORDERS within
+          // the rules' candidate set (it can't invent an action), and every gate
+          // still binds. Gated behind dispatch-enabled + an API key, and falls
+          // back to the deterministic ranking on any error. Bounded cost.
+          let effectiveMoves = moves;
+          try {
+            const { shouldDeliberate, deliberateWithModel } = await import("../autopilot/deliberate");
+            const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+            if (apiKey && shouldDeliberate(moves)) {
+              const OpenAImod = (await import("openai")).default;
+              const client = new OpenAImod({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
+              const { tracedLlmCall } = await import("../tracedLlmCall");
+              const model = process.env.AUTOPILOT_DELIBERATION_MODEL ?? "gpt-4o-mini";
+              const del = await deliberateWithModel(senses, moves, {
+                callModel: async (prompt) =>
+                  (
+                    await tracedLlmCall({
+                      agentCodename: "autopilot",
+                      purpose: "deliberation",
+                      model,
+                      userPrompt: prompt,
+                      call: () =>
+                        client.chat.completions.create({
+                          model,
+                          temperature: 0.2,
+                          max_tokens: 300,
+                          messages: [{ role: "user", content: prompt }],
+                        }),
+                    })
+                  ).content,
+              });
+              effectiveMoves = del.moves;
+              if (del.deliberated) {
+                logger.info("[continuousLoop] tick: council deliberated", {
+                  recommended: del.verdict?.recommendedKind,
+                  top: effectiveMoves[0]?.kind,
+                });
+              }
+            }
+          } catch (delErr) {
+            logger.warn(
+              "[continuousLoop] tick: deliberation failed; using ranking",
+              delErr instanceof Error ? delErr : undefined,
+            );
+          }
+
+          let actMove = effectiveMoves[0] ?? plannedTopMove;
           // The play this action runs (for the Experience Log / efficacy model);
           // null for moves without a play (e.g. optimize).
           let selectedPlayId: string | null = null;
@@ -598,7 +645,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               const { recordExperience } = await import("../autopilot/experienceLog");
               const { buildReasoningTrace } = await import("../autopilot/reasoning");
               const trace = buildReasoningTrace({
-                consideredMoves: moves.map((m) => ({ kind: m.kind, priority: m.priority, rationale: m.rationale })),
+                consideredMoves: effectiveMoves.map((m) => ({ kind: m.kind, priority: m.priority, rationale: m.rationale })),
                 chosen: { kind: actMove.kind, domain: actMove.domain, playId: selectedPlayId },
                 senses: {
                   mrr: senses.mrr,
