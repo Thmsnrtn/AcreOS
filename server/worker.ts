@@ -50,6 +50,11 @@ import { runWithRestoredTraceContext } from "./utils/queueTraceContext";
 import { initSentry, Sentry } from "./utils/sentry";
 import { instanceId } from "./utils/jobRuntime";
 import { requireEncryptionKey } from "./utils/validateEnv";
+// Founder Autopilot — the Solene founder-ops dispatch consumer. Separate queue
+// (solene_dispatch_queue) from the outbox + the customer-facing decision
+// executor, so this never double-dispatches against either.
+import { claimNextDispatch } from "./services/solene/dispatchQueue";
+import { runDispatch } from "./services/solene/dispatchRunner";
 
 // Initialize Sentry early so unhandled errors are reported.
 initSentry();
@@ -60,6 +65,14 @@ const POLL_INTERVAL_MS = parseInt(process.env.WORKER_POLL_INTERVAL_MS ?? "5000",
 const BATCH_SIZE = parseInt(process.env.WORKER_BATCH_SIZE ?? "10", 10);
 const MAX_ATTEMPTS = parseInt(process.env.WORKER_MAX_ATTEMPTS ?? "5", 10);
 const SHUTDOWN_GRACE_MS = parseInt(process.env.WORKER_SHUTDOWN_GRACE_MS ?? "30000", 10);
+
+// Founder Autopilot — Solene dispatch consumer. GATED OFF by default: this is
+// the wire that lets the autonomous brain's enqueued dispatches actually
+// EXECUTE (run an agent with tools). Turning it on is a deliberate switch
+// (set SOLENE_DISPATCH_ENABLED=true), never automatic on deploy — so P0 can
+// ship the wiring while nothing acts autonomously yet.
+const SOLENE_DISPATCH_ENABLED = process.env.SOLENE_DISPATCH_ENABLED === "true";
+const SOLENE_DISPATCH_POLL_MS = parseInt(process.env.SOLENE_DISPATCH_POLL_MS ?? "5000", 10);
 
 // Event types this worker is responsible for. Must match what producers
 // (route handlers in server/routes-*.ts and the scheduler) emit.
@@ -317,6 +330,9 @@ async function handle1099BatchGenerate(
 
 let stopping = false;
 let inFlight = 0;
+// Founder-ops dispatches currently executing (tracked separately from outbox
+// `inFlight` so shutdown drains them too).
+let soleneInFlight = 0;
 
 /**
  * Atomically claim up to `BATCH_SIZE` rows: SELECT … FOR UPDATE SKIP LOCKED
@@ -562,6 +578,50 @@ async function loop(): Promise<void> {
   }
 }
 
+// ── Founder Autopilot — Solene dispatch consumer ─────────────────────────────
+// THE KEYSTONE WIRE. The autonomous brain (autoDispatch / founderBypass /
+// planProposals / the continuous loop) enqueues founder-ops work onto
+// `solene_dispatch_queue` — but until now nothing drained it (dispatchRunner
+// expected a `runSoleneDispatchLoop` that was never written, so every dispatch
+// sat queued forever). This loop is that consumer.
+//
+// Serial by design: runDispatch executes an agent with tools (incl. git
+// mutations), so two concurrent dispatches would race the working tree. We
+// claim ONE row (atomic FOR UPDATE SKIP LOCKED) and run it to completion —
+// runDispatch self-handles cost caps, completion, failure, and capital events.
+// Gated OFF by default (SOLENE_DISPATCH_ENABLED) so the wiring can ship without
+// anything acting autonomously yet.
+async function runSoleneDispatchLoop(): Promise<void> {
+  if (!SOLENE_DISPATCH_ENABLED) {
+    logger.info("[worker] Solene dispatch consumer DORMANT (SOLENE_DISPATCH_ENABLED!=true)");
+    return;
+  }
+  logger.info(`[worker] Solene dispatch consumer ACTIVE — pollInterval=${SOLENE_DISPATCH_POLL_MS}ms`);
+  while (!stopping) {
+    let claimed = false;
+    try {
+      const row = await claimNextDispatch();
+      if (row) {
+        claimed = true;
+        soleneInFlight++;
+        try {
+          await runDispatch(row);
+        } finally {
+          soleneInFlight--;
+        }
+      }
+    } catch (err) {
+      logger.error("[worker] Solene dispatch cycle failed", err instanceof Error ? err : undefined);
+      Sentry.captureException(err);
+    }
+    if (stopping) break;
+    // Loop immediately to drain a backlog; only sleep when the queue is empty.
+    if (!claimed) {
+      await new Promise((r) => setTimeout(r, SOLENE_DISPATCH_POLL_MS));
+    }
+  }
+}
+
 // ── Shutdown handling ───────────────────────────────────────────────────────
 
 async function shutdown(signal: string): Promise<void> {
@@ -587,14 +647,14 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   const deadline = Date.now() + SHUTDOWN_GRACE_MS;
-  while ((inFlight > 0 || scheduledInFlight().length > 0) && Date.now() < deadline) {
+  while ((inFlight > 0 || soleneInFlight > 0 || scheduledInFlight().length > 0) && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 250));
   }
 
   const stillRunning = scheduledInFlight();
-  if (inFlight > 0 || stillRunning.length > 0) {
+  if (inFlight > 0 || soleneInFlight > 0 || stillRunning.length > 0) {
     logger.warn(
-      `[worker] grace expired with ${inFlight} outbox job(s) and ${stillRunning.length} scheduled job(s) [${stillRunning.join(", ")}] still in flight; exiting anyway`,
+      `[worker] grace expired with ${inFlight} outbox job(s), ${soleneInFlight} dispatch(es), and ${stillRunning.length} scheduled job(s) [${stillRunning.join(", ")}] still in flight; exiting anyway`,
     );
   }
 
@@ -649,6 +709,9 @@ requireEncryptionKey();
 logger.info(`[worker] booting — pollInterval=${POLL_INTERVAL_MS}ms batchSize=${BATCH_SIZE} handlers=${HANDLED_EVENT_TYPES.join(",")}`);
 
 void loop();
+// Founder Autopilot — start the Solene dispatch consumer concurrently with the
+// outbox loop. No-ops (logs DORMANT and returns) unless SOLENE_DISPATCH_ENABLED.
+void runSoleneDispatchLoop();
 
 // Scheduled jobs — formerly gated off the app process by
 // DISABLE_BACKGROUND_JOBS. Now run here on the worker so onboarding
