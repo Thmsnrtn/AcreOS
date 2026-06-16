@@ -26,6 +26,7 @@ import {
   type SoleneMorningPulseRow,
 } from "@shared/schema/solene-morning-pulse";
 import { logger } from "../../utils/logger";
+import { sensesFromPulse, rankMoves, type RankedMove } from "../autopilot/decide";
 
 // ============================================================================
 // Types
@@ -72,6 +73,13 @@ export interface ContinuousTickResult {
   dispatchesQueued: number;
   asksFiredToFounder: number;
   errors: number;
+  /**
+   * The single highest-value move the brain identified this tick from the
+   * real senses (decide-core). Observational in P0 — the loop THINKS and
+   * logs its plan; acting on it stays gated behind SOLENE_DISPATCH_ENABLED +
+   * the per-domain Trust Ledger. `null` only if pulse senses were unavailable.
+   */
+  plannedTopMove: RankedMove | null;
 }
 
 // ============================================================================
@@ -266,6 +274,9 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
   let dispatchesQueued = 0;
   let asksFiredToFounder = 0;
   let errors = 0;
+  // Dispatch backlog (queued-but-not-run) feeds the brain's grow-gate so it
+  // never piles more outward work onto an already-saturated queue.
+  let dispatchBacklog = 0;
 
   // Refresh the morning pulse if the latest row is older than 6 hours
   // (this is the between-cron safety net; the daily 12:00 UTC job is
@@ -321,6 +332,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     const { listDispatches } = await import("./dispatchQueue");
     const recent = await listDispatches({ limit: 50 });
     signalsScanned += recent.length;
+    dispatchBacklog = recent.filter((r) => r.queue.status === "queued").length;
   } catch (err) {
     errors += 1;
     logger.warn(
@@ -344,6 +356,49 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     );
   }
 
+  // ── The brain THINKS ──────────────────────────────────────────────────
+  // Compute the single highest-value move from the real senses (decide-core).
+  // This is judgment, not action: the loop now reasons about what it *would*
+  // work next and logs it, so the plan is observable in the cron output well
+  // before any execution is enabled. Acting on the plan stays gated behind
+  // SOLENE_DISPATCH_ENABLED + the per-domain Trust Ledger. Honesty: only
+  // genuinely-measured senses feed the decision — unmeasured ones default to
+  // the truthful "none known" inside sensesFromPulse, never invented.
+  let plannedTopMove: RankedMove | null = null;
+  try {
+    const pulse = await getLatestMorningPulse();
+    if (pulse) {
+      const senses = sensesFromPulse(
+        {
+          mrr: pulse.mrr,
+          trials: pulse.trials,
+          complianceOpenCount: pulse.complianceOpenCount,
+          envelopeStatus: pulse.envelopeStatus,
+          dispatchesFlaggedLast24h: pulse.dispatchesFlaggedLast24h,
+        },
+        { dispatchBacklog },
+      );
+      const moves = rankMoves(senses);
+      plannedTopMove = moves[0] ?? null;
+      if (plannedTopMove) {
+        logger.info("[continuousLoop] tick: brain plan", {
+          topMove: plannedTopMove.kind,
+          domain: plannedTopMove.domain,
+          priority: plannedTopMove.priority,
+          rationale: plannedTopMove.rationale,
+          candidateCount: moves.length,
+          dispatchBacklog,
+        });
+      }
+    }
+  } catch (err) {
+    errors += 1;
+    logger.warn(
+      "[continuousLoop] tick: brain plan failed",
+      err instanceof Error ? err : undefined,
+    );
+  }
+
   return {
     ranAt,
     durationMs: Date.now() - start,
@@ -352,6 +407,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     dispatchesQueued,
     asksFiredToFounder,
     errors,
+    plannedTopMove,
   };
 }
 
