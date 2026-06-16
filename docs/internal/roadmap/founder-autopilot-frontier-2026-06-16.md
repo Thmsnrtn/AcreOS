@@ -89,8 +89,18 @@ All four chosen pillars + glass-box landed + verified. 173 autopilot unit tests 
   (over-confidence holds autonomy promotions), constitutional-drift sentinel
   (a witnessed-send bypass pages the founder). Fail-open, pure-tested.
 
-The autopilot is now a deliberative, self-aware, conversational system that
-predicts, explains itself completely, knows how right it usually is, holds back
-when over-confident, and lets you direct it in plain language — all still honest,
-gated, and reversible. Living memory (P3) + risk-calibrated autonomy (P5) remain
-as the next deepening when wanted.
+- **P5 — Risk-calibrated autonomy** (`riskautonomy.ts`): gates on the action's own
+  reversibility / value / NOVELTY (real evidence count), not just the domain's
+  standing. A novel/irreversible/expensive action escalates for a tap even in a
+  trusted domain; risk only ever TIGHTENS, never loosens the earned floor.
+- **P3 — Living memory** (`memory.ts`): case-based recall — a situation is its real
+  senses → a bounded feature vector (no embedding cost); the system recalls the
+  k nearest past episodes and what worked, surfaces the precedent in the trace
+  ("In N similar past situations, X worked best"), and feeds it to deliberation.
+
+**ALL SIX PILLARS COMPLETE.** The autopilot is now a deliberative, self-aware,
+conversational system that reasons from precedent, predicts outcomes, explains
+every decision completely, knows how right it usually is, holds back when
+over-confident or facing a novel/high-stakes action, vetoes its own mistakes,
+and lets you direct it in plain language — all still honest, gated, reversible,
+and lean. 185 autopilot unit tests green.
