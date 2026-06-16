@@ -388,6 +388,9 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
   try {
     const pulse = await getLatestMorningPulse();
     if (pulse) {
+      // Real support backlog — a measured sense, best-effort (defaults to 0).
+      const { getOpenSupportCaseCount } = await import("../autopilot/senses");
+      const supportBacklog = await getOpenSupportCaseCount();
       const senses = sensesFromPulse(
         {
           mrr: pulse.mrr,
@@ -396,7 +399,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           envelopeStatus: pulse.envelopeStatus,
           dispatchesFlaggedLast24h: pulse.dispatchesFlaggedLast24h,
         },
-        { dispatchBacklog },
+        { dispatchBacklog, supportBacklog },
       );
       const moves = rankMoves(senses);
       plannedTopMove = moves[0] ?? null;
@@ -426,6 +429,20 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           // growth plays have already run) and enrich the move's rationale so
           // the dispatch is a specific tasteful action, not a generic one.
           let actMove = plannedTopMove;
+          // Support specialization: real people are waiting — make the move a
+          // concrete, craft-bound triage-and-draft pass (witnessed-send keeps
+          // every reply behind the founder's tap).
+          if (actMove.kind === "clear_support_backlog") {
+            try {
+              const { supportPlayRationale } = await import("../autopilot/supportPlaybook");
+              actMove = { ...actMove, rationale: supportPlayRationale(supportBacklog) };
+            } catch (sErr) {
+              logger.warn(
+                "[continuousLoop] tick: support play rationale failed; using generic move",
+                sErr instanceof Error ? sErr : undefined,
+              );
+            }
+          }
           if (actMove.kind === "grow_owned_channels") {
             try {
               const { listDispatches } = await import("./dispatchQueue");
