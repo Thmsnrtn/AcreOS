@@ -237,10 +237,31 @@ on the worker. Each domain starts at OBSERVE (acts on nothing) and earns its way
 up by clean cycles, so turning it on is safe — nothing acts outwardly until a
 domain is promoted past DRAFT, and customer-facing actions always require a tap.
 
-**Still ahead (post-P0):** real senses for uptime + autonomy-horizon (need an
-external monitor — pinned 🔑); the growth/support engines that produce the
-actual dispatches; simulate-before-act counterfactuals on the decision card;
-standing-orders/intent persistence behind "Your Voice"; the learning loop.
+## Post-P0 shipped (same branch, still dormant)
+
+The loop is now closed AND self-improving, with real engines + founder control:
+
+- **act() — the keystone.** Judgment → governed action: pass enqueues a governed
+  dispatch, escalate asks the founder, block self-corrects. Safe at OBSERVE.
+- **The feedback edge.** Clean dispatch → clean cycle (promotion); failure →
+  anomaly (demotion). "Earned autonomy" made real. Wired into the worker consumer.
+- **The owned-growth playbook.** grow_owned_channels resolves to a concrete,
+  rotating, $0 owned play (county SEO guide, parcel-check explainer, etc.),
+  craft-bound, never spammy.
+- **The support engine.** Real backlog sense (open/escalated support_cases) feeds
+  the brain; clear_support_backlog becomes a triage-and-draft pass — always
+  witnessed-send (every reply behind the founder's tap).
+- **Your Voice.** Standing orders + intents (schema 0168 + API + UI at
+  /founder/autopilot/voice), composed into every outward action's prompt.
+- **Simulate-before-act.** Every escalated ask carries an HONEST counterfactual
+  (real cost ceiling, reversibility, risk, true caveats — no fabricated outcomes).
+- **Trust Ledger control plane.** setDomainLevel + API + a "Pause" control on the
+  daily letter — reversibility/sovereign override.
+- **Autonomy horizon de-stubbed.** Derived honestly from the Trust Ledger
+  (earned trust → days of unattended runway), not a hard 7.
+
+**Still ahead:** uptime sense (genuinely needs an external monitor — pinned 🔑);
+the learning loop (procedural memory of what worked → bias future plays).
 
 ---
 
