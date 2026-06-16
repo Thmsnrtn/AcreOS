@@ -32,6 +32,9 @@ The four pillars from the build plan are the anatomy. Elevated, they cohere into
 | **Conscience** | Constitution + truth-ratchet + honest-null grounding — it structurally cannot lie or act against its values. | Exists |
 | **Voice** | The narration engine — it tells you its story in plain, beautiful language. | **New (the heart of the UI)** |
 
+### Craft — the third quality dimension
+Founder directive (2026-06-16): every outward action must be **tasteful, human, best-in-class, and tactful** — never hype, spam, or manipulation. Autonomy at scale amplifies whatever taste it's given, so craft is a first-class system value gated like compliance (legal) and eval (factual). Encoded in `craftStandard.ts`: every agent that generates an outward artifact composes the standard into its prompt; the test for anything sent is *"would a thoughtful person in this audience be genuinely glad to have received it?"* This is what separates AcreOS's autonomous growth from a slop factory.
+
 ### Six elevations beyond the conversation
 
 1. **Intent-driven, self-managed OKRs.** You declare 2–3 *intents* in plain language ("reach $1k MRR sustainably," "land investors evangelize it," "stay lean + legal"). The brain writes its own objectives + key results under each and works them autonomously, reporting progress like a CEO to a board of one. You set the *why*; it owns the *how*.
