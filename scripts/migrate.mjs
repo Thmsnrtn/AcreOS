@@ -7208,6 +7208,21 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "autopilot_experiences_play_idx" ON "autopilot_experiences" ("play_id")`,
   `CREATE INDEX IF NOT EXISTS "autopilot_experiences_dispatch_idx" ON "autopilot_experiences" ("dispatch_id")`,
   `CREATE INDEX IF NOT EXISTS "autopilot_experiences_ask_idx" ON "autopilot_experiences" ("ask_id")`,
+
+  // 0170 — Founder Autopilot: policy-induction proposals. Global. Additive.
+  `CREATE TABLE IF NOT EXISTS "autopilot_policy_proposals" (
+     "id" serial PRIMARY KEY,
+     "kind" text NOT NULL,
+     "play_id" text NOT NULL,
+     "domain" text NOT NULL,
+     "reason" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'open',
+     "ask_id" integer,
+     "created_at" timestamp DEFAULT now(),
+     "resolved_at" timestamp
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_policy_proposals_play_kind_idx" ON "autopilot_policy_proposals" ("play_id", "kind")`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_policy_proposals_ask_idx" ON "autopilot_policy_proposals" ("ask_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -12396,6 +12396,26 @@ export const autopilotExperiences = pgTable("autopilot_experiences", {
 }));
 export type AutopilotExperience = typeof autopilotExperiences.$inferSelect;
 
+// Founder Autopilot — policy-induction proposals. When the system spots a
+// durable pattern (a play it keeps declining, or one it keeps approving) it
+// proposes codifying it. One row per (kind, play) — proposed at most once,
+// respecting the founder's answer. Global.
+export const autopilotPolicyProposals = pgTable("autopilot_policy_proposals", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull(), // stop_play | trust_play
+  playId: text("play_id").notNull(),
+  domain: text("domain").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status").notNull().default("open"), // open | approved | declined
+  askId: integer("ask_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (t) => ({
+  playKindIdx: index("autopilot_policy_proposals_play_kind_idx").on(t.playId, t.kind),
+  askIdx: index("autopilot_policy_proposals_ask_idx").on(t.askId),
+}));
+export type AutopilotPolicyProposal = typeof autopilotPolicyProposals.$inferSelect;
+
 // ============================================================================
 // MARKETPLACE + FINANCIAL INTEL + CAPITAL MARKETS + VOICE/VISUAL + ACADEMY +
 // REGULATORY AI + WHITE-LABEL + STRIPE WEBHOOK DEDUP — extracted to

@@ -296,12 +296,25 @@ export async function answerFounderAsk(
   // verdict (approve/decline) — accrete it onto the Experience Log. No-op for
   // non-autopilot asks (no matching experience row). Best-effort.
   if (format === "yes_no") {
+    const approved = answerText === "yes";
     try {
       const { recordFounderVerdict } = await import("../autopilot/experienceLog");
-      await recordFounderVerdict(input.askId, answerText === "yes" ? "approved" : "declined");
+      await recordFounderVerdict(input.askId, approved ? "approved" : "declined");
     } catch (err) {
       logger.warn(
         "[founderCollab] autopilot verdict accrete failed",
+        err instanceof Error ? err : undefined,
+      );
+    }
+    // If this ask was a policy-induction proposal, resolve + apply it (write a
+    // standing order on stop-approval, bump autonomy on trust-approval). No-op
+    // otherwise.
+    try {
+      const { resolvePolicyProposalForAsk } = await import("../autopilot/policyInducer");
+      await resolvePolicyProposalForAsk(input.askId, approved);
+    } catch (err) {
+      logger.warn(
+        "[founderCollab] policy proposal resolution failed",
         err instanceof Error ? err : undefined,
       );
     }

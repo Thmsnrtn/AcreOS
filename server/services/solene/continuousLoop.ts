@@ -467,12 +467,17 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 await import("../autopilot/growthPlaybook");
               const { getPlayStats } = await import("../autopilot/experienceLog");
               const { selectPlay, makeSeededRng } = await import("../autopilot/efficacy");
+              const { getStoppedPlayIds } = await import("../autopilot/policyInducer");
               // Evidence-weighted selection (Thompson sampling) over the REAL
               // track record. Cold-start (no data) ⇒ ~uniform, i.e. equivalent to
               // the old rotation; learning only emerges as outcomes accrue. The
               // RNG is a seeded sampling source (per-tick seed), not Math.random.
+              // Plays the founder approved stopping are excluded.
               const stats = await getPlayStats("growth");
-              const candidates = GROWTH_PLAYS.map(
+              const stopped = await getStoppedPlayIds();
+              const live = GROWTH_PLAYS.filter((p) => !stopped.has(p.id));
+              const pool = live.length > 0 ? live : GROWTH_PLAYS;
+              const candidates = pool.map(
                 (p) => stats.find((s) => s.playId === p.id) ?? { playId: p.id, successes: 0, failures: 0 },
               );
               const pickedId = selectPlay(candidates, makeSeededRng(Date.now()));
@@ -562,6 +567,26 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 recErr instanceof Error ? recErr : undefined,
               );
             }
+          }
+
+          // Policy induction: spot durable patterns (a play we keep declining /
+          // keep approving) and proactively propose codifying them. Fires at
+          // most one calm ask per (kind, play), ever. Best-effort.
+          try {
+            const { runPolicyInduction } = await import("../autopilot/policyInducer");
+            for (const d of ["growth", "support"]) {
+              asksFiredToFounder += await runPolicyInduction(d, {
+                ask: async (input) => {
+                  const r = await askFounder(input);
+                  return { askId: r.askId };
+                },
+              });
+            }
+          } catch (indErr) {
+            logger.warn(
+              "[continuousLoop] tick: policy induction failed",
+              indErr instanceof Error ? indErr : undefined,
+            );
           }
         }
       }
