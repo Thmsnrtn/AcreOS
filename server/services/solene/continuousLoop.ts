@@ -488,6 +488,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             );
           }
 
+          const { simulateMove, renderSimulation } = await import("../autopilot/simulate");
           const outcome = await planAndAct(
             actMove,
             { envelopeStatus: pulse.envelopeStatus, maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD },
@@ -499,6 +500,14 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 const r = await askFounder(input);
                 return { askId: r.askId };
               },
+              // Honest counterfactual attached to any escalated decision.
+              simulate: (m) =>
+                renderSimulation(
+                  simulateMove(m, {
+                    maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD,
+                    envelopeStatus: pulse.envelopeStatus,
+                  }),
+                ),
             },
           );
           actOutcomeStatus = outcome.status;

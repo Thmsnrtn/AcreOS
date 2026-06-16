@@ -124,6 +124,13 @@ export interface ActDeps {
   }) => Promise<{ askId: number }>;
   /** Recent blocks for this action-kind — lets the classifier spot a stall. */
   recentBlockCount?: (domain: AutopilotDomain, moveKind: string) => Promise<number>;
+  /**
+   * Optional honest counterfactual for an escalated decision — rendered text
+   * appended to the founder ask ("what happens if you approve / decline"). When
+   * absent, the ask simply omits it. Injected (not imported) to keep act.ts free
+   * of a cycle with simulate.ts.
+   */
+  simulate?: (move: RankedMove) => string;
 }
 
 export interface ActContext {
@@ -175,6 +182,7 @@ export async function planAndAct(
     }
 
     const isDraft = verdict.action === "founder_draft_review";
+    const simulation = deps.simulate ? deps.simulate(move) : "";
     const { askId } = await deps.ask({
       askingAgentRole: binding.agentRole,
       questionSummary: isDraft
@@ -188,6 +196,7 @@ export async function planAndAct(
         isDraft
           ? "The system drafted this but isn't yet trusted to send it on its own. Approve to let it proceed (this also advances the domain's autonomy)."
           : "Approve to let the system carry this out.",
+        ...(simulation ? ["", simulation] : []),
       ].join("\n"),
       answerFormat: "yes_no",
       urgency: verdict.urgency,
