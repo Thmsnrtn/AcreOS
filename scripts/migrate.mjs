@@ -7236,6 +7236,9 @@ const STATEMENTS = [
   // 0172 — calibrated foresight: record the predicted success probability so the
   // system can measure its own calibration. Additive.
   `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "predicted_success" numeric`,
+
+  // 0173 — glass-box: persist the full reasoning trace per action. Additive.
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "reasoning_trace" jsonb`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

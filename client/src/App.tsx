@@ -350,6 +350,8 @@ const FounderTodayPage = React.lazy(() => import("@/pages/founder/today"));
 const FounderAutopilotPage = React.lazy(() => import("@/pages/founder/autopilot"));
 // "Your Voice" — set durable intents + standing orders the autopilot honors.
 const FounderVoicePage = React.lazy(() => import("@/pages/founder/voice"));
+// "The Story" — the glass-box timeline of every action + its full reasoning.
+const FounderAutopilotStoryPage = React.lazy(() => import("@/pages/founder/autopilot-story"));
 // Categorized index of every founder deep-dive — the visible affordance
 // into the ~70 secondary /founder/* surfaces beyond the 5 primary doors.
 const FounderAllToolsPage = React.lazy(() => import("@/pages/founder/all-tools"));
@@ -1175,6 +1177,10 @@ function Router() {
       {/* "Your Voice" — durable intents + standing orders the autopilot honors. */}
       <Route path="/founder/autopilot/voice">
         {() => <FounderProtectedRoute component={FounderVoicePage} />}
+      </Route>
+      {/* "The Story" — glass-box timeline of every autopilot action + its why. */}
+      <Route path="/founder/autopilot/story">
+        {() => <FounderProtectedRoute component={FounderAutopilotStoryPage} />}
       </Route>
       {/* Categorized index of every founder deep-dive — reachable from the
           "All tools" entry in the founder sidebar. Keeps all ~70 secondary

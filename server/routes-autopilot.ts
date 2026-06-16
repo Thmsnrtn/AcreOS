@@ -77,6 +77,23 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── The glass-box Story — recent actions with their full reasoning trace ──
+  app.get(
+    "/api/founder/autopilot/story",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { getRecentStory } = await import("./services/autopilot/experienceLog");
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+        const entries = await getRecentStory(limit);
+        return res.json({ entries });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── Standing orders + intents ("Your Voice") ────────────────────────────
   app.get(
     "/api/founder/autopilot/standing-orders",

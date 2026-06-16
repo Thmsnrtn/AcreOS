@@ -12391,6 +12391,9 @@ export const autopilotExperiences = pgTable("autopilot_experiences", {
   // action at act-time. Compared against the realized outcome to measure the
   // system's own calibration (Brier score). Null when no forecast was made.
   predictedSuccess: numeric("predicted_success"),
+  // Glass-box: the full reasoning trace (senses → options → forecast → gate →
+  // outcome + a plain-language narrative). Lets the founder reconstruct WHY.
+  reasoningTrace: jsonb("reasoning_trace"),
   createdAt: timestamp("created_at").defaultNow(),
   resolvedAt: timestamp("resolved_at"),
 }, (t) => ({

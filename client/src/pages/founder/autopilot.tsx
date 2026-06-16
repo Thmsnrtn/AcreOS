@@ -392,7 +392,7 @@ function StoryAndVoice() {
   return (
     <motion.section variants={staggerItem} className="grid gap-4 sm:grid-cols-2">
       <Link
-        href="/founder/dispatches"
+        href="/founder/autopilot/story"
         className="group flex items-center gap-4 rounded-card border border-border bg-card p-4 transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
         data-testid="link-the-story"
       >

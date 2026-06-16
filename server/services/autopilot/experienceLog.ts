@@ -93,6 +93,8 @@ export async function recordExperience(input: {
   askId?: number | null;
   /** The success probability the system forecast for this action (0..1). */
   predictedSuccess?: number | null;
+  /** The glass-box reasoning trace (structured + narrative). */
+  reasoningTrace?: unknown;
 }): Promise<number> {
   const [row] = await db
     .insert(autopilotExperiences)
@@ -104,9 +106,50 @@ export async function recordExperience(input: {
       dispatchId: input.dispatchId ?? null,
       askId: input.askId ?? null,
       predictedSuccess: input.predictedSuccess != null ? String(input.predictedSuccess) : null,
+      reasoningTrace: input.reasoningTrace ?? null,
     })
     .returning({ id: autopilotExperiences.id });
   return row?.id ?? 0;
+}
+
+/**
+ * Recent actions with their reasoning trace + resolved outcome — the glass-box
+ * "story" the founder reads. Each entry exposes the full WHY plus what's known
+ * about how it turned out.
+ */
+export async function getRecentStory(limit = 30): Promise<
+  Array<{
+    id: number;
+    at: Date | null;
+    moveKind: string;
+    domain: string;
+    playId: string | null;
+    outcome: string;
+    vote: ExperienceVote;
+    reasoningTrace: unknown;
+  }>
+> {
+  const rows = await db
+    .select()
+    .from(autopilotExperiences)
+    .orderBy(desc(autopilotExperiences.createdAt))
+    .limit(limit);
+  return rows.map((r) => ({
+    id: r.id,
+    at: r.createdAt,
+    moveKind: r.moveKind,
+    domain: r.domain,
+    playId: r.playId,
+    outcome: r.outcome,
+    vote: outcomeOf({
+      dispatchSuccess: r.dispatchSuccess,
+      evalScore: r.evalScore != null ? Number(r.evalScore) : null,
+      founderVerdict: r.founderVerdict,
+      resolution: r.resolution,
+      satisfaction: r.satisfaction,
+    }),
+    reasoningTrace: r.reasoningTrace,
+  }));
 }
 
 /**

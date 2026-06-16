@@ -98,10 +98,16 @@ export function dispatchPromptFor(move: RankedMove): string {
 
 // ── Outcome ──────────────────────────────────────────────────────────────────
 
+/** Which gate produced the decision — for the glass-box reasoning trace. */
+export interface GateSummary {
+  decision: "pass" | "block" | "escalate";
+  decidedBy?: string;
+}
+
 export type ActOutcome =
-  | { status: "acted"; move: RankedMove; dispatchId: number }
-  | { status: "escalated"; move: RankedMove; askId: number | null; verdict: EscalationVerdict }
-  | { status: "suppressed"; move: RankedMove; reason: string }
+  | { status: "acted"; move: RankedMove; dispatchId: number; gate: GateSummary }
+  | { status: "escalated"; move: RankedMove; askId: number | null; verdict: EscalationVerdict; gate: GateSummary }
+  | { status: "suppressed"; move: RankedMove; reason: string; gate: GateSummary }
   | { status: "error"; move: RankedMove; reason: string };
 
 export interface ActDeps {
@@ -163,8 +169,10 @@ export async function planAndAct(
         maxCostUsd: ctx.maxCostUsd,
         enqueuedBy: "autopilot",
       });
-      return { status: "acted", move, dispatchId };
+      return { status: "acted", move, dispatchId, gate: { decision: "pass" } };
     }
+
+    const gate: GateSummary = { decision: decision.decision, decidedBy: decision.decidedBy };
 
     // ── block / escalate → ask the classifier whether the founder hears it. ──
     const recentBlockCount = deps.recentBlockCount
@@ -178,7 +186,7 @@ export async function planAndAct(
     });
 
     if (!verdict.escalate) {
-      return { status: "suppressed", move, reason: verdict.reason };
+      return { status: "suppressed", move, reason: verdict.reason, gate };
     }
 
     const isDraft = verdict.action === "founder_draft_review";
@@ -201,7 +209,7 @@ export async function planAndAct(
       answerFormat: "yes_no",
       urgency: verdict.urgency,
     });
-    return { status: "escalated", move, askId, verdict };
+    return { status: "escalated", move, askId, verdict, gate };
   } catch (err) {
     return { status: "error", move, reason: err instanceof Error ? err.message : String(err) };
   }

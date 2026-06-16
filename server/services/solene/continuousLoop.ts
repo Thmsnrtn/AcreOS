@@ -534,6 +534,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           // with a play (which have a structured history); null otherwise.
           let forecastLine: string | null = null;
           let predictedSuccess: number | null = null;
+          let traceForecast: { successProb: number; n: number; confidence: string } | null = null;
           if (selectedPlayId) {
             try {
               const { getPlayStats } = await import("../autopilot/experienceLog");
@@ -547,6 +548,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               const fc = forecastMove({ successes: ps.successes, failures: ps.failures });
               forecastLine = renderForecast(fc);
               predictedSuccess = fc.successProb;
+              traceForecast = { successProb: fc.successProb, n: fc.n, confidence: fc.confidence };
             } catch (fcErr) {
               logger.warn(
                 "[continuousLoop] tick: forecast failed; proceeding without",
@@ -594,6 +596,23 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           if (outcome.status !== "error") {
             try {
               const { recordExperience } = await import("../autopilot/experienceLog");
+              const { buildReasoningTrace } = await import("../autopilot/reasoning");
+              const trace = buildReasoningTrace({
+                consideredMoves: moves.map((m) => ({ kind: m.kind, priority: m.priority, rationale: m.rationale })),
+                chosen: { kind: actMove.kind, domain: actMove.domain, playId: selectedPlayId },
+                senses: {
+                  mrr: senses.mrr,
+                  trials: senses.trials,
+                  supportBacklog: senses.supportBacklog,
+                  envelopeStatus: senses.envelopeStatus,
+                  dispatchBacklog: senses.dispatchBacklog,
+                  openIncidents: senses.openIncidents,
+                  complianceOpenCount: senses.complianceOpenCount,
+                },
+                forecast: traceForecast,
+                gate: outcome.gate,
+                outcome: outcome.status,
+              });
               await recordExperience({
                 moveKind: actMove.kind,
                 domain: actMove.domain,
@@ -602,6 +621,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 dispatchId: outcome.status === "acted" ? outcome.dispatchId : null,
                 askId: outcome.status === "escalated" ? outcome.askId : null,
                 predictedSuccess,
+                reasoningTrace: trace,
               });
             } catch (recErr) {
               logger.warn(
