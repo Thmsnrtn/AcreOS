@@ -349,7 +349,7 @@ function StoryAndVoice() {
       </Link>
 
       <Link
-        href="/founder/solene-chat"
+        href="/founder/autopilot/voice"
         className="group flex items-center gap-4 rounded-card border border-border bg-card p-4 transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
         data-testid="link-your-voice"
       >

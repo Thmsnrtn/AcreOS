@@ -348,6 +348,8 @@ const FounderTodayPage = React.lazy(() => import("@/pages/founder/today"));
 // The daily "letter from your company" — the Founder Autopilot North-Star
 // surface (the Narration Engine rendered as calm editorial correspondence).
 const FounderAutopilotPage = React.lazy(() => import("@/pages/founder/autopilot"));
+// "Your Voice" — set durable intents + standing orders the autopilot honors.
+const FounderVoicePage = React.lazy(() => import("@/pages/founder/voice"));
 // Categorized index of every founder deep-dive — the visible affordance
 // into the ~70 secondary /founder/* surfaces beyond the 5 primary doors.
 const FounderAllToolsPage = React.lazy(() => import("@/pages/founder/all-tools"));
@@ -1169,6 +1171,10 @@ function Router() {
           surface. Direct URL always resolves; reachable from the founder nav. */}
       <Route path="/founder/autopilot">
         {() => <FounderProtectedRoute component={FounderAutopilotPage} />}
+      </Route>
+      {/* "Your Voice" — durable intents + standing orders the autopilot honors. */}
+      <Route path="/founder/autopilot/voice">
+        {() => <FounderProtectedRoute component={FounderVoicePage} />}
       </Route>
       {/* Categorized index of every founder deep-dive — reachable from the
           "All tools" entry in the founder sidebar. Keeps all ~70 secondary
