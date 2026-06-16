@@ -148,9 +148,20 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
     );
   }
 
-  // Uptime: 30-day rolling stub. The real value lives in
-  // iris/perfMonitor's roll-up; we keep this conservative + best-effort.
-  const uptimePct = DEFAULT_UPTIME_PCT;
+  // Uptime: REAL, derived from worker heartbeat-gap samples over a 30-day
+  // rolling window (replaces the old hard stub). Falls back to the conservative
+  // default only when there isn't yet enough measured data to claim a number.
+  let uptimePct = DEFAULT_UPTIME_PCT;
+  try {
+    const { getUptimePct } = await import("../autopilot/uptime");
+    const measured = await getUptimePct();
+    if (measured != null) uptimePct = measured;
+  } catch (err) {
+    logger.warn(
+      "[continuousLoop] uptime read failed; using default",
+      err instanceof Error ? err : undefined,
+    );
+  }
 
   const snapshot: MorningPulseSnapshot = {
     generatedAt,

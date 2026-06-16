@@ -554,6 +554,14 @@ async function pollOnce(): Promise<void> {
   // Pulse first, every loop — independent of whether there is work to do, so a
   // quiet-but-alive worker still proves liveness to the external probe.
   await writeHeartbeat();
+  // Append-only liveness sample (throttled to ~1/min internally) — the history
+  // gaps in this feed the real uptime % sense. Best-effort; never blocks work.
+  try {
+    const { recordUptimeSample } = await import("./services/autopilot/uptime");
+    await recordUptimeSample();
+  } catch {
+    /* observability write must never break the worker */
+  }
   const batch = await claimBatch();
   if (batch.length === 0) return;
   // Process serially within a tick — most handlers are CPU-bound (PDF

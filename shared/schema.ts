@@ -12696,6 +12696,21 @@ export const insertWorkerHeartbeatSchema = createInsertSchema(workerHeartbeat).o
 export type InsertWorkerHeartbeat = z.infer<typeof insertWorkerHeartbeatSchema>;
 export type WorkerHeartbeat = typeof workerHeartbeat.$inferSelect;
 
+// Uptime samples — append-only liveness pulse (the HISTORY the single-row
+// worker_heartbeat can't keep). The worker writes one row ~per minute as it
+// polls; GAPS between consecutive samples are provable downtime (the worker
+// wasn't running to write them). The real uptime % is derived from these gaps,
+// replacing the old hard-stubbed constant. `source` distinguishes the internal
+// worker pulse from an optional external probe. Pruned to ~31 days. Global.
+export const uptimeSamples = pgTable("uptime_samples", {
+  id: serial("id").primaryKey(),
+  at: timestamp("at").notNull().defaultNow(),
+  source: text("source").notNull().default("worker"), // worker | external
+}, (t) => ({
+  atIdx: index("uptime_samples_at_idx").on(t.at),
+}));
+export type UptimeSample = typeof uptimeSamples.$inferSelect;
+
 // ── Today decision-queue resolution state (Maren CPO #2) ────────────────────
 // The /today Decision Queue is DERIVED — its items are computed each request
 // from leads / deals / observations / tasks (server/routes-today.ts). There is

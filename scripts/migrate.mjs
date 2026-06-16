@@ -7223,6 +7223,15 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "autopilot_policy_proposals_play_kind_idx" ON "autopilot_policy_proposals" ("play_id", "kind")`,
   `CREATE INDEX IF NOT EXISTS "autopilot_policy_proposals_ask_idx" ON "autopilot_policy_proposals" ("ask_id")`,
+
+  // 0171 — append-only uptime samples (real uptime % via heartbeat gaps).
+  // Global. Additive.
+  `CREATE TABLE IF NOT EXISTS "uptime_samples" (
+     "id" serial PRIMARY KEY,
+     "at" timestamp NOT NULL DEFAULT now(),
+     "source" text NOT NULL DEFAULT 'worker'
+   )`,
+  `CREATE INDEX IF NOT EXISTS "uptime_samples_at_idx" ON "uptime_samples" ("at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
