@@ -37,6 +37,7 @@ import {
   PauseCircle,
   Loader2,
   TrendingUp,
+  Power,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -390,7 +391,7 @@ function TheTrustLedger({ ledger }: { ledger: TrustLedgerEntry[] }) {
 
 function StoryAndVoice() {
   return (
-    <motion.section variants={staggerItem} className="grid gap-4 sm:grid-cols-2">
+    <motion.section variants={staggerItem} className="grid gap-4 sm:grid-cols-3">
       <Link
         href="/founder/autopilot/story"
         className="group flex items-center gap-4 rounded-card border border-border bg-card p-4 transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
@@ -417,6 +418,21 @@ function StoryAndVoice() {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-foreground">Your voice</p>
           <p className="text-xs text-muted-foreground">Set an intent or a standing order — shape the company by talking to it.</p>
+        </div>
+        <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+      </Link>
+
+      <Link
+        href="/founder/autopilot/control"
+        className="group flex items-center gap-4 rounded-card border border-border bg-card p-4 transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[44px]"
+        data-testid="link-control-center"
+      >
+        <div className="rounded-card bg-primary/10 p-2.5 shrink-0">
+          <Power className="h-5 w-5 text-primary" aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">Controls</p>
+          <p className="text-xs text-muted-foreground">Switch the autopilot on/off, pause or grant trust, set what it can do.</p>
         </div>
         <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
       </Link>

@@ -288,6 +288,7 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   // already live in FOUNDER_NAV_NEW_5_DOORS. This catalog is the SECONDARY
   // surface: everything reachable beyond the 5 doors.
   { label: "Your company (autopilot)", icon: Sparkles, href: "/founder/autopilot", category: "strategy" },
+  { label: "Autopilot controls", icon: Sparkles, href: "/founder/autopilot/control", category: "strategy" },
   { label: "Command cockpit", icon: BarChart2, href: "/founder/command", category: "strategy" },
   { label: "Bridge", icon: CheckCircle2, href: "/founder/bridge", category: "strategy" },
   { label: "Steering", icon: TrendingUp, href: "/founder/steering", category: "strategy" },

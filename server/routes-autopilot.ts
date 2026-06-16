@@ -77,6 +77,60 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── Control Center — aggregated status + the master switches ─────────────
+  app.get(
+    "/api/founder/autopilot/control",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { getEffectiveSettings } = await import("./services/autopilot/settings");
+        const [settings, ledger] = await Promise.all([getEffectiveSettings(), getTrustLedger()]);
+        let openAsks = 0;
+        try {
+          const { listOpenAsks } = await import("./services/solene/founderCollab");
+          openAsks = (await listOpenAsks()).length;
+        } catch {
+          openAsks = 0;
+        }
+        let calibration: { grade: string; n: number } | null = null;
+        try {
+          const { getCalibrationPairs } = await import("./services/autopilot/experienceLog");
+          const { calibrationReport } = await import("./services/autopilot/forecast");
+          const r = calibrationReport(await getCalibrationPairs());
+          calibration = { grade: r.grade, n: r.n };
+        } catch {
+          calibration = null;
+        }
+        return res.json({ settings, ledger, openAsks, calibration });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/autopilot/settings",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const { key, value } = (req.body ?? {}) as { key?: string; value?: boolean };
+      if (key !== "dispatchEnabled" && key !== "publishEnabled") {
+        return Errors.badRequest(res, "Invalid setting key", { allowed: ["dispatchEnabled", "publishEnabled"] });
+      }
+      if (typeof value !== "boolean") {
+        return Errors.badRequest(res, "value must be a boolean");
+      }
+      try {
+        const { setAutopilotSetting } = await import("./services/autopilot/settings");
+        const settings = await setAutopilotSetting(key, value, getUserId(req));
+        return res.json({ ok: true, settings });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── Conversational steering — talk to the company in plain language ──────
   app.post(
     "/api/founder/autopilot/steer",

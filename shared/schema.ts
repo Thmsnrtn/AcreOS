@@ -12718,6 +12718,19 @@ export const uptimeSamples = pgTable("uptime_samples", {
 }));
 export type UptimeSample = typeof uptimeSamples.$inferSelect;
 
+// Founder Autopilot — runtime settings (the master switches, DB-backed so the
+// founder flips them from the Control Center instead of a Fly secret). Singleton
+// row (id=1). The runtime reads these with env as the fallback default, so the
+// system stays safe-off until a real row says otherwise. Global.
+export const autopilotSettings = pgTable("autopilot_settings", {
+  id: integer("id").primaryKey().default(1),
+  dispatchEnabled: boolean("dispatch_enabled"), // null → fall back to env
+  publishEnabled: boolean("publish_enabled"), // null → fall back to env
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: text("updated_by"),
+});
+export type AutopilotSettings = typeof autopilotSettings.$inferSelect;
+
 // ── Today decision-queue resolution state (Maren CPO #2) ────────────────────
 // The /today Decision Queue is DERIVED — its items are computed each request
 // from leads / deals / observations / tasks (server/routes-today.ts). There is

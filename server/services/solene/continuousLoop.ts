@@ -30,12 +30,13 @@ import { sensesFromPulse, rankMoves, type RankedMove } from "../autopilot/decide
 import { planAndAct } from "../autopilot/act";
 
 /**
- * Master switch for the autopilot HANDS. While false (default), the loop only
- * THINKS — it computes + logs its plan but never routes a move into action.
- * When true, the top move is routed through runPolicyGateStack + the Trust
- * Ledger, which still fails safe (OBSERVE → block) until a domain earns autonomy.
+ * Master switch for the autopilot HANDS lives in the DB (autopilot/settings,
+ * flipped from the Control Center) with the SOLENE_DISPATCH_ENABLED env var as
+ * the safe-off default. While off, the loop only THINKS — it computes + logs its
+ * plan but never routes a move into action. When on, the top move is routed
+ * through runPolicyGateStack + the Trust Ledger, which still fails safe
+ * (OBSERVE → block) until a domain earns autonomy.
  */
-const SOLENE_DISPATCH_ENABLED = process.env.SOLENE_DISPATCH_ENABLED === "true";
 /** Lean-mode per-dispatch cap (the $50/mo envelope; keep autopilot work cheap). */
 const AUTOPILOT_DISPATCH_MAX_COST_USD = Number(
   process.env.AUTOPILOT_DISPATCH_MAX_COST_USD ?? 5,
@@ -443,7 +444,9 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
         // enabled: at OBSERVE the autonomy gate blocks → "suppressed", nothing
         // is enqueued; customer-facing moves escalate to a human tap. When a
         // domain has earned autonomy, "acted" enqueues a governed dispatch.
-        if (SOLENE_DISPATCH_ENABLED) {
+        // The switch is DB-backed (Control Center) with the env var as default.
+        const { isDispatchEnabled } = await import("../autopilot/settings");
+        if (await isDispatchEnabled()) {
           const { runPolicyGateStack } = await import("../autopilot/policyGate");
           const { classifyEscalation } = await import("../autopilot/escalation");
           const { enqueueDispatch } = await import("./dispatchQueue");

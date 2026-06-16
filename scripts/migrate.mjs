@@ -7239,6 +7239,15 @@ const STATEMENTS = [
 
   // 0173 — glass-box: persist the full reasoning trace per action. Additive.
   `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "reasoning_trace" jsonb`,
+
+  // 0174 — autopilot runtime settings (DB-backed master switches). Singleton.
+  `CREATE TABLE IF NOT EXISTS "autopilot_settings" (
+     "id" integer PRIMARY KEY DEFAULT 1,
+     "dispatch_enabled" boolean,
+     "publish_enabled" boolean,
+     "updated_at" timestamp DEFAULT now(),
+     "updated_by" text
+   )`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

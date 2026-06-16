@@ -68,10 +68,9 @@ const SHUTDOWN_GRACE_MS = parseInt(process.env.WORKER_SHUTDOWN_GRACE_MS ?? "3000
 
 // Founder Autopilot — Solene dispatch consumer. GATED OFF by default: this is
 // the wire that lets the autonomous brain's enqueued dispatches actually
-// EXECUTE (run an agent with tools). Turning it on is a deliberate switch
-// (set SOLENE_DISPATCH_ENABLED=true), never automatic on deploy — so P0 can
-// ship the wiring while nothing acts autonomously yet.
-const SOLENE_DISPATCH_ENABLED = process.env.SOLENE_DISPATCH_ENABLED === "true";
+// EXECUTE (run an agent with tools). Turning it on is a deliberate founder
+// switch — now DB-backed (Control Center) with SOLENE_DISPATCH_ENABLED as the
+// safe-off default — never automatic on deploy.
 const SOLENE_DISPATCH_POLL_MS = parseInt(process.env.SOLENE_DISPATCH_POLL_MS ?? "5000", 10);
 
 // Event types this worker is responsible for. Must match what producers
@@ -600,14 +599,18 @@ async function loop(): Promise<void> {
 // Gated OFF by default (SOLENE_DISPATCH_ENABLED) so the wiring can ship without
 // anything acting autonomously yet.
 async function runSoleneDispatchLoop(): Promise<void> {
-  if (!SOLENE_DISPATCH_ENABLED) {
-    logger.info("[worker] Solene dispatch consumer DORMANT (SOLENE_DISPATCH_ENABLED!=true)");
-    return;
-  }
-  logger.info(`[worker] Solene dispatch consumer ACTIVE — pollInterval=${SOLENE_DISPATCH_POLL_MS}ms`);
+  // The switch is DB-backed (Control Center) with SOLENE_DISPATCH_ENABLED as the
+  // safe-off default — so the consumer stays running and ACTIVATES within
+  // seconds of the founder flipping it on, no worker restart needed.
+  logger.info(`[worker] Solene dispatch consumer running — pollInterval=${SOLENE_DISPATCH_POLL_MS}ms`);
+  const { isDispatchEnabled } = await import("./services/autopilot/settings");
   while (!stopping) {
     let claimed = false;
     try {
+      if (!(await isDispatchEnabled())) {
+        await new Promise((r) => setTimeout(r, SOLENE_DISPATCH_POLL_MS));
+        continue;
+      }
       const row = await claimNextDispatch();
       if (row) {
         claimed = true;

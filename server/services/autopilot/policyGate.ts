@@ -47,6 +47,13 @@ export interface PolicyAction {
   orgId: number | null;
   /** Touches a CUSTOMER's assets/comms → witnessed-send (human tap) required. */
   isCustomerFacing: boolean;
+  /**
+   * The kind of outward effect. A `broadcast` (publishing to a public, crawler-
+   * indexed, brand-attached surface) ALWAYS needs a human tap even though it
+   * isn't aimed at one customer — closing the laundering hole where a public
+   * broadcast classified non-customer-facing skipped witnessed-send entirely.
+   */
+  outwardClass?: "none" | "broadcast";
   /** Present → run the constitution gate against this tool call. */
   toolCall?: { dispatchId: number | null; toolName: string; toolInput: Record<string, unknown>; agentRole: string };
   /** Present → run the eval/grounding gate against this generated text. */
@@ -160,12 +167,16 @@ export async function runPolicyGateStack(
   // in the approval set, requires a human tap. Terminal `escalate`.
   const needsWitness =
     action.isCustomerFacing ||
+    action.outwardClass === "broadcast" ||
     (action.approvalToolName != null && d.approvalRequiredTools.has(action.approvalToolName));
   if (needsWitness) {
     return terminate({
       gate: "witnessed_send",
       status: "escalate",
-      reason: "customer-facing action requires a human tap (witnessed-send)",
+      reason:
+        action.outwardClass === "broadcast"
+          ? "public broadcast requires a human tap (witnessed-send) — it can't launder into a lower risk tier"
+          : "customer-facing action requires a human tap (witnessed-send)",
     });
   }
   results.push({ gate: "witnessed_send", status: "skipped" });

@@ -85,6 +85,15 @@ describe("runPolicyGateStack — composed autopilot gate", () => {
     expect(decision.decidedBy).toBe("witnessed_send");
   });
 
+  it("ESCALATES a public broadcast even when it's NOT customer-facing (no laundering)", async () => {
+    const decision = await runPolicyGateStack(
+      { ...baseAction, isCustomerFacing: false, outwardClass: "broadcast" },
+      passDeps(),
+    );
+    expect(decision.decision).toBe("escalate");
+    expect(decision.decidedBy).toBe("witnessed_send");
+  });
+
   it("ESCALATES when the action's tool is in the witnessed-send approval set", async () => {
     const decision = await runPolicyGateStack(
       { ...baseAction, approvalToolName: "send_sms" },
