@@ -527,6 +527,34 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             );
           }
 
+          // Calibrated foresight: predict this action's outcome from its real
+          // track record. The predicted probability is stored on the experience
+          // (so the system can later measure its own calibration) and the
+          // honest forecast line is attached to any founder ask. Only for moves
+          // with a play (which have a structured history); null otherwise.
+          let forecastLine: string | null = null;
+          let predictedSuccess: number | null = null;
+          if (selectedPlayId) {
+            try {
+              const { getPlayStats } = await import("../autopilot/experienceLog");
+              const { forecastMove, renderForecast } = await import("../autopilot/forecast");
+              const ps =
+                (await getPlayStats(actMove.domain)).find((s) => s.playId === selectedPlayId) ?? {
+                  playId: selectedPlayId,
+                  successes: 0,
+                  failures: 0,
+                };
+              const fc = forecastMove({ successes: ps.successes, failures: ps.failures });
+              forecastLine = renderForecast(fc);
+              predictedSuccess = fc.successProb;
+            } catch (fcErr) {
+              logger.warn(
+                "[continuousLoop] tick: forecast failed; proceeding without",
+                fcErr instanceof Error ? fcErr : undefined,
+              );
+            }
+          }
+
           const { simulateMove, renderSimulation } = await import("../autopilot/simulate");
           const outcome = await planAndAct(
             actMove,
@@ -539,14 +567,16 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 const r = await askFounder(input);
                 return { askId: r.askId };
               },
-              // Honest counterfactual attached to any escalated decision.
-              simulate: (m) =>
-                renderSimulation(
+              // Honest counterfactual + history-grounded forecast on any ask.
+              simulate: (m) => {
+                const sim = renderSimulation(
                   simulateMove(m, {
                     maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD,
                     envelopeStatus: pulse.envelopeStatus,
                   }),
-                ),
+                );
+                return forecastLine ? `${sim}\n${forecastLine}` : sim;
+              },
             },
           );
           actOutcomeStatus = outcome.status;
@@ -571,6 +601,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 outcome: outcome.status,
                 dispatchId: outcome.status === "acted" ? outcome.dispatchId : null,
                 askId: outcome.status === "escalated" ? outcome.askId : null,
+                predictedSuccess,
               });
             } catch (recErr) {
               logger.warn(

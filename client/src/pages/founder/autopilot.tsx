@@ -83,6 +83,7 @@ interface FounderBrief {
   focusLine: string | null;
   trustLedger: TrustLedgerEntry[];
   learning?: Array<{ playId: string; rate: number; n: number }>;
+  calibration?: { grade: string; n: number; brier: number | null } | null;
 }
 
 // ─── Trust-ledger presentation ───────────────────────────────────────────────
@@ -238,8 +239,22 @@ function prettyPlay(playId: string): string {
   return playId.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function WhatsWorking({ learning }: { learning: NonNullable<FounderBrief["learning"]> }) {
-  if (!learning || learning.length === 0) return null;
+const CALIBRATION_COPY: Record<string, string> = {
+  "well-calibrated": "My predictions have been reliable",
+  fair: "My predictions are roughly on track",
+  "over-confident": "I've been over-confident lately — tightening up",
+  unproven: "Still learning how good my predictions are",
+};
+
+function WhatsWorking({
+  learning,
+  calibration,
+}: {
+  learning: NonNullable<FounderBrief["learning"]>;
+  calibration?: FounderBrief["calibration"];
+}) {
+  const hasCal = calibration && calibration.n > 0;
+  if ((!learning || learning.length === 0) && !hasCal) return null;
   return (
     <motion.section variants={staggerItem}>
       <div className="flex items-center gap-2 mb-3">
@@ -247,20 +262,28 @@ function WhatsWorking({ learning }: { learning: NonNullable<FounderBrief["learni
         <h2 className="text-sm font-semibold text-foreground">What's working</h2>
         <span className="text-xs text-muted-foreground">— learned from real outcomes</span>
       </div>
-      <Card data-testid="whats-working">
-        <CardContent className="p-2 sm:p-3">
-          <ul className="divide-y divide-border/60">
-            {learning.map((l) => (
-              <li key={l.playId} className="flex items-center justify-between gap-3 px-2 py-2.5">
-                <span className="min-w-0 flex-1 truncate text-sm text-foreground">{prettyPlay(l.playId)}</span>
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {Math.round(l.rate * 100)}% good · {l.n} tried
-                </span>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
+      {hasCal && (
+        <p className="mb-2 text-xs text-muted-foreground" data-testid="calibration-line">
+          {CALIBRATION_COPY[calibration!.grade] ?? "Tracking my own accuracy"} ·{" "}
+          <span className="text-foreground">{calibration!.n}</span> predictions checked
+        </p>
+      )}
+      {learning.length > 0 && (
+        <Card data-testid="whats-working">
+          <CardContent className="p-2 sm:p-3">
+            <ul className="divide-y divide-border/60">
+              {learning.map((l) => (
+                <li key={l.playId} className="flex items-center justify-between gap-3 px-2 py-2.5">
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">{prettyPlay(l.playId)}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {Math.round(l.rate * 100)}% good · {l.n} tried
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
     </motion.section>
   );
 }
@@ -476,7 +499,7 @@ export default function FounderAutopilotPage() {
             <NothingNeededFlourish />
           )}
           <TheVitalSign vital={brief.vitalSign} focusLine={brief.focusLine} />
-          <WhatsWorking learning={brief.learning ?? []} />
+          <WhatsWorking learning={brief.learning ?? []} calibration={brief.calibration} />
           <TheTrustLedger ledger={brief.trustLedger} />
           <StoryAndVoice />
         </motion.div>

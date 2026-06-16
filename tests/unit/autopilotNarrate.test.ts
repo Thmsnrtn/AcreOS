@@ -109,6 +109,12 @@ describe("autopilot narration engine — the Voice", () => {
     expect(withLearning.learning[0]).toMatchObject({ playId: "parcel-check-explainer", n: 4 });
   });
 
+  it("carries calibration through (the system's self-measured accuracy), null otherwise", () => {
+    expect(buildFounderBrief(base()).calibration).toBeNull();
+    const withCal = buildFounderBrief(base({ calibration: { grade: "well-calibrated", n: 24, brier: 0.09 } }));
+    expect(withCal.calibration).toMatchObject({ grade: "well-calibrated", n: 24 });
+  });
+
   it("partOfDayFromHour maps ET hours to the right greeting word", () => {
     expect(partOfDayFromHour(8)).toBe("morning");
     expect(partOfDayFromHour(14)).toBe("afternoon");

@@ -12387,6 +12387,10 @@ export const autopilotExperiences = pgTable("autopilot_experiences", {
   resolution: text("resolution"), // resolved | reopened
   satisfaction: integer("satisfaction"), // 1-5
   costUsd: numeric("cost_usd"),
+  // Calibrated foresight: the success probability the system PREDICTED for this
+  // action at act-time. Compared against the realized outcome to measure the
+  // system's own calibration (Brier score). Null when no forecast was made.
+  predictedSuccess: numeric("predicted_success"),
   createdAt: timestamp("created_at").defaultNow(),
   resolvedAt: timestamp("resolved_at"),
 }, (t) => ({

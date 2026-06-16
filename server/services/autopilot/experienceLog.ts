@@ -91,6 +91,8 @@ export async function recordExperience(input: {
   outcome: "acted" | "escalated" | "suppressed";
   dispatchId?: number | null;
   askId?: number | null;
+  /** The success probability the system forecast for this action (0..1). */
+  predictedSuccess?: number | null;
 }): Promise<number> {
   const [row] = await db
     .insert(autopilotExperiences)
@@ -101,9 +103,45 @@ export async function recordExperience(input: {
       outcome: input.outcome,
       dispatchId: input.dispatchId ?? null,
       askId: input.askId ?? null,
+      predictedSuccess: input.predictedSuccess != null ? String(input.predictedSuccess) : null,
     })
     .returning({ id: autopilotExperiences.id });
   return row?.id ?? 0;
+}
+
+/**
+ * (predicted, actual) pairs for calibration — every experience that carried a
+ * forecast AND has since resolved to a real vote. Pure outcomeOf decides actual.
+ */
+export async function getCalibrationPairs(
+  limit = 500,
+): Promise<Array<{ predicted: number; actual: 0 | 1 }>> {
+  const rows = await db
+    .select({
+      predictedSuccess: autopilotExperiences.predictedSuccess,
+      dispatchSuccess: autopilotExperiences.dispatchSuccess,
+      evalScore: autopilotExperiences.evalScore,
+      founderVerdict: autopilotExperiences.founderVerdict,
+      resolution: autopilotExperiences.resolution,
+      satisfaction: autopilotExperiences.satisfaction,
+    })
+    .from(autopilotExperiences)
+    .where(isNotNull(autopilotExperiences.predictedSuccess))
+    .orderBy(desc(autopilotExperiences.createdAt))
+    .limit(limit);
+  const pairs: Array<{ predicted: number; actual: 0 | 1 }> = [];
+  for (const r of rows) {
+    const vote = outcomeOf({
+      dispatchSuccess: r.dispatchSuccess,
+      evalScore: r.evalScore != null ? Number(r.evalScore) : null,
+      founderVerdict: r.founderVerdict,
+      resolution: r.resolution,
+      satisfaction: r.satisfaction,
+    });
+    if (vote === "pending") continue;
+    pairs.push({ predicted: Number(r.predictedSuccess), actual: vote === "success" ? 1 : 0 });
+  }
+  return pairs;
 }
 
 /** Accrete the dispatch result onto the experience for that dispatch. */

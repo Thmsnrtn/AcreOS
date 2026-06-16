@@ -57,6 +57,8 @@ export interface FounderBriefInputs {
   }>;
   /** What's working — top plays by real efficacy (n>0), already sorted. */
   learning?: Array<{ playId: string; rate: number; n: number }>;
+  /** How well-calibrated the system's own predictions have been. */
+  calibration?: { grade: string; n: number; brier: number | null } | null;
 }
 
 export interface FounderBrief {
@@ -80,6 +82,8 @@ export interface FounderBrief {
   trustLedger: FounderBriefInputs["trustLedger"];
   /** What's working — surfaced so the founder watches the system get smarter. */
   learning: Array<{ playId: string; rate: number; n: number }>;
+  /** The system's own calibration — "how right I usually am." */
+  calibration: { grade: string; n: number; brier: number | null } | null;
 }
 
 const PART_OF_DAY_WORD: Record<PartOfDay, string> = {
@@ -169,6 +173,7 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
     focusLine,
     trustLedger: inp.trustLedger,
     learning: inp.learning ?? [],
+    calibration: inp.calibration ?? null,
   };
 }
 
@@ -288,6 +293,17 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     learning = [];
   }
 
+  // Calibration — how well the system's own predictions have matched reality.
+  let calibration: FounderBrief["calibration"] = null;
+  try {
+    const { getCalibrationPairs } = await import("./experienceLog");
+    const { calibrationReport } = await import("./forecast");
+    const report = calibrationReport(await getCalibrationPairs());
+    calibration = { grade: report.grade, n: report.n, brier: report.brier };
+  } catch {
+    calibration = null;
+  }
+
   return buildFounderBrief({
     partOfDay,
     founderName,
@@ -296,5 +312,6 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     plannedFocus,
     trustLedger,
     learning,
+    calibration,
   });
 }

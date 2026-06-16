@@ -7232,6 +7232,10 @@ const STATEMENTS = [
      "source" text NOT NULL DEFAULT 'worker'
    )`,
   `CREATE INDEX IF NOT EXISTS "uptime_samples_at_idx" ON "uptime_samples" ("at")`,
+
+  // 0172 — calibrated foresight: record the predicted success probability so the
+  // system can measure its own calibration. Additive.
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "predicted_success" numeric`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
