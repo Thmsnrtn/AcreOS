@@ -13,7 +13,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Target, Scale, Plus, X, Loader2, MessageSquareQuote } from "lucide-react";
+import { Target, Scale, Plus, X, Loader2, MessageSquareQuote, Send } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
@@ -99,6 +99,28 @@ export default function FounderVoicePage() {
       toast({ title: "Couldn't remove", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
   });
 
+  // Conversational steering — talk to the company in plain language.
+  const [steerText, setSteerText] = useState("");
+  const [steerReply, setSteerReply] = useState<string | null>(null);
+  const steer = useMutation({
+    mutationFn: async (text: string) => {
+      const res = await fetch("/api/founder/autopilot/steer", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error(`Couldn't reach the company (${res.status})`);
+      return res.json() as Promise<{ reply: string }>;
+    },
+    onSuccess: (data) => {
+      setSteerReply(data.reply);
+      setSteerText("");
+      void qc.invalidateQueries({ queryKey: STANDING_ORDERS_KEY });
+    },
+    onError: (err) => setSteerReply(err instanceof Error ? err.message : String(err)),
+  });
+
   const trimmed = body.trim();
   const canSubmit = trimmed.length > 0 && trimmed.length <= MAX_LEN && !create.isPending;
 
@@ -118,6 +140,56 @@ export default function FounderVoicePage() {
             action the system takes on your behalf.
           </p>
         </motion.header>
+
+        {/* Conversational steering — talk to the company in plain language */}
+        <motion.section variants={staggerItem}>
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="p-5 md:p-6 space-y-3">
+              <p className="text-sm font-medium text-foreground">Talk to your company</p>
+              <p className="text-xs text-muted-foreground">
+                Ask it anything or tell it what to do — e.g. "pause growth", "focus on Texas", "never email twice a
+                week", or "why did you do that?"
+              </p>
+              <div className="flex items-end gap-2">
+                <Textarea
+                  value={steerText}
+                  onChange={(e) => setSteerText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && steerText.trim()) {
+                      e.preventDefault();
+                      steer.mutate(steerText.trim());
+                    }
+                  }}
+                  rows={2}
+                  placeholder="Message your company… (Cmd+Enter to send)"
+                  aria-label="Talk to your company"
+                  className="flex-1 min-h-[44px] resize-none text-sm"
+                  data-testid="steer-input"
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  className="min-h-[44px] min-w-[44px] shrink-0"
+                  disabled={steer.isPending || steerText.trim().length === 0}
+                  onClick={() => steer.mutate(steerText.trim())}
+                  aria-label="Send to your company"
+                  data-testid="steer-send"
+                >
+                  {steer.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Send className="h-4 w-4" aria-hidden="true" />
+                  )}
+                </Button>
+              </div>
+              {steerReply && (
+                <div className="rounded-md border border-border/60 bg-background/60 p-3 text-sm text-foreground" aria-live="polite" data-testid="steer-reply">
+                  {steerReply}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.section>
 
         {/* Composer */}
         <motion.section variants={staggerItem}>

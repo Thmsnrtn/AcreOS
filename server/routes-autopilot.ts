@@ -77,6 +77,58 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── Conversational steering — talk to the company in plain language ──────
+  app.post(
+    "/api/founder/autopilot/steer",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const { text } = (req.body ?? {}) as { text?: string };
+      if (!text || text.trim().length === 0) {
+        return Errors.badRequest(res, "text must be non-empty");
+      }
+      try {
+        const { parseSteerCommand, handleSteer } = await import("./services/autopilot/steer");
+        const { setDomainLevel: setLvl, getDomainLevel, nextLevel } = await import(
+          "./services/autopilot/domainAutonomy"
+        );
+        const { createStandingOrder } = await import("./services/autopilot/standingOrders");
+        const intent = parseSteerCommand(text);
+        const result = await handleSteer(
+          intent,
+          {
+            setDomainLevel: (d, l, reason) => setLvl(d, l as never, reason),
+            getDomainLevel: (d) => getDomainLevel(d),
+            nextLevel: (l) => nextLevel(l as never),
+            createStandingOrder: (i) => createStandingOrder(i),
+            status: async (domain) => {
+              const { composeFounderBrief } = await import("./services/autopilot/narrate");
+              const brief = await composeFounderBrief();
+              if (domain) {
+                const { getPlayStats } = await import("./services/autopilot/experienceLog");
+                const stats = await getPlayStats(domain);
+                const top = [...stats].sort((a, b) => b.successes - a.successes)[0];
+                const tr = top ? ` Best ${domain} play so far: ${top.playId} (${top.successes}/${top.successes + top.failures} good).` : "";
+                return `${brief.neededLine}${tr}`;
+              }
+              return `${brief.neededLine}${brief.focusLine ? " " + brief.focusLine : ""}`;
+            },
+            why: async () => {
+              const { getRecentStory } = await import("./services/autopilot/experienceLog");
+              const [latest] = await getRecentStory(1);
+              const trace = latest?.reasoningTrace as { narrative?: string } | null;
+              return trace?.narrative ?? "Nothing's run yet — once the autopilot acts, I'll be able to explain each move.";
+            },
+          },
+          getUserId(req),
+        );
+        return res.json(result);
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── The glass-box Story — recent actions with their full reasoning trace ──
   app.get(
     "/api/founder/autopilot/story",
