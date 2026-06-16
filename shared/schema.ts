@@ -12339,6 +12339,23 @@ export type InsertNegotiationStrategy = z.infer<typeof insertNegotiationStrategy
 export type NegotiationStrategy = typeof negotiationStrategies.$inferSelect;
 
 // ============================================================================
+// FOUNDER AUTOPILOT — per-domain earned-autonomy (the Trust Ledger)
+// ============================================================================
+// One row per founder-ops domain (growth/support/deploy/ops/finance). Tracks
+// the domain's autonomy level + clean-cycle progress toward promotion. Global
+// (not org-scoped) — this is AcreOS-the-company governing its OWN operations.
+export const domainAutonomyLevels = pgTable("domain_autonomy_levels", {
+  id: serial("id").primaryKey(),
+  domain: text("domain").notNull().unique(), // growth | support | deploy | ops | finance
+  level: text("level").notNull().default("observe"), // observe | draft | execute_gated | autonomous_gated
+  cleanCycleCount: integer("clean_cycle_count").notNull().default(0),
+  lastPromotedAt: timestamp("last_promoted_at"),
+  lastDemotedAt: timestamp("last_demoted_at"),
+  lastDemotionReason: text("last_demotion_reason"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ============================================================================
 // MARKETPLACE + FINANCIAL INTEL + CAPITAL MARKETS + VOICE/VISUAL + ACADEMY +
 // REGULATORY AI + WHITE-LABEL + STRIPE WEBHOOK DEDUP — extracted to
 // ./schema/marketplace.ts

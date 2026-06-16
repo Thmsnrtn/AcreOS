@@ -7159,6 +7159,19 @@ const STATEMENTS = [
   `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "tax_delinquent" boolean`,
   `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "estimated_value" numeric`,
   `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "acreage" numeric`,
+
+  // 0167 — Founder Autopilot: per-domain earned-autonomy (the Trust Ledger).
+  // Global (one row per founder-ops domain). Additive + idempotent.
+  `CREATE TABLE IF NOT EXISTS "domain_autonomy_levels" (
+     "id" serial PRIMARY KEY,
+     "domain" text NOT NULL UNIQUE,
+     "level" text NOT NULL DEFAULT 'observe',
+     "clean_cycle_count" integer NOT NULL DEFAULT 0,
+     "last_promoted_at" timestamp,
+     "last_demoted_at" timestamp,
+     "last_demotion_reason" text,
+     "updated_at" timestamp DEFAULT now()
+   )`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
