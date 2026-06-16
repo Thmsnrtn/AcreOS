@@ -49,4 +49,10 @@ describe("domain autonomy — pure state machine", () => {
     expect(gateResultForLevel("execute_gated").status).toBe("pass");
     expect(gateResultForLevel("autonomous_gated").status).toBe("pass");
   });
+
+  it("setDomainLevel rejects an unknown level before touching the DB (input contract)", async () => {
+    const { setDomainLevel } = await import("../../server/services/autopilot/domainAutonomy");
+    // @ts-expect-error — deliberately passing an invalid level to assert the guard
+    await expect(setDomainLevel("growth", "super_user", "nope")).rejects.toThrow(/unknown level/i);
+  });
 });

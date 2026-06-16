@@ -25,7 +25,7 @@
  * aria-live on the async letter, full mobile + desktop parity.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -34,6 +34,8 @@ import {
   ScrollText,
   MessageSquareQuote,
   CheckCircle2,
+  PauseCircle,
+  Loader2,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -44,6 +46,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useToast } from "@/hooks/use-toast";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 
 // ─── API contract: GET /api/founder/solene/brief ─────────────────────────────
@@ -230,8 +233,31 @@ function TheVitalSign({ vital, focusLine }: { vital: FounderBrief["vitalSign"]; 
 // ─── Section: The Trust Ledger ───────────────────────────────────────────────
 
 function TheTrustLedger({ ledger }: { ledger: TrustLedgerEntry[] }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const setLevel = useMutation({
+    mutationFn: async (vars: { domain: string; level: string; reason: string }) => {
+      const res = await fetch(`/api/founder/autopilot/domains/${vars.domain}/level`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ level: vars.level, reason: vars.reason }),
+      });
+      if (!res.ok) throw new Error(`Update failed (${res.status})`);
+      return res.json();
+    },
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ["/api/founder/solene/brief"] });
+      toast({ title: `${prettyDomain(vars.domain)} paused`, description: "It's back to observing — it won't act until you trust it again." });
+    },
+    onError: (err) => {
+      toast({ title: "Couldn't update", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    },
+  });
+
   if (ledger.length === 0) return null;
   const sorted = [...ledger].sort((a, b) => (LEVEL_RANK[b.level] ?? 0) - (LEVEL_RANK[a.level] ?? 0));
+  const pendingDomain = setLevel.isPending ? setLevel.variables?.domain : null;
   return (
     <motion.section variants={staggerItem}>
       <div className="flex items-center gap-2 mb-3">
@@ -244,6 +270,7 @@ function TheTrustLedger({ ledger }: { ledger: TrustLedgerEntry[] }) {
           <ul className="divide-y divide-border/60">
             {sorted.map((d) => {
               const atTop = d.level === "autonomous_gated";
+              const atObserve = d.level === "observe";
               const pct = atTop ? 100 : Math.min(100, Math.round((d.cleanCycleCount / Math.max(1, d.threshold)) * 100));
               return (
                 <li key={d.domain} className="flex items-center gap-4 px-2 py-3">
@@ -271,6 +298,26 @@ function TheTrustLedger({ ledger }: { ledger: TrustLedgerEntry[] }) {
                       />
                     </div>
                   </div>
+                  {/* Reversibility: pause any domain back to observing. Hidden
+                      when already observing (nothing to pause). */}
+                  {!atObserve && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 min-h-[44px] text-muted-foreground hover:text-foreground"
+                      disabled={setLevel.isPending}
+                      onClick={() => setLevel.mutate({ domain: d.domain, level: "observe", reason: "paused from the daily letter" })}
+                      aria-label={`Pause ${prettyDomain(d.domain)} — return it to observing`}
+                      data-testid={`pause-${d.domain}`}
+                    >
+                      {pendingDomain === d.domain ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <PauseCircle className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      <span className="ml-1.5 text-xs">Pause</span>
+                    </Button>
+                  )}
                 </li>
               );
             })}

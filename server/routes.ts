@@ -243,6 +243,7 @@ import { registerPaxAuditRoutes } from "./routes-pax-audit";
 import { registerSoleneAuditRoutes } from "./routes-solene-audit";
 import { registerSolenePageRoutes } from "./routes-solene-page";
 import { registerMorningPulseRoutes } from "./routes-morning-pulse";
+import { registerAutopilotRoutes } from "./routes-autopilot";
 import { registerSoleneChatRoutes } from "./routes-solene-chat";
 import { registerFounderMoneyRoutes } from "./routes-founder-money";
 import { registerAgentClaimsRoutes } from "./routes-agent-claims";
@@ -2224,6 +2225,9 @@ export async function registerRoutes(
   // snapshot + POST /refresh force re-compute. Backs the Today page's
   // live one-line; cron-fed by the 12:00 UTC + 30m continuous jobs.
   registerMorningPulseRoutes(app);
+  // Founder Autopilot — Trust Ledger control plane: GET the ledger + POST a
+  // sovereign domain-level override (pause/trust). The reversibility guarantee.
+  registerAutopilotRoutes(app);
   // Solene (Phase 2) — chat backend: SSE-streaming /api/founder/solene-chat/*
   // turn runner over OpenRouter with smart routing + prompt cache + tool
   // exec. Registration was missing from Wave 2 (shipped 2026-06-04) so the

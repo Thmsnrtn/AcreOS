@@ -160,6 +160,43 @@ export async function checkDomainAutonomyGate(action: PolicyAction): Promise<Gat
   return gateResultForLevel(level);
 }
 
+/**
+ * Founder sovereign override — directly set a domain's autonomy level. This is
+ * the reversibility/control guarantee: the founder can PAUSE a domain (set it
+ * to observe) or, conversely, grant trust ahead of the earn curve. Resets the
+ * clean-cycle progress and records the reason + the right timestamp so the
+ * ledger reads truthfully. Validates the level against the known set.
+ */
+export async function setDomainLevel(
+  domain: AutopilotDomain,
+  level: DomainAutonomyLevel,
+  reason: string,
+): Promise<{ domain: AutopilotDomain; level: DomainAutonomyLevel }> {
+  if (!DOMAIN_AUTONOMY_LEVELS.includes(level)) {
+    throw new Error(`setDomainLevel: unknown level "${level}"`);
+  }
+  const current = await getDomainLevel(domain);
+  const isDemotion = levelRank(level) < levelRank(current);
+  const now = new Date();
+  await db
+    .insert(domainAutonomyLevels)
+    .values({ domain, level, cleanCycleCount: 0 })
+    .onConflictDoUpdate({
+      target: domainAutonomyLevels.domain,
+      set: {
+        level,
+        cleanCycleCount: 0,
+        // Record on the appropriate side so the ledger's history stays honest.
+        lastPromotedAt: isDemotion ? undefined : now,
+        lastDemotedAt: isDemotion ? now : undefined,
+        lastDemotionReason: isDemotion ? `founder: ${reason}` : undefined,
+        updatedAt: now,
+      },
+    });
+  logger.warn("[autopilot] domain level set by founder", { domain, from: current, to: level, reason });
+  return { domain, level };
+}
+
 /** The Trust Ledger — every domain's current standing, for the founder UI. */
 export async function getTrustLedger(): Promise<
   Array<{ domain: string; level: DomainAutonomyLevel; cleanCycleCount: number; threshold: number; lastPromotedAt: Date | null; lastDemotedAt: Date | null; lastDemotionReason: string | null }>
