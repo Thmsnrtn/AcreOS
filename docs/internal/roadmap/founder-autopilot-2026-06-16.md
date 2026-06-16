@@ -260,8 +260,12 @@ The loop is now closed AND self-improving, with real engines + founder control:
 - **Autonomy horizon de-stubbed.** Derived honestly from the Trust Ledger
   (earned trust → days of unattended runway), not a hard 7.
 
-**Still ahead:** uptime sense (genuinely needs an external monitor — pinned 🔑);
-the learning loop (procedural memory of what worked → bias future plays).
+- **The learning loop** (own design doc: `founder-autopilot-learning-loop-2026-06-16.md`).
+  Efficacy axis atop the reliability axis: Experience Log → Thompson-sampling play
+  selection → Policy Inducer (proposes durable standing orders / autonomy bumps
+  from patterns) → reflection in the daily letter. Strict real-signals-only.
+
+**Still ahead:** uptime sense (genuinely needs an external monitor — pinned 🔑).
 
 ---
 

@@ -154,3 +154,28 @@ The founder sees *what* the system learned and *why*, and can override anything.
 
 Each ships as a verified batch (check + test + build) on `founder-autopilot`, gated
 dormant like the rest. Cold-start-safe, so it can ship before switch-on.
+
+---
+
+## SHIPPED (2026-06-16, branch `founder-autopilot`, dormant)
+
+All five batches landed + verified:
+
+- **L1 — efficacy core** (`efficacy.ts`). Beta-Bernoulli + seeded Thompson
+  sampling. Proven by test: cold-start = rotation, exploits a winner (>80%),
+  still explores the untested (>20%), deterministic per seed. Zero tuned knobs.
+- **L2 — Experience Log** (schema 0169 + `experienceLog.ts`). `outcomeOf()` —
+  the pure, honesty-critical signal→vote (founder verdict > support resolution >
+  eval > mechanical; no signal ⇒ pending, no fabricated attribution).
+- **L3 — wiring.** Growth selection is now Thompson-weighted over the real track
+  record; every act opens an experience row; dispatch result + founder verdict
+  accrete onto it. RNG is a seeded mulberry32 (lint-clean, no `Math.random`).
+- **L4 — Policy Inducer** (schema 0170 + `policyInducer.ts`). Decline-streak ⇒
+  propose STOP (→ standing order); success-streak ⇒ propose TRUST (→ autonomy
+  bump). One ask per pattern, ever; every applied change reversible.
+- **L5 — reflection.** The daily letter's "What's working" strip shows top plays
+  by real efficacy. Honest cold-start (empty until data accrues).
+
+124 autopilot unit tests green. The system now learns *efficacy* (what works +
+what the founder wants) atop the Trust Ledger's *reliability* — and converts
+repeated decisions into durable, founder-approved policy.
