@@ -7248,6 +7248,23 @@ const STATEMENTS = [
      "updated_at" timestamp DEFAULT now(),
      "updated_by" text
    )`,
+
+  // 0175 — published marketing artifacts (the attribution anchor). Additive.
+  `CREATE TABLE IF NOT EXISTS "marketing_artifacts" (
+     "id" serial PRIMARY KEY,
+     "dispatch_id" integer,
+     "play_id" text,
+     "slug" text NOT NULL,
+     "surface" text NOT NULL DEFAULT 'field_note',
+     "county" text,
+     "state" text,
+     "published_at" timestamp,
+     "unpublished_at" timestamp,
+     "view_count" integer NOT NULL DEFAULT 0,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "marketing_artifacts_slug_idx" ON "marketing_artifacts" ("slug")`,
+  `CREATE INDEX IF NOT EXISTS "marketing_artifacts_dispatch_idx" ON "marketing_artifacts" ("dispatch_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

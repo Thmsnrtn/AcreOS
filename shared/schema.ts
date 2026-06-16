@@ -12731,6 +12731,27 @@ export const autopilotSettings = pgTable("autopilot_settings", {
 });
 export type AutopilotSettings = typeof autopilotSettings.$inferSelect;
 
+// Founder Autopilot — published marketing artifacts. The stable id every
+// attribution keys against (replaces the in-memory content-brief map). One row
+// per artifact the autopilot publishes to a public owned surface. Global.
+export const marketingArtifacts = pgTable("marketing_artifacts", {
+  id: serial("id").primaryKey(),
+  dispatchId: integer("dispatch_id"),
+  playId: text("play_id"),
+  slug: text("slug").notNull(),
+  surface: text("surface").notNull().default("field_note"),
+  county: text("county"),
+  state: text("state"),
+  publishedAt: timestamp("published_at"),
+  unpublishedAt: timestamp("unpublished_at"),
+  viewCount: integer("view_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  slugIdx: index("marketing_artifacts_slug_idx").on(t.slug),
+  dispatchIdx: index("marketing_artifacts_dispatch_idx").on(t.dispatchId),
+}));
+export type MarketingArtifact = typeof marketingArtifacts.$inferSelect;
+
 // ── Today decision-queue resolution state (Maren CPO #2) ────────────────────
 // The /today Decision Queue is DERIVED — its items are computed each request
 // from leads / deals / observations / tasks (server/routes-today.ts). There is
