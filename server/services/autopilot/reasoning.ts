@@ -33,6 +33,8 @@ export interface ReasoningTraceInput {
   forecast?: TraceForecast | null;
   gate: { decision: string; decidedBy?: string };
   outcome: string; // acted | escalated | suppressed
+  /** Living-memory recall — what worked in similar past situations (optional). */
+  memory?: string | null;
 }
 
 export interface ReasoningTrace extends ReasoningTraceInput {
@@ -88,8 +90,11 @@ export function buildReasoningTrace(input: ReasoningTraceInput): ReasoningTrace 
   const byPhrase = gate.decidedBy ? ` — specifically ${DECIDED_BY_PHRASE[gate.decidedBy] ?? gate.decidedBy}` : "";
   const outcomePhrase = OUTCOME_PHRASE[outcome] ?? `(${outcome})`;
 
+  const memoryBit = input.memory ? ` ${input.memory}` : "";
+
   const narrative =
     `I weighed ${considered} option${considered === 1 ? "" : "s"} and chose "${chosen.kind}"${playBit} because ${driver}.` +
+    memoryBit +
     forecastBit +
     ` It ${gatePhrase}${byPhrase}, ${outcomePhrase}.`;
 

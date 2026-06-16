@@ -235,6 +235,39 @@ export async function getRecentExperiences(
     .limit(limit);
 }
 
+/**
+ * Past episodes (situation → action → outcome) for case-based recall. Reads the
+ * stored reasoning traces (which carry the senses at decision time) + the
+ * resolved vote. Skips rows without a usable trace.
+ */
+export async function getPastEpisodes(
+  limit = 200,
+): Promise<Array<{ moveKind: string; vote: ExperienceVote; senses: unknown }>> {
+  const rows = await db
+    .select()
+    .from(autopilotExperiences)
+    .where(isNotNull(autopilotExperiences.reasoningTrace))
+    .orderBy(desc(autopilotExperiences.createdAt))
+    .limit(limit);
+  const out: Array<{ moveKind: string; vote: ExperienceVote; senses: unknown }> = [];
+  for (const r of rows) {
+    const trace = r.reasoningTrace as { senses?: unknown } | null;
+    if (!trace?.senses) continue;
+    out.push({
+      moveKind: r.moveKind,
+      vote: outcomeOf({
+        dispatchSuccess: r.dispatchSuccess,
+        evalScore: r.evalScore != null ? Number(r.evalScore) : null,
+        founderVerdict: r.founderVerdict,
+        resolution: r.resolution,
+        satisfaction: r.satisfaction,
+      }),
+      senses: trace.senses,
+    });
+  }
+  return out;
+}
+
 /** Per-play stats for a domain, ready to feed the efficacy model. */
 export async function getPlayStats(domain: string): Promise<PlayStats[]> {
   const rows = await db

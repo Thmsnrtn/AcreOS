@@ -38,7 +38,7 @@ export function shouldDeliberate(moves: RankedMove[]): boolean {
 }
 
 /** Build the council prompt. Pure — lists ONLY the real candidate moves. */
-export function buildCouncilPrompt(senses: DecisionSenses, moves: RankedMove[]): string {
+export function buildCouncilPrompt(senses: DecisionSenses, moves: RankedMove[], precedent?: string | null): string {
   const candidates = moves.map((m) => `- ${m.kind} (priority ${m.priority}): ${m.rationale}`).join("\n");
   return [
     "You are a council advising an autonomous company's operating loop on a close call.",
@@ -46,12 +46,15 @@ export function buildCouncilPrompt(senses: DecisionSenses, moves: RankedMove[]):
     "HARD RULE: you may only recommend a move from the candidate list below, by its exact `kind`. You may not invent a new action.",
     "",
     `Current state: $${senses.mrr} MRR, ${senses.trials} trials, ${senses.supportBacklog} customers waiting, runway ${senses.envelopeStatus}, ${senses.openIncidents} open incident(s), ${senses.complianceOpenCount} compliance item(s).`,
+    precedent ? `Precedent from memory: ${precedent}` : "",
     "",
     "Candidate moves:",
     candidates,
     "",
     'Respond ONLY with JSON: {"recommendedKind": "<one kind from the list>", "rationale": "<one sentence>", "perspectives": [{"lens": "opportunity|risk|customer|runway", "point": "<short>"}]}',
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** Parse + shape-validate the council JSON. Pure. Null on anything malformed. */
@@ -106,10 +109,11 @@ export async function deliberateWithModel(
   senses: DecisionSenses,
   moves: RankedMove[],
   deps: DeliberateDeps,
+  precedent?: string | null,
 ): Promise<DeliberationResult> {
   if (!shouldDeliberate(moves)) return { moves, deliberated: false, verdict: null };
   try {
-    const raw = await deps.callModel(buildCouncilPrompt(senses, moves));
+    const raw = await deps.callModel(buildCouncilPrompt(senses, moves, precedent));
     const verdict = parseCouncil(raw);
     return { moves: applyDeliberation(moves, verdict), deliberated: verdict != null, verdict };
   } catch {

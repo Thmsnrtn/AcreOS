@@ -486,14 +486,36 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             }
           }
 
+          // Living memory: recall the most similar past situations and what
+          // worked in them. Surfaced in the trace (the founder sees the
+          // precedent) and fed to deliberation so a close call reasons from
+          // real history. Honest: empty when there's no comparable past.
+          let memoryNote: string | null = null;
+          try {
+            const { getPastEpisodes } = await import("../autopilot/experienceLog");
+            const { recallSimilar, summarizeRecall } = await import("../autopilot/memory");
+            const episodes = await getPastEpisodes(200);
+            const recalled = recallSimilar(senses, episodes as never, 5);
+            if (recalled.length > 0) {
+              memoryNote = summarizeRecall(recalled).note;
+              logger.info("[continuousLoop] tick: memory recall", { note: memoryNote });
+            }
+          } catch (memErr) {
+            logger.warn(
+              "[continuousLoop] tick: memory recall failed",
+              memErr instanceof Error ? memErr : undefined,
+            );
+          }
+
           // Deliberation: for a genuinely close call, the council re-weighs the
           // top options — but only ever REORDERS within the rules' candidate set
-          // (it can't invent an action), and every gate still binds.
+          // (it can't invent an action), and every gate still binds. Memory feeds
+          // it as precedent.
           let effectiveMoves = moves;
           try {
             const { shouldDeliberate, deliberateWithModel } = await import("../autopilot/deliberate");
             if (callModel && shouldDeliberate(moves)) {
-              const del = await deliberateWithModel(senses, moves, { callModel });
+              const del = await deliberateWithModel(senses, moves, { callModel }, memoryNote);
               effectiveMoves = del.moves;
               if (del.deliberated) {
                 logger.info("[continuousLoop] tick: council deliberated", {
@@ -692,6 +714,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 forecast: traceForecast,
                 gate: outcome.gate,
                 outcome: outcome.status,
+                memory: memoryNote,
               });
               await recordExperience({
                 moveKind: actMove.kind,

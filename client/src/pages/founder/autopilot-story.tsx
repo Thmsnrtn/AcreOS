@@ -38,6 +38,7 @@ interface ReasoningTrace {
   gate: { decision: string; decidedBy?: string };
   outcome: string;
   narrative: string;
+  memory?: string | null;
 }
 interface StoryEntry {
   id: number;
@@ -105,6 +106,7 @@ function StoryRow({ entry }: { entry: StoryEntry }) {
           <TraceBlock label={`Options I weighed (${t.consideredMoves.length})`}>
             {t.consideredMoves.map((m) => prettyKind(m.kind)).join(" · ")}
           </TraceBlock>
+          {t.memory && <TraceBlock label="What I remembered">{t.memory}</TraceBlock>}
           {t.forecast && (
             <TraceBlock label="My forecast">
               {t.forecast.confidence === "none"
