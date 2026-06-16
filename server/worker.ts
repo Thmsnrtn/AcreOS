@@ -605,7 +605,21 @@ async function runSoleneDispatchLoop(): Promise<void> {
         claimed = true;
         soleneInFlight++;
         try {
-          await runDispatch(row);
+          const result = await runDispatch(row);
+          // Feedback edge: an autopilot dispatch's outcome earns (clean) or
+          // costs (failure) the domain's autonomy via the Trust Ledger. No-op
+          // for non-autopilot dispatches. Best-effort — never block the loop.
+          try {
+            const { applyAutonomyFeedback } = await import("./services/autopilot/act");
+            await applyAutonomyFeedback({
+              sourceType: row.sourceType,
+              sourceId: row.sourceId,
+              success: result.success,
+              terminationReason: result.terminationReason,
+            });
+          } catch (fbErr) {
+            logger.warn("[worker] autonomy feedback failed", fbErr instanceof Error ? fbErr : undefined);
+          }
         } finally {
           soleneInFlight--;
         }

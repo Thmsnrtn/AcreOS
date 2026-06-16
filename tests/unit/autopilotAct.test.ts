@@ -4,6 +4,8 @@ import {
   moveToPolicyAction,
   bindingFor,
   dispatchPromptFor,
+  applyAutonomyFeedback,
+  isAutopilotDispatch,
   type ActDeps,
   type ActContext,
 } from "../../server/services/autopilot/act";
@@ -105,5 +107,49 @@ describe("autopilot act() — judgment routed through governance", () => {
     const out = await planAndAct(move(), ctx, d);
     expect(out.status).toBe("error");
     if (out.status === "error") expect(out.reason).toMatch(/db down/);
+  });
+});
+
+describe("autopilot feedback edge — outcomes earn (or cost) autonomy", () => {
+  it("a clean autopilot dispatch records a clean cycle for its domain", async () => {
+    const recordCleanCycle = vi.fn(async () => "draft");
+    const recordAnomaly = vi.fn(async () => "observe");
+    const out = await applyAutonomyFeedback(
+      { sourceType: "auto_dispatch", sourceId: "autopilot:grow_owned_channels", success: true },
+      { recordCleanCycle, recordAnomaly },
+    );
+    expect(out).toMatchObject({ applied: true, domain: "growth", effect: "clean" });
+    expect(recordCleanCycle).toHaveBeenCalledWith("growth");
+    expect(recordAnomaly).not.toHaveBeenCalled();
+  });
+
+  it("a failed autopilot dispatch records an anomaly (demotion) for its domain", async () => {
+    const recordCleanCycle = vi.fn(async () => "observe");
+    const recordAnomaly = vi.fn(async () => "observe");
+    const out = await applyAutonomyFeedback(
+      { sourceType: "auto_dispatch", sourceId: "autopilot:resolve_incident", success: false, terminationReason: "timeout" },
+      { recordCleanCycle, recordAnomaly },
+    );
+    expect(out).toMatchObject({ applied: true, domain: "deploy", effect: "anomaly" });
+    expect(recordAnomaly).toHaveBeenCalledTimes(1);
+    expect((recordAnomaly as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatch(/timeout/);
+  });
+
+  it("a non-autopilot dispatch is ignored — the Trust Ledger is untouched", async () => {
+    const recordCleanCycle = vi.fn(async () => "observe");
+    const recordAnomaly = vi.fn(async () => "observe");
+    const out = await applyAutonomyFeedback(
+      { sourceType: "founder_manual", sourceId: "founder:123", success: true },
+      { recordCleanCycle, recordAnomaly },
+    );
+    expect(out.applied).toBe(false);
+    expect(recordCleanCycle).not.toHaveBeenCalled();
+    expect(recordAnomaly).not.toHaveBeenCalled();
+  });
+
+  it("isAutopilotDispatch only matches auto_dispatch with the autopilot: prefix", () => {
+    expect(isAutopilotDispatch({ sourceType: "auto_dispatch", sourceId: "autopilot:optimize" })).toBe(true);
+    expect(isAutopilotDispatch({ sourceType: "auto_dispatch", sourceId: "detector:42" })).toBe(false);
+    expect(isAutopilotDispatch({ sourceType: "founder_manual", sourceId: "autopilot:optimize" })).toBe(false);
   });
 });

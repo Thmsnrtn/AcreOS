@@ -31,10 +31,14 @@ import type {
 } from "./policyGate";
 import type { EscalationContext, EscalationVerdict } from "./escalation";
 import { craftStandardPrompt, type CraftSurface } from "./craftStandard";
+import { recordCleanCycle, recordAnomaly } from "./domainAutonomy";
 import type {
   SoleneDispatchAgentRole,
   SoleneDispatchSourceType,
 } from "@shared/schema/solene-dispatch";
+
+/** Prefix on the sourceId of every autopilot-initiated dispatch. */
+export const AUTOPILOT_SOURCE_PREFIX = "autopilot:";
 
 // ── Move → governed-action mapping ───────────────────────────────────────────
 // Each move kind declares the domain it acts in, which agent role would carry
@@ -146,7 +150,7 @@ export async function planAndAct(
     if (decision.decision === "pass") {
       const dispatchId = await deps.enqueue({
         sourceType: "auto_dispatch",
-        sourceId: `autopilot:${move.kind}`,
+        sourceId: `${AUTOPILOT_SOURCE_PREFIX}${move.kind}`,
         agentRole: binding.agentRole,
         promptText: dispatchPromptFor(move),
         maxCostUsd: ctx.maxCostUsd,
@@ -192,4 +196,46 @@ export async function planAndAct(
   } catch (err) {
     return { status: "error", move, reason: err instanceof Error ? err.message : String(err) };
   }
+}
+
+// ── The feedback edge: outcomes earn (or cost) autonomy ──────────────────────
+// This is what makes "earned autonomy" real rather than static. When an
+// autopilot-initiated dispatch finishes, its outcome feeds the Trust Ledger:
+// a clean run is a clean cycle (→ promotion at the threshold); a failure is an
+// anomaly (→ demotion one rung). Non-autopilot dispatches are ignored. Without
+// this edge, every domain would sit at OBSERVE forever and never grow up.
+
+export interface DispatchOutcomeForFeedback {
+  sourceType: string;
+  sourceId: string;
+  success: boolean;
+  terminationReason?: string;
+}
+
+export interface AutonomyFeedbackDeps {
+  recordCleanCycle: (domain: AutopilotDomain) => Promise<unknown>;
+  recordAnomaly: (domain: AutopilotDomain, reason: string) => Promise<unknown>;
+}
+
+const defaultFeedbackDeps: AutonomyFeedbackDeps = { recordCleanCycle, recordAnomaly };
+
+/** True when a dispatch was initiated by the autopilot (vs. founder/manual/etc). */
+export function isAutopilotDispatch(d: { sourceType: string; sourceId: string }): boolean {
+  return d.sourceType === "auto_dispatch" && d.sourceId.startsWith(AUTOPILOT_SOURCE_PREFIX);
+}
+
+export async function applyAutonomyFeedback(
+  d: DispatchOutcomeForFeedback,
+  deps: Partial<AutonomyFeedbackDeps> = {},
+): Promise<{ applied: boolean; domain?: AutopilotDomain; effect?: "clean" | "anomaly" }> {
+  if (!isAutopilotDispatch(d)) return { applied: false };
+  const dd = { ...defaultFeedbackDeps, ...deps };
+  const moveKind = d.sourceId.slice(AUTOPILOT_SOURCE_PREFIX.length);
+  const domain = bindingFor(moveKind).domain;
+  if (d.success) {
+    await dd.recordCleanCycle(domain);
+    return { applied: true, domain, effect: "clean" };
+  }
+  await dd.recordAnomaly(domain, `autopilot dispatch failed (${d.terminationReason ?? "unknown"})`);
+  return { applied: true, domain, effect: "anomaly" };
 }
