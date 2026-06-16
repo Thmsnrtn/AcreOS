@@ -13,6 +13,7 @@
 import type { Express, Response } from "express";
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
+import { getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import {
@@ -23,6 +24,13 @@ import {
   type DomainAutonomyLevel,
 } from "./services/autopilot/domainAutonomy";
 import type { AutopilotDomain } from "./services/autopilot/policyGate";
+import {
+  createStandingOrder,
+  listStandingOrders,
+  deactivateStandingOrder,
+  STANDING_ORDER_KINDS,
+  type StandingOrderKind,
+} from "./services/autopilot/standingOrders";
 
 export function registerAutopilotRoutes(app: Express): void {
   // ── GET the Trust Ledger ────────────────────────────────────────────────
@@ -63,6 +71,73 @@ export function registerAutopilotRoutes(app: Express): void {
         const result = await setDomainLevel(domain, level as DomainAutonomyLevel, trimmedReason);
         logger.info("[autopilot] founder set domain level via API", { domain, level });
         return res.json({ ok: true, ...result });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Standing orders + intents ("Your Voice") ────────────────────────────
+  app.get(
+    "/api/founder/autopilot/standing-orders",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const kind = req.query.kind as StandingOrderKind | undefined;
+        const activeOnly = req.query.activeOnly === "true";
+        const orders = await listStandingOrders({
+          kind: kind && STANDING_ORDER_KINDS.includes(kind) ? kind : undefined,
+          activeOnly,
+        });
+        return res.json({ orders });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/autopilot/standing-orders",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const { kind, body } = (req.body ?? {}) as { kind?: string; body?: string };
+      if (!kind || !STANDING_ORDER_KINDS.includes(kind as StandingOrderKind)) {
+        return Errors.badRequest(res, "Invalid kind", { allowed: STANDING_ORDER_KINDS });
+      }
+      if (!body || body.trim().length === 0) {
+        return Errors.badRequest(res, "body must be non-empty");
+      }
+      try {
+        const created = await createStandingOrder({
+          kind: kind as StandingOrderKind,
+          body,
+          createdBy: getUserId(req),
+        });
+        return res.json({ order: created });
+      } catch (err) {
+        if (err instanceof Error && /exceeds|non-empty|unknown kind/.test(err.message)) {
+          return Errors.badRequest(res, err.message);
+        }
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.delete(
+    "/api/founder/autopilot/standing-orders/:id",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) {
+        return Errors.badRequest(res, "Invalid id");
+      }
+      try {
+        const { ok } = await deactivateStandingOrder(id);
+        if (!ok) return Errors.notFound(res, "Standing order");
+        return res.json({ ok: true });
       } catch (err) {
         return Errors.internal(res, err);
       }

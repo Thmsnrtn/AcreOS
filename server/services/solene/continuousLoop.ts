@@ -469,6 +469,25 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             }
           }
 
+          // Your Voice: bind every outward action to the founder's active
+          // standing orders + intents (instruction-level enforcement). Prepended
+          // so the agent reads the founder's durable direction first.
+          try {
+            const { listStandingOrders, composeStandingOrdersBlock } = await import(
+              "../autopilot/standingOrders"
+            );
+            const orders = await listStandingOrders({ activeOnly: true });
+            const block = composeStandingOrdersBlock(orders);
+            if (block) {
+              actMove = { ...actMove, rationale: `${block}\n\n${actMove.rationale}` };
+            }
+          } catch (soErr) {
+            logger.warn(
+              "[continuousLoop] tick: standing-orders injection failed; proceeding without",
+              soErr instanceof Error ? soErr : undefined,
+            );
+          }
+
           const outcome = await planAndAct(
             actMove,
             { envelopeStatus: pulse.envelopeStatus, maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD },

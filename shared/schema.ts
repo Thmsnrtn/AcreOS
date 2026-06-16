@@ -12355,6 +12355,20 @@ export const domainAutonomyLevels = pgTable("domain_autonomy_levels", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Founder Autopilot — standing orders + intents ("Your Voice"). Durable
+// natural-language policy the founder issues; the autopilot honors active
+// orders in every outward action. Global (founder-level).
+export const autopilotStandingOrders = pgTable("autopilot_standing_orders", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull().default("standing_order"), // standing_order | intent
+  body: text("body").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type AutopilotStandingOrder = typeof autopilotStandingOrders.$inferSelect;
+
 // ============================================================================
 // MARKETPLACE + FINANCIAL INTEL + CAPITAL MARKETS + VOICE/VISUAL + ACADEMY +
 // REGULATORY AI + WHITE-LABEL + STRIPE WEBHOOK DEDUP — extracted to
