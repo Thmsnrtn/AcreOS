@@ -136,6 +136,26 @@ export async function recordCleanCycle(domain: AutopilotDomain, threshold = PROM
   const nextCount = (row?.cleanCycleCount ?? 0) + 1;
 
   if (shouldPromote(level, nextCount, threshold)) {
+    // Calibration-as-safety-signal: if the system is OVER-confident (predicting
+    // more success than it delivers), HOLD the promotion until calibration
+    // recovers — accrue the count but don't widen autonomy while it's fooling
+    // itself. Dynamic import keeps this module cycle-free.
+    let holdForCalibration = false;
+    try {
+      const { getCalibrationPairs } = await import("./experienceLog");
+      const { calibrationReport } = await import("./forecast");
+      holdForCalibration = calibrationReport(await getCalibrationPairs()).grade === "over-confident";
+    } catch {
+      holdForCalibration = false;
+    }
+    if (holdForCalibration) {
+      await db
+        .update(domainAutonomyLevels)
+        .set({ cleanCycleCount: nextCount, updatedAt: new Date() })
+        .where(eq(domainAutonomyLevels.domain, domain));
+      logger.warn("[autopilot] promotion HELD — calibration over-confident", { domain, level });
+      return level;
+    }
     const promoted = nextLevel(level)!;
     await db
       .update(domainAutonomyLevels)

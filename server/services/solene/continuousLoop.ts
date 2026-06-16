@@ -453,38 +453,47 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           // a CONCRETE owned, ~$0 play from the playbook (rotating by how many
           // growth plays have already run) and enrich the move's rationale so
           // the dispatch is a specific tasteful action, not a generic one.
-          // Deliberation (neuro-symbolic): for a genuinely close call, a cheap
-          // LLM council re-weighs the top options — but only ever REORDERS within
-          // the rules' candidate set (it can't invent an action), and every gate
-          // still binds. Gated behind dispatch-enabled + an API key, and falls
-          // back to the deterministic ranking on any error. Bounded cost.
-          let effectiveMoves = moves;
-          try {
-            const { shouldDeliberate, deliberateWithModel } = await import("../autopilot/deliberate");
-            const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-            if (apiKey && shouldDeliberate(moves)) {
+          // A single cheap model handle, reused by deliberation (neuro-symbolic
+          // re-weighing of a close call) AND the adversarial pre-mortem skeptic.
+          // Built only when an API key exists; both features fall back safely
+          // when it's absent.
+          const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+          let callModel: ((prompt: string) => Promise<string>) | null = null;
+          if (apiKey) {
+            try {
               const OpenAImod = (await import("openai")).default;
               const client = new OpenAImod({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
               const { tracedLlmCall } = await import("../tracedLlmCall");
               const model = process.env.AUTOPILOT_DELIBERATION_MODEL ?? "gpt-4o-mini";
-              const del = await deliberateWithModel(senses, moves, {
-                callModel: async (prompt) =>
-                  (
-                    await tracedLlmCall({
-                      agentCodename: "autopilot",
-                      purpose: "deliberation",
-                      model,
-                      userPrompt: prompt,
-                      call: () =>
-                        client.chat.completions.create({
-                          model,
-                          temperature: 0.2,
-                          max_tokens: 300,
-                          messages: [{ role: "user", content: prompt }],
-                        }),
-                    })
-                  ).content,
-              });
+              callModel = async (prompt: string) =>
+                (
+                  await tracedLlmCall({
+                    agentCodename: "autopilot",
+                    purpose: "deliberation",
+                    model,
+                    userPrompt: prompt,
+                    call: () =>
+                      client.chat.completions.create({
+                        model,
+                        temperature: 0.2,
+                        max_tokens: 300,
+                        messages: [{ role: "user", content: prompt }],
+                      }),
+                  })
+                ).content;
+            } catch {
+              callModel = null;
+            }
+          }
+
+          // Deliberation: for a genuinely close call, the council re-weighs the
+          // top options — but only ever REORDERS within the rules' candidate set
+          // (it can't invent an action), and every gate still binds.
+          let effectiveMoves = moves;
+          try {
+            const { shouldDeliberate, deliberateWithModel } = await import("../autopilot/deliberate");
+            if (callModel && shouldDeliberate(moves)) {
+              const del = await deliberateWithModel(senses, moves, { callModel });
               effectiveMoves = del.moves;
               if (del.deliberated) {
                 logger.info("[continuousLoop] tick: council deliberated", {
@@ -626,6 +635,15 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 );
                 return forecastLine ? `${sim}\n${forecastLine}` : sim;
               },
+              // Adversarial pre-mortem: a high-stakes move that would auto-run
+              // gets one skeptical look first. Only active when a model is
+              // available; self-gates on high-stakes inside runPremortem.
+              premortem: callModel
+                ? async (m) => {
+                    const { runPremortem } = await import("../autopilot/safety");
+                    return runPremortem(m, { callModel: callModel! }, forecastLine ?? undefined);
+                  }
+                : undefined,
             },
           );
           actOutcomeStatus = outcome.status;
@@ -705,6 +723,36 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     logger.warn(
       "[continuousLoop] tick: brain plan failed",
       err instanceof Error ? err : undefined,
+    );
+  }
+
+  // Constitutional-drift sentinel: scan recent actions for invariant violations
+  // (e.g. a customer-facing action that auto-ran instead of going through
+  // witnessed-send). A critical finding pages the founder — the autopilot
+  // drifting from its constitution is exactly what must never be silent.
+  try {
+    const { getRecentStory } = await import("../autopilot/experienceLog");
+    const { detectDrift } = await import("../autopilot/safety");
+    const recent = await getRecentStory(100);
+    const drift = detectDrift(recent.map((r) => ({ moveKind: r.moveKind, outcome: r.outcome })));
+    const critical = drift.filter((d) => d.severity === "critical");
+    if (critical.length > 0) {
+      logger.error(`[continuousLoop] CONSTITUTIONAL DRIFT: ${critical.map((d) => d.message).join(" ")}`);
+      try {
+        const { sendSolenePage } = await import("./pagerService");
+        await sendSolenePage({
+          severity: "critical",
+          subject: "Autopilot constitutional drift",
+          body: critical.map((d) => d.message).join("\n"),
+        });
+      } catch {
+        /* paging best-effort */
+      }
+    }
+  } catch (driftErr) {
+    logger.warn(
+      "[continuousLoop] tick: drift sentinel failed",
+      driftErr instanceof Error ? driftErr : undefined,
     );
   }
 

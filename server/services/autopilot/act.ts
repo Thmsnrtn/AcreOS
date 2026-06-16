@@ -137,6 +137,13 @@ export interface ActDeps {
    * of a cycle with simulate.ts.
    */
   simulate?: (move: RankedMove) => string;
+  /**
+   * Optional adversarial pre-mortem. For a high-stakes move that would otherwise
+   * auto-run, a skeptic gets one look; a fatal objection (veto) converts the
+   * action to a founder escalation. Returns null for low-stakes or no objection.
+   * Injected (not imported) to keep act.ts cycle-free with safety.ts.
+   */
+  premortem?: (move: RankedMove) => Promise<{ veto: boolean; objection: string } | null>;
 }
 
 export interface ActContext {
@@ -161,6 +168,34 @@ export async function planAndAct(
 
     // ── pass → the action is fully cleared; enqueue the governed dispatch. ──
     if (decision.decision === "pass") {
+      // Adversarial pre-mortem: a high-stakes move gets one more skeptical look
+      // before it runs. A fatal objection converts it to a founder escalation
+      // rather than auto-running. (No-op for low-stakes moves.)
+      if (deps.premortem) {
+        const pm = await deps.premortem(move).catch(() => null);
+        if (pm?.veto) {
+          const { askId } = await deps.ask({
+            askingAgentRole: binding.agentRole,
+            questionSummary: `Held a high-stakes ${binding.domain} action for your review: ${move.kind}`,
+            questionBody: [
+              move.rationale,
+              "",
+              `A pre-mortem skeptic raised a serious concern: ${pm.objection}`,
+              "",
+              "Approve to proceed anyway, or decline to hold it.",
+            ].join("\n"),
+            answerFormat: "yes_no",
+            urgency: "urgent",
+          });
+          return {
+            status: "escalated",
+            move,
+            askId,
+            verdict: { escalate: true, action: "founder_ask", urgency: "urgent", reason: pm.objection },
+            gate: { decision: "escalate", decidedBy: "premortem" },
+          };
+        }
+      }
       const dispatchId = await deps.enqueue({
         sourceType: "auto_dispatch",
         sourceId: `${AUTOPILOT_SOURCE_PREFIX}${move.kind}`,
