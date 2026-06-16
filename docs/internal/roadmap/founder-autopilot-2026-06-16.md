@@ -200,5 +200,49 @@ Each ships as a verified batch (check + test + build) on the `founder-autopilot`
 
 ---
 
+## Build log — P0 shipped (branch `founder-autopilot`, dormant)
+
+Every piece below is committed, gated, and verified (check + unit tests + build
+green per batch). The whole system is **switched OFF** behind
+`SOLENE_DISPATCH_ENABLED` (unset/false) — it thinks, narrates, and watches, but
+does not yet act.
+
+- **Batch 1 — the dark wire.** `runSoleneDispatchLoop` in the worker: polls
+  `claimNextDispatch` → `runDispatch`, drain-aware. (`d99895bd`)
+- **Batch 2 — the policy-gate stack.** `runPolicyGateStack` composes
+  compliance → quality/eval → budget → autonomy → witnessed-send into one
+  choke point. (`a49e330d`)
+- **Batch 3 — the Trust Ledger.** Per-domain earned-autonomy state machine
+  (OBSERVE→DRAFT→EXECUTE_GATED→AUTONOMOUS_GATED), promote-on-evidence /
+  demote-on-anomaly. (`a8b2e0ba`) + Craft Standard (`a19a59c9`).
+- **Batch 4 — the brain.** `decide.ts` `rankMoves()` (stabilize > serve >
+  unblock activation > grow > optimize), wired into `runContinuousTick` so the
+  loop *thinks* on real senses each tick and logs its plan. (`17a931b8`)
+- **Batch 5 — the escalation classifier.** `classifyEscalation()` — the
+  founder's attention budget: silence by default, surfaces only witnessed-send
+  decisions, structural blocks, and draft-for-review (autonomy). (`03dcb0ba`)
+- **Batch 6 — the self-watchdog.** `loopStall.ts` + a 30-min watchdog job that
+  pages the founder (critical, 6h-debounced) only if the loop goes dark.
+  (`0bb719e9`)
+- **Trust Ledger wired live.** The autonomy gate now defaults to the real
+  ledger (fails safe at OBSERVE → block); domains seeded at boot. (`927762b1`)
+- **The Voice.** `narrate.ts` `buildFounderBrief()` + `GET /api/founder/solene/brief`
+  — honest, editorial; never claims work it didn't do. (`37c8add6`)
+- **The daily letter.** `/founder/autopilot` — The Word, The Decision, The
+  Vital Sign, The Trust Ledger, The Story/Your Voice + the serene
+  "nothing-needed" state. (`ef794b49`)
+
+**To switch on (founder's call, when ready):** set `SOLENE_DISPATCH_ENABLED=true`
+on the worker. Each domain starts at OBSERVE (acts on nothing) and earns its way
+up by clean cycles, so turning it on is safe — nothing acts outwardly until a
+domain is promoted past DRAFT, and customer-facing actions always require a tap.
+
+**Still ahead (post-P0):** real senses for uptime + autonomy-horizon (need an
+external monitor — pinned 🔑); the growth/support engines that produce the
+actual dispatches; simulate-before-act counterfactuals on the decision card;
+standing-orders/intent persistence behind "Your Voice"; the learning loop.
+
+---
+
 ## The one-paragraph synthesis
 AcreOS becomes self-operating by closing a **governed loop** (sense → decide against the constitution+budget → dispatch through the permission ladder → every outward action clears a compliance+eval+budget+autonomy gate → measure → learn), with a **growth engine** that earns its way from owned loops into a hard-capped, CAC-gated paid budget, and a **support surface** that auto-resolves grounded + feeds the roadmap — all under **earned autonomy** that promotes on evidence and demotes on anomaly. The founder's job shrinks to a daily glance + a handful of constitution-gated approvals a month. It works where Polsia's doesn't precisely because autonomy never outruns the governance: it's legal because compliance gates every claim, safe because authority is earned and revocable, sustainable because spend is capped and CAC-gated, and valuable because quality only ratchets up.
