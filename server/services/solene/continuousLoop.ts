@@ -635,6 +635,21 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 );
                 return forecastLine ? `${sim}\n${forecastLine}` : sim;
               },
+              // Risk-calibrated autonomy: a high-risk action (novel / customer-
+              // facing / irreversible / expensive) escalates even in a trusted
+              // domain. Deterministic + cheap; runs before the pre-mortem.
+              assessRisk: async (m) => {
+                const { assessRisk } = await import("../autopilot/riskautonomy");
+                const { bindingFor } = await import("../autopilot/act");
+                const b = bindingFor(m.kind);
+                const a = assessRisk({
+                  reversible: !b.isCustomerFacing,
+                  customerFacing: b.isCustomerFacing,
+                  predictedCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD,
+                  noveltyN: traceForecast?.n ?? 0,
+                });
+                return { tier: a.tier, reasons: a.reasons };
+              },
               // Adversarial pre-mortem: a high-stakes move that would auto-run
               // gets one skeptical look first. Only active when a model is
               // available; self-gates on high-stakes inside runPremortem.

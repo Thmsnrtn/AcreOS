@@ -144,6 +144,13 @@ export interface ActDeps {
    * Injected (not imported) to keep act.ts cycle-free with safety.ts.
    */
   premortem?: (move: RankedMove) => Promise<{ veto: boolean; objection: string } | null>;
+  /**
+   * Optional risk-calibrated check (deterministic, cheap). Even in a trusted
+   * domain, a high-risk action (novel / irreversible / expensive) escalates for
+   * a human tap. Returns the tier + reasons, or null to skip. Runs BEFORE the
+   * pre-mortem so a high-risk action escalates without spending a model call.
+   */
+  assessRisk?: (move: RankedMove) => Promise<{ tier: "low" | "medium" | "high"; reasons: string[] } | null>;
 }
 
 export interface ActContext {
@@ -168,6 +175,34 @@ export async function planAndAct(
 
     // ── pass → the action is fully cleared; enqueue the governed dispatch. ──
     if (decision.decision === "pass") {
+      // Risk-calibrated autonomy (cheap, deterministic, FIRST): even in a
+      // trusted domain, a high-risk action (novel / irreversible / expensive)
+      // escalates for a human tap rather than auto-running.
+      if (deps.assessRisk) {
+        const risk = await deps.assessRisk(move).catch(() => null);
+        if (risk?.tier === "high") {
+          const { askId } = await deps.ask({
+            askingAgentRole: binding.agentRole,
+            questionSummary: `A higher-risk ${binding.domain} action wants your sign-off: ${move.kind}`,
+            questionBody: [
+              move.rationale,
+              "",
+              `I'd normally handle this, but it's higher-risk because ${risk.reasons.join("; ")}.`,
+              "",
+              "Approve to let me proceed, or decline to hold it.",
+            ].join("\n"),
+            answerFormat: "yes_no",
+            urgency: "normal",
+          });
+          return {
+            status: "escalated",
+            move,
+            askId,
+            verdict: { escalate: true, action: "founder_ask", urgency: "normal", reason: risk.reasons.join("; ") },
+            gate: { decision: "escalate", decidedBy: "risk" },
+          };
+        }
+      }
       // Adversarial pre-mortem: a high-stakes move gets one more skeptical look
       // before it runs. A fatal objection converts it to a founder escalation
       // rather than auto-running. (No-op for low-stakes moves.)
