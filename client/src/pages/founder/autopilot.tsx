@@ -36,6 +36,7 @@ import {
   CheckCircle2,
   PauseCircle,
   Loader2,
+  TrendingUp,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -81,6 +82,7 @@ interface FounderBrief {
   };
   focusLine: string | null;
   trustLedger: TrustLedgerEntry[];
+  learning?: Array<{ playId: string; rate: number; n: number }>;
 }
 
 // ─── Trust-ledger presentation ───────────────────────────────────────────────
@@ -224,6 +226,39 @@ function TheVitalSign({ vital, focusLine }: { vital: FounderBrief["vitalSign"]; 
               {focusLine}
             </p>
           )}
+        </CardContent>
+      </Card>
+    </motion.section>
+  );
+}
+
+// ─── Section: What's working (the learning reflection) ───────────────────────
+
+function prettyPlay(playId: string): string {
+  return playId.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function WhatsWorking({ learning }: { learning: NonNullable<FounderBrief["learning"]> }) {
+  if (!learning || learning.length === 0) return null;
+  return (
+    <motion.section variants={staggerItem}>
+      <div className="flex items-center gap-2 mb-3">
+        <TrendingUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <h2 className="text-sm font-semibold text-foreground">What's working</h2>
+        <span className="text-xs text-muted-foreground">— learned from real outcomes</span>
+      </div>
+      <Card data-testid="whats-working">
+        <CardContent className="p-2 sm:p-3">
+          <ul className="divide-y divide-border/60">
+            {learning.map((l) => (
+              <li key={l.playId} className="flex items-center justify-between gap-3 px-2 py-2.5">
+                <span className="min-w-0 flex-1 truncate text-sm text-foreground">{prettyPlay(l.playId)}</span>
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                  {Math.round(l.rate * 100)}% good · {l.n} tried
+                </span>
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
     </motion.section>
@@ -441,6 +476,7 @@ export default function FounderAutopilotPage() {
             <NothingNeededFlourish />
           )}
           <TheVitalSign vital={brief.vitalSign} focusLine={brief.focusLine} />
+          <WhatsWorking learning={brief.learning ?? []} />
           <TheTrustLedger ledger={brief.trustLedger} />
           <StoryAndVoice />
         </motion.div>

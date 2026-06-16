@@ -100,6 +100,15 @@ describe("autopilot narration engine — the Voice", () => {
     expect(b.vitalSign).toMatchObject({ mrr: 480, trials: 5, weeklySpendUsd: 12.5 });
   });
 
+  it("surfaces what's working (learning) when present, empty otherwise", () => {
+    expect(buildFounderBrief(base()).learning).toEqual([]);
+    const withLearning = buildFounderBrief(
+      base({ learning: [{ playId: "parcel-check-explainer", rate: 0.83, n: 4 }] }),
+    );
+    expect(withLearning.learning).toHaveLength(1);
+    expect(withLearning.learning[0]).toMatchObject({ playId: "parcel-check-explainer", n: 4 });
+  });
+
   it("partOfDayFromHour maps ET hours to the right greeting word", () => {
     expect(partOfDayFromHour(8)).toBe("morning");
     expect(partOfDayFromHour(14)).toBe("afternoon");

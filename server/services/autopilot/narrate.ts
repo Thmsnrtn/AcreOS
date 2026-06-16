@@ -55,6 +55,8 @@ export interface FounderBriefInputs {
     cleanCycleCount: number;
     threshold: number;
   }>;
+  /** What's working — top plays by real efficacy (n>0), already sorted. */
+  learning?: Array<{ playId: string; rate: number; n: number }>;
 }
 
 export interface FounderBrief {
@@ -76,6 +78,8 @@ export interface FounderBrief {
   /** The brain's focus, in plain language. */
   focusLine: string | null;
   trustLedger: FounderBriefInputs["trustLedger"];
+  /** What's working — surfaced so the founder watches the system get smarter. */
+  learning: Array<{ playId: string; rate: number; n: number }>;
 }
 
 const PART_OF_DAY_WORD: Record<PartOfDay, string> = {
@@ -164,6 +168,7 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
     },
     focusLine,
     trustLedger: inp.trustLedger,
+    learning: inp.learning ?? [],
   };
 }
 
@@ -268,6 +273,21 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     trustLedger = [];
   }
 
+  // What's working — top plays by real efficacy across the engine domains.
+  let learning: FounderBrief["learning"] = [];
+  try {
+    const { getPlayStats } = await import("./experienceLog");
+    const { efficacyOf } = await import("./efficacy");
+    const allStats = (await Promise.all(["growth", "support"].map((d) => getPlayStats(d)))).flat();
+    learning = allStats
+      .map((s) => ({ playId: s.playId, ...efficacyOf(s) }))
+      .filter((x) => x.n > 0)
+      .sort((a, b) => b.rate - a.rate || b.n - a.n)
+      .slice(0, 3);
+  } catch {
+    learning = [];
+  }
+
   return buildFounderBrief({
     partOfDay,
     founderName,
@@ -275,5 +295,6 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     openAsks,
     plannedFocus,
     trustLedger,
+    learning,
   });
 }
