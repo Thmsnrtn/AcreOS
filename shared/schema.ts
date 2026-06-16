@@ -12369,6 +12369,33 @@ export const autopilotStandingOrders = pgTable("autopilot_standing_orders", {
 });
 export type AutopilotStandingOrder = typeof autopilotStandingOrders.$inferSelect;
 
+// Founder Autopilot — the Experience Log (procedural memory for the learning
+// loop). One row per autopilot action; real signals accrete as they land (each
+// field null until its signal genuinely arrives — never fabricated). Global.
+export const autopilotExperiences = pgTable("autopilot_experiences", {
+  id: serial("id").primaryKey(),
+  moveKind: text("move_kind").notNull(),
+  domain: text("domain").notNull(),
+  playId: text("play_id"), // null for moves without a play (e.g. optimize)
+  outcome: text("outcome").notNull(), // acted | escalated | suppressed
+  dispatchId: integer("dispatch_id"),
+  askId: integer("ask_id"),
+  // Real signals — null until they land.
+  dispatchSuccess: boolean("dispatch_success"),
+  evalScore: numeric("eval_score"),
+  founderVerdict: text("founder_verdict"), // approved | declined
+  resolution: text("resolution"), // resolved | reopened
+  satisfaction: integer("satisfaction"), // 1-5
+  costUsd: numeric("cost_usd"),
+  createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (t) => ({
+  playIdx: index("autopilot_experiences_play_idx").on(t.playId),
+  dispatchIdx: index("autopilot_experiences_dispatch_idx").on(t.dispatchId),
+  askIdx: index("autopilot_experiences_ask_idx").on(t.askId),
+}));
+export type AutopilotExperience = typeof autopilotExperiences.$inferSelect;
+
 // ============================================================================
 // MARKETPLACE + FINANCIAL INTEL + CAPITAL MARKETS + VOICE/VISUAL + ACADEMY +
 // REGULATORY AI + WHITE-LABEL + STRIPE WEBHOOK DEDUP — extracted to
