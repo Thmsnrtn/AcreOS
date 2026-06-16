@@ -458,6 +458,26 @@ export async function registerRoutes(
     res.status(200).json({ ok: true, uptime: process.uptime() });
   });
 
+  // /api/health/uptime-probe — external uptime probe ingest (gold-standard
+  // outside-in reachability). A free GitHub Actions cron POSTs here every ~5min
+  // with a shared token; each call records an external uptime sample. Dormant
+  // until UPTIME_PROBE_TOKEN is set (returns 401 otherwise), so it's safe to
+  // ship off. Token-gated, not session-gated — it's called from CI, not a user.
+  app.post("/api/health/uptime-probe", async (req: Request, res: Response) => {
+    const configured = process.env.UPTIME_PROBE_TOKEN;
+    const provided = req.header("x-probe-token");
+    if (!configured || !provided || provided !== configured) {
+      return Errors.unauthorized(res);
+    }
+    try {
+      const { recordUptimeSample } = await import("./services/autopilot/uptime");
+      await recordUptimeSample("external");
+      return res.json({ ok: true });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
   // /api/version — tiny endpoint for the client's stale-build self-heal.
   // Returns the deployed git SHA so the running tab can detect when its
   // bundled SHA no longer matches production and reload itself. Must be

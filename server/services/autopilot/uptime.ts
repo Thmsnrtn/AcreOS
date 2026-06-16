@@ -19,7 +19,7 @@
  *
  * computeUptimePct is PURE → exhaustively testable. The DB helpers are thin.
  */
-import { gte, lt } from "drizzle-orm";
+import { and, eq, gte, lt } from "drizzle-orm";
 import { db } from "../../db";
 import { uptimeSamples } from "@shared/schema";
 import { logger } from "../../utils/logger";
@@ -102,15 +102,27 @@ export async function recordUptimeSample(source = "worker"): Promise<void> {
   }
 }
 
-/** Real uptime % over the rolling window, or null if not enough data yet. */
+async function uptimeForSource(source: string, now: number): Promise<number | null> {
+  const rows = await db
+    .select({ at: uptimeSamples.at })
+    .from(uptimeSamples)
+    .where(and(gte(uptimeSamples.at, new Date(now - UPTIME_WINDOW_MS)), eq(uptimeSamples.source, source)))
+    .orderBy(uptimeSamples.at);
+  return computeUptimePct(rows.map((r) => r.at.getTime()), { now });
+}
+
+/**
+ * Real uptime % over the rolling window, or null if not enough data yet.
+ * PREFERS the external probe (true outside-in web reachability) when it has
+ * data; otherwise falls back to the worker-liveness pulse. This matters: if
+ * the web tier is down but the worker is alive, worker samples would mask the
+ * outage — so when the external probe is enabled, it is the measure of record.
+ */
 export async function getUptimePct(now = Date.now()): Promise<number | null> {
   try {
-    const rows = await db
-      .select({ at: uptimeSamples.at })
-      .from(uptimeSamples)
-      .where(gte(uptimeSamples.at, new Date(now - UPTIME_WINDOW_MS)))
-      .orderBy(uptimeSamples.at);
-    return computeUptimePct(rows.map((r) => r.at.getTime()), { now });
+    const external = await uptimeForSource("external", now);
+    if (external != null) return external;
+    return await uptimeForSource("worker", now);
   } catch (err) {
     logger.warn("[uptime] read failed", err instanceof Error ? err : undefined);
     return null;
