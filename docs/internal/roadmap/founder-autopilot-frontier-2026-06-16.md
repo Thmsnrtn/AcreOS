@@ -61,3 +61,36 @@ This is what lets autonomy go *further* without ever becoming reckless:
 They compound, but the highest-leverage *first* pair is **Pillar 2 (calibrated foresight) + Pillar 4 (glass-box why)** — together they make the system smarter, provably trustworthy, and intuitive *at once*, and both are honest-by-construction on the Experience Log we just shipped. Then **Pillar 1 (deliberation)** for judgment depth, **Pillar 5 (risk-calibrated autonomy)** to let it do more safely, **Pillar 3 (living memory)** so competence compounds, and **Pillar 6 (frontier trust)** threaded throughout as the safety spine that makes the rest defensible.
 
 Every pillar ships the same way as everything before it: pure cores with exhaustive tests, gated dormant, honest cold-start, verified (check + test + build) per batch.
+
+---
+
+## SHIPPED (2026-06-16, branch `founder-autopilot`, dormant)
+
+All four chosen pillars + glass-box landed + verified. 173 autopilot unit tests green.
+
+- **P2 — Calibrated foresight** (`forecast.ts`): history-grounded outcome
+  prediction (Laplace-smoothed, honest "first try" at n=0) + the system measuring
+  its OWN calibration (Brier / reliability / over-confidence). Surfaced on every
+  ask + in the daily letter. schema 0172.
+- **P4a — Glass-box "why"** (`reasoning.ts`): every action records its full
+  reasoning chain (senses → options → forecast → gate → outcome + narrative).
+  `GET /api/founder/autopilot/story` + the `/founder/autopilot/story` timeline.
+  schema 0173. act.ts ActOutcome now carries the GateSummary.
+- **P4b — Conversational steering** (`steer.ts`): pure NL intent parser
+  (pause/trust a domain, set intent/standing order, status, why) + handlers
+  through governed services; unknown ⇒ asks, never guesses. `POST
+  /api/founder/autopilot/steer` + a "Talk to your company" composer on Your Voice.
+- **P1 — Deliberative brain** (`deliberate.ts`): for a genuine close call a cheap
+  LLM council re-weighs the top options, but can ONLY reorder within the rules'
+  candidate set (it can't invent an action); falls back to the deterministic
+  ranking on any error. Wired behind dispatch-enabled + an API key.
+- **P6 — Self-aware safety** (`safety.ts`): adversarial pre-mortem (a skeptic
+  vetoes a high-stakes move into an escalation), calibration-as-safety-signal
+  (over-confidence holds autonomy promotions), constitutional-drift sentinel
+  (a witnessed-send bypass pages the founder). Fail-open, pure-tested.
+
+The autopilot is now a deliberative, self-aware, conversational system that
+predicts, explains itself completely, knows how right it usually is, holds back
+when over-confident, and lets you direct it in plain language — all still honest,
+gated, and reversible. Living memory (P3) + risk-calibrated autonomy (P5) remain
+as the next deepening when wanted.
