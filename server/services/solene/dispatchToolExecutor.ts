@@ -47,6 +47,7 @@ import { recordCounterfactual } from "./counterfactuals";
 import { createSpeculation, findMatchingSpeculations } from "./speculations";
 import { assessEvidence } from "./evidenceWeights";
 import { proposeCapability } from "./capabilityDiscovery";
+import { getHand, listHandSchemas } from "../autopilot/hands";
 import {
   DISPATCH_AGENT_ROLES,
   type SoleneDispatchAgentRole,
@@ -420,6 +421,20 @@ export const DISPATCH_TOOL_SCHEMAS = [
 export type DispatchToolName =
   (typeof DISPATCH_TOOL_SCHEMAS)[number]["name"];
 
+/**
+ * The full tool-schema list shown to the dispatched model: the built-in tools
+ * PLUS every registered autopilot hand (Hands roadmap P0.1). The hand registry
+ * is empty until a phase registers a hand, so this returns exactly
+ * DISPATCH_TOOL_SCHEMAS until then.
+ */
+export function getDispatchToolSchemas(): ReadonlyArray<{
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}> {
+  return [...DISPATCH_TOOL_SCHEMAS, ...listHandSchemas()];
+}
+
 // ----------------------------------------------------------------------------
 // Tool executor — single entrypoint, switches on tool name.
 // ----------------------------------------------------------------------------
@@ -509,11 +524,7 @@ export async function executeDispatchTool(
       case "propose_capability":
         return await toolProposeCapability(input, ctx, started);
       default:
-        return {
-          success: false,
-          output: `unknown tool: ${toolName}`,
-          durationMs: Date.now() - started,
-        };
+        return await executeHand(toolName, input, ctx, started);
     }
   } catch (err) {
     return {
@@ -522,6 +533,49 @@ export async function executeDispatchTool(
       durationMs: Date.now() - started,
     };
   }
+}
+
+// ----------------------------------------------------------------------------
+// Hand dispatch (Hands roadmap P0.1) — registered outward hands resolve here,
+// after the built-in switch. This is the executor-layer half of the
+// "no path from model→send bypasses the founder tap" invariant: an
+// approval-required hand is REFUSED if a model tries to call it directly. The
+// legitimate path is planAndAct → witnessed-send founder ask → a separate
+// founder-witnessed execution; it never runs inside an autonomous dispatch.
+// ----------------------------------------------------------------------------
+
+async function executeHand(
+  toolName: string,
+  input: Record<string, unknown>,
+  ctx: DispatchToolContext,
+  started: number,
+): Promise<ToolExecutionResult> {
+  const hand = getHand(toolName);
+  if (!hand) {
+    return {
+      success: false,
+      output: `unknown tool: ${toolName}`,
+      durationMs: Date.now() - started,
+    };
+  }
+  if (hand.requiresApproval) {
+    return {
+      success: false,
+      output:
+        `[WITNESSED-SEND] '${toolName}' requires a founder tap and cannot be ` +
+        `executed directly from an autonomous dispatch. This call was refused, ` +
+        `logged, and must be routed through the witnessed-send approval flow ` +
+        `(planAndAct → founder ask → witnessed execution). Refusing.`,
+      durationMs: Date.now() - started,
+    };
+  }
+  const r = await hand.handler(input, { dispatchId: ctx.dispatchId ?? null, agentRole: ctx.agentRole });
+  return {
+    success: r.success,
+    output: r.output,
+    durationMs: r.durationMs,
+    filesModified: r.filesModified,
+  };
 }
 
 // ----------------------------------------------------------------------------

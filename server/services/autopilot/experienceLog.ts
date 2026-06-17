@@ -29,6 +29,10 @@ export interface ExperienceSignals {
   founderVerdict?: string | null; // approved | declined
   resolution?: string | null; // resolved | reopened
   satisfaction?: number | null; // 1-5
+  // ── Outward outcomes (Hands roadmap P0.3) — real effects in the world, fed
+  // from the perception bus. Only vote when genuinely observed; never invented.
+  deliveryBounced?: boolean | null; // an outward send hard-bounced / complained
+  paymentRecovered?: boolean | null; // a dunning action → invoice actually paid
 }
 
 /**
@@ -51,6 +55,13 @@ export function outcomeOf(s: ExperienceSignals): ExperienceVote {
     if (s.satisfaction != null && s.satisfaction <= 2) return "failure"; // resolved badly
     return "success";
   }
+
+  // 2.5. Outward real-world outcome (Hands roadmap P0.3). A send that
+  // hard-bounced/complained is a real failure of that action; a dunning action
+  // whose invoice then actually paid is a real success. These are concrete
+  // effects in the world, ranked above the eval/mechanical proxies below.
+  if (s.deliveryBounced === true) return "failure";
+  if (s.paymentRecovered === true) return "success";
 
   // 3. Eval gate (only if scored).
   if (s.evalScore != null && s.evalScore < EVAL_PASS_THRESHOLD) return "failure";

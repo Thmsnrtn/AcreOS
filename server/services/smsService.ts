@@ -382,6 +382,16 @@ export async function handleIncomingSMS(
         });
       } catch {}
     }
+    // Hands roadmap P0.2 — feed the autopilot perception bus so the brain
+    // perceives outbound-suppression pressure (best-effort, non-PII: count + org).
+    if (matchingLeads.length > 0) {
+      try {
+        const { recordSense } = await import("./autopilot/perception");
+        void recordSense("sms_opt_out", matchingLeads.length, { organizationId });
+      } catch {
+        /* perception is best-effort */
+      }
+    }
     logger.info(
       `[SMS] STOP received from ${fromPhone} — opted out ${matchingLeads.length} lead(s) across all channels`,
     );

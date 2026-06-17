@@ -7279,6 +7279,18 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "autopilot_conversions_artifact_idx" ON "autopilot_conversions" ("artifact_id")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "autopilot_conversions_dedup_uq" ON "autopilot_conversions" ("artifact_id", "anon_id", "event")`,
   `CREATE INDEX IF NOT EXISTS "autopilot_conversions_org_event_idx" ON "autopilot_conversions" ("organization_id", "event")`,
+
+  // 0177 — autopilot outward perception bus (Hands roadmap P0.2). Append-only
+  // senses derived from the outside world (deliverability, revenue, churn,
+  // inbound opt-outs). Best-effort writes; reads aggregate latest-per-kind.
+  `CREATE TABLE IF NOT EXISTS "autopilot_senses" (
+     "id" serial PRIMARY KEY,
+     "kind" text NOT NULL,
+     "value" double precision NOT NULL DEFAULT 0,
+     "detail" jsonb,
+     "observed_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_senses_kind_observed_idx" ON "autopilot_senses" ("kind", "observed_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

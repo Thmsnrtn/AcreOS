@@ -7,6 +7,7 @@ import Stripe from 'stripe';
 import { logger } from './utils/logger';
 import { addMonths } from './utils/dateUtils';
 import { recordSubscriptionHistoryEvent } from './routes-subscription';
+import { recordSense } from './services/autopilot/perception';
 
 export class WebhookHandlers {
   /**
@@ -76,7 +77,59 @@ export class WebhookHandlers {
     }
   }
 
+  /**
+   * Hands roadmap P0.2 — feed the autopilot perception bus from real Stripe
+   * events. Best-effort + non-PII (counts/cents/ids only); a sense write can
+   * never break payment processing (recordSense swallows its own errors and we
+   * still `void` it). This is how the brain perceives revenue + churn pressure.
+   */
+  private static emitRevenueSense(event: Stripe.Event): void {
+    try {
+      switch (event.type) {
+        case 'invoice.payment_failed': {
+          const inv = event.data.object as Stripe.Invoice;
+          void recordSense('dunning_pressure', Number(inv.amount_due ?? 0), { invoice: inv.id });
+          break;
+        }
+        case 'invoice.payment_succeeded': {
+          const inv = event.data.object as Stripe.Invoice;
+          // attempt_count > 1 ⇒ this was a retry that finally cleared = a real
+          // dunning recovery, distinct from a first-try renewal.
+          if (Number(inv.attempt_count ?? 0) > 1) {
+            void recordSense('payment_recovered', Number(inv.amount_paid ?? 0), { invoice: inv.id });
+          }
+          break;
+        }
+        case 'invoice.paid': {
+          const inv = event.data.object as Stripe.Invoice;
+          void recordSense('revenue_delta', Number(inv.amount_paid ?? 0), { invoice: inv.id });
+          break;
+        }
+        case 'customer.subscription.deleted': {
+          const sub = event.data.object as Stripe.Subscription;
+          void recordSense('churn_signal', 1, { subscription: sub.id, reason: 'cancelled' });
+          break;
+        }
+        case 'charge.dispute.created': {
+          const d = event.data.object as Stripe.Dispute;
+          void recordSense('churn_signal', 1, { dispute: d.id, reason: 'dispute' });
+          break;
+        }
+        case 'customer.subscription.trial_will_end': {
+          const sub = event.data.object as Stripe.Subscription;
+          void recordSense('trial_ending', 1, { subscription: sub.id });
+          break;
+        }
+        default:
+          break;
+      }
+    } catch {
+      /* perception is best-effort; never let it affect webhook processing */
+    }
+  }
+
   private static async dispatchEvent(event: Stripe.Event): Promise<void> {
+    WebhookHandlers.emitRevenueSense(event);
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.metadata?.type === 'borrower_portal_payment') {

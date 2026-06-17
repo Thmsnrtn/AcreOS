@@ -43,7 +43,7 @@ import {
   type DispatchFailureInput,
 } from "./dispatchQueue";
 import {
-  DISPATCH_TOOL_SCHEMAS,
+  getDispatchToolSchemas,
   executeDispatchTool,
 } from "./dispatchToolExecutor";
 import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
@@ -881,7 +881,7 @@ export async function runDispatch(
           max_tokens: 4096,
           system: cachedSystem as any,
           messages: messages as any,
-          tools: DISPATCH_TOOL_SCHEMAS as any,
+          tools: getDispatchToolSchemas() as any,
         },
         { timeout: remainingMs },
       );

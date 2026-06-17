@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, bigint, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, check, customType, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, bigint, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, doublePrecision, check, customType, primaryKey } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -12770,6 +12770,28 @@ export const autopilotConversions = pgTable("autopilot_conversions", {
   orgIdx: index("autopilot_conversions_org_event_idx").on(t.organizationId, t.event),
 }));
 export type AutopilotConversion = typeof autopilotConversions.$inferSelect;
+
+// ── Autopilot outward perception bus (Hands roadmap P0.2) ───────────────────
+// Append-only ledger of senses derived from the OUTSIDE world — the webhooks
+// that already land (SendGrid deliverability, Stripe revenue/churn, inbound
+// SMS opt-outs) become rows here so the brain (decide.ts) can perceive the
+// market it acts on, not just AcreOS's own DB. Each row is one observation:
+//   • kind  — the sense channel, e.g. "email_complaint" | "revenue_delta" |
+//             "dunning_pressure" | "sms_opt_out" | "churn_signal".
+//   • value — a numeric magnitude (count, cents, rate) for that observation.
+//   • detail— optional structured context (never PII-bearing credential values).
+// Reads aggregate the latest rows per kind within a window (perception.ts);
+// writes are best-effort and MUST never break the webhook that emits them.
+export const autopilotSenses = pgTable("autopilot_senses", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull(),
+  value: doublePrecision("value").notNull().default(0),
+  detail: jsonb("detail"),
+  observedAt: timestamp("observed_at").defaultNow(),
+}, (t) => ({
+  kindObservedIdx: index("autopilot_senses_kind_observed_idx").on(t.kind, t.observedAt),
+}));
+export type AutopilotSense = typeof autopilotSenses.$inferSelect;
 
 // ── Today decision-queue resolution state (Maren CPO #2) ────────────────────
 // The /today Decision Queue is DERIVED — its items are computed each request

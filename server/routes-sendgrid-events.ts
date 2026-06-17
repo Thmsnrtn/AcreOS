@@ -34,6 +34,7 @@ import {
 } from "./services/emailSuppressions";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { recordSense } from "./services/autopilot/perception";
 
 const SIG_HEADER = "x-twilio-email-event-webhook-signature";
 const TS_HEADER = "x-twilio-email-event-webhook-timestamp";
@@ -163,6 +164,13 @@ export async function ingestSendGridEvents(events: SendGridEvent[]): Promise<{
           organizationId: orgId,
         });
         suppressed++;
+        // Hands roadmap P0.2 — feed the autopilot perception bus so the brain
+        // perceives deliverability risk (best-effort, non-PII: org + category).
+        if (sup.bounceCategory === "complaint") {
+          void recordSense("email_complaint", 1, { organizationId: orgId });
+        } else {
+          void recordSense("email_bounce", 1, { organizationId: orgId, category: sup.bounceCategory });
+        }
         // Complaint = spam report. Immediate founder alert in addition to
         // the suppression itself (see alertFounderOnComplaint comments).
         if (sup.bounceCategory === "complaint") {

@@ -35,6 +35,17 @@ export interface DecisionSenses {
   mrr: number;
   /** Dispatches already queued + not yet run (avoid piling on). */
   dispatchBacklog: number;
+  // ── Outward perception (Hands roadmap P0.2) — from the perception bus. All
+  // optional + default to the honest zero so an unwired/quiet channel never
+  // fabricates pressure. The brain only acts on a signal it genuinely has.
+  /** Spam complaints in window — deliverability is at risk above 0. */
+  emailComplaints?: number;
+  /** Failed-payment events awaiting recovery. */
+  dunningPressure?: number;
+  /** Churn signals (cancellations / disputes) in window. */
+  churnSignals?: number;
+  /** Trials entering their closing window. */
+  trialsEnding?: number;
 }
 
 /** Lower `priority` = more urgent. */
@@ -65,15 +76,44 @@ export function rankMoves(s: DecisionSenses): RankedMove[] {
     moves.push({ priority: 1, domain: "ops", kind: "clear_compliance", rationale: `${s.complianceOpenCount} open compliance finding(s) — resolve before outward action.` });
   }
 
+  // P1.5 — PROTECT DELIVERABILITY. Spam complaints poison the sending domain
+  // for EVERY customer; a damaged reputation is close to house-on-fire for all
+  // outward comms, so it ranks just below incidents/compliance.
+  const emailComplaints = s.emailComplaints ?? 0;
+  if (emailComplaints > 0) {
+    moves.push({ priority: 1, domain: "ops", kind: "protect_deliverability", rationale: `${emailComplaints} spam complaint(s) — protect sending-domain reputation before more sends.` });
+  }
+
   // P2 — SERVE WAITING CUSTOMERS. Real people are waiting; that beats growth.
   if (s.supportBacklog > 0) {
     moves.push({ priority: 2, domain: "support", kind: "clear_support_backlog", rationale: `${s.supportBacklog} customer(s) waiting on support.` });
+  }
+
+  // P2 — RETAIN AT-RISK CUSTOMERS. A cancellation/dispute is a real customer
+  // leaving; winning them back beats acquiring a new one.
+  const churnSignals = s.churnSignals ?? 0;
+  if (churnSignals > 0) {
+    moves.push({ priority: 2, domain: "support", kind: "retain_at_risk", rationale: `${churnSignals} churn signal(s) (cancellation/dispute) — attempt retention.` });
+  }
+
+  // P2 — RECOVER FAILED PAYMENTS. Dunning is the highest-ROI money work and the
+  // outcome is self-verifying (the invoice clears or it doesn't).
+  const dunningPressure = s.dunningPressure ?? 0;
+  if (dunningPressure > 0) {
+    moves.push({ priority: 2, domain: "finance", kind: "recover_payments", rationale: `${dunningPressure} failed payment(s) in dunning — recover the revenue.` });
   }
 
   // P3 — UNBLOCK ACTIVATION. New signups not reaching value is a leak under any
   // growth spend — fix the bucket before pouring more in.
   if (s.activationStalled) {
     moves.push({ priority: 3, domain: "deploy", kind: "unblock_activation", rationale: `${s.trials} trial(s) signed up but stalled before first value — fix the onboarding leak.` });
+  }
+
+  // P3 — CONVERT ENDING TRIALS. A trial about to lapse is a revenue-closing
+  // window; nudge before it closes (fix the leak before growing the top).
+  const trialsEnding = s.trialsEnding ?? 0;
+  if (trialsEnding > 0) {
+    moves.push({ priority: 3, domain: "finance", kind: "convert_trials", rationale: `${trialsEnding} trial(s) ending soon — nudge toward conversion.` });
   }
 
   // P4 — GROW. Only when stable and within budget. Owned-first per the plan.
@@ -109,6 +149,8 @@ export function sensesFromPulse(
     dispatchesFlaggedLast24h: number;
   },
   extra?: { supportBacklog?: number; activationStalled?: boolean; dispatchBacklog?: number },
+  /** Outward perception (Hands roadmap P0.2) — counts from the perception bus. */
+  outward?: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number },
 ): DecisionSenses {
   return {
     openIncidents: pulse.dispatchesFlaggedLast24h,
@@ -119,5 +161,9 @@ export function sensesFromPulse(
     activationStalled: extra?.activationStalled ?? false,
     mrr: pulse.mrr,
     dispatchBacklog: extra?.dispatchBacklog ?? 0,
+    emailComplaints: outward?.emailComplaints ?? 0,
+    dunningPressure: outward?.dunningPressure ?? 0,
+    churnSignals: outward?.churnSignals ?? 0,
+    trialsEnding: outward?.trialsEnding ?? 0,
   };
 }

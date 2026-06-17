@@ -1,0 +1,83 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  registerHand,
+  getHand,
+  isHandName,
+  listHandSchemas,
+  listHandSpecs,
+} from "../../server/services/autopilot/hands/registry";
+import { __resetHandsForTest } from "../../server/services/autopilot/hands/registry";
+import type { HandSpec } from "../../server/services/autopilot/hands/types";
+import { executeDispatchTool } from "../../server/services/solene/dispatchToolExecutor";
+
+function makeHand(overrides: Partial<HandSpec> = {}): HandSpec {
+  return {
+    name: "test_hand",
+    schema: { name: "test_hand", description: "a test hand", input_schema: { type: "object", properties: {} } },
+    domain: "ops",
+    isCustomerFacing: false,
+    requiresApproval: false,
+    surface: "generic",
+    handler: async () => ({ success: true, output: "ran", durationMs: 1 }),
+    ...overrides,
+  };
+}
+
+describe("autopilot hand registry", () => {
+  beforeEach(() => __resetHandsForTest());
+
+  it("starts empty (inert by default)", () => {
+    expect(listHandSpecs()).toHaveLength(0);
+    expect(listHandSchemas()).toHaveLength(0);
+  });
+
+  it("registers + looks up a hand by name", () => {
+    registerHand(makeHand());
+    expect(isHandName("test_hand")).toBe(true);
+    expect(getHand("test_hand")?.domain).toBe("ops");
+    expect(listHandSchemas()).toHaveLength(1);
+  });
+
+  it("rejects a spec whose name disagrees with its schema name", () => {
+    expect(() =>
+      registerHand(makeHand({ name: "a", schema: { name: "b", description: "", input_schema: {} } })),
+    ).toThrow(/name mismatch/);
+  });
+});
+
+describe("executor-layer witnessed-send wall (the invariant)", () => {
+  beforeEach(() => __resetHandsForTest());
+
+  it("runs a non-approval hand directly", async () => {
+    registerHand(makeHand({ name: "do_internal", schema: { name: "do_internal", description: "", input_schema: { type: "object", properties: {} } } }));
+    const r = await executeDispatchTool("do_internal", {});
+    expect(r.success).toBe(true);
+    expect(r.output).toBe("ran");
+  });
+
+  it("REFUSES to execute an approval-required hand directly from a dispatch", async () => {
+    let handlerRan = false;
+    registerHand(
+      makeHand({
+        name: "send_thing",
+        schema: { name: "send_thing", description: "", input_schema: { type: "object", properties: {} } },
+        requiresApproval: true,
+        isCustomerFacing: true,
+        handler: async () => {
+          handlerRan = true;
+          return { success: true, output: "SENT", durationMs: 1 };
+        },
+      }),
+    );
+    const r = await executeDispatchTool("send_thing", {});
+    expect(r.success).toBe(false);
+    expect(r.output).toContain("WITNESSED-SEND");
+    expect(handlerRan).toBe(false); // the underlying send NEVER ran
+  });
+
+  it("still reports unknown tools for unregistered names", async () => {
+    const r = await executeDispatchTool("nonexistent_tool", {});
+    expect(r.success).toBe(false);
+    expect(r.output).toContain("unknown tool");
+  });
+});
