@@ -26,7 +26,7 @@ import {
   type SoleneMorningPulseRow,
 } from "@shared/schema/solene-morning-pulse";
 import { logger } from "../../utils/logger";
-import { sensesFromPulse, rankMoves, type RankedMove } from "../autopilot/decide";
+import { sensesFromPulse, rankMoves, applyObjectiveWeighting, type RankedMove } from "../autopilot/decide";
 import { planAndAct } from "../autopilot/act";
 
 /**
@@ -417,6 +417,14 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
       // Real support backlog — a measured sense, best-effort (defaults to 0).
       const { getOpenSupportCaseCount } = await import("../autopilot/senses");
       const supportBacklog = await getOpenSupportCaseCount();
+      // Outward perception (Hands P0.2) — best-effort; defaults to none-known so
+      // a quiet/unwired channel never fabricates pressure.
+      let outward: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number } = {};
+      try {
+        const { readOutwardSenses, outwardSignalFrom } = await import("../autopilot/perception");
+        const sig = outwardSignalFrom(await readOutwardSenses(24));
+        outward = { emailComplaints: sig.emailComplaints, dunningPressure: sig.dunningPressure, churnSignals: sig.churnSignals, trialsEnding: sig.trialsEnding };
+      } catch { /* perception is best-effort */ }
       const senses = sensesFromPulse(
         {
           mrr: pulse.mrr,
@@ -426,8 +434,20 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           dispatchesFlaggedLast24h: pulse.dispatchesFlaggedLast24h,
         },
         { dispatchBacklog, supportBacklog },
+        outward,
       );
-      const moves = rankMoves(senses);
+      let moves = rankMoves(senses);
+      // Objective weighting (Hands P5 → brain) — order WITHIN each tier toward
+      // the domain whose numbers most need moving. Best-effort; never crosses
+      // tiers, so the safety ladder is untouched.
+      try {
+        const { listObjectives, domainUrgency } = await import("../autopilot/objectives");
+        const objectives = await listObjectives(true);
+        if (objectives.length > 0) {
+          const urgency = { growth: domainUrgency(objectives, "growth"), support: domainUrgency(objectives, "support"), finance: domainUrgency(objectives, "finance"), deploy: domainUrgency(objectives, "deploy"), ops: domainUrgency(objectives, "ops") };
+          moves = applyObjectiveWeighting(moves, urgency);
+        }
+      } catch { /* objectives weighting is best-effort */ }
       plannedTopMove = moves[0] ?? null;
       if (plannedTopMove) {
         logger.info("[continuousLoop] tick: brain plan", {

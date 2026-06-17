@@ -134,6 +134,28 @@ export function topMove(s: DecisionSenses): RankedMove {
 }
 
 /**
+ * Re-order moves WITHIN each priority tier by how urgently their domain's
+ * objectives need moving (Hands roadmap P5 → brain). This NEVER crosses tiers —
+ * the safety ladder (stabilize > serve > … ) is untouched; it only breaks ties
+ * among equally-urgent moves, steering effort toward the numbers furthest from
+ * target. `urgencyByDomain` comes from objectives.domainUrgency (1.0 neutral →
+ * 2.0 maximally behind). Pure + stable.
+ */
+export function applyObjectiveWeighting(
+  moves: RankedMove[],
+  urgencyByDomain: Partial<Record<AutopilotDomain, number>>,
+): RankedMove[] {
+  return [...moves]
+    .map((m, i) => ({ m, i, u: urgencyByDomain[m.domain] ?? 1 }))
+    .sort((a, b) => {
+      if (a.m.priority !== b.m.priority) return a.m.priority - b.m.priority; // tier first
+      if (b.u !== a.u) return b.u - a.u; // within tier: more-urgent domain first
+      return a.i - b.i; // stable
+    })
+    .map((x) => x.m);
+}
+
+/**
  * Build DecisionSenses from the real morning-pulse snapshot (duck-typed so this
  * stays decoupled from the pulse module + unit-testable). Senses the pulse
  * doesn't carry yet (support backlog, activation, dispatch backlog) are passed
