@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { screenForPublish } from "../../server/services/autopilot/publishArtifact";
+import { screenForPublish, parsePublishable, maybePublishFromDispatch } from "../../server/services/autopilot/publishArtifact";
 
 const DISCLOSURE = "<p>For informational purposes only; not legal or investment advice. Verify independently.</p>";
 
@@ -50,5 +50,31 @@ describe("autopilot publish gate — screenForPublish", () => {
   it("is total: empty/garbage input never throws", () => {
     expect(() => screenForPublish({ subject: "", htmlBody: "" })).not.toThrow();
     expect(() => screenForPublish({ subject: "x", htmlBody: "<<>not html" })).not.toThrow();
+  });
+});
+
+describe("autopilot publish — parsePublishable (the agent-output contract)", () => {
+  it("extracts subject + body from a well-formed PUBLISH block", () => {
+    const out = `Here's my reasoning...\n<<<PUBLISH\nSUBJECT: Brewster County land basics\nBODY:\n<p>Hello, per county records.</p>\n>>>`;
+    expect(parsePublishable(out)).toEqual({ subject: "Brewster County land basics", htmlBody: "<p>Hello, per county records.</p>" });
+  });
+
+  it("SAFE FAILURE: messy output with no block ⇒ null (won't publish reasoning)", () => {
+    expect(parsePublishable("just some freeform agent reasoning, no block")).toBeNull();
+    expect(parsePublishable("")).toBeNull();
+    expect(parsePublishable("<<<PUBLISH\nno subject here\n>>>")).toBeNull();
+  });
+});
+
+describe("autopilot publish — maybePublishFromDispatch gating", () => {
+  it("only fires for a SUCCESSFUL autopilot GROWTH dispatch with a publishable block", async () => {
+    // not a growth dispatch → null
+    expect(await maybePublishFromDispatch({ sourceType: "auto_dispatch", sourceId: "autopilot:optimize", success: true, finalText: "<<<PUBLISH\nSUBJECT: x\nBODY:\n<p>y</p>\n>>>", dispatchId: 1 })).toBeNull();
+    // failed dispatch → null
+    expect(await maybePublishFromDispatch({ sourceType: "auto_dispatch", sourceId: "autopilot:grow_owned_channels", success: false, finalText: "<<<PUBLISH\nSUBJECT: x\nBODY:\n<p>y</p>\n>>>", dispatchId: 1 })).toBeNull();
+    // no block → null
+    expect(await maybePublishFromDispatch({ sourceType: "auto_dispatch", sourceId: "autopilot:grow_owned_channels", success: true, finalText: "no block", dispatchId: 1 })).toBeNull();
+    // non-autopilot → null
+    expect(await maybePublishFromDispatch({ sourceType: "founder_manual", sourceId: "x", success: true, finalText: "<<<PUBLISH\nSUBJECT: x\nBODY:\n<p>y</p>\n>>>", dispatchId: 1 })).toBeNull();
   });
 });

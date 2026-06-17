@@ -638,6 +638,23 @@ async function runSoleneDispatchLoop(): Promise<void> {
           } catch (fbErr) {
             logger.warn("[worker] autonomy feedback failed", fbErr instanceof Error ? fbErr : undefined);
           }
+          // The last-mile link: if this was an autopilot growth dispatch that
+          // emitted a publishable artifact, route it through the publish gate
+          // (gated by the publish switch + the 3-layer content gate + rate cap).
+          try {
+            const { maybePublishFromDispatch } = await import("./services/autopilot/publishArtifact");
+            const pub = await maybePublishFromDispatch({
+              sourceType: row.sourceType,
+              sourceId: row.sourceId,
+              success: result.success,
+              finalText: result.finalText,
+              dispatchId: row.id,
+            });
+            if (pub?.published) logger.info(`[worker] autopilot published artifact slug=${pub.slug}`);
+            else if (pub && pub.violations.length > 0) logger.warn(`[worker] autopilot publish blocked by gate: ${pub.violations.map((v) => v.code).join(",")}`);
+          } catch (pubErr) {
+            logger.warn("[worker] autopilot publish step failed", pubErr instanceof Error ? pubErr : undefined);
+          }
         } finally {
           soleneInFlight--;
         }

@@ -19,10 +19,14 @@
  * publish switch and is best-effort (it never throws into the dispatch loop).
  */
 import DOMPurify from "isomorphic-dompurify";
+import { and, gte, isNull } from "drizzle-orm";
 import { db } from "../../db";
 import { communityLetters, marketingArtifacts } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import { screenLandClaims, type ClaimViolation, type ClaimsGateOptions } from "./claimsGate";
+
+/** Hard cap on autopilot publishes per UTC day (lean + blast-radius bound). */
+export const PUBLISH_MAX_PER_DAY = Number(process.env.AUTOPILOT_PUBLISH_MAX_PER_DAY ?? 1);
 
 const ALLOWED_TAGS = ["p", "br", "strong", "em", "ul", "ol", "li", "h2", "h3", "h4", "blockquote", "a", "hr"];
 const ALLOWED_ATTR = ["href"];
@@ -80,6 +84,31 @@ export function screenForPublish(input: { subject: string; htmlBody: string } & 
   return { ok: violations.length === 0, sanitizedHtml, violations };
 }
 
+/**
+ * Parse a publishable artifact from an agent's dispatch output. The growth
+ * prompt asks the agent to emit its final article inside a fenced block:
+ *   <<<PUBLISH
+ *   SUBJECT: ...
+ *   BODY:
+ *   <p>...</p>
+ *   >>>
+ * Pure + tolerant: returns null when there's no well-formed block — so messy
+ * reasoning output simply doesn't publish (the safe failure mode).
+ */
+export function parsePublishable(text: string): { subject: string; htmlBody: string } | null {
+  if (!text) return null;
+  const m = /<<<PUBLISH\s*([\s\S]*?)>>>/i.exec(text);
+  if (!m) return null;
+  const block = m[1].trim();
+  const subjMatch = /^SUBJECT:\s*(.+)$/im.exec(block);
+  if (!subjMatch) return null;
+  const subject = subjMatch[1].trim();
+  const bodyMatch = /BODY:\s*([\s\S]*)$/i.exec(block);
+  const htmlBody = (bodyMatch ? bodyMatch[1] : block.slice(subjMatch.index + subjMatch[0].length)).trim();
+  if (!subject || !htmlBody) return null;
+  return { subject, htmlBody };
+}
+
 export interface PublishGrowthInput {
   dispatchId?: number | null;
   playId?: string | null;
@@ -134,6 +163,22 @@ export async function publishGrowthArtifact(
     return { published: false, reason: "publishing disabled", violations: [] };
   }
 
+  // Daily rate cap — bounds the blast radius on a permanent public surface.
+  try {
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const todays = await db
+      .select({ id: marketingArtifacts.id })
+      .from(marketingArtifacts)
+      .where(and(gte(marketingArtifacts.publishedAt, startOfDay), isNull(marketingArtifacts.unpublishedAt)))
+      .limit(PUBLISH_MAX_PER_DAY + 1);
+    if (todays.length >= PUBLISH_MAX_PER_DAY) {
+      return { published: false, reason: "daily publish cap reached", violations: [] };
+    }
+  } catch {
+    /* if the cap check fails, fall through — the gate already passed */
+  }
+
   try {
     const slug = slugify(input.subject, input.dispatchId);
     const now = new Date();
@@ -167,6 +212,32 @@ export async function publishGrowthArtifact(
 async function defaultIsEnabled(): Promise<boolean> {
   const { isPublishEnabled } = await import("./settings");
   return isPublishEnabled();
+}
+
+/**
+ * The structural last-mile link: after an autopilot GROWTH dispatch completes,
+ * if it emitted a publishable artifact, route it through the publish gate. Only
+ * fires for successful autopilot growth dispatches; returns null otherwise.
+ * Gated + screened + rate-capped inside publishGrowthArtifact, so a flip of the
+ * publish switch is all it takes — and nothing unsafe gets through.
+ */
+export async function maybePublishFromDispatch(d: {
+  sourceType: string;
+  sourceId: string;
+  success: boolean;
+  finalText: string;
+  dispatchId: number;
+}): Promise<PublishGrowthResult | null> {
+  if (!d.success) return null;
+  if (d.sourceType !== "auto_dispatch" || !d.sourceId.startsWith("autopilot:grow_owned_channels")) return null;
+  const parsed = parsePublishable(d.finalText);
+  if (!parsed) return null;
+  return publishGrowthArtifact({
+    dispatchId: d.dispatchId,
+    playId: "grow_owned_channels",
+    subject: parsed.subject,
+    htmlBody: parsed.htmlBody,
+  });
 }
 
 /** Unpublish an artifact: hide it from /field-notes + stamp the marketing row. */

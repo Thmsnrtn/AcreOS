@@ -100,10 +100,26 @@ export function growthPlayById(id: string): GrowthPlay | null {
 }
 
 /**
+ * The publishable-output contract every growth artifact must follow so the
+ * post-dispatch publish step can pick it up AND clear the publish gate. Kept
+ * here so the "what to produce" lives with the playbook.
+ */
+export const PUBLISH_OUTPUT_CONTRACT = [
+  "When the artifact is ready to publish, emit it as the LAST thing in your output, inside this exact fenced block:",
+  "<<<PUBLISH",
+  "SUBJECT: <a clear, specific, non-clickbait title>",
+  "BODY:",
+  "<clean semantic HTML using only <p> <h2> <h3> <ul> <ol> <li> <strong> <em> <blockquote> <a>; links may point ONLY to acreos.com or relative paths>",
+  "<close with a one-line disclosure footer: \"For informational purposes only — not legal, financial, or investment advice. Verify independently.\">",
+  ">>>",
+  "Hard rules for the body (it will be auto-rejected otherwise): never assert buildability/perc/septic/wetlands/flood/title/access/utilities as fact — attribute + hedge every land fact to its source (e.g. \"County GIS lists … as of 2024\"); no investment-return or guarantee language; no fair-housing/neighborhood-steering descriptors; no external links.",
+].join("\n");
+
+/**
  * The concrete rationale a selected play contributes to its move — the title +
- * the brief. The craft standard is layered on separately at dispatch time
- * (dispatchPromptFor), so this stays the "what," not the "how to write."
+ * the brief + the publishable-output contract. The craft standard is layered on
+ * separately at dispatch time (dispatchPromptFor).
  */
 export function growthPlayRationale(play: GrowthPlay): string {
-  return `${play.title} — ${play.brief}`;
+  return `${play.title} — ${play.brief}\n\n${PUBLISH_OUTPUT_CONTRACT}`;
 }
