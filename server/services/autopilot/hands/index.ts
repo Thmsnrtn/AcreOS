@@ -15,8 +15,13 @@ export {
   listHandSpecs,
   listHandSchemas,
   registerHand,
+  executeHandWitnessed,
 } from "./registry";
 export type { HandSpec, HandResult, HandContext, HandSchema, HandHandler } from "./types";
 
 // ── Registered hands ────────────────────────────────────────────────────────
-// (Phase 1+ append `import "./<hand>";` here; each self-registers.)
+// Each module self-registers at import time. Importing this index runs them all.
+import "./send-email";
+import "./send-sms";
+import "./send-push";
+import "./send-letter";

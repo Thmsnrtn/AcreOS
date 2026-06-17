@@ -10,7 +10,7 @@
  * that requires approval is allowed to register, but the executor will refuse to
  * run it directly — that's the witnessed-send wall, enforced at the executor.
  */
-import type { HandSpec, HandSchema } from "./types";
+import type { HandSpec, HandSchema, HandResult, HandContext } from "./types";
 import { logger } from "../../../utils/logger";
 
 const REGISTRY = new Map<string, HandSpec>();
@@ -45,6 +45,40 @@ export function listHandSpecs(): HandSpec[] {
 /** The model-facing schemas for every registered hand. */
 export function listHandSchemas(): HandSchema[] {
   return [...REGISTRY.values()].map((h) => h.schema);
+}
+
+/**
+ * Privileged witnessed-execution entrypoint (Hands roadmap P1).
+ *
+ * This is the ONLY path that may run an approval-required hand. It is called
+ * exclusively by the founder-approval flow AFTER a human has tapped Approve on
+ * the witnessed-send ask — never by a model tool-call (the executor refuses
+ * those). The `witnessedBy` argument is the founder's user id, recorded for the
+ * audit trail; calling this without it is a programming error and is refused.
+ *
+ * The separation is the whole safety story: model → executor → REFUSED;
+ * founder tap → approval flow → executeHandWitnessed → the real send.
+ */
+export async function executeHandWitnessed(
+  name: string,
+  input: Record<string, unknown>,
+  witnessedBy: string,
+  ctx: HandContext = {},
+): Promise<HandResult> {
+  const started = Date.now();
+  const hand = getHand(name);
+  if (!hand) {
+    return { success: false, output: `unknown hand: ${name}`, durationMs: Date.now() - started };
+  }
+  if (!witnessedBy || !witnessedBy.trim()) {
+    return {
+      success: false,
+      output: `[WITNESSED-SEND] ${name} refused: missing witnessing founder identity. A witnessed send requires a real approver.`,
+      durationMs: Date.now() - started,
+    };
+  }
+  logger.info(`[autopilot/hands] witnessed execution of ${name} approved by ${witnessedBy}`);
+  return hand.handler(input, ctx);
 }
 
 /** TEST-ONLY: clear the registry. Not exported through the index. */

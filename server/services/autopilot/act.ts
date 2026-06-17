@@ -61,6 +61,13 @@ const MOVE_BINDINGS: Record<string, MoveBinding> = {
   unblock_activation: { domain: "deploy", agentRole: "iris", isCustomerFacing: false, surface: "generic" },
   grow_owned_channels: { domain: "growth", agentRole: "soren", isCustomerFacing: false, surface: "content" },
   optimize: { domain: "ops", agentRole: "iris", isCustomerFacing: false, surface: "generic" },
+  // Hands roadmap P0.2/P1 — outward-perception moves. A move that touches a
+  // customer is marked isCustomerFacing so it escalates to witnessed-send; the
+  // internal remediation moves (deliverability, payment retry) stay internal.
+  protect_deliverability: { domain: "ops", agentRole: "iris", isCustomerFacing: false, surface: "generic" },
+  retain_at_risk: { domain: "support", agentRole: "general-purpose", isCustomerFacing: true, surface: "support" },
+  recover_payments: { domain: "finance", agentRole: "general-purpose", isCustomerFacing: false, surface: "generic" },
+  convert_trials: { domain: "finance", agentRole: "soren", isCustomerFacing: true, surface: "support" },
 };
 
 const DEFAULT_BINDING: MoveBinding = {
