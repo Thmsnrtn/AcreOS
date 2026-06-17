@@ -126,7 +126,7 @@ export default function FounderVoicePage() {
 
   return (
     <PageShell maxWidth="4xl" label="Your Voice">
-      <motion.div className="space-y-8" variants={staggerContainer} initial="hidden" animate="show">
+      <motion.div className="space-y-8" variants={staggerContainer} initial="hidden" animate="visible">
         <motion.header variants={staggerItem} className="space-y-2">
           <div className="flex items-center gap-2">
             <MessageSquareQuote className="h-5 w-5 text-primary" aria-hidden="true" />

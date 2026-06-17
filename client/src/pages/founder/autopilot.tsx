@@ -505,7 +505,7 @@ export default function FounderAutopilotPage() {
           className="space-y-8 md:space-y-10"
           variants={staggerContainer}
           initial="hidden"
-          animate="show"
+          animate="visible"
           aria-live="polite"
         >
           <TheWord brief={brief} />

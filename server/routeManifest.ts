@@ -69,6 +69,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-arv.ts", mountPath: null, kind: "register", export: "registerArvRoutes" },
   { file: "routes-autonomous-agent.ts", mountPath: null, kind: "register", export: "registerAutonomousAgentRoutes" },
   { file: "routes-autonomy.ts", mountPath: "/api/me/autonomy", kind: "router", export: "default" },
+  { file: "routes-autopilot.ts", mountPath: null, kind: "register", export: "registerAutopilotRoutes" },
   { file: "routes-avm.ts", mountPath: "/api/avm", kind: "router", export: "default" },
   { file: "routes-beatrice-regwatch.ts", mountPath: null, kind: "register", export: "registerBeatriceRegWatchRoutes" },
   { file: "routes-beta.ts", mountPath: "/api/beta", kind: "router", export: "default" },

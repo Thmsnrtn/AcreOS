@@ -113,7 +113,7 @@ export default function FounderAutopilotControlPage() {
         ) : isError || !data ? (
           <QueryErrorState error={error instanceof Error ? error : new Error("Failed")} title="Control Center unavailable" onRetry={() => void refetch()} />
         ) : (
-          <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="show">
+          <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="visible">
             {/* Master switches */}
             <motion.section variants={staggerItem} className="grid gap-4 sm:grid-cols-2">
               <MasterToggle

@@ -219,6 +219,7 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "solene_audit_per_session", intervalMs: HOUR, critical: false },
   { name: "solene_morning_pulse", intervalMs: DAY, critical: false },
   { name: "solene_continuous_tick", intervalMs: 30 * MIN, critical: false },
+  { name: "solene_loop_watchdog", intervalMs: 30 * MIN, critical: false },
   { name: "solene_agent_claims_expiry", intervalMs: 5 * MIN, critical: false },
   { name: "solene_team_state_regenerator", intervalMs: 15 * MIN, critical: false },
   { name: "solene_weekly_retro", intervalMs: WEEK, critical: false },

@@ -33,6 +33,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-arv.ts",
   "routes-autonomous-agent.ts",
   "routes-autonomy.ts",
+  "routes-autopilot.ts",
   "routes-avm.ts",
   "routes-beatrice-regwatch.ts",
   "routes-beta.ts",

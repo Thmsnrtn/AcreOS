@@ -178,7 +178,7 @@ export default function FounderAutopilotStoryPage() {
         ) : (
           <Card>
             <CardContent className="p-2 sm:p-3">
-              <motion.ul variants={staggerContainer} initial="hidden" animate="show">
+              <motion.ul variants={staggerContainer} initial="hidden" animate="visible">
                 {entries.map((e) => (
                   <StoryRow key={e.id} entry={e} />
                 ))}
