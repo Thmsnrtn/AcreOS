@@ -67,5 +67,31 @@ Activation/retention/expansion/pricing in the loop; CAC/ROI-aware budget allocat
 
 ---
 
+## ELEVATION PATH — SHIPPED (2026-06-16, all gated/dormant, 226 autopilot tests)
+
+- **T0 — close the last mile (DONE, end-to-end):** claims gate + 3-layer publish
+  gate + publish to the /field-notes rail + marketing_artifacts + the
+  agent-output contract + maybePublishFromDispatch + /sitemap-notes.xml +
+  attribution off the witnessed touch chain → founder dashboard. + the Control
+  Center (DB-backed master switches). + the witnessed-send broadcast fix.
+- **T1 — land-native (DONE, core):** dealActions.ts — the deal-coach
+  (under-contract→close, stalled negotiation→follow up, hot→contact, new→first
+  contact, cold→requalify/drop) over the real `leads` pipeline.
+- **T2 — contextual intelligence (DONE, core):** contextualForecast.ts —
+  P(success | situation, action) shrinkage blend of forecast + memory; empirical
+  recalibration of over/under-confidence.
+- **T3 — graceful human-in-the-loop (DONE, core):** escalationLadder.ts —
+  absence fails safe (re-page → a decision auto-declines to the safe side; a
+  draft never times out).
+- **T4 — full-funnel economics (DONE, core):** economics.ts — budgetGate (reserve
+  protection), allocateByRoi (expected value per dollar over real efficacy),
+  shouldRampBudget (ramp only on proven healthy CAC).
+
+The two load-bearing gaps the panel found are both addressed: it now DISTRIBUTES
+(T0) and it is LAND-NATIVE (T1), with the contextual/graceful/economic
+elevations (T2–T4) layered on. Remaining integration polish: surface the
+deal-coach to customers; wire the ladder into the ask-expiry job; feed
+economics into the brain's grow-gate; seed content eval cases.
+
 ## The one-sentence verdict
 What we built is an unusually well-governed, self-aware *operating loop* — but to be elite it must (1) **close the last mile so it actually moves a real metric**, and (2) **become land-investing-native by optimizing the customer's deals, not the company's chores** — and everything else (contextual learning, graceful approvals, economic intelligence) compounds on those two.
