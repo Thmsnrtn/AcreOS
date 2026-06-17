@@ -72,15 +72,21 @@ export async function setAutopilotSetting(
   value: boolean,
   updatedBy?: string,
 ): Promise<EffectiveSettings> {
-  const col = key === "dispatchEnabled" ? "dispatch_enabled" : "publish_enabled";
-  await db
-    .insert(autopilotSettings)
-    .values({ id: 1, [key === "dispatchEnabled" ? "dispatchEnabled" : "publishEnabled"]: value, updatedBy: updatedBy ?? null })
-    .onConflictDoUpdate({
-      target: autopilotSettings.id,
-      set: { [key === "dispatchEnabled" ? "dispatchEnabled" : "publishEnabled"]: value, updatedAt: new Date(), updatedBy: updatedBy ?? null },
-    });
-  logger.warn("[autopilot/settings] master switch flipped by founder", { key, value, col });
+  // Explicit per-column branches (not a computed key) so the static
+  // schema-column validator can resolve the references.
+  const stamp = { updatedAt: new Date(), updatedBy: updatedBy ?? null };
+  if (key === "dispatchEnabled") {
+    await db
+      .insert(autopilotSettings)
+      .values({ id: 1, dispatchEnabled: value, updatedBy: updatedBy ?? null })
+      .onConflictDoUpdate({ target: autopilotSettings.id, set: { dispatchEnabled: value, ...stamp } });
+  } else {
+    await db
+      .insert(autopilotSettings)
+      .values({ id: 1, publishEnabled: value, updatedBy: updatedBy ?? null })
+      .onConflictDoUpdate({ target: autopilotSettings.id, set: { publishEnabled: value, ...stamp } });
+  }
+  logger.warn("[autopilot/settings] master switch flipped by founder", { key, value });
   cache = null;
   return getEffectiveSettings();
 }
