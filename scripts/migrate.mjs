@@ -7291,6 +7291,24 @@ const STATEMENTS = [
      "observed_at" timestamp DEFAULT now()
    )`,
   `CREATE INDEX IF NOT EXISTS "autopilot_senses_kind_observed_idx" ON "autopilot_senses" ("kind", "observed_at")`,
+
+  // 0178 — autopilot objectives (Hands roadmap P5). Structured goals the brain
+  // plans toward; `current` refreshed from real senses. Additive + idempotent.
+  `CREATE TABLE IF NOT EXISTS "autopilot_objectives" (
+     "id" serial PRIMARY KEY,
+     "key" text NOT NULL,
+     "label" text NOT NULL,
+     "target" double precision NOT NULL,
+     "current" double precision NOT NULL DEFAULT 0,
+     "unit" text NOT NULL DEFAULT 'count',
+     "owning_domain" text,
+     "deadline" timestamp,
+     "active" boolean NOT NULL DEFAULT true,
+     "created_by" text,
+     "created_at" timestamp DEFAULT now(),
+     "updated_at" timestamp DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "autopilot_objectives_key_uq" ON "autopilot_objectives" ("key")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

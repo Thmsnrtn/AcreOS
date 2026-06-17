@@ -12793,6 +12793,32 @@ export const autopilotSenses = pgTable("autopilot_senses", {
 }));
 export type AutopilotSense = typeof autopilotSenses.$inferSelect;
 
+// ── Autopilot objectives (Hands roadmap P5) ─────────────────────────────────
+// Structured goals the brain plans toward — the difference between "do sensible
+// things" and "move THESE numbers." The founder declares targets in Your Voice;
+// the planner weights moves by expected objective movement; the daily letter
+// reports progress. `current` is refreshed from real senses (never invented).
+//   • key     — stable machine id, e.g. "activated_orgs" | "trial_to_paid_rate".
+//   • unit    — count | cents | rate | minutes (how to render + compare).
+//   • owningDomain — which autopilot domain is accountable for moving it.
+export const autopilotObjectives = pgTable("autopilot_objectives", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull(),
+  label: text("label").notNull(),
+  target: doublePrecision("target").notNull(),
+  current: doublePrecision("current").notNull().default(0),
+  unit: text("unit").notNull().default("count"),
+  owningDomain: text("owning_domain"),
+  deadline: timestamp("deadline"),
+  active: boolean("active").notNull().default(true),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  keyIdx: uniqueIndex("autopilot_objectives_key_uq").on(t.key),
+}));
+export type AutopilotObjective = typeof autopilotObjectives.$inferSelect;
+
 // ── Today decision-queue resolution state (Maren CPO #2) ────────────────────
 // The /today Decision Queue is DERIVED — its items are computed each request
 // from leads / deals / observations / tasks (server/routes-today.ts). There is
