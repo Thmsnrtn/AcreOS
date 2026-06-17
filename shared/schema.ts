@@ -12752,6 +12752,25 @@ export const marketingArtifacts = pgTable("marketing_artifacts", {
 }));
 export type MarketingArtifact = typeof marketingArtifacts.$inferSelect;
 
+// Founder Autopilot — the attribution ledger. A signup attributed (off the
+// witnessed marketing_touch chain, never the racy UTM user blob) to a published
+// artifact. A LOWER BOUND — absence of a row is absent evidence, never a
+// "failure" vote. Founder-dashboard only; never fed to the learning loop in T0.
+export const autopilotConversions = pgTable("autopilot_conversions", {
+  id: serial("id").primaryKey(),
+  artifactId: integer("artifact_id"),
+  playId: text("play_id"),
+  anonId: text("anon_id"),
+  organizationId: integer("organization_id"),
+  event: text("event").notNull(), // view | signup | first_value | paid
+  attributedAt: timestamp("attributed_at").defaultNow(),
+}, (t) => ({
+  artifactIdx: index("autopilot_conversions_artifact_idx").on(t.artifactId),
+  dedupIdx: uniqueIndex("autopilot_conversions_dedup_uq").on(t.artifactId, t.anonId, t.event),
+  orgIdx: index("autopilot_conversions_org_event_idx").on(t.organizationId, t.event),
+}));
+export type AutopilotConversion = typeof autopilotConversions.$inferSelect;
+
 // ── Today decision-queue resolution state (Maren CPO #2) ────────────────────
 // The /today Decision Queue is DERIVED — its items are computed each request
 // from leads / deals / observations / tasks (server/routes-today.ts). There is

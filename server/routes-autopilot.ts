@@ -102,7 +102,14 @@ export function registerAutopilotRoutes(app: Express): void {
         } catch {
           calibration = null;
         }
-        return res.json({ settings, ledger, openAsks, calibration });
+        let conversions = { totalSignups: 0, byPlay: [] as Array<{ playId: string; signups: number }> };
+        try {
+          const { getConversionSummary } = await import("./services/autopilot/attribution");
+          conversions = await getConversionSummary();
+        } catch {
+          conversions = { totalSignups: 0, byPlay: [] };
+        }
+        return res.json({ settings, ledger, openAsks, calibration, conversions });
       } catch (err) {
         return Errors.internal(res, err);
       }

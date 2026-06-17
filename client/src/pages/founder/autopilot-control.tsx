@@ -13,7 +13,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   Power, Send, ShieldCheck, PauseCircle, ChevronUp, Loader2, AlertCircle,
-  ScrollText, MessageSquareQuote, Sparkles, ArrowRight,
+  ScrollText, MessageSquareQuote, Sparkles, ArrowRight, TrendingUp,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -34,6 +34,7 @@ interface ControlData {
   ledger: LedgerEntry[];
   openAsks: number;
   calibration: { grade: string; n: number } | null;
+  conversions?: { totalSignups: number; byPlay: Array<{ playId: string; signups: number }> };
 }
 
 const CONTROL_KEY = ["/api/founder/autopilot/control"];
@@ -144,6 +145,23 @@ export default function FounderAutopilotControlPage() {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-foreground capitalize">{data.calibration && data.calibration.n > 0 ? data.calibration.grade.replace(/-/g, " ") : "Calibration: learning"}</p>
                   <p className="text-xs text-muted-foreground">{data.calibration && data.calibration.n > 0 ? `${data.calibration.n} predictions checked` : "No predictions checked yet"}</p>
+                </div>
+              </div>
+            </motion.section>
+
+            {/* Real outcomes — attributed signups from published content */}
+            <motion.section variants={staggerItem}>
+              <div className="flex items-center gap-3 rounded-card border border-border bg-card p-4" data-testid="control-conversions">
+                <TrendingUp className={`h-5 w-5 shrink-0 ${(data.conversions?.totalSignups ?? 0) > 0 ? "text-acr-success" : "text-muted-foreground"}`} aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    {(data.conversions?.totalSignups ?? 0) > 0 ? `${data.conversions!.totalSignups} signup${data.conversions!.totalSignups === 1 ? "" : "s"} from published content` : "No attributed signups yet"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {(data.conversions?.byPlay?.length ?? 0) > 0
+                      ? data.conversions!.byPlay.slice(0, 3).map((p) => `${prettyDomain(p.playId.replace(/[-_]/g, " "))}: ${p.signups}`).join(" · ")
+                      : "Real signups attributed to what the autopilot publishes will show here (a lower bound)."}
+                  </p>
                 </div>
               </div>
             </motion.section>

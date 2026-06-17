@@ -7265,6 +7265,20 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "marketing_artifacts_slug_idx" ON "marketing_artifacts" ("slug")`,
   `CREATE INDEX IF NOT EXISTS "marketing_artifacts_dispatch_idx" ON "marketing_artifacts" ("dispatch_id")`,
+
+  // 0176 — autopilot attribution ledger (signup → artifact, off the touch chain).
+  `CREATE TABLE IF NOT EXISTS "autopilot_conversions" (
+     "id" serial PRIMARY KEY,
+     "artifact_id" integer,
+     "play_id" text,
+     "anon_id" text,
+     "organization_id" integer,
+     "event" text NOT NULL,
+     "attributed_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_conversions_artifact_idx" ON "autopilot_conversions" ("artifact_id")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "autopilot_conversions_dedup_uq" ON "autopilot_conversions" ("artifact_id", "anon_id", "event")`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_conversions_org_event_idx" ON "autopilot_conversions" ("organization_id", "event")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
