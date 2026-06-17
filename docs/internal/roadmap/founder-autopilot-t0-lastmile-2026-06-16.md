@@ -28,6 +28,27 @@
 
 Flip `AUTOPILOT_PUBLISH_ENABLED` on only after D is verified producing correct attributed-signup rows on a seeded artifact.
 
+## SHIPPED (2026-06-16, gated behind the publish switch)
+
+The last mile closes end-to-end, dormant:
+- **Safety:** witnessed-send broadcast fix + `claimsGate.ts` (land determinations /
+  investment / fair-housing / disclosure) + the 3-layer publish gate in
+  `publishArtifact.ts` (DOMPurify sanitize → link allowlist → claims).
+- **Publish:** `publishGrowthArtifact` → existing `community_letters` → `/field-notes/:slug`
+  rail + `marketing_artifacts` anchor; daily rate cap; `unpublishArtifact` reversal.
+- **Link:** `maybePublishFromDispatch` in the worker consumer + the
+  `PUBLISH_OUTPUT_CONTRACT` growth prompt (agent emits a fenced `<<<PUBLISH>>>`
+  block; no block ⇒ safe no-publish).
+- **Instrument:** `/sitemap-notes.xml` (mirrors `/sitemap-reports.xml`).
+- **Attribute:** `attribution.ts` — signup attributed off the witnessed
+  `marketing_touch` chain to a REAL artifact row (lower bound; founder-dashboard
+  only); surfaced on the Control Center.
+- **Control:** DB-backed master switches + the Control Center (`/founder/autopilot/control`).
+
+Remaining T0 polish: seed `surface='content'` grounding eval cases (Batch A — the
+claims gate already covers the highest-risk content); bot-filtered view-count;
+the graduated-autonomy publish ramp.
+
 ## Deferred (separate proposal, gated on real conversion data)
 The **correct** causal design: a *publish-time* holdout (suppress publication for a fraction of eligible play-runs → control is genuinely unexposed), unit = play×segment pooled (N accumulates), graded funnel (view→signup→first_value→paid), power made visible ("N insufficient, vote suppressed"), secret-salted arm hash, bot-excluded denominator. Only then raise the `experienceLog` `conversionLift` slot.
 
