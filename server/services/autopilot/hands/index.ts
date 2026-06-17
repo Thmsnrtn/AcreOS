@@ -27,3 +27,4 @@ import "./send-push";
 import "./send-letter";
 import "./dunning-action";
 import "./apply-refund";
+import "./run-ad-campaign";
