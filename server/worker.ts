@@ -604,11 +604,15 @@ async function runSoleneDispatchLoop(): Promise<void> {
   // seconds of the founder flipping it on, no worker restart needed.
   logger.info(`[worker] Solene dispatch consumer running — pollInterval=${SOLENE_DISPATCH_POLL_MS}ms`);
   const { isDispatchEnabled } = await import("./services/autopilot/settings");
+  // While the switch is OFF (the default), back off to a slow idle poll so the
+  // dormant consumer adds ~zero load to the worker. It still activates within a
+  // minute of the founder flipping it on; only the active path uses the fast poll.
+  const SOLENE_IDLE_POLL_MS = 60_000;
   while (!stopping) {
     let claimed = false;
     try {
       if (!(await isDispatchEnabled())) {
-        await new Promise((r) => setTimeout(r, SOLENE_DISPATCH_POLL_MS));
+        await new Promise((r) => setTimeout(r, SOLENE_IDLE_POLL_MS));
         continue;
       }
       const row = await claimNextDispatch();
