@@ -64,6 +64,7 @@ const MOVE_BINDINGS: Record<string, MoveBinding> = {
   // Hands roadmap P0.2/P1 — outward-perception moves. A move that touches a
   // customer is marked isCustomerFacing so it escalates to witnessed-send; the
   // internal remediation moves (deliverability, payment retry) stay internal.
+  stabilize_reflexes: { domain: "deploy", agentRole: "iris", isCustomerFacing: false, surface: "generic" },
   protect_deliverability: { domain: "ops", agentRole: "iris", isCustomerFacing: false, surface: "generic" },
   retain_at_risk: { domain: "support", agentRole: "general-purpose", isCustomerFacing: true, surface: "support" },
   recover_payments: { domain: "finance", agentRole: "general-purpose", isCustomerFacing: false, surface: "generic" },

@@ -419,12 +419,17 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
       const supportBacklog = await getOpenSupportCaseCount();
       // Outward perception (Hands P0.2) — best-effort; defaults to none-known so
       // a quiet/unwired channel never fabricates pressure.
-      let outward: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number } = {};
+      let outward: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number; reflexFailures?: number } = {};
       try {
         const { readOutwardSenses, outwardSignalFrom } = await import("../autopilot/perception");
         const sig = outwardSignalFrom(await readOutwardSenses(24));
         outward = { emailComplaints: sig.emailComplaints, dunningPressure: sig.dunningPressure, churnSignals: sig.churnSignals, trialsEnding: sig.trialsEnding };
       } catch { /* perception is best-effort */ }
+      // Reflex perception (H1) — the brain now sees the autonomic job layer.
+      try {
+        const { readReflexHealth } = await import("../autopilot/reflexes");
+        outward.reflexFailures = (await readReflexHealth(6)).failed;
+      } catch { /* reflex perception is best-effort */ }
       const senses = sensesFromPulse(
         {
           mrr: pulse.mrr,

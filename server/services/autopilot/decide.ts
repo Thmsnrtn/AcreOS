@@ -46,6 +46,9 @@ export interface DecisionSenses {
   churnSignals?: number;
   /** Trials entering their closing window. */
   trialsEnding?: number;
+  /** Autonomous-job (reflex) failures in window — a failing dunning/billing/
+   * compliance job is a real business incident the brain should stabilize. */
+  reflexFailures?: number;
 }
 
 /** Lower `priority` = more urgent. */
@@ -74,6 +77,12 @@ export function rankMoves(s: DecisionSenses): RankedMove[] {
   }
   if (s.complianceOpenCount > 0) {
     moves.push({ priority: 1, domain: "ops", kind: "clear_compliance", rationale: `${s.complianceOpenCount} open compliance finding(s) — resolve before outward action.` });
+  }
+  // Reflex failures — an autonomous job (dunning, billing, compliance, backups)
+  // is failing. The autonomic layer breaking is close to house-on-fire.
+  const reflexFailures = s.reflexFailures ?? 0;
+  if (reflexFailures > 0) {
+    moves.push({ priority: 1, domain: "deploy", kind: "stabilize_reflexes", rationale: `${reflexFailures} autonomous-job failure(s) — stabilize the reflex layer before outward action.` });
   }
 
   // P1.5 — PROTECT DELIVERABILITY. Spam complaints poison the sending domain
@@ -172,7 +181,7 @@ export function sensesFromPulse(
   },
   extra?: { supportBacklog?: number; activationStalled?: boolean; dispatchBacklog?: number },
   /** Outward perception (Hands roadmap P0.2) — counts from the perception bus. */
-  outward?: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number },
+  outward?: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number; reflexFailures?: number },
 ): DecisionSenses {
   return {
     openIncidents: pulse.dispatchesFlaggedLast24h,
@@ -187,5 +196,6 @@ export function sensesFromPulse(
     dunningPressure: outward?.dunningPressure ?? 0,
     churnSignals: outward?.churnSignals ?? 0,
     trialsEnding: outward?.trialsEnding ?? 0,
+    reflexFailures: outward?.reflexFailures ?? 0,
   };
 }
