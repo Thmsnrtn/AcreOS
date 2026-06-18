@@ -2,6 +2,7 @@ import { PageShell } from "@/components/page-shell";
 import { plural, usd } from "@/lib/format";
 import "./today.css";
 import { DealJourney } from "@/components/ui/deal-journey";
+import { DealCoach } from "@/components/deals/DealCoach";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useDeals, useDealsPaginated, useDealAggregates, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, useAdvanceDealStage, type BulkStageUpdateResult } from "@/hooks/use-deals";
@@ -608,6 +609,9 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
               </CardContent>
             </Card>
           </div>
+
+          {/* Deal Coach (D4) — autopilot next-best actions over the pipeline */}
+          <DealCoach />
 
           {/* Pipeline Health Bar — org-wide counts from /api/deals/aggregates (T0-10) */}
           {isAggregatesLoading ? (

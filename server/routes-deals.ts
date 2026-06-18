@@ -2081,6 +2081,18 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     }
   });
 
+  // GET /api/deals/coach — D4: surface the autopilot deal-coach (next-best
+  // actions over the pipeline) to the customer, inside the Deals door.
+  app.get("/api/deals/coach", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { getDealCoachForOrg } = await import("./services/autopilot/dealActions");
+      const items = await getDealCoachForOrg(req.organization.id);
+      res.json({ items });
+    } catch (err: any) {
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
+    }
+  });
+
   // GET /api/deals/:dealId/handoffs — handoffs for a specific deal
   app.get("/api/deals/:dealId/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

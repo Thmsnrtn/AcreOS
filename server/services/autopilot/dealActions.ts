@@ -177,3 +177,55 @@ export async function getDealActionsForOrg(organizationId: number, limit = 10): 
     return [];
   }
 }
+
+// ── D4: surface the deal-coach to the customer (Deals door) ──────────────────
+
+/** Human label for each action kind (customer-facing). Pure. */
+const KIND_LABELS: Record<DealActionKind, string> = {
+  advance_to_close: "Advance to close",
+  follow_up: "Follow up",
+  contact_now: "Contact now",
+  first_contact: "Make first contact",
+  requalify_or_drop: "Requalify or drop",
+};
+export function labelForKind(kind: DealActionKind): string {
+  return KIND_LABELS[kind] ?? kind;
+}
+
+export interface DealCoachItem extends DealAction {
+  /** Display name of the lead/deal the action is about. */
+  leadName: string;
+  /** Customer-facing label for the action kind. */
+  label: string;
+}
+
+/**
+ * The deal-coach for a customer org: the next-best actions enriched with the
+ * lead's display name. Best-effort — degrades to a generic name (never throws),
+ * mirroring getDealActionsForOrg.
+ */
+export async function getDealCoachForOrg(organizationId: number, limit = 8): Promise<DealCoachItem[]> {
+  const actions = await getDealActionsForOrg(organizationId, limit);
+  if (actions.length === 0) return [];
+  try {
+    const { db } = await import("../../db");
+    const { leads } = await import("@shared/schema");
+    const { and, eq, inArray } = await import("drizzle-orm");
+    const ids = actions.map((a) => Number(a.dealId)).filter((n) => Number.isFinite(n));
+    const rows = ids.length
+      ? await db
+          .select({ id: leads.id, firstName: leads.firstName, lastName: leads.lastName, email: leads.email })
+          .from(leads)
+          .where(and(eq(leads.organizationId, organizationId), inArray(leads.id, ids)))
+      : [];
+    const nameById = new Map(
+      rows.map((r) => {
+        const name = [r.firstName, r.lastName].filter(Boolean).join(" ").trim() || r.email || `Lead ${r.id}`;
+        return [String(r.id), name];
+      }),
+    );
+    return actions.map((a) => ({ ...a, leadName: nameById.get(a.dealId) ?? `Lead ${a.dealId}`, label: labelForKind(a.kind) }));
+  } catch {
+    return actions.map((a) => ({ ...a, leadName: `Lead ${a.dealId}`, label: labelForKind(a.kind) }));
+  }
+}
