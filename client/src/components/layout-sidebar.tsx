@@ -677,7 +677,6 @@ const NAV_MODULES: NavModule[] = [
       { label: "Strategy", icon: Lightbulb, href: "/founder/strategy", description: "Strategic proposals (weekly + synthesis)" },
       { label: "System trends", icon: TrendingUp, href: "/founder/trends", description: "90-day trust gauge" },
       { label: "Monthly letter", icon: FileText, href: "/founder/letter", description: "Chief-of-Staff narrative" },
-      { label: "What needs you", icon: CheckCircle2, href: "/founder/todo", description: "[legacy] Unified ranked feed — see /founder for new canonical" },
       // ── Ops / admin ────────────────────────────────────────────────
       { label: "System keys", icon: Key, href: "/founder/keys", description: "Platform-wide API keys (BYOK overrides)" },
       { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", description: "Daily-during-launch progress checklist" },
@@ -707,11 +706,6 @@ const NAV_MODULES: NavModule[] = [
       { label: "Data moat", icon: Database, href: "/data-moat", description: "Proprietary data accumulation + competitive moat metrics" },
       { label: "Reseller program", icon: Store, href: "/reseller", description: "White-label reseller dashboard — partners, commissions" },
       { label: "Executive dashboard", icon: LayoutDashboard, href: "/executive-dashboard", description: "Cross-org executive KPI roll-up" },
-      // ── Legacy (redirect only) ─────────────────────────────────────
-      // founder-dashboard.tsx is being extracted per Sigfried §1 / Phase
-      // Zero-Zero. The route redirects to /founder/bridge. Flagged legacy
-      // so Tom knows it's the old path.
-      { label: "Operations console (legacy)", icon: LayoutDashboard, href: "/founder-dashboard", description: "Legacy operations console — redirects to /founder/bridge", legacy: true },
     ],
   },
 
@@ -1090,10 +1084,11 @@ export function Sidebar() {
       {/* Nav */}
       <nav aria-label="Main navigation" className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
         {/* Founder home link — clean autonomy-health + todo hub.
-            The legacy operational dashboard is still at /founder-dashboard
-            and reachable via the "Operations console (legacy)" entry inside
-            the Founder business module overflow below. The legacy entry is
-            badge-tagged and founder-only — customers never see it. */}
+            D6 declutter: the redundant "Operations console (legacy)" and "What
+            needs you" sidebar entries were removed (their destinations have
+            canonical entries — Bridge and Pulse). The /founder-dashboard +
+            /founder/todo paths still REDIRECT (route-redirects.ts) for old
+            bookmarks; they're just no longer surfaced as nav clutter. */}
         {isFounder && (
           <DesktopNavItem
             href="/founder"
