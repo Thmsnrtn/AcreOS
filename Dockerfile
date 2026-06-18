@@ -54,7 +54,13 @@ COPY package-lock.json package.json ./
 RUN npm ci --include=dev --legacy-peer-deps
 
 COPY . .
-RUN npm run build
+# The build stage had NO heap limit, so `npm run build` (vite client bundle of
+# ~740 tsx files + esbuild server/worker, all in one Node process) hit Node's
+# default ~2GB cap and OOM'd intermittently on the Fly remote builder — failing
+# 3 deploys on 2026-06-18 alone, each cleared only by a manual retry. Raise the
+# build-stage heap so it has headroom. (Distinct from the runtime NODE_OPTIONS
+# in the production stage below, and from the CI `check` 8GB bump.)
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 RUN npm prune --omit=dev --legacy-peer-deps
 
 # --- Production stage ---
@@ -95,10 +101,10 @@ COPY --from=build /app /app
 EXPOSE 5000
 
 ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium"
-# Runtime-only heap cap for the Node server (Fly machine sizing). This ENV is
-# declared in the final production stage, which does NOT run `npm run build`
-# (that happens in the `build` stage above, with no NODE_OPTIONS set), so it
-# never throttles the build tooling — only the `node dist/index.cjs` CMD.
+# Runtime-only heap cap for the Node server (Fly machine sizing, 2gb VM). This
+# ENV is declared in the final production stage; the build stage sets its own
+# larger heap inline on the `npm run build` line above, so the two never
+# interfere — this one only bounds the `node dist/index.cjs` CMD at runtime.
 ENV NODE_OPTIONS="--max-old-space-size=3584"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
