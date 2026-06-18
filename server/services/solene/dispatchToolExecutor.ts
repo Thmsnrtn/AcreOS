@@ -544,6 +544,21 @@ export async function executeDispatchTool(
 // founder-witnessed execution; it never runs inside an autonomous dispatch.
 // ----------------------------------------------------------------------------
 
+/** A short human-readable summary of what approving this hand will do. No PII
+ * values beyond a recipient reference (which the founder needs to see). */
+function summarizePendingHand(handName: string, input: Record<string, unknown>): string {
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const recipient =
+    str(input.to) ??
+    (typeof input.lead_id === "number" ? `lead #${input.lead_id}` : null) ??
+    str(input.charge_id) ??
+    (typeof input.user_id === "string" ? `user ${input.user_id}` : null) ??
+    str(input.platform) ??
+    "—";
+  const subject = str(input.subject);
+  return subject ? `${handName} → ${recipient}: "${subject}"` : `${handName} → ${recipient}`;
+}
+
 async function executeHand(
   toolName: string,
   input: Record<string, unknown>,
@@ -559,13 +574,37 @@ async function executeHand(
     };
   }
   if (hand.requiresApproval) {
+    // Elite Vision H1 — the execution seam. Instead of a dead-end refusal, FREEZE
+    // the drafted action for the founder's /decisions approval. Nothing sends;
+    // the only executor is executeHandWitnessed, fired on a founder tap. If the
+    // freeze fails (no DB / test), fall back to a plain refusal — never a send.
+    try {
+      const { proposePendingHand } = await import("../autopilot/pendingHands");
+      const frozen = await proposePendingHand({
+        handName: toolName,
+        args: input,
+        domain: hand.domain,
+        summary: summarizePendingHand(toolName, input),
+        sourceDispatchId: ctx.dispatchId ?? null,
+      });
+      if (frozen) {
+        return {
+          success: false,
+          output:
+            `[WITNESSED-SEND] '${toolName}' has been drafted and FROZEN for the ` +
+            `founder's approval (pending action #${frozen.id}). Nothing was sent. ` +
+            `It executes only when the founder taps Approve in /decisions.`,
+          durationMs: Date.now() - started,
+        };
+      }
+    } catch {
+      /* fall through to refusal */
+    }
     return {
       success: false,
       output:
         `[WITNESSED-SEND] '${toolName}' requires a founder tap and cannot be ` +
-        `executed directly from an autonomous dispatch. This call was refused, ` +
-        `logged, and must be routed through the witnessed-send approval flow ` +
-        `(planAndAct → founder ask → witnessed execution). Refusing.`,
+        `executed directly from an autonomous dispatch. Refusing.`,
       durationMs: Date.now() - started,
     };
   }

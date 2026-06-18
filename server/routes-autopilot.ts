@@ -273,4 +273,75 @@ export function registerAutopilotRoutes(app: Express): void {
       }
     },
   );
+
+  // ── Execution seam (Elite Vision H1) — the founder's witnessed-send queue ──
+  // GET the frozen autopilot actions awaiting approval; approve/reject each.
+  app.get(
+    "/api/founder/autopilot/pending-actions",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { listPendingHands } = await import("./services/autopilot/pendingHands");
+        const actions = await listPendingHands();
+        return res.json({ actions });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/autopilot/pending-actions/:id/approve",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid id");
+      try {
+        const { approvePendingHand } = await import("./services/autopilot/pendingHands");
+        const outcome = await approvePendingHand({ id, approvedBy: getUserId(req) });
+        switch (outcome.outcome) {
+          case "not_found":
+            return Errors.notFound(res, "Pending action");
+          case "expired":
+            return Errors.badRequest(res, "This action expired — have the autopilot draft it again.");
+          case "rejected":
+            return Errors.badRequest(res, "This action was rejected and can no longer execute.");
+          case "hash_mismatch":
+            return Errors.badRequest(res, "Integrity check failed — refusing to execute.");
+          case "in_flight":
+            return res.json({ ok: true, executed: false, inFlight: true });
+          case "execution_failed":
+            return Errors.badRequest(res, `Execution failed: ${outcome.error}`);
+          case "already_executed":
+            return res.json({ ok: true, executed: true, alreadyExecuted: true, result: outcome.result });
+          case "executed":
+            return res.json({ ok: true, executed: true, result: outcome.result });
+          default:
+            return Errors.internal(res, new Error("unexpected approval outcome"));
+        }
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/autopilot/pending-actions/:id/reject",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid id");
+      try {
+        const { rejectPendingHand } = await import("./services/autopilot/pendingHands");
+        const outcome = await rejectPendingHand(id);
+        if (outcome.outcome === "not_found") return Errors.notFound(res, "Pending action");
+        return res.json({ ok: true, outcome: outcome.outcome });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
 }

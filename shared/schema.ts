@@ -12819,6 +12819,51 @@ export const autopilotObjectives = pgTable("autopilot_objectives", {
 }));
 export type AutopilotObjective = typeof autopilotObjectives.$inferSelect;
 
+// ── Autopilot founder-scoped pending actions (Elite Vision H1 — execution seam) ─
+// The witnessed-send surface for AUTOPILOT actions. When a dispatched agent
+// drafts a customer-facing action (send_email, apply_refund, …) and calls the
+// hand, the executor FREEZES it here instead of sending — bound to the hand name
+// + frozen args + a sha256 content hash + a 24h expiry. The founder approves it
+// in /decisions; approval re-verifies the hash and fires executeHandWitnessed
+// exactly once (idempotent claim). This is the founder-scoped analogue of the
+// org-scoped approvalKernel/pending_actions — same safety contract, different
+// approver (the founder/platform, not a customer org).
+export const autopilotPendingActions = pgTable("autopilot_pending_actions", {
+  id: serial("id").primaryKey(),
+  handName: text("hand_name").notNull(),
+  args: jsonb("args").notNull(),
+  contentHash: text("content_hash").notNull(),
+  domain: text("domain"),
+  /** Human-readable one-liner of what approval will do (for the /decisions card). */
+  summary: text("summary"),
+  /** The dispatch that drafted this, for the glass-box trace. */
+  sourceDispatchId: integer("source_dispatch_id"),
+  status: text("status").notNull().default("pending"), // pending | approved | rejected | executed | expired
+  expiresAt: timestamp("expires_at"),
+  approvedBy: text("approved_by"),
+  executedAt: timestamp("executed_at"),
+  resultSummary: jsonb("result_summary"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  statusIdx: index("autopilot_pending_actions_status_idx").on(t.status, t.createdAt),
+  dedupIdx: index("autopilot_pending_actions_dedup_idx").on(t.handName, t.contentHash, t.status),
+}));
+export type AutopilotPendingAction = typeof autopilotPendingActions.$inferSelect;
+
+// ── Autopilot witnessed-send audit (Elite Vision H1) ────────────────────────
+// Append-only record of every autopilot action the founder approved + that
+// executed. INSERT-only by contract (no UPDATE path), mirroring pax_sends.
+export const autopilotSends = pgTable("autopilot_sends", {
+  id: serial("id").primaryKey(),
+  pendingActionId: integer("pending_action_id"),
+  handName: text("hand_name").notNull(),
+  domain: text("domain"),
+  approvedBy: text("approved_by"),
+  contentHash: text("content_hash"),
+  sentAt: timestamp("sent_at").defaultNow(),
+});
+export type AutopilotSend = typeof autopilotSends.$inferSelect;
+
 // ── Today decision-queue resolution state (Maren CPO #2) ────────────────────
 // The /today Decision Queue is DERIVED — its items are computed each request
 // from leads / deals / observations / tasks (server/routes-today.ts). There is
