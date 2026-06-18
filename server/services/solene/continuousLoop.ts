@@ -442,17 +442,27 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
         outward,
       );
       let moves = rankMoves(senses);
-      // Objective weighting (Hands P5 → brain) — order WITHIN each tier toward
-      // the domain whose numbers most need moving. Best-effort; never crosses
-      // tiers, so the safety ladder is untouched.
+      // Within-tier ordering (best-effort; never crosses tiers → safety ladder
+      // is untouched). Blends two signals:
+      //   • objective urgency (P5) — toward the numbers that most need moving;
+      //   • cross-function coordination (H3) — toward the domain with the highest
+      //     NET P&L impact, dampening a domain that would overload a stressed one
+      //     (e.g. don't push growth while support is underwater).
       try {
-        const { listObjectives, domainUrgency } = await import("../autopilot/objectives");
-        const objectives = await listObjectives(true);
-        if (objectives.length > 0) {
-          const urgency = { growth: domainUrgency(objectives, "growth"), support: domainUrgency(objectives, "support"), finance: domainUrgency(objectives, "finance"), deploy: domainUrgency(objectives, "deploy"), ops: domainUrgency(objectives, "ops") };
-          moves = applyObjectiveWeighting(moves, urgency);
-        }
-      } catch { /* objectives weighting is best-effort */ }
+        const { coordinationWeights } = await import("../autopilot/crossFunction");
+        const coord = coordinationWeights(senses);
+        let blended = { growth: coord.growth, support: coord.support, finance: coord.finance, deploy: coord.deploy, ops: coord.ops };
+        try {
+          const { listObjectives, domainUrgency } = await import("../autopilot/objectives");
+          const objectives = await listObjectives(true);
+          if (objectives.length > 0) {
+            for (const d of ["growth", "support", "finance", "deploy", "ops"] as const) {
+              blended[d] = blended[d] * domainUrgency(objectives, d);
+            }
+          }
+        } catch { /* objective urgency is best-effort */ }
+        moves = applyObjectiveWeighting(moves, blended);
+      } catch { /* within-tier weighting is best-effort */ }
       plannedTopMove = moves[0] ?? null;
       if (plannedTopMove) {
         logger.info("[continuousLoop] tick: brain plan", {
