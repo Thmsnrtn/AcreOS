@@ -344,10 +344,7 @@ const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"
 // Phase 4 of the Solene migration — new 5-door founder UI. /founder/today
 // is the founder landing page; /founder now always renders it (the legacy
 // Pulse page at founder/index.tsx is retired).
-const FounderTodayPage = React.lazy(() => import("@/pages/founder/today"));
-// The daily "letter from your company" — the Founder Autopilot North-Star
-// surface (the Narration Engine rendered as calm editorial correspondence).
-const FounderAutopilotPage = React.lazy(() => import("@/pages/founder/autopilot"));
+const FounderHomePage = React.lazy(() => import("@/pages/founder/home"));
 // "Your Voice" — set durable intents + standing orders the autopilot honors.
 const FounderVoicePage = React.lazy(() => import("@/pages/founder/voice"));
 // "The Story" — the glass-box timeline of every action + its full reasoning.
@@ -1162,19 +1159,19 @@ function Router() {
           reachable from /founder/all-tools + the command palette. Every
           variant home (/founder-dashboard, /founder/now, /founder/cockpit,
           /founder/dashboard) continues to redirect to /founder/bridge. */}
+      {/* D6 — the single fused founder home (board report + pulse strip + chat +
+          hub). The old /founder (Pulse) and /founder/autopilot (Letter) overview
+          surfaces are fused here; both now redirect to it. */}
       <Route path="/founder">
-        {() => <FounderProtectedRoute component={FounderTodayPage} />}
+        {() => <FounderProtectedRoute component={FounderHomePage} />}
       </Route>
-      {/* Phase 4 — new 5-door founder Today landing page. Direct URL
-          always resolves regardless of the feature flag; the flag only
-          controls whether /founder defaults here. */}
       <Route path="/founder/today">
-        {() => <FounderProtectedRoute component={FounderTodayPage} />}
+        {() => <Redirect to="/founder" />}
       </Route>
-      {/* The daily "letter from your company" — Founder Autopilot North-Star
-          surface. Direct URL always resolves; reachable from the founder nav. */}
+      {/* The Letter is now the fused home; the path redirects for old bookmarks.
+          The /founder/autopilot/{voice,story,control} sub-surfaces stay. */}
       <Route path="/founder/autopilot">
-        {() => <FounderProtectedRoute component={FounderAutopilotPage} />}
+        {() => <Redirect to="/founder" />}
       </Route>
       {/* "Your Voice" — durable intents + standing orders the autopilot honors. */}
       <Route path="/founder/autopilot/voice">

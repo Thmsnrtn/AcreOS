@@ -33,7 +33,7 @@ describe("founder four-door doctrine", () => {
   });
 
   it("founderDoorByHref resolves a door and null otherwise", () => {
-    expect(founderDoorByHref("/founder/autopilot")?.id).toBe("letter");
+    expect(founderDoorByHref("/founder")?.id).toBe("letter");
     expect(founderDoorByHref("/founder/nope")).toBeNull();
   });
 

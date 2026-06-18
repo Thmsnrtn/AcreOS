@@ -24,8 +24,8 @@ export const FOUNDER_DOORS: readonly FounderDoor[] = [
   {
     id: "letter",
     label: "The Letter",
-    href: "/founder/autopilot",
-    purpose: "The home. What happened, what it decided, what it needs you for, what's working. 90% of days: read and close.",
+    href: "/founder",
+    purpose: "The home (the fused board report). What happened, what it decided, what it needs you for. 90% of days: read and close.",
   },
   {
     id: "decisions",
