@@ -959,6 +959,33 @@ async function safeLoadDispatchActivity(): Promise<{
   }
 }
 
+/**
+ * Real month-recurring revenue (USD), summed from ACTIVE-subscription orgs the
+ * same way the executive dashboard does (routes.ts) — tier price from the
+ * canonical shared/billing/tier-pricing, yearly normalized to per-month. This
+ * is the headline vital sign on the founder home + the brain's `senses.mrr`; it
+ * was hardcoded to 0 (re-audit it.3 "actively broken"), so every metric that
+ * read it showed $0 regardless of real revenue. Self-contained + best-effort.
+ */
+async function computeRealMrrUsd(): Promise<number> {
+  const { organizations } = await import("@shared/schema");
+  const { monthlyRevenueCentsFor } = await import("@shared/billing/tier-pricing");
+  const { eq } = await import("drizzle-orm");
+  const activeOrgs = await db
+    .select({
+      tier: organizations.subscriptionTier,
+      interval: organizations.billingInterval,
+    })
+    .from(organizations)
+    .where(eq(organizations.subscriptionStatus, "active"))
+    .limit(10000);
+  const cents = activeOrgs.reduce((total, org) => {
+    const interval = org.interval === "yearly" ? "yearly" : "monthly";
+    return total + monthlyRevenueCentsFor(org.tier, interval);
+  }, 0);
+  return Math.round(cents) / 100;
+}
+
 async function safeLoadOnboardingFunnel(): Promise<{
   trials: number;
   mrr: number;
@@ -973,13 +1000,31 @@ async function safeLoadOnboardingFunnel(): Promise<{
       0,
       summary.totalSignups - summary.totalFirstValue,
     );
-    return { trials, mrr: DEFAULT_MRR };
+    // MRR is computed independently of the funnel so a funnel error can't zero
+    // it (and vice versa) — best-effort, defaults to 0 only on its own failure.
+    let mrr = DEFAULT_MRR;
+    try {
+      mrr = await computeRealMrrUsd();
+    } catch (mrrErr) {
+      logger.warn(
+        "[continuousLoop] real MRR compute failed; using 0",
+        mrrErr instanceof Error ? mrrErr : undefined,
+      );
+    }
+    return { trials, mrr };
   } catch (err) {
     logger.warn(
       "[continuousLoop] safeLoadOnboardingFunnel failed",
       err instanceof Error ? err : undefined,
     );
-    return { trials: 0, mrr: 0 };
+    // Even if the funnel read fails, still try for a real MRR number.
+    let mrr = 0;
+    try {
+      mrr = await computeRealMrrUsd();
+    } catch {
+      /* leave 0 */
+    }
+    return { trials: 0, mrr };
   }
 }
 
