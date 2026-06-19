@@ -61,4 +61,17 @@ describe("boardReport — composition (H4)", () => {
     expect(r).toContain("Calibration");
     expect(r).toContain("Objectives: 40%");
   });
+
+  it("surfaces the decision-quality + self-marketing lines so the founder can watch it calibrate", () => {
+    const r = composeBoardReport({
+      topMove: null,
+      decisionQuality: "Decision quality: 78% hit-rate over 42 resolved.",
+      marketing: "Self-marketing: 4 free channel(s) running · paid still locked.",
+      pendingCount: 0,
+      attention: attentionLoad(0, 0),
+    });
+    expect(r).toContain("78% hit-rate");
+    expect(r).toContain("Self-marketing");
+    expect(r).toContain("How it's tracking");
+  });
 });

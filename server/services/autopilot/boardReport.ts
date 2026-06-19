@@ -21,6 +21,12 @@ export interface BoardReportInput {
   immune?: string | null;
   /** Owned-growth funnel from growthEngine.growthFunnelLine. */
   growth?: string | null;
+  /** Decision-quality from decisionEval.decisionEvalLine — lets the founder
+   *  WATCH the brain's judgment calibrate over time (E1). */
+  decisionQuality?: string | null;
+  /** Self-marketing posture from marketingChannels.marketingPostureLine —
+   *  free-first/paid-when-proven status. */
+  marketing?: string | null;
   /** Actions frozen in the /decisions queue awaiting the founder's tap. */
   pendingCount: number;
   /** Founder-attention calibration over the window. */
@@ -38,7 +44,7 @@ export function composeBoardReport(input: BoardReportInput): string {
   lines.push("");
 
   // How it's tracking.
-  const tracking = [input.okr, input.growth, input.reflexes, input.immune].filter(Boolean) as string[];
+  const tracking = [input.okr, input.growth, input.marketing, input.decisionQuality, input.reflexes, input.immune].filter(Boolean) as string[];
   if (tracking.length > 0) {
     lines.push("## How it's tracking");
     for (const t of tracking) lines.push(`- ${t}`);
