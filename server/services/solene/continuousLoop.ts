@@ -474,6 +474,22 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           dispatchBacklog,
         });
 
+        // Self-marketing posture (free-first / paid-when-proven) — the autopilot
+        // reasons about its OWN marketing each tick. Best-effort + logged; the
+        // discipline keeps paid LOCKED until the free funnel is proven. Wiring
+        // the per-domain action ladders into their per-instance handlers
+        // (support/finance) is the follow-on; growth fits the aggregate tick.
+        try {
+          const { readMarketingState, eligibleMarketingChannels, marketingPostureLine } = await import("../autopilot/marketingChannels");
+          const mkt = await readMarketingState();
+          logger.info("[continuousLoop] tick: self-marketing posture", {
+            posture: marketingPostureLine(mkt),
+            eligibleChannels: eligibleMarketingChannels(mkt).map((c) => c.id),
+          });
+        } catch {
+          /* self-marketing posture is best-effort */
+        }
+
         // ── The brain ACTS (only when the hands are switched on) ───────────
         // Route the top move through the full governance spine. Safe even when
         // enabled: at OBSERVE the autonomy gate blocks → "suppressed", nothing

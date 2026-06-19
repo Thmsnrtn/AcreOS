@@ -155,6 +155,39 @@ export function eligibleMarketingChannels(state: MarketingState): MarketingChann
   return evaluateMarketingChannels(state).filter((d) => d.eligible).map((d) => d.channel);
 }
 
+/**
+ * Best-effort read of the live marketing state from real switches/providers, so
+ * the loop can consult the self-marketing posture each tick. Never throws —
+ * every source degrades to its safe-off default (publish off, nothing
+ * attributed, no paid provider, paid locked). Pre-customer this honestly reports
+ * "free funnel not yet proven", which is correct.
+ */
+export async function readMarketingState(): Promise<MarketingState> {
+  let publishEnabled = false;
+  let paidProviderAvailable = false;
+  try {
+    const { isPublishEnabled } = await import("./settings");
+    publishEnabled = await isPublishEnabled();
+  } catch {
+    /* safe-off default */
+  }
+  try {
+    const { hasAdProvider } = await import("./adProvider");
+    paidProviderAvailable = hasAdProvider("meta") || hasAdProvider("tiktok");
+  } catch {
+    /* dormant by absence */
+  }
+  // Attributed conversion + earned autonomy + proven CAC are 0/false until real
+  // outcomes accrue (needs customers). Conservative defaults keep paid LOCKED.
+  return {
+    publishEnabled,
+    attributedSignups: 0,
+    growthAutonomyEarned: false,
+    paidProviderAvailable,
+    cacProven: false,
+  };
+}
+
 /** One-line self-marketing posture for the daily letter. Pure. */
 export function marketingPostureLine(state: MarketingState): string {
   const eligible = eligibleMarketingChannels(state);
