@@ -551,16 +551,24 @@ const UNTRUSTED_HOME = path.join(os.tmpdir(), "solene-untrusted-home");
 const UNTRUSTED_BASH_DENY: { name: string; rx: RegExp }[] = [
   {
     name: "deploy-or-push",
-    rx: /\b(git\s+push|gh\s+(auth|release|secret|api|repo|workflow)|fly(ctl)?\s+(deploy|secrets|ssh|apps)|flyctl|npm\s+publish|wrangler\s+(deploy|publish)|vercel\s+(deploy|--prod))\b/i,
+    rx: /\b(git\s+(-C\s+\S+\s+)?push|gh\s+(auth|release|secret|api|repo|workflow)|fly(ctl)?\s+(deploy|secrets|ssh|apps)|flyctl|npm\s+publish|wrangler\s+(deploy|publish)|vercel\s+(deploy|--prod))\b/i,
   },
   {
+    // Secret-file reads, including the `$(<file)` / `< file` / redirect forms
+    // (re-audit it.4). Quote-splice evasions can't be regex'd reliably — the
+    // output sanitizer is the true backstop for those.
     name: "secret-file-read",
-    rx: /(^|[\s'"=/])(\.env(\.[\w.-]*)?|\.netrc|\.pgpass|\.git-credentials|id_(rsa|ed25519|ecdsa|dsa)|credentials(\.[\w.-]*)?)(\s|$|['"])/i,
+    rx: /(^|[\s'"=/<(])(\.env(\.[\w.-]*)?|\.netrc|\.pgpass|\.git-credentials|id_(rsa|ed25519|ecdsa|dsa)|credentials(\.[\w.-]*)?)(\s|$|['")])/i,
   },
   {
+    // Home credential stores by absolute path too. Includes macOS /Users/<u>
+    // (re-audit it.4 — was dev-box-only gap; prod Linux /root,/home were covered).
     name: "home-credential-store",
-    rx: /(~|\$HOME|\/root|\/home\/[\w.-]+)\/?\.(config\/gh|fly|aws|ssh|netrc|docker|npmrc|git-credentials)/i,
+    rx: /(~|\$HOME|\/root|\/home\/[\w.-]+|\/Users\/[\w.-]+)\/?\.(config\/gh|fly|aws|ssh|netrc|docker|npmrc|git-credentials)/i,
   },
+  // Encoders that would launder a secret past the output sanitizer (re-audit
+  // it.4: `... | base64` evades redaction). Block on the untrusted path.
+  { name: "output-encoder", rx: /\b(base64|base32|xxd|hexdump|uuencode|openssl\s+(base64|enc))\b/i },
   { name: "curl-pipe-to-shell", rx: /\b(curl|wget)\b[^|;&]*[|]\s*(sudo\s+)?(sh|bash|zsh)\b/i },
 ];
 
@@ -576,8 +584,14 @@ function screenUntrustedBash(cmd: string): { ok: true } | { ok: false; rule: str
  * env-dump like `cat .env` is redacted to `DATABASE_URL=[REDACTED]`. */
 const OUTPUT_REDACTIONS: { rx: RegExp; replace: string }[] = [
   { rx: /\b(?:sk|pk|rk)_(?:test|live)?_?[A-Za-z0-9]{8,}\b/g, replace: "[REDACTED]" },
-  { rx: /\bghp_[A-Za-z0-9]{8,}\b/g, replace: "[REDACTED]" },
+  // Anthropic keys are sk-ant- (hyphen), distinct from Stripe's sk_ (re-audit it.4).
+  { rx: /\bsk-ant-[A-Za-z0-9_-]{8,}\b/g, replace: "[REDACTED]" },
+  // GitHub: classic PAT (ghp_), fine-grained (github_pat_), AND OAuth/server/user
+  // tokens gho_/ghs_/ghu_/ghr_ (re-audit it.4 — gh hosts.yml oauth_token).
+  { rx: /\bgh[posur]_[A-Za-z0-9_]{8,}\b/g, replace: "[REDACTED]" },
   { rx: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, replace: "[REDACTED]" },
+  // Fly.io tokens (fm1_/fm2_/FlyV1) (re-audit it.4).
+  { rx: /\b(fm[12]_[A-Za-z0-9_-]{8,}|FlyV1\s+[A-Za-z0-9_-]{8,})\b/g, replace: "[REDACTED]" },
   { rx: /\bBearer\s+[A-Za-z0-9._\-+/=]{8,}/g, replace: "Bearer [REDACTED]" },
   { rx: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, replace: "[REDACTED]" },
   { rx: /\bxox[abpsr]-[A-Za-z0-9-]{10,}\b/g, replace: "[REDACTED]" },
@@ -587,6 +601,11 @@ const OUTPUT_REDACTIONS: { rx: RegExp; replace: string }[] = [
   {
     rx: /\b([A-Za-z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|DSN|WEBHOOK)[A-Za-z0-9_]*)\s*=\s*("?[^\s"']+"?)/gi,
     replace: "$1=[REDACTED]",
+  },
+  // Same, but YAML/JSON `key: value` form (re-audit it.4 — gh/fly config files).
+  {
+    rx: /(["']?[A-Za-z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|DSN|WEBHOOK|OAUTH)[A-Za-z0-9_]*["']?)\s*:\s*("?[^\s"',}]+"?)/gi,
+    replace: "$1: [REDACTED]",
   },
 ];
 
@@ -790,13 +809,30 @@ async function toolFileRead(
     };
   }
   const buf = await fs.readFile(abs);
-  const content = enc === "base64" ? buf.toString("base64") : buf.toString("utf8");
+  if (enc === "base64") {
+    // base64 output can't be regex-redacted (re-audit it.4). Decode-check: if
+    // the bytes contain a credential, REFUSE rather than launder it past the
+    // sanitizer. (Secret-NAMED files are already blocked above; this catches a
+    // token embedded in an otherwise-innocent file requested as base64.)
+    const asText = buf.toString("utf8");
+    if (sanitizeToolOutput(asText) !== asText) {
+      return {
+        success: false,
+        output:
+          `[REFUSED] '${p}' contains credential-shaped content; refusing a raw ` +
+          `base64 read (which can't be redacted). Re-read as utf8 to get a ` +
+          `sanitized view.`,
+        durationMs: Date.now() - started,
+      };
+    }
+    return { success: true, output: buf.toString("base64"), durationMs: Date.now() - started };
+  }
   return {
     success: true,
     // Redact credential-shaped values as a backstop (the secret-file block
     // above stops the obvious cases; this covers a token embedded in a
     // non-secret-named file).
-    output: enc === "base64" ? content : sanitizeToolOutput(content),
+    output: sanitizeToolOutput(buf.toString("utf8")),
     durationMs: Date.now() - started,
   };
 }
