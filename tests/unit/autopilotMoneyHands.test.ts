@@ -16,22 +16,28 @@ import { REFUND_CEILING_CENTS } from "../../server/services/autopilot/hands/appl
 describe("money limb — dunning_action (reversible, autonomy-gated)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("is registered as finance domain, NOT approval-required (can earn autonomy)", () => {
+  it("is finance domain + WITNESSED (money never moves without a tap — elite-audit P0)", () => {
     const h = getHand("dunning_action");
     expect(h?.domain).toBe("finance");
-    expect(h?.requiresApproval).toBe(false);
-    expect(h?.isCustomerFacing).toBe(false);
+    expect(h?.requiresApproval).toBe(true);
   });
 
-  it("retries a failed invoice via the existing dunning service", async () => {
-    dunningMock.retryPayment.mockResolvedValue({ success: true, message: "retry scheduled" });
+  it("the executor refuses a direct model call (no autonomous money)", async () => {
     const r = await executeDispatchTool("dunning_action", { event_id: 42, action: "retry" });
+    expect(r.success).toBe(false);
+    expect(r.output).toContain("WITNESSED-SEND");
+    expect(dunningMock.retryPayment).not.toHaveBeenCalled();
+  });
+
+  it("retries a failed invoice via the witnessed path", async () => {
+    dunningMock.retryPayment.mockResolvedValue({ success: true, message: "retry scheduled" });
+    const r = await executeHandWitnessed("dunning_action", { event_id: 42, action: "retry" }, "founder_1");
     expect(r.success).toBe(true);
     expect(dunningMock.retryPayment).toHaveBeenCalledWith(42);
   });
 
-  it("rejects an unknown action", async () => {
-    const r = await executeDispatchTool("dunning_action", { event_id: 1, action: "delete" });
+  it("rejects an unknown action (handler validation, via the witnessed path)", async () => {
+    const r = await executeHandWitnessed("dunning_action", { event_id: 1, action: "delete" }, "founder_1");
     expect(r.success).toBe(false);
     expect(dunningMock.retryPayment).not.toHaveBeenCalled();
   });

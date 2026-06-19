@@ -948,7 +948,14 @@ export async function runDispatch(
       const toolResults: any[] = [];
       for (const tu of toolUses) {
         if (timedOut) break;
-        const exec = await executeDispatchTool(tu.name, tu.input);
+        // SECURITY (elite-audit P0): worker-run dispatches are autonomous agents —
+        // their bash runs with a SECRET-SCRUBBED env (no prod creds), so they
+        // cannot deploy / exfiltrate / move money outside the witnessed-send hands.
+        const exec = await executeDispatchTool(tu.name, tu.input, {
+          dispatchId,
+          agentRole: row.agentRole,
+          untrusted: true,
+        });
         await appendTranscript(transcriptPath, {
           event: "tool_use",
           turn,

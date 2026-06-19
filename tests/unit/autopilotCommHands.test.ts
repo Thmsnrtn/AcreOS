@@ -34,6 +34,18 @@ import {
 import { isQuietHour } from "../../server/services/autopilot/hands/send-sms";
 import { executeDispatchTool } from "../../server/services/solene/dispatchToolExecutor";
 
+describe("safety invariant — money + customer-facing hands MUST be witnessed (elite-audit P0)", () => {
+  it("every finance-domain OR customer-facing registered hand requires approval", () => {
+    for (const h of listHandSpecs()) {
+      if (h.domain === "finance" || h.isCustomerFacing) {
+        expect(h.requiresApproval, `${h.name} (domain=${h.domain}, customerFacing=${h.isCustomerFacing}) MUST requiresApproval`).toBe(true);
+      }
+    }
+    // sanity: the registry actually has hands to check.
+    expect(listHandSpecs().length).toBeGreaterThanOrEqual(6);
+  });
+});
+
 describe("communication limb — registration + governance", () => {
   it("registers all four comm hands, each customer-facing + approval-required", () => {
     for (const name of ["send_email", "send_sms", "send_push", "send_letter"]) {

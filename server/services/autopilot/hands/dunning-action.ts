@@ -55,7 +55,12 @@ registerHand({
   },
   domain: "finance",
   isCustomerFacing: false,
-  requiresApproval: false,
+  // SECURITY (elite-audit P0): a retry re-charges a customer's card — a money
+  // action. It now requires the founder's tap so it flows through the audited
+  // witnessed path (autopilot_sends), satisfying the "finance hand ⇒ witnessed"
+  // invariant. (It can earn back autonomy later behind a real audit + daily
+  // spend envelope; until then, money never moves without a tap.)
+  requiresApproval: true,
   surface: "generic",
   handler,
 });

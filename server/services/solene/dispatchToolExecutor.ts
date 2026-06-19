@@ -459,6 +459,32 @@ export interface ToolExecutionResult {
 export interface DispatchToolContext {
   dispatchId?: number | null;
   agentRole?: string;
+  /**
+   * SECURITY (elite-audit P0): when true, the dispatch is an autonomous,
+   * worker-run agent (not the founder's own interactive session). Its `bash`
+   * runs with a SECRET-SCRUBBED environment, so it cannot use prod credentials
+   * (Stripe / DB / deploy token / encryption key) to deploy, exfiltrate, or move
+   * money outside the witnessed-send hands. The worker passes this true for
+   * every dispatch it runs.
+   */
+  untrusted?: boolean;
+}
+
+/**
+ * Remove every credential-shaped variable from an environment before handing it
+ * to an autonomous agent's shell. Denylist by pattern (keeps PATH/HOME/LANG etc.
+ * so git/node/npm still work). Closes the single largest blast-radius gap: most
+ * exfil/deploy/money paths a dispatched model could take depend on a secret
+ * living in process.env, and this strips them.
+ */
+const SECRET_KEY_PATTERN = /(KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|DATABASE_URL|DB_URL|CONN(ECTION)?_STRING|STRIPE|ANTHROPIC|OPENAI|OPENROUTER|AWS_|GCP_|GOOGLE_|TWILIO|SENDGRID|LOB_|REGRID|SENTRY|DSN|WEBHOOK|ENCRYPT|SESSION_SECRET|JWT|VAPID|FLY_API|GH_TOKEN|GITHUB_TOKEN|DEPLOY)/i;
+
+export function scrubSecretsFromEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (!SECRET_KEY_PATTERN.test(k)) out[k] = v;
+  }
+  return out;
 }
 
 export async function executeDispatchTool(
@@ -497,13 +523,13 @@ export async function executeDispatchTool(
       case "file_list":
         return await toolFileList(input, started);
       case "bash":
-        return await toolBash(input, started);
+        return await toolBash(input, started, ctx.untrusted);
       case "git_status":
-        return await toolGitStatus(started);
+        return await toolGitStatus(started, ctx.untrusted);
       case "git_diff":
-        return await toolGitDiff(input, started);
+        return await toolGitDiff(input, started, ctx.untrusted);
       case "git_commit":
-        return await toolGitCommit(input, started);
+        return await toolGitCommit(input, started, ctx.untrusted);
       // ──── L1.5 dormant-service wire-ins ────
       case "send_message_to_agent":
         return await toolSendMessageToAgent(input, ctx, started);
@@ -695,6 +721,7 @@ async function toolFileList(
 async function toolBash(
   input: Record<string, unknown>,
   started: number,
+  untrusted = false,
 ): Promise<ToolExecutionResult> {
   const cmd = String(input.command ?? "");
   if (!cmd.trim()) {
@@ -707,10 +734,11 @@ async function toolBash(
   );
 
   return await new Promise<ToolExecutionResult>((resolve) => {
+    const bashEnv = untrusted ? scrubSecretsFromEnv(process.env) : { ...process.env };
     const child = spawn("bash", ["-lc", cmd], {
       cwd: PROJECT_ROOT,
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env },
+      env: bashEnv,
     });
     let stdout = "";
     let stderr = "";
@@ -776,23 +804,25 @@ async function toolBash(
   });
 }
 
-async function toolGitStatus(started: number): Promise<ToolExecutionResult> {
-  return await toolBash({ command: "git status --short" }, started);
+async function toolGitStatus(started: number, untrusted = false): Promise<ToolExecutionResult> {
+  return await toolBash({ command: "git status --short" }, started, untrusted);
 }
 
 async function toolGitDiff(
   input: Record<string, unknown>,
   started: number,
+  untrusted = false,
 ): Promise<ToolExecutionResult> {
   const staged = input.staged === true ? "--staged " : "";
   const pathArg = input.path ? `-- ${shellEscape(String(input.path))}` : "";
   const cmd = `git diff ${staged}${pathArg}`.trim();
-  return await toolBash({ command: cmd }, started);
+  return await toolBash({ command: cmd }, started, untrusted);
 }
 
 async function toolGitCommit(
   input: Record<string, unknown>,
   started: number,
+  untrusted = false,
 ): Promise<ToolExecutionResult> {
   const message = String(input.message ?? "").trim();
   if (!message) {
@@ -823,7 +853,7 @@ async function toolGitCommit(
   // Quote message with a heredoc to preserve newlines.
   const commitCmd = `git commit -m "$(cat <<'__SOLENE_DISPATCH_EOF__'\n${message}\n__SOLENE_DISPATCH_EOF__\n)"`;
   const combined = `${addCmd} && ${commitCmd} && git rev-parse HEAD`;
-  const r = await toolBash({ command: combined, timeout_ms: 60_000 }, started);
+  const r = await toolBash({ command: combined, timeout_ms: 60_000 }, started, untrusted);
   let commitSha: string | undefined;
   if (r.success) {
     // Last line of stdout (between "--- stdout ---" + end) should be the SHA.
