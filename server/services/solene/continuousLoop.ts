@@ -454,7 +454,17 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
         let blended = { growth: coord.growth, support: coord.support, finance: coord.finance, deploy: coord.deploy, ops: coord.ops };
         try {
           const { listObjectives, domainUrgency } = await import("../autopilot/objectives");
-          const objectives = await listObjectives(true);
+          let objectives = await listObjectives(true);
+          // Audit-fix (CEO finding): the objectives table was empty at runtime
+          // because seedGrowthObjectives was never called → domainUrgency returned
+          // a neutral 1.0 for everything and the "move these numbers" weighting did
+          // nothing. Seed the default acquisition funnel on first sight (idempotent
+          // upsert), so the brain actually has goals to steer toward.
+          if (objectives.length === 0) {
+            const { seedGrowthObjectives } = await import("../autopilot/growthEngine");
+            await seedGrowthObjectives();
+            objectives = await listObjectives(true);
+          }
           if (objectives.length > 0) {
             for (const d of ["growth", "support", "finance", "deploy", "ops"] as const) {
               blended[d] = blended[d] * domainUrgency(objectives, d);
