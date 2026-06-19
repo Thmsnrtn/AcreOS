@@ -19,18 +19,25 @@ export interface SupportCtx {
   aiConfidence: number;
   reopened: boolean;
   complexity: "low" | "high";
+  /** The auto-resolve confidence gate. Defaults to the typed 0.8, but the caller
+   *  can pass a LEARNED threshold (learnedGates.learnedAutoResolveThreshold) so
+   *  the gate self-calibrates from real confidence→outcome history (Leap 1). */
+  autoResolveThreshold?: number;
 }
+
+/** The typed default the auto-resolve gate falls back to. */
+export const DEFAULT_AUTO_RESOLVE_THRESHOLD = 0.8;
 
 export const SUPPORT_LADDER: ReadonlyArray<LadderRung<SupportCtx>> = [
   {
     id: "auto_resolve", label: "AI auto-resolve", rung: 0, cost: "free", reversible: true, requiresEarnedAutonomy: false,
     available: () => true,
-    justified: (c) => c.aiConfidence >= 0.8 && c.complexity === "low" && !c.reopened,
+    justified: (c) => c.aiConfidence >= (c.autoResolveThreshold ?? DEFAULT_AUTO_RESOLVE_THRESHOLD) && c.complexity === "low" && !c.reopened,
   },
   {
     id: "drafted_reply", label: "Draft a reply for the founder's tap", rung: 1, cost: "cheap", reversible: true, requiresEarnedAutonomy: true,
     available: () => true,
-    justified: (c) => c.aiConfidence < 0.8 && !c.reopened,
+    justified: (c) => c.aiConfidence < (c.autoResolveThreshold ?? DEFAULT_AUTO_RESOLVE_THRESHOLD) && !c.reopened,
   },
   {
     id: "escalate_founder", label: "Escalate to the founder", rung: 2, cost: "costly", reversible: true, requiresEarnedAutonomy: false,
