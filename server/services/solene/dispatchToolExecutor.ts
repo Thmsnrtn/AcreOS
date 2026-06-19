@@ -37,8 +37,10 @@
 
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { promises as fs } from "node:fs";
+import os from "node:os";
+import { promises as fs, mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { logger } from "../../utils/logger";
 import { screenToolCall } from "./constitutionalGuard";
 import { sendAgentMessage, readInbox } from "./agentMessages";
 import { recordAgentDecision } from "./agentIdentity";
@@ -525,6 +527,75 @@ function isSecretShapedPath(relPath: string): boolean {
   return SECRET_FILE_PATTERN.test(relPath.replace(/\\/g, "/"));
 }
 
+/**
+ * ITERATION 3 (re-audit): the env-scrub only removes secrets from env VARS — it
+ * does nothing about secret FILES on disk. An untrusted shell could still
+ * `cat .env.local`, read `~/.config/gh/hosts.yml` / `~/.fly/config.yml` /
+ * `~/.aws/credentials`, or `git push` / `fly deploy` to prod using on-disk
+ * tokens. We close that with THREE layered controls on the untrusted bash path:
+ *
+ *   (1) HOME isolation — point HOME at a throwaway dir so home-rooted credential
+ *       stores (~/.config/gh, ~/.fly, ~/.aws, ~/.netrc, ~/.git-credentials) are
+ *       simply not there. Also drop redirect vars (XDG_CONFIG_HOME, GIT_ASKPASS,
+ *       GIT_CONFIG*) that could point back at the real ones.
+ *   (2) command screen — refuse deploy/push and secret-file reads (regex is
+ *       defense-in-depth; a determined injection can obfuscate, hence the other
+ *       two layers).
+ *   (3) output sanitization — redact credential-shaped values from ALL bash +
+ *       file output before it reaches the model/transcript, so even a secret
+ *       that slips through never lands in context. (Applied on every path, not
+ *       just untrusted — the credential-handling rule is universal.)
+ */
+const UNTRUSTED_HOME = path.join(os.tmpdir(), "solene-untrusted-home");
+
+const UNTRUSTED_BASH_DENY: { name: string; rx: RegExp }[] = [
+  {
+    name: "deploy-or-push",
+    rx: /\b(git\s+push|gh\s+(auth|release|secret|api|repo|workflow)|fly(ctl)?\s+(deploy|secrets|ssh|apps)|flyctl|npm\s+publish|wrangler\s+(deploy|publish)|vercel\s+(deploy|--prod))\b/i,
+  },
+  {
+    name: "secret-file-read",
+    rx: /(^|[\s'"=/])(\.env(\.[\w.-]*)?|\.netrc|\.pgpass|\.git-credentials|id_(rsa|ed25519|ecdsa|dsa)|credentials(\.[\w.-]*)?)(\s|$|['"])/i,
+  },
+  {
+    name: "home-credential-store",
+    rx: /(~|\$HOME|\/root|\/home\/[\w.-]+)\/?\.(config\/gh|fly|aws|ssh|netrc|docker|npmrc|git-credentials)/i,
+  },
+  { name: "curl-pipe-to-shell", rx: /\b(curl|wget)\b[^|;&]*[|]\s*(sudo\s+)?(sh|bash|zsh)\b/i },
+];
+
+function screenUntrustedBash(cmd: string): { ok: true } | { ok: false; rule: string } {
+  for (const { name, rx } of UNTRUSTED_BASH_DENY) {
+    if (rx.test(cmd)) return { ok: false, rule: name };
+  }
+  return { ok: true };
+}
+
+/** Credential-shaped value patterns redacted from tool output (no truncation —
+ * the 50 KB stream cap already bounds size). Pairs key=value patterns so an
+ * env-dump like `cat .env` is redacted to `DATABASE_URL=[REDACTED]`. */
+const OUTPUT_REDACTIONS: { rx: RegExp; replace: string }[] = [
+  { rx: /\b(?:sk|pk|rk)_(?:test|live)?_?[A-Za-z0-9]{8,}\b/g, replace: "[REDACTED]" },
+  { rx: /\bghp_[A-Za-z0-9]{8,}\b/g, replace: "[REDACTED]" },
+  { rx: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, replace: "[REDACTED]" },
+  { rx: /\bBearer\s+[A-Za-z0-9._\-+/=]{8,}/g, replace: "Bearer [REDACTED]" },
+  { rx: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, replace: "[REDACTED]" },
+  { rx: /\bxox[abpsr]-[A-Za-z0-9-]{10,}\b/g, replace: "[REDACTED]" },
+  { rx: /\beyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\b/g, replace: "[REDACTED]" },
+  { rx: /\b(postgres(?:ql)?|redis|mysql|mongodb(?:\+srv)?):\/\/[^\s'"]+/gi, replace: "$1://[REDACTED]" },
+  // generic KEY=secret in env-dump style output — preserve the key, redact value.
+  {
+    rx: /\b([A-Za-z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|DSN|WEBHOOK)[A-Za-z0-9_]*)\s*=\s*("?[^\s"']+"?)/gi,
+    replace: "$1=[REDACTED]",
+  },
+];
+
+export function sanitizeToolOutput(s: string): string {
+  let out = String(s ?? "");
+  for (const { rx, replace } of OUTPUT_REDACTIONS) out = out.replace(rx, replace);
+  return out;
+}
+
 export async function executeDispatchTool(
   toolName: string,
   input: Record<string, unknown>,
@@ -722,7 +793,10 @@ async function toolFileRead(
   const content = enc === "base64" ? buf.toString("base64") : buf.toString("utf8");
   return {
     success: true,
-    output: content,
+    // Redact credential-shaped values as a backstop (the secret-file block
+    // above stops the obvious cases; this covers a token embedded in a
+    // non-secret-named file).
+    output: enc === "base64" ? content : sanitizeToolOutput(content),
     durationMs: Date.now() - started,
   };
 }
@@ -778,6 +852,26 @@ async function toolBash(
   if (!cmd.trim()) {
     return { success: false, output: "missing 'command'", durationMs: Date.now() - started };
   }
+  // SECURITY (re-audit it.3): on the untrusted (autonomous) path, refuse
+  // deploy/push + secret-file-read commands. The env-scrub doesn't stop these;
+  // this + HOME isolation + output sanitization do.
+  if (untrusted) {
+    const screen = screenUntrustedBash(cmd);
+    if (!screen.ok) {
+      logger.warn(
+        `[dispatchToolExecutor] untrusted bash REFUSED (rule=${screen.rule})`,
+        { metadata: { rule: screen.rule } },
+      );
+      return {
+        success: false,
+        output:
+          `[REFUSED] This command is not permitted for an autonomous dispatch ` +
+          `(rule: ${screen.rule}) — it would read secret material or deploy to ` +
+          `production. Refusing.`,
+        durationMs: Date.now() - started,
+      };
+    }
+  }
   const rawTimeout = Number(input.timeout_ms ?? BASH_DEFAULT_TIMEOUT_MS);
   const timeoutMs = Math.min(
     BASH_MAX_TIMEOUT_MS,
@@ -785,7 +879,26 @@ async function toolBash(
   );
 
   return await new Promise<ToolExecutionResult>((resolve) => {
-    const bashEnv = untrusted ? scrubSecretsFromEnv(process.env) : { ...process.env };
+    let bashEnv: NodeJS.ProcessEnv;
+    if (untrusted) {
+      // Scrubbed env + HOME isolation so home-rooted credential stores
+      // (~/.config/gh, ~/.fly, ~/.aws, ~/.netrc, ~/.git-credentials) are unreachable.
+      bashEnv = scrubSecretsFromEnv(process.env);
+      bashEnv.HOME = UNTRUSTED_HOME;
+      delete bashEnv.XDG_CONFIG_HOME;
+      delete bashEnv.GIT_ASKPASS;
+      delete bashEnv.GIT_CONFIG;
+      delete bashEnv.GIT_CONFIG_GLOBAL;
+      delete bashEnv.GIT_CONFIG_SYSTEM;
+      try {
+        // Best-effort: ensure the throwaway HOME exists so tools that expect it don't error.
+        mkdirSync(UNTRUSTED_HOME, { recursive: true });
+      } catch {
+        /* non-fatal */
+      }
+    } else {
+      bashEnv = { ...process.env };
+    }
     const child = spawn("bash", ["-lc", cmd], {
       cwd: PROJECT_ROOT,
       stdio: ["ignore", "pipe", "pipe"],
@@ -837,8 +950,10 @@ async function toolBash(
         .filter(Boolean)
         .join("\n");
       resolve({
+        // Backstop: redact any credential-shaped value before it reaches the
+        // model/transcript (covers `cat .env`, `env`, ~/.aws/credentials, etc.).
         success: code === 0,
-        output: out,
+        output: sanitizeToolOutput(out),
         truncated,
         durationMs: Date.now() - started,
       });

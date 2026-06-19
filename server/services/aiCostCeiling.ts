@@ -152,7 +152,9 @@ async function sumPlatformCostCentsSince(sinceMs: number): Promise<number> {
  *
  * Bypass: `AI_COST_CEILING_BYPASS=1`.
  */
-export async function assertWithinPlatformCostCeiling(): Promise<void> {
+export async function assertWithinPlatformCostCeiling(opts?: {
+  failClosed?: boolean;
+}): Promise<void> {
   if (process.env.AI_COST_CEILING_BYPASS === "1") return;
 
   const ceilingCents = getPlatformDailyCeilingCents();
@@ -165,7 +167,17 @@ export async function assertWithinPlatformCostCeiling(): Promise<void> {
     }
   } catch (err) {
     if (err instanceof AiCostCeilingExceededError) throw err;
-    // Telemetry read failure is fail-open; log + proceed.
+    // Posture split (re-audit it.3): CUSTOMER-facing callers fail OPEN (a DB
+    // hiccup must not brick a paying customer's AI). AUTONOMOUS callers (the
+    // autopilot/dispatch worker) pass failClosed → we refuse rather than let a
+    // sustained telemetry-read outage silently unbound platform LLM spend.
+    if (opts?.failClosed) {
+      logger.error(
+        "[aiCostCeiling] platform ceiling unreadable; failing CLOSED for autonomous caller",
+        err instanceof Error ? err : undefined,
+      );
+      throw new AiCostCeilingExceededError(0, "daily", -1, ceilingCents);
+    }
     logger.warn(
       "[aiCostCeiling] platform ceiling check failed; falling open",
       err instanceof Error ? err : undefined,
@@ -181,11 +193,16 @@ export async function assertWithinPlatformCostCeiling(): Promise<void> {
  *   - orgId === null (platform-internal calls) → no-op
  *   - process.env.AI_COST_CEILING_BYPASS === "1" (dev-loop only)
  */
-export async function assertWithinAiCostCeiling(orgId: number | null): Promise<void> {
+export async function assertWithinAiCostCeiling(
+  orgId: number | null,
+  opts?: { failClosed?: boolean },
+): Promise<void> {
   // Platform-wide check ALWAYS runs (including for orgId === null platform
   // calls). This is the outer envelope that prevents the runaway $30/day
-  // scenario regardless of which surface initiated the call.
-  await assertWithinPlatformCostCeiling();
+  // scenario regardless of which surface initiated the call. Autonomous
+  // callers pass failClosed so a telemetry-read outage refuses instead of
+  // silently unbounding spend (re-audit it.3).
+  await assertWithinPlatformCostCeiling({ failClosed: opts?.failClosed });
 
   if (orgId == null) return;
   if (process.env.AI_COST_CEILING_BYPASS === "1") return;

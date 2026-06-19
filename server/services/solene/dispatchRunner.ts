@@ -635,10 +635,12 @@ export async function runDispatch(
   // 24h spend is already at-or-over AI_PLATFORM_DAILY_CEILING_CENTS
   // (default $15/day). Same backstop as the chat path; without it a single
   // dispatch can spend $25 (the per-dispatch cap) regardless of total
-  // daily burn. Fail-open on transient DB errors.
+  // daily burn. failClosed: an autonomous caller refuses on a telemetry-read
+  // outage rather than unbounding spend (re-audit it.3) — a refused dispatch
+  // is fully recoverable.
   try {
     const { assertWithinAiCostCeiling } = await import("../aiCostCeiling");
-    await assertWithinAiCostCeiling(null);
+    await assertWithinAiCostCeiling(null, { failClosed: true });
   } catch (err) {
     if ((err as { code?: string })?.code === "AI_COST_CEILING_EXCEEDED") {
       const msg = "platform AI cost ceiling reached; refusing dispatch";
