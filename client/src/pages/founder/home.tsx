@@ -13,7 +13,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, Activity, BookOpen, Mic, SlidersHorizontal } from "lucide-react";
+import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, Activity, BookOpen, Mic, SlidersHorizontal, Gauge, Newspaper, TrendingUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { PageShell } from "@/components/page-shell";
@@ -36,7 +36,10 @@ interface FounderBrief {
 
 const HUB = [
   { href: "/founder/decisions", icon: ListChecks, label: "Decisions", desc: "Everything awaiting your tap" },
+  { href: "/founder/command", icon: Gauge, label: "System health", desc: "Is the company green? Per-domain status" },
   { href: "/founder/bridge", icon: Activity, label: "Live telemetry", desc: "Real-time metrics + chat bridge" },
+  { href: "/founder/feed", icon: Newspaper, label: "Activity feed", desc: "Feedback, agent events, proposals" },
+  { href: "/founder/steering", icon: TrendingUp, label: "Monthly review", desc: "Trends + the strategic check-in" },
   { href: "/founder/autopilot/story", icon: BookOpen, label: "The story", desc: "Glass-box: every action + why" },
   { href: "/founder/autopilot/voice", icon: Mic, label: "Your voice", desc: "Standing orders + objectives" },
   { href: "/founder/autopilot/control", icon: SlidersHorizontal, label: "Controls", desc: "Switches, trust levels, budgets" },

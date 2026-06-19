@@ -61,7 +61,6 @@ const BASELINE = new Map([
   ["client/src/pages/founder/command.tsx", 1],
   ["client/src/pages/founder/cost.tsx", 1],
   ["client/src/pages/founder/inspector.tsx", 1],
-  ["client/src/pages/founder/today.tsx", 1],
   ["client/src/pages/land-credit.tsx", 1],
   ["client/src/pages/outreach/mail/compose.tsx", 1],
   ["client/src/pages/transparency.tsx", 1],
