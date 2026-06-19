@@ -471,20 +471,58 @@ export interface DispatchToolContext {
 }
 
 /**
- * Remove every credential-shaped variable from an environment before handing it
- * to an autonomous agent's shell. Denylist by pattern (keeps PATH/HOME/LANG etc.
- * so git/node/npm still work). Closes the single largest blast-radius gap: most
- * exfil/deploy/money paths a dispatched model could take depend on a secret
- * living in process.env, and this strips them.
+ * Hand an autonomous agent's shell a SECRET-FREE environment.
+ *
+ * ITERATION 2 (re-audit): this is now an ALLOWLIST, not a denylist. A denylist
+ * leaks the moment a new secret is added under a name the pattern doesn't match
+ * (the re-audit found DATABASE_REPLICA_URL / REDIS_URL / OTEL_EXPORTER_OTLP_HEADERS
+ * all slipping through). Default-deny means a newly-added credential can NEVER
+ * leak just because we forgot to pattern-match its name — it has to be explicitly
+ * named safe. We keep only the operational vars git/node/npm actually need.
+ *
+ * SECRET_KEY_PATTERN is retained as a defense-in-depth backstop (in case an
+ * allowlisted prefix ever captures a credential) and for value/path detection.
  */
-const SECRET_KEY_PATTERN = /(KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|DATABASE_URL|DB_URL|CONN(ECTION)?_STRING|STRIPE|ANTHROPIC|OPENAI|OPENROUTER|AWS_|GCP_|GOOGLE_|TWILIO|SENDGRID|LOB_|REGRID|SENTRY|DSN|WEBHOOK|ENCRYPT|SESSION_SECRET|JWT|VAPID|FLY_API|GH_TOKEN|GITHUB_TOKEN|DEPLOY)/i;
+const SECRET_KEY_PATTERN = /(KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|DATABASE_URL|DATABASE_REPLICA|DB_URL|REPLICA_URL|CONN(ECTION)?_STRING|STRIPE|ANTHROPIC|OPENAI|OPENROUTER|AWS_|GCP_|GOOGLE_|TWILIO|SENDGRID|LOB_|REGRID|SENTRY|DSN|WEBHOOK|ENCRYPT|SESSION_SECRET|JWT|VAPID|FLY_API|GH_TOKEN|GITHUB_TOKEN|DEPLOY|REDIS|OTEL|OTLP|MAPBOX|MAPTILER|CLERK|PGPASS|PG_PASS)/i;
+
+/** Exact env-var names an autonomous shell legitimately needs (git/node/npm). */
+const ENV_ALLOWLIST_EXACT = new Set([
+  "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TERM", "SHELL", "USER",
+  "LOGNAME", "PWD", "TMPDIR", "TMP", "TEMP", "NODE_ENV", "HOSTNAME", "COLORTERM",
+  "SHLVL", "EDITOR", "PAGER", "CI",
+]);
+/** Safe non-secret prefixes (locale, npm config noise, git config, XDG). */
+const ENV_ALLOWLIST_PREFIX = ["LC_", "npm_", "GIT_", "XDG_"];
+
+function isAllowlistedEnvKey(k: string): boolean {
+  if (ENV_ALLOWLIST_EXACT.has(k)) return true;
+  return ENV_ALLOWLIST_PREFIX.some((p) => k.startsWith(p));
+}
 
 export function scrubSecretsFromEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries(env)) {
-    if (!SECRET_KEY_PATTERN.test(k)) out[k] = v;
+    // Default-deny: keep ONLY allowlisted keys, and only if they don't also
+    // trip the secret backstop (so an allowlisted prefix can never smuggle one).
+    if (isAllowlistedEnvKey(k) && !SECRET_KEY_PATTERN.test(k)) out[k] = v;
   }
   return out;
+}
+
+/**
+ * ITERATION 2 (re-audit): the bash env-scrub was being bypassed by `file_read`
+ * of `.env.local` (and friends), which returned secrets verbatim — on the
+ * autonomous worker path AND auto-allowed on the chat surface. No legitimate
+ * flow reads a raw secret file through this executor (the worker gets a scrubbed
+ * env; the founder's own Claude Code session uses the real Read tool), and
+ * surfacing credential VALUES in tool output also violates the hard
+ * credential-handling rule. So we refuse secret-shaped paths UNCONDITIONALLY.
+ */
+const SECRET_FILE_PATTERN =
+  /(^|\/)\.env(\.[^/]*)?$|(^|\/)\.npmrc$|(^|\/)\.pgpass$|(^|\/)\.netrc$|\.pem$|\.key$|\.p12$|\.pfx$|(^|\/)id_(rsa|ed25519|ecdsa|dsa)(\.pub)?$|(^|\/)credentials(\.[^/]*)?$|(^|\/)secrets?\.(json|ya?ml|env|txt)$/i;
+
+function isSecretShapedPath(relPath: string): boolean {
+  return SECRET_FILE_PATTERN.test(relPath.replace(/\\/g, "/"));
 }
 
 export async function executeDispatchTool(
@@ -655,6 +693,19 @@ async function toolFileRead(
   const enc = String(input.encoding ?? "utf8");
   if (!p) {
     return { success: false, output: "missing 'path'", durationMs: Date.now() - started };
+  }
+  // SECURITY (re-audit iteration 2): refuse raw secret files unconditionally.
+  // This closes the file_read bypass of the bash env-scrub (a dispatch could
+  // otherwise read .env.local verbatim) AND the chat-surface auto-allow leak,
+  // and upholds the credential-values-never-in-tool-output rule.
+  if (isSecretShapedPath(p)) {
+    return {
+      success: false,
+      output:
+        `[REFUSED] '${p}' is a secret-shaped file (env/key/credential). Reading raw ` +
+        `secret material through this tool is not permitted. Refusing.`,
+      durationMs: Date.now() - started,
+    };
   }
   const abs = resolveSafePath(p);
   const stat = await fs.stat(abs).catch((e) => {

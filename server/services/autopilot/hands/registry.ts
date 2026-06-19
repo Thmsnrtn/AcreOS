@@ -15,11 +15,35 @@ import { logger } from "../../../utils/logger";
 
 const REGISTRY = new Map<string, HandSpec>();
 
+/**
+ * Money/broadcast/customer-facing hands MUST be witnessed-send. Enforced at
+ * REGISTRATION (re-audit iteration 2) so it is structurally impossible to ship
+ * an un-witnessed money hand — not merely caught by a test. A finance-domain
+ * hand, an explicit `movesMoney` hand, a customer-facing hand, or a public
+ * `broadcast` hand that registers with `requiresApproval:false` throws on boot.
+ */
+export function requiresWitnessByInvariant(spec: HandSpec): boolean {
+  return (
+    spec.domain === "finance" ||
+    spec.movesMoney === true ||
+    spec.isCustomerFacing === true ||
+    spec.outwardClass === "broadcast"
+  );
+}
+
 /** Register a hand. Idempotent: re-registering the same name replaces it. */
 export function registerHand(spec: HandSpec): void {
   if (spec.name !== spec.schema.name) {
     throw new Error(
       `hand name mismatch: spec.name=${spec.name} schema.name=${spec.schema.name}`,
+    );
+  }
+  if (requiresWitnessByInvariant(spec) && !spec.requiresApproval) {
+    throw new Error(
+      `[autopilot/hands] refusing to register '${spec.name}': it moves money / is ` +
+        `customer-facing / broadcasts (domain=${spec.domain}, movesMoney=${!!spec.movesMoney}, ` +
+        `customerFacing=${spec.isCustomerFacing}, outwardClass=${spec.outwardClass ?? "none"}) ` +
+        `but requiresApproval=false. Such hands MUST be witnessed-send.`,
     );
   }
   if (REGISTRY.has(spec.name)) {

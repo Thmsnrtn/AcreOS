@@ -55,6 +55,13 @@ export interface HandSpec {
   domain: AutopilotDomain;
   /** Touches a customer's comms/assets → witnessed-send (human tap) required. */
   isCustomerFacing: boolean;
+  /**
+   * Spends or moves money (a charge, refund, retry, ad spend). Distinct from
+   * `domain==="finance"` because a GROWTH hand can spend (ad budget) without
+   * being finance-domain. Any money hand is witnessed-send by invariant — money
+   * never moves without a founder tap. (re-audit iteration 2)
+   */
+  movesMoney?: boolean;
   /** Public broadcast (brand-attached, crawler-indexed) → also needs a tap. */
   outwardClass?: "none" | "broadcast";
   /**

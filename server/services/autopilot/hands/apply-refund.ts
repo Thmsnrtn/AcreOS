@@ -59,6 +59,7 @@ registerHand({
   },
   domain: "finance",
   isCustomerFacing: true,
+  movesMoney: true,
   requiresApproval: true,
   surface: "generic",
   handler,

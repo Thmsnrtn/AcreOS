@@ -578,15 +578,21 @@ export async function runDispatch(
   // Pre-dispatch ensemble cap (runtime backstop) — the binding monthly bound
   // on agent_dispatch spend. enqueueDispatch already gates this at enqueue
   // time, but a row may have been queued before the cap was crossed, so we
-  // re-check at run time. Fails CLOSED on DB error (refuse rather than risk
-  // unbounding the largest cash cost). Founder per-dispatch overrides are
-  // applied at enqueue, not here.
+  // re-check at run time. Fails CLOSED both when the cap is exceeded AND when
+  // MTD spend can't be read (ENSEMBLE_CAP_READ_FAILED) — refuse rather than
+  // risk unbounding the largest cash cost. Founder per-dispatch overrides are
+  // applied at enqueue, not here. (re-audit iteration 2: the read-error path
+  // used to fall through and PROCEED — now it refuses, matching this comment.)
   try {
     const { assertWithinEnsembleCap } = await import("./capitalTracker");
     await assertWithinEnsembleCap();
   } catch (err) {
-    if ((err as { code?: string })?.code === "ENSEMBLE_MONTHLY_CAP_EXCEEDED") {
-      const msg = "ensemble monthly cap reached; refusing dispatch";
+    const code = (err as { code?: string })?.code;
+    if (code === "ENSEMBLE_MONTHLY_CAP_EXCEEDED" || code === "ENSEMBLE_CAP_READ_FAILED") {
+      const msg =
+        code === "ENSEMBLE_CAP_READ_FAILED"
+          ? "ensemble cap unverifiable (spend unreadable); failing closed — refusing dispatch"
+          : "ensemble monthly cap reached; refusing dispatch";
       logger.warn(`[dispatchRunner] ${msg}`, {
         metadata: {
           dispatchId,

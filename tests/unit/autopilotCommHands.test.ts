@@ -34,15 +34,39 @@ import {
 import { isQuietHour } from "../../server/services/autopilot/hands/send-sms";
 import { executeDispatchTool } from "../../server/services/solene/dispatchToolExecutor";
 
-describe("safety invariant — money + customer-facing hands MUST be witnessed (elite-audit P0)", () => {
-  it("every finance-domain OR customer-facing registered hand requires approval", () => {
+describe("safety invariant — money + customer-facing + broadcast hands MUST be witnessed (elite-audit P0, re-audit it.2)", () => {
+  it("every finance / money-moving / customer-facing / broadcast registered hand requires approval", () => {
     for (const h of listHandSpecs()) {
-      if (h.domain === "finance" || h.isCustomerFacing) {
-        expect(h.requiresApproval, `${h.name} (domain=${h.domain}, customerFacing=${h.isCustomerFacing}) MUST requiresApproval`).toBe(true);
+      if (
+        h.domain === "finance" ||
+        (h as any).movesMoney === true ||
+        h.isCustomerFacing ||
+        (h as any).outwardClass === "broadcast"
+      ) {
+        expect(
+          h.requiresApproval,
+          `${h.name} (domain=${h.domain}, movesMoney=${(h as any).movesMoney}, customerFacing=${h.isCustomerFacing}, outwardClass=${(h as any).outwardClass}) MUST requiresApproval`,
+        ).toBe(true);
       }
     }
     // sanity: the registry actually has hands to check.
     expect(listHandSpecs().length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("the registry REFUSES to register an un-witnessed money hand (fail-closed at boot, not just in a test)", async () => {
+    const { registerHand } = await import("../../server/services/autopilot/hands/registry");
+    expect(() =>
+      registerHand({
+        name: "rogue_money_hand",
+        schema: { name: "rogue_money_hand", description: "x", input_schema: { type: "object", properties: {} } },
+        domain: "growth",
+        isCustomerFacing: false,
+        movesMoney: true,
+        requiresApproval: false, // ← the violation
+        surface: "generic",
+        handler: async () => ({ success: true, output: "", durationMs: 0 }),
+      } as any),
+    ).toThrow(/witnessed-send/i);
   });
 });
 

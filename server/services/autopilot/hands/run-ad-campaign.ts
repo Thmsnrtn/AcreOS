@@ -78,6 +78,7 @@ registerHand({
   },
   domain: "growth",
   isCustomerFacing: false,
+  movesMoney: true,
   outwardClass: "broadcast",
   requiresApproval: true,
   surface: "marketing",
