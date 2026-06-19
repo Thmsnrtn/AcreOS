@@ -193,6 +193,16 @@ vi.mock("drizzle-orm", async () => {
   };
 });
 
+// These tests exercise queue mechanics, not the ensemble cost cap. The cap
+// reads agent_dispatch MTD spend, which this file's DB mock doesn't model — and
+// the cap now (correctly) fails CLOSED on an unreadable spend (re-audit it.3),
+// so leaving it real would throw here. No-op the cap; keep the real error
+// classes for the dedicated ensembleMonthlyCap.test.ts.
+vi.mock("./capitalTracker", async () => {
+  const actual = await vi.importActual<typeof import("./capitalTracker")>("./capitalTracker");
+  return { ...actual, assertWithinEnsembleCap: vi.fn().mockResolvedValue(undefined) };
+});
+
 beforeEach(() => {
   QUEUE.length = 0;
   RESULTS.length = 0;
