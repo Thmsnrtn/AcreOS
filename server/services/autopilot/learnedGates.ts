@@ -52,3 +52,45 @@ export async function readConfidenceOutcomeHistory(limit = 500): Promise<SignalO
 export async function currentAutoResolveThreshold(): Promise<LearnedThreshold> {
   return learnedAutoResolveThreshold(await readConfidenceOutcomeHistory());
 }
+
+/**
+ * SUPPORT-SPECIFIC signal (wire-for-real): the customer-support auto-resolver's
+ * own confidence → outcome history — `ai_confidence_score` (0-100) labeled by
+ * `ai_resolution_outcome` (reopened/csat_negative == the auto-resolve was
+ * contradicted by reality). This is the RIGHT signal to calibrate the support
+ * auto-resolve cut on (Sophie/Pax support confidence), distinct from the
+ * autopilot brain's move-forecast calibration above. Best-effort: [] when
+ * pre-customer / on error.
+ */
+export async function readSupportConfidenceOutcomeHistory(limit = 1000): Promise<SignalOutcome[]> {
+  try {
+    const { db } = await import("../../db");
+    const { supportTickets } = await import("@shared/schema");
+    const { isNotNull, desc, and } = await import("drizzle-orm");
+    const rows = await db
+      .select({
+        confidence: supportTickets.aiConfidenceScore,
+        outcome: supportTickets.aiResolutionOutcome,
+      })
+      .from(supportTickets)
+      .where(and(isNotNull(supportTickets.aiConfidenceScore), isNotNull(supportTickets.aiResolutionOutcome)))
+      .orderBy(desc(supportTickets.updatedAt))
+      .limit(limit);
+    const out: SignalOutcome[] = [];
+    for (const r of rows) {
+      if (r.confidence == null || r.outcome == null) continue;
+      const corrected = r.outcome === "reopened" || r.outcome === "csat_negative";
+      out.push({ signal: Number(r.confidence) / 100, success: !corrected });
+    }
+    return out;
+  } catch (err) {
+    logger.warn("[autopilot/learnedGates] support confidence-outcome read failed; defaulting to none", err instanceof Error ? err : undefined);
+    return [];
+  }
+}
+
+/** The learned support auto-resolve cut (0..1), calibrated on real reopen/CSAT
+ * outcomes. Falls back to the typed default until enough labeled data accrues. */
+export async function currentSupportAutoResolveThreshold(): Promise<LearnedThreshold> {
+  return learnedAutoResolveThreshold(await readSupportConfidenceOutcomeHistory());
+}

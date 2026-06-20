@@ -34,6 +34,30 @@ function getConfidenceThreshold(): number {
   return CONFIDENCE_THRESHOLDS[mode] ?? 70;
 }
 
+/**
+ * The effective auto-resolve confidence cut (0-100). Wire-for-real: instead of a
+ * static env threshold, this consults the LEARNED threshold — calibrated on the
+ * resolver's own real reopen/CSAT outcomes (learnedGates). Until enough labeled
+ * tickets accrue, learnThreshold returns the typed default, so this equals the
+ * env threshold cold-start. Once data accrues, the cut self-calibrates: tighter
+ * if confident resolutions were getting reopened, looser if they held. Never
+ * below the env floor, so learning can only ADD caution, never remove it.
+ * Fail-soft: the static env threshold on any error.
+ */
+async function getLearnedOrDefaultThreshold(): Promise<number> {
+  const envFloor = getConfidenceThreshold();
+  try {
+    const { currentSupportAutoResolveThreshold } = await import("./autopilot/learnedGates");
+    const learned = await currentSupportAutoResolveThreshold();
+    const learnedPct = Math.round(learned.threshold * 100);
+    // Learning can only tighten (raise) the cut, never loosen below the founder's
+    // chosen env posture — conservative by construction.
+    return Math.max(envFloor, learnedPct);
+  } catch {
+    return envFloor;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SOPHIE GENIUS MODE — Opus second opinion for borderline support tickets
 //
@@ -154,7 +178,7 @@ export const customerSupportAutoResolver = {
     });
     if (!ticket) return { autoResolved: false };
 
-    const threshold = getConfidenceThreshold();
+    const threshold = await getLearnedOrDefaultThreshold();
     const confidence = opts?.confidenceScore ?? 0;
     const isBilling = (opts?.category ?? ticket.category ?? "") === "billing";
     const effectiveThreshold = isBilling ? 90 : threshold;
