@@ -555,11 +555,15 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           // precedent) and fed to deliberation so a close call reasons from
           // real history. Honest: empty when there's no comparable past.
           let memoryNote: string | null = null;
+          // Situation-similar episodes, captured for the CONTEXTUAL forecast
+          // below (P(success | situation, action), not just P(success | action)).
+          let recalledEpisodes: Array<{ moveKind: string; vote: string }> = [];
           try {
             const { getPastEpisodes } = await import("../autopilot/experienceLog");
             const { recallSimilar, summarizeRecall } = await import("../autopilot/memory");
             const episodes = await getPastEpisodes(200);
             const recalled = recallSimilar(senses, episodes as never, 5);
+            recalledEpisodes = recalled.map((e) => ({ moveKind: e.moveKind, vote: String(e.vote) }));
             if (recalled.length > 0) {
               memoryNote = summarizeRecall(recalled).note;
               logger.info("[continuousLoop] tick: memory recall", { note: memoryNote });
@@ -691,6 +695,45 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               forecastLine = renderForecast(fc);
               predictedSuccess = fc.successProb;
               traceForecast = { successProb: fc.successProb, n: fc.n, confidence: fc.confidence };
+
+              // CONTEXTUAL upgrade (wire-for-real: contextualForecast). Blend the
+              // play's GLOBAL track record (fc) with its LOCAL record in
+              // situation-similar episodes, then recalibrate against the system's
+              // own measured over/under-confidence. Falls back to the global
+              // forecast when there's no comparable past — never invents signal.
+              try {
+                const { contextualForecast, buildRecalibrationMap, applyRecalibration } =
+                  await import("../autopilot/contextualForecast");
+                const local = recalledEpisodes
+                  .filter((e) => e.moveKind === actMove.kind)
+                  .reduce(
+                    (acc, e) => {
+                      if (e.vote === "success") acc.successes += 1;
+                      else if (e.vote === "failure") acc.failures += 1;
+                      return acc;
+                    },
+                    { successes: 0, failures: 0 },
+                  );
+                const cf = contextualForecast(
+                  { successes: ps.successes, failures: ps.failures },
+                  local,
+                );
+                const { getCalibrationPairs } = await import("../autopilot/experienceLog");
+                const recalMap = buildRecalibrationMap(await getCalibrationPairs());
+                const calibrated = applyRecalibration(cf.prob, recalMap);
+                predictedSuccess = calibrated;
+                traceForecast = {
+                  successProb: calibrated,
+                  n: fc.n + local.successes + local.failures,
+                  confidence: fc.confidence,
+                };
+                forecastLine = `${renderForecast(fc)} · contextual ${(calibrated * 100).toFixed(0)}% (local wt ${(cf.localWeight * 100).toFixed(0)}%)`;
+              } catch (cfErr) {
+                logger.warn(
+                  "[continuousLoop] tick: contextual forecast failed; using global",
+                  cfErr instanceof Error ? cfErr : undefined,
+                );
+              }
             } catch (fcErr) {
               logger.warn(
                 "[continuousLoop] tick: forecast failed; proceeding without",
@@ -699,8 +742,45 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             }
           }
 
+          // Economic discipline (wire-for-real: economics.budgetGate). Before
+          // spending the next autonomous dispatch's worst-case cost, confirm
+          // there's discretionary room — reserving a slice of the monthly
+          // envelope for non-deferrable work (incidents/support) so growth can't
+          // starve the essentials. A GROWTH move is deferrable (it waits for
+          // budget); support/finance are essential (reserve doesn't apply).
+          let budgetDeferReason: string | null = null;
+          try {
+            const { budgetGate } = await import("../autopilot/economics");
+            const { getEnsembleMonthlyCapUsd, getMonthToDateSpendForType } = await import(
+              "./capitalTracker"
+            );
+            const monthlyCapUsd = getEnsembleMonthlyCapUsd();
+            const spentThisMonthUsd = await getMonthToDateSpendForType("agent_dispatch");
+            const deferrable = actMove.domain === "growth";
+            const gate = budgetGate(
+              { monthlyCapUsd, spentThisMonthUsd },
+              AUTOPILOT_DISPATCH_MAX_COST_USD,
+              { deferrable },
+            );
+            if (!gate.allowed) budgetDeferReason = gate.reason;
+          } catch (budErr) {
+            // Fail OPEN on a budget-read error: the ensemble cap + per-dispatch
+            // cap already bound spend; this is an ADDITIONAL discretionary guard.
+            logger.warn(
+              "[continuousLoop] tick: budget gate read failed; proceeding (caps still bind)",
+              budErr instanceof Error ? budErr : undefined,
+            );
+          }
+
           const { simulateMove, renderSimulation } = await import("../autopilot/simulate");
-          const outcome = await planAndAct(
+          const outcome = budgetDeferReason
+            ? ({
+                status: "suppressed" as const,
+                move: actMove,
+                reason: `budget-deferred: ${budgetDeferReason}`,
+                gate: { decision: "block" as const, decidedBy: "budget" },
+              })
+            : await planAndAct(
             actMove,
             { envelopeStatus: pulse.envelopeStatus, maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD },
             {
