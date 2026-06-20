@@ -50,8 +50,8 @@ async function getLearnedOrDefaultThreshold(): Promise<number> {
     const { currentSupportAutoResolveThreshold } = await import("./autopilot/learnedGates");
     const learned = await currentSupportAutoResolveThreshold();
     const learnedPct = Math.round(learned.threshold * 100);
-    // Learning can only tighten (raise) the cut, never loosen below the founder's
-    // chosen env posture — conservative by construction.
+    // Learning can only tighten (raise) the cut, never loosen below the
+    // configured env posture — conservative by construction.
     return Math.max(envFloor, learnedPct);
   } catch {
     return envFloor;
