@@ -4,7 +4,21 @@ import {
   executeDispatchTool,
   sanitizeToolOutput,
   getDispatchToolSchemas,
+  screenUntrustedBash,
 } from "../../server/services/solene/dispatchToolExecutor";
+
+describe("untrusted screen — destructive commands blocked (re-audit defense-in-depth)", () => {
+  it("blocks rm -rf / dd / mkfs / fork-bomb / chmod -R", () => {
+    for (const cmd of ["rm -rf /", "rm -fr node_modules", "dd if=/dev/zero of=/dev/sda", "mkfs.ext4 /dev/sdb", ":(){ :|:& };:", "chmod -R 777 /"]) {
+      expect(screenUntrustedBash(cmd).ok, cmd).toBe(false);
+    }
+  });
+  it("still allows the legit structured-tool commands", () => {
+    for (const cmd of ["git status --short", "git commit --cleanup=verbatim -F /tmp/x.txt", "npx vitest run", "npm run check", "git rev-parse HEAD"]) {
+      expect(screenUntrustedBash(cmd).ok, cmd).toBe(true);
+    }
+  });
+});
 
 describe("autonomous dispatches get NO free-form bash (OS-isolation step 1)", () => {
   it("untrusted toolset excludes bash but keeps git_* + run_tests + typecheck", () => {

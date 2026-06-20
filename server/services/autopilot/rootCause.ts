@@ -74,9 +74,14 @@ export function investigationBrief(group: ErrorGroup): string {
 // recurring signature, and enqueues ONE investigation dispatch whose brief
 // forbids deploy. The investigator (worker, untrusted — no free-form bash, but
 // file_read + git_commit) reads the code and proposes a fix as a LOCAL commit /
-// unified diff for founder review. It never pushes, merges, or deploys (the
-// brief + codeChangeGate + no-push worker enforce that). Gated behind the
-// dispatch master switch; deduped so the same signature isn't re-investigated.
+// unified diff for founder review. It CANNOT push, merge, or deploy — enforced
+// by: (1) the brief instruction, (2) the untrusted deny-regex blocking
+// git push / fly deploy, and (3) structurally — the worker's env is scrubbed of
+// all tokens (allowlist default-deny) and HOME is isolated, so origin (HTTPS)
+// has no credential to authenticate a push. (NOTE: codeChangeGate is NOT on
+// this wire — it gates only selfPatch's dependency-bump PR path. The no-deploy
+// guarantee here rests on the env-scrub + deny-regex, not the gate.) Gated
+// behind the dispatch master switch; deduped so a signature isn't re-investigated.
 // ────────────────────────────────────────────────────────────────────────────
 
 /** Minimum recurrence before an error is worth an autonomous investigation. */
