@@ -20,6 +20,16 @@ describe("untrusted screen — destructive commands blocked (re-audit defense-in
   });
 });
 
+describe("file_write — git/CI internals are off-limits (re-audit it.2)", () => {
+  it("refuses writes into .git/ and .github/workflows/", async () => {
+    for (const p of [".git/hooks/pre-commit", ".git/config", ".github/workflows/deploy.yml"]) {
+      const r = await executeDispatchTool("file_write", { path: p, content: "x" }, { untrusted: true });
+      expect(r.success, p).toBe(false);
+      expect(r.output, p).toMatch(/REFUSED/i);
+    }
+  });
+});
+
 describe("autonomous dispatches get NO free-form bash (OS-isolation step 1)", () => {
   it("untrusted toolset excludes bash but keeps git_* + run_tests + typecheck", () => {
     const names = getDispatchToolSchemas({ untrusted: true }).map((t) => t.name);

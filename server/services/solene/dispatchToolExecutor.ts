@@ -940,6 +940,19 @@ async function toolFileWrite(
     };
   }
   const abs = resolveSafePath(p);
+  // SECURITY (re-audit it.2): refuse writes into git/CI internals. A dispatch
+  // has no legitimate reason to write .git/ (hooks, config) or the deploy/CI
+  // workflows; both are tree-integrity / deploy-path tampering vectors. The
+  // non-executable-hook barrier defangs hook-planting today, but this closes
+  // the class outright (and protects .git/config + .github/workflows/*).
+  const rel = path.relative(PROJECT_ROOT, abs).replace(/\\/g, "/");
+  if (rel === ".git" || rel.startsWith(".git/") || rel.startsWith(".github/workflows/")) {
+    return {
+      success: false,
+      output: `[REFUSED] writes into '${rel}' (git internals / CI workflows) are not permitted.`,
+      durationMs: Date.now() - started,
+    };
+  }
   await fs.mkdir(path.dirname(abs), { recursive: true });
   await fs.writeFile(abs, content, "utf8");
   return {
