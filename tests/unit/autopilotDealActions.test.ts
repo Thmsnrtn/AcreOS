@@ -63,6 +63,22 @@ describe("autopilot deal-coach — land-native next best action", () => {
     }
   });
 
+  it("LAND-NATIVE: a tax-delinquent parcel surfaces a high-priority motivated-seller action", () => {
+    const a = scoreDealAction(deal({ status: "new", taxDelinquent: true, lastContactedAt: ago(5) }), NOW);
+    expect(a).toMatchObject({ kind: "land_tax_delinquent", urgency: "high" });
+    expect(a!.reason.toLowerCase()).toContain("tax-delinquent");
+  });
+
+  it("LAND-NATIVE: a recently-worked tax-delinquent lead falls through (don't nag)", () => {
+    expect(scoreDealAction(deal({ status: "new", taxDelinquent: true, lastContactedAt: ago(1) }), NOW)?.kind)
+      .not.toBe("land_tax_delinquent");
+  });
+
+  it("LAND-NATIVE: money-on-the-table still beats the land signal (committed precedence)", () => {
+    expect(scoreDealAction(deal({ status: "under_contract", taxDelinquent: true, lastContactedAt: ago(30) }), NOW)?.kind)
+      .toBe("advance_to_close");
+  });
+
   it("recommendNextActions ranks the whole pipeline by leverage and trims", () => {
     const pipeline: DealSignal[] = [
       deal({ id: "won", status: "closed" }),

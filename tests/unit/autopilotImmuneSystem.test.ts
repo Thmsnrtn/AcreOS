@@ -1,8 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { classifyCodeChange, isPatchBump } from "../../server/services/autopilot/codeChangeGate";
 import { parseAudit, autoFixCandidates, actionableCandidates } from "../../server/services/autopilot/dependencyAudit";
 import { planSecurityResponse, immuneSystemLine } from "../../server/services/autopilot/immuneSystem";
-import { errorSignature, topErrorSignatures, investigationBrief } from "../../server/services/autopilot/rootCause";
+import { errorSignature, topErrorSignatures, investigationBrief, runIncidentTriage } from "../../server/services/autopilot/rootCause";
+
+// Gate the incident-triage motor OFF for this assertion (master switch off) —
+// it must no-op before touching the DB or enqueueing anything.
+vi.mock("../../server/services/autopilot/settings", () => ({
+  isDispatchEnabled: vi.fn().mockResolvedValue(false),
+}));
 
 describe("codeChangeGate — the immune system's guardrail (conservative)", () => {
   it("FORBIDS touching the constitution / security gate / the guardrail itself", () => {
@@ -126,5 +132,13 @@ describe("rootCause — error signatures + investigation brief (pure)", () => {
     const brief = investigationBrief({ signature: "x", count: 7, sample: "boom" });
     expect(brief).toContain("do not deploy");
     expect(brief.toLowerCase()).toContain("risk class");
+  });
+});
+
+describe("rootCause — incident triage is gated behind the dispatch master switch", () => {
+  it("no-ops (no DB, no enqueue) when dispatch is disabled", async () => {
+    const r = await runIncidentTriage();
+    expect(r.enqueued).toBe(false);
+    expect(r.reason).toBe("dispatch disabled");
   });
 });

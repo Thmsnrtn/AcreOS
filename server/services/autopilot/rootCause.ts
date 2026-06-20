@@ -67,3 +67,72 @@ export function investigationBrief(group: ErrorGroup): string {
     `Do not push, merge, or deploy. Your output is a proposal that will be gated by codeChangeGate + the founder.`,
   ].join("\n");
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Impure orchestration — autonomous incident triage (wire-for-real: rootCause
+// was dead). Reads recent UNRESOLVED system_error alerts, finds the loudest
+// recurring signature, and enqueues ONE investigation dispatch whose brief
+// forbids deploy. The investigator (worker, untrusted — no free-form bash, but
+// file_read + git_commit) reads the code and proposes a fix as a LOCAL commit /
+// unified diff for founder review. It never pushes, merges, or deploys (the
+// brief + codeChangeGate + no-push worker enforce that). Gated behind the
+// dispatch master switch; deduped so the same signature isn't re-investigated.
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Minimum recurrence before an error is worth an autonomous investigation. */
+export const TRIAGE_MIN_COUNT = 3;
+
+export async function runIncidentTriage(opts?: {
+  windowHours?: number;
+}): Promise<{ enqueued: boolean; signature?: string; dispatchId?: number; reason?: string }> {
+  try {
+    const { isDispatchEnabled } = await import("./settings");
+    if (!(await isDispatchEnabled())) return { enqueued: false, reason: "dispatch disabled" };
+
+    const { db } = await import("../../db");
+    const { systemAlerts, soleneDispatchQueue } = await import("@shared/schema");
+    const { and, eq, gte, desc } = await import("drizzle-orm");
+    const windowHours = opts?.windowHours ?? 24;
+    const since = new Date(Date.now() - windowHours * 3_600_000);
+
+    const rows = await db
+      .select({ title: systemAlerts.title, message: systemAlerts.message })
+      .from(systemAlerts)
+      .where(
+        and(
+          eq(systemAlerts.alertType, "system_error"),
+          eq(systemAlerts.status, "new"),
+          gte(systemAlerts.createdAt, since),
+        ),
+      )
+      .orderBy(desc(systemAlerts.createdAt))
+      .limit(500);
+
+    const samples: ErrorSample[] = rows.map((r) => ({ message: `${r.title}: ${r.message}` }));
+    const groups = topErrorSignatures(samples, 5);
+    const top = groups.find((g) => g.count >= TRIAGE_MIN_COUNT);
+    if (!top) return { enqueued: false, reason: "no signature above threshold" };
+
+    // Dedupe: don't re-investigate a signature already dispatched in the window.
+    const sourceId = `incident:${top.signature}`.slice(0, 200);
+    const existing = await db
+      .select({ id: soleneDispatchQueue.id })
+      .from(soleneDispatchQueue)
+      .where(and(eq(soleneDispatchQueue.sourceId, sourceId), gte(soleneDispatchQueue.queuedAt, since)))
+      .limit(1);
+    if (existing.length > 0) return { enqueued: false, signature: top.signature, reason: "already investigating" };
+
+    const { enqueueDispatch } = await import("../solene/dispatchQueue");
+    const dispatchId = await enqueueDispatch({
+      sourceType: "detector",
+      sourceId,
+      agentRole: "iris",
+      promptText: investigationBrief(top),
+      maxCostUsd: 2,
+      enqueuedBy: "incident-triage",
+    });
+    return { enqueued: true, signature: top.signature, dispatchId };
+  } catch {
+    return { enqueued: false, reason: "error (swallowed)" };
+  }
+}

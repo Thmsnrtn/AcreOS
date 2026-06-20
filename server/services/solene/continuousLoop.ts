@@ -400,6 +400,26 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     );
   }
 
+  // Autonomous incident triage (wire-for-real: rootCause). A loud recurring
+  // error enqueues ONE investigation dispatch that proposes a fix as a local
+  // commit/diff for founder review — never pushes/merges/deploys. Gated by the
+  // dispatch master switch (runIncidentTriage no-ops when off) + deduped.
+  try {
+    const { runIncidentTriage } = await import("../autopilot/rootCause");
+    const r = await runIncidentTriage({ windowHours: 24 });
+    if (r.enqueued) {
+      dispatchesQueued += 1;
+      logger.info("[continuousLoop] tick: incident triage enqueued", {
+        metadata: { signature: r.signature, dispatchId: r.dispatchId },
+      });
+    }
+  } catch (err) {
+    logger.warn(
+      "[continuousLoop] tick: incident triage failed",
+      err instanceof Error ? err : undefined,
+    );
+  }
+
   // Code-review queue scan — surfaces pending review items so the
   // signalsScanned counter reflects total work-in-flight. Enqueue
   // logic stays in codeReviewQueue.

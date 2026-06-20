@@ -35,6 +35,8 @@ export interface DealSignal {
   lastContactedAt?: number | null;
   /** Epoch ms the deal was created. */
   createdAt?: number | null;
+  /** Land-native signal: the parcel is tax-delinquent (a motivated-seller cue). */
+  taxDelinquent?: boolean | null;
 }
 
 export type DealActionKind =
@@ -42,7 +44,8 @@ export type DealActionKind =
   | "follow_up"
   | "contact_now"
   | "first_contact"
-  | "requalify_or_drop";
+  | "requalify_or_drop"
+  | "land_tax_delinquent";
 
 export interface DealAction {
   dealId: string;
@@ -89,6 +92,21 @@ export function scoreDealAction(d: DealSignal, now: number): DealAction | null {
   }
 
   const sinceContact = daysBetween(d.lastContactedAt, now);
+
+  // 1b. Land-native (wire-for-real): a tax-delinquent parcel is a strong
+  // motivated-seller signal — act on it ahead of the normal stage ladder when
+  // it isn't already being actively worked. Per-org data (leads.taxDelinquent);
+  // no cross-org dependency.
+  if (d.taxDelinquent && (sinceContact == null || sinceContact >= HOT_DECAY_DAYS)) {
+    return {
+      dealId: d.id,
+      kind: "land_tax_delinquent",
+      priority: 1,
+      urgency: "high",
+      reason:
+        "Parcel is tax-delinquent — a strong motivated-seller signal. Make a direct, fair offer before it's listed or the taxes are redeemed.",
+    };
+  }
 
   // 2. A warm negotiation going quiet — the #1 deal-killer.
   if (inSet(d.status, NEGOTIATION)) {
@@ -159,6 +177,7 @@ export async function getDealActionsForOrg(organizationId: number, limit = 10): 
         estimatedValue: leads.estimatedValue,
         lastContactedAt: leads.lastContactedAt,
         createdAt: leads.createdAt,
+        taxDelinquent: leads.taxDelinquent,
       })
       .from(leads)
       .where(eq(leads.organizationId, organizationId))
@@ -171,6 +190,7 @@ export async function getDealActionsForOrg(organizationId: number, limit = 10): 
       estimatedValueUsd: r.estimatedValue != null ? Number(r.estimatedValue) : null,
       lastContactedAt: r.lastContactedAt ? new Date(r.lastContactedAt).getTime() : null,
       createdAt: r.createdAt ? new Date(r.createdAt).getTime() : null,
+      taxDelinquent: r.taxDelinquent,
     }));
     return recommendNextActions(signals, Date.now(), limit);
   } catch {
@@ -187,6 +207,7 @@ const KIND_LABELS: Record<DealActionKind, string> = {
   contact_now: "Contact now",
   first_contact: "Make first contact",
   requalify_or_drop: "Requalify or drop",
+  land_tax_delinquent: "Tax-delinquent — make an offer",
 };
 export function labelForKind(kind: DealActionKind): string {
   return KIND_LABELS[kind] ?? kind;
