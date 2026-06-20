@@ -41,7 +41,23 @@ export function registerAutopilotRoutes(app: Express): void {
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
         const ledger = await getTrustLedger();
-        return res.json({ ledger });
+        // Attach per-domain decision QUALITY (wire-for-real: decisionEval) so the
+        // founder sees not just "9/10 clean cycles" but whether those decisions
+        // were actually GOOD — the real basis on which autonomy is earned/held.
+        const { getDomainDecisionQuality, decisionEvalLine } = await import(
+          "./services/autopilot/decisionEval"
+        );
+        const enriched = await Promise.all(
+          ledger.map(async (entry) => {
+            try {
+              const quality = await getDomainDecisionQuality(entry.domain);
+              return { ...entry, quality, qualityLine: decisionEvalLine(quality) };
+            } catch {
+              return { ...entry, quality: null, qualityLine: null };
+            }
+          }),
+        );
+        return res.json({ ledger: enriched });
       } catch (err) {
         return Errors.internal(res, err);
       }

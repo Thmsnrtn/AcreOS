@@ -28,7 +28,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { Verbs } from "@/lib/labels";
 
-interface LedgerEntry { domain: string; level: string; cleanCycleCount: number; threshold: number }
+interface LedgerEntry { domain: string; level: string; cleanCycleCount: number; threshold: number; qualityLine?: string | null }
 interface ControlData {
   settings: { dispatchEnabled: boolean; publishEnabled: boolean; source: { dispatch: "db" | "env"; publish: "db" | "env" } };
   ledger: LedgerEntry[];
@@ -180,24 +180,30 @@ export default function FounderAutopilotControlPage() {
                       const busy = setLevel.isPending && setLevel.variables?.domain === d.domain;
                       const next = d.level === "observe" ? "draft" : d.level === "draft" ? "execute_gated" : d.level === "execute_gated" ? "autonomous_gated" : null;
                       return (
-                        <li key={d.domain} className="flex items-center gap-3 px-2 py-3">
-                          <span className="w-20 shrink-0 text-sm font-medium text-foreground">{prettyDomain(d.domain)}</span>
-                          <span className={`flex-1 text-xs font-medium ${levelTone(d.level)}`}>{LEVEL_LABEL[d.level] ?? d.level}</span>
-                          {busy ? (
-                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" />
-                          ) : (
-                            <div className="flex shrink-0 items-center gap-1">
-                              {next && (
-                                <Button variant="ghost" size="sm" className="min-h-[40px] text-muted-foreground hover:text-primary" onClick={() => setLevel.mutate({ domain: d.domain, level: next })} aria-label={`Grant ${prettyDomain(d.domain)} more autonomy`} data-testid={`grant-${d.domain}`}>
-                                  <ChevronUp className="h-4 w-4" aria-hidden="true" /><span className="ml-1 text-xs">Grant</span>
-                                </Button>
-                              )}
-                              {d.level !== "observe" && (
-                                <Button variant="ghost" size="sm" className="min-h-[40px] text-muted-foreground hover:text-foreground" onClick={() => setLevel.mutate({ domain: d.domain, level: "observe" })} aria-label={`Pause ${prettyDomain(d.domain)}`} data-testid={`pause-${d.domain}`}>
-                                  <PauseCircle className="h-4 w-4" aria-hidden="true" /><span className="ml-1 text-xs">Pause</span>
-                                </Button>
-                              )}
-                            </div>
+                        <li key={d.domain} className="flex flex-col gap-1 px-2 py-3">
+                          <div className="flex items-center gap-3">
+                            <span className="w-20 shrink-0 text-sm font-medium text-foreground">{prettyDomain(d.domain)}</span>
+                            <span className={`flex-1 text-xs font-medium ${levelTone(d.level)}`}>{LEVEL_LABEL[d.level] ?? d.level}</span>
+                            {busy ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" />
+                            ) : (
+                              <div className="flex shrink-0 items-center gap-1">
+                                {next && (
+                                  <Button variant="ghost" size="sm" className="min-h-[40px] text-muted-foreground hover:text-primary" onClick={() => setLevel.mutate({ domain: d.domain, level: next })} aria-label={`Grant ${prettyDomain(d.domain)} more autonomy`} data-testid={`grant-${d.domain}`}>
+                                    <ChevronUp className="h-4 w-4" aria-hidden="true" /><span className="ml-1 text-xs">Grant</span>
+                                  </Button>
+                                )}
+                                {d.level !== "observe" && (
+                                  <Button variant="ghost" size="sm" className="min-h-[40px] text-muted-foreground hover:text-foreground" onClick={() => setLevel.mutate({ domain: d.domain, level: "observe" })} aria-label={`Pause ${prettyDomain(d.domain)}`} data-testid={`pause-${d.domain}`}>
+                                    <PauseCircle className="h-4 w-4" aria-hidden="true" /><span className="ml-1 text-xs">Pause</span>
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {/* Decision quality — the real basis on which autonomy is earned/held. */}
+                          {d.qualityLine && (
+                            <p className="pl-20 text-micro text-muted-foreground">{d.qualityLine}</p>
                           )}
                         </li>
                       );

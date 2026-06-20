@@ -5,6 +5,7 @@ import {
   agreementProxy,
   decisionEvalLine,
   MIN_RESOLVED_FOR_SIGNAL,
+  QUALITY_PROMOTION_FLOOR,
   type DecisionRecord,
 } from "../../server/services/autopilot/decisionEval";
 
@@ -85,5 +86,31 @@ describe("decisionEval — letter line", () => {
   it("reports the hit-rate when sufficient", () => {
     const line = decisionEvalLine(decisionQualityReport(many(MIN_RESOLVED_FOR_SIGNAL, "success", 0.8)));
     expect(line).toContain("hit-rate");
+  });
+});
+
+describe("decisionEval — autonomy quality gate (wire-for-real)", () => {
+  // shouldHoldPromotionForQuality holds iff: sufficient data AND successRate < floor.
+  // Replicate that decision over the pure report so the gate semantics are locked.
+  const holds = (r: ReturnType<typeof decisionQualityReport>) =>
+    r.sufficient && r.successRate !== null && r.successRate < QUALITY_PROMOTION_FLOOR;
+
+  it("does NOT hold during cold start (insufficient resolved data)", () => {
+    // 10 failures — terrible, but below MIN_RESOLVED_FOR_SIGNAL → earn-up stays open.
+    expect(holds(decisionQualityReport(many(10, "failure")))).toBe(false);
+  });
+
+  it("HOLDS when there's enough data and the hit-rate is below the floor", () => {
+    // 25 resolved, 20% success (well under the 0.5 floor) → block widening.
+    const recs = [...many(5, "success"), ...many(20, "failure")];
+    const r = decisionQualityReport(recs);
+    expect(r.sufficient).toBe(true);
+    expect(r.successRate).toBeCloseTo(0.2);
+    expect(holds(r)).toBe(true);
+  });
+
+  it("does NOT hold when the hit-rate clears the floor", () => {
+    const recs = [...many(20, "success"), ...many(5, "failure")]; // 80%
+    expect(holds(decisionQualityReport(recs))).toBe(false);
   });
 });

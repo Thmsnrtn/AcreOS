@@ -156,6 +156,27 @@ export async function recordCleanCycle(domain: AutopilotDomain, threshold = PROM
       logger.warn("[autopilot] promotion HELD — calibration over-confident", { domain, level });
       return level;
     }
+
+    // Decision-QUALITY gate (wire-for-real: decisionEval). Clean cycles count
+    // ACTIONS that didn't trip a guardrail, but "didn't break" ≠ "made good
+    // calls". Hold the promotion if the domain has enough resolved decisions to
+    // trust the number AND its hit-rate is below the floor — earn autonomy by
+    // deciding WELL, not just by deciding often. Cold start never holds.
+    let holdForQuality = false;
+    try {
+      const { shouldHoldPromotionForQuality } = await import("./decisionEval");
+      holdForQuality = await shouldHoldPromotionForQuality(domain);
+    } catch {
+      holdForQuality = false;
+    }
+    if (holdForQuality) {
+      await db
+        .update(domainAutonomyLevels)
+        .set({ cleanCycleCount: nextCount, updatedAt: new Date() })
+        .where(eq(domainAutonomyLevels.domain, domain));
+      logger.warn("[autopilot] promotion HELD — decision quality below floor", { domain, level });
+      return level;
+    }
     const promoted = nextLevel(level)!;
     await db
       .update(domainAutonomyLevels)

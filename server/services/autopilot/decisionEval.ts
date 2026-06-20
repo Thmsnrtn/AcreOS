@@ -132,3 +132,76 @@ export function decisionEvalLine(report: DecisionQualityReport): string {
   const cal = report.calibrationError != null ? `, calibration err ${report.calibrationError.toFixed(2)}` : "";
   return `Decision quality: ${sr}% hit-rate over ${report.resolved} resolved${cal}.`;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Impure readers — build DecisionRecords from the real experience log so the
+// pure scorer above has live data. Kept below the pure core; the loop, the
+// autonomy gate, and the founder surface all consume these. (Wire-for-real:
+// decisionEval was dead code until this — there was no source of records.)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** The share of resolved decisions that must succeed before autonomy is widened.
+ * Cold start (insufficient data) never blocks; only a measured, poor record does. */
+export const QUALITY_PROMOTION_FLOOR = Number(
+  process.env.AUTOPILOT_QUALITY_PROMOTION_FLOOR ?? 0.5,
+);
+
+/**
+ * Read recent experiences (optionally for one domain) and map them to the pure
+ * DecisionRecord shape. The vote is derived by the SAME honest `outcomeOf` the
+ * efficacy model uses — never invented. `predictedSuccess` comes from the row's
+ * stored forecast (null if the move carried none). Best-effort: [] on DB error.
+ */
+export async function buildDecisionRecords(
+  domain?: string,
+  limit = 200,
+): Promise<DecisionRecord[]> {
+  try {
+    const { db } = await import("../../db");
+    const { autopilotExperiences } = await import("@shared/schema");
+    const { outcomeOf } = await import("./experienceLog");
+    const { desc, eq } = await import("drizzle-orm");
+    const base = db.select().from(autopilotExperiences);
+    const rows = await (domain
+      ? base.where(eq(autopilotExperiences.domain, domain))
+      : base
+    )
+      .orderBy(desc(autopilotExperiences.createdAt))
+      .limit(limit);
+    return rows.map((r: typeof autopilotExperiences.$inferSelect) => {
+      const trace = (r.reasoningTrace as { senses?: Record<string, unknown> } | null) ?? null;
+      const vote = outcomeOf({
+        dispatchSuccess: r.dispatchSuccess,
+        evalScore: r.evalScore != null ? Number(r.evalScore) : null,
+        founderVerdict: r.founderVerdict,
+        resolution: r.resolution,
+        satisfaction: r.satisfaction,
+      });
+      return {
+        moveKind: r.moveKind,
+        domain: r.domain,
+        senses: trace?.senses ?? {},
+        predictedSuccess: r.predictedSuccess != null ? Number(r.predictedSuccess) : null,
+        vote,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Live decision-quality report for a domain (or all domains). */
+export async function getDomainDecisionQuality(domain?: string): Promise<DecisionQualityReport> {
+  return decisionQualityReport(await buildDecisionRecords(domain));
+}
+
+/**
+ * Quality gate for autonomy promotion: returns true to HOLD when there is
+ * ENOUGH resolved data to trust the number AND the measured success rate is
+ * below the floor. Cold start (insufficient) never holds — earn-up stays
+ * possible while data accrues; only a proven-poor record blocks widening.
+ */
+export async function shouldHoldPromotionForQuality(domain: string): Promise<boolean> {
+  const report = await getDomainDecisionQuality(domain);
+  return report.sufficient && report.successRate !== null && report.successRate < QUALITY_PROMOTION_FLOOR;
+}
