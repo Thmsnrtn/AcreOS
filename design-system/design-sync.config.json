@@ -1,0 +1,13 @@
+{
+  "pkg": "@acreos/design-system",
+  "globalName": "AcreOSDS",
+  "shape": "storybook",
+  "storybookConfigDir": ".storybook",
+  "buildCmd": "npm run build",
+  "entry": "./dist/index.js",
+  "notes": "./.design-sync/NOTES.md",
+  "provider": {
+    "component": "Fragment",
+    "props": {}
+  }
+}
