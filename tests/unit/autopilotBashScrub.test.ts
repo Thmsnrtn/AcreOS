@@ -22,7 +22,7 @@ describe("untrusted screen — destructive commands blocked (re-audit defense-in
 
 describe("file_write — git/CI internals are off-limits (re-audit it.2)", () => {
   it("refuses writes into .git/ and .github/workflows/", async () => {
-    for (const p of [".git/hooks/pre-commit", ".git/config", ".github/workflows/deploy.yml"]) {
+    for (const p of [".git/hooks/pre-commit", ".git/config", ".github/workflows/deploy.yml", ".GIT/config", "./.git/hooks/x", "foo/../.git/config"]) {
       const r = await executeDispatchTool("file_write", { path: p, content: "x" }, { untrusted: true });
       expect(r.success, p).toBe(false);
       expect(r.output, p).toMatch(/REFUSED/i);

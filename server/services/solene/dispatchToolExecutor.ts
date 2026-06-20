@@ -945,7 +945,9 @@ async function toolFileWrite(
   // workflows; both are tree-integrity / deploy-path tampering vectors. The
   // non-executable-hook barrier defangs hook-planting today, but this closes
   // the class outright (and protects .git/config + .github/workflows/*).
-  const rel = path.relative(PROJECT_ROOT, abs).replace(/\\/g, "/");
+  // Case-folded so `.GIT/config` on a case-insensitive FS (macOS dev box) can't
+  // slip past and hit the real .git via the OS's case-insensitive resolution.
+  const rel = path.relative(PROJECT_ROOT, abs).replace(/\\/g, "/").toLowerCase();
   if (rel === ".git" || rel.startsWith(".git/") || rel.startsWith(".github/workflows/")) {
     return {
       success: false,
