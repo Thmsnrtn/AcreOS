@@ -223,6 +223,64 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── Live heartbeat — "what's it doing now / is it healthy" ──────────────
+  // One read that makes the just-wired autonomous behavior WATCHABLE: the last
+  // tick's pulse (refreshed every ~30m by the worker), the effective support
+  // auto-resolve cut + its provenance (so a learned/cold-start divergence is
+  // visible, not silent), and the pending witnessed-send count.
+  app.get(
+    "/api/founder/autopilot/live",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { getLatestMorningPulse } = await import("./services/solene/continuousLoop");
+        const pulse = await getLatestMorningPulse();
+
+        let supportThresholdLine: string | null = null;
+        let supportThresholdPct: number | null = null;
+        try {
+          const { currentSupportAutoResolveThreshold } = await import(
+            "./services/autopilot/learnedGates"
+          );
+          const { learnedThresholdLine } = await import("./services/autopilot/learnedPolicy");
+          const lt = await currentSupportAutoResolveThreshold();
+          supportThresholdLine = learnedThresholdLine("Support auto-resolve", lt);
+          supportThresholdPct = Math.round(lt.threshold * 100);
+        } catch {
+          /* omit */
+        }
+
+        let pendingCount = 0;
+        try {
+          const { listPendingHands } = await import("./services/autopilot/pendingHands");
+          pendingCount = (await listPendingHands()).length;
+        } catch {
+          /* 0 */
+        }
+
+        return res.json({
+          lastTickAt: pulse?.generatedAt ?? null,
+          oneLine: pulse?.oneLine ?? null,
+          mrr: pulse?.mrr ?? null,
+          trials: pulse?.trials ?? null,
+          uptimePct: pulse?.uptimePct ?? null,
+          envelopeStatus: pulse?.envelopeStatus ?? null,
+          decisionsWaitingCount: pulse?.decisionsWaitingCount ?? 0,
+          asksOpenCount: pulse?.asksOpenCount ?? 0,
+          autonomyHorizonDays: pulse?.autonomyHorizonDays ?? null,
+          dispatchesCompletedLast24h: pulse?.dispatchesCompletedLast24h ?? 0,
+          dispatchesFlaggedLast24h: pulse?.dispatchesFlaggedLast24h ?? 0,
+          supportThresholdLine,
+          supportThresholdPct,
+          pendingCount,
+        });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── The board report (wire-for-real: boardReport + okr) ─────────────────
   // The CEO-to-board summary: what the company did, how it's tracking
   // (OKR + decision quality), and the handful of things that need the founder.

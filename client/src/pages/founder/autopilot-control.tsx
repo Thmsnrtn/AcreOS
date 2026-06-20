@@ -26,6 +26,7 @@ import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { staggerContainer, staggerItem } from "@/lib/animations";
+import { formatRelative } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
 
 interface LedgerEntry { domain: string; level: string; cleanCycleCount: number; threshold: number; qualityLine?: string | null }
@@ -35,6 +36,18 @@ interface ControlData {
   openAsks: number;
   calibration: { grade: string; n: number } | null;
   conversions?: { totalSignups: number; byPlay: Array<{ playId: string; signups: number }> };
+}
+
+interface LiveData {
+  lastTickAt: string | null;
+  oneLine: string | null;
+  envelopeStatus: string | null;
+  decisionsWaitingCount: number;
+  dispatchesCompletedLast24h: number;
+  dispatchesFlaggedLast24h: number;
+  supportThresholdLine: string | null;
+  supportThresholdPct: number | null;
+  pendingCount: number;
 }
 
 const CONTROL_KEY = ["/api/founder/autopilot/control"];
@@ -60,6 +73,18 @@ export default function FounderAutopilotControlPage() {
       return res.json();
     },
     staleTime: 15_000,
+  });
+
+  // Live heartbeat — the last tick + the effective support cut + pending count,
+  // so the just-wired autonomous behavior is watchable (auto-refreshes).
+  const live = useQuery<LiveData>({
+    queryKey: ["/api/founder/autopilot/live"],
+    queryFn: async () => {
+      const res = await fetch("/api/founder/autopilot/live", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load live state (${res.status})`);
+      return res.json();
+    },
+    refetchInterval: 30_000,
   });
 
   const setSetting = useMutation({
@@ -114,6 +139,41 @@ export default function FounderAutopilotControlPage() {
           <QueryErrorState error={error instanceof Error ? error : new Error("Failed")} title="Control Center unavailable" onRetry={() => void refetch()} />
         ) : (
           <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="visible">
+            {/* Live heartbeat — what it last did + whether it's healthy. */}
+            {live.data && (
+              <motion.section variants={staggerItem}>
+                <Card>
+                  <CardContent className="p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2 w-2 rounded-full ${live.data.lastTickAt ? "bg-acr-success" : "bg-muted-foreground"}`} aria-hidden="true" />
+                        <span className="text-sm font-semibold text-foreground">Live</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground" data-testid="live-last-tick">
+                        {live.data.lastTickAt ? `Last tick ${formatRelative(live.data.lastTickAt)}` : "No tick yet"}
+                      </span>
+                    </div>
+                    {live.data.oneLine && (
+                      <p className="text-xs text-muted-foreground">{live.data.oneLine}</p>
+                    )}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>{live.data.dispatchesCompletedLast24h} dispatches/24h</span>
+                      {live.data.dispatchesFlaggedLast24h > 0 && (
+                        <span className="text-acr-warn">{live.data.dispatchesFlaggedLast24h} flagged</span>
+                      )}
+                      <span>{live.data.pendingCount} awaiting your tap</span>
+                      {live.data.envelopeStatus && <span>envelope: {live.data.envelopeStatus}</span>}
+                    </div>
+                    {live.data.supportThresholdLine && (
+                      <p className="text-micro text-muted-foreground" data-testid="live-support-threshold">
+                        {live.data.supportThresholdLine}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.section>
+            )}
+
             {/* Master switches */}
             <motion.section variants={staggerItem} className="grid gap-4 sm:grid-cols-2">
               <MasterToggle
