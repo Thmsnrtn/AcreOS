@@ -38,17 +38,19 @@ function getConfidenceThreshold(): number {
  * The effective auto-resolve confidence cut (0-100). Wire-for-real: instead of a
  * static env threshold, this consults the LEARNED threshold — calibrated on the
  * resolver's own real reopen/CSAT outcomes (learnedGates). Until enough labeled
- * tickets accrue, learnThreshold returns the typed default, so this equals the
- * env threshold cold-start. Once data accrues, the cut self-calibrates: tighter
- * if confident resolutions were getting reopened, looser if they held. Never
- * below the env floor, so learning can only ADD caution, never remove it.
- * Fail-soft: the static env threshold on any error.
+ * tickets accrue, learnThreshold returns the env floor we pass as its default,
+ * so this EXACTLY equals the env threshold cold-start (true no-op — preserves
+ * the SOPHIE_CONFIDENCE_MODE posture + lockstep with the primary resolver).
+ * Once data accrues, the cut self-calibrates: tighter if confident resolutions
+ * were getting reopened. Never below the env floor, so learning can only ADD
+ * caution, never remove it. Fail-soft: the static env threshold on any error.
  */
 async function getLearnedOrDefaultThreshold(): Promise<number> {
   const envFloor = getConfidenceThreshold();
   try {
     const { currentSupportAutoResolveThreshold } = await import("./autopilot/learnedGates");
-    const learned = await currentSupportAutoResolveThreshold();
+    // Pass the env floor as the cold-start default so an unlearned cut == env.
+    const learned = await currentSupportAutoResolveThreshold(envFloor / 100);
     const learnedPct = Math.round(learned.threshold * 100);
     // Learning can only tighten (raise) the cut, never loosen below the
     // configured env posture — conservative by construction.

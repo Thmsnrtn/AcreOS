@@ -19,8 +19,11 @@ import { logger } from "../../utils/logger";
 
 /** Learn the auto-resolve confidence threshold from (confidence → success)
  * history. Pure. Conservative opts: needs a high success rate to act early. */
-export function learnedAutoResolveThreshold(history: SignalOutcome[]): LearnedThreshold {
-  return learnThreshold(history, DEFAULT_AUTO_RESOLVE_THRESHOLD, {
+export function learnedAutoResolveThreshold(
+  history: SignalOutcome[],
+  defaultThreshold = DEFAULT_AUTO_RESOLVE_THRESHOLD,
+): LearnedThreshold {
+  return learnThreshold(history, defaultThreshold, {
     minSamples: 30,
     targetSuccessRate: 0.85,
     minBucket: 8,
@@ -90,7 +93,10 @@ export async function readSupportConfidenceOutcomeHistory(limit = 1000): Promise
 }
 
 /** The learned support auto-resolve cut (0..1), calibrated on real reopen/CSAT
- * outcomes. Falls back to the typed default until enough labeled data accrues. */
-export async function currentSupportAutoResolveThreshold(): Promise<LearnedThreshold> {
-  return learnedAutoResolveThreshold(await readSupportConfidenceOutcomeHistory());
+ * outcomes. Falls back to `defaultThreshold` (the caller's current posture) until
+ * enough labeled data accrues — so cold-start is a true no-op for the caller. */
+export async function currentSupportAutoResolveThreshold(
+  defaultThreshold = DEFAULT_AUTO_RESOLVE_THRESHOLD,
+): Promise<LearnedThreshold> {
+  return learnedAutoResolveThreshold(await readSupportConfidenceOutcomeHistory(), defaultThreshold);
 }
