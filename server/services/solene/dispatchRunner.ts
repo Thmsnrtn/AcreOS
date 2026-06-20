@@ -889,7 +889,8 @@ export async function runDispatch(
           max_tokens: 4096,
           system: cachedSystem as any,
           messages: messages as any,
-          tools: getDispatchToolSchemas() as any,
+          // Worker dispatches are untrusted → no free-form bash in the toolset.
+          tools: getDispatchToolSchemas({ untrusted: true }) as any,
         },
         { timeout: remainingMs },
       );

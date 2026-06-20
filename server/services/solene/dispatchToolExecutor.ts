@@ -183,6 +183,23 @@ export const DISPATCH_TOOL_SCHEMAS = [
       required: ["message"],
     },
   },
+  {
+    name: "run_tests",
+    description:
+      "Run the test suite with `npx vitest run`. Optional `path` runs only that test file/dir. This is the allowlisted replacement for `bash npm test` — autonomous dispatches cannot run free-form shell.",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Optional test file or directory to scope the run." },
+      },
+    },
+  },
+  {
+    name: "typecheck",
+    description:
+      "Run the TypeScript type-check (`npm run check`). Allowlisted replacement for `bash npm run check`.",
+    input_schema: { type: "object", properties: {} },
+  },
   // ──────────────────────────────────────────────────────────────────────────
   // L1.5 — dormant-service wire-ins. Each wraps a backend service shipped
   // earlier this week. agent_role + dispatch_id are auto-populated from the
@@ -429,12 +446,19 @@ export type DispatchToolName =
  * is empty until a phase registers a hand, so this returns exactly
  * DISPATCH_TOOL_SCHEMAS until then.
  */
-export function getDispatchToolSchemas(): ReadonlyArray<{
+export function getDispatchToolSchemas(opts?: { untrusted?: boolean }): ReadonlyArray<{
   name: string;
   description: string;
   input_schema: Record<string, unknown>;
 }> {
-  return [...DISPATCH_TOOL_SCHEMAS, ...listHandSchemas()];
+  // SECURITY: autonomous (untrusted) dispatches do NOT get free-form `bash`.
+  // The whole regex command-screen surface exists only because bash is free-form;
+  // removing the tool from the untrusted toolset collapses that surface. Agents
+  // keep file ops + git_* + run_tests + typecheck (the real reasons bash existed).
+  const base = opts?.untrusted
+    ? DISPATCH_TOOL_SCHEMAS.filter((t) => t.name !== "bash")
+    : DISPATCH_TOOL_SCHEMAS;
+  return [...base, ...listHandSchemas()];
 }
 
 // ----------------------------------------------------------------------------
@@ -689,7 +713,24 @@ export async function executeDispatchTool(
       case "file_list":
         return await toolFileList(input, started);
       case "bash":
+        // SECURITY: free-form shell is REMOVED for autonomous (untrusted)
+        // dispatches — they get git_* + run_tests + typecheck instead. The
+        // schema is also filtered out of their toolset (getDispatchToolSchemas),
+        // so this is a belt-and-suspenders refusal.
+        if (ctx.untrusted) {
+          return {
+            success: false,
+            output:
+              "[REFUSED] free-form `bash` is not available to autonomous dispatches. " +
+              "Use run_tests, typecheck, git_status/git_diff/git_commit, or file_read/file_write/file_list.",
+            durationMs: Date.now() - started,
+          };
+        }
         return await toolBash(input, started, ctx.untrusted);
+      case "run_tests":
+        return await toolRunTests(input, started, ctx.untrusted);
+      case "typecheck":
+        return await toolBash({ command: "npm run check", timeout_ms: BASH_MAX_TIMEOUT_MS }, started, ctx.untrusted);
       case "git_status":
         return await toolGitStatus(started, ctx.untrusted);
       case "git_diff":
@@ -1046,6 +1087,35 @@ async function toolBash(
 
 async function toolGitStatus(started: number, untrusted = false): Promise<ToolExecutionResult> {
   return await toolBash({ command: "git status --short" }, started, untrusted);
+}
+
+/** Allowlisted test runner — `npx vitest run [path]`. The optional path is
+ * shell-escaped + path-validated (inside the repo) so this can't smuggle a
+ * free-form command the way the removed `bash` tool could. */
+async function toolRunTests(
+  input: Record<string, unknown>,
+  started: number,
+  untrusted = false,
+): Promise<ToolExecutionResult> {
+  const raw = typeof input.path === "string" ? input.path.trim() : "";
+  let pathArg = "";
+  if (raw) {
+    try {
+      resolveSafePath(raw); // rejects paths escaping the repo root
+    } catch (err) {
+      return {
+        success: false,
+        output: `run_tests: rejected unsafe path ${raw}: ${err instanceof Error ? err.message : String(err)}`,
+        durationMs: Date.now() - started,
+      };
+    }
+    pathArg = ` ${shellEscape(raw)}`;
+  }
+  return await toolBash(
+    { command: `npx vitest run${pathArg}`, timeout_ms: BASH_MAX_TIMEOUT_MS },
+    started,
+    untrusted,
+  );
 }
 
 async function toolGitDiff(

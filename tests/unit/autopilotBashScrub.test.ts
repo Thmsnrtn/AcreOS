@@ -3,7 +3,34 @@ import {
   scrubSecretsFromEnv,
   executeDispatchTool,
   sanitizeToolOutput,
+  getDispatchToolSchemas,
 } from "../../server/services/solene/dispatchToolExecutor";
+
+describe("autonomous dispatches get NO free-form bash (OS-isolation step 1)", () => {
+  it("untrusted toolset excludes bash but keeps git_* + run_tests + typecheck", () => {
+    const names = getDispatchToolSchemas({ untrusted: true }).map((t) => t.name);
+    expect(names).not.toContain("bash");
+    for (const t of ["git_status", "git_diff", "git_commit", "run_tests", "typecheck", "file_read"]) {
+      expect(names, `${t} should remain`).toContain(t);
+    }
+  });
+
+  it("trusted (founder) toolset still includes bash", () => {
+    expect(getDispatchToolSchemas().map((t) => t.name)).toContain("bash");
+  });
+
+  it("the executor REFUSES a bash call from an untrusted dispatch", async () => {
+    const r = await executeDispatchTool("bash", { command: "echo hi" }, { untrusted: true });
+    expect(r.success).toBe(false);
+    expect(r.output).toMatch(/REFUSED.*bash/i);
+  });
+
+  it("run_tests rejects a path that escapes the repo root", async () => {
+    const r = await executeDispatchTool("run_tests", { path: "../../etc/passwd" }, { untrusted: true });
+    expect(r.success).toBe(false);
+    expect(r.output).toMatch(/unsafe path/i);
+  });
+});
 
 describe("scrubSecretsFromEnv — autonomous bash gets ONLY an allowlist (elite-audit P0, re-audit it.2)", () => {
   it("keeps the operational allowlist but strips everything else (default-deny)", () => {
