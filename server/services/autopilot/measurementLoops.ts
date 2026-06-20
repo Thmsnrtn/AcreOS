@@ -110,3 +110,62 @@ export function composeKbDraft(input: { question: string; resolution: string }):
   const body = [input.resolution.trim(), "", "_Drafted by the autopilot from a resolved support ticket — review before publishing._"].join("\n");
   return { title, body };
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Impure orchestration — wire the pure NPS + KB logic into the live system.
+// (wire-for-real: measurementLoops.npsActionFor + lifecyclePlaybook were dead.)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Max cost for an autopilot NPS-follow-up dispatch. */
+export const NPS_FOLLOWUP_MAX_COST_USD = 1.5;
+
+/**
+ * NPS → action → governed dispatch (wire-for-real). On a low NPS score, resolve
+ * the lifecycle play (lifecyclePlaybook) the segment maps to and enqueue a
+ * GATED autopilot dispatch to draft the customer follow-up. The draft routes
+ * through witnessed-send (the send_email hand requires the founder's tap), and
+ * the whole thing is bounded by the ensemble cap + the dispatch master switch.
+ * Conservative on volume: only DETRACTORS (≤6) auto-enqueue — the clear,
+ * low-volume, high-value case; passives get the plan returned but no dispatch.
+ * Best-effort: never throws into the caller (the NPS submit must not fail).
+ */
+export async function enqueueNpsFollowup(input: {
+  score: number;
+  organizationId: number;
+  userId: string;
+  feedback?: string | null;
+}): Promise<{ enqueued: boolean; segment: NpsSegment; playId: string | null; dispatchId?: number }> {
+  const plan = npsActionFor(input.score);
+  try {
+    if (plan.segment !== "detractor" || !plan.lifecyclePlayId) {
+      return { enqueued: false, segment: plan.segment, playId: plan.lifecyclePlayId };
+    }
+    const { lifecyclePlayById } = await import("./lifecyclePlaybook");
+    const play = lifecyclePlayById(plan.lifecyclePlayId);
+    if (!play || !play.isCustomerFacing) {
+      return { enqueued: false, segment: plan.segment, playId: plan.lifecyclePlayId };
+    }
+    const { enqueueDispatch } = await import("../solene/dispatchQueue");
+    const promptText = [
+      `A customer just left a DETRACTOR NPS score of ${input.score}/10.`,
+      input.feedback ? `Their verbatim feedback: "${input.feedback}".` : `No written feedback was left.`,
+      ``,
+      `Run the "${play.id}" lifecycle play. ${play.brief}`,
+      ``,
+      `Draft a tasteful, specific, human win-back email for organization #${input.organizationId}.`,
+      `Use the ${play.hands.join(", ")} hand(s). The send is witnessed — the founder taps to send; you only draft.`,
+    ].join("\n");
+    const dispatchId = await enqueueDispatch({
+      sourceType: "detector",
+      sourceId: `nps:${input.organizationId}:${input.userId}`,
+      agentRole: "soren",
+      promptText,
+      maxCostUsd: NPS_FOLLOWUP_MAX_COST_USD,
+      enqueuedBy: "nps-followup",
+    });
+    return { enqueued: true, segment: plan.segment, playId: plan.lifecyclePlayId, dispatchId };
+  } catch {
+    // Gated/capped/disabled → no dispatch; honest no-op, never breaks the submit.
+    return { enqueued: false, segment: plan.segment, playId: plan.lifecyclePlayId };
+  }
+}

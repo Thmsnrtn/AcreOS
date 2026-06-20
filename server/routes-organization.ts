@@ -2293,6 +2293,17 @@ export function registerOrganizationRoutes(app: Express): void {
         logger.warn("NPS detractor founder notification failed", { metadata: { detail: String(notifyErr) } });
       }
 
+      // Autopilot follow-up (wire-for-real: measurementLoops.npsActionFor +
+      // lifecyclePlaybook). A detractor score queues a GATED, witnessed-send
+      // win-back draft. Best-effort — never blocks the customer submit.
+      try {
+        const { enqueueNpsFollowup } = await import("./services/autopilot/measurementLoops");
+        const r = await enqueueNpsFollowup({ score, organizationId: orgId, userId, feedback: feedback ?? null });
+        if (r.enqueued) logger.info("NPS follow-up dispatch enqueued", { orgId, score, playId: r.playId, dispatchId: r.dispatchId });
+      } catch (followErr) {
+        logger.warn("NPS follow-up enqueue failed", { metadata: { detail: String(followErr) } });
+      }
+
       logger.info("NPS response submitted", { orgId, userId, score, trigger });
       res.json({ success: true, id: inserted.id });
     } catch (err: any) {
