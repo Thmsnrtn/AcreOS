@@ -120,6 +120,64 @@ export function composeKbDraft(input: { question: string; resolution: string }):
 export const NPS_FOLLOWUP_MAX_COST_USD = 1.5;
 
 /**
+ * Seed a DRAFT KB article from a cleanly auto-resolved support ticket
+ * (wire-for-real: measurementLoops.shouldDraftKb/composeKbDraft were dead).
+ * Conservative: only a high-confidence AI resolution drafts. Idempotent — never
+ * drafts twice for the same ticket. Best-effort: never throws into the resolver
+ * (a KB draft must never break a customer resolution). The draft lands as
+ * is_draft/draft_status='pending_review'/is_published=false for founder review
+ * at the /founder/support/kb-drafts surface (Tahoe E3 substrate).
+ */
+export async function draftKbFromResolvedTicket(input: {
+  ticketId: number;
+  question: string;
+  resolution: string;
+  confidence: number | null; // 0..1
+  category?: string | null;
+}): Promise<{ drafted: boolean; reason?: string }> {
+  try {
+    const signal: ResolvedTicketSignal = {
+      status: "resolved",
+      aiHandled: true,
+      confidence: input.confidence,
+      satisfaction: null, // not yet known at resolve time; absence doesn't block
+      reopened: false,
+    };
+    if (!shouldDraftKb(signal)) return { drafted: false, reason: "below draft bar" };
+
+    const { db } = await import("../../db");
+    const { knowledgeBaseArticles } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+
+    // Idempotent: one draft per source ticket.
+    const existing = await db
+      .select({ id: knowledgeBaseArticles.id })
+      .from(knowledgeBaseArticles)
+      .where(eq(knowledgeBaseArticles.sourceTicketId, input.ticketId))
+      .limit(1);
+    if (existing.length > 0) return { drafted: false, reason: "already drafted" };
+
+    const { title, body } = composeKbDraft({ question: input.question, resolution: input.resolution });
+    const slug =
+      title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) +
+      `-t${input.ticketId}`;
+    await db.insert(knowledgeBaseArticles).values({
+      title: title || `Resolved ticket #${input.ticketId}`,
+      slug,
+      content: body,
+      category: input.category || "general",
+      isDraft: true,
+      draftStatus: "pending_review",
+      isPublished: false,
+      sourceTicketId: input.ticketId,
+    });
+    return { drafted: true };
+  } catch {
+    return { drafted: false, reason: "error (swallowed)" };
+  }
+}
+
+/**
  * NPS → action → governed dispatch (wire-for-real). On a low NPS score, resolve
  * the lifecycle play (lifecyclePlaybook) the segment maps to and enqueue a
  * GATED autopilot dispatch to draft the customer follow-up. The draft routes

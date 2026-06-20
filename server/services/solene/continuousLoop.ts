@@ -360,6 +360,20 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     for (const a of asks) {
       if (a.urgency === "urgent") asksFiredToFounder += 1;
     }
+    // Escalation ladder (wire-for-real: escalationLadder). Absence fails safe —
+    // re-page a stale ask, and auto-resolve an unanswered DECISION to the safe
+    // side (timed_out; the system never acted on an unapproved go/no-go). The
+    // 30-min tick cadence is the re-page debounce window. Best-effort.
+    try {
+      const { runAskEscalationLadder } = await import("./founderCollab");
+      const r = await runAskEscalationLadder(0.5);
+      asksFiredToFounder += r.repaged;
+    } catch (ladderErr) {
+      logger.warn(
+        "[continuousLoop] tick: escalation ladder failed",
+        ladderErr instanceof Error ? ladderErr : undefined,
+      );
+    }
   } catch (err) {
     errors += 1;
     logger.warn(
@@ -442,6 +456,21 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
         outward,
       );
       let moves = rankMoves(senses);
+      // Forward-looking forecast (wire-for-real: proactiveForecast). Reactive
+      // senses miss problems that are weeks out; this projects the reserve
+      // runway from real ledger data and, when a breach is inside the lead
+      // window, raises FINANCE urgency before it bites. Best-effort.
+      let preemptiveMoves: Array<{ kind: string; leadDays: number; rationale: string }> = [];
+      try {
+        const { computeRunwayForecast } = await import("../autopilot/proactiveForecast");
+        preemptiveMoves = await computeRunwayForecast();
+        if (preemptiveMoves.length) {
+          logger.info("[continuousLoop] tick: preemptive forecast", {
+            metadata: { moves: preemptiveMoves.map((m) => `${m.kind}@${m.leadDays}d`) },
+          });
+        }
+      } catch { /* forecast is best-effort */ }
+      const preemptiveRunwayRisk = preemptiveMoves.some((m) => m.kind === "protect_runway");
       // Within-tier ordering (best-effort; never crosses tiers → safety ladder
       // is untouched). Blends two signals:
       //   • objective urgency (P5) — toward the numbers that most need moving;
@@ -471,6 +500,11 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             }
           }
         } catch { /* objective urgency is best-effort */ }
+        // Forward-looking finance urgency (wire-for-real: proactiveForecast):
+        // a projected runway breach raises finance weight so the brain acts
+        // ahead of the problem, not after. Within-tier only — never crosses the
+        // safety ladder.
+        if (preemptiveRunwayRisk) blended.finance *= 1.5;
         moves = applyObjectiveWeighting(moves, blended);
       } catch { /* within-tier weighting is best-effort */ }
       plannedTopMove = moves[0] ?? null;

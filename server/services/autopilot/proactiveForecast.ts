@@ -100,3 +100,32 @@ export function forecastToPreemptiveMoves(s: PreemptiveSignal): PreemptiveMove[]
 
   return moves.sort((a, b) => a.leadDays - b.leadDays);
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Impure source — build the PreemptiveSignal from REAL data and forecast
+// (wire-for-real: forecastToPreemptiveMoves was dead). Sources only what exists
+// honestly: reserve trajectory + burn (real today). churnHistory/demandHistory
+// are omitted — no per-day time-series exists yet, and the pure forecaster
+// skips a series with <2 points rather than fabricate one. So today this yields
+// the protect_runway move when reserves project to hit the floor inside the
+// lead window, and nothing otherwise. Best-effort: [] on any read error.
+// ────────────────────────────────────────────────────────────────────────────
+
+export async function computeRunwayForecast(): Promise<PreemptiveMove[]> {
+  try {
+    const { computeReserveFloor } = await import("../reserveFloorChecker");
+    const { getSpendSummary } = await import("../solene/capitalTracker");
+    const rf = await computeReserveFloor();
+    // Daily burn from the trailing 7-day capital spend (USD → cents/day).
+    const spend = await getSpendSummary(7 * 24);
+    const dailyBurnCents = Math.max(0, Math.round((spend.totalUsd * 100) / 7));
+    return forecastToPreemptiveMoves({
+      reserveCents: rf.reservesTotalCents,
+      floorCents: rf.floorCents,
+      dailyBurnCents,
+      // churnHistory / demandHistory deliberately omitted — no real series yet.
+    });
+  } catch {
+    return [];
+  }
+}

@@ -203,6 +203,22 @@ export const customerSupportAutoResolver = {
         .where(eq(supportTickets.id, ticketId));
 
       logger.info(`[AutoResolver] Ticket #${ticketId} auto-resolved by Sophie (confidence: ${confidence}%)`);
+
+      // KB auto-draft (wire-for-real: measurementLoops). A clean, confident AI
+      // resolution seeds a DRAFT KB article for founder review. Best-effort.
+      try {
+        const { draftKbFromResolvedTicket } = await import("./autopilot/measurementLoops");
+        await draftKbFromResolvedTicket({
+          ticketId,
+          question: ticket.subject ?? `Ticket #${ticketId}`,
+          resolution: opts.draftResponse,
+          confidence: confidence / 100,
+          category: opts?.category ?? ticket.category ?? null,
+        });
+      } catch (kbErr) {
+        logger.warn(`[AutoResolver] KB draft failed for #${ticketId}`, kbErr instanceof Error ? kbErr : undefined);
+      }
+
       return { autoResolved: true };
     }
 
