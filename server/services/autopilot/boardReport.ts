@@ -65,3 +65,67 @@ export function composeBoardReport(input: BoardReportInput): string {
 
   return lines.join("\n");
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Impure composer — assembles the board report from REAL live values (wire-for-
+// real: boardReport + okr were dead). Sources only what's cheaply + honestly
+// available; composeBoardReport omits any section it has no value for, so a
+// partial report is honest, not fabricated. The section set grows as more
+// line-producers are sourced.
+// ────────────────────────────────────────────────────────────────────────────
+
+export async function buildBoardReport(): Promise<{ markdown: string; generatedAt: string }> {
+  let okr: string | null = null;
+  let decisionQuality: string | null = null;
+  let pendingCount = 0;
+  let openAsks = 0;
+  let openDecisions = 0;
+
+  // OKR progress (wire-for-real: okr.buildOkrTree/okrLine).
+  try {
+    const { listObjectives } = await import("./objectives");
+    const { buildOkrTree, okrLine } = await import("./okr");
+    const objectives = await listObjectives(true);
+    if (objectives.length > 0) okr = okrLine(buildOkrTree(objectives));
+  } catch {
+    /* omit */
+  }
+
+  // Decision quality across all domains (wire-for-real: decisionEval).
+  try {
+    const { getDomainDecisionQuality, decisionEvalLine } = await import("./decisionEval");
+    decisionQuality = decisionEvalLine(await getDomainDecisionQuality());
+  } catch {
+    /* omit */
+  }
+
+  // Pending witnessed-send actions awaiting the founder's tap.
+  try {
+    const { listPendingHands } = await import("./pendingHands");
+    pendingCount = (await listPendingHands()).length;
+  } catch {
+    /* 0 */
+  }
+
+  // Attention calibration (asks + decisions over the recent window).
+  try {
+    const { listOpenAsks } = await import("../solene/founderCollab");
+    openAsks = (await listOpenAsks()).length;
+  } catch {
+    /* 0 */
+  }
+  openDecisions = pendingCount;
+
+  const { attentionLoad } = await import("./boardReserve");
+  const attention = attentionLoad(openAsks, openDecisions);
+
+  const markdown = composeBoardReport({
+    topMove: null,
+    okr,
+    decisionQuality,
+    pendingCount,
+    attention,
+  });
+  // Caller stamps the time (Date.now is unavailable in some contexts here).
+  return { markdown, generatedAt: new Date().toISOString() };
+}

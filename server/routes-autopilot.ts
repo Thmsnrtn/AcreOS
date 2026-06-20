@@ -223,6 +223,24 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── The board report (wire-for-real: boardReport + okr) ─────────────────
+  // The CEO-to-board summary: what the company did, how it's tracking
+  // (OKR + decision quality), and the handful of things that need the founder.
+  app.get(
+    "/api/founder/autopilot/board-report",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { buildBoardReport } = await import("./services/autopilot/boardReport");
+        const report = await buildBoardReport();
+        return res.json(report);
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── Standing orders + intents ("Your Voice") ────────────────────────────
   app.get(
     "/api/founder/autopilot/standing-orders",

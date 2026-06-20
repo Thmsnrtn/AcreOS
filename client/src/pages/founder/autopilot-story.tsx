@@ -145,6 +145,16 @@ export default function FounderAutopilotStoryPage() {
   });
   const entries = data?.entries ?? [];
 
+  const board = useQuery<{ markdown: string; generatedAt: string }>({
+    queryKey: ["/api/founder/autopilot/board-report"],
+    queryFn: async () => {
+      const res = await fetch("/api/founder/autopilot/board-report", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load board report (${res.status})`);
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
   return (
     <PageShell maxWidth="4xl" label="The Story">
       <div className="space-y-6">
@@ -158,6 +168,20 @@ export default function FounderAutopilotStoryPage() {
             options it weighed, its honest forecast, which gate decided, and how it turned out.
           </p>
         </header>
+
+        {/* The board report — the CEO-to-board summary (OKR progress, decision
+            quality, what needs you). Wire-for-real: boardReport + okr. */}
+        {board.isLoading ? (
+          <Skeleton className="h-40 w-full rounded-card" />
+        ) : board.data?.markdown ? (
+          <Card>
+            <CardContent className="p-5">
+              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground" data-testid="board-report">
+                {board.data.markdown}
+              </pre>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {isLoading ? (
           <div className="space-y-2" aria-busy="true">
