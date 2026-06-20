@@ -554,11 +554,17 @@ const UNTRUSTED_BASH_DENY: { name: string; rx: RegExp }[] = [
     rx: /\b(git\s+(-C\s+\S+\s+)?push|gh\s+(auth|release|secret|api|repo|workflow)|fly(ctl)?\s+(deploy|secrets|ssh|apps)|flyctl|npm\s+publish|wrangler\s+(deploy|publish)|vercel\s+(deploy|--prod))\b/i,
   },
   {
-    // Secret-file reads, including the `$(<file)` / `< file` / redirect forms
-    // (re-audit it.4). Quote-splice evasions can't be regex'd reliably — the
-    // output sanitizer is the true backstop for those.
-    name: "secret-file-read",
-    rx: /(^|[\s'"=/<(])(\.env(\.[\w.-]*)?|\.netrc|\.pgpass|\.git-credentials|id_(rsa|ed25519|ecdsa|dsa)|credentials(\.[\w.-]*)?)(\s|$|['")])/i,
+    // Secret-file reference ANYWHERE in the command (re-audit it.5). The prior
+    // delimiter-anchored rule was bypassable: `curl -d @.env.local …` and
+    // `cat .env.local|rev` both evaded it. Match the secret-filename token with
+    // word boundaries regardless of surrounding delimiter — any command that so
+    // much as NAMES a secret file is refused, which converges where chasing
+    // individual read/transform tools does not.
+    name: "secret-file-reference",
+    // The `.env*` alternative requires a non-word, non-dot char before it so a
+    // FILENAME (`@.env.local`, ` .env`, `<.env.local`) matches but the common
+    // code idioms `process.env` / `import.meta.env` (preceded by a word char) do NOT.
+    rx: /(^|[^\w.])\.env(\.[\w-]+)*|\.netrc\b|\.pgpass\b|\.git-credentials\b|\bid_(rsa|ed25519|ecdsa|dsa)\b|\bcredentials\.[\w-]+|\bhosts\.yml\b/i,
   },
   {
     // Home credential stores by absolute path too. Includes macOS /Users/<u>
@@ -567,8 +573,19 @@ const UNTRUSTED_BASH_DENY: { name: string; rx: RegExp }[] = [
     rx: /(~|\$HOME|\/root|\/home\/[\w.-]+|\/Users\/[\w.-]+)\/?\.(config\/gh|fly|aws|ssh|netrc|docker|npmrc|git-credentials)/i,
   },
   // Encoders that would launder a secret past the output sanitizer (re-audit
-  // it.4: `... | base64` evades redaction). Block on the untrusted path.
-  { name: "output-encoder", rx: /\b(base64|base32|xxd|hexdump|uuencode|openssl\s+(base64|enc))\b/i },
+  // it.4/5: `| base64`, `| rev`, `| tr`, `| od`, `| fold`, `| xxd` all defeat
+  // the regex redactor). Block transform-then-print pipelines on untrusted.
+  {
+    name: "output-encoder",
+    rx: /[|]\s*(base64|base32|xxd|hexdump|uuencode|od|rev|fold|tac|tr\b|cut\b)|(\bopenssl\s+(base64|enc)\b)/i,
+  },
+  // Network egress that could POST a computed secret to an external sink
+  // (re-audit it.5: `curl -d @.env.local …`). Block data-upload + raw sockets on
+  // the untrusted path; simple GETs (no upload flag) still work for research.
+  {
+    name: "network-egress-upload",
+    rx: /\b(curl|wget)\b[^\n]*(\s-(d|F|T)\b|--data\b|--data-\w+|--upload-file\b|\s@)|(\b(nc|ncat|netcat|telnet|socat)\b)/i,
+  },
   { name: "curl-pipe-to-shell", rx: /\b(curl|wget)\b[^|;&]*[|]\s*(sudo\s+)?(sh|bash|zsh)\b/i },
 ];
 
