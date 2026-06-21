@@ -59,6 +59,18 @@ export interface FounderBriefInputs {
   learning?: Array<{ playId: string; rate: number; n: number }>;
   /** How well-calibrated the system's own predictions have been. */
   calibration?: { grade: string; n: number; brier: number | null } | null;
+  /**
+   * Weeks of runway at the current burn (reserves → floor). null when not
+   * burning (revenue covers spend) OR unknown. NEVER fabricated — derived from
+   * the real reserve/floor/burn ledger.
+   */
+  runwayWeeks?: number | null;
+  /**
+   * Week-over-week MRR change, signed percent, vs a REAL persisted pulse ~7
+   * days ago. null when there's no prior datapoint yet (a young system) — we
+   * omit the trend rather than invent one.
+   */
+  mrrWowPct?: number | null;
 }
 
 export interface FounderBrief {
@@ -76,6 +88,10 @@ export interface FounderBrief {
     weeklySpendUsd: number;
     envelopeStatus: "green" | "amber" | "red";
     uptimePct: number;
+    /** Weeks of runway at current burn; null when not burning / unknown. Real, never invented. */
+    runwayWeeks: number | null;
+    /** Week-over-week MRR change (signed %); null when no real prior datapoint exists. */
+    mrrWowPct: number | null;
   };
   /** The brain's focus, in plain language. */
   focusLine: string | null;
@@ -169,6 +185,8 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
       weeklySpendUsd: inp.pulse.weeklySpendUsd,
       envelopeStatus: inp.pulse.envelopeStatus,
       uptimePct: inp.pulse.uptimePct,
+      runwayWeeks: inp.runwayWeeks ?? null,
+      mrrWowPct: inp.mrrWowPct ?? null,
     },
     focusLine,
     trustLedger: inp.trustLedger,
@@ -304,6 +322,27 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     calibration = null;
   }
 
+  // Runway in weeks — from the REAL reserve/floor/burn ledger. runwayDays is
+  // null when not burning (revenue covers spend), in which case we show no
+  // weeks figure rather than invent one.
+  let runwayWeeks: number | null = null;
+  try {
+    const { computeReserveFloor } = await import("../reserveFloorChecker");
+    const { getSpendSummary } = await import("../solene/capitalTracker");
+    const { runwayDays } = await import("./proactiveForecast");
+    const rf = await computeReserveFloor();
+    const spend = await getSpendSummary(7 * 24);
+    const dailyBurnCents = Math.max(0, Math.round((spend.totalUsd * 100) / 7));
+    const days = runwayDays(rf.reservesTotalCents, rf.floorCents, dailyBurnCents);
+    runwayWeeks = days == null ? null : Math.max(0, Math.round(days / 7));
+  } catch {
+    runwayWeeks = null;
+  }
+
+  // Week-over-week MRR — vs a REAL persisted pulse ~7 days ago. Null when there's
+  // no prior datapoint in the window yet (a young system); never fabricated.
+  const mrrWowPct = await computeMrrWowPct(safePulse.mrr, nowMs).catch(() => null);
+
   return buildFounderBrief({
     partOfDay,
     founderName,
@@ -313,5 +352,31 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     trustLedger,
     learning,
     calibration,
+    runwayWeeks,
+    mrrWowPct,
   });
+}
+
+/**
+ * Week-over-week MRR change as a signed percent, computed from a genuinely
+ * persisted morning-pulse snapshot ~7 days ago. Returns null (omit the trend)
+ * when there's no real prior row in the [6, 30]-day window or the prior MRR was
+ * zero — we never manufacture a trend from a single datapoint.
+ */
+async function computeMrrWowPct(currentMrr: number, nowMs: number): Promise<number | null> {
+  if (currentMrr <= 0) return null;
+  const { db } = await import("../../db");
+  const { soleneMorningPulse } = await import("@shared/schema");
+  const { and, gte, lte, desc } = await import("drizzle-orm");
+  const windowOldest = new Date(nowMs - 30 * 24 * 60 * 60 * 1000);
+  const windowNewest = new Date(nowMs - 6 * 24 * 60 * 60 * 1000);
+  const rows = await db
+    .select({ snapshot: soleneMorningPulse.snapshot })
+    .from(soleneMorningPulse)
+    .where(and(gte(soleneMorningPulse.generatedAt, windowOldest), lte(soleneMorningPulse.generatedAt, windowNewest)))
+    .orderBy(desc(soleneMorningPulse.generatedAt))
+    .limit(1);
+  const priorMrr = Number((rows[0]?.snapshot as { mrr?: unknown } | undefined)?.mrr ?? 0);
+  if (!Number.isFinite(priorMrr) || priorMrr <= 0) return null;
+  return Math.round(((currentMrr - priorMrr) / priorMrr) * 100);
 }

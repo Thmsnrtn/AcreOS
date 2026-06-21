@@ -40,9 +40,7 @@ import {
   // and FOUNDER_NAV_DEEP_DIVES below. Keep with the main lucide import block
   // so dead-import linters don't strip them when only the founder consts
   // reference them.
-  Sun,
   Heart,
-  Hammer,
   Cog,
   FileCode,
   History,
@@ -61,7 +59,10 @@ import {
   Sliders,
   Scale,
   LayoutGrid,
+  Newspaper,
+  ScrollText,
 } from "lucide-react";
+import { FOUNDER_DOORS, type FounderDoor } from "@/lib/founder-doors";
 
 export interface MasterNavItem {
   id: string;
@@ -179,43 +180,24 @@ export interface FounderNavDeepDive {
 }
 
 /** The 5 doors Tom approved for the new founder surface. Always visible. */
-export const FOUNDER_NAV_NEW_5_DOORS: FounderNavDoor[] = [
-  {
-    label: "Today",
-    icon: Sun,
-    href: "/founder/today",
-    description:
-      "Morning pulse + active asks + decisions waiting + start a conversation with Solene.",
-  },
-  {
-    label: "Team",
-    icon: Users,
-    href: "/founder/team",
-    description:
-      "12-member roster: who's active, who's dormant, what each is working on.",
-  },
-  {
-    label: "Customers",
-    icon: Heart,
-    href: "/founder/customers",
-    description:
-      "Funnel + lifecycle + Pax interactions (mostly Phase 0 placeholder).",
-  },
-  {
-    label: "Money",
-    icon: DollarSign,
-    href: "/founder/money",
-    description:
-      "Runway + envelope + recent capital events (mostly Phase 0 placeholder).",
-  },
-  {
-    label: "Build",
-    icon: Hammer,
-    href: "/founder/build",
-    description:
-      "Live dispatch queue + agent asks + recent commits + audit-finding summary.",
-  },
-];
+// The founder's primary nav — DERIVED from the canonical FOUNDER_DOORS (Letter ·
+// Decisions · Controls · Story) so the desktop sidebar, the command palette, and
+// the mobile bottom nav all render the same four doors the doctrine defines. The
+// name keeps "5" for import-stability (historical); the content is the four
+// doors plus the All-tools drawer shortcut rendered separately. Icons +
+// richer descriptions live here; the door identity lives in founder-doors.ts.
+const DOOR_ICON: Record<FounderDoor["id"], FounderNavDoor["icon"]> = {
+  letter: Newspaper,
+  decisions: ListChecks,
+  controls: Sliders,
+  story: ScrollText,
+};
+export const FOUNDER_NAV_NEW_5_DOORS: FounderNavDoor[] = FOUNDER_DOORS.map((d) => ({
+  label: d.label,
+  icon: DOOR_ICON[d.id],
+  href: d.href,
+  description: d.purpose,
+}));
 
 /** Settings shortcut — rendered as a separate icon row below the 5 doors. */
 export const FOUNDER_NAV_SETTINGS_SHORTCUT: FounderNavDoor = {

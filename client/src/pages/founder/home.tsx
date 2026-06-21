@@ -31,9 +31,25 @@ interface FounderBrief {
   neededLine: string;
   isFounderNeeded: boolean;
   decision: { askId: number; urgency: "urgent" | "normal" | "low"; summary: string } | null;
-  vitalSign: { mrr: number; trials: number; weeklySpendUsd: number; envelopeStatus: "green" | "amber" | "red"; uptimePct: number };
+  vitalSign: {
+    mrr: number;
+    trials: number;
+    weeklySpendUsd: number;
+    envelopeStatus: "green" | "amber" | "red";
+    uptimePct: number;
+    /** Weeks of runway at current burn; null when not burning / unknown. */
+    runwayWeeks: number | null;
+    /** Week-over-week MRR change (signed %); null when no real prior datapoint. */
+    mrrWowPct: number | null;
+  };
   /** The brain's current focus, in plain language (observational). Real, already computed server-side. */
   focusLine: string | null;
+}
+
+/** Signed WoW percent → a short, signed label ("↑3%" / "↓2%" / "flat"). */
+function wowLabel(pct: number): string {
+  if (pct === 0) return "flat wk/wk";
+  return `${pct > 0 ? "↑" : "↓"}${Math.abs(pct)}% wk/wk`;
 }
 
 // Plain-language budget status — never render the raw "amber" token at a CEO.
@@ -127,13 +143,19 @@ export default function FounderHomePage() {
 
           {/* The vital sign — Pulse strip */}
           <motion.div variants={staggerItem} className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <VitalStat label="MRR" value={usd(brief.vitalSign.mrr, { noCents: true })} />
+            <VitalStat
+              label="MRR"
+              value={usd(brief.vitalSign.mrr, { noCents: true })}
+              sub={brief.vitalSign.mrrWowPct != null ? wowLabel(brief.vitalSign.mrrWowPct) : undefined}
+              subTone={brief.vitalSign.mrrWowPct != null && brief.vitalSign.mrrWowPct < 0 ? "amber" : undefined}
+            />
             <VitalStat label="Trials" value={String(brief.vitalSign.trials)} />
             <VitalStat label="7-day spend" value={usd(brief.vitalSign.weeklySpendUsd, { noCents: true })} />
             <VitalStat
               label="Budget"
               value={BUDGET_STATUS[brief.vitalSign.envelopeStatus].label}
               tone={BUDGET_STATUS[brief.vitalSign.envelopeStatus].tone}
+              sub={brief.vitalSign.runwayWeeks != null ? `~${brief.vitalSign.runwayWeeks} wks runway` : undefined}
             />
             <VitalStat label="Uptime" value={`${brief.vitalSign.uptimePct.toFixed(1)}%`} />
           </motion.div>
@@ -172,12 +194,14 @@ export default function FounderHomePage() {
   );
 }
 
-function VitalStat({ label, value, tone }: { label: string; value: string; tone?: "amber" | "red" }) {
+function VitalStat({ label, value, tone, sub, subTone }: { label: string; value: string; tone?: "amber" | "red"; sub?: string; subTone?: "amber" }) {
   const toneClass = tone === "red" ? "text-destructive" : tone === "amber" ? "text-[hsl(var(--acr-warn))]" : "";
+  const subClass = subTone === "amber" ? "text-[hsl(var(--acr-warn))]" : "text-muted-foreground";
   return (
     <div className="rounded-lg border border-border bg-card p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={`mt-0.5 text-base font-semibold tabular-nums ${toneClass}`}>{value}</p>
+      {sub ? <p className={`mt-0.5 text-[11px] tabular-nums ${subClass}`}>{sub}</p> : null}
     </div>
   );
 }

@@ -115,6 +115,19 @@ describe("autopilot narration engine — the Voice", () => {
     expect(withCal.calibration).toMatchObject({ grade: "well-calibrated", n: 24 });
   });
 
+  it("carries real runway weeks + WoW-MRR trend through to the vital sign, null when absent", () => {
+    // Absent (a young system with no prior datapoint / not burning) → omitted, never faked.
+    const blank = buildFounderBrief(base());
+    expect(blank.vitalSign.runwayWeeks).toBeNull();
+    expect(blank.vitalSign.mrrWowPct).toBeNull();
+    // Present → mirrored exactly (the gatherer derives these from real ledger + persisted pulse).
+    const withTrend = buildFounderBrief(base({ runwayWeeks: 11, mrrWowPct: 3 }));
+    expect(withTrend.vitalSign.runwayWeeks).toBe(11);
+    expect(withTrend.vitalSign.mrrWowPct).toBe(3);
+    const declining = buildFounderBrief(base({ mrrWowPct: -2 }));
+    expect(declining.vitalSign.mrrWowPct).toBe(-2);
+  });
+
   it("partOfDayFromHour maps ET hours to the right greeting word", () => {
     expect(partOfDayFromHour(8)).toBe("morning");
     expect(partOfDayFromHour(14)).toBe("afternoon");

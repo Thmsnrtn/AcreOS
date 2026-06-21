@@ -97,7 +97,7 @@ function StoryRow({ entry }: { entry: StoryEntry }) {
         </div>
       </button>
       {open && t && (
-        <div className="px-9 pb-4 space-y-3 text-sm" data-testid={`story-detail-${entry.id}`}>
+        <div className="px-9 pb-4 space-y-1.5 text-sm" data-testid={`story-detail-${entry.id}`}>
           <TraceBlock label="What I saw">
             {`MRR $${t.senses.mrr} · ${t.senses.trials} trials · ${t.senses.supportBacklog} waiting · runway ${t.senses.envelopeStatus}`}
             {t.senses.openIncidents > 0 ? ` · ${t.senses.openIncidents} incident(s)` : ""}
@@ -123,11 +123,14 @@ function StoryRow({ entry }: { entry: StoryEntry }) {
   );
 }
 
+// Compact, scannable trace row: the label sits in a fixed left column on
+// desktop (label | value on one line) and stacks above the value on mobile.
+// Same information as before, ~40% less vertical sprawl per action.
 function TraceBlock({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-foreground/90">{children}</p>
+    <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
+      <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:w-36 sm:pt-px">{label}</p>
+      <p className="min-w-0 text-foreground/90">{children}</p>
     </div>
   );
 }
