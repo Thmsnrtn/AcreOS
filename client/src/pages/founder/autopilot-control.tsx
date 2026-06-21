@@ -51,10 +51,15 @@ interface LiveData {
 }
 
 const CONTROL_KEY = ["/api/founder/autopilot/control"];
+// CEO-plain trust labels. "gated" is engineer-speak for "still passes every
+// safety check" — say that in words instead. Each level reads as a sentence the
+// founder can act on without a glossary.
 const LEVEL_LABEL: Record<string, string> = {
-  observe: "Observing", draft: "Drafting — you approve", execute_gated: "Acting — gated", autonomous_gated: "Trusted to act",
+  observe: "Watching only", draft: "Drafts — you approve", execute_gated: "Acts — safety-checked", autonomous_gated: "Independent — safety-checked",
 };
 const LEVEL_RANK: Record<string, number> = { observe: 0, draft: 1, execute_gated: 2, autonomous_gated: 3 };
+// Plain-language budget status — never render the raw "amber"/"red" token at a CEO.
+const BUDGET_WORD: Record<string, string> = { green: "on track", amber: "getting tight", red: "needs attention" };
 function levelTone(l: string) {
   return l === "autonomous_gated" ? "text-acr-success" : l === "execute_gated" ? "text-primary" : l === "draft" ? "text-acr-warn" : "text-muted-foreground";
 }
@@ -157,12 +162,12 @@ export default function FounderAutopilotControlPage() {
                       <p className="text-xs text-muted-foreground">{live.data.oneLine}</p>
                     )}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <span>{live.data.dispatchesCompletedLast24h} dispatches/24h</span>
+                      <span>{live.data.dispatchesCompletedLast24h} actions taken (24h)</span>
                       {live.data.dispatchesFlaggedLast24h > 0 && (
-                        <span className="text-acr-warn">{live.data.dispatchesFlaggedLast24h} flagged</span>
+                        <span className="text-acr-warn">{live.data.dispatchesFlaggedLast24h} need review</span>
                       )}
                       <span>{live.data.pendingCount} awaiting your tap</span>
-                      {live.data.envelopeStatus && <span>envelope: {live.data.envelopeStatus}</span>}
+                      {live.data.envelopeStatus && <span>budget: {BUDGET_WORD[live.data.envelopeStatus] ?? live.data.envelopeStatus}</span>}
                     </div>
                     {live.data.supportThresholdLine && (
                       <p className="text-micro text-muted-foreground" data-testid="live-support-threshold">
@@ -192,11 +197,11 @@ export default function FounderAutopilotControlPage() {
 
             {/* Pending decisions + calibration */}
             <motion.section variants={staggerItem} className="grid gap-4 sm:grid-cols-2">
-              <Link href="/founder/autopilot" className="group flex items-center gap-3 rounded-card border border-border bg-card p-4 transition-colors hover:bg-muted/50 min-h-[44px]" data-testid="control-pending">
+              <Link href="/founder/decisions" className="group flex items-center gap-3 rounded-card border border-border bg-card p-4 transition-colors hover:bg-muted/50 min-h-[44px]" data-testid="control-pending">
                 <AlertCircle className={`h-5 w-5 shrink-0 ${data.openAsks > 0 ? "text-acr-warn" : "text-muted-foreground"}`} aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-foreground">{data.openAsks > 0 ? `${data.openAsks} waiting on you` : "Nothing waiting"}</p>
-                  <p className="text-xs text-muted-foreground">Open decisions — review on the daily letter.</p>
+                  <p className="text-xs text-muted-foreground">Open decisions — review in Decisions.</p>
                 </div>
                 <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground group-hover:translate-x-0.5 transition-transform" aria-hidden="true" />
               </Link>

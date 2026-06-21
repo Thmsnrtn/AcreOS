@@ -13,7 +13,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, Activity, BookOpen, Mic, SlidersHorizontal, Gauge, Newspaper, TrendingUp } from "lucide-react";
+import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, Activity, BookOpen, Mic, SlidersHorizontal, Gauge, Newspaper, TrendingUp, LayoutGrid } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { PageShell } from "@/components/page-shell";
@@ -32,7 +32,17 @@ interface FounderBrief {
   isFounderNeeded: boolean;
   decision: { askId: number; urgency: "urgent" | "normal" | "low"; summary: string } | null;
   vitalSign: { mrr: number; trials: number; weeklySpendUsd: number; envelopeStatus: "green" | "amber" | "red"; uptimePct: number };
+  /** The brain's current focus, in plain language (observational). Real, already computed server-side. */
+  focusLine: string | null;
 }
+
+// Plain-language budget status — never render the raw "amber" token at a CEO.
+// Interprets the real envelopeStatus into words + keeps the color tone.
+const BUDGET_STATUS: Record<"green" | "amber" | "red", { label: string; tone?: "amber" | "red" }> = {
+  green: { label: "On track" },
+  amber: { label: "Getting tight", tone: "amber" },
+  red: { label: "Needs attention", tone: "red" },
+};
 
 const HUB = [
   { href: "/founder/decisions", icon: ListChecks, label: "Decisions", desc: "Everything awaiting your tap" },
@@ -43,6 +53,7 @@ const HUB = [
   { href: "/founder/autopilot/story", icon: BookOpen, label: "The story", desc: "Glass-box: every action + why" },
   { href: "/founder/autopilot/voice", icon: Mic, label: "Your voice", desc: "Standing orders + objectives" },
   { href: "/founder/autopilot/control", icon: SlidersHorizontal, label: "Controls", desc: "Switches, trust levels, budgets" },
+  { href: "/founder/all-tools", icon: LayoutGrid, label: "All instruments", desc: "Costs, telemetry, agents, prompts — the deep panels" },
 ];
 
 export default function FounderHomePage() {
@@ -69,11 +80,10 @@ export default function FounderHomePage() {
         <QueryErrorState error={new Error("No brief available")} onRetry={() => refetch()} title="No brief yet" />
       ) : (
         <motion.div className="space-y-5" variants={staggerContainer} initial="hidden" animate="visible">
-          {/* The Word — the board narrative */}
+          {/* Lead with the one thing that matters: does the founder need to act? */}
           <motion.div variants={staggerItem}>
             <p className="text-sm text-muted-foreground">{brief.greeting}</p>
-            <h1 className="mt-1 font-serif text-2xl leading-snug md:text-3xl">{brief.theWord}</h1>
-            <p className="mt-2 text-sm text-muted-foreground">{brief.neededLine}</p>
+            <h1 className="mt-1 font-serif text-2xl leading-snug md:text-3xl">{brief.neededLine}</h1>
           </motion.div>
 
           {/* What needs you — the one decision, or the all-clear */}
@@ -107,12 +117,24 @@ export default function FounderHomePage() {
             )}
           </motion.div>
 
+          {/* The Word — the board narrative, now supporting context (not the headline) */}
+          <motion.div variants={staggerItem}>
+            <p className="text-sm leading-relaxed text-muted-foreground">{brief.theWord}</p>
+            {brief.focusLine ? (
+              <p className="mt-2 text-sm leading-relaxed text-foreground">{brief.focusLine}</p>
+            ) : null}
+          </motion.div>
+
           {/* The vital sign — Pulse strip */}
           <motion.div variants={staggerItem} className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <VitalStat label="MRR" value={usd(brief.vitalSign.mrr, { noCents: true })} />
             <VitalStat label="Trials" value={String(brief.vitalSign.trials)} />
             <VitalStat label="7-day spend" value={usd(brief.vitalSign.weeklySpendUsd, { noCents: true })} />
-            <VitalStat label="Runway" value={brief.vitalSign.envelopeStatus} tone={brief.vitalSign.envelopeStatus} />
+            <VitalStat
+              label="Budget"
+              value={BUDGET_STATUS[brief.vitalSign.envelopeStatus].label}
+              tone={BUDGET_STATUS[brief.vitalSign.envelopeStatus].tone}
+            />
             <VitalStat label="Uptime" value={`${brief.vitalSign.uptimePct.toFixed(1)}%`} />
           </motion.div>
 
@@ -150,8 +172,8 @@ export default function FounderHomePage() {
   );
 }
 
-function VitalStat({ label, value, tone }: { label: string; value: string; tone?: "green" | "amber" | "red" }) {
-  const toneClass = tone === "red" ? "text-destructive" : "";
+function VitalStat({ label, value, tone }: { label: string; value: string; tone?: "amber" | "red" }) {
+  const toneClass = tone === "red" ? "text-destructive" : tone === "amber" ? "text-[hsl(var(--acr-warn))]" : "";
   return (
     <div className="rounded-lg border border-border bg-card p-3">
       <p className="text-xs text-muted-foreground">{label}</p>

@@ -624,11 +624,17 @@ export { PersonaRoute };
 
 
 function HomeRoute() {
-  const { user, isLoading } = useAuth();
+  const { user, isFounder, isLoading } = useAuth();
   if (isLoading) {
     return <PageLoader />;
   }
-  return user ? <Redirect to="/today" /> : <LandingPage />;
+  // A founder lands in their own cockpit (/founder), not the customer hub. They
+  // can still navigate to /today anytime; this just makes the default door the
+  // one a CEO actually wants on login. Everyone else lands on /today.
+  if (user) {
+    return <Redirect to={isFounder ? "/founder" : "/today"} />;
+  }
+  return <LandingPage />;
 }
 
 // Onboarding consolidation (Lens 5, 2026-05-27). Fresh signups land on

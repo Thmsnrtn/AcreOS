@@ -9,16 +9,16 @@ import {
   Sliders,
   Search,
   Megaphone,
-  Sun,
-  Users,
-  Heart,
-  DollarSign,
-  Hammer,
+  Newspaper,
+  ListChecks,
+  SlidersHorizontal,
+  BookOpen,
   Sparkles,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PersonaSheet } from "@/components/persona-sheet";
 import { useNewFounderUI } from "@/lib/featureFlags";
+import { FOUNDER_DOORS, type FounderDoor } from "@/lib/founder-doors";
 
 /**
  * FounderMobileBottomNav — the founder-side equivalent of MobileBottomNav.
@@ -29,8 +29,10 @@ import { useNewFounderUI } from "@/lib/featureFlags";
  * dashboard with no controls to get anywhere else. Reported by Thomas as
  * "felt like a single dashboard and no controls" mid-deep-test.
  *
- * Exactly 5 canonical founder surfaces, all four canonical-IA + CMO. No
- * "More" drawer needed — 5 fits in a 4-or-5-slot bottom nav.
+ * The four canonical doors (FOUNDER_DOORS — Letter · Decisions · Controls ·
+ * Story), driven DIRECTLY off that single source so the map the founder reads
+ * (the doctrine) and the map he taps (this nav) can never diverge again. The
+ * Solene chat FAB rides above the bar, so chat is reachable without a slot.
  *
  * Long-press (500ms) on ANY slot opens the PersonaSheet — the mobile
  * equivalent of the desktop header dropdown. Solves Tom's #1 nav pain
@@ -55,17 +57,29 @@ const FOUNDER_NAV_ITEMS_LEGACY: FounderNavItem[] = [
   { id: "cmo", label: "CMO", href: "/founder/cmo", icon: Megaphone },
 ];
 
-// Wave 2 of the Solene migration — the 5 doors of the new founder
-// surface. Chat lives at a floating action button above the nav (see
-// below) so Solene is reachable from every door without consuming a
-// nav slot.
-const FOUNDER_NAV_ITEMS_NEW: FounderNavItem[] = [
-  { id: "today", label: "Today", href: "/founder/today", matchPrefix: "/founder/today", icon: Sun },
-  { id: "team", label: "Team", href: "/founder/team", matchPrefix: "/founder/team", icon: Users },
-  { id: "customers", label: "Customers", href: "/founder/customers", matchPrefix: "/founder/customers", icon: Heart },
-  { id: "money", label: "Money", href: "/founder/money", matchPrefix: "/founder/money", icon: DollarSign },
-  { id: "build", label: "Build", href: "/founder/build", matchPrefix: "/founder/build", icon: Hammer },
-];
+// The canonical four doors, derived from FOUNDER_DOORS so this nav is the
+// doctrine, not a parallel copy of it. "The Letter" shortens to "Letter" for
+// the slot; the Letter door (/founder) matches exactly (not as a prefix) so it
+// isn't perpetually "active" on every /founder/* subpath.
+const DOOR_ICON: Record<FounderDoor["id"], typeof Inbox> = {
+  letter: Newspaper,
+  decisions: ListChecks,
+  controls: SlidersHorizontal,
+  story: BookOpen,
+};
+const DOOR_NAV_LABEL: Record<FounderDoor["id"], string> = {
+  letter: "Letter",
+  decisions: "Decisions",
+  controls: "Controls",
+  story: "Story",
+};
+const FOUNDER_NAV_ITEMS_NEW: FounderNavItem[] = FOUNDER_DOORS.map((d) => ({
+  id: d.id,
+  label: DOOR_NAV_LABEL[d.id],
+  href: d.href,
+  matchPrefix: d.href === "/founder" ? undefined : d.href,
+  icon: DOOR_ICON[d.id],
+}));
 
 const LONG_PRESS_MS = 500;
 
