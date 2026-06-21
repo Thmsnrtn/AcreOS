@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organization";
+import { TIER_LIMITS, type SubscriptionTier } from "@shared/billing/tier-limits";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -153,7 +154,19 @@ export function GettingStartedChecklist() {
 
   const investorType = (organization?.investorType as "land" | "notes" | "both" | undefined) ?? "land";
   const personaItems = PERSONA_CHECKLISTS[investorType] ?? PERSONA_CHECKLISTS.land;
-  const items = personaItems.map((item) => ({
+
+  // Free tier has a hard campaigns limit of 0 (shared/billing/tier-limits.ts) —
+  // a free user literally cannot send a mailer, so the "Send your first ..." step
+  // is an un-completable dead-end that also pins the checklist below 100% forever.
+  // Drop it on any tier whose campaign allowance is 0; the upgrade prompt lives on
+  // the pricing surfaces, not in an activation step the customer can't finish.
+  const tier = (organization?.subscriptionTier as SubscriptionTier | undefined) ?? "free";
+  const campaignsAllowed = TIER_LIMITS[tier]?.campaigns !== 0;
+  const visibleItems = campaignsAllowed
+    ? personaItems
+    : personaItems.filter((item) => item.id !== "campaign");
+
+  const items = visibleItems.map((item) => ({
     ...item,
     isComplete: checklistStatus ? checklistStatus[STATUS_KEYS[item.id]] : false,
   }));

@@ -91,7 +91,11 @@ export interface PolicyGateDeps {
 
 const defaultDeps: PolicyGateDeps = {
   screenToolCall: realScreenToolCall,
-  assertWithinAiCostCeiling: realAssertCostCeiling,
+  // Fail CLOSED: this gate stands in front of every autopilot outward action, so
+  // a telemetry-read outage must REFUSE (block the action), never wave it through
+  // un-metered. Pass failClosed so a cost-ceiling read failure throws → budget gate
+  // blocks, rather than the default fail-open that's correct for interactive paths.
+  assertWithinAiCostCeiling: (orgId) => realAssertCostCeiling(orgId, { failClosed: true }),
   gateOutputOrThrow: realGateOutputOrThrow,
   approvalRequiredTools: realApprovalRequiredTools,
   checkDomainAutonomy: realCheckDomainAutonomy,
