@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { QueryErrorState } from "@/components/query-error-state";
 import {
   Select,
   SelectContent,
@@ -114,6 +115,16 @@ export default function BuyerAnalyticsPage() {
       {/* Aggregate */}
       {analytics.isLoading ? (
         <Skeleton className="h-24 mb-6" />
+      ) : analytics.isError ? (
+        <div className="mb-6">
+          <QueryErrorState
+            error={analytics.error as Error}
+            onRetry={() => analytics.refetch()}
+            isRetrying={analytics.isFetching}
+            compact
+            testId="buyer-analytics-error"
+          />
+        </div>
       ) : analytics.data ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <SummaryTile label="Blasts" value={analytics.data.blastCount} sub={`last ${analytics.data.windowDays}d`} />
@@ -135,6 +146,14 @@ export default function BuyerAnalyticsPage() {
           <Separator className="mb-3" />
           {analytics.isLoading ? (
             <Skeleton className="h-32" />
+          ) : analytics.isError ? (
+            <QueryErrorState
+              error={analytics.error as Error}
+              onRetry={() => analytics.refetch()}
+              isRetrying={analytics.isFetching}
+              compact
+              testId="buyer-analytics-funnel-error"
+            />
           ) : !analytics.data || analytics.data.perBlast.length === 0 ? (
             <p className="text-sm text-muted-foreground">No blasts in the selected window.</p>
           ) : (
@@ -171,6 +190,14 @@ export default function BuyerAnalyticsPage() {
       {/* Freshness */}
       {freshness.isLoading ? (
         <Skeleton className="h-32" />
+      ) : freshness.isError ? (
+        <QueryErrorState
+          error={freshness.error as Error}
+          onRetry={() => freshness.refetch()}
+          isRetrying={freshness.isFetching}
+          compact
+          testId="buyer-freshness-error"
+        />
       ) : freshness.data ? (
         <Card>
           <div className="p-5">

@@ -248,6 +248,44 @@ export function getEnsembleMonthlyCapUsd(): number {
   return parseEnvelopeEnv();
 }
 
+/**
+ * The absolute monthly-cap ceiling. An approved budget ramp can raise the cap up
+ * to here and no further — a hard guard so the compounding loop (each ramp +50%,
+ * founder-gated) can never run away even if every gate upstream failed open. Env
+ * `ENSEMBLE_MONTHLY_CAP_HARD_CEILING_USD` overrides; default = 10× the base cap,
+ * floored at $500.
+ */
+export function getEnsembleMonthlyCapHardCeilingUsd(): number {
+  const raw = process.env.ENSEMBLE_MONTHLY_CAP_HARD_CEILING_USD;
+  if (raw) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return Math.max(getEnsembleMonthlyCapUsd() * 10, 500);
+}
+
+/**
+ * The EFFECTIVE monthly cap the live loop should spend against: the base env/
+ * charter cap, raised by a founder-approved growth-budget override when one is
+ * set, and always clamped to the hard ceiling. This is how the company's first
+ * earned dollars actually widen its growth envelope. Async (reads the DB-backed
+ * override); never throws — any read error falls back to the base cap.
+ */
+export async function getEffectiveMonthlyCapUsd(): Promise<number> {
+  const base = getEnsembleMonthlyCapUsd();
+  try {
+    const { getEffectiveSettings } = await import("../autopilot/settings");
+    const override = (await getEffectiveSettings()).growthBudgetOverrideUsd;
+    if (override != null && Number.isFinite(override) && override > base) {
+      return Math.min(override, getEnsembleMonthlyCapHardCeilingUsd());
+    }
+  } catch {
+    // fall through to the base cap — the override is a discretionary lift, never
+    // load-bearing for safety (the gate below still binds on the base).
+  }
+  return base;
+}
+
 /** Month-to-date spend (UTC month) for a single capital-event type. */
 export async function getMonthToDateSpendForType(
   type: SoleneCapitalEventType,

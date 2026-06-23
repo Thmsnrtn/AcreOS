@@ -222,7 +222,7 @@ function RatesCard({ rates }: { rates: Rates }) {
   );
 }
 
-export default function FounderObservabilityCostPage() {
+export function ObservabilityCostContent() {
   useDocumentTitle("Observability cost");
   const { data, isLoading, isError, error } = useQuery<ObservabilityCostResponse>({
     queryKey: ["/api/founder/observability-cost"],
@@ -230,7 +230,7 @@ export default function FounderObservabilityCostPage() {
   });
 
   return (
-    <PageShell label="Observability cost">
+    <>
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Observability cost</h1>
@@ -303,6 +303,14 @@ export default function FounderObservabilityCostPage() {
           </div>
         </>
       )}
+    </>
+  );
+}
+
+export default function FounderObservabilityCostPage() {
+  return (
+    <PageShell label="Observability cost">
+      <ObservabilityCostContent />
     </PageShell>
   );
 }

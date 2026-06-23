@@ -782,6 +782,14 @@ const STATUS_COLORS: Record<string, string> = {
   default: "#22c55e",
 };
 
+// Measurement-tool marker color. Mapbox/MapLibre's built-in `Marker({ color })`
+// rasterizes this into an inline SVG at construction and does NOT resolve CSS
+// custom properties, so a `var(--…)` reference cannot be used here. This literal
+// mirrors the theme brand/accent (`--acr-brand`); the marker is a transient
+// measurement pin on the map canvas (not themed chrome), so a fixed brand-blue
+// reads correctly in both light and dark map styles.
+const MEASUREMENT_MARKER_COLOR = "#3b82f6";
+
 interface NearbyParcelData {
   apn: string;
   boundary: GeoJSON.Geometry;
@@ -1564,11 +1572,11 @@ export function PropertyMap({
         .setHTML(`
           <div style="min-width: 180px; font-family: system-ui;">
             <div style="font-weight: 600; margin-bottom: 4px;">${comp.address || comp.apn || "Comp Property"}</div>
-            ${comp.salePrice ? `<div style="color: #22c55e; font-weight: 500;">$${comp.salePrice.toLocaleString()}</div>` : ""}
-            ${comp.saleDate ? `<div style="font-size: 12px; color: #6b7280;">Sold: ${formatDate(comp.saleDate)}</div>` : ""}
-            ${comp.acres ? `<div style="font-size: 12px; color: #6b7280;">Size: ${comp.acres.toFixed(2)} acres</div>` : ""}
-            <div style="font-size: 12px; color: #6b7280;">$/Acre: ${pricePerAcre}</div>
-            ${comp.distance ? `<div style="font-size: 12px; color: #6b7280;">Distance: ${comp.distance.toFixed(2)} mi</div>` : ""}
+            ${comp.salePrice ? `<div style="color: var(--acr-pos); font-weight: 500;">$${comp.salePrice.toLocaleString()}</div>` : ""}
+            ${comp.saleDate ? `<div style="font-size: 12px; color: var(--acr-ink-3);">Sold: ${formatDate(comp.saleDate)}</div>` : ""}
+            ${comp.acres ? `<div style="font-size: 12px; color: var(--acr-ink-3);">Size: ${comp.acres.toFixed(2)} acres</div>` : ""}
+            <div style="font-size: 12px; color: var(--acr-ink-3);">$/Acre: ${pricePerAcre}</div>
+            ${comp.distance ? `<div style="font-size: 12px; color: var(--acr-ink-3);">Distance: ${comp.distance.toFixed(2)} mi</div>` : ""}
           </div>
         `);
       
@@ -2057,7 +2065,7 @@ export function PropertyMap({
       const { lng, lat } = e.lngLat;
       
       const marker = new gl.Marker({
-        color: "#3b82f6",
+        color: MEASUREMENT_MARKER_COLOR,
         scale: 0.7
       })
         .setLngLat([lng, lat])

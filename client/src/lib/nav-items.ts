@@ -230,10 +230,6 @@ export const FOUNDER_NAV_ALL_TOOLS_SHORTCUT: FounderNavDoor = {
 export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   // ── Engineering ─────────────────────────────────────────────────────
   { label: "API telemetry", icon: Activity, href: "/founder/telemetry", category: "engineering" },
-  { label: "AI costs", icon: DollarSign, href: "/founder/ai-costs", category: "engineering" },
-  { label: "Sentry cost", icon: Eye, href: "/founder/observability-cost", category: "engineering" },
-  { label: "Cost optimizer", icon: TrendingUp, href: "/founder/cost-optimizer", category: "engineering" },
-  { label: "Providers", icon: Database, href: "/founder/providers", category: "engineering" },
   { label: "Job health", icon: Activity, href: "/job-health", category: "engineering" },
   { label: "Event log", icon: FileCode, href: "/founder/event-log", category: "engineering" },
 
@@ -260,8 +256,7 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "AI appeals", icon: Scale, href: "/founder/appeals", category: "customers" },
 
   // ── Money ───────────────────────────────────────────────────────────
-  { label: "Cost", icon: DollarSign, href: "/founder/cost", category: "money" },
-  { label: "Unit economics", icon: Receipt, href: "/founder/unit-economics", category: "money" },
+  { label: "Costs & economics", icon: DollarSign, href: "/founder/admin/costs", category: "money" },
   { label: "Life-Cockpit", icon: Heart, href: "/founder/life-cockpit", category: "money" },
 
   // ── Strategy ────────────────────────────────────────────────────────

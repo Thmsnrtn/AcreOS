@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -106,11 +107,24 @@ export default function AutomationPage() {
     isEnabled: true,
   });
 
-  const { data: rules, isLoading } = useQuery<AutomationRule[]>({
+  const {
+    data: rules,
+    isLoading,
+    isError: rulesError,
+    error: rulesErrorObj,
+    refetch: refetchRules,
+    isFetching: rulesFetching,
+  } = useQuery<AutomationRule[]>({
     queryKey: ["/api/automation-rules"],
   });
 
-  const { data: executions } = useQuery<AutomationExecution[]>({
+  const {
+    data: executions,
+    isError: executionsError,
+    error: executionsErrorObj,
+    refetch: refetchExecutions,
+    isFetching: executionsFetching,
+  } = useQuery<AutomationExecution[]>({
     queryKey: ["/api/automation-executions"],
   });
 
@@ -559,6 +573,14 @@ export default function AutomationPage() {
                   </Card>
                 ))}
               </div>
+            ) : rulesError ? (
+              <QueryErrorState
+                error={rulesErrorObj as Error}
+                onRetry={() => refetchRules()}
+                isRetrying={rulesFetching}
+                compact
+                testId="automation-rules-error"
+              />
             ) : rules && rules.length > 0 ? (
               <ul className="grid gap-4 list-none p-0 m-0" aria-label="Your automation rules">
                 {rules.map((rule) => {
@@ -655,7 +677,15 @@ export default function AutomationPage() {
           </TabsContent>
 
           <TabsContent value="executions" className="space-y-4">
-            {executions && executions.length > 0 ? (
+            {executionsError ? (
+              <QueryErrorState
+                error={executionsErrorObj as Error}
+                onRetry={() => refetchExecutions()}
+                isRetrying={executionsFetching}
+                compact
+                testId="automation-executions-error"
+              />
+            ) : executions && executions.length > 0 ? (
               <ul className="space-y-2 list-none p-0 m-0" aria-label="Automation rule execution history">
                 {executions.map((exec) => {
                   const statusLabel = exec.status === "completed"

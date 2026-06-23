@@ -805,10 +805,13 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           let budgetDeferReason: string | null = null;
           try {
             const { budgetGate } = await import("../autopilot/economics");
-            const { getEnsembleMonthlyCapUsd, getMonthToDateSpendForType } = await import(
+            const { getEffectiveMonthlyCapUsd, getMonthToDateSpendForType } = await import(
               "./capitalTracker"
             );
-            const monthlyCapUsd = getEnsembleMonthlyCapUsd();
+            // Effective cap = base env/charter cap, widened by any founder-
+            // approved growth-budget ramp (clamped to the hard ceiling). This is
+            // how proven, paid-for acquisition actually unlocks more reach.
+            const monthlyCapUsd = await getEffectiveMonthlyCapUsd();
             const spentThisMonthUsd = await getMonthToDateSpendForType("agent_dispatch");
             const deferrable = actMove.domain === "growth";
             const gate = budgetGate(
@@ -949,6 +952,26 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             logger.warn(
               "[continuousLoop] tick: policy induction failed",
               indErr instanceof Error ? indErr : undefined,
+            );
+          }
+
+          // Budget ramp: when owned-channel acquisition is proven (real
+          // attributed signups at a healthy, conservative CAC), propose — once,
+          // with a cooldown — lifting the monthly growth cap by a bounded step.
+          // The zero-capital compounding wire: the company earns its budget.
+          // Founder-gated; the approval applies the new cap. Best-effort.
+          try {
+            const { maybeProposeBudgetRamp } = await import("../autopilot/budgetRamp");
+            asksFiredToFounder += await maybeProposeBudgetRamp({
+              ask: async (input) => {
+                const r = await askFounder(input);
+                return { askId: r.askId };
+              },
+            });
+          } catch (rampErr) {
+            logger.warn(
+              "[continuousLoop] tick: budget ramp proposal failed",
+              rampErr instanceof Error ? rampErr : undefined,
             );
           }
         }

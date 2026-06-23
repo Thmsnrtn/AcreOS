@@ -16,7 +16,10 @@
  * module on first render.
  */
 import React, { Suspense } from "react";
+import { useLocation } from "wouter";
+import { MapPinOff } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 // React.lazy can't return named exports directly — wrap each export in its
 // own lazy boundary so the underlying module only loads on first mount.
@@ -38,27 +41,57 @@ function MapFallback({ className }: { className?: string }) {
   );
 }
 
+// Graceful degradation when the map ENGINE itself throws (MapLibre init failure,
+// WebGL unavailable, vendor chunk error) — without this a map crash white-screens
+// the entire page via the app-level boundary. The surrounding page stays usable;
+// navigating away and back clears it (resetKey = location).
+function MapErrorFallback() {
+  return (
+    <div
+      className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-card border border-border bg-muted/30 p-6 text-center"
+      role="status"
+    >
+      <MapPinOff className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+      <p className="text-sm font-medium text-foreground">The map couldn't load</p>
+      <p className="max-w-xs text-xs text-muted-foreground">
+        Everything else on this page still works. Reload, or check that your browser allows hardware
+        graphics (WebGL).
+      </p>
+    </div>
+  );
+}
+
+/** Lazy + Suspense + an engine-crash boundary, shared by all map exports. */
+function MapBoundary({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  return (
+    <ErrorBoundary fallback={<MapErrorFallback />} resetKey={location}>
+      <Suspense fallback={<MapFallback className="h-full w-full" />}>{children}</Suspense>
+    </ErrorBoundary>
+  );
+}
+
 export function PropertyMap(props: React.ComponentProps<typeof PropertyMapLazy>) {
   return (
-    <Suspense fallback={<MapFallback className="h-full w-full" />}>
+    <MapBoundary>
       <PropertyMapLazy {...props} />
-    </Suspense>
+    </MapBoundary>
   );
 }
 
 export function SinglePropertyMap(props: React.ComponentProps<typeof SinglePropertyMapLazy>) {
   return (
-    <Suspense fallback={<MapFallback className="h-full w-full" />}>
+    <MapBoundary>
       <SinglePropertyMapLazy {...props} />
-    </Suspense>
+    </MapBoundary>
   );
 }
 
 export function StaticPropertyMap(props: React.ComponentProps<typeof StaticPropertyMapLazy>) {
   return (
-    <Suspense fallback={<MapFallback className="h-full w-full" />}>
+    <MapBoundary>
       <StaticPropertyMapLazy {...props} />
-    </Suspense>
+    </MapBoundary>
   );
 }
 

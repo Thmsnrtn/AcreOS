@@ -278,7 +278,7 @@ function SummaryTile({
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default function FounderUnitEconomicsPage() {
+export function UnitEconomicsContent() {
   useDocumentTitle("Unit economics");
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<UnitEconomicsResponse>({
     queryKey: ["/api/founder/unit-economics"],
@@ -299,7 +299,7 @@ export default function FounderUnitEconomicsPage() {
   }, [data?.rows]);
 
   return (
-    <PageShell label="Per-customer unit economics">
+    <>
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Per-customer unit economics</h1>
@@ -514,6 +514,14 @@ export default function FounderUnitEconomicsPage() {
           {isLoading ? <Skeleton className="h-[200px] w-full" /> : <TrendChart trend={data?.trend ?? []} />}
         </CardContent>
       </Card>
+    </>
+  );
+}
+
+export default function FounderUnitEconomicsPage() {
+  return (
+    <PageShell label="Per-customer unit economics">
+      <UnitEconomicsContent />
     </PageShell>
   );
 }

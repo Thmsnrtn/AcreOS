@@ -134,7 +134,7 @@ function marginColor(pct: number): string {
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default function FounderCostOptimizerPage() {
+export function CostOptimizerContent() {
   useDocumentTitle("Cost optimizer");
   const { toast } = useToast();
 
@@ -198,7 +198,7 @@ export default function FounderCostOptimizerPage() {
   }, [latest]);
 
   return (
-    <PageShell label="Cost optimiser">
+    <>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Self-tuning cost optimiser</h1>
@@ -410,6 +410,14 @@ export default function FounderCostOptimizerPage() {
           ))}
         </div>
       )}
+    </>
+  );
+}
+
+export default function FounderCostOptimizerPage() {
+  return (
+    <PageShell label="Cost optimiser">
+      <CostOptimizerContent />
     </PageShell>
   );
 }

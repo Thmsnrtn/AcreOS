@@ -220,7 +220,7 @@ function CostSkeleton() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function FounderCostPage() {
+export function CostContent() {
   useDocumentTitle("Cost — Founder");
 
   const { data, isLoading, error, refetch } = useQuery<CostSummaryResponse>({
@@ -229,7 +229,7 @@ export default function FounderCostPage() {
   });
 
   return (
-    <PageShell>
+    <>
       <div className="max-w-3xl mx-auto space-y-6 pb-12">
 
         {/* ── Page header ─────────────────────────────────────────────── */}
@@ -565,6 +565,14 @@ export default function FounderCostPage() {
           </motion.div>
         )}
       </div>
+    </>
+  );
+}
+
+export default function FounderCostPage() {
+  return (
+    <PageShell>
+      <CostContent />
     </PageShell>
   );
 }

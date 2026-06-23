@@ -1140,7 +1140,7 @@ export function PaxCopilotRail() {
           "fixed right-0 top-0 h-[100dvh] z-overlay flex flex-col",
           "border-l border-border/60 bg-surface-chrome backdrop-blur-lg",
           "transition-[width] duration-200 ease-in-out",
-          isOpen ? "w-[360px] shadow-level-3" : "w-12"
+          isOpen ? "w-[min(360px,calc(100vw-1rem))] sm:w-[360px] shadow-level-3" : "w-12"
         )}
         onDragOver={isOpen ? handleDragOver : undefined}
         onDragLeave={isOpen ? handleDragLeave : undefined}

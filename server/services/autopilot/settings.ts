@@ -21,6 +21,12 @@ import { logger } from "../../utils/logger";
 export interface EffectiveSettings {
   dispatchEnabled: boolean;
   publishEnabled: boolean;
+  /**
+   * DB-backed monthly growth-budget cap (USD) an approved ramp wrote, or null
+   * when none — in which case the env/charter default governs. The cap reader
+   * (capitalTracker.getEffectiveMonthlyCapUsd) clamps this to a hard ceiling.
+   */
+  growthBudgetOverrideUsd: number | null;
   /** Whether each value came from an explicit DB row vs the env fallback. */
   source: { dispatch: "db" | "env"; publish: "db" | "env" };
 }
@@ -41,6 +47,7 @@ export async function getEffectiveSettings(now = Date.now()): Promise<EffectiveS
   let value: EffectiveSettings = {
     dispatchEnabled: envDispatch(),
     publishEnabled: envPublish(),
+    growthBudgetOverrideUsd: null,
     source: { dispatch: "env", publish: "env" },
   };
   try {
@@ -49,6 +56,10 @@ export async function getEffectiveSettings(now = Date.now()): Promise<EffectiveS
       value = {
         dispatchEnabled: row.dispatchEnabled ?? envDispatch(),
         publishEnabled: row.publishEnabled ?? envPublish(),
+        growthBudgetOverrideUsd:
+          row.growthBudgetOverrideUsd != null && Number.isFinite(row.growthBudgetOverrideUsd)
+            ? row.growthBudgetOverrideUsd
+            : null,
         source: { dispatch: row.dispatchEnabled == null ? "env" : "db", publish: row.publishEnabled == null ? "env" : "db" },
       };
     }
@@ -87,6 +98,29 @@ export async function setAutopilotSetting(
       .onConflictDoUpdate({ target: autopilotSettings.id, set: { publishEnabled: value, ...stamp } });
   }
   logger.warn("[autopilot/settings] master switch flipped by founder", { key, value });
+  cache = null;
+  return getEffectiveSettings();
+}
+
+/**
+ * Write the DB-backed growth-budget cap (the apply-side of an approved budget
+ * ramp). Pass null to clear it (revert to the env/charter default). Upserts the
+ * singleton + busts the cache. The cap reader still clamps to a hard ceiling, so
+ * this can never set an unbounded budget.
+ */
+export async function setGrowthBudgetOverrideUsd(
+  value: number | null,
+  updatedBy?: string,
+): Promise<EffectiveSettings> {
+  const clean = value != null && Number.isFinite(value) && value > 0 ? value : null;
+  await db
+    .insert(autopilotSettings)
+    .values({ id: 1, growthBudgetOverrideUsd: clean, updatedBy: updatedBy ?? null })
+    .onConflictDoUpdate({
+      target: autopilotSettings.id,
+      set: { growthBudgetOverrideUsd: clean, updatedAt: new Date(), updatedBy: updatedBy ?? null },
+    });
+  logger.warn("[autopilot/settings] growth budget cap override set", { value: clean, updatedBy });
   cache = null;
   return getEffectiveSettings();
 }

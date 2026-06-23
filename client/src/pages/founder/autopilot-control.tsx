@@ -31,11 +31,12 @@ import { Verbs } from "@/lib/labels";
 
 interface LedgerEntry { domain: string; level: string; cleanCycleCount: number; threshold: number; qualityLine?: string | null }
 interface ControlData {
-  settings: { dispatchEnabled: boolean; publishEnabled: boolean; source: { dispatch: "db" | "env"; publish: "db" | "env" } };
+  settings: { dispatchEnabled: boolean; publishEnabled: boolean; growthBudgetOverrideUsd: number | null; source: { dispatch: "db" | "env"; publish: "db" | "env" } };
   ledger: LedgerEntry[];
   openAsks: number;
   calibration: { grade: string; n: number } | null;
   conversions?: { totalSignups: number; byPlay: Array<{ playId: string; signups: number }> };
+  budget?: { baseCapUsd: number; overrideUsd: number | null; effectiveCapUsd: number; ceilingUsd: number } | null;
 }
 
 interface LiveData {
@@ -106,6 +107,22 @@ export default function FounderAutopilotControlPage() {
       toast({ title: vars.value ? "Switched on" : "Switched off", description: vars.key === "dispatchEnabled" ? "The autopilot hands." : "Auto-publish." });
     },
     onError: (err) => toast({ title: "Couldn't update", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+
+  const resetBudget = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/founder/autopilot/budget/reset", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!res.ok) throw new Error(`Couldn't reset (${res.status})`);
+      return res.json();
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: CONTROL_KEY });
+      toast({ title: "Budget reset", description: "Growth cap rolled back to the default. The next ramp must be re-earned and approved." });
+    },
+    onError: (err) => toast({ title: "Couldn't reset", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
   });
 
   const setLevel = useMutation({
@@ -230,6 +247,38 @@ export default function FounderAutopilotControlPage() {
                 </div>
               </div>
             </motion.section>
+
+            {/* Growth budget — the cap the company earns its way up */}
+            {data.budget && (
+              <motion.section variants={staggerItem}>
+                <div className="flex flex-col gap-2 rounded-card border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between" data-testid="control-budget">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground">
+                      ${Math.round(data.budget.effectiveCapUsd)}/mo growth budget
+                      {data.budget.effectiveCapUsd > data.budget.baseCapUsd && (
+                        <span className="ml-2 text-xs font-normal text-acr-success">ramped from ${Math.round(data.budget.baseCapUsd)}</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {data.budget.effectiveCapUsd > data.budget.baseCapUsd
+                        ? `You approved lifting the cap as acquisition proved out. Hard ceiling $${Math.round(data.budget.ceilingUsd)}/mo — it can never exceed this.`
+                        : `The lean starting cap. When owned-channel acquisition proves healthy, I'll ask once to raise it — never on my own.`}
+                    </p>
+                  </div>
+                  {data.budget.effectiveCapUsd > data.budget.baseCapUsd && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => resetBudget.mutate()}
+                      disabled={resetBudget.isPending}
+                    >
+                      {resetBudget.isPending ? "Resetting…" : "Reset to default"}
+                    </Button>
+                  )}
+                </div>
+              </motion.section>
+            )}
 
             {/* Per-domain trust */}
             <motion.section variants={staggerItem}>

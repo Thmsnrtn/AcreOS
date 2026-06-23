@@ -1326,7 +1326,7 @@ export function CommandPalette() {
                             <span>View system health</span>
                           </CommandItem>
                           <CommandItem
-                            onSelect={() => handleSelect("/founder/ai-costs")}
+                            onSelect={() => handleSelect("/founder/admin/costs?tab=ai-spend")}
                             data-testid="command-item-credits"
                             className="cursor-pointer"
                           >

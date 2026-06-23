@@ -301,13 +301,9 @@ const FounderTelemetryPage = React.lazy(() => import("@/pages/founder/telemetry"
 // GET /api/founder/audit-findings (owned by the substrate agent).
 const FounderCommandPage = React.lazy(() => import("@/pages/founder/command"));
 // FounderIntegrationsPage archived 2026-06-01 — no sidebar entry.
-const FounderCostPage = React.lazy(() => import("@/pages/founder/cost"));
+// Costs & economics consolidated into one /founder/admin/costs hub (Phase 2).
+const FounderAdminCostsPage = React.lazy(() => import("@/pages/founder/admin/costs"));
 const FounderLifeCockpitPage = React.lazy(() => import("@/pages/founder/life-cockpit"));
-const FounderAiCostsPage = React.lazy(() => import("@/pages/founder/ai-costs"));
-const FounderObservabilityCostPage = React.lazy(() => import("@/pages/founder/observability-cost"));
-const FounderCostOptimizerPage = React.lazy(() => import("@/pages/founder/cost-optimizer"));
-const FounderUnitEconomicsPage = React.lazy(() => import("@/pages/founder/unit-economics"));
-const FounderPaidDataEvalPage = React.lazy(() => import("@/pages/founder/paid-data-eval"));
 // FounderDsarPage archived 2026-06-01 — no sidebar entry.
 // FounderLegalHoldsPage archived 2026-06-01 — no sidebar entry.
 // FounderSubProcessorsPage archived 2026-06-01 — no sidebar entry.
@@ -476,7 +472,7 @@ const FounderTrendsPage = React.lazy(() => import("@/pages/founder-trends"));
 const FounderOnboardingPage = React.lazy(() => import("@/pages/founder-onboarding"));
 const FounderExpansionPage = React.lazy(() => import("@/pages/founder-expansion"));
 const FounderExperimentsPage = React.lazy(() => import("@/pages/founder-experiments"));
-const FounderProvidersPage = React.lazy(() => import("@/pages/founder-providers"));
+// FounderProvidersPage folded into the /founder/admin/costs hub (Providers tab).
 const ForgotPasswordPage = React.lazy(() => import("@/pages/forgot-password"));
 const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
 // Onboarding consolidation (2026-05-11): `/onboarding-v2` is the canonical
@@ -1231,8 +1227,8 @@ function Router() {
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
       </Route>
       <Route path="/founder/financials">
-        {/* 2026-06-01 cut — FounderFinancialsPage archived; no sidebar entry. */}
-        {() => <Redirect to="/founder/cost" />}
+        {/* 2026-06-01 cut — FounderFinancialsPage archived; redirect to the costs hub. */}
+        {() => <Redirect to="/founder/admin/costs" />}
       </Route>
       <Route path="/founder/compliance-ops">
         {() => <FounderProtectedRoute component={FounderComplianceOpsPage} />}
@@ -1292,29 +1288,15 @@ function Router() {
         {/* 2026-06-01 cut — FounderIntegrationsPage archived; redirect to bridge. */}
         {() => <Redirect to="/founder/bridge" />}
       </Route>
-      {/* Consolidated cost screen — AI spend + infra + vendor lines. */}
-      <Route path="/founder/cost">
-        {() => <FounderProtectedRoute component={FounderCostPage} />}
+      {/* Costs & economics — unified hub (Phase 2 consolidation): cost, AI spend,
+          optimizer, unit economics, observability cost, providers, and the
+          paid-data trial eval, all as tabs under the /founder/admin namespace. */}
+      <Route path="/founder/admin/costs">
+        {() => <FounderProtectedRoute component={FounderAdminCostsPage} />}
       </Route>
       {/* Founder Life-Cockpit — personal taxes, income, deadlines, encrypted vault. */}
       <Route path="/founder/life-cockpit">
         {() => <FounderProtectedRoute component={FounderLifeCockpitPage} />}
-      </Route>
-      <Route path="/founder/ai-costs">
-        {() => <FounderProtectedRoute component={FounderAiCostsPage} />}
-      </Route>
-      <Route path="/founder/observability-cost">
-        {() => <FounderProtectedRoute component={FounderObservabilityCostPage} />}
-      </Route>
-      <Route path="/founder/cost-optimizer">
-        {() => <FounderProtectedRoute component={FounderCostOptimizerPage} />}
-      </Route>
-      <Route path="/founder/unit-economics">
-        {() => <FounderProtectedRoute component={FounderUnitEconomicsPage} />}
-      </Route>
-      {/* Paid-data eval — would a Regrid/Zamplo/PropGrid trial flip decisions? */}
-      <Route path="/founder/paid-data-eval">
-        {() => <FounderProtectedRoute component={FounderPaidDataEvalPage} />}
       </Route>
       <Route path="/founder/dsar">
         {/* 2026-06-01 cut — FounderDsarPage archived; redirect to bridge. */}
@@ -1513,9 +1495,6 @@ function Router() {
       </Route>
       <Route path="/founder/experiments">
         {() => <FounderProtectedRoute component={FounderExperimentsPage} />}
-      </Route>
-      <Route path="/founder/providers">
-        {() => <FounderProtectedRoute component={FounderProvidersPage} />}
       </Route>
       {/* /founder/todo — legacy "what needs you" feed, now folded into the
           Today door (active asks + decisions waiting). Redirects there; the

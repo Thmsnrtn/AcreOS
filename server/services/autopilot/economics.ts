@@ -97,3 +97,21 @@ export function shouldRampBudget(inp: CacInputs): { ramp: boolean; cacUsd: numbe
   }
   return { ramp: false, cacUsd: cac, reason: `CAC $${cac.toFixed(2)} > target $${targetCac} — hold the budget until acquisition is more efficient.` };
 }
+
+/**
+ * The next monthly cap to propose, given the current effective cap and a hard
+ * ceiling. A modest, bounded step (default +50%) so the budget climbs in proven
+ * increments — each ramp founder-gated, each backed by fresh healthy CAC — never
+ * a single unbounded jump. Returns the current cap unchanged when already at (or
+ * above) the ceiling, which the caller treats as "nothing to propose". Pure.
+ */
+export function nextBudgetStepUsd(
+  currentCapUsd: number,
+  ceilingUsd: number,
+  factor = 1.5,
+): number {
+  if (!Number.isFinite(currentCapUsd) || currentCapUsd <= 0) return currentCapUsd;
+  if (currentCapUsd >= ceilingUsd) return currentCapUsd;
+  const stepped = Math.round(currentCapUsd * Math.max(1, factor));
+  return Math.min(stepped, ceilingUsd);
+}

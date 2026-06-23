@@ -13,8 +13,11 @@ import { FOUNDER_DOORS, FOUNDER_ADMIN_NAMESPACE, founderDoorByHref } from "@/lib
 
 const APP = fs.readFileSync(path.resolve(__dirname, "../../client/src/App.tsx"), "utf-8");
 
-/** Current count — the ratchet baseline. Consolidation may only LOWER this. */
-const FOUNDER_ROUTE_BASELINE = 88;
+/** Current count — the ratchet baseline. Consolidation may only LOWER this.
+ *  2026-06-23: 88→82 — the 7 cost/economics routes (cost, ai-costs,
+ *  observability-cost, cost-optimizer, unit-economics, paid-data-eval,
+ *  providers) merged into the single /founder/admin/costs tabbed hub. */
+const FOUNDER_ROUTE_BASELINE = 82;
 
 function founderRouteCount(): number {
   return (APP.match(/path="\/founder/g) ?? []).length;

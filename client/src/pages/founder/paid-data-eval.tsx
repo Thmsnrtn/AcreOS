@@ -193,7 +193,7 @@ function SummaryTile({
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default function FounderPaidDataEvalPage() {
+export function PaidDataEvalContent() {
   useDocumentTitle("Paid-data eval");
   const [lastRunResult, setLastRunResult] = useState<PaidDataEvalResult | null>(null);
 
@@ -217,7 +217,7 @@ export default function FounderPaidDataEvalPage() {
   const corpusSize = data?.corpusSize ?? 0;
 
   return (
-    <PageShell label="Paid-data eval">
+    <>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Paid-data eval harness</h1>
@@ -480,6 +480,14 @@ export default function FounderPaidDataEvalPage() {
           </Card>
         </>
       ) : null}
+    </>
+  );
+}
+
+export default function FounderPaidDataEvalPage() {
+  return (
+    <PageShell label="Paid-data eval">
+      <PaidDataEvalContent />
     </PageShell>
   );
 }

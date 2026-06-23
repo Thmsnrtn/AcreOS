@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { QueryErrorState } from "@/components/query-error-state";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -131,6 +132,14 @@ export default function Contractor1099NecPage() {
 
       {preview.isLoading ? (
         <Skeleton className="h-32" />
+      ) : preview.isError ? (
+        <QueryErrorState
+          error={preview.error as Error}
+          onRetry={() => preview.refetch()}
+          isRetrying={preview.isFetching}
+          compact
+          testId="contractor-1099-nec-error"
+        />
       ) : preview.data ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

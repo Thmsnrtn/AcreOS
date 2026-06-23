@@ -118,17 +118,11 @@ router.post("/skip", async (req: Request, res: Response) => {
   }
 });
 
-// TODO(tsc): onboardingService has no getChecklist/completeChecklistItem
-// methods. The checklist-status endpoint below computes checklist completion
-// directly. These endpoints return 501 until per-item checklist mutation is
-// implemented on the service.
-router.get("/checklist", async (_req: Request, res: Response) => {
-  res.status(501).json({ error: "Checklist endpoint not implemented" });
-});
-
-router.post("/checklist/:item", async (_req: Request, res: Response) => {
-  res.status(501).json({ error: "Checklist item endpoint not implemented" });
-});
+// Onboarding checklist completion is derived, not stored: the
+// /checklist-status endpoint below computes it directly from real org
+// activity (leads, imports, campaigns, deals, payments, parcel lookups).
+// There is intentionally no per-item mutation endpoint — items complete by
+// the user actually doing the work, never by a manual "mark done" toggle.
 
 // ============================================================================
 // Checklist status — single endpoint for the GettingStartedChecklist component

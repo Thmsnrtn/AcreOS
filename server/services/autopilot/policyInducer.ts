@@ -31,7 +31,7 @@ export const DECLINE_STREAK = 3;
 /** Consecutive recent successes that trigger a "trust" proposal. */
 export const TRUST_STREAK = 5;
 
-export type ProposalKind = "stop_play" | "trust_play";
+export type ProposalKind = "stop_play" | "trust_play" | "ramp_budget";
 
 export interface InductionProposal {
   kind: ProposalKind;
@@ -199,6 +199,18 @@ async function applyProposal(proposal: AutopilotPolicyProposal): Promise<void> {
     if (promoted) {
       await setDomainLevel(proposal.domain as never, promoted, `founder-approved trust for "${proposal.playId}"`);
       logger.info("[autopilot/inducer] applied trust_play → autonomy bump", { domain: proposal.domain, to: promoted });
+    }
+  } else if (proposal.kind === "ramp_budget") {
+    // Apply the founder-approved growth-budget lift: write the DB-backed cap the
+    // live envelope reads. Clamped to the hard ceiling at read-time, so even a
+    // stale target can never set an unbounded budget. Reversible (the founder can
+    // pause or clear it from the Control Center).
+    if (proposal.targetValueUsd != null && Number.isFinite(proposal.targetValueUsd)) {
+      const { setGrowthBudgetOverrideUsd } = await import("./settings");
+      await setGrowthBudgetOverrideUsd(proposal.targetValueUsd, "autopilot:budget-ramp");
+      logger.info("[autopilot/inducer] applied ramp_budget → growth cap raised", {
+        to: proposal.targetValueUsd,
+      });
     }
   }
 }

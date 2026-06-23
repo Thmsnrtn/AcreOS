@@ -639,7 +639,7 @@ const NAV_MODULES: NavModule[] = [
     // Everything else lives in the "Deep Tools" overflow below.
     children: [
       { label: "Pulse", icon: Activity, href: "/founder", description: "Daily one-line + Autonomy Horizon + capital + phase — the pull-first CEO surface" },
-      { label: "Cost", icon: DollarSign, href: "/founder/cost", description: "AI spend, infra cost, vendor lines, per-org breakdown — one scroll" },
+      { label: "Costs", icon: DollarSign, href: "/founder/admin/costs", description: "AI spend, infra, unit economics, optimizer, providers, paid-data trial — one hub" },
       { label: "Customers", icon: Users, href: "/founder/customers", description: "Distribution truth — paid / trial / churned counts + UTM sources + recent signups" },
     ],
     // ── Deep Tools ────────────────────────────────────────────────────
@@ -654,11 +654,6 @@ const NAV_MODULES: NavModule[] = [
       { label: "Studio", icon: Sliders, href: "/founder/studio", description: "Every dial — autonomy thresholds, cost caps, lifecycle, voice, safety" },
       { label: "Inspector", icon: Search, href: "/founder/inspector/audit", description: "Provenance lens — per-agent, per-decision, founder audit feed" },
       { label: "CMO", icon: Megaphone, href: "/founder/cmo", description: "Native ad generation, approval, broadcast to Meta + TikTok" },
-      // ── Cost deep-tools ────────────────────────────────────────────
-      { label: "AI telemetry", icon: Activity, href: "/founder/ai-costs", description: "Per-call AI cost breakdown — model, feature, top spenders" },
-      { label: "Cost optimizer", icon: TrendingUp, href: "/founder/cost-optimizer", description: "Nightly optimizer runs, recommendations, auto-applied actions" },
-      { label: "Unit economics", icon: Receipt, href: "/founder/unit-economics", description: "Per-customer gross margin and COGS" },
-      { label: "Sentry cost", icon: Eye, href: "/founder/observability-cost", description: "Sampling rate projections and free-tier headroom" },
       // ── Customer health ────────────────────────────────────────────
       { label: "Customer health", icon: Heart, href: "/founder/customers/health", description: "MRR trajectory, churn risk, org health" },
       // ── Pax traces / calibration ───────────────────────────────────
@@ -681,7 +676,6 @@ const NAV_MODULES: NavModule[] = [
       { label: "System keys", icon: Key, href: "/founder/keys", description: "Platform-wide API keys (BYOK overrides)" },
       { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", description: "Daily-during-launch progress checklist" },
       { label: "API telemetry", icon: Activity, href: "/founder/telemetry", description: "In-process per-route 2xx/4xx/5xx + p95 latency" },
-      { label: "Providers", icon: Database, href: "/founder/providers", description: "Data-layer cost + quality" },
       { label: "Market reports", icon: Newspaper, href: "/founder/market-reports", description: "Quarterly data-co-op market report DRAFTS (k≥5 floor) — review only, no publish" },
       { label: "Founder settings", icon: Settings2, href: "/founder/settings", description: "Live-apply operational knobs" },
       { label: "Recovery console", icon: LifeBuoy, href: "/founder/recovery-console", description: "Last-resort account recovery — 2FA, sessions, autopay, ownership" },

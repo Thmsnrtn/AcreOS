@@ -12409,12 +12409,14 @@ export type AutopilotExperience = typeof autopilotExperiences.$inferSelect;
 // respecting the founder's answer. Global.
 export const autopilotPolicyProposals = pgTable("autopilot_policy_proposals", {
   id: serial("id").primaryKey(),
-  kind: text("kind").notNull(), // stop_play | trust_play
+  kind: text("kind").notNull(), // stop_play | trust_play | ramp_budget
   playId: text("play_id").notNull(),
   domain: text("domain").notNull(),
   reason: text("reason").notNull(),
   status: text("status").notNull().default("open"), // open | approved | declined
   askId: integer("ask_id"),
+  // ramp_budget only: the proposed new monthly cap (USD) applied on approval.
+  targetValueUsd: doublePrecision("target_value_usd"),
   createdAt: timestamp("created_at").defaultNow(),
   resolvedAt: timestamp("resolved_at"),
 }, (t) => ({
@@ -12726,6 +12728,9 @@ export const autopilotSettings = pgTable("autopilot_settings", {
   id: integer("id").primaryKey().default(1),
   dispatchEnabled: boolean("dispatch_enabled"), // null → fall back to env
   publishEnabled: boolean("publish_enabled"), // null → fall back to env
+  // DB-backed monthly growth-budget cap an approved ramp writes. null → the
+  // env/charter default governs. Clamped to a hard ceiling at read-time.
+  growthBudgetOverrideUsd: doublePrecision("growth_budget_override_usd"),
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: text("updated_by"),
 });

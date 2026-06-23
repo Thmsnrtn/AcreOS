@@ -125,7 +125,28 @@ export function registerAutopilotRoutes(app: Express): void {
         } catch {
           conversions = { totalSignups: 0, byPlay: [] };
         }
-        return res.json({ settings, ledger, openAsks, calibration, conversions });
+        // Growth budget: the base env/charter cap, any founder-approved ramp
+        // override, the effective cap the loop spends against, and the hard
+        // ceiling. Lets the founder see — and reset — the compounding budget.
+        let budget: {
+          baseCapUsd: number;
+          overrideUsd: number | null;
+          effectiveCapUsd: number;
+          ceilingUsd: number;
+        } | null = null;
+        try {
+          const { getEnsembleMonthlyCapUsd, getEffectiveMonthlyCapUsd, getEnsembleMonthlyCapHardCeilingUsd } =
+            await import("./services/solene/capitalTracker");
+          budget = {
+            baseCapUsd: getEnsembleMonthlyCapUsd(),
+            overrideUsd: settings.growthBudgetOverrideUsd,
+            effectiveCapUsd: await getEffectiveMonthlyCapUsd(),
+            ceilingUsd: getEnsembleMonthlyCapHardCeilingUsd(),
+          };
+        } catch {
+          budget = null;
+        }
+        return res.json({ settings, ledger, openAsks, calibration, conversions, budget });
       } catch (err) {
         return Errors.internal(res, err);
       }
@@ -147,6 +168,25 @@ export function registerAutopilotRoutes(app: Express): void {
       try {
         const { setAutopilotSetting } = await import("./services/autopilot/settings");
         const settings = await setAutopilotSetting(key, value, getUserId(req));
+        return res.json({ ok: true, settings });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Reset the growth-budget ramp — roll the cap back to the env/charter base ──
+  // The founder-facing reversibility for an approved budget ramp: clears the
+  // DB-backed override so the base cap governs again. The next ramp must be
+  // re-earned and re-approved.
+  app.post(
+    "/api/founder/autopilot/budget/reset",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { setGrowthBudgetOverrideUsd } = await import("./services/autopilot/settings");
+        const settings = await setGrowthBudgetOverrideUsd(null, getUserId(req));
         return res.json({ ok: true, settings });
       } catch (err) {
         return Errors.internal(res, err);
