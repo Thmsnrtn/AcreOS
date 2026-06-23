@@ -74,4 +74,20 @@ export function registerWellKnownRoutes(app: Express): void {
   app.get("/.well-known/ai-plugin.json", (_req: Request, res: Response) => {
     serveFile(res, "ai-plugin.json", "application/json; charset=utf-8");
   });
+
+  // IndexNow key file — proves domain ownership to Bing/Yandex so the autopilot
+  // can ping new /field-notes + /p/ pages for near-immediate crawl. Served from
+  // the INDEXNOW_KEY secret (safe-by-absence: 404 until the key is set). The key
+  // file must contain exactly the key. See services/autopilot/searchEngineSubmit.ts.
+  app.get("/indexnow-key.txt", async (_req: Request, res: Response) => {
+    const { indexNowKey } = await import("./services/autopilot/searchEngineSubmit");
+    const key = indexNowKey();
+    if (!key) {
+      res.status(404).type("text/plain").send("Not found\n");
+      return;
+    }
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(key);
+  });
 }

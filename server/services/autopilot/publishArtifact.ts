@@ -202,6 +202,12 @@ export async function publishGrowthArtifact(
       })
       .returning({ id: marketingArtifacts.id });
     logger.info("[autopilot/publish] published artifact", { slug, artifactId: artifact?.id });
+    // Accelerate discovery: ping IndexNow so Bing/Yandex crawl the new public
+    // surface within hours. Fire-and-forget + safe-by-absence (no-op without a
+    // key) — must never block or fail the publish.
+    void import("./searchEngineSubmit")
+      .then(({ submitToIndexNow }) => submitToIndexNow([`/field-notes/${slug}`]))
+      .catch(() => {});
     return { published: true, reason: "published", slug, artifactId: artifact?.id, violations: [] };
   } catch (err) {
     logger.warn("[autopilot/publish] publish write failed", err instanceof Error ? err : undefined);
