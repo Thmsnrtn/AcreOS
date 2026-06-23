@@ -7339,6 +7339,24 @@ const STATEMENTS = [
      "content_hash" text,
      "sent_at" timestamp DEFAULT now()
    )`,
+  // 0180 — autopilot budget ramp (the zero-capital compounding wire).
+  'ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "growth_budget_override_usd" double precision',
+  'ALTER TABLE "autopilot_policy_proposals" ADD COLUMN IF NOT EXISTS "target_value_usd" double precision',
+  // 0181 — growth targets (county-targeted owned-content selection).
+  `CREATE TABLE IF NOT EXISTS "growth_targets" (
+     "id" serial PRIMARY KEY,
+     "state" text NOT NULL,
+     "county_slug" text NOT NULL,
+     "county_label" text NOT NULL,
+     "source" text NOT NULL DEFAULT 'seed',
+     "demand_score" double precision NOT NULL DEFAULT 0,
+     "status" text NOT NULL DEFAULT 'pending',
+     "dispatched_at" timestamp,
+     "last_dispatch_id" integer,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "growth_targets_state_county_idx" ON "growth_targets" ("state", "county_slug")`,
+  `CREATE INDEX IF NOT EXISTS "growth_targets_status_score_idx" ON "growth_targets" ("status", "demand_score")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
