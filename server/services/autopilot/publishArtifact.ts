@@ -163,17 +163,22 @@ export async function publishGrowthArtifact(
     return { published: false, reason: "publishing disabled", violations: [] };
   }
 
-  // Daily rate cap — bounds the blast radius on a permanent public surface.
+  // Authority-paced daily cap (A3 governor): base = PUBLISH_MAX_PER_DAY, widened
+  // ONLY when GSC confirms existing pages earn impressions (so it can never
+  // out-run crawl-trust into a scaled-content penalty), and FROZEN to 0 on real
+  // deliverability degradation. Bounds blast radius on a permanent public surface.
   try {
+    const { computeAllowedPublishesPerDay } = await import("./publishGovernor");
+    const { allowedPerDay, reason } = await computeAllowedPublishesPerDay(PUBLISH_MAX_PER_DAY);
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
     const todays = await db
       .select({ id: marketingArtifacts.id })
       .from(marketingArtifacts)
       .where(and(gte(marketingArtifacts.publishedAt, startOfDay), isNull(marketingArtifacts.unpublishedAt)))
-      .limit(PUBLISH_MAX_PER_DAY + 1);
-    if (todays.length >= PUBLISH_MAX_PER_DAY) {
-      return { published: false, reason: "daily publish cap reached", violations: [] };
+      .limit(allowedPerDay + 1);
+    if (todays.length >= allowedPerDay) {
+      return { published: false, reason: `daily publish cap reached (${reason})`, violations: [] };
     }
   } catch {
     /* if the cap check fails, fall through — the gate already passed */
