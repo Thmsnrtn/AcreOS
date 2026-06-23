@@ -657,6 +657,9 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           // The play this action runs (for the Experience Log / efficacy model);
           // null for moves without a play (e.g. optimize).
           let selectedPlayId: string | null = null;
+          // The county the growth play was pinned to this tick (seeded/demand
+          // queue), marked dispatched only if the move actually ACTS.
+          let selectedGrowthTarget: { id: number; countyLabel: string; state: string } | null = null;
           // Support specialization: real people are waiting — make the move a
           // concrete, craft-bound triage-and-draft pass (witnessed-send keeps
           // every reply behind the founder's tap).
@@ -694,7 +697,20 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               const pickedId = selectPlay(candidates, makeSeededRng(Date.now()));
               const play = (pickedId && growthPlayById(pickedId)) || selectNextGrowthPlay(0);
               selectedPlayId = play.id;
-              actMove = { ...actMove, rationale: growthPlayRationale(play) };
+              // County-targeted owned content: for a county guide, pin it to the
+              // next queued target (seeded buy-box county now, demand-ranked
+              // later) so it answers a real long-tail search. Falls back to a
+              // generic guide when the queue is empty.
+              let focus: { countyLabel: string; state: string } | null = null;
+              if (play.id === "county-guide") {
+                const { selectNextGrowthTarget } = await import("../autopilot/growthTargets");
+                const target = await selectNextGrowthTarget();
+                if (target) {
+                  focus = { countyLabel: target.countyLabel, state: target.state };
+                  selectedGrowthTarget = { id: target.id, countyLabel: target.countyLabel, state: target.state };
+                }
+              }
+              actMove = { ...actMove, rationale: growthPlayRationale(play, focus) };
               const picked = stats.find((s) => s.playId === play.id);
               logger.info("[continuousLoop] tick: growth play selected (efficacy-weighted)", {
                 play: play.id,
@@ -885,7 +901,16 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             },
           );
           actOutcomeStatus = outcome.status;
-          if (outcome.status === "acted") dispatchesQueued += 1;
+          if (outcome.status === "acted") {
+            dispatchesQueued += 1;
+            // Drain the county from the growth queue only when the move actually
+            // acted (not when suppressed at OBSERVE / by budget) — so a seeded
+            // county is never silently consumed without a guide being produced.
+            if (selectedGrowthTarget) {
+              const { markTargetDispatched } = await import("../autopilot/growthTargets");
+              await markTargetDispatched(selectedGrowthTarget.id, null);
+            }
+          }
           if (outcome.status === "escalated") asksFiredToFounder += 1;
           logger.info("[continuousLoop] tick: brain act", {
             move: actMove.kind,

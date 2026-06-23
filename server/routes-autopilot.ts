@@ -194,6 +194,43 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── Seed the growth-target queue with buy-box counties (ignition) ────────
+  // The one-time founder seed: a free-form county list ("TX/Travis", one per
+  // line, etc.) → parsed → the queue the daily owned-content loop drains. The
+  // autopilot then writes one county-targeted guide/day (publish-gated). Returns
+  // what parsed + how many were newly added (idempotent — re-seeding is safe).
+  app.post(
+    "/api/founder/autopilot/growth/seed-counties",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const { counties } = (req.body ?? {}) as { counties?: string };
+      if (!counties || counties.trim().length === 0) {
+        return Errors.badRequest(res, "counties must be a non-empty string (e.g. 'TX/Travis' one per line)");
+      }
+      try {
+        const { parseCountyList, seedGrowthTargets, countPendingTargets } = await import(
+          "./services/autopilot/growthTargets"
+        );
+        const parsed = parseCountyList(counties);
+        if (parsed.length === 0) {
+          return Errors.badRequest(res, "no counties parsed — use 'ST/County' (e.g. TX/Travis), one per line");
+        }
+        const inserted = await seedGrowthTargets(parsed);
+        const pending = await countPendingTargets();
+        return res.json({
+          ok: true,
+          parsed: parsed.map((c) => `${c.state}/${c.countySlug}`),
+          parsedCount: parsed.length,
+          newlyAdded: inserted,
+          pending,
+        });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── Conversational steering — talk to the company in plain language ──────
   app.post(
     "/api/founder/autopilot/steer",

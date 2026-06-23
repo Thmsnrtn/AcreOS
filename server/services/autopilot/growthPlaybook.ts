@@ -120,6 +120,16 @@ export const PUBLISH_OUTPUT_CONTRACT = [
  * the brief + the publishable-output contract. The craft standard is layered on
  * separately at dispatch time (dispatchPromptFor).
  */
-export function growthPlayRationale(play: GrowthPlay): string {
-  return `${play.title} — ${play.brief}\n\n${PUBLISH_OUTPUT_CONTRACT}`;
+export function growthPlayRationale(
+  play: GrowthPlay,
+  focus?: { countyLabel: string; state: string } | null,
+): string {
+  // County-targeted owned content (the seeded / demand-ranked queue): pin the
+  // guide to a specific county so it answers a real long-tail search instead of
+  // a generic topic. Only meaningful for the county-guide play; harmless else.
+  const focusLine =
+    focus && play.id === "county-guide"
+      ? `\n\nFOCUS COUNTY: ${focus.countyLabel} County, ${focus.state}. Write the guide specifically for this county — its real land characteristics, typical due-diligence concerns, and what a buyer should check. Use only verifiable facts; leave a field blank rather than guess.`
+      : "";
+  return `${play.title} — ${play.brief}${focusLine}\n\n${PUBLISH_OUTPUT_CONTRACT}`;
 }

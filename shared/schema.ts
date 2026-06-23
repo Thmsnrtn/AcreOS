@@ -12736,6 +12736,27 @@ export const autopilotSettings = pgTable("autopilot_settings", {
 });
 export type AutopilotSettings = typeof autopilotSettings.$inferSelect;
 
+// Growth targets — the queue of WHICH county to write the next owned-content
+// guide for. Seeded from the founder's buy-box counties at ignition, later
+// demand-ranked from real parcel-check volume. The daily grow loop drains the
+// highest-priority pending target. Global (one shared SEO surface). Migration 0181.
+export const growthTargets = pgTable("growth_targets", {
+  id: serial("id").primaryKey(),
+  state: text("state").notNull(),
+  countySlug: text("county_slug").notNull(),
+  countyLabel: text("county_label").notNull(),
+  source: text("source").notNull().default("seed"), // seed | demand
+  demandScore: doublePrecision("demand_score").notNull().default(0),
+  status: text("status").notNull().default("pending"), // pending | dispatched
+  dispatchedAt: timestamp("dispatched_at"),
+  lastDispatchId: integer("last_dispatch_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  stateCountyIdx: uniqueIndex("growth_targets_state_county_idx").on(t.state, t.countySlug),
+  statusScoreIdx: index("growth_targets_status_score_idx").on(t.status, t.demandScore),
+}));
+export type GrowthTarget = typeof growthTargets.$inferSelect;
+
 // Founder Autopilot — published marketing artifacts. The stable id every
 // attribution keys against (replaces the in-memory content-brief map). One row
 // per artifact the autopilot publishes to a public owned surface. Global.
