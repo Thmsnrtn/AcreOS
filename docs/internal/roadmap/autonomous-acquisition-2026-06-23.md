@@ -40,5 +40,11 @@ The machine can't confer trust on itself. The agent drafts/prepares everything; 
 ## Realistic timeline
 Day 0: fire ignition → inventory populated, domain submitted, IndexNow live (Bing/Yandex index in hours), first trickle from the launch post. Weeks 2-8: Google indexes; first GSC impressions; first shares/embeds mint backlinks; first self-serve signups. Months 3-6: SEO ages, merit-bandit concentrates on counties that index+convert, attributed CAC measurable. Months 4-9: cruising altitude (~low-hundreds organic visits/day → a few signups/week → first proven-CAC budget ramp; revenue funds the next wave). Whole arc ~$5-50/mo.
 
+## Implementation-reality correction (2026-06-23, verified in code)
+The panel assumed `/p/` parcel pages are worker-mintable in bulk ("seed/crawl ~100-200 counties' APN ranges"). **Verified false at free tier:** parcel lookup is by coordinates/address/APN only (`resolveParcel`/`regrid-provider` `supportedInputTypes: coordinates|address|apn`); there is **no free county→parcel enumeration**. Consequences:
+- **`/p/` pages accrete ORGANICALLY** from real visitor checks (the "users mint inventory" loop) — they are **not** worker-seedable without an APN/address source. The inventory paradox is real and is broken by *guide* content + the share/embed loop, not by a parcel-minting worker.
+- **A2 seed = county/topic GUIDES** (county-level, via `publishGrowthArtifact`, the hub pages that actually rank) — NOT `/p/` seeding.
+- **A4 reshaped:** a worker that drafts+publishes guide content at depth for the buy-box counties (gated, daily-capped, merit-governed), optionally fed by a founder-provided address/APN list if one exists — *not* a free-tier parcel crawler. IndexNow still pings `/p/` pages as users mint them.
+
 ## Relationship to the other arcs
 This is the **lead build arc**, ahead of the deferred Cognition Layer (which stays gated behind the $200/10-customer revenue gate per the cognition-layer doc — exactly because *this* is what produces that revenue). Nav consolidation continues as background polish.
