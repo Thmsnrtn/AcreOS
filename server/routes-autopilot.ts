@@ -231,6 +231,34 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── Ignition kit — the agent-prepared, founder-fired one-time seed ───────
+  // Returns the launch-post draft (TRUE facts, founder-editable) + the curated
+  // tool-directory submission list, so the founder's one-time ignition is
+  // review-and-post, not authoring. Read-only; deterministic.
+  app.get(
+    "/api/founder/autopilot/ignition/drafts",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { buildIgnitionDrafts } = await import("./services/autopilot/ignitionKit");
+        const { publicBaseUrl } = await import("./services/autopilot/searchEngineSubmit");
+        const base = publicBaseUrl() ?? "https://acreos.com";
+        let exampleCounty: { countyLabel: string; state: string } | null = null;
+        try {
+          const { selectNextGrowthTarget } = await import("./services/autopilot/growthTargets");
+          const t = await selectNextGrowthTarget();
+          if (t) exampleCounty = { countyLabel: t.countyLabel, state: t.state };
+        } catch {
+          /* no seeded county yet — the draft uses a generic example */
+        }
+        return res.json(buildIgnitionDrafts({ baseUrl: base, exampleCounty }));
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── Conversational steering — talk to the company in plain language ──────
   app.post(
     "/api/founder/autopilot/steer",
