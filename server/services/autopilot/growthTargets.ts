@@ -156,6 +156,59 @@ export async function markTargetDispatched(id: number, dispatchId: number | null
   }
 }
 
+/**
+ * Demand-rank the queue from REAL parcel-check activity: count public parcel
+ * reports per (state, county) in the recent window and write that as each
+ * target's demandScore, so the daily loop writes guides for the counties
+ * strangers actually check. Existing seeded rows keep their source/status and
+ * just gain a score; new high-demand counties are added as source='demand'.
+ * Best-effort; never throws. Returns how many counties were touched.
+ */
+export async function refreshGrowthDemand(windowDays = 30): Promise<number> {
+  try {
+    const { publicParcelReports } = await import("@shared/schema");
+    const { sql, gte } = await import("drizzle-orm");
+    const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+    const counts = await db
+      .select({
+        state: publicParcelReports.state,
+        countySlug: publicParcelReports.countySlug,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(publicParcelReports)
+      .where(gte(publicParcelReports.createdAt, since))
+      .groupBy(publicParcelReports.state, publicParcelReports.countySlug);
+
+    let touched = 0;
+    for (const row of counts) {
+      if (!row.state || !row.countySlug) continue;
+      const score = Math.max(0, Number(row.n) || 0);
+      try {
+        await db
+          .insert(growthTargets)
+          .values({
+            state: row.state.toUpperCase(),
+            countySlug: row.countySlug,
+            countyLabel: labelFromSlug(row.countySlug),
+            source: "demand",
+            demandScore: score,
+          })
+          .onConflictDoUpdate({
+            target: [growthTargets.state, growthTargets.countySlug],
+            set: { demandScore: score }, // preserve existing source/status; just rank it
+          });
+        touched += 1;
+      } catch {
+        /* skip this county */
+      }
+    }
+    if (touched) logger.info("[growthTargets] demand refreshed", { counties: touched, windowDays });
+    return touched;
+  } catch {
+    return 0; // no parcel-check data / read error → queue keeps its seed order
+  }
+}
+
 /** How many targets remain pending (for the founder letter's "inventory accreting" line). */
 export async function countPendingTargets(): Promise<number> {
   try {

@@ -703,7 +703,10 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               // generic guide when the queue is empty.
               let focus: { countyLabel: string; state: string } | null = null;
               if (play.id === "county-guide") {
-                const { selectNextGrowthTarget } = await import("../autopilot/growthTargets");
+                const { selectNextGrowthTarget, refreshGrowthDemand } = await import("../autopilot/growthTargets");
+                // Demand-rank the queue from real parcel-check volume before
+                // selecting, so we write for the counties strangers actually check.
+                await refreshGrowthDemand();
                 const target = await selectNextGrowthTarget();
                 if (target) {
                   focus = { countyLabel: target.countyLabel, state: target.state };
@@ -997,6 +1000,20 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             logger.warn(
               "[continuousLoop] tick: budget ramp proposal failed",
               rampErr instanceof Error ? rampErr : undefined,
+            );
+          }
+
+          // Funnel-health SLO: separate "work done" from "demand captured" and
+          // raise ONE deduped alert on a genuine acquisition stall (publishing
+          // into a void / earning attention but converting nobody). The honesty
+          // guard so a green dashboard can't hide a months-long zero-user stall.
+          try {
+            const { checkFunnelHealth } = await import("../autopilot/funnelHealth");
+            await checkFunnelHealth();
+          } catch (fhErr) {
+            logger.warn(
+              "[continuousLoop] tick: funnel-health check failed",
+              fhErr instanceof Error ? fhErr : undefined,
             );
           }
         }
