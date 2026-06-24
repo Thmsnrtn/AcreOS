@@ -182,6 +182,64 @@ export interface OperatorDeps {
   callModel: (prompt: string) => Promise<string>;
 }
 
+/** The move-kind catalog the Operator can reference (mirrors decide.ts). */
+export const OPERATOR_KNOWN_KINDS = [
+  "resolve_incident", "protect_runway", "clear_compliance", "stabilize_reflexes",
+  "protect_deliverability", "clear_support_backlog", "retain_at_risk", "recover_payments",
+  "unblock_activation", "convert_trials", "grow_owned_channels", "optimize",
+];
+
+/**
+ * Build the Operator's model call (Opus-grade, traced + cost-attributed), or
+ * null when no API key is configured. Reuses the same traced-LLM path as the
+ * deliberation council but with a stronger model + room for a full plan.
+ */
+export async function buildOperatorModelCall(): Promise<((prompt: string) => Promise<string>) | null> {
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const OpenAImod = (await import("openai")).default;
+    const client = new OpenAImod({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
+    const { tracedLlmCall } = await import("../tracedLlmCall");
+    const model = process.env.COGNITION_MODEL ?? process.env.AUTOPILOT_DELIBERATION_MODEL ?? "gpt-4o-mini";
+    return async (prompt: string) =>
+      (
+        await tracedLlmCall({
+          agentCodename: "autopilot",
+          purpose: "operator",
+          model,
+          userPrompt: prompt,
+          call: () =>
+            client.chat.completions.create({
+              model,
+              temperature: 0.3,
+              max_tokens: 2000,
+              messages: [{ role: "user", content: prompt }],
+            }),
+        })
+      ).content;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Run the Operator over a briefing and return its PLAN (founder-invoked "advise
+ * me" path — no execution, no reconciliation). Null when no model or malformed.
+ */
+export async function operate(
+  briefing: string,
+  availableKinds: string[],
+  deps: OperatorDeps,
+): Promise<OperatingPlan | null> {
+  try {
+    const raw = await deps.callModel(buildOperatorPrompt(briefing, availableKinds));
+    return parseOperatingPlan(raw);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Run the Operator: one model pass over the briefing → a parsed plan → the
  * safety-floor-reconciled actions. Always returns a usable ReconciledPlan — on

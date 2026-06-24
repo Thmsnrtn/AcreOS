@@ -276,6 +276,34 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── The Operator — founder-invoked "advise me" pass over the whole business ──
+  // Phase 1 keystone (safe interim): one Opus-grade pass over the live Context
+  // Pack → a governed Operating Plan that may PROPOSE net-new moves the catalog
+  // lacks. Founder-invoked = zero autonomous risk; the autonomous daily cadence
+  // (proposing into the witnessed queue) is the gated follow-on.
+  app.post(
+    "/api/founder/autopilot/operate",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { gatherContextPack } = await import("./services/autopilot/cognitionContext");
+        const { operate, buildOperatorModelCall, OPERATOR_KNOWN_KINDS } = await import(
+          "./services/autopilot/operator"
+        );
+        const pack = await gatherContextPack();
+        const callModel = await buildOperatorModelCall();
+        if (!callModel) {
+          return res.json({ plan: null, briefing: pack.briefing, reason: "no cognition model configured (set AI_INTEGRATIONS_OPENAI_API_KEY / COGNITION_MODEL)" });
+        }
+        const plan = await operate(pack.briefing, OPERATOR_KNOWN_KINDS, { callModel });
+        return res.json({ plan, briefing: pack.briefing, contextPack: pack });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── Conversational steering — talk to the company in plain language ──────
   app.post(
     "/api/founder/autopilot/steer",
