@@ -32,6 +32,7 @@ import type {
 import type { EscalationContext, EscalationVerdict } from "./escalation";
 import { craftStandardPrompt, type CraftSurface } from "./craftStandard";
 import { recordCleanCycle, recordAnomaly } from "./domainAutonomy";
+import { PLATFORM_SCOPE } from "./tenantScope";
 import type {
   SoleneDispatchAgentRole,
   SoleneDispatchSourceType,
@@ -88,7 +89,7 @@ export function moveToPolicyAction(move: RankedMove): PolicyAction {
   return {
     domain: b.domain,
     actionKind: move.kind,
-    orgId: null, // autopilot acts at the platform level
+    scope: PLATFORM_SCOPE, // the autopilot operates AcreOS itself — its own single tenant
     isCustomerFacing: b.isCustomerFacing,
   };
 }

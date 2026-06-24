@@ -4,12 +4,13 @@ import {
   type PolicyAction,
   type PolicyGateDeps,
 } from "../../server/services/autopilot/policyGate";
+import { orgScope } from "../../server/services/autopilot/tenantScope";
 
 // A baseline action with no per-gate payloads and not customer-facing.
 const baseAction: PolicyAction = {
   domain: "growth",
   actionKind: "run_ads",
-  orgId: 1,
+  scope: orgScope(1),
   isCustomerFacing: false,
 };
 
@@ -33,6 +34,15 @@ describe("runPolicyGateStack — composed autopilot gate", () => {
     expect(decision.results.find((r) => r.gate === "compliance")?.status).toBe("skipped");
     expect(decision.results.find((r) => r.gate === "quality")?.status).toBe("skipped");
     expect(decision.results.find((r) => r.gate === "budget")?.status).toBe("pass");
+  });
+
+  it("hard-errors when an OUTWARD action carries a malformed scope (the move-#2 invariant)", async () => {
+    const bad = {
+      ...baseAction,
+      isCustomerFacing: true,
+      scope: { kind: "org", orgId: -1 } as unknown as PolicyAction["scope"],
+    };
+    await expect(runPolicyGateStack(bad, passDeps())).rejects.toThrow(/malformed scope/);
   });
 
   it("BLOCKS on the compliance gate and short-circuits (budget never runs)", async () => {

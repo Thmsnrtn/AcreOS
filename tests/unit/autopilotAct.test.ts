@@ -48,6 +48,11 @@ describe("autopilot act() — judgment routed through governance", () => {
     expect(bindingFor("totally_unknown")).toMatchObject({ domain: "ops", isCustomerFacing: false });
   });
 
+  it("scopes every autopilot action to the platform (AcreOS operating itself)", () => {
+    // The autopilot acts at platform scope, explicitly — not an overloaded null.
+    expect(moveToPolicyAction(move({ kind: "grow_owned_channels" })).scope).toEqual({ kind: "platform" });
+  });
+
   it("every outward dispatch prompt carries the craft standard", () => {
     const p = dispatchPromptFor(move({ kind: "grow_owned_channels" }));
     expect(p).toMatch(/genuinely glad to have received it/i);

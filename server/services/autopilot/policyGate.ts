@@ -34,6 +34,7 @@ import { assertWithinAiCostCeiling as realAssertCostCeiling } from "../aiCostCei
 import { gateOutputOrThrow as realGateOutputOrThrow } from "../aiEvalHarness";
 import { APPROVAL_REQUIRED_TOOLS as realApprovalRequiredTools } from "../approvalKernel";
 import { checkDomainAutonomyGate as realCheckDomainAutonomy } from "./domainAutonomy";
+import { type TenantScope, scopeOrgId, assertOutwardScope } from "./tenantScope";
 
 export type AutopilotDomain = "growth" | "support" | "deploy" | "ops" | "finance";
 export type GateStatus = "pass" | "block" | "escalate" | "skipped";
@@ -43,8 +44,14 @@ export interface PolicyAction {
   domain: AutopilotDomain;
   /** Free-form action kind for audit, e.g. "send_email" | "run_ads" | "reply_ticket". */
   actionKind: string;
-  /** Org scope for the budget gate (null = platform-level). */
-  orgId: number | null;
+  /**
+   * The accountable scope of this action — `PLATFORM_SCOPE` when the autopilot
+   * operates AcreOS itself, an `orgScope(id)` when acting for a customer org.
+   * Replaces the old overloaded `orgId: number | null` (where null meant both
+   * "platform" and "unscoped"). An outward action with a malformed scope is a
+   * hard error (assertOutwardScope), never a silent platform default.
+   */
+  scope: TenantScope;
   /** Touches a CUSTOMER's assets/comms → witnessed-send (human tap) required. */
   isCustomerFacing: boolean;
   /**
@@ -112,6 +119,14 @@ export async function runPolicyGateStack(
   const d: PolicyGateDeps = { ...defaultDeps, ...deps };
   const results: GateResult[] = [];
 
+  // Invariant (Foundry move #2): any potentially-OUTWARD action must carry a
+  // well-formed accountable scope before any gate runs. platform scope is
+  // legitimate (AcreOS operating itself); a bare/corrupt scope throws — the
+  // typed replacement for the old "orgId=null could mean unscoped" ambiguity.
+  const isOutward =
+    action.isCustomerFacing || action.outwardClass === "broadcast" || action.approvalToolName != null;
+  if (isOutward) assertOutwardScope(action.scope, action.actionKind);
+
   const terminate = (r: GateResult): PolicyGateDecision => {
     results.push(r);
     return { decision: r.status === "escalate" ? "escalate" : "block", results, decidedBy: r.gate };
@@ -148,9 +163,9 @@ export async function runPolicyGateStack(
     results.push({ gate: "quality", status: "skipped" });
   }
 
-  // 3. Budget (always runs — the platform envelope applies even at orgId=null)
+  // 3. Budget (always runs — the platform envelope applies even at platform scope)
   try {
-    await d.assertWithinAiCostCeiling(action.orgId);
+    await d.assertWithinAiCostCeiling(scopeOrgId(action.scope));
     results.push({ gate: "budget", status: "pass" });
   } catch (err) {
     return terminate({
