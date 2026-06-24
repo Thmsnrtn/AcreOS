@@ -599,6 +599,15 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                       }),
                   })
                 ).content;
+              // T2.1: bound cognition to a per-tick ceiling so wiring the
+              // Operator + per-move pre-mortems can never blow the budget or
+              // deadlock the money gate. Once exhausted, callModel returns "" and
+              // each consumer falls back to its deterministic path.
+              const { CognitionBudget } = await import("../autopilot/cognitionBudget");
+              const cognitionBudget = new CognitionBudget();
+              callModel = cognitionBudget.wrap(callModel, () =>
+                logger.info("[continuousLoop] cognition budget exhausted this tick — deterministic fallback"),
+              );
             } catch {
               callModel = null;
             }

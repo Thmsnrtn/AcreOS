@@ -57,6 +57,7 @@ const KERNEL_MANIFEST = [
   "tenantScope.ts", // the typed accountable-scope primitive
   "proofReceipt.ts", // tamper-evident principal-attributed action receipt
   "claimsEngine.ts", // domain-agnostic content-claims screener (profile-driven)
+  "cognitionBudget.ts", // per-tick cognition-call ceiling (backpressure)
   "worldModel.ts", // causal-model machinery (the AcreOS seed lives in packs/land)
   "policyGate.ts",
   "domainAutonomy.ts",
