@@ -5,6 +5,7 @@ import {
   predictMoveEffect,
   refineConfidence,
   refineModel,
+  rankMovesByCausalEv,
   type CausalModel,
 } from "../../server/services/autopilot/worldModel";
 
@@ -114,6 +115,58 @@ describe("refineModel — sharpens only edges with witnessed evidence", () => {
     expect(refined.edges.find((e) => e.from === "mid")!.confidence).toBe(
       TOY.edges.find((e) => e.from === "mid")!.confidence,
     );
+  });
+});
+
+describe("rankMovesByCausalEv — within-tier oracle tiebreak (T2.2)", () => {
+  // A model where lever "good" strongly moves the outcome, "meh" barely.
+  const M: CausalModel = {
+    version: 1,
+    variables: [
+      { id: "good", label: "good", kind: "lever" },
+      { id: "meh", label: "meh", kind: "lever" },
+      { id: "out", label: "out", kind: "outcome" },
+    ],
+    edges: [
+      { from: "good", to: "out", effect: 1.0, confidence: 0.9, evidence: "" },
+      { from: "meh", to: "out", effect: 0.05, confidence: 0.2, evidence: "" },
+    ],
+  };
+  const moveToLever = { grow_good: "good", grow_meh: "meh" };
+
+  it("NEVER crosses tiers — a lower-priority high-EV move can't jump an urgent one", () => {
+    const moves = [
+      { priority: 4, kind: "grow_meh" },
+      { priority: 0, kind: "resolve_incident" }, // urgent, no lever
+    ];
+    const ranked = rankMovesByCausalEv(moves, M, moveToLever);
+    expect(ranked[0].kind).toBe("resolve_incident"); // tier 0 stays first
+  });
+
+  it("breaks a discretionary-tier tie toward the higher predicted EV", () => {
+    const moves = [
+      { priority: 4, kind: "grow_meh" },
+      { priority: 4, kind: "grow_good" },
+    ];
+    const ranked = rankMovesByCausalEv(moves, M, moveToLever);
+    expect(ranked[0].kind).toBe("grow_good"); // higher outcome movement × confidence wins
+  });
+
+  it("a move with no lever scores 0 EV and falls behind a positive-EV peer (null-action default)", () => {
+    const moves = [
+      { priority: 4, kind: "no_lever_move" },
+      { priority: 4, kind: "grow_good" },
+    ];
+    expect(rankMovesByCausalEv(moves, M, moveToLever)[0].kind).toBe("grow_good");
+  });
+
+  it("preserves incoming order in the action tiers (no EV churn where urgency rules)", () => {
+    const moves = [
+      { priority: 2, kind: "a" },
+      { priority: 2, kind: "b" },
+    ];
+    const ranked = rankMovesByCausalEv(moves, M, moveToLever);
+    expect(ranked.map((m) => m.kind)).toEqual(["a", "b"]);
   });
 });
 

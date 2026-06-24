@@ -221,6 +221,41 @@ export function summarizeModel(model: CausalModel): string {
  * absence — never a fabricated estimate). The effects carry explicit confidence
  * (priors are low) — a decision aid, never an oracle.
  */
+/**
+ * Within-tier causal-EV tiebreak (kernel-elevation T2.2 — wire the oracle into
+ * the decision). Re-orders moves by (priority asc, then — in the DISCRETIONARY
+ * band only — predicted outcome movement × path-confidence, desc). It NEVER
+ * crosses tiers: priority dominates, so the safety ladder (stabilize > serve >
+ * grow) is untouched; it only breaks ties among same-tier discretionary
+ * candidates. A move with no lever mapping (or no predicted effect on the
+ * outcome) scores 0 — honest: no causal prediction earns no EV, so it falls
+ * behind a move with positive predicted value (a null-action-respecting default,
+ * never over-acting on a predicted-zero move). The outcome variable is read from
+ * the model (kind: "outcome") so this is fully domain-agnostic. Pure.
+ */
+export function rankMovesByCausalEv<T extends { priority: number; kind: string }>(
+  moves: T[],
+  model: CausalModel,
+  moveToLever: Record<string, string>,
+  discretionaryFrom = 4,
+): T[] {
+  const outcomeId = model.variables.find((v) => v.kind === "outcome")?.id;
+  const evOf = (m: T): number => {
+    if (!outcomeId) return 0;
+    const r = predictMoveEffect(m.kind, model, moveToLever);
+    const out = r?.effects.find((e) => e.variable === outcomeId);
+    return out ? out.deltaPct * out.confidence : 0;
+  };
+  return moves
+    .map((m, i) => ({ m, i, ev: evOf(m) }))
+    .sort((a, b) => {
+      if (a.m.priority !== b.m.priority) return a.m.priority - b.m.priority; // tier first
+      if (a.m.priority >= discretionaryFrom && b.ev !== a.ev) return b.ev - a.ev; // EV tiebreak in the discretionary band
+      return a.i - b.i; // else preserve incoming (urgency) order — stable
+    })
+    .map((x) => x.m);
+}
+
 export function predictMoveEffect(
   moveKind: string,
   model: CausalModel,

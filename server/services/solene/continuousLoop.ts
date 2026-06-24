@@ -527,6 +527,19 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
         if (preemptiveRunwayRisk) blended.finance *= 1.5;
         moves = applyObjectiveWeighting(moves, blended);
       } catch { /* within-tier weighting is best-effort */ }
+      // T2.2: causal EV/$ tiebreak — among same-tier DISCRETIONARY candidates,
+      // prefer the one with the highest predicted outcome movement × confidence
+      // (the planning oracle, finally wired into the decision). Within-tier only;
+      // the safety ladder is untouched. Uses the model REFINED from real
+      // consequence (T1.1), so at cold-start it leans on the seed priors and
+      // sharpens as consequence accrues. Best-effort.
+      try {
+        const { rankMovesByCausalEv, refineModel } = await import("../autopilot/worldModel");
+        const { LAND_PACK, landEvidenceByLever } = await import("../autopilot/packs/land");
+        const { getPastEpisodes } = await import("../autopilot/experienceLog");
+        const causalModel = refineModel(LAND_PACK.causalModel, landEvidenceByLever(await getPastEpisodes(200)));
+        moves = rankMovesByCausalEv(moves, causalModel, LAND_PACK.moveToLever);
+      } catch { /* causal EV tiebreak best-effort */ }
       plannedTopMove = moves[0] ?? null;
       if (plannedTopMove) {
         logger.info("[continuousLoop] tick: brain plan", {
