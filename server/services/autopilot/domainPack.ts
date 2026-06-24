@@ -18,6 +18,7 @@
  */
 
 import type { CausalModel } from "./worldModel";
+import type { RegulatoryProfile } from "./claimsEngine";
 
 export interface DomainPack {
   /** Stable pack id, e.g. "land". Lowercase, kebab-case. */
@@ -37,4 +38,11 @@ export interface DomainPack {
    * estimate.
    */
   readonly moveToLever: Readonly<Record<string, string>>;
+  /**
+   * The vertical's content-regulatory rules — the prohibited-claim patterns +
+   * required disclosures the kernel claims engine (`screenClaims`) screens
+   * auto-published content against. Optional: a pack with no public-broadcast
+   * surface needn't supply one.
+   */
+  readonly regulatoryProfile?: RegulatoryProfile;
 }

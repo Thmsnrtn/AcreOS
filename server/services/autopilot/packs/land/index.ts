@@ -8,12 +8,15 @@
 
 import type { DomainPack } from "../../domainPack";
 import { ACREOS_SEED_MODEL, LAND_MOVE_TO_LEVER } from "./causalModel";
+import { LAND_REGULATORY_PROFILE } from "./regulatoryProfile";
 
 export const LAND_PACK: DomainPack = {
   id: "land",
   label: "Land acquisition",
   causalModel: ACREOS_SEED_MODEL,
   moveToLever: LAND_MOVE_TO_LEVER,
+  regulatoryProfile: LAND_REGULATORY_PROFILE,
 };
 
 export { ACREOS_SEED_MODEL, LAND_MOVE_TO_LEVER, landEvidenceByLever } from "./causalModel";
+export { LAND_REGULATORY_PROFILE } from "./regulatoryProfile";

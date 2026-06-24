@@ -25,6 +25,13 @@ describe("LAND_PACK — conforms to the DomainPack seam", () => {
     }
   });
 
+  it("supplies a regulatory profile the kernel claims engine can screen against", () => {
+    expect(LAND_PACK.regulatoryProfile).toBeTruthy();
+    expect(LAND_PACK.regulatoryProfile!.determinationPatterns.length).toBeGreaterThan(0);
+    expect(LAND_PACK.regulatoryProfile!.bannedPatterns.length).toBeGreaterThan(0);
+    expect(LAND_PACK.regulatoryProfile!.disclosureCues.length).toBeGreaterThan(0);
+  });
+
   it("every edge endpoint references a declared variable", () => {
     const ids = new Set(LAND_PACK.causalModel.variables.map((v) => v.id));
     for (const e of LAND_PACK.causalModel.edges) {
