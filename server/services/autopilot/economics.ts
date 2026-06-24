@@ -99,6 +99,32 @@ export function shouldRampBudget(inp: CacInputs): { ramp: boolean; cacUsd: numbe
 }
 
 /**
+ * Tighten-ONLY margin guard on a PAID budget ramp: never pour more into paid
+ * acquisition while existing customers are contribution-margin-negative. It can
+ * only ever BLOCK a ramp shouldRampBudget already approved — never trigger one.
+ *
+ * Pre-revenue safe: with no revenue yet, owned-channel growth is HOW we reach
+ * revenue, so a ramp isn't gated on a margin that's negative purely from fixed
+ * costs. The guard bites only once there's real revenue AND it's unprofitable.
+ * Pure; reads the existing per-tenant unit-economics rollup at the call site.
+ */
+export function marginAllowsRamp(input: { revenueUsd: number; marginUsd: number }): {
+  allow: boolean;
+  reason: string;
+} {
+  if (!(input.revenueUsd > 0)) {
+    return { allow: true, reason: "pre-revenue — owned-channel ramp isn't gated on fixed-cost margin" };
+  }
+  if (input.marginUsd < 0) {
+    return {
+      allow: false,
+      reason: `contribution margin is negative ($${input.marginUsd.toFixed(0)}) — hold paid spend until unit economics turn positive`,
+    };
+  }
+  return { allow: true, reason: `contribution margin positive ($${input.marginUsd.toFixed(0)})` };
+}
+
+/**
  * The next monthly cap to propose, given the current effective cap and a hard
  * ceiling. A modest, bounded step (default +50%) so the budget climbs in proven
  * increments — each ramp founder-gated, each backed by fresh healthy CAC — never

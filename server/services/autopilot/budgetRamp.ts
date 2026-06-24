@@ -25,7 +25,7 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { autopilotPolicyProposals } from "@shared/schema";
 import { logger } from "../../utils/logger";
-import { shouldRampBudget, nextBudgetStepUsd } from "./economics";
+import { shouldRampBudget, nextBudgetStepUsd, marginAllowsRamp } from "./economics";
 import { getConversionSummary } from "./attribution";
 import {
   getEffectiveMonthlyCapUsd,
@@ -92,6 +92,26 @@ export async function maybeProposeBudgetRamp(deps: BudgetRampDeps): Promise<numb
     const spendUsd = await getMonthToDateSpendForType("agent_dispatch");
     const decision = shouldRampBudget({ attributedSignups: summary.totalSignups, spendUsd });
     if (!decision.ramp) return 0;
+
+    // Tighten-only margin guard: even with healthy CAC, don't propose lifting
+    // PAID budget while existing customers are contribution-margin-negative.
+    // Reuses the existing per-tenant unit-economics rollup (never rebuilds it).
+    // Fail-open: the ramp is only a founder-gated PROPOSAL and CAC already
+    // passed, so a transient economics-read blip must not freeze growth.
+    try {
+      const { readUnitEconomicsRollup } = await import("../unitEconomics");
+      const econ = await readUnitEconomicsRollup();
+      const guard = marginAllowsRamp({
+        revenueUsd: econ.totals.totalMrrUsd,
+        marginUsd: econ.totals.grossMarginUsd,
+      });
+      if (!guard.allow) {
+        logger.info("[autopilot/budgetRamp] ramp suppressed by margin guard", { reason: guard.reason });
+        return 0;
+      }
+    } catch (err) {
+      logger.warn("[autopilot/budgetRamp] margin guard read failed — proceeding (fail-open)", err instanceof Error ? err : undefined);
+    }
 
     const current = await getEffectiveMonthlyCapUsd();
     const ceiling = getEnsembleMonthlyCapHardCeilingUsd();

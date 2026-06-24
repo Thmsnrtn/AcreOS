@@ -299,9 +299,18 @@ export async function gatherContextPack(): Promise<ContextPack> {
   // snapshot. v0 uses the seed model; B2's causal ledger refines its edges from
   // real witnessed interventions over time.
   try {
-    const { summarizeModel } = await import("./worldModel");
-    const { LAND_PACK } = await import("./packs/land");
-    pack.briefing += `\n\n## Causal theory\n${summarizeModel(LAND_PACK.causalModel)}`;
+    const { summarizeModel, refineModel } = await import("./worldModel");
+    const { LAND_PACK, landEvidenceByLever } = await import("./packs/land");
+    // THE BET in motion: refine the seed edges from the org's own witnessed-
+    // intervention history so the brain reasons over a model that SHARPENS with
+    // consequence. Cold-start ≡ the seed priors (no episodes → identity).
+    let model = LAND_PACK.causalModel;
+    try {
+      const { getPastEpisodes } = await import("./experienceLog");
+      const episodes = (await getPastEpisodes(200)) as Array<{ moveKind: string; vote: string }>;
+      model = refineModel(model, landEvidenceByLever(episodes));
+    } catch { /* no episode history yet — seed model stands */ }
+    pack.briefing += `\n\n## Causal theory\n${summarizeModel(model)}`;
   } catch { /* model unavailable — briefing stands without it */ }
 
   return pack;

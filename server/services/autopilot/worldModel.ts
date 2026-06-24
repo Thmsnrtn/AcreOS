@@ -145,6 +145,53 @@ export function queryIntervention(model: CausalModel, leverId: string, deltaPct:
   return { lever: leverId, inputDeltaPct: deltaPct, effects };
 }
 
+// ── Edge refinement: the model gets PERMANENTLY SHARPER from real consequence ─
+// THE BET's heart. Each witnessed intervention that pulls a lever is a Bernoulli
+// trial of "did pulling this lever achieve its modeled downstream effect?". We
+// refine the lever's outgoing-edge CONFIDENCE toward that realized success rate
+// as evidence accrues — but NOT the effect MAGNITUDE (a binary success/failure
+// can't measure elasticity, so claiming to would be a fabrication). Pure;
+// cold-start (no evidence) is the identity — the seed priors stand untouched
+// until real consequence accrues.
+
+/** Observations before witnessed evidence is trusted as much as the prior. */
+export const REFINEMENT_PRIOR_STRENGTH = 8;
+
+export interface EdgeEvidence {
+  successes: number;
+  failures: number;
+}
+
+/** Blend an edge's prior confidence toward the Laplace-smoothed realized success
+ *  rate, weighted by how much evidence we have. n=0 → unchanged (honest). */
+export function refineConfidence(priorConfidence: number, ev: EdgeEvidence): number {
+  const n = ev.successes + ev.failures;
+  if (n <= 0) return priorConfidence;
+  const p = (1 + ev.successes) / (2 + n); // Laplace posterior success rate (≡ efficacy.ts)
+  const w = n / (n + REFINEMENT_PRIOR_STRENGTH); // evidence weight 0..1
+  return Math.round((priorConfidence * (1 - w) + p * w) * 100) / 100;
+}
+
+/**
+ * Refine a causal model from witnessed-intervention evidence keyed by LEVER id
+ * (the `from` variable a move pulls). Only edges whose source is a lever WITH
+ * evidence are refined, and only their confidence. Edges without evidence are
+ * returned untouched. Pure; returns the same object when nothing changed.
+ */
+export function refineModel(model: CausalModel, evidenceByLever: Record<string, EdgeEvidence>): CausalModel {
+  let changed = false;
+  const edges = model.edges.map((e) => {
+    const ev = evidenceByLever[e.from];
+    if (!ev || ev.successes + ev.failures <= 0) return e;
+    const confidence = refineConfidence(e.confidence, ev);
+    if (confidence === e.confidence) return e;
+    changed = true;
+    const n = ev.successes + ev.failures;
+    return { ...e, confidence, evidence: `${e.evidence}; refined from ${n} witnessed intervention(s)` };
+  });
+  return changed ? { ...model, edges } : model;
+}
+
 /** A compact, honest text summary of the causal theory for the Context Pack. Pure. */
 export function summarizeModel(model: CausalModel): string {
   const levers = model.variables.filter((v) => v.kind === "lever").map((v) => v.label);

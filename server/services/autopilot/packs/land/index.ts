@@ -16,4 +16,4 @@ export const LAND_PACK: DomainPack = {
   moveToLever: LAND_MOVE_TO_LEVER,
 };
 
-export { ACREOS_SEED_MODEL, LAND_MOVE_TO_LEVER } from "./causalModel";
+export { ACREOS_SEED_MODEL, LAND_MOVE_TO_LEVER, landEvidenceByLever } from "./causalModel";

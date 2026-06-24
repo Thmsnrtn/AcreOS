@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldRampBudget, nextBudgetStepUsd } from "../../server/services/autopilot/economics";
+import { shouldRampBudget, nextBudgetStepUsd, marginAllowsRamp } from "../../server/services/autopilot/economics";
 
 // The budget-ramp wire (zero-capital compounding): once owned-channel CAC is
 // proven healthy, the autopilot proposes a BOUNDED, founder-gated lift to the
@@ -30,6 +30,24 @@ describe("nextBudgetStepUsd — bounded, ceilinged ramp steps", () => {
     expect(nextBudgetStepUsd(0, 500)).toBe(0);
     expect(nextBudgetStepUsd(-10, 500)).toBe(-10);
     expect(nextBudgetStepUsd(Number.NaN, 500)).toBeNaN();
+  });
+});
+
+describe("marginAllowsRamp — tighten-only margin guard on paid ramps", () => {
+  it("allows a ramp pre-revenue (owned growth isn't gated on fixed-cost margin)", () => {
+    expect(marginAllowsRamp({ revenueUsd: 0, marginUsd: -200 }).allow).toBe(true);
+  });
+  it("BLOCKS a ramp when there's revenue but customers are margin-negative", () => {
+    const g = marginAllowsRamp({ revenueUsd: 500, marginUsd: -50 });
+    expect(g.allow).toBe(false);
+    expect(g.reason).toMatch(/negative/i);
+  });
+  it("allows a ramp when revenue is present and margin is positive", () => {
+    expect(marginAllowsRamp({ revenueUsd: 500, marginUsd: 120 }).allow).toBe(true);
+  });
+  it("can only ever BLOCK — it never asserts a ramp on its own (no trigger path)", () => {
+    // Positive margin is permissive, not a trigger: shouldRampBudget still gates.
+    expect(marginAllowsRamp({ revenueUsd: 1000, marginUsd: 0 }).allow).toBe(true);
   });
 });
 

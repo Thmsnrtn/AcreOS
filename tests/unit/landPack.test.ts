@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { queryIntervention, summarizeModel, predictMoveEffect } from "../../server/services/autopilot/worldModel";
-import { LAND_PACK } from "../../server/services/autopilot/packs/land";
+import { LAND_PACK, landEvidenceByLever } from "../../server/services/autopilot/packs/land";
 import type { DomainPack } from "../../server/services/autopilot/domainPack";
 
 // The land domain pack — the first (today only) implementation of the kernel↔
@@ -62,6 +62,24 @@ describe("predictMoveEffect bound to the land pack", () => {
 
   it("returns null for an unmapped move (e.g. recover_payments)", () => {
     expect(predictMoveEffect("recover_payments", LAND_PACK.causalModel, LAND_PACK.moveToLever)).toBeNull();
+  });
+});
+
+describe("landEvidenceByLever — routes witnessed move outcomes to their lever", () => {
+  it("tallies success/failure per lever via LAND_MOVE_TO_LEVER", () => {
+    const ev = landEvidenceByLever([
+      { moveKind: "grow_owned_channels", vote: "success" },
+      { moveKind: "grow_owned_channels", vote: "success" },
+      { moveKind: "grow_owned_channels", vote: "failure" },
+    ]);
+    expect(ev.publish_guide).toEqual({ successes: 2, failures: 1 });
+  });
+  it("ignores pending votes and unmapped moves (honest — no signal)", () => {
+    const ev = landEvidenceByLever([
+      { moveKind: "grow_owned_channels", vote: "pending" },
+      { moveKind: "recover_payments", vote: "success" }, // unmapped
+    ]);
+    expect(ev).toEqual({});
   });
 });
 

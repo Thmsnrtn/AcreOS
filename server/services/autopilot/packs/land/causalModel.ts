@@ -8,7 +8,7 @@
  * never in the kernel.
  */
 
-import type { CausalModel } from "../../worldModel";
+import type { CausalModel, EdgeEvidence } from "../../worldModel";
 
 export const ACREOS_SEED_MODEL: CausalModel = {
   version: 1,
@@ -41,3 +41,25 @@ export const ACREOS_SEED_MODEL: CausalModel = {
 export const LAND_MOVE_TO_LEVER: Record<string, string> = {
   grow_owned_channels: "publish_guide",
 };
+
+/**
+ * Aggregate witnessed-move outcomes into per-LEVER evidence for refineModel().
+ * Each episode is a move with a settled vote; we route it to the lever it pulls
+ * (LAND_MOVE_TO_LEVER) and tally success/failure. Pending/unmapped moves are
+ * ignored (honest — no signal yet). Pure: the caller fetches the episodes.
+ */
+export function landEvidenceByLever(
+  episodes: Array<{ moveKind: string; vote: string }>,
+): Record<string, EdgeEvidence> {
+  const out: Record<string, EdgeEvidence> = {};
+  for (const ep of episodes) {
+    const lever = LAND_MOVE_TO_LEVER[ep.moveKind];
+    if (!lever) continue;
+    if (ep.vote !== "success" && ep.vote !== "failure") continue; // ignore "pending"
+    const e = out[lever] ?? { successes: 0, failures: 0 };
+    if (ep.vote === "success") e.successes += 1;
+    else e.failures += 1;
+    out[lever] = e;
+  }
+  return out;
+}

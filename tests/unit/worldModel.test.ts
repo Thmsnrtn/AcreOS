@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { queryIntervention, summarizeModel, predictMoveEffect, type CausalModel } from "../../server/services/autopilot/worldModel";
+import {
+  queryIntervention,
+  summarizeModel,
+  predictMoveEffect,
+  refineConfidence,
+  refineModel,
+  type CausalModel,
+} from "../../server/services/autopilot/worldModel";
 
 // Domain-agnostic toy model — the kernel must reason over ANY ontology, so its
 // tests carry no domain vocabulary (the land seed model is tested in landPack.test.ts).
@@ -68,6 +75,45 @@ describe("predictMoveEffect — the planning oracle bridge (kernel; pack supplie
   });
   it("returns null (honest absence) for an unmapped move — never a fabricated estimate", () => {
     expect(predictMoveEffect("unknown_move", TOY, moveToLever)).toBeNull();
+  });
+});
+
+describe("refineConfidence — edges move from prior toward witnessed evidence", () => {
+  it("is the identity at cold-start (no evidence)", () => {
+    expect(refineConfidence(0.4, { successes: 0, failures: 0 })).toBe(0.4);
+  });
+  it("raises confidence when the lever consistently succeeds", () => {
+    const r = refineConfidence(0.4, { successes: 20, failures: 0 });
+    expect(r).toBeGreaterThan(0.4);
+  });
+  it("lowers confidence when the lever consistently fails", () => {
+    const r = refineConfidence(0.7, { successes: 0, failures: 20 });
+    expect(r).toBeLessThan(0.7);
+  });
+  it("moves only a little on thin evidence (sample-weighted)", () => {
+    const thin = refineConfidence(0.4, { successes: 1, failures: 0 });
+    const thick = refineConfidence(0.4, { successes: 40, failures: 0 });
+    expect(thin).toBeGreaterThan(0.4);
+    expect(thick).toBeGreaterThan(thin); // more evidence → moves further
+  });
+});
+
+describe("refineModel — sharpens only edges with witnessed evidence", () => {
+  it("leaves edges without evidence untouched (and returns the same object)", () => {
+    const r = refineModel(TOY, {});
+    expect(r).toBe(TOY); // identity when nothing changed
+  });
+  it("refines only the lever's outgoing edge confidence, never its effect", () => {
+    const refined = refineModel(TOY, { lever: { successes: 30, failures: 0 } });
+    const edge = refined.edges.find((e) => e.from === "lever" && e.to === "mid")!;
+    const prior = TOY.edges.find((e) => e.from === "lever")!;
+    expect(edge.confidence).toBeGreaterThan(prior.confidence); // confidence moved
+    expect(edge.effect).toBe(prior.effect); // magnitude untouched (honest)
+    expect(edge.evidence).toMatch(/refined from 30 witnessed/);
+    // a non-lever edge (mid→out) has no evidence → unchanged
+    expect(refined.edges.find((e) => e.from === "mid")!.confidence).toBe(
+      TOY.edges.find((e) => e.from === "mid")!.confidence,
+    );
   });
 });
 
