@@ -1,25 +1,40 @@
 import { describe, it, expect } from "vitest";
-import { queryIntervention, summarizeModel, predictMoveEffect, ACREOS_SEED_MODEL, type CausalModel } from "../../server/services/autopilot/worldModel";
+import { queryIntervention, summarizeModel, predictMoveEffect, type CausalModel } from "../../server/services/autopilot/worldModel";
+
+// Domain-agnostic toy model — the kernel must reason over ANY ontology, so its
+// tests carry no domain vocabulary (the land seed model is tested in landPack.test.ts).
+const TOY: CausalModel = {
+  version: 1,
+  variables: [
+    { id: "lever", label: "A lever", kind: "lever" },
+    { id: "mid", label: "An intermediate metric", kind: "metric" },
+    { id: "out", label: "The outcome", kind: "outcome" },
+  ],
+  edges: [
+    { from: "lever", to: "mid", effect: 0.8, confidence: 0.4, evidence: "prior" },
+    { from: "mid", to: "out", effect: 0.5, confidence: 0.3, evidence: "prior" },
+  ],
+};
 
 describe("queryIntervention — forward causal propagation (the planning oracle)", () => {
   it("propagates an intervention along the chain to the outcome", () => {
-    const r = queryIntervention(ACREOS_SEED_MODEL, "publish_guide", 10);
-    const indexed = r.effects.find((e) => e.variable === "indexed_pages");
-    const mrr = r.effects.find((e) => e.variable === "mrr");
-    expect(indexed?.deltaPct).toBeCloseTo(8, 5); // 10 * 0.8
-    expect(mrr).toBeTruthy(); // 10*0.8*0.5*0.3*0.15*1.0 = 0.18
-    expect(mrr!.deltaPct).toBeCloseTo(0.18, 2);
-    expect(mrr!.confidence).toBeGreaterThan(0); // honest: low but non-zero
-    expect(mrr!.confidence).toBeLessThan(0.3); // priors are uncertain
+    const r = queryIntervention(TOY, "lever", 10);
+    const mid = r.effects.find((e) => e.variable === "mid");
+    const out = r.effects.find((e) => e.variable === "out");
+    expect(mid?.deltaPct).toBeCloseTo(8, 5); // 10 * 0.8
+    expect(out).toBeTruthy(); // 10 * 0.8 * 0.5 = 4
+    expect(out!.deltaPct).toBeCloseTo(4, 2);
+    expect(out!.confidence).toBeGreaterThan(0); // honest: low but non-zero (0.4*0.3)
+    expect(out!.confidence).toBeLessThan(0.3); // priors are uncertain
   });
 
-  it("ranks the outcome (MRR) ahead of intermediate metrics", () => {
-    const r = queryIntervention(ACREOS_SEED_MODEL, "publish_guide", 10);
-    expect(r.effects[0].variable).toBe("mrr"); // outcome surfaced first
+  it("ranks the outcome ahead of intermediate metrics", () => {
+    const r = queryIntervention(TOY, "lever", 10);
+    expect(r.effects[0].variable).toBe("out"); // outcome surfaced first
   });
 
   it("returns no effects for an unknown lever", () => {
-    expect(queryIntervention(ACREOS_SEED_MODEL, "teleport", 10).effects).toEqual([]);
+    expect(queryIntervention(TOY, "teleport", 10).effects).toEqual([]);
   });
 
   it("handles a multi-path graph without double-counting (topological pass)", () => {
@@ -43,24 +58,25 @@ describe("queryIntervention — forward causal propagation (the planning oracle)
   });
 });
 
-describe("predictMoveEffect — the planning oracle bridge (brain/gates only)", () => {
+describe("predictMoveEffect — the planning oracle bridge (kernel; pack supplies the map)", () => {
+  const moveToLever = { do_the_thing: "lever" };
   it("predicts a mapped move's causal effect via its lever", () => {
-    const r = predictMoveEffect("grow_owned_channels", ACREOS_SEED_MODEL);
+    const r = predictMoveEffect("do_the_thing", TOY, moveToLever);
     expect(r).toBeTruthy();
-    expect(r!.lever).toBe("publish_guide");
-    expect(r!.effects.find((e) => e.variable === "mrr")).toBeTruthy();
+    expect(r!.lever).toBe("lever");
+    expect(r!.effects.find((e) => e.variable === "out")).toBeTruthy();
   });
   it("returns null (honest absence) for an unmapped move — never a fabricated estimate", () => {
-    expect(predictMoveEffect("recover_payments", ACREOS_SEED_MODEL)).toBeNull();
+    expect(predictMoveEffect("unknown_move", TOY, moveToLever)).toBeNull();
   });
 });
 
 describe("summarizeModel — honest causal theory for the Context Pack", () => {
   it("renders levers, edges, and the uncertainty caveat", () => {
-    const s = summarizeModel(ACREOS_SEED_MODEL);
+    const s = summarizeModel(TOY);
     expect(s).toMatch(/Causal theory of the business/i);
-    expect(s).toMatch(/Publish a county guide/);
-    expect(s).toMatch(/MRR/);
+    expect(s).toMatch(/A lever/);
+    expect(s).toMatch(/The outcome/);
     expect(s).toMatch(/never an oracle/i);
   });
 });

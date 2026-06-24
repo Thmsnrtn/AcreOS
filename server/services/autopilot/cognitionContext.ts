@@ -299,8 +299,9 @@ export async function gatherContextPack(): Promise<ContextPack> {
   // snapshot. v0 uses the seed model; B2's causal ledger refines its edges from
   // real witnessed interventions over time.
   try {
-    const { summarizeModel, ACREOS_SEED_MODEL } = await import("./worldModel");
-    pack.briefing += `\n\n## Causal theory\n${summarizeModel(ACREOS_SEED_MODEL)}`;
+    const { summarizeModel } = await import("./worldModel");
+    const { LAND_PACK } = await import("./packs/land");
+    pack.briefing += `\n\n## Causal theory\n${summarizeModel(LAND_PACK.causalModel)}`;
   } catch { /* model unavailable — briefing stands without it */ }
 
   return pack;

@@ -6,15 +6,18 @@
  * interventions on and propose edits to), not a snapshot of language about it.
  *
  * ── KERNEL (domain-agnostic — the Foundry-reusable spine) ────────────────────
- * CausalModel + queryIntervention (forward-propagate an intervention along the
- * causal graph) + summarizeModel. A new vertical supplies only its ontology +
- * edges (the DOMAIN PACK); this machinery is inherited unchanged.
+ * This module is PURE KERNEL: CausalModel + queryIntervention (forward-propagate
+ * an intervention along the causal graph) + summarizeModel + predictMoveEffect.
+ * It carries ZERO domain vocabulary. A vertical supplies its ontology + edges +
+ * move→lever map as a DomainPack (see ./domainPack + ./packs/<vertical>); this
+ * machinery is inherited unchanged. The kernel↔pack boundary is enforced by
+ * scripts/check-kernel-boundary.mjs (the kernel may not import any pack).
  *
- * ── DOMAIN PACK (AcreOS) ─────────────────────────────────────────────────────
- * ACREOS_SEED_MODEL — the land-acquisition causal structure. Edge effects start
- * as LOW-confidence priors and get refined from the org's own witnessed-
- * intervention history (the causal ledger, B2) — so the model gets PERMANENTLY
- * SHARPER from real consequence, the heart of the bet.
+ * The AcreOS land-acquisition causal structure lives in
+ * ./packs/land/causalModel.ts. Its edge effects start as LOW-confidence priors
+ * and get refined from the org's own witnessed-intervention history (the causal
+ * ledger, B2) — so the model gets PERMANENTLY SHARPER from real consequence,
+ * the heart of the bet.
  *
  * Pure + exhaustively testable. Honest by construction: every edge carries its
  * confidence + evidence; predictions are point + confidence, never an oracle.
@@ -158,48 +161,21 @@ export function summarizeModel(model: CausalModel): string {
   ].join("\n");
 }
 
-// ── DOMAIN PACK: the AcreOS land-acquisition seed model ──────────────────────
-// Priors only (low confidence) — they sharpen from the causal ledger over time.
-export const ACREOS_SEED_MODEL: CausalModel = {
-  version: 1,
-  variables: [
-    { id: "publish_guide", label: "Publish a county guide", kind: "lever" },
-    { id: "ramp_budget", label: "Lift growth budget", kind: "lever" },
-    { id: "witnessed_outbound", label: "Witnessed outbound touch", kind: "lever" },
-    { id: "indexed_pages", label: "Indexed SEO pages", kind: "metric" },
-    { id: "search_impressions", label: "Search impressions", kind: "metric" },
-    { id: "parcel_checks", label: "Free parcel checks run", kind: "metric" },
-    { id: "signups", label: "Signups", kind: "metric" },
-    { id: "mrr", label: "MRR", kind: "outcome" },
-  ],
-  edges: [
-    { from: "publish_guide", to: "indexed_pages", effect: 0.8, confidence: 0.4, evidence: "prior: a published guide adds indexable surface" },
-    { from: "indexed_pages", to: "search_impressions", effect: 0.5, confidence: 0.3, evidence: "prior: impressions lag indexing 4-9mo" },
-    { from: "search_impressions", to: "parcel_checks", effect: 0.3, confidence: 0.3, evidence: "prior: a fraction of impressions click through to the tool" },
-    { from: "witnessed_outbound", to: "parcel_checks", effect: 0.2, confidence: 0.25, evidence: "prior: helpful outbound drives a few checks" },
-    { from: "parcel_checks", to: "signups", effect: 0.15, confidence: 0.3, evidence: "prior: a fraction of checkers sign up (lower bound via attribution)" },
-    { from: "signups", to: "mrr", effect: 1.0, confidence: 0.7, evidence: "prior: signups → trials → paid at the tier blend" },
-    { from: "ramp_budget", to: "search_impressions", effect: 0.2, confidence: 0.2, evidence: "prior: paid amplification, only once funnel proven" },
-  ],
-};
-
-// ── DOMAIN PACK: which world-model lever each move pulls ──────────────────────
-// Maps a decide.ts move-kind to its causal lever, so the brain can query the
-// PREDICTED effect of a move (the planning oracle). Unmapped moves return null —
-// honest: "no causal model for this move yet", never a fabricated estimate.
-export const MOVE_TO_LEVER: Record<string, string> = {
-  grow_owned_channels: "publish_guide",
-};
-
 /**
  * Predict a move's causal effect by rolling its lever through the world-model.
  * For the BRAIN/gates only — NOT the founder-facing simulate (which stays free of
- * model forecasts by design). Returns null when no lever maps (honest absence).
- * The effects carry explicit confidence (priors are low) — a decision aid, never
- * an oracle.
+ * model forecasts by design). `moveToLever` is supplied by the DOMAIN PACK
+ * (kernel stays domain-agnostic); returns null when no lever maps (honest
+ * absence — never a fabricated estimate). The effects carry explicit confidence
+ * (priors are low) — a decision aid, never an oracle.
  */
-export function predictMoveEffect(moveKind: string, model: CausalModel, deltaPct = 10): InterventionResult | null {
-  const lever = MOVE_TO_LEVER[moveKind];
+export function predictMoveEffect(
+  moveKind: string,
+  model: CausalModel,
+  moveToLever: Record<string, string>,
+  deltaPct = 10,
+): InterventionResult | null {
+  const lever = moveToLever[moveKind];
   if (!lever) return null;
   return queryIntervention(model, lever, deltaPct);
 }
