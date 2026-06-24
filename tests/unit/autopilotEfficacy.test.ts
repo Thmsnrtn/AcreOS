@@ -5,6 +5,7 @@ import {
   selectPlay,
   efficacyOf,
   makeSeededRng,
+  pooledPrior,
   type PlayStats,
   type Rng,
 } from "../../server/services/autopilot/efficacy";
@@ -109,5 +110,34 @@ describe("autopilot efficacy — Thompson sampling over real outcomes", () => {
     const seq1 = Array.from({ length: 50 }, (_, i) => selectPlay(plays, mulberry32(123))![0]);
     const seq2 = Array.from({ length: 50 }, (_, i) => selectPlay(plays, mulberry32(123))![0]);
     expect(seq1).toEqual(seq2);
+  });
+});
+
+describe("T3 (#14) — pooled (hierarchical) prior", () => {
+  it("contributes nothing at cold-start → scoring stays exactly Beta(1,1)", () => {
+    expect(pooledPrior([])).toEqual({ alpha: 0, beta: 0 });
+    expect(pooledPrior([{ playId: "a", successes: 0, failures: 0 }])).toEqual({ alpha: 0, beta: 0 });
+  });
+
+  it("reflects the org's pooled success rate as prior pseudo-counts", () => {
+    // 8 successes / 2 failures across plays → pooled mean 0.8, strength 2.
+    const prior = pooledPrior([
+      { playId: "a", successes: 5, failures: 1 },
+      { playId: "b", successes: 3, failures: 1 },
+    ]);
+    expect(prior.alpha).toBeCloseTo(1.6, 5); // 2 * 0.8
+    expect(prior.beta).toBeCloseTo(0.4, 5); // 2 * 0.2
+  });
+
+  it("lifts an UNPROVEN play's posterior toward the pooled mean (not a blind 0.5)", () => {
+    const stats: PlayStats[] = [
+      { playId: "proven", successes: 20, failures: 1 },
+      { playId: "fresh", successes: 0, failures: 0 },
+    ];
+    const rng = makeSeededRng(1);
+    const flat = scorePlays(stats, rng).find((p) => p.playId === "fresh")!;
+    const pooled = scorePlays(stats, rng, pooledPrior(stats)).find((p) => p.playId === "fresh")!;
+    expect(flat.posteriorMean).toBeCloseTo(0.5, 5); // Beta(1,1)
+    expect(pooled.posteriorMean).toBeGreaterThan(0.5); // inherits the org's strong track record
   });
 });

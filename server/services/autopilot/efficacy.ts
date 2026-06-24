@@ -99,17 +99,56 @@ function clampUnit(x: number): number {
   return x;
 }
 
+/** Extra prior pseudo-counts added to the Beta(1,1) base (the pooled prior). */
+export interface PlayPrior {
+  alpha: number;
+  beta: number;
+}
+
+const FLAT_PRIOR: PlayPrior = { alpha: 0, beta: 0 };
+
+/**
+ * The empirical-Bayes POOLED prior (kernel-elevation T3 / #14 — the hierarchical
+ * primitive). An unproven play shouldn't start at a blind 0.5 once the org has a
+ * track record across its OTHER plays — it should inherit the pooled success
+ * rate as its prior. Returns extra pseudo-counts to add to the Beta(1,1) base:
+ *   • no data anywhere → {0,0} → the base stays exactly Beta(1,1) (cold-start
+ *     unchanged — learning is still purely additive);
+ *   • with data → priorStrength × the pooled mean / (1−mean).
+ * At one tenant this pools across that tenant's plays; the SAME function pools
+ * across TENANTS once experiences carry a scope (the cross-vertical data-co-op
+ * moat) — every tenant's outcomes sharpen a shared prior each new tenant
+ * inherits, then sharpens to its own truth. Pure. Honesty-preserving: pooling
+ * moves only the PRIOR, never a displayed track record.
+ */
+export function pooledPrior(stats: PlayStats[], priorStrength = 2): PlayPrior {
+  let totalS = 0;
+  let totalF = 0;
+  for (const s of stats) {
+    totalS += Math.max(0, s.successes);
+    totalF += Math.max(0, s.failures);
+  }
+  const n = totalS + totalF;
+  if (n === 0) return FLAT_PRIOR; // cold-start: contributes nothing → Beta(1,1)
+  const mean = totalS / n;
+  return { alpha: priorStrength * mean, beta: priorStrength * (1 - mean) };
+}
+
 /**
  * Score + Thompson-sample every play. Returns them sorted by this round's
  * sample (highest first) — `[0]` is the pick. Total: an empty list returns [].
+ * `prior` (default flat → Beta(1,1)) lets the caller pass a pooled/hierarchical
+ * prior; it only ever ADDS pseudo-counts, so α,β stay ≥ 1 (sampleBeta-valid).
  */
-export function scorePlays(stats: PlayStats[], rng: Rng): ScoredPlay[] {
+export function scorePlays(stats: PlayStats[], rng: Rng, prior: PlayPrior = FLAT_PRIOR): ScoredPlay[] {
+  const pa = Math.max(0, prior.alpha);
+  const pb = Math.max(0, prior.beta);
   return stats
     .map((s) => {
       const successes = Math.max(0, s.successes);
       const failures = Math.max(0, s.failures);
-      const alpha = 1 + successes;
-      const beta = 1 + failures;
+      const alpha = 1 + pa + successes;
+      const beta = 1 + pb + failures;
       return {
         ...s,
         successes,
@@ -125,10 +164,10 @@ export function scorePlays(stats: PlayStats[], rng: Rng): ScoredPlay[] {
 /**
  * Pick the next play id by Thompson sampling. Returns null only for an empty
  * candidate list. The caller supplies the candidate set (so a paused/retired
- * play simply isn't passed in).
+ * play simply isn't passed in) and an optional pooled prior.
  */
-export function selectPlay(stats: PlayStats[], rng: Rng): string | null {
-  const scored = scorePlays(stats, rng);
+export function selectPlay(stats: PlayStats[], rng: Rng, prior: PlayPrior = FLAT_PRIOR): string | null {
+  const scored = scorePlays(stats, rng, prior);
   return scored.length ? scored[0].playId : null;
 }
 

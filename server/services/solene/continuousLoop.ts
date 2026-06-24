@@ -726,7 +726,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               const { GROWTH_PLAYS, growthPlayById, growthPlayRationale, selectNextGrowthPlay } =
                 await import("../autopilot/growthPlaybook");
               const { getPlayStats } = await import("../autopilot/experienceLog");
-              const { selectPlay, makeSeededRng } = await import("../autopilot/efficacy");
+              const { selectPlay, makeSeededRng, pooledPrior } = await import("../autopilot/efficacy");
               const { getStoppedPlayIds } = await import("../autopilot/policyInducer");
               // Evidence-weighted selection (Thompson sampling) over the REAL
               // track record. Cold-start (no data) ⇒ ~uniform, i.e. equivalent to
@@ -740,7 +740,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               const candidates = pool.map(
                 (p) => stats.find((s) => s.playId === p.id) ?? { playId: p.id, successes: 0, failures: 0 },
               );
-              const pickedId = selectPlay(candidates, makeSeededRng(Date.now()));
+              const pickedId = selectPlay(candidates, makeSeededRng(Date.now()), pooledPrior(candidates));
               const play = (pickedId && growthPlayById(pickedId)) || selectNextGrowthPlay(0);
               selectedPlayId = play.id;
               // County-targeted owned content: for a county guide, pin it to the

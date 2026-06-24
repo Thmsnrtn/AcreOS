@@ -7278,6 +7278,10 @@ const STATEMENTS = [
   `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "target_ref" text`,
   `CREATE INDEX IF NOT EXISTS "autopilot_experiences_target_ref_idx" ON "autopilot_experiences" ("target_ref")`,
 
+  // kernel-elevation T3 (#11) — accountable scope on the learning ledger
+  // (ruinous to retrofit onto populated data; defaulted 'platform' today).
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "scope" text DEFAULT 'platform'`,
+
   // kernel-elevation T1.3 (#10) — per-cycle world-model confidence snapshots so
   // the self-sharpening trajectory is observable, not discarded each tick.
   `CREATE TABLE IF NOT EXISTS "autopilot_worldmodel_snapshots" (

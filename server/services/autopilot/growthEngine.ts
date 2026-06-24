@@ -17,7 +17,7 @@
  * Pure selection (selectProactiveGrowthPlay) → unit-testable; objective seeding
  * is a thin idempotent upsert.
  */
-import { selectPlay, type PlayStats, type Rng } from "./efficacy";
+import { selectPlay, pooledPrior, type PlayStats, type Rng } from "./efficacy";
 import { selectNextGrowthPlay, growthPlayById, type GrowthPlay } from "./growthPlaybook";
 import { upsertObjective } from "./objectives";
 
@@ -34,7 +34,10 @@ export function selectProactiveGrowthPlay(
 ): GrowthPlay {
   const hasData = stats.some((s) => s.successes + s.failures > 0);
   if (hasData) {
-    const id = selectPlay(stats, rng);
+    // T3 (#14): an unproven play inherits the org's POOLED success rate as its
+    // prior (not a blind 0.5) — the hierarchical primitive (pools across plays
+    // now, across tenants when scoped).
+    const id = selectPlay(stats, rng, pooledPrior(stats));
     const play = id ? growthPlayById(id) : null;
     if (play) return play;
   }

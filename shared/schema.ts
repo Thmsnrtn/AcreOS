@@ -12430,6 +12430,13 @@ export const autopilotExperiences = pgTable("autopilot_experiences", {
   // the join key a downstream webhook uses to credit the consequence. Null when
   // no clean 1:1 target exists (→ honest abstention; no consequence attributed).
   targetRef: text("target_ref"),
+  // Accountable scope (kernel-elevation T3 / #11) — "platform" (AcreOS operating
+  // itself) today; an "org:N" once the kernel runs foreign tenants. Recorded NOW
+  // (defaulted 'platform') because it's ruinous to retrofit onto a populated
+  // learning ledger — you can't backfill which tenant a historical row belonged
+  // to. Reads stay platform-wide until a second tenant exists; the column is the
+  // cheap insurance that the cross-tenant split is a pure migration later.
+  scope: text("scope").default("platform"),
   costUsd: numeric("cost_usd"),
   // Calibrated foresight: the success probability the system PREDICTED for this
   // action at act-time. Compared against the realized outcome to measure the

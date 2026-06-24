@@ -152,6 +152,8 @@ export async function recordExperience(input: {
   predictedSuccess?: number | null;
   /** The glass-box reasoning trace (structured + narrative). */
   reasoningTrace?: unknown;
+  /** Accountable scope (T3 #11) — defaults to the platform (AcreOS itself). */
+  scope?: string;
 }): Promise<number> {
   const [row] = await db
     .insert(autopilotExperiences)
@@ -164,6 +166,7 @@ export async function recordExperience(input: {
       askId: input.askId ?? null,
       predictedSuccess: input.predictedSuccess != null ? String(input.predictedSuccess) : null,
       reasoningTrace: input.reasoningTrace ?? null,
+      scope: input.scope ?? "platform",
     })
     .returning({ id: autopilotExperiences.id });
   return row?.id ?? 0;
