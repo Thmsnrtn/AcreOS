@@ -13,7 +13,7 @@
 import type { Express, Response } from "express";
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
-import { getUserId } from "./types/request";
+import { getUserId, getOrganizationId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import {
@@ -58,6 +58,30 @@ export function registerAutopilotRoutes(app: Express): void {
           }),
         );
         return res.json({ ledger: enriched });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── GET the governance evidence packet (exportable, hash-sealed) ─────────
+  // Foundry move #5: AcreOS's own founder-trust artifact AND the sellable
+  // "proof the autonomy was governed". Composes existing durable records
+  // (audit-chain verification + witnessed-send audit + Trust Ledger +
+  // constitution hash) into one sealed packet a reviewer can independently
+  // verify with verifyEvidencePacket().
+  app.get(
+    "/api/founder/autopilot/governance/evidence",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const raw = Number((req.query.days as string) ?? "30");
+        const periodDays = Number.isFinite(raw) ? Math.min(365, Math.max(1, Math.round(raw))) : 30;
+        const { gatherGovernanceEvidence } = await import("./services/governance/evidencePacket");
+        const packet = await gatherGovernanceEvidence(orgId, periodDays);
+        return res.json({ packet });
       } catch (err) {
         return Errors.internal(res, err);
       }
