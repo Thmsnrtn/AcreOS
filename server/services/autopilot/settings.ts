@@ -46,8 +46,31 @@ function envCognition(): boolean {
   return process.env.COGNITION_ENABLED === "true";
 }
 
+/**
+ * The hard, OUT-OF-REACH off-switch (kernel-elevation T0.3). SOLENE_PANIC_STOP is
+ * an env/secret the autopilot cannot write (it has no shell + no env-write tool),
+ * so it overrides the DB switches UNCONDITIONALLY: when set, every master switch
+ * reads OFF regardless of the DB row or the cache — a kill the agent can never
+ * undo by itself. The founder-facing panicStop() (panicStop.ts) flips the DB
+ * switches for the routine atomic STOP; this env is the last-resort floor.
+ */
+export function isPanicStopped(): boolean {
+  const v = process.env.SOLENE_PANIC_STOP;
+  return v === "true" || v === "1";
+}
+
+const ALL_OFF = (): EffectiveSettings => ({
+  dispatchEnabled: false,
+  publishEnabled: false,
+  cognitionEnabled: false,
+  growthBudgetOverrideUsd: null,
+  source: { dispatch: "env", publish: "env" },
+});
+
 /** Read the effective settings (DB row if present, else env). Never throws. */
 export async function getEffectiveSettings(now = Date.now()): Promise<EffectiveSettings> {
+  // The out-of-reach kill wins over everything, every read — never cached-on.
+  if (isPanicStopped()) return ALL_OFF();
   if (cache && now - cache.at < CACHE_TTL_MS) return cache.value;
   let value: EffectiveSettings = {
     dispatchEnabled: envDispatch(),

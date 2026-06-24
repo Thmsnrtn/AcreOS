@@ -1039,11 +1039,22 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     const critical = drift.filter((d) => d.severity === "critical");
     if (critical.length > 0) {
       logger.error(`[continuousLoop] CONSTITUTIONAL DRIFT: ${critical.map((d) => d.message).join(" ")}`);
+      // T0.3: CONTAIN before paging — a constitutional-invariant breach is not an
+      // alarm to sleep on; trip the atomic panic stop (all switches off + every
+      // domain quarantined to OBSERVE), then page. The founder re-enables
+      // deliberately once they've reviewed. (panicStop pages too; the explicit
+      // page below stays as defense-in-depth.)
+      try {
+        const { panicStop } = await import("../autopilot/panicStop");
+        await panicStop({ reason: `constitutional drift: ${critical.map((d) => d.code).join(", ")}`, by: "auto:drift_sentinel" });
+      } catch (containErr) {
+        logger.error("[continuousLoop] drift containment failed", containErr instanceof Error ? containErr : undefined);
+      }
       try {
         const { sendSolenePage } = await import("./pagerService");
         await sendSolenePage({
           severity: "critical",
-          subject: "Autopilot constitutional drift",
+          subject: "Autopilot constitutional drift — CONTAINED (panic stop tripped)",
           body: critical.map((d) => d.message).join("\n"),
         });
       } catch {

@@ -119,6 +119,18 @@ describe("send_email hand — suppression honored", () => {
     expect((sendEmail as any).mock.calls[0][0].transactional).toBeUndefined();
   });
 
+  it("refuses a witnessed send while the panic stop is engaged (T0.3)", async () => {
+    process.env.SOLENE_PANIC_STOP = "true";
+    try {
+      const r = await executeHandWitnessed("send_email", { to: "ok@x.com", subject: "Hi", html: "<p>Hi</p>" }, "founder_1");
+      expect(r.success).toBe(false);
+      expect(r.output).toMatch(/PANIC-STOP/);
+      expect(sendEmail).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.SOLENE_PANIC_STOP;
+    }
+  });
+
   it("attaches a verifiable proof-receipt to a witnessed send (Foundry move #3)", async () => {
     (filterSuppressed as any).mockResolvedValue({ allowed: ["ok@x.com"], suppressed: [] });
     (sendEmail as any).mockResolvedValue({ success: true, messageId: "m_456" });

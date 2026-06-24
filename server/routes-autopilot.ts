@@ -64,6 +64,28 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── POST the atomic PANIC STOP (T0.3) — halt everything in one tap ───────
+  // The most consequential founder control: flips all master switches off +
+  // quarantines every domain to OBSERVE + records a receipt + pages. Reversible
+  // by re-enabling the switches once the founder has reviewed. (The env
+  // SOLENE_PANIC_STOP is the separate out-of-reach hard floor.)
+  app.post(
+    "/api/founder/autopilot/panic-stop",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const reason = ((req.body ?? {}) as { reason?: string }).reason?.trim() || "founder-initiated panic stop";
+        const { panicStop } = await import("./services/autopilot/panicStop");
+        const result = await panicStop({ reason, by: getUserId(req) });
+        logger.error("[autopilot] founder tripped PANIC STOP via API", { reason });
+        return res.json({ ok: true, ...result });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── GET the governance evidence packet (exportable, hash-sealed) ─────────
   // Foundry move #5: AcreOS's own founder-trust artifact AND the sellable
   // "proof the autonomy was governed". Composes existing durable records

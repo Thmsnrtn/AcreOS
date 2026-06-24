@@ -101,6 +101,18 @@ export async function executeHandWitnessed(
       durationMs: Date.now() - started,
     };
   }
+  // T0.3: cooperative re-read of the out-of-reach kill at the choke point. Even
+  // a human-approved action does not fire while the panic stop is engaged.
+  try {
+    const { isPanicStopped } = await import("../settings");
+    if (isPanicStopped()) {
+      return {
+        success: false,
+        output: `[PANIC-STOP] ${name} refused: the autopilot is halted (SOLENE_PANIC_STOP engaged).`,
+        durationMs: Date.now() - started,
+      };
+    }
+  } catch { /* settings unavailable → proceed; the gate stack still applies */ }
   logger.info(`[autopilot/hands] witnessed execution of ${name} approved by ${witnessedBy}`);
   const result = await hand.handler(input, ctx);
 
