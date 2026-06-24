@@ -131,6 +131,34 @@ export async function executeHandWitnessed(
     });
   }
 
+  // kernel-elevation T0.1: stamp the experience for this dispatch with the
+  // concrete target it hit, so a downstream webhook can credit the real
+  // consequence (invoice.paid → paymentRecovered; bounce → deliveryBounced).
+  // Only when we have BOTH a dispatch id and a clean 1:1 target — else abstain.
+  try {
+    if (result.success && typeof ctx.dispatchId === "number") {
+      const { deriveTargetRef, setExperienceTarget } = await import("../experienceLog");
+      let invoiceId: string | null = null;
+      if (name === "dunning_action" && typeof input.event_id === "number") {
+        const { db } = await import("../../../db");
+        const { dunningEvents } = await import("@shared/schema");
+        const { eq } = await import("drizzle-orm");
+        const [ev] = await db
+          .select({ inv: dunningEvents.stripeInvoiceId })
+          .from(dunningEvents)
+          .where(eq(dunningEvents.id, input.event_id))
+          .limit(1);
+        invoiceId = ev?.inv ?? null;
+      }
+      const targetRef = deriveTargetRef(name, input, invoiceId);
+      if (targetRef) await setExperienceTarget(ctx.dispatchId, targetRef);
+    }
+  } catch (err) {
+    logger.warn(`[autopilot/hands] target_ref stamp failed for ${name} (send still valid)`, {
+      metadata: { error: err instanceof Error ? err.message : String(err) },
+    });
+  }
+
   return result;
 }
 

@@ -7271,6 +7271,13 @@ const STATEMENTS = [
   // 0173 — glass-box: persist the full reasoning trace per action. Additive.
   `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "reasoning_trace" jsonb`,
 
+  // kernel-elevation T0.1 — real downstream CONSEQUENCE signals + the target_ref
+  // join key a webhook uses to credit them. Additive; null until observed.
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "delivery_bounced" boolean`,
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "payment_recovered" boolean`,
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "target_ref" text`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_experiences_target_ref_idx" ON "autopilot_experiences" ("target_ref")`,
+
   // 0174 — autopilot runtime settings (DB-backed master switches). Singleton.
   `CREATE TABLE IF NOT EXISTS "autopilot_settings" (
      "id" integer PRIMARY KEY DEFAULT 1,

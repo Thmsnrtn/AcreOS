@@ -97,6 +97,14 @@ export class WebhookHandlers {
           // dunning recovery, distinct from a first-try renewal.
           if (Number(inv.attempt_count ?? 0) > 1) {
             void recordSense('payment_recovered', Number(inv.amount_paid ?? 0), { invoice: inv.id });
+            // kernel-elevation T0.1: credit the REAL consequence onto the
+            // autopilot dunning action that targeted this invoice (no-op unless
+            // a witnessed dunning_action stamped target_ref="invoice:<id>").
+            if (inv.id) {
+              void import('./services/autopilot/experienceLog').then(({ recordConsequenceByTarget }) =>
+                recordConsequenceByTarget(`invoice:${inv.id}`, { paymentRecovered: true }),
+              ).catch(() => {});
+            }
           }
           break;
         }

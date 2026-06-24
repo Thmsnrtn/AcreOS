@@ -12420,6 +12420,16 @@ export const autopilotExperiences = pgTable("autopilot_experiences", {
   founderVerdict: text("founder_verdict"), // approved | declined
   resolution: text("resolution"), // resolved | reopened
   satisfaction: integer("satisfaction"), // 1-5
+  // Real downstream CONSEQUENCE signals (kernel-elevation T0.1) — set by a
+  // webhook when a witnessed action's effect lands in the world, matched to this
+  // row via target_ref. Null until/unless a concrete consequence is observed.
+  deliveryBounced: boolean("delivery_bounced"), // an outward send hard-bounced/complained
+  paymentRecovered: boolean("payment_recovered"), // a dunning action → the invoice then paid
+  // The concrete business object this action targeted (e.g. "invoice:in_123",
+  // "email:x@y.com"), set at witnessed execution when a hand knows its target —
+  // the join key a downstream webhook uses to credit the consequence. Null when
+  // no clean 1:1 target exists (→ honest abstention; no consequence attributed).
+  targetRef: text("target_ref"),
   costUsd: numeric("cost_usd"),
   // Calibrated foresight: the success probability the system PREDICTED for this
   // action at act-time. Compared against the realized outcome to measure the
@@ -12434,6 +12444,7 @@ export const autopilotExperiences = pgTable("autopilot_experiences", {
   playIdx: index("autopilot_experiences_play_idx").on(t.playId),
   dispatchIdx: index("autopilot_experiences_dispatch_idx").on(t.dispatchId),
   askIdx: index("autopilot_experiences_ask_idx").on(t.askId),
+  targetRefIdx: index("autopilot_experiences_target_ref_idx").on(t.targetRef),
 }));
 export type AutopilotExperience = typeof autopilotExperiences.$inferSelect;
 

@@ -171,6 +171,12 @@ export async function ingestSendGridEvents(events: SendGridEvent[]): Promise<{
         } else {
           void recordSense("email_bounce", 1, { organizationId: orgId, category: sup.bounceCategory });
         }
+        // kernel-elevation T0.1: credit the REAL failure consequence onto the
+        // autopilot send that targeted this recipient (no-op unless a witnessed
+        // send_email stamped target_ref="email:<recipient>").
+        void import("./services/autopilot/experienceLog").then(({ recordConsequenceByTarget }) =>
+          recordConsequenceByTarget(`email:${email.toLowerCase()}`, { deliveryBounced: true }),
+        ).catch(() => {});
         // Complaint = spam report. Immediate founder alert in addition to
         // the suppression itself (see alertFounderOnComplaint comments).
         if (sup.bounceCategory === "complaint") {

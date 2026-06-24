@@ -93,6 +93,52 @@ export function statsFromExperiences(
   return [...byPlay.values()];
 }
 
+/**
+ * Build the outcomeOf signal set from a DB row. Centralizes the mapping so every
+ * aggregator votes on the SAME fields — including the real consequence columns
+ * (deliveryBounced/paymentRecovered), which the readers historically dropped
+ * (so even a written consequence never voted). kernel-elevation T0.1.
+ */
+type ExperienceRowSignals = {
+  dispatchSuccess?: boolean | null;
+  evalScore?: unknown;
+  founderVerdict?: string | null;
+  resolution?: string | null;
+  satisfaction?: number | null;
+  deliveryBounced?: boolean | null;
+  paymentRecovered?: boolean | null;
+};
+export function signalsOf(r: ExperienceRowSignals): ExperienceSignals {
+  return {
+    dispatchSuccess: r.dispatchSuccess ?? null,
+    evalScore: r.evalScore != null ? Number(r.evalScore) : null,
+    founderVerdict: r.founderVerdict ?? null,
+    resolution: r.resolution ?? null,
+    satisfaction: r.satisfaction ?? null,
+    deliveryBounced: r.deliveryBounced ?? null,
+    paymentRecovered: r.paymentRecovered ?? null,
+  };
+}
+
+/**
+ * Pure: the target_ref for a witnessed hand, given its tool name + input — the
+ * 1:1 join key a downstream webhook credits the consequence against. Returns
+ * null when there is no clean concrete target (→ honest abstention; no
+ * consequence is ever attributed to an action we can't precisely identify).
+ * `invoiceId` (resolved from a dunning event by the caller) takes precedence.
+ */
+export function deriveTargetRef(
+  toolName: string,
+  input: Record<string, unknown>,
+  invoiceId?: string | null,
+): string | null {
+  if (invoiceId) return `invoice:${invoiceId}`;
+  if ((toolName === "send_email" || toolName === "send_gmail") && typeof input.to === "string" && input.to) {
+    return `email:${input.to.toLowerCase()}`;
+  }
+  return null;
+}
+
 // ── DB: record + accrete ─────────────────────────────────────────────────────
 
 export async function recordExperience(input: {
@@ -152,13 +198,7 @@ export async function getRecentStory(limit = 30): Promise<
     domain: r.domain,
     playId: r.playId,
     outcome: r.outcome,
-    vote: outcomeOf({
-      dispatchSuccess: r.dispatchSuccess,
-      evalScore: r.evalScore != null ? Number(r.evalScore) : null,
-      founderVerdict: r.founderVerdict,
-      resolution: r.resolution,
-      satisfaction: r.satisfaction,
-    }),
+    vote: outcomeOf(signalsOf(r)),
     reasoningTrace: r.reasoningTrace,
   }));
 }
@@ -178,6 +218,8 @@ export async function getCalibrationPairs(
       founderVerdict: autopilotExperiences.founderVerdict,
       resolution: autopilotExperiences.resolution,
       satisfaction: autopilotExperiences.satisfaction,
+      deliveryBounced: autopilotExperiences.deliveryBounced,
+      paymentRecovered: autopilotExperiences.paymentRecovered,
     })
     .from(autopilotExperiences)
     .where(isNotNull(autopilotExperiences.predictedSuccess))
@@ -185,13 +227,7 @@ export async function getCalibrationPairs(
     .limit(limit);
   const pairs: Array<{ predicted: number; actual: 0 | 1 }> = [];
   for (const r of rows) {
-    const vote = outcomeOf({
-      dispatchSuccess: r.dispatchSuccess,
-      evalScore: r.evalScore != null ? Number(r.evalScore) : null,
-      founderVerdict: r.founderVerdict,
-      resolution: r.resolution,
-      satisfaction: r.satisfaction,
-    });
+    const vote = outcomeOf(signalsOf(r));
     if (vote === "pending") continue;
     pairs.push({ predicted: Number(r.predictedSuccess), actual: vote === "success" ? 1 : 0 });
   }
@@ -266,13 +302,7 @@ export async function getPastEpisodes(
     if (!trace?.senses) continue;
     out.push({
       moveKind: r.moveKind,
-      vote: outcomeOf({
-        dispatchSuccess: r.dispatchSuccess,
-        evalScore: r.evalScore != null ? Number(r.evalScore) : null,
-        founderVerdict: r.founderVerdict,
-        resolution: r.resolution,
-        satisfaction: r.satisfaction,
-      }),
+      vote: outcomeOf(signalsOf(r)),
       senses: trace.senses,
     });
   }
@@ -289,19 +319,62 @@ export async function getPlayStats(domain: string): Promise<PlayStats[]> {
       founderVerdict: autopilotExperiences.founderVerdict,
       resolution: autopilotExperiences.resolution,
       satisfaction: autopilotExperiences.satisfaction,
+      deliveryBounced: autopilotExperiences.deliveryBounced,
+      paymentRecovered: autopilotExperiences.paymentRecovered,
     })
     .from(autopilotExperiences)
     .where(and(eq(autopilotExperiences.domain, domain), isNotNull(autopilotExperiences.playId)))
     .orderBy(desc(autopilotExperiences.createdAt))
     .limit(500);
-  return statsFromExperiences(
-    rows.map((r) => ({
-      playId: r.playId,
-      dispatchSuccess: r.dispatchSuccess,
-      evalScore: r.evalScore != null ? Number(r.evalScore) : null,
-      founderVerdict: r.founderVerdict,
-      resolution: r.resolution,
-      satisfaction: r.satisfaction,
-    })),
-  );
+  return statsFromExperiences(rows.map((r) => ({ playId: r.playId, ...signalsOf(r) })));
+}
+
+/**
+ * Set the concrete target this dispatch's action hit (e.g. "invoice:in_123",
+ * "email:x@y.com") onto its experience row — the join key a downstream webhook
+ * uses to credit the consequence. Called at witnessed execution, where both the
+ * dispatchId and the concrete target are known. Best-effort; no-op if no row.
+ */
+export async function setExperienceTarget(dispatchId: number, targetRef: string): Promise<void> {
+  try {
+    await db
+      .update(autopilotExperiences)
+      .set({ targetRef })
+      .where(eq(autopilotExperiences.dispatchId, dispatchId));
+  } catch (err) {
+    logger.warn("[autopilot/experience] target_ref set failed", err instanceof Error ? err : undefined);
+  }
+}
+
+/**
+ * Credit a real downstream CONSEQUENCE onto the experience(s) for a target — the
+ * #1 truth fix: the learning loop now learns from what actually happened in the
+ * world, not just whether the action mechanically fired. Fired from the webhook
+ * that observes the effect (invoice.paid → paymentRecovered; bounce →
+ * deliveryBounced). Only autopilot-originated rows carry a target_ref, so this
+ * never mis-credits a non-autopilot action. Best-effort; never throws.
+ */
+export async function recordConsequenceByTarget(
+  targetRef: string,
+  consequence: { paymentRecovered?: boolean; deliveryBounced?: boolean },
+): Promise<number> {
+  try {
+    const set: Record<string, unknown> = { resolvedAt: new Date() };
+    if (consequence.paymentRecovered != null) set.paymentRecovered = consequence.paymentRecovered;
+    if (consequence.deliveryBounced != null) set.deliveryBounced = consequence.deliveryBounced;
+    const updated = await db
+      .update(autopilotExperiences)
+      .set(set)
+      .where(eq(autopilotExperiences.targetRef, targetRef))
+      .returning({ id: autopilotExperiences.id });
+    if (updated.length > 0) {
+      logger.info("[autopilot/experience] consequence credited", {
+        metadata: { targetRef, rows: updated.length, ...consequence },
+      });
+    }
+    return updated.length;
+  } catch (err) {
+    logger.warn("[autopilot/experience] consequence credit failed", err instanceof Error ? err : undefined);
+    return 0;
+  }
 }
