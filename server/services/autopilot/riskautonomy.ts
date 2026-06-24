@@ -79,11 +79,19 @@ export function assessRisk(f: RiskFactors): RiskAssessment {
  * gate's status ("pass" when earned) and the assessment, return whether this
  * specific action should still escalate for a human tap. Pure.
  *
- * `loopConfidence` (0..1, kernel-elevation T2.4) makes calibration LOAD-BEARING:
- * when the brain's forecasts are poorly calibrated (low confidence), the bar to
- * escalate drops — `medium`-tier actions also escalate. TIGHTEN-ONLY: low
- * confidence can only ADD escalation, never remove it (a high-tier action always
- * escalates regardless). Omitted/1.0 → the original high-only behavior.
+ * `loopConfidence` (0..1) makes calibration a HARD, graduated gate (frontier #3,
+ * promoting T2.4's soft throttle): the worse the brain's forecasts are
+ * calibrated, the lower the bar to escalate. TIGHTEN-ONLY — low confidence can
+ * only ADD escalation, never remove it. The ladder:
+ *   • OVER-CONFIDENT (loopConfidence ≤ 0.2 — the brain actively claims MORE than
+ *     it delivers, the dangerous direction) → a HARD gate: EVERY action escalates,
+ *     even a low-risk reversible reflex. An actively-miscalibrated brain auto-runs
+ *     NOTHING.
+ *   • UNPROVEN/poorly-calibrated (0.2 < loopConfidence < 0.5) → medium AND high
+ *     escalate; a genuinely low-risk reversible reflex (which doesn't lean on a
+ *     forecast) can still run — calibration gates FORECAST-dependent risk, not
+ *     rule-based reflexes.
+ *   • CALIBRATED ENOUGH (≥ 0.5, or omitted=1) → only high escalates (the base).
  */
 export function shouldEscalateForRisk(
   domainPassed: boolean,
@@ -91,8 +99,10 @@ export function shouldEscalateForRisk(
   loopConfidence = 1,
 ): boolean {
   if (!domainPassed) return false;
+  // HARD gate (frontier #3): an OVER-CONFIDENT brain auto-runs NOTHING.
+  if (loopConfidence <= 0.2) return true;
   if (assessment.tier === "high") return true;
-  // Poorly-calibrated brain ⇒ escalate medium-tier too (tighten-only).
+  // Poorly-calibrated ⇒ escalate medium-tier too (reflexes still run).
   if (loopConfidence < 0.5 && assessment.tier === "medium") return true;
   return false;
 }

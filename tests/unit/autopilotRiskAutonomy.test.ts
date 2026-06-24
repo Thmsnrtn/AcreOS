@@ -52,12 +52,24 @@ describe("T2.4 — calibration is load-bearing (loopConfidence tightens escalati
     expect(shouldEscalateForRisk(true, medium, 1)).toBe(false);
     expect(shouldEscalateForRisk(true, high, 1)).toBe(true);
   });
-  it("low confidence escalates a MEDIUM action too (tighten-only)", () => {
+  it("HARD GATE (frontier #3): an OVER-CONFIDENT brain auto-runs NOTHING, even low-risk", () => {
+    expect(shouldEscalateForRisk(true, low, 0.2)).toBe(true); // actively-miscalibrated → everything witnessed
     expect(shouldEscalateForRisk(true, medium, 0.2)).toBe(true);
-    expect(shouldEscalateForRisk(true, low, 0.2)).toBe(false); // low risk never escalates
+    expect(shouldEscalateForRisk(true, high, 0.2)).toBe(true);
+  });
+  it("POORLY-CALIBRATED escalates medium + high, but a low-risk reflex still runs (calibration gates forecast-risk, not reflexes)", () => {
+    expect(shouldEscalateForRisk(true, low, 0.4)).toBe(false); // a reversible reflex can still run
+    expect(shouldEscalateForRisk(true, medium, 0.4)).toBe(true);
+    expect(shouldEscalateForRisk(true, high, 0.4)).toBe(true);
+  });
+  it("calibrated-enough (≥0.5) preserves the high-only base", () => {
+    expect(shouldEscalateForRisk(true, low, 0.7)).toBe(false);
+    expect(shouldEscalateForRisk(true, medium, 0.7)).toBe(false); // fair no longer escalates medium
+    expect(shouldEscalateForRisk(true, high, 0.7)).toBe(true);
   });
   it("never escalates when the domain gate didn't pass (no false positives)", () => {
     expect(shouldEscalateForRisk(false, high, 0.2)).toBe(false);
+    expect(shouldEscalateForRisk(false, low, 0.1)).toBe(false); // even the hard gate respects the domain gate
   });
   it("loopConfidenceFrom: over-confident lowest, well-calibrated full", () => {
     expect(loopConfidenceFrom({ brier: 0.3, n: 50, grade: "over-confident", bins: [] })).toBeLessThan(0.5);
