@@ -214,3 +214,83 @@ export function assembleContextPack(raw: ContextPackRaw): ContextPack {
     briefing,
   };
 }
+
+/**
+ * Gather the live Context Pack from real sources (Phase 1 — gives the pure
+ * assembler its first caller). Best-effort + honest: every source degrades to a
+ * labelled-absent default, so the pack is always producible and never fabricates
+ * a number it couldn't read. This is what the Operator (and the founder briefing)
+ * reason over — the eagle-eye view the decision-path LLM has never had.
+ */
+export async function gatherContextPack(): Promise<ContextPack> {
+  const raw: ContextPackRaw = {
+    mrrUsd: 0, mrrPriorUsd: null, trials: 0, trialsEndingSoon: 0,
+    supportBacklog: 0, supportFirstResponseHours: null, churnSignals: 0,
+    envelopeStatus: "green", uptimePct: null, openIncidents: 0, complianceOpen: 0, emailComplaints: 0,
+    effectiveCapUsd: 50, baseCapUsd: 50, mtdSpendUsd: 0, reservePct: 0.2, attributedSignups: 0,
+    recentDecisions: [], calibrationGrade: null, calibrationN: 0,
+    openAsks: [], trust: [], standingOrders: [], objectives: [], recall: [], thesis: null,
+  };
+
+  // Vitals — the morning pulse already aggregates most of them.
+  try {
+    const { composeMorningPulse } = await import("../solene/continuousLoop");
+    const p = await composeMorningPulse();
+    raw.mrrUsd = p.mrr;
+    raw.trials = p.trials;
+    raw.uptimePct = typeof p.uptimePct === "number" ? p.uptimePct : null;
+    raw.complianceOpen = p.complianceOpenCount;
+    raw.envelopeStatus = p.envelopeStatus;
+  } catch { /* honest defaults */ }
+
+  // Deliverability + churn (the outward senses decide.ts uses).
+  try {
+    const { readOutwardSenses, outwardSignalFrom } = await import("./perception");
+    const s = outwardSignalFrom(await readOutwardSenses());
+    raw.emailComplaints = s.emailComplaints;
+    raw.churnSignals = s.churnSignals;
+    raw.trialsEndingSoon = s.trialsEnding;
+  } catch { /* none known */ }
+
+  // The books.
+  try {
+    const { getEnsembleMonthlyCapUsd, getEffectiveMonthlyCapUsd, getMonthToDateSpendForType } =
+      await import("../solene/capitalTracker");
+    raw.baseCapUsd = getEnsembleMonthlyCapUsd();
+    raw.effectiveCapUsd = await getEffectiveMonthlyCapUsd();
+    raw.mtdSpendUsd = await getMonthToDateSpendForType("agent_dispatch");
+  } catch { /* defaults */ }
+
+  // Attribution (lower bound) + trust ledger + open asks + calibration.
+  try {
+    const { getConversionSummary } = await import("./attribution");
+    raw.attributedSignups = (await getConversionSummary()).totalSignups;
+  } catch { /* 0 */ }
+  try {
+    const { getTrustLedger } = await import("./domainAutonomy");
+    const ledger = await getTrustLedger();
+    raw.trust = ledger.map((d) => ({
+      domain: d.domain,
+      level: d.level,
+      qualityLine: `${d.cleanCycleCount}/${d.threshold} clean cycles to next rung`,
+    }));
+  } catch { /* none */ }
+  try {
+    const { listOpenAsks } = await import("../solene/founderCollab");
+    const asks = await listOpenAsks();
+    const now = Date.now();
+    raw.openAsks = asks.map((a) => ({
+      summary: a.questionSummary,
+      ageHours: a.askedAt ? Math.max(0, Math.round((now - new Date(a.askedAt).getTime()) / 3_600_000)) : 0,
+    }));
+  } catch { /* none */ }
+  try {
+    const { getCalibrationPairs } = await import("./experienceLog");
+    const { calibrationReport } = await import("./forecast");
+    const r = calibrationReport(await getCalibrationPairs());
+    raw.calibrationGrade = r.grade;
+    raw.calibrationN = r.n;
+  } catch { /* learning */ }
+
+  return assembleContextPack(raw);
+}

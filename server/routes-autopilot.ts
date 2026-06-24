@@ -259,6 +259,23 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── The Context Pack — the eagle-eye briefing the brain reasons over ─────
+  // Phase 1 (cognition): the rich, honest whole-business view assembled from real
+  // senses. The Operator reasons over this; the founder can read it directly.
+  app.get(
+    "/api/founder/autopilot/context",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { gatherContextPack } = await import("./services/autopilot/cognitionContext");
+        return res.json(await gatherContextPack());
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── Conversational steering — talk to the company in plain language ──────
   app.post(
     "/api/founder/autopilot/steer",
