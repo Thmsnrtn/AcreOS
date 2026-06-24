@@ -132,7 +132,12 @@ jobs:
 
       - name: Deploy to Fly.io
         id: fly_deploy
-        run: flyctl deploy --remote-only --wait-timeout 300 --build-arg GIT_SHA=${{ github.sha }}
+        # wait-timeout 600 (not 300): the Fly release_command machine (node
+        # scripts/migrate.mjs) intermittently takes >5min just to change state
+        # under provisioning pressure — a recurring "timeout reached waiting for
+        # machine's state to change" abort even with MIGRATION_COUNT=0. Doubling
+        # the headroom absorbs the flake; migrate.mjs itself is idempotent + fast.
+        run: flyctl deploy --remote-only --wait-timeout 600 --build-arg GIT_SHA=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -197,7 +202,7 @@ jobs:
               echo "::error title=Auto-rollback FAILED::Could not resolve a previous release image. Roll back manually in the Fly.io dashboard NOW."
               exit 1
             fi
-            flyctl deploy --image "$PREV_IMAGE" --wait-timeout 300
+            flyctl deploy --image "$PREV_IMAGE" --wait-timeout 600
           fi
           echo "Rollback submitted. Verifying old release health..."
           sleep 15
