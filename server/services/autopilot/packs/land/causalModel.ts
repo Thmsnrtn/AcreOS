@@ -8,7 +8,7 @@
  * never in the kernel.
  */
 
-import type { CausalModel, EdgeEvidence } from "../../worldModel";
+import { type CausalModel, type EdgeEvidence, evidenceByLever } from "../../worldModel";
 
 export const ACREOS_SEED_MODEL: CausalModel = {
   version: 1,
@@ -74,17 +74,7 @@ export interface LandCausalEpisode {
 export const MAX_EVIDENCE_PER_LEVER = 50;
 
 export function landEvidenceByLever(episodes: LandCausalEpisode[]): Record<string, EdgeEvidence> {
-  const out: Record<string, EdgeEvidence> = {};
-  for (const ep of episodes) {
-    const lever = LAND_MOVE_TO_LEVER[ep.moveKind];
-    if (!lever) continue;
-    const isSuccess = ep.paymentRecovered === true;
-    const isFailure = ep.deliveryBounced === true;
-    if (!isSuccess && !isFailure) continue; // no real consequence observed → abstain
-    const e = out[lever] ?? { successes: 0, failures: 0 };
-    if (isSuccess) e.successes = Math.min(MAX_EVIDENCE_PER_LEVER, e.successes + 1);
-    else e.failures = Math.min(MAX_EVIDENCE_PER_LEVER, e.failures + 1);
-    out[lever] = e;
-  }
-  return out;
+  // Thin wrapper over the now-generic kernel aggregator (the logic was always
+  // domain-agnostic) — binds the land move→lever map + the poisoning cap.
+  return evidenceByLever(episodes, LAND_MOVE_TO_LEVER, MAX_EVIDENCE_PER_LEVER);
 }

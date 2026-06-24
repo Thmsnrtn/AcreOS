@@ -162,6 +162,42 @@ export interface EdgeEvidence {
   failures: number;
 }
 
+/** A move + its real, target-attributed downstream consequence — the input to
+ *  evidenceByLever. Domain-agnostic (a pack supplies the move→lever map). */
+export interface ConsequenceEpisode {
+  moveKind: string;
+  paymentRecovered?: boolean | null;
+  deliveryBounced?: boolean | null;
+}
+
+/**
+ * Generic consequence-grounded evidence aggregation (kernel — the logic is
+ * domain-agnostic; the PACK supplies `moveToLever`). Only a real, target-
+ * attributed downstream consequence moves an edge: paymentRecovered (success) or
+ * deliveryBounced (failure); the mechanical/eval/approval signals do NOT. Capped
+ * at `maxPerLever` (poisoning resistance). Absence of a consequence never counts
+ * as a failure. Pure. (Moved here from packs/land so any vertical inherits it.)
+ */
+export function evidenceByLever(
+  episodes: ConsequenceEpisode[],
+  moveToLever: Record<string, string>,
+  maxPerLever = 50,
+): Record<string, EdgeEvidence> {
+  const out: Record<string, EdgeEvidence> = {};
+  for (const ep of episodes) {
+    const lever = moveToLever[ep.moveKind];
+    if (!lever) continue;
+    const isSuccess = ep.paymentRecovered === true;
+    const isFailure = ep.deliveryBounced === true;
+    if (!isSuccess && !isFailure) continue;
+    const e = out[lever] ?? { successes: 0, failures: 0 };
+    if (isSuccess) e.successes = Math.min(maxPerLever, e.successes + 1);
+    else e.failures = Math.min(maxPerLever, e.failures + 1);
+    out[lever] = e;
+  }
+  return out;
+}
+
 /** Blend an edge's prior confidence toward the Laplace-smoothed realized success
  *  rate, weighted by how much evidence we have. n=0 → unchanged (honest). */
 export function refineConfidence(priorConfidence: number, ev: EdgeEvidence): number {

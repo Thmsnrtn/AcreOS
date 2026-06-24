@@ -58,11 +58,12 @@ export function snapshotEdges(model: CausalModel): WorldModelSnapshot {
  */
 export async function persistWorldModelSnapshot(): Promise<WorldModelSnapshot | null> {
   try {
-    const { refineModel } = await import("./worldModel");
-    const { LAND_PACK, landEvidenceByLever } = await import("./packs/land");
+    const { refineModel, evidenceByLever } = await import("./worldModel");
+    const { resolveActivePack } = await import("./activePack");
     const { getPastEpisodes } = await import("./experienceLog");
+    const activePack = resolveActivePack();
     const episodes = await getPastEpisodes(200);
-    const model = refineModel(LAND_PACK.causalModel, landEvidenceByLever(episodes));
+    const model = refineModel(activePack.causalModel, evidenceByLever(episodes, activePack.moveToLever));
     const snap = snapshotEdges(model);
     await db.insert(autopilotWorldmodelSnapshots).values({
       modelVersion: snap.modelVersion,

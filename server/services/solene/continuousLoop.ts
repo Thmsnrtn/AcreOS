@@ -534,11 +534,12 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
       // consequence (T1.1), so at cold-start it leans on the seed priors and
       // sharpens as consequence accrues. Best-effort.
       try {
-        const { rankMovesByCausalEv, refineModel } = await import("../autopilot/worldModel");
-        const { LAND_PACK, landEvidenceByLever } = await import("../autopilot/packs/land");
+        const { rankMovesByCausalEv, refineModel, evidenceByLever } = await import("../autopilot/worldModel");
+        const { resolveActivePack } = await import("../autopilot/activePack");
         const { getPastEpisodes } = await import("../autopilot/experienceLog");
-        const causalModel = refineModel(LAND_PACK.causalModel, landEvidenceByLever(await getPastEpisodes(200)));
-        moves = rankMovesByCausalEv(moves, causalModel, LAND_PACK.moveToLever);
+        const activePack = resolveActivePack();
+        const causalModel = refineModel(activePack.causalModel, evidenceByLever(await getPastEpisodes(200), activePack.moveToLever));
+        moves = rankMovesByCausalEv(moves, causalModel, activePack.moveToLever);
       } catch { /* causal EV tiebreak best-effort */ }
       plannedTopMove = moves[0] ?? null;
       if (plannedTopMove) {

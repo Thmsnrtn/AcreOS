@@ -299,19 +299,20 @@ export async function gatherContextPack(): Promise<ContextPack> {
   // snapshot. v0 uses the seed model; B2's causal ledger refines its edges from
   // real witnessed interventions over time.
   try {
-    const { summarizeModel, refineModel } = await import("./worldModel");
-    const { LAND_PACK, landEvidenceByLever } = await import("./packs/land");
+    const { summarizeModel, refineModel, evidenceByLever } = await import("./worldModel");
+    const { resolveActivePack } = await import("./activePack");
+    const activePack = resolveActivePack();
     // THE BET in motion: refine the seed edges from the org's own witnessed-
     // intervention history so the brain reasons over a model that SHARPENS with
     // consequence. Cold-start ≡ the seed priors (no episodes → identity).
-    let model = LAND_PACK.causalModel;
+    let model = activePack.causalModel;
     try {
       const { getPastEpisodes } = await import("./experienceLog");
       // T1.1: refine ONLY from real, target-attributed downstream consequences —
-      // getPastEpisodes carries paymentRecovered/deliveryBounced; landEvidenceByLever
+      // getPastEpisodes carries paymentRecovered/deliveryBounced; evidenceByLever
       // ignores the mechanical/eval/approval signals for causal purposes.
       const episodes = await getPastEpisodes(200);
-      model = refineModel(model, landEvidenceByLever(episodes));
+      model = refineModel(model, evidenceByLever(episodes, activePack.moveToLever));
     } catch { /* no episode history yet — seed model stands */ }
     pack.briefing += `\n\n## Causal theory\n${summarizeModel(model)}`;
   } catch { /* model unavailable — briefing stands without it */ }
