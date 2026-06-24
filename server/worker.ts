@@ -625,19 +625,22 @@ async function runSoleneDispatchLoop(): Promise<void> {
           // costs (failure) the domain's autonomy via the Trust Ledger. No-op
           // for non-autopilot dispatches. Best-effort — never block the loop.
           try {
+            // T1.2: record the mechanical result FIRST, then earn/lose autonomy
+            // on the RESOLVED vote (which now also respects any founder verdict +
+            // real consequence already on the row), not the raw dispatch boolean.
+            const { recordDispatchSignal, getVoteForDispatch } = await import("./services/autopilot/experienceLog");
+            await recordDispatchSignal(row.id, {
+              dispatchSuccess: result.success,
+              costUsd: result.costUsd,
+            });
+            const vote = (await getVoteForDispatch(row.id)) ?? undefined;
             const { applyAutonomyFeedback } = await import("./services/autopilot/act");
             await applyAutonomyFeedback({
               sourceType: row.sourceType,
               sourceId: row.sourceId,
               success: result.success,
               terminationReason: result.terminationReason,
-            });
-            // Learning-loop feedback: accrete the mechanical result onto the
-            // Experience Log row for this dispatch (no-op if none). Best-effort.
-            const { recordDispatchSignal } = await import("./services/autopilot/experienceLog");
-            await recordDispatchSignal(row.id, {
-              dispatchSuccess: result.success,
-              costUsd: result.costUsd,
+              vote,
             });
           } catch (fbErr) {
             logger.warn("[worker] autonomy feedback failed", fbErr instanceof Error ? fbErr : undefined);

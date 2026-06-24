@@ -157,6 +157,31 @@ describe("autopilot feedback edge — outcomes earn (or cost) autonomy", () => {
     expect(recordAnomaly).not.toHaveBeenCalled();
   });
 
+  it("a PENDING resolved vote banks NOTHING — autonomy is never earned unresolved (T1.2)", async () => {
+    const recordCleanCycle = vi.fn(async () => "draft");
+    const recordAnomaly = vi.fn(async () => "observe");
+    const out = await applyAutonomyFeedback(
+      { sourceType: "auto_dispatch", sourceId: "autopilot:grow_owned_channels", success: true, vote: "pending" },
+      { recordCleanCycle, recordAnomaly },
+    );
+    expect(out.applied).toBe(false);
+    expect(recordCleanCycle).not.toHaveBeenCalled();
+    expect(recordAnomaly).not.toHaveBeenCalled();
+  });
+
+  it("the RESOLVED vote overrides the mechanical boolean — a 'success' dispatch that resolved to failure demotes (T1.2)", async () => {
+    const recordCleanCycle = vi.fn(async () => "draft");
+    const recordAnomaly = vi.fn(async () => "observe");
+    const out = await applyAutonomyFeedback(
+      // mechanically succeeded, but the resolved consequence (e.g. a bounce) was failure
+      { sourceType: "auto_dispatch", sourceId: "autopilot:grow_owned_channels", success: true, vote: "failure" },
+      { recordCleanCycle, recordAnomaly },
+    );
+    expect(out).toMatchObject({ applied: true, effect: "anomaly" });
+    expect(recordCleanCycle).not.toHaveBeenCalled();
+    expect(recordAnomaly).toHaveBeenCalledTimes(1);
+  });
+
   it("isAutopilotDispatch only matches auto_dispatch with the autopilot: prefix", () => {
     expect(isAutopilotDispatch({ sourceType: "auto_dispatch", sourceId: "autopilot:optimize" })).toBe(true);
     expect(isAutopilotDispatch({ sourceType: "auto_dispatch", sourceId: "detector:42" })).toBe(false);

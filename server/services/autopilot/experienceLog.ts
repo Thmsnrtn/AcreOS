@@ -254,6 +254,26 @@ export async function recordDispatchSignal(
   }
 }
 
+/**
+ * The RESOLVED outcome vote for a dispatch's experience (kernel-elevation T1.2)
+ * — what autonomy should be earned/lost on, respecting founder verdict + real
+ * consequence, not just the mechanical result. null when there's no experience
+ * for the dispatch. Best-effort.
+ */
+export async function getVoteForDispatch(dispatchId: number): Promise<ExperienceVote | null> {
+  try {
+    const [r] = await db
+      .select()
+      .from(autopilotExperiences)
+      .where(eq(autopilotExperiences.dispatchId, dispatchId))
+      .limit(1);
+    return r ? outcomeOf(signalsOf(r)) : null;
+  } catch (err) {
+    logger.warn("[autopilot/experience] vote-for-dispatch read failed", err instanceof Error ? err : undefined);
+    return null;
+  }
+}
+
 /** Accrete the founder's verdict onto the experience for that ask. */
 export async function recordFounderVerdict(
   askId: number,
@@ -384,11 +404,32 @@ export async function recordConsequenceByTarget(
       .update(autopilotExperiences)
       .set(set)
       .where(eq(autopilotExperiences.targetRef, targetRef))
-      .returning({ id: autopilotExperiences.id });
+      .returning({ id: autopilotExperiences.id, moveKind: autopilotExperiences.moveKind });
     if (updated.length > 0) {
       logger.info("[autopilot/experience] consequence credited", {
         metadata: { targetRef, rows: updated.length, ...consequence },
       });
+      // T1.2 late-reversal: a real FAILURE consequence (a bounce) that lands
+      // AFTER the dispatch already banked a clean cycle must DEMOTE the domain.
+      // Anomaly-only by design — we never re-credit a success here (the clean
+      // cycle was already earned mechanically; over-crediting autonomy is the
+      // dangerous direction). Best-effort; never throws.
+      if (consequence.deliveryBounced === true) {
+        try {
+          const { applyAutonomyFeedback, AUTOPILOT_SOURCE_PREFIX } = await import("./act");
+          for (const r of updated) {
+            await applyAutonomyFeedback({
+              sourceType: "auto_dispatch",
+              sourceId: `${AUTOPILOT_SOURCE_PREFIX}${r.moveKind}`,
+              success: false,
+              terminationReason: "delivery bounced (real consequence)",
+              vote: "failure",
+            });
+          }
+        } catch (fbErr) {
+          logger.warn("[autopilot/experience] consequence autonomy re-credit failed", fbErr instanceof Error ? fbErr : undefined);
+        }
+      }
     }
     return updated.length;
   } catch (err) {

@@ -327,6 +327,14 @@ export interface DispatchOutcomeForFeedback {
   sourceId: string;
   success: boolean;
   terminationReason?: string;
+  /**
+   * The RESOLVED outcome vote for this dispatch's experience (kernel-elevation
+   * T1.2). When present, autonomy is earned/lost on THIS — the settled vote that
+   * respects the founder's verdict + real consequence — not the raw `success`
+   * dispatch boolean. A "pending" vote banks NOTHING (autonomy is never earned on
+   * an unresolved action). Absent → falls back to the mechanical `success`.
+   */
+  vote?: "success" | "failure" | "pending";
 }
 
 export interface AutonomyFeedbackDeps {
@@ -349,10 +357,19 @@ export async function applyAutonomyFeedback(
   const dd = { ...defaultFeedbackDeps, ...deps };
   const moveKind = d.sourceId.slice(AUTOPILOT_SOURCE_PREFIX.length);
   const domain = bindingFor(moveKind).domain;
-  if (d.success) {
+
+  // Earn/lose autonomy on the RESOLVED vote, not the raw dispatch boolean (T1.2).
+  // A "pending" vote (no real signal yet) banks NOTHING — autonomy is never
+  // earned on an unresolved action. Absent vote → fall back to the mechanical
+  // success (the legacy behavior, still pending-safe).
+  const vote = d.vote ?? (d.success ? "success" : "failure");
+  if (vote === "pending") {
+    return { applied: false, domain };
+  }
+  if (vote === "success") {
     await dd.recordCleanCycle(domain);
     return { applied: true, domain, effect: "clean" };
   }
-  await dd.recordAnomaly(domain, `autopilot dispatch failed (${d.terminationReason ?? "unknown"})`);
+  await dd.recordAnomaly(domain, `autopilot action resolved to failure (${d.terminationReason ?? "consequence/verdict"})`);
   return { applied: true, domain, effect: "anomaly" };
 }
