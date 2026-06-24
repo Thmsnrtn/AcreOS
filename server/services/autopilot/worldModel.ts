@@ -182,3 +182,24 @@ export const ACREOS_SEED_MODEL: CausalModel = {
     { from: "ramp_budget", to: "search_impressions", effect: 0.2, confidence: 0.2, evidence: "prior: paid amplification, only once funnel proven" },
   ],
 };
+
+// ── DOMAIN PACK: which world-model lever each move pulls ──────────────────────
+// Maps a decide.ts move-kind to its causal lever, so the brain can query the
+// PREDICTED effect of a move (the planning oracle). Unmapped moves return null —
+// honest: "no causal model for this move yet", never a fabricated estimate.
+export const MOVE_TO_LEVER: Record<string, string> = {
+  grow_owned_channels: "publish_guide",
+};
+
+/**
+ * Predict a move's causal effect by rolling its lever through the world-model.
+ * For the BRAIN/gates only — NOT the founder-facing simulate (which stays free of
+ * model forecasts by design). Returns null when no lever maps (honest absence).
+ * The effects carry explicit confidence (priors are low) — a decision aid, never
+ * an oracle.
+ */
+export function predictMoveEffect(moveKind: string, model: CausalModel, deltaPct = 10): InterventionResult | null {
+  const lever = MOVE_TO_LEVER[moveKind];
+  if (!lever) return null;
+  return queryIntervention(model, lever, deltaPct);
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { queryIntervention, summarizeModel, ACREOS_SEED_MODEL, type CausalModel } from "../../server/services/autopilot/worldModel";
+import { queryIntervention, summarizeModel, predictMoveEffect, ACREOS_SEED_MODEL, type CausalModel } from "../../server/services/autopilot/worldModel";
 
 describe("queryIntervention — forward causal propagation (the planning oracle)", () => {
   it("propagates an intervention along the chain to the outcome", () => {
@@ -40,6 +40,18 @@ describe("queryIntervention — forward causal propagation (the planning oracle)
     };
     // Y = L*1*1 (via A) + L*2*1 (via B) = 3*delta
     expect(queryIntervention(m, "L", 10).effects.find((e) => e.variable === "Y")!.deltaPct).toBeCloseTo(30, 5);
+  });
+});
+
+describe("predictMoveEffect — the planning oracle bridge (brain/gates only)", () => {
+  it("predicts a mapped move's causal effect via its lever", () => {
+    const r = predictMoveEffect("grow_owned_channels", ACREOS_SEED_MODEL);
+    expect(r).toBeTruthy();
+    expect(r!.lever).toBe("publish_guide");
+    expect(r!.effects.find((e) => e.variable === "mrr")).toBeTruthy();
+  });
+  it("returns null (honest absence) for an unmapped move — never a fabricated estimate", () => {
+    expect(predictMoveEffect("recover_payments", ACREOS_SEED_MODEL)).toBeNull();
   });
 });
 
