@@ -943,7 +943,9 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 try {
                   const { getCalibrationPairs } = await import("../autopilot/experienceLog");
                   const { calibrationReport, loopConfidenceFrom } = await import("../autopilot/forecast");
-                  loopConfidence = loopConfidenceFrom(calibrationReport(await getCalibrationPairs(500)));
+                  // Deeper calibration: judge THIS domain's calibration (recency-
+                  // weighted), not a global blend — a reckless domain can't hide.
+                  loopConfidence = loopConfidenceFrom(calibrationReport(await getCalibrationPairs({ domain: b.domain })));
                 } catch { /* calibration unavailable → full confidence (no extra tightening) */ }
                 const tier = shouldEscalateForRisk(true, a, loopConfidence) && a.tier !== "high" ? "high" : a.tier;
                 return { tier, reasons: a.reasons };

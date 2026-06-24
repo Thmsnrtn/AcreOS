@@ -39,7 +39,7 @@ export function learnedAutoResolveThreshold(
 export async function readConfidenceOutcomeHistory(limit = 500): Promise<SignalOutcome[]> {
   try {
     const { getCalibrationPairs } = await import("./experienceLog");
-    const pairs = await getCalibrationPairs(limit);
+    const pairs = await getCalibrationPairs({ limit });
     return pairs.map((p) => ({ signal: p.predicted, success: p.actual === 1 }));
   } catch (err) {
     logger.warn("[autopilot/learnedGates] confidence-outcome history read failed; defaulting to none", err instanceof Error ? err : undefined);

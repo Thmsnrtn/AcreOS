@@ -5,6 +5,7 @@ import {
   brierScore,
   reliabilityCurve,
   calibrationReport,
+  recencyWeight,
   type CalibrationPair,
 } from "../../server/services/autopilot/forecast";
 
@@ -75,5 +76,34 @@ describe("autopilot calibration — does the system's confidence match reality?"
     expect(curve[0].n).toBe(1); // the 0.05 prediction
     expect(curve[4].n).toBe(2); // the 0.95/0.92 predictions
     expect(curve[4].actualRate).toBe(1);
+  });
+});
+
+describe("deeper calibration — recency weighting (time-decay)", () => {
+  it("recencyWeight is 1 at age 0 and halves each half-life", () => {
+    expect(recencyWeight(0)).toBeCloseTo(1, 6);
+    expect(recencyWeight(30 * 86_400_000, 30)).toBeCloseTo(0.5, 6);
+    expect(recencyWeight(60 * 86_400_000, 30)).toBeCloseTo(0.25, 6);
+  });
+
+  it("weighted brier favors recent pairs (a recent miss outweighs an old hit)", () => {
+    // old perfect pair (weight ~0) + recent maximally-wrong pair (weight 1)
+    const ps: CalibrationPair[] = [
+      { predicted: 1, actual: 1, weight: 0.01 },
+      { predicted: 1, actual: 0, weight: 1 },
+    ];
+    expect(brierScore(ps)!).toBeGreaterThan(0.9); // dominated by the recent miss
+    // un-weighted pairs reduce to the plain mean (backward compatible)
+    expect(brierScore([{ predicted: 1, actual: 1 }, { predicted: 0, actual: 0 }])).toBe(0);
+  });
+
+  it("a recent over-confident streak grades over-confident even with old honest history", () => {
+    const pairs: CalibrationPair[] = [
+      // 12 OLD, perfectly-honest pairs (tiny weight)
+      ...Array.from({ length: 12 }, () => ({ predicted: 0.5 as number, actual: 1 as 0 | 1, weight: 0.01 })),
+      // 12 RECENT over-confident pairs (predicts ~0.9, delivers 0) at full weight
+      ...Array.from({ length: 12 }, () => ({ predicted: 0.9 as number, actual: 0 as 0 | 1, weight: 1 })),
+    ];
+    expect(calibrationReport(pairs).grade).toBe("over-confident");
   });
 });

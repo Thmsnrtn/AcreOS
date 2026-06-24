@@ -207,12 +207,20 @@ export async function getRecentStory(limit = 30): Promise<
 }
 
 /**
- * (predicted, actual) pairs for calibration — every experience that carried a
- * forecast AND has since resolved to a real vote. Pure outcomeOf decides actual.
+ * (predicted, actual, weight) pairs for calibration — every experience that
+ * carried a forecast AND has since resolved to a real vote. Pure outcomeOf
+ * decides actual. Deeper calibration: optionally scope to ONE domain (so a
+ * reckless domain can't hide behind honest ones), and each pair carries a
+ * RECENCY WEIGHT (older pairs decay) so the grade tracks calibration NOW.
  */
 export async function getCalibrationPairs(
-  limit = 500,
-): Promise<Array<{ predicted: number; actual: 0 | 1 }>> {
+  opts: { domain?: string; limit?: number; halfLifeDays?: number } = {},
+): Promise<Array<{ predicted: number; actual: 0 | 1; weight: number }>> {
+  const { domain, limit = 500, halfLifeDays = 30 } = opts;
+  const { recencyWeight } = await import("./forecast");
+  const where = domain
+    ? and(isNotNull(autopilotExperiences.predictedSuccess), eq(autopilotExperiences.domain, domain))
+    : isNotNull(autopilotExperiences.predictedSuccess);
   const rows = await db
     .select({
       predictedSuccess: autopilotExperiences.predictedSuccess,
@@ -223,16 +231,23 @@ export async function getCalibrationPairs(
       satisfaction: autopilotExperiences.satisfaction,
       deliveryBounced: autopilotExperiences.deliveryBounced,
       paymentRecovered: autopilotExperiences.paymentRecovered,
+      createdAt: autopilotExperiences.createdAt,
     })
     .from(autopilotExperiences)
-    .where(isNotNull(autopilotExperiences.predictedSuccess))
+    .where(where)
     .orderBy(desc(autopilotExperiences.createdAt))
     .limit(limit);
-  const pairs: Array<{ predicted: number; actual: 0 | 1 }> = [];
+  const now = Date.now();
+  const pairs: Array<{ predicted: number; actual: 0 | 1; weight: number }> = [];
   for (const r of rows) {
     const vote = outcomeOf(signalsOf(r));
     if (vote === "pending") continue;
-    pairs.push({ predicted: Number(r.predictedSuccess), actual: vote === "success" ? 1 : 0 });
+    const ageMs = r.createdAt ? now - new Date(r.createdAt).getTime() : 0;
+    pairs.push({
+      predicted: Number(r.predictedSuccess),
+      actual: vote === "success" ? 1 : 0,
+      weight: recencyWeight(ageMs, halfLifeDays),
+    });
   }
   return pairs;
 }

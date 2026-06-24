@@ -84,6 +84,19 @@ export function renderForecast(f: MoveForecast): string {
 export interface CalibrationPair {
   predicted: number; // 0..1
   actual: 0 | 1;
+  /**
+   * Recency weight (kernel-elevation, deeper calibration). 1 = full weight;
+   * older pairs decay toward 0 so the grade tracks how the brain is calibrated
+   * NOW, not how it was months ago. Defaults to 1 (un-weighted) → identical to
+   * the original behavior for callers that don't supply it.
+   */
+  weight?: number;
+}
+
+/** Exponential recency weight for a pair of the given age. Pure. */
+export function recencyWeight(ageMs: number, halfLifeDays = 30): number {
+  const days = Math.max(0, ageMs) / 86_400_000;
+  return Math.pow(0.5, days / Math.max(1e-6, halfLifeDays));
 }
 
 export interface CalibrationReport {
@@ -118,11 +131,19 @@ export function loopConfidenceFrom(report: CalibrationReport): number {
   }
 }
 
-/** Brier score over (predicted, actual) pairs. Pure. Null when empty. */
+/** Weighted Brier score over (predicted, actual[, weight]) pairs. Pure. Null
+ *  when empty / zero total weight. Un-weighted pairs (weight=1) reduce to the
+ *  plain Brier mean. */
 export function brierScore(pairs: CalibrationPair[]): number | null {
   if (pairs.length === 0) return null;
-  const sum = pairs.reduce((acc, p) => acc + (clamp01(p.predicted) - p.actual) ** 2, 0);
-  return sum / pairs.length;
+  let sw = 0;
+  let acc = 0;
+  for (const p of pairs) {
+    const w = p.weight ?? 1;
+    sw += w;
+    acc += w * (clamp01(p.predicted) - p.actual) ** 2;
+  }
+  return sw > 0 ? acc / sw : null;
 }
 
 function clamp01(x: number): number {
@@ -168,8 +189,20 @@ export function calibrationReport(pairs: CalibrationPair[], minN = 10): Calibrat
   if (brier == null || n < minN) {
     return { brier, n, grade: "unproven", bins };
   }
-  const avgPredicted = pairs.reduce((a, p) => a + clamp01(p.predicted), 0) / n;
-  const avgActual = pairs.reduce((a, p) => a + p.actual, 0) / n;
+  // Recency-weighted means (deeper calibration) — over-confidence is judged on
+  // how the brain predicts NOW, so a recent over-confident streak isn't masked
+  // by older honest history. Un-weighted pairs reduce to the plain mean.
+  let sw = 0;
+  let swPred = 0;
+  let swActual = 0;
+  for (const p of pairs) {
+    const w = p.weight ?? 1;
+    sw += w;
+    swPred += w * clamp01(p.predicted);
+    swActual += w * p.actual;
+  }
+  const avgPredicted = sw > 0 ? swPred / sw : 0;
+  const avgActual = sw > 0 ? swActual / sw : 0;
   const overconfident = avgPredicted - avgActual > 0.1; // claims more than it delivers
   const grade: CalibrationReport["grade"] = overconfident
     ? "over-confident"

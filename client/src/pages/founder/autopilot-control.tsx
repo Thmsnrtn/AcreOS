@@ -13,7 +13,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   Power, Send, ShieldCheck, PauseCircle, ChevronUp, Loader2, AlertCircle,
-  ScrollText, MessageSquareQuote, Sparkles, ArrowRight, TrendingUp,
+  ScrollText, MessageSquareQuote, Sparkles, ArrowRight, TrendingUp, OctagonX,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -70,6 +70,7 @@ export default function FounderAutopilotControlPage() {
   useDocumentTitle("Control Center · Founder");
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [panicConfirming, setPanicConfirming] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useQuery<ControlData>({
     queryKey: CONTROL_KEY,
@@ -123,6 +124,27 @@ export default function FounderAutopilotControlPage() {
       toast({ title: "Budget reset", description: "Growth cap rolled back to the default. The next ramp must be re-earned and approved." });
     },
     onError: (err) => toast({ title: "Couldn't reset", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+
+  // The atomic STOP (T0.3) — one tap halts everything: all switches off + every
+  // domain quarantined to "watching only" + a receipt + a page. Reversible by
+  // re-enabling afterward. (Confirm-gated so it can't trip by accident.)
+  const panicStop = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/founder/autopilot/panic-stop", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: "founder STOP from Control Center" }),
+      });
+      if (!res.ok) throw new Error(`Couldn't stop (${res.status})`);
+      return res.json();
+    },
+    onSuccess: (d: { domainsQuarantined?: string[] }) => {
+      void qc.invalidateQueries({ queryKey: CONTROL_KEY });
+      void qc.invalidateQueries({ queryKey: ["/api/founder/autopilot/live"] });
+      setPanicConfirming(false);
+      toast({ title: "Autopilot stopped", description: `Everything is off and ${d.domainsQuarantined?.length ?? "all"} domains are back to watching-only. Re-enable when you're ready.` });
+    },
+    onError: (err) => toast({ title: "Couldn't stop", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
   });
 
   const setLevel = useMutation({
@@ -210,6 +232,45 @@ export default function FounderAutopilotControlPage() {
                 pending={setSetting.isPending && setSetting.variables?.key === "publishEnabled"}
                 onToggle={(v) => setSetting.mutate({ key: "publishEnabled", value: v })}
               />
+            </motion.section>
+
+            {/* The atomic STOP — the most prominent control (T0.3). */}
+            <motion.section variants={staggerItem}>
+              <Card className="border-destructive/40 bg-destructive/5">
+                <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <OctagonX className="h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">Emergency stop</p>
+                      <p className="text-xs text-muted-foreground">
+                        Halt everything at once — all switches off, every part back to watching-only. Reversible: re-enable above when you're ready.
+                      </p>
+                    </div>
+                  </div>
+                  {panicConfirming ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        size="sm" variant="destructive" className="min-h-[44px]"
+                        disabled={panicStop.isPending}
+                        onClick={() => panicStop.mutate()}
+                        data-testid="panic-stop-confirm"
+                      >
+                        {panicStop.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Yes, stop everything"}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="min-h-[44px]" onClick={() => setPanicConfirming(false)} disabled={panicStop.isPending}>{Verbs.CANCEL}</Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm" variant="outline"
+                      className="min-h-[44px] shrink-0 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setPanicConfirming(true)}
+                      data-testid="panic-stop"
+                    >
+                      Stop everything
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
             </motion.section>
 
             {/* Pending decisions + calibration */}
