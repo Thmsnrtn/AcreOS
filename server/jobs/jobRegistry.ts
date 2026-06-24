@@ -150,6 +150,7 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "alerting", intervalMs: HOUR, critical: true },
   { name: "digest", intervalMs: 6 * HOUR, critical: false },
   { name: "domain_audit", intervalMs: DAY, critical: false },
+  { name: "operator_cycle", intervalMs: DAY, critical: false },
   { name: "scheduled_tasks", intervalMs: MIN, critical: true },
   { name: "pax_scheduler", intervalMs: MIN, critical: true },
   { name: "pax_nudges", intervalMs: 6 * HOUR, critical: true },
