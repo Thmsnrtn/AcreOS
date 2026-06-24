@@ -1027,6 +1027,14 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     );
   }
 
+  // T1.3 (#10): persist a snapshot of the causal world-model's edge confidences
+  // so the self-sharpening trajectory is observable (charted), not discarded.
+  // Best-effort — pure observability, never disturbs the loop.
+  try {
+    const { persistWorldModelSnapshot } = await import("../autopilot/worldModelSnapshot");
+    await persistWorldModelSnapshot();
+  } catch { /* observability only */ }
+
   // Constitutional-drift sentinel: scan recent actions for invariant violations
   // (e.g. a customer-facing action that auto-ran instead of going through
   // witnessed-send). A critical finding pages the founder — the autopilot

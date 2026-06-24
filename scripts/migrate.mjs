@@ -7278,6 +7278,18 @@ const STATEMENTS = [
   `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "target_ref" text`,
   `CREATE INDEX IF NOT EXISTS "autopilot_experiences_target_ref_idx" ON "autopilot_experiences" ("target_ref")`,
 
+  // kernel-elevation T1.3 (#10) — per-cycle world-model confidence snapshots so
+  // the self-sharpening trajectory is observable, not discarded each tick.
+  `CREATE TABLE IF NOT EXISTS "autopilot_worldmodel_snapshots" (
+     "id" serial PRIMARY KEY,
+     "captured_at" timestamp DEFAULT now(),
+     "model_version" integer NOT NULL,
+     "edges" jsonb NOT NULL,
+     "measured_edge_count" integer NOT NULL,
+     "edge_count" integer NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_worldmodel_snapshots_at_idx" ON "autopilot_worldmodel_snapshots" ("captured_at")`,
+
   // 0174 — autopilot runtime settings (DB-backed master switches). Singleton.
   `CREATE TABLE IF NOT EXISTS "autopilot_settings" (
      "id" integer PRIMARY KEY DEFAULT 1,

@@ -171,6 +171,11 @@ export function verifyReceipt(receipt: ProofReceipt): ReceiptVerdict {
   if (!receipt.actionKind || !receipt.accountableHumanId) {
     return { valid: false, reason: "missing required attribution (actionKind / accountableHumanId)", constitutionMatchesCurrent };
   }
+  if (receipt.accountableHumanId === "unknown") {
+    // T1.3: a receipt with no real accountable human is not a valid governance
+    // artifact — a witnessed action must name who authorized it.
+    return { valid: false, reason: "accountable human is 'unknown' — no real principal attribution", constitutionMatchesCurrent };
+  }
   if (!receipt.payloadHash) {
     return { valid: false, reason: "missing payloadHash", constitutionMatchesCurrent };
   }

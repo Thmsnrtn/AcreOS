@@ -12448,6 +12448,23 @@ export const autopilotExperiences = pgTable("autopilot_experiences", {
 }));
 export type AutopilotExperience = typeof autopilotExperiences.$inferSelect;
 
+// autopilot_worldmodel_snapshots (kernel-elevation T1.3 / #10) — per-cycle
+// snapshot of the causal world-model's edge confidences, so the model's
+// confidence TRAJECTORY (the heart of THE BET) is observable + diffable, not an
+// in-memory value discarded each tick. "self-improving" becomes a fact you can
+// chart, with each edge badged measured (refined from real consequence) vs prior.
+export const autopilotWorldmodelSnapshots = pgTable("autopilot_worldmodel_snapshots", {
+  id: serial("id").primaryKey(),
+  capturedAt: timestamp("captured_at").defaultNow(),
+  modelVersion: integer("model_version").notNull(),
+  edges: jsonb("edges").notNull(), // [{ from, to, confidence, measured }]
+  measuredEdgeCount: integer("measured_edge_count").notNull(),
+  edgeCount: integer("edge_count").notNull(),
+}, (t) => [
+  index("autopilot_worldmodel_snapshots_at_idx").on(t.capturedAt),
+]);
+export type AutopilotWorldmodelSnapshot = typeof autopilotWorldmodelSnapshots.$inferSelect;
+
 // Founder Autopilot — policy-induction proposals. When the system spots a
 // durable pattern (a play it keeps declining, or one it keeps approving) it
 // proposes codifying it. One row per (kind, play) — proposed at most once,

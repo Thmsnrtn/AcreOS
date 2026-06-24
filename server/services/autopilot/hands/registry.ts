@@ -126,12 +126,19 @@ export async function executeHandWitnessed(
     const { hashPayload } = await import("../proofReceipt");
     const { orgScope, PLATFORM_SCOPE } = await import("../tenantScope");
     const orgId = typeof input.organization_id === "number" ? input.organization_id : null;
+    // T1.3: bind the REAL earned autonomy level for the hand's domain (the
+    // field was previously mis-set to the domain string, not the level).
+    let autonomyLevel = "unknown";
+    try {
+      const { getDomainLevel } = await import("../domainAutonomy");
+      autonomyLevel = `${hand.domain}:${await getDomainLevel(hand.domain)}`;
+    } catch { /* level unavailable → "unknown" (honest) */ }
     const receipt = await recordReceipt({
       actionKind: name,
       scope: orgId != null ? orgScope(orgId) : PLATFORM_SCOPE,
       payloadHash: hashPayload({ name, input }),
       accountableHumanId: witnessedBy,
-      autonomyLevel: hand.domain,
+      autonomyLevel,
     });
     if (receipt) {
       result.receipt = receipt;
