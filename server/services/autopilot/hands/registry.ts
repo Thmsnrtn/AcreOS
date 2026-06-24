@@ -102,7 +102,35 @@ export async function executeHandWitnessed(
     };
   }
   logger.info(`[autopilot/hands] witnessed execution of ${name} approved by ${witnessedBy}`);
-  return hand.handler(input, ctx);
+  const result = await hand.handler(input, ctx);
+
+  // Foundry move #3: emit a tamper-evident, principal-attributed proof-receipt
+  // for this witnessed governed action. Scope comes from the move-#2 TenantScope
+  // (the hand's organization_id when present, else the platform operating
+  // itself). Non-fatal: a receipt-build failure must never void a real send.
+  try {
+    const { buildReceipt, hashPayload } = await import("../proofReceipt");
+    const { orgScope, PLATFORM_SCOPE } = await import("../tenantScope");
+    const orgId = typeof input.organization_id === "number" ? input.organization_id : null;
+    const receipt = buildReceipt(
+      {
+        actionKind: name,
+        scope: orgId != null ? orgScope(orgId) : PLATFORM_SCOPE,
+        payloadHash: hashPayload({ name, input }),
+        accountableHumanId: witnessedBy,
+        autonomyLevel: hand.domain,
+      },
+      new Date().toISOString(),
+    );
+    result.receipt = receipt;
+    logger.info(`[autopilot/hands] proof-receipt ${receipt.receiptHash.slice(0, 12)} for ${name} (${receipt.scope})`);
+  } catch (err) {
+    logger.warn(`[autopilot/hands] proof-receipt build failed for ${name} (send still valid)`, {
+      metadata: { error: err instanceof Error ? err.message : String(err) },
+    });
+  }
+
+  return result;
 }
 
 /** TEST-ONLY: clear the registry. Not exported through the index. */

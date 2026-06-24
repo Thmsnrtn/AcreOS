@@ -55,6 +55,7 @@ const AUTOPILOT = "server/services/autopilot";
 const KERNEL_MANIFEST = [
   "domainPack.ts", // the seam itself
   "tenantScope.ts", // the typed accountable-scope primitive
+  "proofReceipt.ts", // tamper-evident principal-attributed action receipt
   "worldModel.ts", // causal-model machinery (the AcreOS seed lives in packs/land)
   "policyGate.ts",
   "domainAutonomy.ts",

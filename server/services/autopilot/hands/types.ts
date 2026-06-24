@@ -16,6 +16,7 @@
  * that consumes them.
  */
 import type { AutopilotDomain } from "../policyGate";
+import type { ProofReceipt } from "../proofReceipt";
 
 /** Result of a hand invocation — structurally matches the executor's ToolExecutionResult. */
 export interface HandResult {
@@ -23,6 +24,12 @@ export interface HandResult {
   output: string;
   durationMs: number;
   filesModified?: string[];
+  /**
+   * The tamper-evident proof-receipt for a WITNESSED execution (Foundry move #3).
+   * Present only on the witnessed-send path (executeHandWitnessed); direct/refused
+   * calls never produce one, since no governed action occurred.
+   */
+  receipt?: ProofReceipt;
 }
 
 /** Execution context threaded from the dispatch (identity for audit + consent). */

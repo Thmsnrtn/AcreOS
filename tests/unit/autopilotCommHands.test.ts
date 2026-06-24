@@ -116,6 +116,23 @@ describe("send_email hand — suppression honored", () => {
     // commercial send → NOT marked transactional (keeps CAN-SPAM footer).
     expect((sendEmail as any).mock.calls[0][0].transactional).toBeUndefined();
   });
+
+  it("attaches a verifiable proof-receipt to a witnessed send (Foundry move #3)", async () => {
+    (filterSuppressed as any).mockResolvedValue({ allowed: ["ok@x.com"], suppressed: [] });
+    (sendEmail as any).mockResolvedValue({ success: true, messageId: "m_456" });
+    const { verifyReceipt } = await import("../../server/services/autopilot/proofReceipt");
+    const r = await executeHandWitnessed(
+      "send_email",
+      { organization_id: 7, to: "ok@x.com", subject: "Hi", html: "<p>Hi</p>" },
+      "founder_1",
+    );
+    expect(r.success).toBe(true);
+    expect(r.receipt).toBeTruthy();
+    expect(r.receipt!.actionKind).toBe("send_email");
+    expect(r.receipt!.scope).toBe("org:7"); // the move-#2 scope flows through
+    expect(r.receipt!.accountableHumanId).toBe("founder_1");
+    expect(verifyReceipt(r.receipt!).valid).toBe(true);
+  });
 });
 
 describe("send_sms hand — TCPA consent + quiet hours", () => {
