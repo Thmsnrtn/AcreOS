@@ -307,7 +307,10 @@ export async function gatherContextPack(): Promise<ContextPack> {
     let model = LAND_PACK.causalModel;
     try {
       const { getPastEpisodes } = await import("./experienceLog");
-      const episodes = (await getPastEpisodes(200)) as Array<{ moveKind: string; vote: string }>;
+      // T1.1: refine ONLY from real, target-attributed downstream consequences —
+      // getPastEpisodes carries paymentRecovered/deliveryBounced; landEvidenceByLever
+      // ignores the mechanical/eval/approval signals for causal purposes.
+      const episodes = await getPastEpisodes(200);
       model = refineModel(model, landEvidenceByLever(episodes));
     } catch { /* no episode history yet — seed model stands */ }
     pack.briefing += `\n\n## Causal theory\n${summarizeModel(model)}`;

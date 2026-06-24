@@ -8,6 +8,7 @@ import {
   deriveTargetRef,
   statsFromExperiences,
   outcomeOf,
+  outcomeBasis,
 } from "../../server/services/autopilot/experienceLog";
 
 // kernel-elevation T0.1 — the #1 truth fix. Before, the aggregators selected
@@ -50,6 +51,18 @@ describe("statsFromExperiences — now honors the consequence columns", () => {
       { playId: "outreach", dispatchSuccess: true, deliveryBounced: true },
     ]);
     expect(stats[0]).toEqual({ playId: "outreach", successes: 0, failures: 1 });
+  });
+});
+
+describe("outcomeBasis — what signal decided the vote (T1.1 refine-from-consequence)", () => {
+  it("classifies human / support / consequence / eval / mechanical / none", () => {
+    expect(outcomeBasis({ founderVerdict: "approved" })).toBe("human");
+    expect(outcomeBasis({ resolution: "resolved" })).toBe("support");
+    expect(outcomeBasis({ paymentRecovered: true })).toBe("consequence");
+    expect(outcomeBasis({ deliveryBounced: true })).toBe("consequence");
+    expect(outcomeBasis({ evalScore: 0.2 })).toBe("eval");
+    expect(outcomeBasis({ dispatchSuccess: true })).toBe("mechanical");
+    expect(outcomeBasis({})).toBe("none");
   });
 });
 

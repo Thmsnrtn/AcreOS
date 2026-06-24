@@ -72,21 +72,26 @@ describe("predictMoveEffect bound to the land pack", () => {
   });
 });
 
-describe("landEvidenceByLever — routes witnessed move outcomes to their lever", () => {
-  it("tallies success/failure per lever via LAND_MOVE_TO_LEVER", () => {
+describe("landEvidenceByLever — refines from CONSEQUENCE only (T1.1)", () => {
+  it("counts a recovered payment as success, a bounce as failure, per lever", () => {
     const ev = landEvidenceByLever([
-      { moveKind: "grow_owned_channels", vote: "success" },
-      { moveKind: "grow_owned_channels", vote: "success" },
-      { moveKind: "grow_owned_channels", vote: "failure" },
+      { moveKind: "grow_owned_channels", paymentRecovered: true },
+      { moveKind: "grow_owned_channels", paymentRecovered: true },
+      { moveKind: "grow_owned_channels", deliveryBounced: true },
     ]);
     expect(ev.publish_guide).toEqual({ successes: 2, failures: 1 });
   });
-  it("ignores pending votes and unmapped moves (honest — no signal)", () => {
+  it("does NOT move confidence on episodes with no real consequence (execution proxy disconnected)", () => {
+    // A mechanically-successful move with no observed downstream consequence
+    // contributes nothing to causal confidence — the whole point of T1.1.
     const ev = landEvidenceByLever([
-      { moveKind: "grow_owned_channels", vote: "pending" },
-      { moveKind: "recover_payments", vote: "success" }, // unmapped
+      { moveKind: "grow_owned_channels", paymentRecovered: null, deliveryBounced: null },
+      { moveKind: "grow_owned_channels" },
     ]);
     expect(ev).toEqual({});
+  });
+  it("ignores unmapped moves", () => {
+    expect(landEvidenceByLever([{ moveKind: "recover_payments", paymentRecovered: true }])).toEqual({});
   });
 });
 

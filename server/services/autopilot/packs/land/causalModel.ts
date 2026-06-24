@@ -42,22 +42,38 @@ export const LAND_MOVE_TO_LEVER: Record<string, string> = {
   grow_owned_channels: "publish_guide",
 };
 
+/** An episode's data for causal refinement — a move + its real, target-
+ *  attributed downstream consequence (T0.1), routed to the lever it pulled. */
+export interface LandCausalEpisode {
+  moveKind: string;
+  paymentRecovered?: boolean | null;
+  deliveryBounced?: boolean | null;
+}
+
 /**
- * Aggregate witnessed-move outcomes into per-LEVER evidence for refineModel().
- * Each episode is a move with a settled vote; we route it to the lever it pulls
- * (LAND_MOVE_TO_LEVER) and tally success/failure. Pending/unmapped moves are
- * ignored (honest — no signal yet). Pure: the caller fetches the episodes.
+ * Aggregate witnessed-move CONSEQUENCES into per-LEVER evidence for refineModel()
+ * (kernel-elevation T1.1: refine from CONSEQUENCE, not execution). Only a real,
+ * target-attributed downstream consequence moves an edge's confidence —
+ * paymentRecovered (success) or deliveryBounced (failure). The mechanical "did
+ * it fire" proxy, the eval score, and the founder's approval vote do NOT move
+ * causal confidence (the move-success→confidence wire is DISCONNECTED here).
+ *
+ * A consequence is per-action attributed by construction (it was credited to a
+ * specific target_ref), so it is cleanly attributed — no confounding by
+ * concurrent moves. Absence of a consequence NEVER counts as a failure (the
+ * maturation discipline: we never conclude from an effect that simply hasn't
+ * manifested yet). Unmapped moves are ignored. Pure.
  */
-export function landEvidenceByLever(
-  episodes: Array<{ moveKind: string; vote: string }>,
-): Record<string, EdgeEvidence> {
+export function landEvidenceByLever(episodes: LandCausalEpisode[]): Record<string, EdgeEvidence> {
   const out: Record<string, EdgeEvidence> = {};
   for (const ep of episodes) {
     const lever = LAND_MOVE_TO_LEVER[ep.moveKind];
     if (!lever) continue;
-    if (ep.vote !== "success" && ep.vote !== "failure") continue; // ignore "pending"
+    const isSuccess = ep.paymentRecovered === true;
+    const isFailure = ep.deliveryBounced === true;
+    if (!isSuccess && !isFailure) continue; // no real consequence observed → abstain
     const e = out[lever] ?? { successes: 0, failures: 0 };
-    if (ep.vote === "success") e.successes += 1;
+    if (isSuccess) e.successes += 1;
     else e.failures += 1;
     out[lever] = e;
   }

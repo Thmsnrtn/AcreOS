@@ -199,7 +199,12 @@ export function summarizeModel(model: CausalModel): string {
     .map((e) => {
       const f = model.variables.find((v) => v.id === e.from)?.label ?? e.from;
       const t = model.variables.find((v) => v.id === e.to)?.label ?? e.to;
-      return `${f} →(${e.effect >= 0 ? "+" : ""}${e.effect}, conf ${Math.round(e.confidence * 100)}%) ${t}`;
+      // Flag whether this edge has been refined from real consequence (T1.1) or
+      // is still an unmeasured prior — so the brain never mistakes a guess for
+      // evidence. refineModel stamps "refined from N witnessed intervention(s)".
+      const measured = /refined from/i.test(e.evidence ?? "");
+      const badge = measured ? "measured" : "prior — unmeasured";
+      return `${f} →(${e.effect >= 0 ? "+" : ""}${e.effect}, conf ${Math.round(e.confidence * 100)}%, ${badge}) ${t}`;
     });
   return [
     `Causal theory of the business (v${model.version}) — levers: ${levers.join(", ")}.`,

@@ -125,4 +125,13 @@ describe("summarizeModel — honest causal theory for the Context Pack", () => {
     expect(s).toMatch(/The outcome/);
     expect(s).toMatch(/never an oracle/i);
   });
+
+  it("flags unmeasured (prior) edges vs measured ones (T1.1 honesty)", () => {
+    // TOY's edges are all priors → every edge flagged unmeasured.
+    expect(summarizeModel(TOY)).toMatch(/prior — unmeasured/);
+    // After refinement from evidence, the refined edge is badged "measured".
+    const refined = refineModel(TOY, { lever: { successes: 20, failures: 0 } });
+    const s = summarizeModel(refined);
+    expect(s).toMatch(/measured/);
+  });
 });

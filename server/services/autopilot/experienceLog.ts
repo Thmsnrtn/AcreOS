@@ -289,14 +289,14 @@ export async function getRecentExperiences(
  */
 export async function getPastEpisodes(
   limit = 200,
-): Promise<Array<{ moveKind: string; vote: ExperienceVote; senses: unknown }>> {
+): Promise<Array<{ moveKind: string; vote: ExperienceVote; senses: unknown; paymentRecovered: boolean | null; deliveryBounced: boolean | null }>> {
   const rows = await db
     .select()
     .from(autopilotExperiences)
     .where(isNotNull(autopilotExperiences.reasoningTrace))
     .orderBy(desc(autopilotExperiences.createdAt))
     .limit(limit);
-  const out: Array<{ moveKind: string; vote: ExperienceVote; senses: unknown }> = [];
+  const out: Array<{ moveKind: string; vote: ExperienceVote; senses: unknown; paymentRecovered: boolean | null; deliveryBounced: boolean | null }> = [];
   for (const r of rows) {
     const trace = r.reasoningTrace as { senses?: unknown } | null;
     if (!trace?.senses) continue;
@@ -304,9 +304,27 @@ export async function getPastEpisodes(
       moveKind: r.moveKind,
       vote: outcomeOf(signalsOf(r)),
       senses: trace.senses,
+      // Consequence fields for causal refinement (T1.1) — only these move an edge.
+      paymentRecovered: r.paymentRecovered ?? null,
+      deliveryBounced: r.deliveryBounced ?? null,
     });
   }
   return out;
+}
+
+/**
+ * What signal DECIDED an experience's vote — the basis. Lets callers refine the
+ * causal model from real CONSEQUENCE only, never the execution proxy
+ * (kernel-elevation T1.1). Mirrors outcomeOf's priority order. Pure.
+ */
+export type OutcomeBasis = "human" | "support" | "consequence" | "eval" | "mechanical" | "none";
+export function outcomeBasis(s: ExperienceSignals): OutcomeBasis {
+  if (s.founderVerdict === "approved" || s.founderVerdict === "declined") return "human";
+  if (s.resolution === "reopened" || s.resolution === "resolved") return "support";
+  if (s.deliveryBounced === true || s.paymentRecovered === true) return "consequence";
+  if (s.evalScore != null && s.evalScore < EVAL_PASS_THRESHOLD) return "eval";
+  if (s.dispatchSuccess != null) return "mechanical";
+  return "none";
 }
 
 /** Per-play stats for a domain, ready to feed the efficacy model. */
