@@ -12731,6 +12731,8 @@ export const autopilotSettings = pgTable("autopilot_settings", {
   // DB-backed monthly growth-budget cap an approved ramp writes. null → the
   // env/charter default governs. Clamped to a hard ceiling at read-time.
   growthBudgetOverrideUsd: doublePrecision("growth_budget_override_usd"),
+  // Master switch for the autonomous daily Operator cadence. null → env fallback (OFF).
+  cognitionEnabled: boolean("cognition_enabled"),
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: text("updated_by"),
 });

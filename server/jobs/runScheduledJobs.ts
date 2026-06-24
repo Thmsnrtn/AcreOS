@@ -348,6 +348,35 @@ function startDomainAuditJob() {
   });
 }
 
+// The autonomous daily Operator cognition cycle (gated, OBSERVE-first). A no-op
+// until cognition is switched ON in the Control Center — so this runs zero model
+// calls by default. When on, one Opus-grade pass over the live Context Pack ~once
+// per day surfaces a single deduped brief into the founder's Decisions queue.
+// The 23h job lock makes it ~daily even across frequent deploys.
+function startOperatorCycleJob() {
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const TTL_SECONDS = 23 * 60 * 60;
+  log('Starting Operator daily cognition cycle (gated OFF by default)', 'operator');
+  const run = async () => {
+    const { runOperatorCycle } = await import('../services/autopilot/operator');
+    const { askFounder } = await import('../services/solene/founderCollab');
+    await runOperatorCycle({
+      ask: async (input) => {
+        const r = await askFounder(input);
+        return { askId: r.askId };
+      },
+    });
+  };
+  trackInterval(() => {
+    withJobLock('operator_cycle', TTL_SECONDS, run).catch(err => log(`Operator cycle failed: ${err}`, 'operator'));
+  }, ONE_DAY);
+  // Initial run on boot, lock-guarded → effectively once per ~23h regardless of
+  // restart frequency (gated OFF ⇒ a cheap no-op until the founder enables it).
+  withJobLock('operator_cycle', TTL_SECONDS, run).catch(err => {
+    log(`Initial Operator cycle failed: ${err}`, 'operator');
+  });
+}
+
 // Sequence processor background job
 function startSequenceProcessorJob() {
   log('Starting sequence processor background job (every 60 seconds)', 'sequences');
@@ -3895,6 +3924,7 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Start domain-audit substrate sweep (daily — Iris shared continuous audit)
   startDomainAuditJob();
+  startOperatorCycleJob();
 
   // Start sequence processor background job (every 60 seconds)
   startSequenceProcessorJob();

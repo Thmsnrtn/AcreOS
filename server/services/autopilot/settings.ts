@@ -21,6 +21,8 @@ import { logger } from "../../utils/logger";
 export interface EffectiveSettings {
   dispatchEnabled: boolean;
   publishEnabled: boolean;
+  /** Master switch for the autonomous daily Operator cadence (cognition layer). */
+  cognitionEnabled: boolean;
   /**
    * DB-backed monthly growth-budget cap (USD) an approved ramp wrote, or null
    * when none — in which case the env/charter default governs. The cap reader
@@ -40,6 +42,9 @@ function envDispatch(): boolean {
 function envPublish(): boolean {
   return process.env.AUTOPILOT_PUBLISH_ENABLED === "true";
 }
+function envCognition(): boolean {
+  return process.env.COGNITION_ENABLED === "true";
+}
 
 /** Read the effective settings (DB row if present, else env). Never throws. */
 export async function getEffectiveSettings(now = Date.now()): Promise<EffectiveSettings> {
@@ -47,6 +52,7 @@ export async function getEffectiveSettings(now = Date.now()): Promise<EffectiveS
   let value: EffectiveSettings = {
     dispatchEnabled: envDispatch(),
     publishEnabled: envPublish(),
+    cognitionEnabled: envCognition(),
     growthBudgetOverrideUsd: null,
     source: { dispatch: "env", publish: "env" },
   };
@@ -56,6 +62,7 @@ export async function getEffectiveSettings(now = Date.now()): Promise<EffectiveS
       value = {
         dispatchEnabled: row.dispatchEnabled ?? envDispatch(),
         publishEnabled: row.publishEnabled ?? envPublish(),
+        cognitionEnabled: row.cognitionEnabled ?? envCognition(),
         growthBudgetOverrideUsd:
           row.growthBudgetOverrideUsd != null && Number.isFinite(row.growthBudgetOverrideUsd)
             ? row.growthBudgetOverrideUsd
@@ -76,10 +83,13 @@ export async function isDispatchEnabled(): Promise<boolean> {
 export async function isPublishEnabled(): Promise<boolean> {
   return (await getEffectiveSettings()).publishEnabled;
 }
+export async function isCognitionEnabled(): Promise<boolean> {
+  return (await getEffectiveSettings()).cognitionEnabled;
+}
 
 /** Flip a master switch (founder action). Upserts the singleton + busts the cache. */
 export async function setAutopilotSetting(
-  key: "dispatchEnabled" | "publishEnabled",
+  key: "dispatchEnabled" | "publishEnabled" | "cognitionEnabled",
   value: boolean,
   updatedBy?: string,
 ): Promise<EffectiveSettings> {
@@ -91,6 +101,11 @@ export async function setAutopilotSetting(
       .insert(autopilotSettings)
       .values({ id: 1, dispatchEnabled: value, updatedBy: updatedBy ?? null })
       .onConflictDoUpdate({ target: autopilotSettings.id, set: { dispatchEnabled: value, ...stamp } });
+  } else if (key === "cognitionEnabled") {
+    await db
+      .insert(autopilotSettings)
+      .values({ id: 1, cognitionEnabled: value, updatedBy: updatedBy ?? null })
+      .onConflictDoUpdate({ target: autopilotSettings.id, set: { cognitionEnabled: value, ...stamp } });
   } else {
     await db
       .insert(autopilotSettings)

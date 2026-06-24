@@ -7341,6 +7341,8 @@ const STATEMENTS = [
    )`,
   // 0180 — autopilot budget ramp (the zero-capital compounding wire).
   'ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "growth_budget_override_usd" double precision',
+  // 0182 — cognition master switch (autonomous daily Operator cadence).
+  'ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "cognition_enabled" boolean',
   'ALTER TABLE "autopilot_policy_proposals" ADD COLUMN IF NOT EXISTS "target_value_usd" double precision',
   // 0181 — growth targets (county-targeted owned-content selection).
   `CREATE TABLE IF NOT EXISTS "growth_targets" (

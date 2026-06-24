@@ -223,6 +223,78 @@ export async function buildOperatorModelCall(): Promise<((prompt: string) => Pro
   }
 }
 
+/** Dedup marker so the daily cadence never stacks more than one open Operator brief. */
+export const OPERATOR_ASK_PREFIX = "[Operator] ";
+
+export interface OperatorCycleDeps {
+  ask: (input: {
+    askingAgentRole: "general-purpose";
+    questionSummary: string;
+    questionBody: string;
+    answerFormat: "yes_no";
+    urgency: "low";
+  }) => Promise<{ askId: number }>;
+}
+
+/**
+ * The autonomous DAILY Operator cadence (gated, OBSERVE-first). When cognition is
+ * switched on, run one Opus-grade pass over the live Context Pack and surface the
+ * result into the founder's Decisions queue as ONE deduped brief (the eagle-eye
+ * assessment + the single most important escalation/net-new proposal). It THINKS
+ * and PROPOSES; the founder disposes. It never auto-acts and never stacks a second
+ * open brief. Best-effort; never throws. Returns whether it ran + what it filed.
+ */
+export async function runOperatorCycle(
+  deps: OperatorCycleDeps,
+): Promise<{ ran: boolean; plan: OperatingPlan | null; askFiled: boolean }> {
+  try {
+    const { isCognitionEnabled } = await import("./settings");
+    if (!(await isCognitionEnabled())) return { ran: false, plan: null, askFiled: false };
+
+    const callModel = await buildOperatorModelCall();
+    if (!callModel) return { ran: false, plan: null, askFiled: false };
+
+    // Dedup: skip filing if an Operator brief is already open + unanswered.
+    let alreadyOpen = false;
+    try {
+      const { listOpenAsks } = await import("../solene/founderCollab");
+      alreadyOpen = (await listOpenAsks()).some((a) => a.questionSummary?.startsWith(OPERATOR_ASK_PREFIX));
+    } catch { /* assume none */ }
+
+    const { gatherContextPack } = await import("./cognitionContext");
+    const pack = await gatherContextPack();
+    const plan = await operate(pack.briefing, OPERATOR_KNOWN_KINDS, { callModel });
+    if (!plan) return { ran: true, plan: null, askFiled: false };
+
+    if (alreadyOpen) return { ran: true, plan, askFiled: false };
+
+    // Surface ONE brief: the assessment + the top escalation or net-new proposal.
+    const topEsc = plan.escalations[0];
+    const topNetNew = plan.moves.find((m) => m.isNetNew);
+    const headline = topEsc
+      ? topEsc.question
+      : topNetNew
+        ? `Add a new kind of move: "${topNetNew.kind}"?`
+        : "Reviewed the business — nothing needs you today.";
+    const body =
+      `${plan.assessment}\n\n` +
+      (topEsc ? `Decision: ${topEsc.question}\nMy recommendation: ${topEsc.recommendation}\n\n` : "") +
+      (topNetNew ? `Proposed new move: "${topNetNew.kind}" — ${topNetNew.rationale} (witnessed before each run).\n\n` : "") +
+      (plan.watchItems.length ? `Watching: ${plan.watchItems.slice(0, 3).join("; ")}.` : "");
+
+    await deps.ask({
+      askingAgentRole: "general-purpose",
+      questionSummary: `${OPERATOR_ASK_PREFIX}${headline}`.slice(0, 140),
+      questionBody: body,
+      answerFormat: "yes_no",
+      urgency: "low",
+    });
+    return { ran: true, plan, askFiled: true };
+  } catch {
+    return { ran: false, plan: null, askFiled: false };
+  }
+}
+
 /**
  * Run the Operator over a briefing and return its PLAN (founder-invoked "advise
  * me" path — no execution, no reconciliation). Null when no model or malformed.
