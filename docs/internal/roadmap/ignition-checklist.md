@@ -4,8 +4,17 @@
 
 ## What only you can do (tonight)
 
-### 1. Buy-box counties — give me the list *(unblocks the most; I need this)*
-~5-50 target counties as `State / County` (e.g. `TX / Travis`). Used as the honest cold-start prior for content targeting **and** the seed-mint (step 4). Even 5-10 to start is enough; more is better for SEO surface.
+> NOTE: you are launching the PLATFORM, not running a personal land business. The
+> engine self-targets which counties to write about from real demand (which
+> counties visitors actually parcel-check) — so it needs NOTHING from you on
+> geography. Items 2 & 3 below (domain ownership) are the only true requirements.
+
+### 1. Target markets — OPTIONAL accelerant, not required
+The engine works with zero input: it writes evergreen land content and then
+follows real parcel-check demand to the counties that matter. If (and only if)
+you want to bias the first weeks toward specific markets, POST a county list to
+`/api/founder/autopilot/growth/seed-counties` (`ST/County` per line). Skip it and
+nothing breaks — demand-ranking takes over as traffic arrives.
 
 ### 2. INDEXNOW_KEY — set the Fly secret *(2 min; lights up Bing/Yandex pinging)*
 Generate a throwaway public key and set it (it's public by design — served at `/indexnow-key.txt`, not a secret):
