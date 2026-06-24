@@ -78,7 +78,21 @@ export function assessRisk(f: RiskFactors): RiskAssessment {
  * Risk only ever TIGHTENS an otherwise-permitted decision. Given the domain
  * gate's status ("pass" when earned) and the assessment, return whether this
  * specific action should still escalate for a human tap. Pure.
+ *
+ * `loopConfidence` (0..1, kernel-elevation T2.4) makes calibration LOAD-BEARING:
+ * when the brain's forecasts are poorly calibrated (low confidence), the bar to
+ * escalate drops — `medium`-tier actions also escalate. TIGHTEN-ONLY: low
+ * confidence can only ADD escalation, never remove it (a high-tier action always
+ * escalates regardless). Omitted/1.0 → the original high-only behavior.
  */
-export function shouldEscalateForRisk(domainPassed: boolean, assessment: RiskAssessment): boolean {
-  return domainPassed && assessment.tier === "high";
+export function shouldEscalateForRisk(
+  domainPassed: boolean,
+  assessment: RiskAssessment,
+  loopConfidence = 1,
+): boolean {
+  if (!domainPassed) return false;
+  if (assessment.tier === "high") return true;
+  // Poorly-calibrated brain ⇒ escalate medium-tier too (tighten-only).
+  if (loopConfidence < 0.5 && assessment.tier === "medium") return true;
+  return false;
 }

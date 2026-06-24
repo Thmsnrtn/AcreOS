@@ -95,6 +95,29 @@ export interface CalibrationReport {
   bins: Array<{ from: number; to: number; predictedMean: number; actualRate: number; n: number }>;
 }
 
+/**
+ * A 0..1 confidence in the brain's OWN forecasts, derived from its calibration
+ * (kernel-elevation T2.4 — make calibration load-bearing). over-confident (it
+ * claims more than it delivers — the dangerous direction) → lowest; unproven →
+ * low (it hasn't earned the right to act loosely); fair → moderate; well-
+ * calibrated → full. Used as a TIGHTEN-ONLY throttle on risk escalation: low
+ * confidence escalates more readily, never less. Pure.
+ */
+export function loopConfidenceFrom(report: CalibrationReport): number {
+  switch (report.grade) {
+    case "over-confident":
+      return 0.2;
+    case "unproven":
+      return 0.4;
+    case "fair":
+      return 0.7;
+    case "well-calibrated":
+      return 1.0;
+    default:
+      return 0.4;
+  }
+}
+
 /** Brier score over (predicted, actual) pairs. Pure. Null when empty. */
 export function brierScore(pairs: CalibrationPair[]): number | null {
   if (pairs.length === 0) return null;

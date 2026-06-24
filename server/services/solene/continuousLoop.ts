@@ -927,16 +927,26 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               // facing / irreversible / expensive) escalates even in a trusted
               // domain. Deterministic + cheap; runs before the pre-mortem.
               assessRisk: async (m) => {
-                const { assessRisk } = await import("../autopilot/riskautonomy");
+                const { assessRisk, shouldEscalateForRisk } = await import("../autopilot/riskautonomy");
                 const { bindingFor } = await import("../autopilot/act");
                 const b = bindingFor(m.kind);
                 const a = assessRisk({
-                  reversible: !b.isCustomerFacing,
+                  reversible: b.reversible, // T0.2: the real reversibility, not a customer-facing proxy
                   customerFacing: b.isCustomerFacing,
                   predictedCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD,
                   noveltyN: traceForecast?.n ?? 0,
                 });
-                return { tier: a.tier, reasons: a.reasons };
+                // T2.4: make calibration LOAD-BEARING — a poorly-calibrated brain
+                // (over-confident / unproven) escalates a medium-tier action too.
+                // Tighten-only; full confidence preserves the high-only behavior.
+                let loopConfidence = 1;
+                try {
+                  const { getCalibrationPairs } = await import("../autopilot/experienceLog");
+                  const { calibrationReport, loopConfidenceFrom } = await import("../autopilot/forecast");
+                  loopConfidence = loopConfidenceFrom(calibrationReport(await getCalibrationPairs(500)));
+                } catch { /* calibration unavailable → full confidence (no extra tightening) */ }
+                const tier = shouldEscalateForRisk(true, a, loopConfidence) && a.tier !== "high" ? "high" : a.tier;
+                return { tier, reasons: a.reasons };
               },
               // Adversarial pre-mortem: a high-stakes move that would auto-run
               // gets one skeptical look first. Only active when a model is

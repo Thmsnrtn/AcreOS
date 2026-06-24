@@ -64,6 +64,15 @@ export interface LandCausalEpisode {
  * maturation discipline: we never conclude from an effect that simply hasn't
  * manifested yet). Unmapped moves are ignored. Pure.
  */
+/**
+ * Poisoning-resistance cap (kernel-elevation T2.4): no single lever counts more
+ * than this many successes/failures per refinement, so even a flood of
+ * (real-but-anomalous, or maliciously-induced) consequences in one window can't
+ * slam an edge's confidence — combined with refineConfidence's prior-strength
+ * weighting, the model only ever moves gradually.
+ */
+export const MAX_EVIDENCE_PER_LEVER = 50;
+
 export function landEvidenceByLever(episodes: LandCausalEpisode[]): Record<string, EdgeEvidence> {
   const out: Record<string, EdgeEvidence> = {};
   for (const ep of episodes) {
@@ -73,8 +82,8 @@ export function landEvidenceByLever(episodes: LandCausalEpisode[]): Record<strin
     const isFailure = ep.deliveryBounced === true;
     if (!isSuccess && !isFailure) continue; // no real consequence observed → abstain
     const e = out[lever] ?? { successes: 0, failures: 0 };
-    if (isSuccess) e.successes += 1;
-    else e.failures += 1;
+    if (isSuccess) e.successes = Math.min(MAX_EVIDENCE_PER_LEVER, e.successes + 1);
+    else e.failures = Math.min(MAX_EVIDENCE_PER_LEVER, e.failures + 1);
     out[lever] = e;
   }
   return out;
