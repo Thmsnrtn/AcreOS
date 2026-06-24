@@ -26,6 +26,9 @@ import { type TenantScope, describeScope, scopeOrgId } from "./tenantScope";
 
 export const PROOF_RECEIPT_VERSION = 1 as const;
 
+/** The `prevReceiptHash` of the first receipt in any scope's chain. */
+export const GENESIS_RECEIPT_HASH = "GENESIS";
+
 /**
  * EU AI Act Art. 50 transparency line — every witnessed governed action carries
  * it, stating the action was machine-prepared and human-authorized.

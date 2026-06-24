@@ -321,6 +321,21 @@ export async function approvePendingAction(params: {
     contentHash: action.contentHash,
   });
 
+  // Foundry move #3: persist a tamper-evident, principal-attributed proof-receipt
+  // for this customer-Pax witnessed send too (same artifact the autopilot hands
+  // emit), scoped to the org and attributed to the approving human. Non-fatal:
+  // recordReceipt swallows its own errors — the send already happened.
+  try {
+    const { recordReceipt } = await import("./autopilot/proofReceiptStore");
+    const { orgScope } = await import("./autopilot/tenantScope");
+    await recordReceipt({
+      actionKind: action.toolName,
+      scope: orgScope(organizationId),
+      payloadHash: action.contentHash,
+      accountableHumanId: action.approvedByUserId ?? params.approvedByUserId ?? "unknown",
+    });
+  } catch { /* non-fatal — proof-receipt persistence must never block a send */ }
+
   // Tier 2C — server-side funnel truth. first_value_reached used to be a
   // client-side PostHog event fired when onboarding was marked complete —
   // i.e. "clicked through the wizard," not "got value." The witnessed send

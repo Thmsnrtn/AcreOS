@@ -18,9 +18,11 @@ vi.mock("../../server/db", () => {
     select: () => chain,
     from: () => chain,
     where: () => chain,
+    orderBy: () => chain, // proofReceiptStore.getPrevReceiptHash chains through this
     limit: () => Promise.resolve(leadRowHolder.row ? [leadRowHolder.row] : []),
   };
-  return { db: chain };
+  // recordReceipt's INSERT (proof_receipts) — resolve as a no-op write.
+  return { db: { ...chain, insert: () => ({ values: () => Promise.resolve() }) } };
 });
 
 import { sendEmail } from "../../server/services/emailService";

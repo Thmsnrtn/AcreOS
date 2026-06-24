@@ -2568,6 +2568,40 @@ export const paxSends = pgTable("pax_sends", {
 ]);
 export type PaxSend = typeof paxSends.$inferSelect;
 
+// proof_receipts — the persisted, hash-chained ProofReceipt log (Foundry move
+// #3 persistence). Every witnessed governed action seals one row: what + for
+// whom (scope) + who approved + under which constitution + the Art.50
+// disclosure. `receipt_hash` is the per-row integrity seal; `prev_receipt_hash`
+// links each row to the previous one in the same scope chain (tamper-evident
+// ordering). Append-only by contract (no UPDATE path), mirroring pax_sends.
+export const proofReceipts = pgTable("proof_receipts", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id"), // null = platform scope (AcreOS itself)
+  scope: text("scope").notNull(), // "platform" | "org:N"
+  actionKind: text("action_kind").notNull(),
+  payloadHash: text("payload_hash").notNull(),
+  accountableHumanId: text("accountable_human_id").notNull(),
+  constitutionVersion: text("constitution_version").notNull(),
+  constitutionVersionHash: text("constitution_version_hash").notNull(),
+  gateResults: jsonb("gate_results"),
+  evalScore: doublePrecision("eval_score"),
+  costUsd: doublePrecision("cost_usd"),
+  autonomyLevel: text("autonomy_level"),
+  situationHash: text("situation_hash"),
+  disclosure: text("disclosure").notNull(),
+  // ISO string (not a timestamp) so the sealed receiptHash round-trips
+  // byte-for-byte — a timestamp's tz/precision drift would break verification.
+  issuedAt: text("issued_at").notNull(),
+  prevReceiptHash: text("prev_receipt_hash"),
+  receiptHash: text("receipt_hash").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("proof_receipts_scope_id_idx").on(t.scope, t.id),
+  index("proof_receipts_org_issued_idx").on(t.organizationId, t.issuedAt),
+  index("proof_receipts_hash_idx").on(t.receiptHash),
+]);
+export type ProofReceiptRow = typeof proofReceipts.$inferSelect;
+
 // 2026-06-10 (Tier 1E, elevation blueprint): backup restore-verification
 // ledger. A backup that has never been restored is a hope, not a backup. The
 // weekly backup_restore_verify job (server/jobs/backupRestoreVerify.ts)

@@ -6911,6 +6911,37 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "pax_sends_org_action_idx"
      ON "pax_sends" ("organization_id", "pending_action_id")`,
 
+  // proof_receipts — persisted, hash-chained ProofReceipt log (Foundry move #3
+  // persistence). Append-only; receipt_hash is the per-row seal, prev_receipt_hash
+  // links each row to the previous in the same scope chain. organization_id is
+  // nullable (null = platform scope, AcreOS operating itself).
+  `CREATE TABLE IF NOT EXISTS "proof_receipts" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer,
+     "scope" text NOT NULL,
+     "action_kind" text NOT NULL,
+     "payload_hash" text NOT NULL,
+     "accountable_human_id" text NOT NULL,
+     "constitution_version" text NOT NULL,
+     "constitution_version_hash" text NOT NULL,
+     "gate_results" jsonb,
+     "eval_score" double precision,
+     "cost_usd" double precision,
+     "autonomy_level" text,
+     "situation_hash" text,
+     "disclosure" text NOT NULL,
+     "issued_at" text NOT NULL,
+     "prev_receipt_hash" text,
+     "receipt_hash" text NOT NULL,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "proof_receipts_scope_id_idx"
+     ON "proof_receipts" ("scope", "id")`,
+  `CREATE INDEX IF NOT EXISTS "proof_receipts_org_issued_idx"
+     ON "proof_receipts" ("organization_id", "issued_at")`,
+  `CREATE INDEX IF NOT EXISTS "proof_receipts_hash_idx"
+     ON "proof_receipts" ("receipt_hash")`,
+
   // ── 0153 — Tier 1E (elevation blueprint) — backup restore-verification ──
   //    ledger. Mirrors migrations/0153_backup_verified.sql.
   // A backup that has never been restored is a hope, not a backup. The weekly
