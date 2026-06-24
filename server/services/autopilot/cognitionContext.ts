@@ -292,5 +292,16 @@ export async function gatherContextPack(): Promise<ContextPack> {
     raw.calibrationN = r.n;
   } catch { /* learning */ }
 
-  return assembleContextPack(raw);
+  const pack = assembleContextPack(raw);
+
+  // THE BET: append the causal theory of the business so the Operator reasons
+  // over a falsifiable MODEL (levers → causal edges → outcomes), not just a
+  // snapshot. v0 uses the seed model; B2's causal ledger refines its edges from
+  // real witnessed interventions over time.
+  try {
+    const { summarizeModel, ACREOS_SEED_MODEL } = await import("./worldModel");
+    pack.briefing += `\n\n## Causal theory\n${summarizeModel(ACREOS_SEED_MODEL)}`;
+  } catch { /* model unavailable — briefing stands without it */ }
+
+  return pack;
 }
