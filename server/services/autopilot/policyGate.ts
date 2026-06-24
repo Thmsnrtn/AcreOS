@@ -94,6 +94,29 @@ export interface PolicyGateDeps {
    * OBSERVE-level domain blocks, so no outward action escapes the ladder.
    */
   checkDomainAutonomy: (action: PolicyAction) => Promise<GateResult>;
+  /**
+   * Per-gate deadline (ms). A gate that hangs (a wedged LLM call, a stuck DB
+   * read) must not stall — or silently bypass — the safety floor; on timeout the
+   * gate FAILS CLOSED to its safe terminal verdict (kernel-elevation T0.2). 0 or
+   * non-finite disables the deadline. Tests set a tiny value to exercise it.
+   */
+  gateTimeoutMs: number;
+}
+
+/** Thrown when a gate exceeds its deadline; handled as a fail-closed block. */
+class GateTimeoutError extends Error {}
+
+/** Race a gate call against its deadline. Rejects on timeout so the gate's
+ *  fail-closed catch turns it into a block. A non-positive ms disables it. */
+function withGateDeadline<T>(p: Promise<T>, ms: number, gate: string): Promise<T> {
+  if (!Number.isFinite(ms) || ms <= 0) return p;
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new GateTimeoutError(`${gate} gate timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
 }
 
 const defaultDeps: PolicyGateDeps = {
@@ -106,6 +129,7 @@ const defaultDeps: PolicyGateDeps = {
   gateOutputOrThrow: realGateOutputOrThrow,
   approvalRequiredTools: realApprovalRequiredTools,
   checkDomainAutonomy: realCheckDomainAutonomy,
+  gateTimeoutMs: 20_000,
 };
 
 /**
@@ -132,13 +156,25 @@ export async function runPolicyGateStack(
     return { decision: r.status === "escalate" ? "escalate" : "block", results, decidedBy: r.gate };
   };
 
+  // Every gate FAILS CLOSED (T0.2): an error OR a deadline timeout terminates to
+  // the gate's safe verdict — never a silent pass. A wedged dependency must
+  // refuse the action, not bypass the floor.
+
   // 1. Compliance / constitution
   if (action.toolCall) {
-    const screen = await d.screenToolCall(action.toolCall);
-    if (!screen.allowed) {
-      return terminate({ gate: "compliance", status: "block", reason: screen.reason });
+    try {
+      const screen = await withGateDeadline(d.screenToolCall(action.toolCall), d.gateTimeoutMs, "compliance");
+      if (!screen.allowed) {
+        return terminate({ gate: "compliance", status: "block", reason: screen.reason });
+      }
+      results.push({ gate: "compliance", status: "pass" });
+    } catch (err) {
+      return terminate({
+        gate: "compliance",
+        status: "block",
+        reason: err instanceof Error ? err.message : "compliance gate failed",
+      });
     }
-    results.push({ gate: "compliance", status: "pass" });
   } else {
     results.push({ gate: "compliance", status: "skipped" });
   }
@@ -146,11 +182,15 @@ export async function runPolicyGateStack(
   // 2. Quality / grounding
   if (action.output) {
     try {
-      await d.gateOutputOrThrow({
-        surface: action.output.surface,
-        modelKey: action.output.modelKey,
-        output: action.output.text,
-      });
+      await withGateDeadline(
+        d.gateOutputOrThrow({
+          surface: action.output.surface,
+          modelKey: action.output.modelKey,
+          output: action.output.text,
+        }),
+        d.gateTimeoutMs,
+        "quality",
+      );
       results.push({ gate: "quality", status: "pass" });
     } catch (err) {
       return terminate({
@@ -165,7 +205,7 @@ export async function runPolicyGateStack(
 
   // 3. Budget (always runs — the platform envelope applies even at platform scope)
   try {
-    await d.assertWithinAiCostCeiling(scopeOrgId(action.scope));
+    await withGateDeadline(d.assertWithinAiCostCeiling(scopeOrgId(action.scope)), d.gateTimeoutMs, "budget");
     results.push({ gate: "budget", status: "pass" });
   } catch (err) {
     return terminate({
@@ -176,7 +216,16 @@ export async function runPolicyGateStack(
   }
 
   // 4. Autonomy level (per-domain; batch 3 wires the real state machine)
-  const autonomy = await d.checkDomainAutonomy(action);
+  let autonomy: GateResult;
+  try {
+    autonomy = await withGateDeadline(d.checkDomainAutonomy(action), d.gateTimeoutMs, "autonomy");
+  } catch (err) {
+    return terminate({
+      gate: "autonomy",
+      status: "block",
+      reason: err instanceof Error ? err.message : "autonomy gate failed",
+    });
+  }
   if (autonomy.status !== "pass") {
     return terminate(autonomy);
   }

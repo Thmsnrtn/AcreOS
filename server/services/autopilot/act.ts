@@ -52,35 +52,56 @@ interface MoveBinding {
   agentRole: SoleneDispatchAgentRole;
   isCustomerFacing: boolean;
   surface: CraftSurface;
+  /**
+   * Whether the action can be undone / has bounded blast radius (kernel-elevation
+   * T0.2). Internal remediation + non-destructive retries are reversible; a
+   * customer-facing send or a public broadcast is not. Feeds the risk-calibrated
+   * autonomy gate; an UNKNOWN move is irreversible by default (fail closed).
+   */
+  reversible: boolean;
 }
 
 const MOVE_BINDINGS: Record<string, MoveBinding> = {
-  resolve_incident: { domain: "deploy", agentRole: "iris", isCustomerFacing: false, surface: "generic" },
-  protect_runway: { domain: "finance", agentRole: "general-purpose", isCustomerFacing: false, surface: "generic" },
-  clear_compliance: { domain: "ops", agentRole: "beatrice", isCustomerFacing: false, surface: "generic" },
-  clear_support_backlog: { domain: "support", agentRole: "general-purpose", isCustomerFacing: true, surface: "support" },
-  unblock_activation: { domain: "deploy", agentRole: "iris", isCustomerFacing: false, surface: "generic" },
-  grow_owned_channels: { domain: "growth", agentRole: "soren", isCustomerFacing: false, surface: "content" },
-  optimize: { domain: "ops", agentRole: "iris", isCustomerFacing: false, surface: "generic" },
+  resolve_incident: { domain: "deploy", agentRole: "iris", isCustomerFacing: false, surface: "generic", reversible: true },
+  protect_runway: { domain: "finance", agentRole: "general-purpose", isCustomerFacing: false, surface: "generic", reversible: true },
+  clear_compliance: { domain: "ops", agentRole: "beatrice", isCustomerFacing: false, surface: "generic", reversible: true },
+  clear_support_backlog: { domain: "support", agentRole: "general-purpose", isCustomerFacing: true, surface: "support", reversible: false },
+  unblock_activation: { domain: "deploy", agentRole: "iris", isCustomerFacing: false, surface: "generic", reversible: true },
+  grow_owned_channels: { domain: "growth", agentRole: "soren", isCustomerFacing: false, surface: "content", reversible: false },
+  optimize: { domain: "ops", agentRole: "iris", isCustomerFacing: false, surface: "generic", reversible: true },
   // Hands roadmap P0.2/P1 — outward-perception moves. A move that touches a
   // customer is marked isCustomerFacing so it escalates to witnessed-send; the
   // internal remediation moves (deliverability, payment retry) stay internal.
-  stabilize_reflexes: { domain: "deploy", agentRole: "iris", isCustomerFacing: false, surface: "generic" },
-  protect_deliverability: { domain: "ops", agentRole: "iris", isCustomerFacing: false, surface: "generic" },
-  retain_at_risk: { domain: "support", agentRole: "general-purpose", isCustomerFacing: true, surface: "support" },
-  recover_payments: { domain: "finance", agentRole: "general-purpose", isCustomerFacing: false, surface: "generic" },
-  convert_trials: { domain: "finance", agentRole: "soren", isCustomerFacing: true, surface: "support" },
+  stabilize_reflexes: { domain: "deploy", agentRole: "iris", isCustomerFacing: false, surface: "generic", reversible: true },
+  protect_deliverability: { domain: "ops", agentRole: "iris", isCustomerFacing: false, surface: "generic", reversible: true },
+  retain_at_risk: { domain: "support", agentRole: "general-purpose", isCustomerFacing: true, surface: "support", reversible: false },
+  recover_payments: { domain: "finance", agentRole: "general-purpose", isCustomerFacing: false, surface: "generic", reversible: true },
+  convert_trials: { domain: "finance", agentRole: "soren", isCustomerFacing: true, surface: "support", reversible: false },
 };
 
+/**
+ * The binding for a move-kind the kernel has NEVER SEEN (kernel-elevation T0.2,
+ * fail-closed). It is maximally risky: customer-facing (→ forces witnessed-send,
+ * a human tap) and irreversible (→ the risk-autonomy gate treats it as high
+ * blast-radius). This is the only sound default for a domain-agnostic body that
+ * a foreign Foundry pack ships unseen move-kinds into — an unknown action must
+ * never bind to the cheapest internal tier.
+ */
 const DEFAULT_BINDING: MoveBinding = {
   domain: "ops",
   agentRole: "general-purpose",
-  isCustomerFacing: false,
+  isCustomerFacing: true,
   surface: "generic",
+  reversible: false,
 };
 
 export function bindingFor(moveKind: string): MoveBinding {
   return MOVE_BINDINGS[moveKind] ?? DEFAULT_BINDING;
+}
+
+/** True iff this move-kind has an explicit, known binding (not the fail-closed default). */
+export function isKnownMoveKind(moveKind: string): boolean {
+  return Object.prototype.hasOwnProperty.call(MOVE_BINDINGS, moveKind);
 }
 
 /** Translate a ranked move into the PolicyAction the gate stack screens. */
