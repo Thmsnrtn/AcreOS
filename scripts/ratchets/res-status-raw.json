@@ -4,6 +4,6 @@
   "pattern": "res\\.status\\(",
   "globs": ["server/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/*.spec.ts"],
-  "baselineCount": 694,
+  "baselineCount": 693,
   "direction": "down"
 }

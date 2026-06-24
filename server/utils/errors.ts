@@ -175,6 +175,28 @@ export const Errors = {
     sendError(res, 503, "SERVICE_UNAVAILABLE", finalMessage, undefined, buildDocsUrl(opts));
   },
 
+  badGateway(res: Response, message?: string, opts?: ErrorOptions): void {
+    // 502 — an upstream dependency we proxy returned an unusable response
+    // (e.g. the Clerk reverse proxy). Distinct from 500 (our bug) and 503
+    // (we're up but a dependency is unconfigured); the client should treat it
+    // as a transient upstream problem and retry.
+    const finalMessage =
+      message && message.length > 0
+        ? message
+        : "An upstream service returned an unexpected response. Please try again in a moment.";
+    sendError(res, 502, "BAD_GATEWAY", finalMessage, undefined, buildDocsUrl(opts));
+  },
+
+  gatewayTimeout(res: Response, message?: string, opts?: ErrorOptions): void {
+    // 504 — an upstream dependency we proxy didn't respond in time (the Clerk
+    // upstream timeout guard). Retry-safe by nature.
+    const finalMessage =
+      message && message.length > 0
+        ? message
+        : "An upstream service took too long to respond. Please try again in a moment.";
+    sendError(res, 504, "GATEWAY_TIMEOUT", finalMessage, undefined, buildDocsUrl(opts));
+  },
+
   internal(res: Response, error: unknown, opts?: ErrorOptions): void {
     // A missing AI provider is a config/operational state, not a code bug — every
     // route that funnels its AI failure through internal() should surface a 503,
