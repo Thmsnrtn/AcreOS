@@ -656,10 +656,34 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           // (it can't invent an action), and every gate still binds. Memory feeds
           // it as precedent.
           let effectiveMoves = moves;
+          // T2.3: the Operator may author a NET-NEW move (a play the deterministic
+          // catalog lacks), reconciled UNDER the safety floor — planToActions keeps
+          // the mandatory (most-urgent) tier immovable. Gated by cognition-enabled;
+          // one model call, budget-bounded (callModel is wrapped). A net-new move is
+          // forced through witnessed-send in the BODY (moveToPolicyAction) — it can
+          // never auto-execute; a fabricated-number net-new move is dropped (the
+          // grounding gate in runOperator). Best-effort — deterministic stands.
+          try {
+            const { isCognitionEnabled } = await import("../autopilot/settings");
+            if (callModel && (await isCognitionEnabled())) {
+              const { runOperator, OPERATOR_KNOWN_KINDS } = await import("../autopilot/operator");
+              const { gatherContextPack } = await import("../autopilot/cognitionContext");
+              const pack = await gatherContextPack();
+              const { reconciled } = await runOperator(pack.briefing, effectiveMoves, OPERATOR_KNOWN_KINDS, { callModel });
+              if (!reconciled.fellBack && reconciled.moves.length > 0) {
+                effectiveMoves = reconciled.moves;
+                if (reconciled.netNewKinds.length > 0) {
+                  logger.info("[continuousLoop] operator proposed net-new (forced witnessed)", {
+                    netNewKinds: reconciled.netNewKinds,
+                  });
+                }
+              }
+            }
+          } catch { /* operator best-effort — deterministic ranking stands */ }
           try {
             const { shouldDeliberate, deliberateWithModel } = await import("../autopilot/deliberate");
-            if (callModel && shouldDeliberate(moves)) {
-              const del = await deliberateWithModel(senses, moves, { callModel }, memoryNote);
+            if (callModel && shouldDeliberate(effectiveMoves)) {
+              const del = await deliberateWithModel(senses, effectiveMoves, { callModel }, memoryNote);
               effectiveMoves = del.moves;
               if (del.deliberated) {
                 logger.info("[continuousLoop] tick: council deliberated", {

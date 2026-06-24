@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { parseOperatingPlan, planToActions, buildOperatorPrompt, type OperatingPlan } from "../../server/services/autopilot/operator";
+import { parseOperatingPlan, planToActions, buildOperatorPrompt, groundedNumbersCheck, dropUngroundedNetNew, type OperatingPlan } from "../../server/services/autopilot/operator";
+import { moveToPolicyAction } from "../../server/services/autopilot/act";
 import type { RankedMove } from "../../server/services/autopilot/decide";
 
 const incident: RankedMove = { priority: 0, domain: "deploy", kind: "resolve_incident", rationale: "incident open" };
@@ -84,5 +85,56 @@ describe("buildOperatorPrompt — encodes the hard rules", () => {
     expect(prompt).toMatch(/stabilize>serve>grow|stabilize > serve > grow/i);
     expect(prompt).toMatch(/net-new/i);
     expect(prompt).toContain("grow_owned_channels");
+  });
+});
+
+// ── T2.3: the Operator→act seam (net-new forced witnessed, in the BODY) ──────
+describe("T2.3 — net-new moves are forced through witnessed-send in the body", () => {
+  const netNewPlan: OperatingPlan = {
+    assessment: "try a new channel",
+    moves: [{ kind: "launch_referral_program", isNetNew: true, rationale: "a play the catalog lacks" }],
+    escalations: [],
+    watchItems: [],
+  };
+
+  it("planToActions injects a net-new move flagged isNetNew, below the mandatory floor", () => {
+    const r = planToActions([incident, grow], netNewPlan);
+    const nn = r.moves.find((m) => m.kind === "launch_referral_program");
+    expect(nn).toBeTruthy();
+    expect(nn!.isNetNew).toBe(true);
+    expect(r.netNewKinds).toContain("launch_referral_program");
+    // the mandatory (most-urgent) tier stays first — never displaced
+    expect(r.moves[0].kind).toBe("resolve_incident");
+  });
+
+  it("moveToPolicyAction forces a net-new move customer-facing (→ witnessed-send escalation)", () => {
+    const netNew: RankedMove = { priority: 1, domain: "growth", kind: "launch_referral_program", rationale: "x", isNetNew: true };
+    expect(moveToPolicyAction(netNew).isCustomerFacing).toBe(true);
+    // and a KNOWN internal move is unaffected (not forced)
+    const known: RankedMove = { priority: 0, domain: "deploy", kind: "resolve_incident", rationale: "y" };
+    expect(moveToPolicyAction(known).isCustomerFacing).toBe(false);
+  });
+});
+
+describe("T2.3 — grounding gate (no fabricated numbers in net-new)", () => {
+  it("groundedNumbersCheck flags numbers absent from the briefing", () => {
+    expect(groundedNumbersCheck("MRR is $4200 with 37 trials", "MRR is $4200 today")).toEqual(["37"]);
+    expect(groundedNumbersCheck("steady at $4200", "MRR is $4200 today")).toEqual([]);
+    expect(groundedNumbersCheck("add 1 channel", "anything")).toEqual([]); // small int ignored
+  });
+
+  it("dropUngroundedNetNew removes a net-new move citing a fabricated number, keeps grounded + non-net-new", () => {
+    const plan: OperatingPlan = {
+      assessment: "x",
+      moves: [
+        { kind: "fab", isNetNew: true, rationale: "will add 5000 signups" }, // fabricated
+        { kind: "ok_new", isNetNew: true, rationale: "double down on owned channels" }, // grounded (no numbers)
+        { kind: "grow_owned_channels", isNetNew: false, rationale: "cite 5000 freely" }, // non-net-new untouched
+      ],
+      escalations: [],
+      watchItems: [],
+    };
+    const out = dropUngroundedNetNew(plan, "briefing with no numbers")!;
+    expect(out.moves.map((m) => m.kind)).toEqual(["ok_new", "grow_owned_channels"]);
   });
 });

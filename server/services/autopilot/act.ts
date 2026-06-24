@@ -107,11 +107,17 @@ export function isKnownMoveKind(moveKind: string): boolean {
 /** Translate a ranked move into the PolicyAction the gate stack screens. */
 export function moveToPolicyAction(move: RankedMove): PolicyAction {
   const b = bindingFor(move.kind);
+  // T2.3: a net-new (Operator-proposed) move is forced through witnessed-send in
+  // the BODY — isCustomerFacing OR'd true so the gate stack escalates it to a
+  // human tap, regardless of any proposed binding. The safety lives here, at the
+  // choke point, not in the proposer where the next engineer could bypass it.
+  // (The MORE restrictive of the known binding and the net-new floor.)
+  const isCustomerFacing = b.isCustomerFacing || move.isNetNew === true;
   return {
     domain: b.domain,
     actionKind: move.kind,
     scope: PLATFORM_SCOPE, // the autopilot operates AcreOS itself — its own single tenant
-    isCustomerFacing: b.isCustomerFacing,
+    isCustomerFacing,
   };
 }
 

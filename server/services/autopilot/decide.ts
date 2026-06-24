@@ -57,6 +57,13 @@ export interface RankedMove {
   domain: AutopilotDomain;
   kind: string;
   rationale: string;
+  /**
+   * True iff this move was PROPOSED BY THE OPERATOR as net-new (not in the
+   * deterministic catalog) — kernel-elevation T2.3. A net-new move is forced
+   * through witnessed-send in the BODY (moveToPolicyAction), never able to
+   * auto-execute, regardless of any proposed binding.
+   */
+  isNetNew?: boolean;
 }
 
 /**

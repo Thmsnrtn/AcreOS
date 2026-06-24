@@ -165,6 +165,7 @@ export function planToActions(deterministic: RankedMove[], plan: OperatingPlan |
         domain: safeDomain(om.proposedBinding?.domain),
         kind: om.kind,
         rationale: `[net-new] ${om.rationale}`,
+        isNetNew: true, // T2.3: forces witnessed-send in the body, never the proposer
       });
       used.add(om.kind);
       netNewKinds.push(om.kind);
@@ -318,6 +319,35 @@ export async function operate(
  * any model error or malformed output it falls back to the deterministic
  * ranking. Never throws.
  */
+/**
+ * Anti-fabrication grounding check (kernel-elevation T2.3): every data-bearing
+ * NUMBER the Operator asserts must appear in the source briefing. Returns the
+ * ungrounded numbers (empty = clean). Trivial small integers (≤3) and obvious
+ * structural values are ignored — the briefing is the source of truth, and an
+ * Operator that cites "$4,200 MRR" when the briefing says no such thing is
+ * fabricating. Pure.
+ */
+export function groundedNumbersCheck(text: string, briefing: string): string[] {
+  const norm = (s: string) => (s.match(/\d[\d,]*\.?\d*/g) ?? []).map((n) => n.replace(/,/g, ""));
+  const inBrief = new Set(norm(briefing));
+  const ungrounded: string[] = [];
+  for (const n of norm(text)) {
+    if (Number(n) <= 3) continue; // structural small integers, not data claims
+    if (!inBrief.has(n)) ungrounded.push(n);
+  }
+  return ungrounded;
+}
+
+/** Drop net-new moves whose rationale cites a number absent from the briefing
+ *  (honest-absence on a fabricated figure). Pure. */
+export function dropUngroundedNetNew(plan: OperatingPlan | null, briefing: string): OperatingPlan | null {
+  if (!plan) return plan;
+  return {
+    ...plan,
+    moves: plan.moves.filter((m) => !(m.isNetNew && groundedNumbersCheck(m.rationale, briefing).length > 0)),
+  };
+}
+
 export async function runOperator(
   briefing: string,
   deterministic: RankedMove[],
@@ -326,7 +356,9 @@ export async function runOperator(
 ): Promise<{ reconciled: ReconciledPlan; plan: OperatingPlan | null }> {
   try {
     const raw = await deps.callModel(buildOperatorPrompt(briefing, availableKinds));
-    const plan = parseOperatingPlan(raw);
+    // T2.3 grounding gate: a net-new move that cites a fabricated number is
+    // dropped before it can reach the act pipeline.
+    const plan = dropUngroundedNetNew(parseOperatingPlan(raw), briefing);
     return { reconciled: planToActions(deterministic, plan), plan };
   } catch {
     return { reconciled: planToActions(deterministic, null), plan: null };
