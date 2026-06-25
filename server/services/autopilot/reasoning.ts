@@ -42,6 +42,13 @@ export interface ReasoningTraceInput {
    * unchosen option higher (regret > 0).
    */
   shadowRegret?: { bestAlternativeKind: string | null; regret: number; isEstimate: true } | null;
+  /**
+   * Multi-step lookahead (Frontier #7) — the sequence of distinct high-EV moves
+   * the brain INTENDS over the next few ticks. Glass-box intent only: each step
+   * still executes one-at-a-time through the full gate stack; this never
+   * commits ahead of a gate. Surfaced when the plan has ≥2 steps.
+   */
+  plannedSequence?: string[] | null;
 }
 
 export interface ReasoningTrace extends ReasoningTraceInput {
@@ -107,11 +114,18 @@ export function buildReasoningTrace(input: ReasoningTraceInput): ReasoningTrace 
       ? ` The model rated "${sr.bestAlternativeKind}" a bit higher (est. +${sr.regret.toFixed(1)}, not observed) — I chose "${chosen.kind}" anyway because urgency/priority came first.`
       : "";
 
+  // Frontier #7 — surface the brain's multi-step intent (lookahead), framed as
+  // a plan it executes one gated step at a time, not a commitment past a gate.
+  const seq = input.plannedSequence;
+  const planBit =
+    seq && seq.length >= 2 ? ` Looking ahead, I intend: ${seq.join(" → ")} (one gated step at a time).` : "";
+
   const narrative =
     `I weighed ${considered} option${considered === 1 ? "" : "s"} and chose "${chosen.kind}"${playBit} because ${driver}.` +
     memoryBit +
     forecastBit +
     regretBit +
+    planBit +
     ` It ${gatePhrase}${byPhrase}, ${outcomePhrase}.`;
 
   return { ...input, narrative };

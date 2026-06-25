@@ -66,6 +66,17 @@ describe("autopilot reasoning trace — the glass box", () => {
     expect(none.narrative).not.toMatch(/rated .* a bit higher/);
   });
 
+  it("Frontier #7: surfaces the multi-step plan as gated intent (≥2 steps)", () => {
+    const t = buildReasoningTrace(base({ plannedSequence: ["grow_owned_channels", "optimize", "support"] }));
+    expect(t.narrative).toMatch(/Looking ahead, I intend: grow_owned_channels → optimize → support/);
+    expect(t.narrative).toMatch(/one gated step at a time/);
+  });
+
+  it("Frontier #7: stays silent for a trivial (≤1 step) plan", () => {
+    expect(buildReasoningTrace(base({ plannedSequence: ["grow_owned_channels"] })).narrative).not.toMatch(/Looking ahead/);
+    expect(buildReasoningTrace(base()).narrative).not.toMatch(/Looking ahead/);
+  });
+
   it("explains WHICH gate decided when it didn't simply pass", () => {
     const esc = buildReasoningTrace(base({ gate: { decision: "escalate", decidedBy: "witnessed_send" }, outcome: "escalated" }));
     expect(esc.narrative).toMatch(/needed your tap/);

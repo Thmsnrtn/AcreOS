@@ -79,6 +79,7 @@ const KERNEL_MANIFEST = [
   "admitPack.ts", // DomainPack refinement proof (fail-closed pack admission)
   "loopStability.ts", // constrained exploration + oscillation damping
   "witnessGrant.ts", // delegable, policy-bound witnessing authority (fail-closed)
+  "planner.ts", // multi-step lookahead plan + plan-repair commitment ledger
 ].map((f) => `${AUTOPILOT}/${f}`);
 
 // ----------------------------------------------------------------------------

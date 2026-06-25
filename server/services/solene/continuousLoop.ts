@@ -1045,10 +1045,22 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                   shadowRegret = { bestAlternativeKind: sr.bestAlternativeKind, regret: sr.regret, isEstimate: true };
                 }
               } catch { /* shadow regret is a glass-box adornment — best-effort */ }
+              // Frontier #7 — multi-step lookahead: the sequence of distinct
+              // high-EV moves the brain intends next. Glass-box only; each step
+              // still runs one-at-a-time through the gate stack. Best-effort.
+              let plannedSequence: string[] | null = null;
+              try {
+                if (Object.keys(moveEvByKind).length > 0) {
+                  const { buildPlan } = await import("../autopilot/planner");
+                  const plan = buildPlan(Object.entries(moveEvByKind).map(([moveKind, ev]) => ({ moveKind, ev })));
+                  if (plan.steps.length >= 2) plannedSequence = plan.steps.map((s) => s.moveKind);
+                }
+              } catch { /* planner is advisory — best-effort */ }
               const trace = buildReasoningTrace({
                 consideredMoves: effectiveMoves.map((m) => ({ kind: m.kind, priority: m.priority, rationale: m.rationale })),
                 chosen: { kind: actMove.kind, domain: actMove.domain, playId: selectedPlayId },
                 shadowRegret,
+                plannedSequence,
                 senses: {
                   mrr: senses.mrr,
                   trials: senses.trials,
