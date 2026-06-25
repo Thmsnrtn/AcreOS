@@ -17,6 +17,7 @@
  * applyDeliberation) are exhaustively testable with no model call.
  */
 import type { DecisionSenses, RankedMove } from "./decide";
+import { aggregateCouncil, councilConfidence, type CouncilAggregate } from "./council";
 
 export interface CouncilVerdict {
   recommendedKind: string;
@@ -119,4 +120,61 @@ export async function deliberateWithModel(
   } catch {
     return { moves, deliberated: false, verdict: null };
   }
+}
+
+export interface CouncilPanelResult extends DeliberationResult {
+  /** The measured agreement/disagreement across the panel's voices. */
+  aggregate: CouncilAggregate;
+  /** Disagreement→confidence multiplier (1 = unanimous/no-signal, lower = divided).
+   *  Combine with calibration confidence by MIN — only ever tightens escalation. */
+  confidence: number;
+}
+
+/**
+ * Frontier #8 — run a PANEL of `n` independent voices on a contested call,
+ * measure their disagreement, and use the CONSENSUS to reorder. A drop-in
+ * superset of deliberateWithModel: same fall-back-to-ranking safety (never
+ * throws), same "recommend only a real candidate" rule, plus a confidence
+ * signal from how divided the panel was. Each voice gets an independence nudge
+ * so the calls aren't degenerate. Best-effort: a failed/blank/invalid voice is
+ * simply dropped (the budget-wrapped callModel returns "" once exhausted, so a
+ * spent budget gracefully shrinks the panel rather than blocking). Bounds spend
+ * by `n` (small) on the rare contested tick.
+ */
+export async function runCouncilPanel(
+  senses: DecisionSenses,
+  moves: RankedMove[],
+  deps: DeliberateDeps,
+  n = 3,
+  precedent?: string | null,
+): Promise<CouncilPanelResult> {
+  const empty: CouncilAggregate = { consensusKind: null, votes: 0, agreement: 1, disagreement: 0, tally: {} };
+  if (!shouldDeliberate(moves)) return { moves, deliberated: false, verdict: null, aggregate: empty, confidence: 1 };
+  const panelN = Math.max(1, Math.min(7, Math.floor(n)));
+  const basePrompt = buildCouncilPrompt(senses, moves, precedent);
+  const votes: Array<{ recommendedKind: string }> = [];
+  let firstVerdict: CouncilVerdict | null = null;
+  for (let i = 0; i < panelN; i++) {
+    try {
+      const raw = await deps.callModel(`${basePrompt}\n\n(You are council member ${i + 1} of ${panelN}; reason independently.)`);
+      const verdict = parseCouncil(raw);
+      if (verdict) {
+        votes.push({ recommendedKind: verdict.recommendedKind });
+        if (!firstVerdict) firstVerdict = verdict;
+      }
+    } catch { /* a single voice failing never sinks the panel */ }
+  }
+  const aggregate = aggregateCouncil(votes);
+  // Reorder to the panel's CONSENSUS (only ever a real candidate); keep the
+  // first usable verdict as the human-readable rationale carrier.
+  const consensusVerdict = aggregate.consensusKind
+    ? { ...(firstVerdict ?? { rationale: "", perspectives: undefined }), recommendedKind: aggregate.consensusKind }
+    : null;
+  return {
+    moves: applyDeliberation(moves, consensusVerdict),
+    deliberated: aggregate.votes > 0,
+    verdict: consensusVerdict,
+    aggregate,
+    confidence: councilConfidence(aggregate),
+  };
 }

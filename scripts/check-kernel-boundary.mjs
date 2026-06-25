@@ -80,6 +80,7 @@ const KERNEL_MANIFEST = [
   "loopStability.ts", // constrained exploration + oscillation damping
   "witnessGrant.ts", // delegable, policy-bound witnessing authority (fail-closed)
   "planner.ts", // multi-step lookahead plan + plan-repair commitment ledger
+  "council.ts", // bounded cognition panel — measured disagreement → confidence
 ].map((f) => `${AUTOPILOT}/${f}`);
 
 // ----------------------------------------------------------------------------

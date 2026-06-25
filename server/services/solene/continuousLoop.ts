@@ -447,6 +447,9 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
   // Frontier #2 — per-move predicted causal EV, retained from the ranking step
   // so the reasoning trace can surface shadow regret (read-only; never learning).
   let moveEvByKind: Record<string, number> = {};
+  // Frontier #8 — confidence from council disagreement (1 = unanimous/no panel).
+  // Combined with calibration confidence by MIN at the risk gate (only tightens).
+  let councilConf = 1;
   let actOutcomeStatus: string | null = null;
   try {
     const pulse = await getLatestMorningPulse();
@@ -688,14 +691,21 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             }
           } catch { /* operator best-effort — deterministic ranking stands */ }
           try {
-            const { shouldDeliberate, deliberateWithModel } = await import("../autopilot/deliberate");
+            const { shouldDeliberate, runCouncilPanel } = await import("../autopilot/deliberate");
             if (callModel && shouldDeliberate(effectiveMoves)) {
-              const del = await deliberateWithModel(senses, effectiveMoves, { callModel }, memoryNote);
+              // Frontier #8 — a PANEL (not a single voice). The consensus
+              // reorders; the measured disagreement lowers confidence, which the
+              // risk gate consumes by MIN (a divided council escalates, never
+              // auto-acts on a coin-flip). Bounded spend (n small, budget-wrapped).
+              const del = await runCouncilPanel(senses, effectiveMoves, { callModel }, 3, memoryNote);
               effectiveMoves = del.moves;
+              councilConf = del.confidence;
               if (del.deliberated) {
                 logger.info("[continuousLoop] tick: council deliberated", {
                   recommended: del.verdict?.recommendedKind,
                   top: effectiveMoves[0]?.kind,
+                  agreement: del.aggregate.agreement,
+                  votes: del.aggregate.votes,
                 });
               }
             }
@@ -978,6 +988,10 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                   // weighted), not a global blend — a reckless domain can't hide.
                   loopConfidence = loopConfidenceFrom(calibrationReport(await getCalibrationPairs({ domain: b.domain })));
                 } catch { /* calibration unavailable → full confidence (no extra tightening) */ }
+                // Frontier #8 — fold in council disagreement by MIN: a divided
+                // panel can only LOWER confidence (⇒ escalate more), never raise
+                // it. Unanimous / no panel ⇒ councilConf 1 ⇒ no change.
+                loopConfidence = Math.min(loopConfidence, councilConf);
                 const tier = shouldEscalateForRisk(true, a, loopConfidence) && a.tier !== "high" ? "high" : a.tier;
                 return { tier, reasons: a.reasons };
               },
