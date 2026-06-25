@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DOMAIN_AUTONOMY_LEVELS,
+  AUTOPILOT_DOMAINS,
   levelRank,
   nextLevel,
   prevLevel,
@@ -70,5 +71,44 @@ describe("domain autonomy — pure state machine", () => {
     const { setDomainLevel } = await import("../../server/services/autopilot/domainAutonomy");
     // @ts-expect-error — deliberately passing an invalid level to assert the guard
     await expect(setDomainLevel("growth", "super_user", "nope")).rejects.toThrow(/unknown level/i);
+  });
+});
+
+describe("SWITCH-ON SAFETY FLOOR — OBSERVE blocks every domain's outward action", () => {
+  // The property the founder relies on when flipping dispatchEnabled ON: with
+  // every domain at OBSERVE (where fresh domains start AND where demotion
+  // floors), the autonomy gate BLOCKS — so the brain senses + decides + records
+  // on real data, but nothing goes out. This composes the pure facts below into
+  // one named ratchet: if a future change makes OBSERVE not-block, lowers the
+  // floor below OBSERVE, or lets a non-OBSERVE level masquerade as the default,
+  // this fails the build.
+
+  it("OBSERVE is the lowest level — i.e. the floor a fresh OR demoted domain lands on", () => {
+    expect(levelRank("observe")).toBe(0);
+    expect([...DOMAIN_AUTONOMY_LEVELS][0]).toBe("observe");
+    // demotion can never fall below the blocking floor
+    expect(prevLevel("observe")).toBe("observe");
+    for (const lvl of DOMAIN_AUTONOMY_LEVELS) {
+      expect(levelRank(prevLevel(lvl))).toBeLessThanOrEqual(levelRank(lvl));
+    }
+  });
+
+  it("at OBSERVE the autonomy gate BLOCKS — no outward action — for the whole domain set", () => {
+    expect(AUTOPILOT_DOMAINS.length).toBeGreaterThan(0);
+    // the verdict is a pure function of level (domain-agnostic), so OBSERVE
+    // blocking holds uniformly across every domain a switched-on loop runs.
+    for (const _domain of AUTOPILOT_DOMAINS) {
+      expect(gateResultForLevel("observe")).toMatchObject({ gate: "autonomy", status: "block" });
+    }
+  });
+
+  it("ONLY OBSERVE blocks — every higher level must be EARNED (promotion is the only exit from the floor)", () => {
+    expect(gateResultForLevel("observe").status).toBe("block");
+    for (const lvl of DOMAIN_AUTONOMY_LEVELS.filter((l) => l !== "observe")) {
+      expect(gateResultForLevel(lvl).status).not.toBe("block");
+    }
+    // and you can only leave OBSERVE by going UP one rung at a time
+    expect(nextLevel("observe")).toBe("draft");
+    expect(levelRank(nextLevel("observe")!)).toBe(levelRank("observe") + 1);
   });
 });
