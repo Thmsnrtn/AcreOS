@@ -75,6 +75,7 @@ const KERNEL_MANIFEST = [
   "reasoning.ts",
   "experienceLog.ts",
   "policyInducer.ts",
+  "shadowRegret.ts", // off-policy decision-quality (read-only; never feeds reward)
 ].map((f) => `${AUTOPILOT}/${f}`);
 
 // ----------------------------------------------------------------------------

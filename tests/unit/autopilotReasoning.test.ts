@@ -51,6 +51,21 @@ describe("autopilot reasoning trace — the glass box", () => {
     expect(t.narrative).not.toMatch(/~\d+% likely/);
   });
 
+  it("Frontier #2: glass-boxes the road not taken when the model ranked one higher (as an estimate)", () => {
+    const t = buildReasoningTrace(base({ shadowRegret: { bestAlternativeKind: "optimize", regret: 2.5, isEstimate: true } }));
+    expect(t.narrative).toMatch(/rated "optimize" a bit higher/);
+    expect(t.narrative).toMatch(/est\. \+2\.5/);
+    expect(t.narrative).toMatch(/not observed/); // always framed as estimate
+    expect(t.narrative).toMatch(/chose "grow_owned_channels" anyway/);
+  });
+
+  it("Frontier #2: stays silent when there was no regret (chosen WAS the top pick)", () => {
+    const zero = buildReasoningTrace(base({ shadowRegret: { bestAlternativeKind: "optimize", regret: 0, isEstimate: true } }));
+    expect(zero.narrative).not.toMatch(/rated .* a bit higher/);
+    const none = buildReasoningTrace(base()); // no shadowRegret at all
+    expect(none.narrative).not.toMatch(/rated .* a bit higher/);
+  });
+
   it("explains WHICH gate decided when it didn't simply pass", () => {
     const esc = buildReasoningTrace(base({ gate: { decision: "escalate", decidedBy: "witnessed_send" }, outcome: "escalated" }));
     expect(esc.narrative).toMatch(/needed your tap/);

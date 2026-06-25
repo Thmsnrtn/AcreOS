@@ -302,3 +302,27 @@ export function predictMoveEffect(
   if (!lever) return null;
   return queryIntervention(model, lever, deltaPct);
 }
+
+/**
+ * The predicted causal-EV (outcome deltaPct × path-confidence) for each move
+ * kind — the SAME quantity `rankMovesByCausalEv` ranks by, exposed as a map so a
+ * caller (e.g. shadow-regret) can value the roads not taken without re-deriving
+ * the formula. A move with no lever / no predicted outcome effect scores 0
+ * (honest: no causal prediction earns no EV). Pure.
+ */
+export function moveEvMap(
+  moves: Array<{ kind: string }>,
+  model: CausalModel,
+  moveToLever: Record<string, string>,
+): Record<string, number> {
+  const outcomeId = model.variables.find((v) => v.kind === "outcome")?.id;
+  const out: Record<string, number> = {};
+  for (const m of moves) {
+    if (m.kind in out) continue;
+    if (!outcomeId) { out[m.kind] = 0; continue; }
+    const r = predictMoveEffect(m.kind, model, moveToLever);
+    const eff = r?.effects.find((e) => e.variable === outcomeId);
+    out[m.kind] = eff ? eff.deltaPct * eff.confidence : 0;
+  }
+  return out;
+}

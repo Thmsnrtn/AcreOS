@@ -35,6 +35,13 @@ export interface ReasoningTraceInput {
   outcome: string; // acted | escalated | suppressed
   /** Living-memory recall — what worked in similar past situations (optional). */
   memory?: string | null;
+  /**
+   * Shadow regret (Frontier #2) — the best UNCHOSEN option's model-PREDICTED
+   * value vs the chosen one. Glass-box only; an estimate, never an observed
+   * outcome, and never fed to learning. Surfaced when the model ranked some
+   * unchosen option higher (regret > 0).
+   */
+  shadowRegret?: { bestAlternativeKind: string | null; regret: number; isEstimate: true } | null;
 }
 
 export interface ReasoningTrace extends ReasoningTraceInput {
@@ -92,10 +99,19 @@ export function buildReasoningTrace(input: ReasoningTraceInput): ReasoningTrace 
 
   const memoryBit = input.memory ? ` ${input.memory}` : "";
 
+  // Frontier #2 — glass-box the road not taken when the model ranked one higher.
+  // Always framed as an estimate; this is a transparency note, not a correction.
+  const sr = input.shadowRegret;
+  const regretBit =
+    sr && sr.regret > 0 && sr.bestAlternativeKind
+      ? ` The model rated "${sr.bestAlternativeKind}" a bit higher (est. +${sr.regret.toFixed(1)}, not observed) — I chose "${chosen.kind}" anyway because urgency/priority came first.`
+      : "";
+
   const narrative =
     `I weighed ${considered} option${considered === 1 ? "" : "s"} and chose "${chosen.kind}"${playBit} because ${driver}.` +
     memoryBit +
     forecastBit +
+    regretBit +
     ` It ${gatePhrase}${byPhrase}, ${outcomePhrase}.`;
 
   return { ...input, narrative };

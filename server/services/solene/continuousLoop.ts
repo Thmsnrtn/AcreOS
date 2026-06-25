@@ -444,6 +444,9 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
   // genuinely-measured senses feed the decision — unmeasured ones default to
   // the truthful "none known" inside sensesFromPulse, never invented.
   let plannedTopMove: RankedMove | null = null;
+  // Frontier #2 — per-move predicted causal EV, retained from the ranking step
+  // so the reasoning trace can surface shadow regret (read-only; never learning).
+  let moveEvByKind: Record<string, number> = {};
   let actOutcomeStatus: string | null = null;
   try {
     const pulse = await getLatestMorningPulse();
@@ -534,12 +537,15 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
       // consequence (T1.1), so at cold-start it leans on the seed priors and
       // sharpens as consequence accrues. Best-effort.
       try {
-        const { rankMovesByCausalEv, refineModel, evidenceByLever } = await import("../autopilot/worldModel");
+        const { rankMovesByCausalEv, refineModel, evidenceByLever, moveEvMap } = await import("../autopilot/worldModel");
         const { resolveActivePack } = await import("../autopilot/activePack");
         const { getPastEpisodes } = await import("../autopilot/experienceLog");
         const activePack = resolveActivePack();
         const causalModel = refineModel(activePack.causalModel, evidenceByLever(await getPastEpisodes(200), activePack.moveToLever));
         moves = rankMovesByCausalEv(moves, causalModel, activePack.moveToLever);
+        // Frontier #2 — retain the per-move predicted EV so the trace can show
+        // shadow regret (the road not taken). Read-only; never feeds learning.
+        moveEvByKind = moveEvMap(moves, causalModel, activePack.moveToLever);
       } catch { /* causal EV tiebreak best-effort */ }
       plannedTopMove = moves[0] ?? null;
       if (plannedTopMove) {
@@ -987,9 +993,23 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             try {
               const { recordExperience } = await import("../autopilot/experienceLog");
               const { buildReasoningTrace } = await import("../autopilot/reasoning");
+              // Frontier #2 — shadow regret (decision-time, model-predicted). The
+              // road not taken, glass-box only: this is computed from predicted
+              // EVs and is NEVER recorded as an outcome / fed to learning.
+              let shadowRegret: { bestAlternativeKind: string | null; regret: number; isEstimate: true } | null = null;
+              try {
+                if (Object.keys(moveEvByKind).length > 0) {
+                  const { prospectiveRegret } = await import("../autopilot/shadowRegret");
+                  const valuations = effectiveMoves.map((m) => ({ kind: m.kind, value: moveEvByKind[m.kind] ?? 0 }));
+                  const chosenVal = { kind: actMove.kind, value: moveEvByKind[actMove.kind] ?? 0 };
+                  const sr = prospectiveRegret(chosenVal, valuations);
+                  shadowRegret = { bestAlternativeKind: sr.bestAlternativeKind, regret: sr.regret, isEstimate: true };
+                }
+              } catch { /* shadow regret is a glass-box adornment — best-effort */ }
               const trace = buildReasoningTrace({
                 consideredMoves: effectiveMoves.map((m) => ({ kind: m.kind, priority: m.priority, rationale: m.rationale })),
                 chosen: { kind: actMove.kind, domain: actMove.domain, playId: selectedPlayId },
+                shadowRegret,
                 senses: {
                   mrr: senses.mrr,
                   trials: senses.trials,
