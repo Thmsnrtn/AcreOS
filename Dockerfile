@@ -4,7 +4,7 @@
 # AcreOS — Multi-stage production Dockerfile
 # ──────────────────────────────────────────────
 
-ARG NODE_VERSION=22.21.1
+ARG NODE_VERSION=22.23.1
 # Deploy-time git SHA. Flows into VITE_GIT_SHA so (1) vite bakes it into the
 # client bundle at build and (2) the runtime server reports it at /api/version
 # and injects it into window.__ENV__. The version-check self-heal compares the
