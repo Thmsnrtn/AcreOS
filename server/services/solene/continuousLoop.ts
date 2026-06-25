@@ -733,7 +733,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               const { GROWTH_PLAYS, growthPlayById, growthPlayRationale, selectNextGrowthPlay } =
                 await import("../autopilot/growthPlaybook");
               const { getPlayStats } = await import("../autopilot/experienceLog");
-              const { selectPlay, makeSeededRng, pooledPrior } = await import("../autopilot/efficacy");
+              const { selectPlay, exploitPlay, makeSeededRng, pooledPrior } = await import("../autopilot/efficacy");
               const { getStoppedPlayIds } = await import("../autopilot/policyInducer");
               // Evidence-weighted selection (Thompson sampling) over the REAL
               // track record. Cold-start (no data) ⇒ ~uniform, i.e. equivalent to
@@ -747,7 +747,31 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               const candidates = pool.map(
                 (p) => stats.find((s) => s.playId === p.id) ?? { playId: p.id, successes: 0, failures: 0 },
               );
-              const pickedId = selectPlay(candidates, makeSeededRng(Date.now()), pooledPrior(candidates));
+              // Frontier #10 — constrained exploration: Thompson sampling still
+              // balances explore/exploit per pick, but the GOVERNOR caps the
+              // rolling exploration rate (and zeroes it when runway is red), so
+              // the brain can't churn on unproven plays when every dollar counts.
+              // Over budget ⇒ force the greedy (best-evidence) pick. Safety-
+              // monotone + best-effort (any failure falls back to Thompson).
+              const prior = pooledPrior(candidates);
+              let pickedId: string | null;
+              try {
+                const { governExploration, explorationCapForRunway } = await import("../autopilot/loopStability");
+                const { getRecentStory } = await import("../autopilot/experienceLog");
+                const recentGrowth = (await getRecentStory(24))
+                  .filter((e) => e.domain === "growth" && e.playId)
+                  .slice(0, 8)
+                  .map((e) => e.playId as string);
+                const greedyNow = exploitPlay(candidates, prior);
+                const explores = recentGrowth.filter((p) => p !== greedyNow).length;
+                const cap = explorationCapForRunway(senses.envelopeStatus);
+                const verdict = governExploration(explores, recentGrowth.length, cap);
+                pickedId = verdict.mayExplore
+                  ? selectPlay(candidates, makeSeededRng(Date.now()), prior)
+                  : greedyNow;
+              } catch {
+                pickedId = selectPlay(candidates, makeSeededRng(Date.now()), prior);
+              }
               const play = (pickedId && growthPlayById(pickedId)) || selectNextGrowthPlay(0);
               selectedPlayId = play.id;
               // County-targeted owned content: for a county guide, pin it to the
@@ -984,6 +1008,21 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             move: actMove.kind,
             outcome: outcome.status,
           });
+
+          // Frontier #10 — observe loop oscillation: if the brain's focus has
+          // been churning domain tick-to-tick, surface it (a running-but-
+          // thrashing loop, the dual of loopStall's not-running). Read-only +
+          // best-effort; the damping multiplier is available to callers that
+          // want hysteresis (a deeper follow-up than this observation).
+          try {
+            const { detectOscillation } = await import("../autopilot/loopStability");
+            const { getRecentStory } = await import("../autopilot/experienceLog");
+            const recentDomains = (await getRecentStory(8)).map((e) => e.domain);
+            const osc = detectOscillation([actMove.domain, ...recentDomains]);
+            if (osc.oscillating) {
+              logger.warn(`[continuousLoop] loop oscillating — domain churn ${osc.score.toFixed(2)} across ${osc.distinct} foci`);
+            }
+          } catch { /* oscillation observation is best-effort */ }
 
           // Open an Experience Log row so real signals can accrete (dispatch
           // result keyed by dispatchId, founder verdict keyed by askId). This

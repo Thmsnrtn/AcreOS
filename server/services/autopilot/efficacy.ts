@@ -172,6 +172,25 @@ export function selectPlay(stats: PlayStats[], rng: Rng, prior: PlayPrior = FLAT
 }
 
 /**
+ * GREEDY pick — the play with the highest posterior mean (no sampling), the
+ * exploit-only counterpart to selectPlay. The exploration governor (Frontier
+ * #10) routes here when the rolling exploration budget is spent: every dollar
+ * to the current best-by-evidence. Deterministic + total (null on empty).
+ */
+export function exploitPlay(stats: PlayStats[], prior: PlayPrior = FLAT_PRIOR): string | null {
+  const pa = Math.max(0, prior.alpha);
+  const pb = Math.max(0, prior.beta);
+  let best: { playId: string; mean: number } | null = null;
+  for (const s of stats) {
+    const successes = Math.max(0, s.successes);
+    const failures = Math.max(0, s.failures);
+    const mean = (1 + pa + successes) / (2 + pa + pb + successes + failures);
+    if (best === null || mean > best.mean) best = { playId: s.playId, mean };
+  }
+  return best?.playId ?? null;
+}
+
+/**
  * A play's display-ready efficacy: the posterior mean over real outcomes, plus
  * the evidence count. Deterministic (no sampling) — for the daily letter.
  */
