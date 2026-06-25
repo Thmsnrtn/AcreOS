@@ -108,9 +108,11 @@ export function admitPack(pack: DomainPack): AdmissionVerdict {
 
   // ── Regulatory profile (optional) — if present, it must be well-formed ──
   if (pack.regulatoryProfile !== undefined) {
-    const rp = pack.regulatoryProfile;
+    // Validate an UNTRUSTED runtime shape — go through `unknown` (the typed
+    // RegulatoryProfile doesn't structurally overlap Record<string,unknown>).
+    const rp = pack.regulatoryProfile as unknown as Record<string, unknown>;
     for (const key of ["attributionCues", "determinationPatterns", "bannedPatterns", "disclosureCues"] as const) {
-      if (!Array.isArray((rp as Record<string, unknown>)[key])) {
+      if (!Array.isArray(rp[key])) {
         violations.push(`regulatoryProfile.${key} must be an array`);
       }
     }
