@@ -39,7 +39,9 @@ import {
   timestamp,
   jsonb,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ============================================
 // SOLENE_DISPATCH_QUEUE
@@ -63,6 +65,13 @@ export const soleneDispatchQueue = pgTable(
     resultFullPath: text("result_full_path"),
     // Optional: who/what enqueued this (e.g. opportunity id, founder user id)
     enqueuedBy: text("enqueued_by"),
+    // Exactly-once seal (panel #2). A deterministic effect-key the caller may
+    // supply so the SAME intended outward effect, enqueued twice (a concurrent
+    // tick after the loop's lock TTL lapsed, a retry), inserts ONCE. NULL =
+    // unconstrained (legacy + non-autopilot enqueues are unaffected). The
+    // autopilot act path fills it from domain+move+play+target+time-window so a
+    // double-fire dedups while legitimately-distinct effects each run.
+    idempotencyKey: text("idempotency_key"),
     // L2.8 — multi-agent code review
     // When a code-producing dispatch completes, completeDispatch() auto-enqueues
     // a sibling review-dispatch (agentRole='code-reviewer'). The columns below
@@ -95,6 +104,11 @@ export const soleneDispatchQueue = pgTable(
       t.reviewStatus,
       t.completedAt,
     ),
+    // Exactly-once: a PARTIAL unique index so only keyed rows are constrained
+    // (NULL keys — every legacy/non-autopilot enqueue — are never deduped).
+    uniqueIndex("solene_dispatch_queue_idempotency_key_uq")
+      .on(t.idempotencyKey)
+      .where(sql`idempotency_key IS NOT NULL`),
   ],
 );
 

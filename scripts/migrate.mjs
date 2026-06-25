@@ -5243,6 +5243,12 @@ const STATEMENTS = [
   // 2026-06-05 cost audit (batch 5) — optional per-dispatch model override.
   // NULL means "pick by role + sourceType" (dispatchRunner.selectModelForDispatch).
   `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "model" text`,
+  // Exactly-once seal (panel #2): a deterministic effect-key so the SAME
+  // intended outward effect enqueued twice (concurrent tick / retry) inserts
+  // once. PARTIAL unique index → only keyed rows are constrained; NULL keys
+  // (legacy + non-autopilot enqueues) are never deduped.
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "idempotency_key" text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_dispatch_queue_idempotency_key_uq" ON "solene_dispatch_queue" ("idempotency_key") WHERE "idempotency_key" IS NOT NULL`,
 
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,

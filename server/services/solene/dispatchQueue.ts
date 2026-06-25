@@ -31,6 +31,7 @@
  *  - SKIP LOCKED requires Postgres >= 9.5; AcreOS runs 16, so this is safe.
  */
 
+import { createHash } from "node:crypto";
 import { desc, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import {
@@ -62,6 +63,13 @@ export interface EnqueueDispatchOpts {
   enqueuedBy?: string;
   /** Bypass the $100 ceiling. Required for any cap above DISPATCH_MAX_COST_USD. */
   founderOverride?: boolean;
+  /**
+   * Exactly-once seal (panel #2). When set, the SAME key inserts ONCE — a second
+   * enqueue with the same key returns the FIRST row's id without creating a
+   * duplicate (the concurrent-tick / retry double-fire). NULL/omitted = legacy
+   * behavior (always insert). Use computeEffectKey() to build it.
+   */
+  idempotencyKey?: string | null;
 }
 
 export interface DispatchResultInput {
@@ -85,6 +93,32 @@ export interface DispatchFailureInput {
   resultFullPath?: string | null;
   commitsReferenced?: string[];
   filesModified?: string[];
+}
+
+/** Default exactly-once window: an effect repeated within this span dedups.
+ *  Sized ≥ the loop's lock TTL so a concurrent tick (the documented double-fire
+ *  cause) lands in the same window; legitimate cadence runs are further apart. */
+export const DEFAULT_EFFECT_WINDOW_MS = 30 * 60_000;
+
+/**
+ * Compute a deterministic exactly-once effect-key for an autopilot dispatch
+ * (panel #2). The SAME concrete effect (domain + move + play + target) inside
+ * the SAME time window hashes identically, so a concurrent tick / retry dedups;
+ * a different target or a later window hashes differently, so legitimately
+ * distinct effects each run. Pure + total — `nowMs` injected (no clock here).
+ */
+export function computeEffectKey(parts: {
+  domain: string;
+  moveKind: string;
+  playId?: string | null;
+  targetId?: string | null;
+  nowMs: number;
+  windowMs?: number;
+}): string {
+  const w = parts.windowMs && parts.windowMs > 0 ? parts.windowMs : DEFAULT_EFFECT_WINDOW_MS;
+  const bucket = Math.floor(parts.nowMs / w);
+  const raw = `${parts.domain}|${parts.moveKind}|${parts.playId ?? "-"}|${parts.targetId ?? "-"}|${bucket}`;
+  return createHash("sha256").update(raw, "utf8").digest("hex");
 }
 
 // ----------------------------------------------------------------------------
@@ -125,20 +159,50 @@ export async function enqueueDispatch(
   // error so a hiccup can never quietly unbound the ensemble.
   await assertWithinEnsembleCap({ founderOverride: opts.founderOverride });
 
-  const [inserted] = await db
-    .insert(soleneDispatchQueue)
-    .values({
-      status: "queued",
-      priority: priority.toFixed(3),
-      sourceType: opts.sourceType,
-      sourceId: opts.sourceId,
-      agentRole: opts.agentRole,
-      promptText: opts.promptText,
-      maxCostUsd: maxCostUsd.toFixed(2),
-      timeoutMs,
-      enqueuedBy: opts.enqueuedBy ?? null,
-    })
-    .returning({ id: soleneDispatchQueue.id });
+  const key = opts.idempotencyKey?.trim() || null;
+  const values = {
+    status: "queued" as const,
+    priority: priority.toFixed(3),
+    sourceType: opts.sourceType,
+    sourceId: opts.sourceId,
+    agentRole: opts.agentRole,
+    promptText: opts.promptText,
+    maxCostUsd: maxCostUsd.toFixed(2),
+    timeoutMs,
+    enqueuedBy: opts.enqueuedBy ?? null,
+    idempotencyKey: key,
+  };
+
+  // Exactly-once (panel #2): a keyed enqueue inserts ON CONFLICT DO NOTHING
+  // against the partial unique index. On conflict (a concurrent tick / retry
+  // already enqueued this exact effect) the insert returns nothing — we then
+  // fetch and return the FIRST row's id so the caller gets at-most-once
+  // semantics without a duplicate dispatch. An unkeyed enqueue is unchanged.
+  let inserted: { id: number } | undefined;
+  if (key) {
+    [inserted] = await db
+      .insert(soleneDispatchQueue)
+      .values(values)
+      .onConflictDoNothing({ target: soleneDispatchQueue.idempotencyKey })
+      .returning({ id: soleneDispatchQueue.id });
+    if (!inserted) {
+      const [existing] = await db
+        .select({ id: soleneDispatchQueue.id })
+        .from(soleneDispatchQueue)
+        .where(eq(soleneDispatchQueue.idempotencyKey, key))
+        .limit(1);
+      if (existing) {
+        logger.info(`[dispatchQueue] enqueue deduped on idempotencyKey → existing id=${existing.id}`);
+        return existing.id;
+      }
+      throw new Error("enqueueDispatch: conflict but no existing row found");
+    }
+  } else {
+    [inserted] = await db
+      .insert(soleneDispatchQueue)
+      .values(values)
+      .returning({ id: soleneDispatchQueue.id });
+  }
 
   if (!inserted) {
     throw new Error("enqueueDispatch: insert returned no id");

@@ -43,6 +43,7 @@ interface QueueRow {
   result_summary: string | null;
   result_full_path: string | null;
   enqueued_by: string | null;
+  idempotency_key: string | null;
 }
 
 interface ResultRow {
@@ -95,10 +96,24 @@ vi.mock("../../db", () => {
               result_summary: null,
               result_full_path: null,
               enqueued_by: row.enqueuedBy ?? null,
+              idempotency_key: row.idempotencyKey ?? null,
             };
-            QUEUE.push(r);
             return {
-              returning: (_cols: unknown) => Promise.resolve([{ id: r.id }]),
+              // Non-keyed path: unconditional insert (push at returning time).
+              returning: (_cols: unknown) => {
+                QUEUE.push(r);
+                return Promise.resolve([{ id: r.id }]);
+              },
+              // Exactly-once path: insert ON CONFLICT (idempotency_key) DO NOTHING.
+              onConflictDoNothing: (_t: unknown) => ({
+                returning: (_cols: unknown) => {
+                  if (r.idempotency_key != null && QUEUE.some((q) => q.idempotency_key === r.idempotency_key)) {
+                    return Promise.resolve([]); // conflict — no second row
+                  }
+                  QUEUE.push(r);
+                  return Promise.resolve([{ id: r.id }]);
+                },
+              }),
             };
           }
           return Promise.resolve();
@@ -128,8 +143,11 @@ vi.mock("../../db", () => {
         from: (_t: unknown) => ({
           where: (clause: any) => ({
             limit: (_n: number) => {
-              const id = (clause as any)?.__id;
-              const row = QUEUE.find((q) => q.id === id);
+              // The mocked eq() sets __id to the compared VALUE — a numeric id
+              // for claim/update lookups, or the effect-key string for
+              // enqueueDispatch's exactly-once by-key fetch. Match either.
+              const v = (clause as any)?.__id;
+              const row = QUEUE.find((q) => q.id === v) ?? QUEUE.find((q) => q.idempotency_key === v);
               if (!row) return Promise.resolve([]);
               return Promise.resolve([{ id: row.id, status: row.status }]);
             },
@@ -464,5 +482,55 @@ describe("isOrphanedDispatch (pure) — Frontier #12 reaper predicate", () => {
     const at = (ms: number) => ({ status: "in_progress", startedAt: ago(ms), timeoutMs: 10 * 60_000 });
     expect(isOrphanedDispatch(at(15 * 60_000), NOW)).toBe(false); // exactly timeout+margin → not yet
     expect(isOrphanedDispatch(at(15 * 60_000 + 1), NOW)).toBe(true); // 1ms past → orphaned
+  });
+});
+
+describe("computeEffectKey (pure) — exactly-once seal (panel #2)", () => {
+  it("is deterministic — same effect + same window → identical key", async () => {
+    const { computeEffectKey } = await import("./dispatchQueue");
+    const a = computeEffectKey({ domain: "growth", moveKind: "grow_owned_channels", playId: "county-guide", targetId: "42", nowMs: 1_700_000_000_000 });
+    const b = computeEffectKey({ domain: "growth", moveKind: "grow_owned_channels", playId: "county-guide", targetId: "42", nowMs: 1_700_000_000_000 });
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("a concurrent tick within the same window dedups (same key); the next window differs", async () => {
+    const { computeEffectKey, DEFAULT_EFFECT_WINDOW_MS } = await import("./dispatchQueue");
+    const base = { domain: "growth", moveKind: "grow_owned_channels", playId: "p", targetId: "t" };
+    const t0 = 1_700_000_000_000 - (1_700_000_000_000 % DEFAULT_EFFECT_WINDOW_MS); // window-aligned
+    // two ticks inside the same window → same key (the double-fire dedups)
+    expect(computeEffectKey({ ...base, nowMs: t0 + 1000 })).toBe(computeEffectKey({ ...base, nowMs: t0 + DEFAULT_EFFECT_WINDOW_MS - 1 }));
+    // a tick in the NEXT window → different key (a legitimate later run proceeds)
+    expect(computeEffectKey({ ...base, nowMs: t0 + 1000 })).not.toBe(computeEffectKey({ ...base, nowMs: t0 + DEFAULT_EFFECT_WINDOW_MS + 1000 }));
+  });
+
+  it("distinct targets / plays / domains / moves never collide", async () => {
+    const { computeEffectKey } = await import("./dispatchQueue");
+    const k = (o: any) => computeEffectKey({ domain: "growth", moveKind: "m", playId: "p", targetId: "t", nowMs: 1_700_000_000_000, ...o });
+    const base = k({});
+    expect(k({ targetId: "other" })).not.toBe(base);
+    expect(k({ playId: "other" })).not.toBe(base);
+    expect(k({ domain: "support" })).not.toBe(base);
+    expect(k({ moveKind: "other" })).not.toBe(base);
+  });
+});
+
+describe("enqueueDispatch — exactly-once on idempotencyKey", () => {
+  it("a second enqueue with the SAME key returns the first id and inserts NO second row", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    const before = QUEUE.length;
+    const opts = { sourceType: "auto_dispatch" as const, sourceId: "x", agentRole: "soren" as const, promptText: "go", idempotencyKey: "eff-key-abc" };
+    const id1 = await enqueueDispatch(opts);
+    const id2 = await enqueueDispatch(opts); // concurrent tick / retry
+    expect(id2).toBe(id1);
+    expect(QUEUE.length).toBe(before + 1); // exactly one row, not two
+  });
+
+  it("an UNKEYED enqueue is unaffected — always inserts", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    const before = QUEUE.length;
+    await enqueueDispatch({ sourceType: "auto_dispatch", sourceId: "y", agentRole: "soren", promptText: "go" });
+    await enqueueDispatch({ sourceType: "auto_dispatch", sourceId: "y", agentRole: "soren", promptText: "go" });
+    expect(QUEUE.length).toBe(before + 2);
   });
 });

@@ -936,6 +936,17 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           }
 
           const { simulateMove, renderSimulation } = await import("../autopilot/simulate");
+          // Panel #2 — exactly-once seal: a deterministic effect-key so a
+          // concurrent tick (lock-TTL lapse) or retry dedups this dispatch
+          // instead of double-firing the outward effect.
+          const { computeEffectKey } = await import("./dispatchQueue");
+          const effectKey = computeEffectKey({
+            domain: actMove.domain,
+            moveKind: actMove.kind,
+            playId: selectedPlayId,
+            targetId: selectedGrowthTarget ? String(selectedGrowthTarget.id) : null,
+            nowMs: Date.now(),
+          });
           const outcome = budgetDeferReason
             ? ({
                 status: "suppressed" as const,
@@ -945,7 +956,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               })
             : await planAndAct(
             actMove,
-            { envelopeStatus: pulse.envelopeStatus, maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD },
+            { envelopeStatus: pulse.envelopeStatus, maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD, idempotencyKey: effectKey },
             {
               runGate: (action) => runPolicyGateStack(action),
               classify: classifyEscalation,

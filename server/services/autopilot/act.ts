@@ -156,6 +156,7 @@ export interface ActDeps {
     promptText: string;
     maxCostUsd?: number;
     enqueuedBy?: string;
+    idempotencyKey?: string | null;
   }) => Promise<number>;
   ask: (input: {
     askingAgentRole: SoleneDispatchAgentRole;
@@ -193,6 +194,12 @@ export interface ActContext {
   envelopeStatus: "green" | "amber" | "red";
   /** Lean-mode per-dispatch cap. */
   maxCostUsd?: number;
+  /**
+   * Exactly-once seal (panel #2) — a deterministic effect-key the loop computes
+   * for THIS move so a concurrent tick / retry dedups instead of double-firing
+   * the outward effect. Forwarded verbatim to enqueue; omit for legacy behavior.
+   */
+  idempotencyKey?: string | null;
 }
 
 /**
@@ -274,6 +281,7 @@ export async function planAndAct(
         promptText: dispatchPromptFor(move),
         maxCostUsd: ctx.maxCostUsd,
         enqueuedBy: "autopilot",
+        idempotencyKey: ctx.idempotencyKey ?? null,
       });
       return { status: "acted", move, dispatchId, gate: { decision: "pass" } };
     }
