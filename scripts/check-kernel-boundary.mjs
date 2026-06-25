@@ -76,6 +76,7 @@ const KERNEL_MANIFEST = [
   "experienceLog.ts",
   "policyInducer.ts",
   "shadowRegret.ts", // off-policy decision-quality (read-only; never feeds reward)
+  "admitPack.ts", // DomainPack refinement proof (fail-closed pack admission)
 ].map((f) => `${AUTOPILOT}/${f}`);
 
 // ----------------------------------------------------------------------------
