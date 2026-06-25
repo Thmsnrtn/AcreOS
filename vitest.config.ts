@@ -18,7 +18,12 @@ export default defineConfig({
     // test suite by accident until this was tightened.
     exclude: ["**/node_modules/**", "dist", "client", ".claude", "**/.claude/**"],
     setupFiles: ["./tests/setup.ts"],
-    testTimeout: 15000,
+    // 30s (was 15s): a handful of slow integration tests (webhook idempotency,
+    // model-hygiene, telemetry fire-and-forget) intermittently exceed 15s NOT
+    // because they do 15s of work but because they get CPU-starved under the
+    // many-parallel-fork load of the full 7500-test suite. They pass in
+    // isolation; the extra headroom keeps the suite reliably green under load.
+    testTimeout: 30000,
     // Some hooks dynamically import large modules (routes-founder-chat
     // pulls in 40+ tool modules; webhookHandlers pulls in stripe). The
     // default 10s hook timeout is too tight on cold caches.
