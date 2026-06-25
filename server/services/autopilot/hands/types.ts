@@ -36,6 +36,16 @@ export interface HandResult {
 export interface HandContext {
   dispatchId?: number | null;
   agentRole?: string;
+  /**
+   * Frontier #4 — decision provenance the brain may attach so the witnessed
+   * action's proof-receipt seals a FALSIFIABLE forecast + cause attribution.
+   * All optional: when absent, the receipt honestly seals null (the brain
+   * abstained). `inputsHash` is always sealed by the executor regardless.
+   */
+  prediction?: import("../proofReceipt").SealedPrediction | null;
+  causeAllocation?: import("../proofReceipt").CauseAllocation | null;
+  /** Hash of the situation/senses the decision was made under, if known. */
+  situationHash?: string | null;
 }
 
 export type HandHandler = (

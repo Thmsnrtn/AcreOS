@@ -123,7 +123,7 @@ export async function executeHandWitnessed(
   // persistence failure never voids a real send.
   try {
     const { recordReceipt } = await import("../proofReceiptStore");
-    const { hashPayload } = await import("../proofReceipt");
+    const { hashPayload, hashDecisionInputs } = await import("../proofReceipt");
     const { orgScope, PLATFORM_SCOPE } = await import("../tenantScope");
     const orgId = typeof input.organization_id === "number" ? input.organization_id : null;
     // T1.3: bind the REAL earned autonomy level for the hand's domain (the
@@ -133,12 +133,20 @@ export async function executeHandWitnessed(
       const { getDomainLevel } = await import("../domainAutonomy");
       autonomyLevel = `${hand.domain}:${await getDomainLevel(hand.domain)}`;
     } catch { /* level unavailable → "unknown" (honest) */ }
+    // Frontier #4 — seal a deterministic REPLAY ANCHOR over the exact witnessed
+    // inputs, plus the brain's sealed forecast + cause attribution when the
+    // decision layer supplied them (else null — an honest abstention).
+    const inputsHash = hashDecisionInputs({ name, input, domain: hand.domain, autonomyLevel, witnessedBy });
     const receipt = await recordReceipt({
       actionKind: name,
       scope: orgId != null ? orgScope(orgId) : PLATFORM_SCOPE,
       payloadHash: hashPayload({ name, input }),
       accountableHumanId: witnessedBy,
       autonomyLevel,
+      situationHash: ctx.situationHash ?? null,
+      prediction: ctx.prediction ?? null,
+      causeAllocation: ctx.causeAllocation ?? null,
+      inputsHash,
     });
     if (receipt) {
       result.receipt = receipt;

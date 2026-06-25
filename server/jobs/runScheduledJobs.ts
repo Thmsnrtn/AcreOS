@@ -1982,6 +1982,63 @@ function startActionPreviewSweeperJob() {
 }
 
 /**
+ * Dispatch reaper — every 10 minutes, marks `solene_dispatch_queue` rows
+ * stuck `in_progress` past their own timeout + a 5-minute margin as 'failed'.
+ * Those are workers that crashed mid-dispatch: the claim is exactly-once
+ * (FOR UPDATE SKIP LOCKED) so the row is never re-claimed, but without a
+ * reaper it would pin a queue slot forever. Reaped rows are FAILED, never
+ * requeued — an orphan's outward effect may have partially fired, so the
+ * safe stance is at-most-once (surface it, never risk a double-send).
+ */
+function startDispatchReaperJob() {
+  const TEN_MIN = 10 * 60 * 1000;
+  log('Registering dispatch reaper (every 10m)', 'sovereign');
+  trackInterval(async () => {
+    // TTL = 9m (≈90% of cadence) so a stuck instance can't double-run it.
+    withJobLock("dispatch_reaper", 9 * 60, async () => {
+      const { reapOrphanedDispatches } = await import('../services/solene/dispatchQueue');
+      const n = await reapOrphanedDispatches();
+      if (n > 0) log(`[dispatch-reaper] reaped ${n} orphaned in_progress dispatch(es)`, 'sovereign');
+    }).catch((err: any) => {
+      log(`[dispatch-reaper] reap failed: ${err?.message ?? err}`, 'sovereign');
+    });
+  }, TEN_MIN);
+}
+
+/**
+ * Proof-receipt chain self-verify (Frontier #4) — daily, walks every scope's
+ * persisted receipt chain and re-checks the per-row seal + chain linkage. A
+ * tamper-evident log is only worth anything if something re-verifies it: a
+ * silent corruption (an edited row, a forked chain) becomes a critical page
+ * instead of sitting undetected until a regulator/insurer asks for the proof.
+ */
+function startProofChainAuditJob() {
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  log('Registering proof-receipt chain audit (daily)', 'sovereign');
+  trackInterval(async () => {
+    // Daily — TTL = 23h (≈90% of cadence).
+    withJobLock("proof_chain_audit", 23 * 60 * 60, async () => {
+      const { auditAllReceiptChains } = await import('../services/autopilot/proofReceiptStore');
+      const r = await auditAllReceiptChains();
+      if (r.brokenChains.length > 0) {
+        const detail = r.brokenChains.map((b) => `${b.scope}: ${b.reason}`).join('; ');
+        log(`[proof-chain-audit] BROKEN ${r.brokenChains.length}/${r.scopesChecked} chains — ${detail}`, 'sovereign');
+        const { sendSolenePage } = await import('../services/solene/pagerService');
+        await sendSolenePage({
+          severity: 'critical',
+          subject: `Proof-receipt chain integrity broken (${r.brokenChains.length} scope${r.brokenChains.length === 1 ? '' : 's'})`,
+          body: `A persisted governance receipt chain failed self-verification — possible tampering or corruption. ${detail}`,
+        }).catch(() => { /* paging best-effort; the log line is the durable record */ });
+      } else {
+        log(`[proof-chain-audit] OK — ${r.receiptsChecked} receipts across ${r.scopesChecked} scopes verify`, 'sovereign');
+      }
+    }).catch((err: any) => {
+      log(`[proof-chain-audit] failed: ${err?.message ?? err}`, 'sovereign');
+    });
+  }, ONE_DAY);
+}
+
+/**
  * Strategic proposals — weekly + monthly. Weekly fires Sundays at
  * 00:00 UTC; monthly synthesis fires on the 1st at 10:00 UTC so its
  * output is available when the founder letter generates at 12:00 UTC.
@@ -4261,6 +4318,14 @@ export async function runScheduledJobs(): Promise<void> {
   // previews (commitAt passed + 1h) as 'failed' so they don't
   // misleadingly show up in /founder/preview.
   startActionPreviewSweeperJob();
+
+  // Dispatch reaper — every 10m; fails orphaned in_progress dispatches
+  // (worker crashed mid-dispatch) so a dead row can't pin a queue slot.
+  startDispatchReaperJob();
+
+  // Proof-receipt chain audit — daily; re-verifies every persisted
+  // receipt chain and pages on a broken seal/link (Frontier #4).
+  startProofChainAuditJob();
 
   // Customer monthly letters — per-org narrative from Sophie.
   // Fires on the 1st at 15:00 UTC (3h after the founder letter

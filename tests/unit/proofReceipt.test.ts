@@ -3,6 +3,8 @@ import {
   buildReceipt,
   verifyReceipt,
   hashPayload,
+  hashDecisionInputs,
+  scorePrediction,
   ART50_DISCLOSURE,
   CONSTITUTION_VERSION_HASH,
   PROOF_RECEIPT_VERSION,
@@ -93,6 +95,64 @@ describe("verifyReceipt — integrity proof", () => {
     const v = verifyReceipt(stale);
     expect(v.valid).toBe(true); // integrity intact
     expect(v.constitutionMatchesCurrent).toBe(false); // but constitution moved on
+  });
+});
+
+describe("Frontier #4 — prediction-sealed, replayable, cause-allocable", () => {
+  const withPrediction = (overrides: Partial<ProofReceiptInput> = {}) =>
+    sample({
+      prediction: { pSuccess: 0.8, expectedValueUsd: 120, predictedCostUsd: 2, basis: "contextualForecast" },
+      inputsHash: hashDecisionInputs({ situation: "stalled", candidates: ["a", "b"], chosen: "a" }),
+      causeAllocation: { lever: "recover_payment", moveKind: "dunning_action", weight: 1 },
+      ...overrides,
+    });
+
+  it("the current build emits v2 receipts", () => {
+    expect(PROOF_RECEIPT_VERSION).toBe(2);
+    expect(withPrediction().v).toBe(2);
+  });
+
+  it("the sealed prediction is part of the integrity seal — editing it is tampering", () => {
+    const r = withPrediction();
+    expect(verifyReceipt(r).valid).toBe(true);
+    const forged = { ...r, prediction: { ...r.prediction!, pSuccess: 0.01 } };
+    expect(verifyReceipt(forged).valid).toBe(false); // can't rewrite the forecast after the fact
+  });
+
+  it("the inputsHash + causeAllocation are sealed too", () => {
+    const r = withPrediction();
+    expect(verifyReceipt({ ...r, inputsHash: "rewritten" }).valid).toBe(false);
+    expect(verifyReceipt({ ...r, causeAllocation: { ...r.causeAllocation!, lever: "other" } }).valid).toBe(false);
+  });
+
+  it("scorePrediction grades the sealed forecast against reality (Brier)", () => {
+    const confident = withPrediction({ prediction: { pSuccess: 0.9, expectedValueUsd: null, predictedCostUsd: null, basis: "x" } });
+    const hit = scorePrediction(confident, true)!;
+    expect(hit.brier).toBeCloseTo(0.01, 6); // (0.9-1)^2
+    expect(hit.surprised).toBe(false);
+    const miss = scorePrediction(confident, false)!;
+    expect(miss.brier).toBeCloseTo(0.81, 6); // (0.9-0)^2 — confidently wrong
+    expect(miss.surprised).toBe(true);
+  });
+
+  it("scorePrediction abstains (null) when the brain sealed no pSuccess", () => {
+    const noP = withPrediction({ prediction: { pSuccess: null, expectedValueUsd: 1, predictedCostUsd: 1, basis: "x" } });
+    expect(scorePrediction(noP, true)).toBeNull();
+    expect(scorePrediction(sample(), true)).toBeNull(); // no prediction at all
+  });
+
+  it("a receipt with no Frontier-#4 fields still seals + verifies (honest abstention)", () => {
+    const r = sample(); // prediction/inputsHash/causeAllocation default to null
+    expect(verifyReceipt(r).valid).toBe(true);
+    expect(r.prediction).toBeNull();
+  });
+
+  it("hashDecisionInputs is deterministic + order-insensitive (the replay anchor)", () => {
+    const a = hashDecisionInputs({ x: 1, y: [2, 3], z: "q" });
+    const b = hashDecisionInputs({ z: "q", y: [2, 3], x: 1 });
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[a-f0-9]{64}$/);
+    expect(hashDecisionInputs({ x: 1 })).not.toBe(a);
   });
 });
 

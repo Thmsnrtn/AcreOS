@@ -30,6 +30,7 @@ import {
   GENESIS_RECEIPT_HASH,
   type ProofReceipt,
   type ProofReceiptInput,
+  type ReceiptVersion,
 } from "./proofReceipt";
 import { describeScope, scopeOrgId } from "./tenantScope";
 import { logger } from "../../utils/logger";
@@ -72,6 +73,11 @@ export async function recordReceipt(
       costUsd: receipt.costUsd,
       autonomyLevel: receipt.autonomyLevel,
       situationHash: receipt.situationHash,
+      // Frontier #4 — persist the sealed prediction + replay anchor + cause.
+      receiptVersion: receipt.v,
+      prediction: receipt.prediction ?? null,
+      inputsHash: receipt.inputsHash ?? null,
+      causeAllocation: receipt.causeAllocation ?? null,
       disclosure: receipt.disclosure,
       issuedAt: receipt.issuedAt,
       prevReceiptHash: receipt.prevReceiptHash,
@@ -84,10 +90,18 @@ export async function recordReceipt(
   }
 }
 
-/** Reconstruct the sealed ProofReceipt from a stored row (exact fields). */
+/**
+ * Reconstruct the sealed ProofReceipt from a stored row (exact fields). The
+ * body shape MUST match what the hash sealed, so we branch on receipt_version:
+ * a v1 row omits the prediction/inputsHash/causeAllocation keys entirely (they
+ * didn't exist when its hash was computed); a v2 row includes them. Including a
+ * null-valued key where the original had no key would change the canonical hash
+ * and falsely fail verification.
+ */
 export function rowToReceipt(r: ProofReceiptRow): ProofReceipt {
-  return {
-    v: 1,
+  const v: ReceiptVersion = r.receiptVersion === 2 ? 2 : 1;
+  const base: ProofReceipt = {
+    v,
     actionKind: r.actionKind,
     scope: r.scope,
     orgId: r.organizationId ?? null,
@@ -105,6 +119,12 @@ export function rowToReceipt(r: ProofReceiptRow): ProofReceipt {
     prevReceiptHash: r.prevReceiptHash ?? null,
     receiptHash: r.receiptHash,
   };
+  if (v === 2) {
+    base.prediction = (r.prediction as ProofReceipt["prediction"]) ?? null;
+    base.inputsHash = r.inputsHash ?? null;
+    base.causeAllocation = (r.causeAllocation as ProofReceipt["causeAllocation"]) ?? null;
+  }
+  return base;
 }
 
 export interface ChainVerdict {
@@ -154,4 +174,40 @@ export async function verifyReceiptChain(scopeStr: string): Promise<ChainVerdict
     .where(eq(proofReceipts.scope, scopeStr))
     .orderBy(asc(proofReceipts.id));
   return verifyReceiptSequence(rows.map(rowToReceipt));
+}
+
+export interface ChainAuditSummary {
+  scopesChecked: number;
+  receiptsChecked: number;
+  /** Chains with a broken seal or chain link — the alarm condition. */
+  brokenChains: Array<{ scope: string; reason: string; failedAtIndex?: number }>;
+}
+
+/**
+ * Frontier #4 — CHAIN SELF-VERIFY. Walk EVERY scope's persisted receipt chain
+ * and verify it end to end. A tamper-evident log is only as good as the thing
+ * that re-checks it: this is the self-audit the scheduled `proof_chain_audit`
+ * job runs so a silent corruption (a hand-edited row, a forked chain) surfaces
+ * as an alarm instead of sitting undetected until a regulator asks. Returns a
+ * summary; the caller decides whether to page. Best-effort per scope — one bad
+ * chain doesn't abort the sweep.
+ */
+export async function auditAllReceiptChains(): Promise<ChainAuditSummary> {
+  const scopes = await db
+    .selectDistinct({ scope: proofReceipts.scope })
+    .from(proofReceipts);
+  const summary: ChainAuditSummary = { scopesChecked: 0, receiptsChecked: 0, brokenChains: [] };
+  for (const { scope } of scopes) {
+    summary.scopesChecked++;
+    try {
+      const verdict = await verifyReceiptChain(scope);
+      summary.receiptsChecked += verdict.count;
+      if (!verdict.ok) {
+        summary.brokenChains.push({ scope, reason: verdict.reason ?? "unknown", failedAtIndex: verdict.failedAtIndex });
+      }
+    } catch (err) {
+      summary.brokenChains.push({ scope, reason: `audit threw: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  }
+  return summary;
 }

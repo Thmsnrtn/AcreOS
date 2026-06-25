@@ -6929,12 +6929,22 @@ const STATEMENTS = [
      "cost_usd" double precision,
      "autonomy_level" text,
      "situation_hash" text,
+     "receipt_version" integer NOT NULL DEFAULT 1,
+     "prediction" jsonb,
+     "inputs_hash" text,
+     "cause_allocation" jsonb,
      "disclosure" text NOT NULL,
      "issued_at" text NOT NULL,
      "prev_receipt_hash" text,
      "receipt_hash" text NOT NULL,
      "created_at" timestamp DEFAULT now()
    )`,
+  // Frontier #4 — additive columns for the prediction-sealed receipt. Existing
+  // rows keep receipt_version=1 (legacy body shape) so their hash still verifies.
+  `ALTER TABLE "proof_receipts" ADD COLUMN IF NOT EXISTS "receipt_version" integer NOT NULL DEFAULT 1`,
+  `ALTER TABLE "proof_receipts" ADD COLUMN IF NOT EXISTS "prediction" jsonb`,
+  `ALTER TABLE "proof_receipts" ADD COLUMN IF NOT EXISTS "inputs_hash" text`,
+  `ALTER TABLE "proof_receipts" ADD COLUMN IF NOT EXISTS "cause_allocation" jsonb`,
   `CREATE INDEX IF NOT EXISTS "proof_receipts_scope_id_idx"
      ON "proof_receipts" ("scope", "id")`,
   `CREATE INDEX IF NOT EXISTS "proof_receipts_org_issued_idx"

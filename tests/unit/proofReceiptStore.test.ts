@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("../../server/db", () => ({ db: {} }));
 
 import { verifyReceiptSequence, rowToReceipt } from "../../server/services/autopilot/proofReceiptStore";
-import { buildReceipt, GENESIS_RECEIPT_HASH, type ProofReceipt } from "../../server/services/autopilot/proofReceipt";
+import { buildReceipt, hashPayload, GENESIS_RECEIPT_HASH, type ProofReceipt } from "../../server/services/autopilot/proofReceipt";
 import { orgScope } from "../../server/services/autopilot/tenantScope";
 import type { ProofReceiptRow } from "@shared/schema";
 
@@ -88,6 +88,10 @@ describe("rowToReceipt — DB row round-trips to a verifiable receipt", () => {
       costUsd: original.costUsd,
       autonomyLevel: original.autonomyLevel,
       situationHash: original.situationHash,
+      receiptVersion: 2,
+      prediction: original.prediction ?? null,
+      inputsHash: original.inputsHash ?? null,
+      causeAllocation: original.causeAllocation ?? null,
       disclosure: original.disclosure,
       issuedAt: original.issuedAt,
       prevReceiptHash: original.prevReceiptHash,
@@ -97,5 +101,60 @@ describe("rowToReceipt — DB row round-trips to a verifiable receipt", () => {
     const reconstructed = rowToReceipt(row);
     expect(reconstructed).toEqual(original); // exact field-for-field match
     expect(verifyReceiptSequence([reconstructed]).ok).toBe(true);
+  });
+
+  it("a LEGACY v1 row (no prediction columns) still round-trips + verifies", () => {
+    // A v1 receipt was sealed WITHOUT the Frontier #4 fields — its hash covers
+    // the legacy body shape. rowToReceipt must reconstruct that exact shape
+    // (omitting the new keys) so the seal still matches.
+    const original = chainOf(1)[0];
+    // Recompute a genuine v1 seal over the legacy body (no new fields).
+    const legacyBody = {
+      v: 1 as const,
+      actionKind: original.actionKind,
+      scope: original.scope,
+      orgId: original.orgId,
+      payloadHash: original.payloadHash,
+      accountableHumanId: original.accountableHumanId,
+      constitutionVersion: original.constitutionVersion,
+      constitutionVersionHash: original.constitutionVersionHash,
+      gateResults: original.gateResults,
+      evalScore: original.evalScore,
+      costUsd: original.costUsd,
+      autonomyLevel: original.autonomyLevel,
+      situationHash: original.situationHash,
+      disclosure: original.disclosure,
+      issuedAt: original.issuedAt,
+      prevReceiptHash: original.prevReceiptHash,
+    };
+    const legacySeal = hashPayload(legacyBody);
+    const row: ProofReceiptRow = {
+      id: 1,
+      organizationId: original.orgId,
+      scope: original.scope,
+      actionKind: original.actionKind,
+      payloadHash: original.payloadHash,
+      accountableHumanId: original.accountableHumanId,
+      constitutionVersion: original.constitutionVersion,
+      constitutionVersionHash: original.constitutionVersionHash,
+      gateResults: original.gateResults,
+      evalScore: original.evalScore,
+      costUsd: original.costUsd,
+      autonomyLevel: original.autonomyLevel,
+      situationHash: original.situationHash,
+      receiptVersion: 1,
+      prediction: null,
+      inputsHash: null,
+      causeAllocation: null,
+      disclosure: original.disclosure,
+      issuedAt: original.issuedAt,
+      prevReceiptHash: original.prevReceiptHash,
+      receiptHash: legacySeal,
+      createdAt: new Date(),
+    };
+    const reconstructed = rowToReceipt(row);
+    expect(reconstructed.v).toBe(1);
+    expect("prediction" in reconstructed).toBe(false); // legacy shape — key absent
+    expect(verifyReceiptSequence([reconstructed]).ok).toBe(true); // seal still verifies
   });
 });

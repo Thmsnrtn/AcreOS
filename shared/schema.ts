@@ -2588,6 +2588,16 @@ export const proofReceipts = pgTable("proof_receipts", {
   costUsd: doublePrecision("cost_usd"),
   autonomyLevel: text("autonomy_level"),
   situationHash: text("situation_hash"),
+  // Frontier #4 — receipt schema version (1 = legacy, 2 = prediction-sealed).
+  // Stored so rowToReceipt reconstructs the exact body shape the hash sealed.
+  receiptVersion: integer("receipt_version").notNull().default(1),
+  // Frontier #4 — the brain's sealed forecast at issuance (SealedPrediction);
+  // null when the brain abstained. Sealed into receiptHash on v2 receipts.
+  prediction: jsonb("prediction"),
+  // Frontier #4 — the replay anchor: sha256 of the full decision inputs.
+  inputsHash: text("inputs_hash"),
+  // Frontier #4 — what the realized outcome delta is attributed to (CauseAllocation).
+  causeAllocation: jsonb("cause_allocation"),
   disclosure: text("disclosure").notNull(),
   // ISO string (not a timestamp) so the sealed receiptHash round-trips
   // byte-for-byte — a timestamp's tz/precision drift would break verification.

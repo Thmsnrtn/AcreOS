@@ -428,3 +428,41 @@ describe("dispatchQueue.completeDispatch / failDispatch", () => {
     expect(resultRow?.error_message).toMatch(/kill switch/);
   });
 });
+
+describe("isOrphanedDispatch (pure) — Frontier #12 reaper predicate", () => {
+  const NOW = 1_700_000_000_000;
+  const ago = (ms: number) => new Date(NOW - ms);
+
+  it("an in_progress dispatch past timeout + margin IS orphaned", async () => {
+    const { isOrphanedDispatch } = await import("./dispatchQueue");
+    const d = { status: "in_progress", startedAt: ago(20 * 60_000), timeoutMs: 10 * 60_000 };
+    expect(isOrphanedDispatch(d, NOW)).toBe(true); // 20m > 10m + 5m margin
+  });
+
+  it("an in_progress dispatch still WITHIN timeout + margin is NOT orphaned", async () => {
+    const { isOrphanedDispatch } = await import("./dispatchQueue");
+    const d = { status: "in_progress", startedAt: ago(12 * 60_000), timeoutMs: 10 * 60_000 };
+    expect(isOrphanedDispatch(d, NOW)).toBe(false); // 12m < 10m + 5m margin
+  });
+
+  it("never reaps a non-in_progress row, however stale", async () => {
+    const { isOrphanedDispatch } = await import("./dispatchQueue");
+    const old = { startedAt: ago(99 * 60_000), timeoutMs: 1 };
+    expect(isOrphanedDispatch({ ...old, status: "queued" }, NOW)).toBe(false);
+    expect(isOrphanedDispatch({ ...old, status: "completed" }, NOW)).toBe(false);
+    expect(isOrphanedDispatch({ ...old, status: "failed" }, NOW)).toBe(false);
+    expect(isOrphanedDispatch({ ...old, status: "cancelled" }, NOW)).toBe(false);
+  });
+
+  it("never reaps an in_progress row with no startedAt (claim not yet stamped)", async () => {
+    const { isOrphanedDispatch } = await import("./dispatchQueue");
+    expect(isOrphanedDispatch({ status: "in_progress", startedAt: null, timeoutMs: 1 }, NOW)).toBe(false);
+  });
+
+  it("the margin is honored exactly at the boundary", async () => {
+    const { isOrphanedDispatch } = await import("./dispatchQueue");
+    const at = (ms: number) => ({ status: "in_progress", startedAt: ago(ms), timeoutMs: 10 * 60_000 });
+    expect(isOrphanedDispatch(at(15 * 60_000), NOW)).toBe(false); // exactly timeout+margin → not yet
+    expect(isOrphanedDispatch(at(15 * 60_000 + 1), NOW)).toBe(true); // 1ms past → orphaned
+  });
+});

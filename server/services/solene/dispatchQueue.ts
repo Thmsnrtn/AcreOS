@@ -508,3 +508,49 @@ export async function cancelQueuedDispatch(
 
   return { ok: true, priorStatus: "queued" };
 }
+
+// ── Orphaned-dispatch reaper (frontier #12: exactly-once outward effects) ─────
+// The claim itself is already exactly-once (FOR UPDATE SKIP LOCKED — exactly one
+// worker claims a queued row). The remaining gap is an ORPHAN: a dispatch claimed
+// `in_progress` whose worker crashed before it could complete — it would sit
+// in_progress forever (claimNextDispatch only picks `queued`), never re-run,
+// never finished. This reaps it.
+
+/** Pure: a dispatch is ORPHANED once it's been `in_progress` longer than its own
+ *  timeout + a margin — almost always a worker that crashed mid-dispatch. */
+export function isOrphanedDispatch(
+  d: { status: string; startedAt: Date | null; timeoutMs: number },
+  now: number,
+  marginMs = 5 * 60_000,
+): boolean {
+  if (d.status !== "in_progress" || !d.startedAt) return false;
+  return now - new Date(d.startedAt).getTime() > (d.timeoutMs ?? 0) + marginMs;
+}
+
+/**
+ * Reap orphaned `in_progress` dispatches. They are marked FAILED, NOT requeued:
+ * we cannot know whether the orphan's outward effect (a send, a charge) partially
+ * fired, so the safe exactly-once stance is AT-MOST-ONCE for the side effect —
+ * fail it and surface it, never risk a double-send by re-running. The reaped
+ * dispatch's domain takes its honest autonomy hit through the normal feedback
+ * edge the next tick reads. Best-effort; returns the count reaped.
+ */
+export async function reapOrphanedDispatches(marginMs = 5 * 60_000): Promise<number> {
+  try {
+    const res = await db.execute(sql`
+      UPDATE solene_dispatch_queue
+      SET status = 'failed', completed_at = now(),
+          result_summary = 'reaped: orphaned in_progress past timeout (likely a worker crash mid-dispatch)'
+      WHERE status = 'in_progress'
+        AND started_at IS NOT NULL
+        AND started_at < now() - (((timeout_ms + ${marginMs}) || ' milliseconds')::interval)
+      RETURNING id
+    `);
+    const list: unknown[] = Array.isArray(res) ? res : ((res as { rows?: unknown[] })?.rows ?? []);
+    if (list.length > 0) logger.warn(`[dispatchQueue] reaped ${list.length} orphaned in_progress dispatch(es)`);
+    return list.length;
+  } catch (err) {
+    logger.warn("[dispatchQueue] orphan reap failed", err instanceof Error ? err : undefined);
+    return 0;
+  }
+}

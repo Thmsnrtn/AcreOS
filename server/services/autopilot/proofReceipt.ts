@@ -16,15 +16,32 @@
  * #2). One artifact, four payoffs.
  *
  * Pure + exhaustively testable: `issuedAt` is injected (no clock inside), the
- * hash is deterministic over a canonicalized body. Durable persistence + a
- * prev-hash CHAIN (tamper-evident log) is a follow-up; the field is reserved now.
+ * hash is deterministic over a canonicalized body.
+ *
+ * Frontier #4 — the receipt is now a FALSIFIABLE COMMITMENT, not just a record:
+ *   • prediction-sealed — the brain's forecast (P(success), expected value,
+ *     predicted cost) is sealed into the hash at issuance, so the autopilot
+ *     CANNOT retroactively claim it called the outcome. `scorePrediction`
+ *     grades the sealed forecast against reality (a Brier contribution).
+ *   • replayable — `inputsHash` commits to the exact decision inputs, so an
+ *     auditor can reconstruct the inputs, re-hash, and confirm THIS action
+ *     followed from THOSE inputs under THAT constitution (deterministic replay).
+ *   • cause-allocable — `causeAllocation` names the lever the outcome delta
+ *     should be attributed to, closing the loop to the causal world-model.
+ * v2 adds these three fields (always present, null-default); v1 receipts (no
+ * such fields) still verify — `verifyReceipt` accepts both versions and hashes
+ * each over its own body shape.
  */
 
 import { createHash } from "node:crypto";
 import { RAW_IMMUTABLES } from "@sovereign/immutables";
 import { type TenantScope, describeScope, scopeOrgId } from "./tenantScope";
 
-export const PROOF_RECEIPT_VERSION = 1 as const;
+/** Current emit version. v2 seals prediction + inputsHash + causeAllocation. */
+export const PROOF_RECEIPT_VERSION = 2 as const;
+export type ReceiptVersion = 1 | 2;
+/** Every version this build can still verify (older receipts stay valid). */
+export const SUPPORTED_RECEIPT_VERSIONS: ReadonlySet<number> = new Set([1, 2]);
 
 /** The `prevReceiptHash` of the first receipt in any scope's chain. */
 export const GENESIS_RECEIPT_HASH = "GENESIS";
@@ -35,6 +52,32 @@ export const GENESIS_RECEIPT_HASH = "GENESIS";
  */
 export const ART50_DISCLOSURE =
   "Prepared by AcreOS automated operations and executed only under explicit human approval (EU AI Act Art. 50 transparency).";
+
+/**
+ * The brain's SEALED forecast at decision time — a commitment, not a record.
+ * Once in the receiptHash it can't be edited; `scorePrediction` grades it
+ * against the realized outcome. All fields nullable (the brain may abstain).
+ */
+export interface SealedPrediction {
+  /** P(this action succeeds), 0..1, as the brain believed AT ISSUANCE. */
+  pSuccess: number | null;
+  /** Expected value in USD the brain attributed to this action. */
+  expectedValueUsd: number | null;
+  /** Predicted cost in USD (vs the realized cost on the receipt). */
+  predictedCostUsd: number | null;
+  /** Where the forecast came from, e.g. "contextualForecast" | "memory" | "prior". */
+  basis: string;
+}
+
+/** What the realized outcome delta should be attributed to (causal world-model). */
+export interface CauseAllocation {
+  /** The lever/cause, e.g. "publish_guide" | "recover_payment". */
+  lever: string;
+  /** The concrete move kind that fired. */
+  moveKind: string;
+  /** Attribution weight 0..1 (1 = solely this cause). */
+  weight: number;
+}
 
 export interface ProofReceiptInput {
   /** What was done, e.g. "send_email" | "run_ad_campaign". */
@@ -52,12 +95,18 @@ export interface ProofReceiptInput {
   autonomyLevel?: string | null;
   /** Hash of the situation/senses the decision was made under, if available. */
   situationHash?: string | null;
+  /** The brain's sealed forecast at issuance (Frontier #4 — falsifiable). */
+  prediction?: SealedPrediction | null;
+  /** sha256 of the full decision inputs — the replay anchor (Frontier #4). */
+  inputsHash?: string | null;
+  /** What the outcome delta is attributed to (Frontier #4 — cause-allocable). */
+  causeAllocation?: CauseAllocation | null;
   /** Link to the previous receipt in the chain (null until the chain is persisted). */
   prevReceiptHash?: string | null;
 }
 
 export interface ProofReceipt {
-  v: typeof PROOF_RECEIPT_VERSION;
+  v: ReceiptVersion;
   actionKind: string;
   /** Stable scope string, e.g. "platform" | "org:123". */
   scope: string;
@@ -72,6 +121,12 @@ export interface ProofReceipt {
   costUsd: number | null;
   autonomyLevel: string | null;
   situationHash: string | null;
+  /** v2+ only: the sealed forecast (absent on v1 receipts). */
+  prediction?: SealedPrediction | null;
+  /** v2+ only: the replay anchor (absent on v1 receipts). */
+  inputsHash?: string | null;
+  /** v2+ only: the cause attribution (absent on v1 receipts). */
+  causeAllocation?: CauseAllocation | null;
   disclosure: string;
   issuedAt: string;
   prevReceiptHash: string | null;
@@ -140,11 +195,26 @@ export function buildReceipt(input: ProofReceiptInput, issuedAt: string): ProofR
     costUsd: input.costUsd ?? null,
     autonomyLevel: input.autonomyLevel ?? null,
     situationHash: input.situationHash ?? null,
+    // v2 — always present (null-default) so the body shape is stable + sealed.
+    prediction: input.prediction ?? null,
+    inputsHash: input.inputsHash ?? null,
+    causeAllocation: input.causeAllocation ?? null,
     disclosure: ART50_DISCLOSURE,
     issuedAt,
     prevReceiptHash: input.prevReceiptHash ?? null,
   });
   return { ...body, receiptHash: hashReceiptBody(body) };
+}
+
+/**
+ * sha256 of the full decision inputs — what `inputsHash` should be. This is the
+ * REPLAY ANCHOR: an auditor who can reconstruct the exact inputs the brain saw
+ * (situation + candidate moves + chosen) can re-hash them and confirm they match
+ * the sealed `inputsHash`, proving THIS action deterministically followed from
+ * THOSE inputs. (Alias of the canonical hash — named for intent at call sites.)
+ */
+export function hashDecisionInputs(value: unknown): string {
+  return sha256Canonical(value);
 }
 
 export interface ReceiptVerdict {
@@ -165,7 +235,7 @@ export interface ReceiptVerdict {
  */
 export function verifyReceipt(receipt: ProofReceipt): ReceiptVerdict {
   const constitutionMatchesCurrent = receipt.constitutionVersionHash === CONSTITUTION_VERSION_HASH;
-  if (receipt.v !== PROOF_RECEIPT_VERSION) {
+  if (!SUPPORTED_RECEIPT_VERSIONS.has(receipt.v)) {
     return { valid: false, reason: `unsupported receipt version ${String(receipt.v)}`, constitutionMatchesCurrent };
   }
   if (!receipt.actionKind || !receipt.accountableHumanId) {
@@ -184,4 +254,32 @@ export function verifyReceipt(receipt: ProofReceipt): ReceiptVerdict {
     return { valid: false, reason: "receiptHash mismatch — the receipt has been tampered with", constitutionMatchesCurrent };
   }
   return { valid: true, constitutionMatchesCurrent };
+}
+
+export interface PredictionScore {
+  /** Brier contribution (pSuccess - actual)², 0..1. Lower is better. */
+  brier: number;
+  /** The sealed P(success) being graded. */
+  predicted: number;
+  /** The realized outcome as 0/1. */
+  actual: number;
+  /** True when the brain was confidently WRONG (Brier > 0.25 — past the
+   *  coin-flip line on the wrong side). The honest "you missed this" signal. */
+  surprised: boolean;
+}
+
+/**
+ * Grade a receipt's SEALED prediction against the realized outcome. Because the
+ * prediction was hashed into the receipt at issuance, this is a falsifiable
+ * after-the-fact score the autopilot cannot game — it committed to pSuccess
+ * BEFORE the outcome was known. Returns null when the receipt sealed no pSuccess
+ * (the brain honestly abstained — there is nothing to grade). Pure.
+ */
+export function scorePrediction(receipt: ProofReceipt, actualSuccess: boolean): PredictionScore | null {
+  const p = receipt.prediction?.pSuccess;
+  if (p == null || !Number.isFinite(p)) return null;
+  const predicted = Math.min(1, Math.max(0, p));
+  const actual = actualSuccess ? 1 : 0;
+  const brier = (predicted - actual) ** 2;
+  return { brier, predicted, actual, surprised: brier > 0.25 };
 }
