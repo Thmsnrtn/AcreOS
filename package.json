@@ -9,6 +9,7 @@
     "build:analyze": "ANALYZE=1 tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "test": "vitest run",
+    "verify-receipt": "node scripts/verify-receipt.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "check": "NODE_OPTIONS=--max-old-space-size=6144 tsc --noEmit --incremental false && npm run lint:schema && npm run lint:no-fabrication && npm run lint:boundaries && npm run lint:kernel-boundary && npm run lint:ratchets && npm run lint:contract-adoption && npm run lint:org-fetch && npm run lint:css-hover && npm run lint:page-hex && npm run lint:prefetch-authority && npm run lint:date-format && npm run lint:zindex && npm run lint:translucency && npm run lint:eslint-ratchet",

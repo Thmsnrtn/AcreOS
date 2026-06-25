@@ -29,6 +29,7 @@ import {
   CONSTITUTION_VERSION_HASH,
 } from "../autopilot/proofReceipt";
 import { describeScope, orgScope, type TenantScope } from "../autopilot/tenantScope";
+import { summarizeControlCatalog, type ControlCatalogSummary } from "./controlCatalog";
 import { logger } from "../../utils/logger";
 
 export interface GovernanceEvidencePacket {
@@ -40,6 +41,9 @@ export interface GovernanceEvidencePacket {
   auditChain: { verified: boolean; note: string };
   witnessedSends: { total: number; byChannel: Record<string, number> };
   autonomy: Array<{ domain: string; level: string; cleanCycleCount: number }>;
+  /** Frontier #14 — the governance controls in force + their fail-modes. Sealed
+   *  with the packet so "what controls govern this?" is part of the evidence. */
+  controls: ControlCatalogSummary;
   /** Canonical sha256 over every field above — the integrity seal. */
   packetHash: string;
 }
@@ -72,6 +76,7 @@ export function assembleEvidencePacket(inp: EvidenceInputs): GovernanceEvidenceP
     },
     witnessedSends: inp.witnessedSends,
     autonomy: inp.autonomy,
+    controls: summarizeControlCatalog(),
   };
   return { ...body, packetHash: hashPayload(body) };
 }
