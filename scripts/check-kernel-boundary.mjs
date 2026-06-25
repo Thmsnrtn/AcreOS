@@ -78,6 +78,7 @@ const KERNEL_MANIFEST = [
   "shadowRegret.ts", // off-policy decision-quality (read-only; never feeds reward)
   "admitPack.ts", // DomainPack refinement proof (fail-closed pack admission)
   "loopStability.ts", // constrained exploration + oscillation damping
+  "witnessGrant.ts", // delegable, policy-bound witnessing authority (fail-closed)
 ].map((f) => `${AUTOPILOT}/${f}`);
 
 // ----------------------------------------------------------------------------
