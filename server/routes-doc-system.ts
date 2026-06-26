@@ -1064,6 +1064,40 @@ export function registerDocSystemRoutes(app: Express): void {
     }
   });
 
+  // GET /api/generated-documents/:id/sealed-pdf — the sealed signed artifact.
+  // Composites the agreement + every signature image + full audit trail +
+  // a live content-hash integrity attestation into one portable, court-
+  // presentable PDF. The bytes' SHA-256 is returned in X-Document-Sha256 so
+  // a downloader can record a fingerprint of the exact artifact served. This
+  // is the human-readable face of the evidentiary stack (per-signature hash +
+  // DB immutability trigger + completion certificate); it adds no new state.
+  api.get("/api/generated-documents/:id/sealed-pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const documentId = parseInt(req.params.id);
+      if (isNaN(documentId)) {
+        return Errors.badRequest(res, "Invalid document ID");
+      }
+
+      const document = await storage.getGeneratedDocument(org.id, documentId);
+      if (!document) {
+        return Errors.notFound(res, "Document");
+      }
+
+      const { generateSealedDocumentPdf } = await import("./services/esign/sealedDocumentPdf");
+      const sealed = await generateSealedDocumentPdf({ organizationId: org.id, documentId });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="signed-document-${documentId}.pdf"`);
+      res.setHeader("X-Document-Sha256", sealed.sha256);
+      res.setHeader("X-Document-Integrity-Verified", String(sealed.allHashesMatch));
+      return res.send(sealed.pdf);
+    } catch (error) {
+      logger.error("Sealed PDF error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
+    }
+  });
+
   // POST /api/generated-documents/:id/request-signature - Request signatures (native system)
   api.post("/api/generated-documents/:id/request-signature", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
