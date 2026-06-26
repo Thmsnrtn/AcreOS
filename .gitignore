@@ -100,3 +100,5 @@ evals/reports/
 audit-*.png
 walk-*.png
 w2-*.png
+persona-prod-parcelcheck-desktop.png
+.playwright-mcp/
