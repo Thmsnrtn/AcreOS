@@ -161,10 +161,14 @@ export async function sendSms(options: SmsOptions): Promise<SmsResult> {
   }
 
   if (!credentials) {
-    logger.info(`[SMS] No provider configured - would send to ${options.to}: ${options.message.substring(0, 50)}...`);
+    // FAIL VISIBLY (product-truth audit): no SMS credentials ⇒ the message
+    // genuinely cannot send. Previously returned success:true + a fake
+    // `mock-<ts>` id, so an unconfigured prod silently "succeeded". Report the
+    // real failure instead (a deliberate dry-run uses simulation mode above).
+    logger.warn(`[SMS] No provider configured — cannot send to ${options.to}`);
     return {
-      success: true,
-      messageId: `mock-${Date.now()}`,
+      success: false,
+      error: "SMS provider not configured (no org or platform Twilio credentials)",
       provider: SmsProvider.TWILIO,
     };
   }
