@@ -270,6 +270,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-scp-v2.ts", mountPath: null, kind: "register", export: "registerSCPv2Routes" },
   { file: "routes-seller-intent.ts", mountPath: "/api/seller-intent", kind: "router", export: "default" },
   { file: "routes-sendgrid-events.ts", mountPath: null, kind: "register", export: "registerSendGridEventRoutes" },
+  { file: "routes-ses-events.ts", mountPath: null, kind: "register", export: "registerSesEventRoutes" },
   { file: "routes-servicer.ts", mountPath: null, kind: "register", export: "registerServicerRoutes" },
   { file: "routes-setup.ts", mountPath: "/api/founder/setup", kind: "router", export: "default" },
   { file: "routes-skip-tracing.ts", mountPath: "/api/skip-tracing", kind: "router", export: "default" },

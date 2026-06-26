@@ -113,6 +113,7 @@ import commentsRouter from "./routes-comments";
 // Phase 1: Communication features
 import { registerInboundEmailRoutes } from "./routes-inbound-email";
 import { registerSendGridEventRoutes } from "./routes-sendgrid-events";
+import { registerSesEventRoutes } from "./routes-ses-events";
 // Eleonora deliverability — Phase 1 §10 / Week 7-8.
 import { registerDeliverabilityRoutes } from "./routes-deliverability";
 
@@ -2369,6 +2370,8 @@ export async function registerRoutes(
   registerInboundEmailRoutes(app);
   // SendGrid event webhook (Hessam §2.3) — Ed25519-signed delivery events
   registerSendGridEventRoutes(app);
+  // SES bounce/complaint webhook (Gap 4) — SNS-signed; feeds suppression list
+  registerSesEventRoutes(app);
   // Pillar 9.1 — Founder DLQ inspection + retry/discard endpoints.
   (await import("./routes-founder-dlq")).registerFounderDlqRoutes(app);
   // Tier 3F — data co-op: Map-door county market heat (customer) + quarterly

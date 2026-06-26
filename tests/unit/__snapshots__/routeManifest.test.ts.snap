@@ -235,6 +235,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-seller-intent.ts",
   "routes-sendgrid-events.ts",
   "routes-servicer.ts",
+  "routes-ses-events.ts",
   "routes-setup.ts",
   "routes-skip-tracing.ts",
   "routes-solene-audit.ts",
