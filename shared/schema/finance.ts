@@ -337,6 +337,11 @@ export const mailShipments = pgTable("mail_shipments", {
   sentAt: timestamp("sent_at", { withTimezone: true }),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   cancellationReason: text("cancellation_reason"),
+  // The credit-pool debit taken at enqueue, persisted so BOTH the flusher
+  // worker (on send failure) and the cancel path can refund this exact draw —
+  // the guarantee that a shipment is never charged-without-sent.
+  debitEventKey: text("debit_event_key"),
+  debitedCents: integer("debited_cents"),
 }, (table) => [
   index("mail_shipments_org_status_idx").on(table.organizationId, table.status),
   index("mail_shipments_leaves_at_idx").on(table.leavesAt),

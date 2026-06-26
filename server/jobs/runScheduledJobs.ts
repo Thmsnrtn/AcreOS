@@ -1982,6 +1982,28 @@ function startActionPreviewSweeperJob() {
 }
 
 /**
+ * Mail flusher — every 3 minutes, sends `mail_shipments` whose 30-minute hold
+ * window has elapsed (status='queued', leaves_at<=now) through the real Lob
+ * path, writes provider piece ids back, and REFUNDS the enqueue debit on a send
+ * failure. Without this, the outreach-mail queue charged customers and never
+ * mailed (the product-truth audit's most serious gap). withJobLock + the
+ * atomic FOR UPDATE SKIP LOCKED claim make it safe to run on every worker.
+ */
+function startMailFlusherJob() {
+  const THREE_MIN = 3 * 60 * 1000;
+  log('Registering mail flusher (every 3m)', 'sovereign');
+  trackInterval(async () => {
+    withJobLock("mail_flusher", 2 * 60 + 30, async () => {
+      const { flushDueMailShipments } = await import('../services/mail/mailFlusher');
+      const r = await flushDueMailShipments();
+      if (r.claimed > 0) log(`[mail-flusher] claimed=${r.claimed} sent=${r.sent} failed=${r.failed}`, 'sovereign');
+    }).catch((err: any) => {
+      log(`[mail-flusher] failed: ${err?.message ?? err}`, 'sovereign');
+    });
+  }, THREE_MIN);
+}
+
+/**
  * Dispatch reaper — every 10 minutes, marks `solene_dispatch_queue` rows
  * stuck `in_progress` past their own timeout + a 5-minute margin as 'failed'.
  * Those are workers that crashed mid-dispatch: the claim is exactly-once
@@ -4322,6 +4344,10 @@ export async function runScheduledJobs(): Promise<void> {
   // Dispatch reaper — every 10m; fails orphaned in_progress dispatches
   // (worker crashed mid-dispatch) so a dead row can't pin a queue slot.
   startDispatchReaperJob();
+
+  // Mail flusher — every 3m; sends queued mail_shipments past their hold
+  // window via Lob + refunds on failure (never charge-without-send).
+  startMailFlusherJob();
 
   // Proof-receipt chain audit — daily; re-verifies every persisted
   // receipt chain and pages on a broken seal/link (Frontier #4).

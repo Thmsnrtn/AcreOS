@@ -4511,8 +4511,14 @@ const STATEMENTS = [
      "leaves_at" timestamptz NOT NULL,
      "sent_at" timestamptz,
      "cancelled_at" timestamptz,
-     "cancellation_reason" text
+     "cancellation_reason" text,
+     "debit_event_key" text,
+     "debited_cents" integer
    )`,
+  // The flusher worker refunds the exact enqueue debit on send failure (the
+  // never-charge-without-send guarantee); additive, nullable for legacy rows.
+  `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "debit_event_key" text`,
+  `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "debited_cents" integer`,
   `CREATE INDEX IF NOT EXISTS "mail_shipments_org_status_idx" ON "mail_shipments" ("organization_id", "status")`,
   `CREATE INDEX IF NOT EXISTS "mail_shipments_leaves_at_idx" ON "mail_shipments" ("leaves_at")`,
 

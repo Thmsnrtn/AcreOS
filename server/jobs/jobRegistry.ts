@@ -199,6 +199,7 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "customer_letters_monthly", intervalMs: HOUR, critical: false },
   { name: "action_preview_sweeper", intervalMs: HOUR, critical: false },
   { name: "dispatch_reaper", intervalMs: 10 * MIN, critical: false },
+  { name: "mail_flusher", intervalMs: 3 * MIN, critical: true },
   { name: "proof_chain_audit", intervalMs: DAY, critical: true },
   { name: "strategic_proposals_weekly", intervalMs: WEEK, critical: false },
   // Wall-clock 1st-of-month 10:00 UTC. cron not yet consumed.

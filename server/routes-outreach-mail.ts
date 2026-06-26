@@ -405,6 +405,11 @@ export function registerOutreachMailRoutes(app: Express): void {
                 copySnapshot: copy ?? null,
                 audienceFilter,
                 leavesAt,
+                // Persist the exact draw so the flusher can refund on a send
+                // failure (never charge-without-send) + the cancel path can
+                // refund without the client round-tripping the key.
+                debitEventKey: mailDebitKey,
+                debitedCents: mailDebit.debitedCents,
               })
               .returning({ id: mailShipments.id });
 
@@ -494,17 +499,20 @@ export function registerOutreachMailRoutes(app: Express): void {
           .where(eq(mailShipments.id, idParam))
           .returning();
 
-        // Lens 3 — refund the pool draw posted at queue time. The client can
-        // pass the original `shipmentDebitKey` to ensure idempotency; if not
-        // provided, we synthesize the canonical key for callers who only have
-        // the shipmentId. Either way `refundPoolDebit` is no-op on conflict.
-        const debitKey = typeof req.body?.shipmentDebitKey === "string"
-          ? req.body.shipmentDebitKey
-          : null;
-        if (debitKey) {
-          // We don't know the exact debited amount from the canceled shipment,
-          // so we recompute from the per-piece weight × pieceCount. Same math
-          // as queue time, so the refund matches.
+        // Refund the pool draw posted at queue time. Prefer the EXACT debit
+        // now persisted on the shipment (debitEventKey + debitedCents) — no
+        // client round-trip, no recompute drift. Fall back to the legacy
+        // client-key + recompute path for rows enqueued before this column
+        // existed. refundPoolDebit is idempotent (no-op on conflict).
+        if (existing.debitEventKey && existing.debitedCents && existing.debitedCents > 0) {
+          await refundPoolDebit({
+            organizationId: orgId,
+            originalEventId: existing.debitEventKey,
+            amountCents: existing.debitedCents,
+            reason: `Mail shipment ${idParam} cancelled within hold window`,
+          });
+        } else if (typeof req.body?.shipmentDebitKey === "string") {
+          // Legacy fallback: recompute from per-piece weight × pieceCount.
           const action = mailPoolActionFor(existing.provider ?? "", existing.pieceType);
           const { creditCost } = await import("./services/creditCost");
           const weight = await creditCost(action);
@@ -512,7 +520,7 @@ export function registerOutreachMailRoutes(app: Express): void {
           if (refundCents > 0) {
             await refundPoolDebit({
               organizationId: orgId,
-              originalEventId: debitKey,
+              originalEventId: req.body.shipmentDebitKey,
               amountCents: refundCents,
               reason: `Mail shipment ${idParam} cancelled within hold window`,
             });
