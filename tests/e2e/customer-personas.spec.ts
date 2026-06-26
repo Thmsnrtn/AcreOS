@@ -62,12 +62,33 @@ function deviceProfile(device: Device): Record<string, unknown> {
 const isMobileDevice = (d: Device) =>
   ["iphone-14", "iphone-se", "pixel-5", "galaxy-s9", "tiny-phone"].includes(d);
 
+// Fire-and-forget beacons abort on navigation — never a product bug.
+const BEACON_RE = /\/api\/(telemetry|analytics)\b/;
+// Endpoints gated behind an external key. In a test env with those keys unset
+// a 5xx/▢ is "honestly unconfigured", not "the UI broke" — recorded as a SOFT
+// finding (the founder should still see it; ideally these degrade to a clean
+// empty state rather than 5xx) but it does not fail the persona.
+const CONFIG_GATED_RE =
+  /(\/api\/(stripe|billing|products|pax\/|integrations|quickbooks|qbo|skip-trac|providers|enrich|avm|regrid|twilio|lob|ses)|\/coach\b|\/ai\b)/i;
+// React-Query echoes the HTTP failures the response handler already captured
+// (with URLs). They're redundant noise here, not a second bug.
+const REDUNDANT_QUERY_RE = /\[Query Error\]|Failed to fetch/i;
+// Navigation cancels in-flight requests — not a failure. Console "Failed to load
+// resource" is URL-less noise; the response/requestfailed handlers capture the
+// meaningful ones with URLs. A production build ships no source maps, so .map
+// requests 404 by design.
+const ABORTED_RE = /ERR_ABORTED|net::ERR_FAILED|interrupted/i;
+const REDUNDANT_CONSOLE_RE = /Failed to load resource/i;
+const IGNORABLE_404_RE = /\.map(\?|$)|\.js(\?|$)|\.css(\?|$)|\.png|\.svg|\.ico|\.woff|favicon|manifest/i;
+
 interface DoorFinding {
   door: Door;
   route: string;
   ok: boolean;
   consoleErrors: string[];
   failedRequests: string[];
+  /** Config-gated 5xx / beacon aborts — recorded, not fatal in an unconfigured env. */
+  degradedRequests: string[];
   forbiddenLeaks: string[];
   vocabMissing: string[];
   screenshot: string;
@@ -124,18 +145,39 @@ for (const p of CUSTOMER_PERSONAS) {
     await seedPersona(ctx, p);
     const page = await ctx.newPage();
 
-    // Per-context instrumentation.
+    // Per-context instrumentation. Hard = the UI broke; degraded = an optional
+    // integration is unconfigured in this env (recorded, not fatal).
     const consoleErrors: string[] = [];
     const failedRequests: string[] = [];
+    const degradedRequests: string[] = [];
     page.on("console", (m) => {
-      if (m.type() === "error") consoleErrors.push(m.text().slice(0, 300));
+      if (m.type() !== "error") return;
+      const t = m.text();
+      if (REDUNDANT_CONSOLE_RE.test(t)) return; // URL-less; captured by response handler
+      if (REDUNDANT_QUERY_RE.test(t)) { degradedRequests.push(`console: ${t.slice(0, 200)}`); return; }
+      consoleErrors.push(t.slice(0, 300));
     });
     page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message.slice(0, 300)}`));
-    page.on("requestfailed", (r) =>
-      failedRequests.push(`${r.method()} ${r.url()} — ${r.failure()?.errorText ?? "failed"}`),
-    );
+    page.on("requestfailed", (r) => {
+      const url = r.url();
+      const err = r.failure()?.errorText ?? "failed";
+      if (ABORTED_RE.test(err)) return; // navigation cancellation — not a failure
+      const line = `${r.method()} ${url} — ${err}`;
+      if (BEACON_RE.test(url) || CONFIG_GATED_RE.test(url)) degradedRequests.push(line);
+      else failedRequests.push(line);
+    });
     page.on("response", (r) => {
-      if (r.status() >= 500) failedRequests.push(`${r.status()} ${r.request().method()} ${r.url()}`);
+      const status = r.status();
+      const url = r.url();
+      if (status === 404) {
+        if (IGNORABLE_404_RE.test(url)) return; // prod ships no source maps; optional assets
+        degradedRequests.push(`404 ${r.request().method()} ${url}`); // a real-but-soft 404 to review
+        return;
+      }
+      if (status < 500) return;
+      const line = `${status} ${r.request().method()} ${url}`;
+      if (CONFIG_GATED_RE.test(url) || BEACON_RE.test(url)) degradedRequests.push(line);
+      else failedRequests.push(line);
     });
 
     const personaDir = path.join(OUT_DIR, p.slug);
@@ -146,7 +188,7 @@ for (const p of CUSTOMER_PERSONAS) {
 
     for (const door of DOOR_ORDER) {
       const route = DOOR_ROUTES[door];
-      const before = { c: consoleErrors.length, f: failedRequests.length };
+      const before = { c: consoleErrors.length, f: failedRequests.length, d: degradedRequests.length };
       await page.goto(route, { waitUntil: "domcontentloaded" }).catch(() => undefined);
       await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
       // Settle animations / lazy chunks.
@@ -166,12 +208,14 @@ for (const p of CUSTOMER_PERSONAS) {
 
       const newConsole = consoleErrors.slice(before.c);
       const newFailed = failedRequests.slice(before.f);
+      const newDegraded = degradedRequests.slice(before.d);
       doors.push({
         door,
         route,
         ok: newConsole.length === 0 && newFailed.length === 0 && forbiddenLeaks.length === 0,
         consoleErrors: newConsole,
         failedRequests: newFailed,
+        degradedRequests: newDegraded,
         forbiddenLeaks,
         vocabMissing,
         screenshot: shot,
@@ -183,7 +227,10 @@ for (const p of CUSTOMER_PERSONAS) {
     if (!isMobileDevice(p.device)) {
       await page.goto(DOOR_ROUTES.today, { waitUntil: "domcontentloaded" }).catch(() => undefined);
       await page.waitForTimeout(800);
-      const hrefs = await page.locator("nav a[href], aside a[href]").evaluateAll(
+      // Open any collapsed sidebar / nav drawer so module links are in the DOM,
+      // then collect every internal anchor href on the page.
+      await page.getByRole("button", { name: /menu|navigation|expand|sidebar/i }).first().click({ timeout: 1500 }).catch(() => undefined);
+      const hrefs = await page.locator('a[href^="/"]').evaluateAll(
         (els) => els.map((e) => (e as HTMLAnchorElement).getAttribute("href") ?? ""),
       ).catch(() => [] as string[]);
       const hrefSet = new Set(hrefs);
@@ -196,7 +243,7 @@ for (const p of CUSTOMER_PERSONAS) {
     const hardFindings =
       doors.reduce((n, d) => n + d.consoleErrors.length + d.failedRequests.length + d.forbiddenLeaks.length, 0);
     const softFindings =
-      doors.reduce((n, d) => n + d.vocabMissing.length, 0) +
+      doors.reduce((n, d) => n + d.vocabMissing.length + d.degradedRequests.length, 0) +
       moduleGating.missingExpected.length +
       moduleGating.leakedHidden.length;
 

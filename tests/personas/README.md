@@ -35,10 +35,16 @@ screenshot is captured per door.
 docker compose -f docker-compose.test.yml up -d        # full local stack, or
 E2E_TEST_AUTH=1 npm run start                            # against a local DB
 
-# 2. Walk all 30 personas (each on its assigned device profile):
-E2E_TEST_AUTH=1 npx playwright test --project=customer-personas
+# 2. Seed each persona's frame (persona + investorType + businessType) so the
+#    walk renders the REAL vertical, not the land_investor default. (DB-direct;
+#    bypasses the CSRF-gated onboarding endpoint. Run once after first touch, or
+#    it self-creates the org.)
+DATABASE_URL=<same as the app> npx tsx tests/personas/seedDb.ts
 
-# 3. Aggregate the per-persona JSON into one report:
+# 3. Walk all 30 personas (each on its assigned device profile):
+PLAYWRIGHT_BASE_URL=http://localhost:5000 npx playwright test --project=customer-personas
+
+# 4. Aggregate the per-persona JSON into one report:
 npx tsx tests/personas/report.ts
 #    → test-results/personas/REPORT.md  + per-door screenshots under
 #      test-results/personas/<slug>/

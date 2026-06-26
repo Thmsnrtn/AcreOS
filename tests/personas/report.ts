@@ -20,6 +20,7 @@ interface DoorFinding {
   ok: boolean;
   consoleErrors: string[];
   failedRequests: string[];
+  degradedRequests: string[];
   forbiddenLeaks: string[];
   vocabMissing: string[];
 }
@@ -96,6 +97,7 @@ function main(): void {
     const bits: string[] = [];
     for (const d of r.doors) {
       if (d.vocabMissing.length) bits.push(`\`${d.door}\` missing vocab: ${d.vocabMissing.join(", ")}`);
+      if (d.degradedRequests?.length) bits.push(`\`${d.door}\` config-gated 5xx/beacon: ${d.degradedRequests.join("; ")}`);
     }
     if (r.moduleGating.missingExpected.length) bits.push(`nav missing expected modules: ${r.moduleGating.missingExpected.join(", ")}`);
     if (r.moduleGating.leakedHidden.length) bits.push(`nav LEAKED hidden modules: ${r.moduleGating.leakedHidden.join(", ")}`);
