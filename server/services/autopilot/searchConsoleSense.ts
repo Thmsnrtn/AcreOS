@@ -163,3 +163,50 @@ export async function getSearchConsoleMetrics(windowDays = 28, now = new Date())
     return null;
   }
 }
+
+/** Structurally an EdgeEvidence (worldModel) — kept import-free to avoid coupling
+ *  the GSC service to the kernel. */
+export interface ReachEvidence {
+  successes: number;
+  failures: number;
+}
+
+/** Below this impression count over the GSC window, a published-guide surface
+ *  has no meaningful visibility yet — and during the natural 4-9mo indexing lag
+ *  that is EXPECTED, never a strategy failure. */
+export const SEARCH_REACH_IMPRESSION_FLOOR = 100;
+/** Cap on the success evidence a single GSC snapshot contributes (so one strong
+ *  window can't overwhelm the prior; accumulation across windows is the
+ *  follow-up that persists samples). */
+export const SEARCH_REACH_SUCCESS_CAP = 10;
+
+/**
+ * THE ACQUISITION LOOP-CLOSER (panel). Turn REAL Search Console reach into
+ * EdgeEvidence for the owned-growth/publish lever, so the world-model edge
+ * (publish_guide → … → search_impressions) moves from PRIOR to MEASURED off a
+ * genuine, zero-capital, no-customer-needed consequence: a published guide
+ * actually earning search reach.
+ *
+ * HONESTY + LAG-AWARENESS (load-bearing):
+ *  - null metrics (GSC unconfigured / unavailable) → {0,0}: no evidence, the
+ *    edge is unchanged. Safe-off by default.
+ *  - It produces ONLY success evidence (reach materialized) or {0,0} — NEVER a
+ *    failure. Low/zero impressions early are EXPECTED during the 4-9mo indexing
+ *    lag; punishing the publish strategy for them would be dishonest (absence ≠
+ *    failure, the same invariant evidenceByLever holds). The strategy is judged
+ *    only on reach it DID earn, never on reach it hasn't earned YET.
+ *  - Real click-throughs are the cleanest signal (someone reached the tool via
+ *    search); meaningful impressions are a weaker positive. Pure + total.
+ *
+ * This refines the world-model's CONFIDENCE only (via refineModel) — it is NOT
+ * a PlayStats success and never touches the Thompson reward edge.
+ */
+export function searchReachEvidence(metrics: SearchConsoleMetrics | null): ReachEvidence {
+  if (!metrics) return { successes: 0, failures: 0 };
+  const clicks = Math.max(0, Math.floor(metrics.clicks));
+  if (clicks >= 1) return { successes: Math.min(SEARCH_REACH_SUCCESS_CAP, clicks), failures: 0 };
+  if (Math.max(0, Math.floor(metrics.impressions)) >= SEARCH_REACH_IMPRESSION_FLOOR) {
+    return { successes: 1, failures: 0 };
+  }
+  return { successes: 0, failures: 0 }; // not failing — just not yet earning reach
+}

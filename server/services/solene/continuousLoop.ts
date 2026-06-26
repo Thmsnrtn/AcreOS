@@ -544,7 +544,26 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
         const { resolveActivePack } = await import("../autopilot/activePack");
         const { getPastEpisodes } = await import("../autopilot/experienceLog");
         const activePack = resolveActivePack();
-        const causalModel = refineModel(activePack.causalModel, evidenceByLever(await getPastEpisodes(200), activePack.moveToLever));
+        const evMap = evidenceByLever(await getPastEpisodes(200), activePack.moveToLever);
+        // ACQUISITION LOOP-CLOSER (panel): fold REAL Search Console reach into the
+        // owned-growth/publish lever's evidence, so the world-model edge
+        // (publish_guide → … → search_impressions) moves prior→measured off a
+        // genuine, zero-capital consequence — a published guide earning search
+        // reach. Confidence-refinement only (never the Thompson reward). Gated on
+        // GSC being configured (safe-off) + best-effort.
+        try {
+          const { gscConfigured, getSearchConsoleMetrics, searchReachEvidence } = await import("../autopilot/searchConsoleSense");
+          const reachLever = activePack.moveToLever["grow_owned_channels"];
+          if (reachLever && gscConfigured()) {
+            const reach = searchReachEvidence(await getSearchConsoleMetrics());
+            if (reach.successes > 0 || reach.failures > 0) {
+              const cur = evMap[reachLever] ?? { successes: 0, failures: 0 };
+              evMap[reachLever] = { successes: cur.successes + reach.successes, failures: cur.failures + reach.failures };
+              logger.info(`[continuousLoop] folded GSC reach into world-model: lever=${reachLever} +${reach.successes}s/${reach.failures}f`);
+            }
+          }
+        } catch { /* GSC reach fold is best-effort — the model still refines from episodes */ }
+        const causalModel = refineModel(activePack.causalModel, evMap);
         moves = rankMovesByCausalEv(moves, causalModel, activePack.moveToLever);
         // Frontier #2 — retain the per-move predicted EV so the trace can show
         // shadow regret (the road not taken). Read-only; never feeds learning.

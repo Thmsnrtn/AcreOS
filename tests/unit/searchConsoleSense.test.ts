@@ -4,6 +4,9 @@ import {
   buildSearchAnalyticsBody,
   summarizeSearchRows,
   isoDay,
+  searchReachEvidence,
+  SEARCH_REACH_IMPRESSION_FLOOR,
+  SEARCH_REACH_SUCCESS_CAP,
 } from "../../server/services/autopilot/searchConsoleSense";
 
 describe("buildJwtClaims", () => {
@@ -49,5 +52,36 @@ describe("summarizeSearchRows — honest headline metrics", () => {
   });
   it("never returns negatives", () => {
     expect(summarizeSearchRows([{ impressions: -5, clicks: -1 }], 28).impressions).toBe(0);
+  });
+});
+
+describe("searchReachEvidence — the acquisition loop-closer (real GSC reach → world-model edge)", () => {
+  const m = (impressions: number, clicks: number) => ({ impressions, clicks, avgPosition: null, windowDays: 28 });
+
+  it("null metrics (GSC unconfigured) → {0,0}: no evidence, edge unchanged (safe-off)", () => {
+    expect(searchReachEvidence(null)).toEqual({ successes: 0, failures: 0 });
+  });
+
+  it("real click-throughs are success evidence, capped", () => {
+    expect(searchReachEvidence(m(5000, 3))).toEqual({ successes: 3, failures: 0 });
+    expect(searchReachEvidence(m(5000, 999))).toEqual({ successes: SEARCH_REACH_SUCCESS_CAP, failures: 0 });
+  });
+
+  it("meaningful impressions without clicks → a single weaker success", () => {
+    expect(searchReachEvidence(m(SEARCH_REACH_IMPRESSION_FLOOR, 0))).toEqual({ successes: 1, failures: 0 });
+  });
+
+  it("HONESTY: low/zero reach during the indexing lag is NEVER a failure (absence ≠ failure)", () => {
+    expect(searchReachEvidence(m(0, 0))).toEqual({ successes: 0, failures: 0 });
+    expect(searchReachEvidence(m(SEARCH_REACH_IMPRESSION_FLOOR - 1, 0))).toEqual({ successes: 0, failures: 0 });
+    // it can ONLY ever produce successes or nothing — failures stay 0 for every input
+    for (const [i, c] of [[0, 0], [50, 0], [99, 0], [100, 0], [9999, 50]] as const) {
+      expect(searchReachEvidence(m(i, c)).failures).toBe(0);
+    }
+  });
+
+  it("is total on noisy input (negatives / fractions floored)", () => {
+    expect(searchReachEvidence(m(-10, -1))).toEqual({ successes: 0, failures: 0 });
+    expect(searchReachEvidence(m(250.9, 2.7))).toEqual({ successes: 2, failures: 0 });
   });
 });
