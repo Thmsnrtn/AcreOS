@@ -263,7 +263,7 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
       agent_role, prompt_text, max_cost_usd, timeout_ms,
       started_at, completed_at, result_summary, result_full_path,
       enqueued_by, review_status, reviewed_by_dispatch_id,
-      original_dispatch_id
+      original_dispatch_id, idempotency_key
   `);
 
   // drizzle's `execute` returns slightly different shapes across drivers.
@@ -293,6 +293,7 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
     reviewStatus: r.review_status,
     reviewedByDispatchId: r.reviewed_by_dispatch_id,
     originalDispatchId: r.original_dispatch_id,
+    idempotencyKey: r.idempotency_key ?? null,
     // Batch 5 cost-audit — optional per-dispatch model override
     // (selectModelForDispatch picks when null).
     model: r.model ?? null,
