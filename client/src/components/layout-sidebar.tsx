@@ -1158,6 +1158,7 @@ export function Sidebar() {
                     href={module.href}
                     className="flex items-center gap-2 flex-1 min-w-0"
                     aria-current={active ? "page" : undefined}
+                    aria-label={module.label}
                     data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
                   >
                     <module.icon
