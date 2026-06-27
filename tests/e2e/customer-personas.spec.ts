@@ -92,6 +92,8 @@ interface A11yViolation {
   impact: string;
   help: string;
   nodes: number;
+  /** Up to a few concrete offenders (CSS selector + truncated HTML) to fix. */
+  samples: Array<{ target: string; html: string }>;
 }
 interface DoorFinding {
   door: Door;
@@ -123,11 +125,15 @@ async function runAxe(page: import("@playwright/test").Page): Promise<A11yViolat
       const r = await axe.run(document, { resultTypes: ["violations"] });
       return r.violations
         .filter((v: { impact?: string }) => v.impact === "critical" || v.impact === "serious")
-        .map((v: { id: string; impact?: string; help: string; nodes: unknown[] }) => ({
+        .map((v: { id: string; impact?: string; help: string; nodes: Array<{ target: unknown[]; html: string }> }) => ({
           id: v.id,
           impact: v.impact ?? "",
           help: v.help,
           nodes: v.nodes.length,
+          samples: v.nodes.slice(0, 4).map((n) => ({
+            target: Array.isArray(n.target) ? n.target.join(" ") : String(n.target),
+            html: String(n.html ?? "").slice(0, 160),
+          })),
         }));
     });
     return result as A11yViolation[];
