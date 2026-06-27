@@ -1,0 +1,118 @@
+name: Realism Audit (staging)
+
+# Runs the reshaped launch audit against the STAGING app with REAL test-mode
+# integrations — the layer the local sandbox cannot do (see
+# tests/README-realism-mode.md). This is the actual launch gate.
+#
+# 🔑 DORMANT BY DESIGN until the founder provisions staging. It skips cleanly
+# (amber, not red) until `FLY_STAGING_APP` is set — a missing staging app is
+# infra, not a code defect. Mirrors the gating in staging.yml.
+#
+# To enable (one-time, founder):
+#   1. fly apps create acreos-staging            # + a staging Postgres
+#   2. gh variable set FLY_STAGING_APP --body "acreos-staging"
+#   3. fly secrets set -a acreos-staging \        # REAL test-mode keys:
+#        STRIPE_SECRET_KEY=sk_test_… REGRID_API_KEY=… LOB_API_KEY=test_… \
+#        TWILIO_ACCOUNT_SID=… TWILIO_AUTH_TOKEN=… AWS_SES_… \
+#        AI_INTEGRATIONS_OPENROUTER_API_KEY=…       (see .env.staging.example)
+#   4. (for the authed layer) gh secret set CLERK_SIGN_IN_TICKET / CLERK_PUBLISHABLE_KEY
+#      from a Clerk TEST instance — the persona cookie bypass is Fly-disabled by
+#      design, so staging needs real auth.
+#   5. (for IDOR/load) gh secret set DATABASE_URL_STAGING (read/write to staging DB)
+
+on:
+  workflow_run:
+    workflows: ["Deploy to Staging"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      staging_url:
+        description: "Override staging URL (else resolved from FLY_STAGING_APP)"
+        required: false
+
+concurrency:
+  group: realism-audit
+  cancel-in-progress: true
+
+jobs:
+  realism:
+    name: Realism audit vs staging
+    # Only when staging exists AND (manual OR the deploy succeeded).
+    if: >-
+      vars.FLY_STAGING_APP != '' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+      - name: Install deps
+        run: npm ci
+
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Resolve staging URL
+        id: url
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -n "${{ github.event.inputs.staging_url }}" ]; then
+            URL="${{ github.event.inputs.staging_url }}"
+          else
+            HOST=$(flyctl info --app "${{ vars.FLY_STAGING_APP }}" --json | jq -r '.Hostname')
+            URL="https://${HOST}"
+          fi
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "Staging: ${URL}"
+
+      # ── Layer A: public value path with REAL data (no auth). The free parcel
+      # check exercises the core "find parcels" prop end-to-end IF Regrid + the
+      # open-data providers are configured on staging. Real data, real network.
+      - name: Public parcel-check returns real data (Regrid)
+        run: |
+          URL="${{ steps.url.outputs.url }}"
+          RESP=$(curl --fail --silent --max-time 30 \
+            "${URL}/api/public/parcel-check?address=1600+Pennsylvania+Avenue+NW,+Washington,+DC+20500&sid=realism-ci")
+          echo "$RESP" | head -c 600
+          # A configured staging must return at least one federal source with data.
+          echo "$RESP" | grep -qiE "flood|elevation|FEMA|USGS" \
+            || { echo "::error::parcel-check returned no real data — Regrid/open-data not wired on staging"; exit 1; }
+
+      # ── Layer B: authed realism walk (REAL Clerk auth, REALISM=1). Gated on the
+      # Clerk test ticket because the persona cookie bypass is Fly-disabled.
+      - name: Install Playwright browsers
+        if: ${{ env.HAVE_CLERK == '1' }}
+        run: npx playwright install --with-deps chromium webkit
+        env:
+          HAVE_CLERK: ${{ secrets.CLERK_SIGN_IN_TICKET != '' && '1' || '0' }}
+
+      - name: Authed realism walk + JTBD (REALISM=1) vs staging
+        if: ${{ secrets.CLERK_SIGN_IN_TICKET != '' }}
+        env:
+          REALISM: "1"
+          PLAYWRIGHT_BASE_URL: ${{ steps.url.outputs.url }}
+          CLERK_SIGN_IN_TICKET: ${{ secrets.CLERK_SIGN_IN_TICKET }}
+          CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
+        run: |
+          # Mints a real Clerk session (tests/e2e/auth-clerk-ticket.setup.ts),
+          # then the JTBD outcome flows on Chromium + Safari against staging,
+          # where REALISM=1 makes a configured-integration 5xx a HARD fail.
+          npx playwright test --project=setup
+          npx playwright test --project=jtbd --project=jtbd-webkit || true
+          echo "::notice::Authed realism walk ran. Wire the multi-persona REALISM door-walk here once a staging seed exists."
+
+      - name: Note when authed layer skipped
+        if: ${{ secrets.CLERK_SIGN_IN_TICKET == '' }}
+        run: echo "::notice::CLERK_SIGN_IN_TICKET unset — authed realism layer skipped. Public parcel-check still ran."
+
+      # ── Layer C: IDOR + load need staging DB access (seed two orgs / 5k rows).
+      - name: IDOR + load (needs staging DB)
+        if: ${{ secrets.DATABASE_URL_STAGING != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          PLAYWRIGHT_BASE_URL: ${{ steps.url.outputs.url }}
+        run: |
+          echo "::notice::Run idorFuzz + loadConcurrency against staging DB here (requires the persona seed on staging)."

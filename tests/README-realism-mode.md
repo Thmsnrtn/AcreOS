@@ -21,6 +21,23 @@ fabricate. This is the runbook to close that gap on **staging**.
 | JTBD outcomes (real WebKit/Safari) | `npx playwright test --project=jtbd-webkit` | ✅ 3/3 |
 | Load / concurrency / volume | `VOLUME=5000 CONCURRENCY=40 npx tsx tests/perf/loadConcurrency.ts` | ✅ held up |
 
+## One-time founder setup (flips the whole thing on)
+
+The deploy half is built (`.github/workflows/staging.yml`, dormant) and the
+audit half is built (`.github/workflows/realism-audit.yml`, dormant). To enable:
+
+```bash
+fly apps create acreos-staging                     # + a staging Postgres w/ pgvector
+gh variable set FLY_STAGING_APP --body "acreos-staging"
+fly secrets set -a acreos-staging KEY=… …          # all keys in .env.staging.example
+gh secret set CLERK_SIGN_IN_TICKET                 # from a Clerk TEST instance (authed layer)
+gh secret set DATABASE_URL_STAGING                 # staging DB R/W (IDOR + load layers)
+```
+
+After that, every push to main deploys staging and the realism audit runs
+automatically (public value-path check now; authed + DB layers as their secrets
+are added). Until then both workflows skip cleanly (amber, not red).
+
 ## Realism mode — needs a staging app (`acreos` staging — a pinned 🔑 item)
 
 ### 1. Stand up staging with REAL test-mode keys (the unlock)

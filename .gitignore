@@ -6,8 +6,9 @@ dist
 .env
 .env.*
 .env*.local
-# Allow the example template (contains no secrets)
+# Allow the example templates (contain no secrets, only key names)
 !.env.example
+!.env.staging.example
 
 # Local backups
 .acreos-backups/
