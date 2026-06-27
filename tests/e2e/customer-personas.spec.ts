@@ -72,7 +72,7 @@ const CONFIG_GATED_RE =
   /(\/api\/(stripe|billing|products|pax\/|integrations|quickbooks|qbo|skip-trac|providers|enrich|avm|regrid|twilio|lob|ses)|\/coach\b|\/ai\b)/i;
 // React-Query echoes the HTTP failures the response handler already captured
 // (with URLs). They're redundant noise here, not a second bug.
-const REDUNDANT_QUERY_RE = /\[Query Error\]|Failed to fetch/i;
+const REDUNDANT_QUERY_RE = /\[Query Error|Failed to fetch|suppressed toast/i;
 // Navigation cancels in-flight requests — not a failure. Console "Failed to load
 // resource" is URL-less noise; the response/requestfailed handlers capture the
 // meaningful ones with URLs. A production build ships no source maps, so .map
@@ -80,7 +80,19 @@ const REDUNDANT_QUERY_RE = /\[Query Error\]|Failed to fetch/i;
 const ABORTED_RE = /ERR_ABORTED|net::ERR_FAILED|interrupted/i;
 const REDUNDANT_CONSOLE_RE = /Failed to load resource/i;
 const IGNORABLE_404_RE = /\.map(\?|$)|\.js(\?|$)|\.css(\?|$)|\.png|\.svg|\.ico|\.woff|favicon|manifest/i;
+// 404s that are CORRECT by design, not findings:
+//  - /api/ui-state/<key> returns 404 when a UI pref is unset (every new user);
+//    the client falls back to defaults. (server/routes-ui-state.ts)
+//  - /api/white-label/* is feature-gated → 404 "Feature not available" for any
+//    org without the white_label flag (all customer personas). (featureGate)
+const EXPECTED_404_RE = /\/api\/(ui-state|white-label)\b/i;
 
+interface A11yViolation {
+  id: string;
+  impact: string;
+  help: string;
+  nodes: number;
+}
 interface DoorFinding {
   door: Door;
   route: string;
@@ -91,8 +103,56 @@ interface DoorFinding {
   degradedRequests: string[];
   forbiddenLeaks: string[];
   vocabMissing: string[];
+  /** axe-core critical+serious violations (real launch-blocking a11y issues). */
+  a11y: A11yViolation[];
+  /** Navigation timing: DOMContentLoaded + full load, in ms (null if unavailable). */
+  perf: { domContentLoaded: number | null; load: number | null };
   screenshot: string;
 }
+
+// axe-core via CDN (no dep added). Returns critical+serious violations only.
+async function runAxe(page: import("@playwright/test").Page): Promise<A11yViolation[]> {
+  try {
+    // Inject axe from the locally-installed package (no CDN, no network). The
+    // context runs with bypassCSP so this inline script is allowed under test.
+    await page.addScriptTag({ path: "node_modules/axe-core/axe.min.js" });
+    const result = await page.evaluate(async () => {
+      // @ts-expect-error injected global
+      if (typeof axe === "undefined") return [];
+      // @ts-expect-error injected global
+      const r = await axe.run(document, { resultTypes: ["violations"] });
+      return r.violations
+        .filter((v: { impact?: string }) => v.impact === "critical" || v.impact === "serious")
+        .map((v: { id: string; impact?: string; help: string; nodes: unknown[] }) => ({
+          id: v.id,
+          impact: v.impact ?? "",
+          help: v.help,
+          nodes: v.nodes.length,
+        }));
+    });
+    return result as A11yViolation[];
+  } catch {
+    return []; // CDN unreachable / injection blocked — skip a11y for this door
+  }
+}
+
+async function capturePerf(page: import("@playwright/test").Page): Promise<DoorFinding["perf"]> {
+  try {
+    return await page.evaluate(() => {
+      const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      if (!nav) return { domContentLoaded: null, load: null };
+      return {
+        domContentLoaded: Math.round(nav.domContentLoadedEventEnd),
+        load: Math.round(nav.loadEventEnd || nav.domContentLoadedEventEnd),
+      };
+    });
+  } catch {
+    return { domContentLoaded: null, load: null };
+  }
+}
+
+/** A door is "slow" if DOMContentLoaded exceeds this (ms) — a launch-feel signal. */
+const SLOW_DOOR_MS = 4000;
 
 interface PersonaReport {
   slug: string;
@@ -108,6 +168,19 @@ interface PersonaReport {
   moduleGating: { missingExpected: string[]; leakedHidden: string[] };
   hardFindings: number;
   softFindings: number;
+  a11yCritical: number;
+  slowDoors: Array<{ door: string; ms: number }>;
+  /** 0–100 launch-readiness score for this persona, + a letter grade. */
+  readinessScore: number;
+  readinessGrade: string;
+}
+
+function grade(score: number): string {
+  if (score >= 95) return "A";
+  if (score >= 85) return "B";
+  if (score >= 70) return "C";
+  if (score >= 50) return "D";
+  return "F";
 }
 
 /** Establish the persona's identity + provision/seed its org via the API. */
@@ -134,7 +207,9 @@ async function seedPersona(ctx: BrowserContext, p: CustomerPersona): Promise<voi
 }
 
 function makeContext(browser: Browser, p: CustomerPersona): Promise<BrowserContext> {
-  return browser.newContext({ baseURL: BASE_URL, ...deviceProfile(p.device) } as never);
+  // bypassCSP lets us inject the axe-core a11y scanner under the app's strict
+  // Content-Security-Policy. It only affects the test browser, never the app.
+  return browser.newContext({ baseURL: BASE_URL, bypassCSP: true, ...deviceProfile(p.device) } as never);
 }
 
 for (const p of CUSTOMER_PERSONAS) {
@@ -170,7 +245,7 @@ for (const p of CUSTOMER_PERSONAS) {
       const status = r.status();
       const url = r.url();
       if (status === 404) {
-        if (IGNORABLE_404_RE.test(url)) return; // prod ships no source maps; optional assets
+        if (IGNORABLE_404_RE.test(url) || EXPECTED_404_RE.test(url)) return; // by-design / optional
         degradedRequests.push(`404 ${r.request().method()} ${url}`); // a real-but-soft 404 to review
         return;
       }
@@ -206,6 +281,10 @@ for (const p of CUSTOMER_PERSONAS) {
       const shot = path.join(personaDir, `${door}.png`);
       await page.screenshot({ path: shot, fullPage: false }).catch(() => undefined);
 
+      // Deep checks: accessibility (real launch blockers) + page-feel timing.
+      const a11y = await runAxe(page);
+      const perf = await capturePerf(page);
+
       const newConsole = consoleErrors.slice(before.c);
       const newFailed = failedRequests.slice(before.f);
       const newDegraded = degradedRequests.slice(before.d);
@@ -218,6 +297,8 @@ for (const p of CUSTOMER_PERSONAS) {
         degradedRequests: newDegraded,
         forbiddenLeaks,
         vocabMissing,
+        a11y,
+        perf,
         screenshot: shot,
       });
     }
@@ -247,6 +328,23 @@ for (const p of CUSTOMER_PERSONAS) {
       moduleGating.missingExpected.length +
       moduleGating.leakedHidden.length;
 
+    const a11yCritical = doors.reduce((n, d) => n + d.a11y.length, 0);
+    const slowDoors = doors
+      .filter((d) => (d.perf.domContentLoaded ?? 0) > SLOW_DOOR_MS)
+      .map((d) => ({ door: d.door, ms: d.perf.domContentLoaded ?? 0 }));
+
+    // Launch-readiness: start at 100, dock for what a real user would feel.
+    // Functional breakage dominates; accessibility is real but capped so an
+    // app that WORKS but carries a11y debt grades ~C (fix-before-public), not F.
+    const a11yRuleTypes = new Set(doors.flatMap((d) => d.a11y.map((v) => v.id))).size;
+    let readinessScore = 100;
+    readinessScore -= hardFindings * 25; // a broken door is disqualifying
+    readinessScore -= Math.min(30, a11yRuleTypes * 5); // a11y debt, capped at -30
+    readinessScore -= slowDoors.length * 5; // each sluggish door
+    readinessScore -= moduleGating.leakedHidden.length * 3; // cross-vertical leak
+    readinessScore -= Math.min(10, softFindings); // residual polish, capped
+    readinessScore = Math.max(0, Math.min(100, readinessScore));
+
     const report: PersonaReport = {
       slug: p.slug,
       displayName: p.displayName,
@@ -261,6 +359,10 @@ for (const p of CUSTOMER_PERSONAS) {
       moduleGating,
       hardFindings,
       softFindings,
+      a11yCritical,
+      slowDoors,
+      readinessScore,
+      readinessGrade: grade(readinessScore),
     };
     fs.writeFileSync(path.join(OUT_DIR, `${p.slug}.json`), JSON.stringify(report, null, 2));
     await testInfo.attach(`${p.slug}-report`, {

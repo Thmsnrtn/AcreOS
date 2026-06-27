@@ -41,20 +41,49 @@ async function main() {
 
     // 2. Set the frame on EVERY org owned by this user (getOrCreateOrg picks the
     //    oldest; updating all means whichever it picks carries the right frame).
-    //    No deletes — dupe orgs from prior getOrCreateOrg races have FK children.
+    const data = JSON.stringify({ businessType: p.businessType });
     const upd = await client.query(
       `UPDATE organizations
-         SET investor_type = $2,
-             onboarding_data = $3,
-             onboarding_completed = true
-       WHERE owner_id = $1`,
-      [userId, p.investorType, JSON.stringify({ businessType: p.businessType })],
+         SET investor_type = $2, onboarding_data = $3, onboarding_completed = true
+       WHERE owner_id = $1
+       RETURNING id`,
+      [userId, p.investorType, data],
     );
-    if (upd.rowCount === 0) {
+    let orgId: number;
+    if ((upd.rowCount ?? 0) > 0) {
+      orgId = upd.rows[0].id;
+    } else {
+      const ins = await client.query(
+        `INSERT INTO organizations (name, slug, owner_id, investor_type, onboarding_data, onboarding_completed)
+         VALUES ($1, $2, $3, $4, $5, true) RETURNING id`,
+        [`${p.displayName} Org`, `persona-${p.slug}`, userId, p.investorType, data],
+      );
+      orgId = ins.rows[0].id;
+    }
+
+    // 2b. Ensure the owner is an ACTIVE member of the org. getOrCreateOrg
+    //     normally creates this row alongside the org; a DB-seeded org has none,
+    //     so membership checks would 403. (One row per org+user.)
+    await client.query(
+      `INSERT INTO team_members (organization_id, user_id, role, is_active)
+       SELECT $1, $2, 'owner', true
+       WHERE NOT EXISTS (
+         SELECT 1 FROM team_members WHERE organization_id = $1 AND user_id = $2
+       )`,
+      [orgId, userId],
+    );
+
+    // 3. Seed ~6 leads (varied stages) so the pipeline/Today/deal-coach render
+    //    populated surfaces, not just empty states. Idempotent per org.
+    await client.query(`DELETE FROM leads WHERE organization_id = $1 AND email LIKE '%@persona-test.local'`, [orgId]);
+    const FIRST = ["James", "Maria", "Robert", "Linda", "David", "Patricia"];
+    const LAST = ["Garcia", "Smith", "Johnson", "Martinez", "Williams", "Lopez"];
+    const STATUS = ["new", "contacted", "negotiating", "new", "contacted", "new"];
+    for (let i = 0; i < 6; i++) {
       await client.query(
-        `INSERT INTO organizations (name, owner_id, investor_type, onboarding_data, onboarding_completed)
-         VALUES ($1, $2, $3, $4, true)`,
-        [`${p.displayName} Org`, userId, p.investorType, JSON.stringify({ businessType: p.businessType })],
+        `INSERT INTO leads (organization_id, first_name, last_name, email, phone, status)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [orgId, FIRST[i], `${LAST[i]}-${p.slug.slice(0, 5)}`, `lead${i}.${p.slug}@persona-test.local`, `555-01${String(i).padStart(2, "0")}`, STATUS[i]],
       );
     }
     seeded++;

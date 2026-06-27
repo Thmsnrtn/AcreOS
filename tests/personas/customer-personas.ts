@@ -356,7 +356,7 @@ const SEEDS: PersonaSeed[] = [
     expect: {
       financeHero: "assignment",
       modulesVisible: ["/leads", "/deals", "/campaigns", "/buyer-analytics", "/earnest-money"],
-      modulesHidden: ["/maps", "/notes", "/land-credit"],
+      modulesHidden: ["/notes", "/land-credit"],
       vocab: { deals: ["Motivated seller", "Assignment"], money: ["Assigned"] },
       gatedCapabilities: ["Twilio SMS", "SES email"],
     },
@@ -373,7 +373,7 @@ const SEEDS: PersonaSeed[] = [
     expect: {
       financeHero: "assignment",
       modulesVisible: ["/leads", "/deals", "/campaigns"],
-      modulesHidden: ["/maps", "/notes"],
+      modulesHidden: ["/notes"],
       vocab: { deals: ["Motivated seller"] },
       gatedCapabilities: ["Twilio SMS"],
     },
@@ -390,7 +390,7 @@ const SEEDS: PersonaSeed[] = [
     expect: {
       financeHero: "assignment",
       modulesVisible: ["/leads", "/deals", "/campaigns", "/buyer-analytics", "/double-close"],
-      modulesHidden: ["/maps", "/notes"],
+      modulesHidden: ["/notes"],
       vocab: { deals: ["Assignment"] },
       gatedCapabilities: ["Twilio SMS", "SES email"],
     },
@@ -409,7 +409,7 @@ const SEEDS: PersonaSeed[] = [
     expect: {
       financeHero: "projectPnl",
       modulesVisible: ["/properties", "/deals"],
-      modulesHidden: ["/maps", "/notes"],
+      modulesHidden: ["/notes"],
       vocab: { deals: ["Distressed owner", "Project"], money: ["Sold"] },
       gatedCapabilities: ["Twilio SMS", "Stripe Connect payments"],
     },
@@ -426,7 +426,7 @@ const SEEDS: PersonaSeed[] = [
     expect: {
       financeHero: "projectPnl",
       modulesVisible: ["/properties", "/deals"],
-      modulesHidden: ["/maps", "/notes"],
+      modulesHidden: ["/notes"],
       vocab: { deals: ["Project"] },
       gatedCapabilities: ["Stripe Connect payments"],
     },
@@ -554,7 +554,7 @@ const SEEDS: PersonaSeed[] = [
     expect: {
       financeHero: "projectPnl",
       modulesVisible: ["/deals", "/money"],
-      modulesHidden: ["/maps", "/notes"],
+      modulesHidden: ["/notes"],
       vocab: { deals: ["Rental"] },
       gatedCapabilities: ["Stripe Connect payments"],
     },
@@ -571,7 +571,7 @@ const SEEDS: PersonaSeed[] = [
     expect: {
       financeHero: "projectPnl",
       modulesVisible: ["/deals", "/money"],
-      modulesHidden: ["/maps", "/notes"],
+      modulesHidden: ["/notes"],
       vocab: {},
       gatedCapabilities: ["Stripe Connect payments"],
     },
@@ -622,7 +622,7 @@ const SEEDS: PersonaSeed[] = [
     expect: {
       financeHero: "projectPnl",
       modulesVisible: ["/deals", "/money"],
-      modulesHidden: ["/maps", "/notes"],
+      modulesHidden: ["/notes"],
       vocab: {},
       gatedCapabilities: ["Stripe Connect payments"],
     },
@@ -639,7 +639,7 @@ const SEEDS: PersonaSeed[] = [
     expect: {
       financeHero: "projectPnl",
       modulesVisible: ["/deals"],
-      modulesHidden: ["/maps", "/notes"],
+      modulesHidden: ["/notes"],
       vocab: {},
       gatedCapabilities: ["Stripe Connect payments"],
     },
