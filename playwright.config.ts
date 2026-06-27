@@ -29,27 +29,36 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
 
+    // JTBD outcome suite — operates the real product (create/persist/validate/
+    // XSS) and grades on outcomes. Self-auths via persona cookie; no storageState.
+    //   npx playwright test --project=jtbd
+    {
+      name: "jtbd",
+      testMatch: /jtbd-outcomes\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+
     // Desktop
-    { name: "desktop-chrome", use: { ...devices["Desktop Chrome"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
+    { name: "desktop-chrome", use: { ...devices["Desktop Chrome"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
     // Firefox disabled — NS_ERROR_NET_EMPTY_RESPONSE with Clerk middleware; re-enable when resolved
-    // { name: "desktop-firefox", use: { ...devices["Desktop Firefox"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
-    { name: "desktop-1280", use: { viewport: { width: 1280, height: 720 }, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
-    { name: "desktop-ultrawide", use: { viewport: { width: 2560, height: 1080 }, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
+    // { name: "desktop-firefox", use: { ...devices["Desktop Firefox"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
+    { name: "desktop-1280", use: { viewport: { width: 1280, height: 720 }, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
+    { name: "desktop-ultrawide", use: { viewport: { width: 2560, height: 1080 }, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
 
     // Tablets
-    { name: "ipad-portrait", use: { ...devices["iPad (gen 7)"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
-    { name: "ipad-landscape", use: { ...devices["iPad (gen 7) landscape"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
-    { name: "ipad-pro", use: { ...devices["iPad Pro 11"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
+    { name: "ipad-portrait", use: { ...devices["iPad (gen 7)"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
+    { name: "ipad-landscape", use: { ...devices["iPad (gen 7) landscape"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
+    { name: "ipad-pro", use: { ...devices["iPad Pro 11"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
 
     // Phones
-    { name: "iphone-14", use: { ...devices["iPhone 14"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
-    { name: "iphone-se", use: { ...devices["iPhone SE"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
-    { name: "pixel-5", use: { ...devices["Pixel 5"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
-    { name: "galaxy-s9", use: { ...devices["Galaxy S9+"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
+    { name: "iphone-14", use: { ...devices["iPhone 14"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
+    { name: "iphone-se", use: { ...devices["iPhone SE"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
+    { name: "pixel-5", use: { ...devices["Pixel 5"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
+    { name: "galaxy-s9", use: { ...devices["Galaxy S9+"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
 
     // Worst case
-    { name: "tiny-phone", use: { viewport: { width: 320, height: 568 }, isMobile: true, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
-    { name: "short-wide", use: { viewport: { width: 1920, height: 600 }, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts)/ },
+    { name: "tiny-phone", use: { viewport: { width: 320, height: 568 }, isMobile: true, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
+    { name: "short-wide", use: { viewport: { width: 1920, height: 600 }, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
   ],
   // Start the dev server automatically in CI
   webServer: process.env.CI

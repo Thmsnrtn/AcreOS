@@ -100,8 +100,12 @@ function main(): void {
   const worstScore = Math.min(...reports.map((r) => r.readinessScore));
 
   const L: string[] = [];
-  L.push("# The 30 First Users — launch-readiness report\n");
-  L.push(`## Verdict: **${overallGrade(avgScore)}**\n`);
+  L.push("# The 30 First Users — SHELL + persona-gating report\n");
+  L.push("> ⚠️ **Scope:** this is the navigation + persona-gating layer only — NOT a launch grade.");
+  L.push("> Launch readiness additionally requires the IDOR isolation fuzz (`tests/security/idorFuzz.ts`),");
+  L.push("> the JTBD outcome suite (`--project=jtbd`), and realism mode (real integrations + devices on");
+  L.push("> staging — not yet run). See `tests/README-launch-audit.md` for the full picture.\n");
+  L.push(`## Shell verdict (navigation/gating only): **${overallGrade(avgScore)}**\n`);
   L.push(`Avg readiness **${avgScore}/100**  ·  worst persona **${worstScore}/100**  ·  no-breakage **${clean}/${reports.length}**`);
   L.push(`Breakage (hard) **${totalHard}**  ·  accessibility blockers **${totalA11y}**  ·  polish (soft) **${totalSoft}**\n`);
 
