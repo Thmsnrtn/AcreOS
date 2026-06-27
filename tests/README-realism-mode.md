@@ -38,7 +38,38 @@ After that, every push to main deploys staging and the realism audit runs
 automatically (public value-path check now; authed + DB layers as their secrets
 are added). Until then both workflows skip cleanly (amber, not red).
 
-## Realism mode — needs a staging app (`acreos` staging — a pinned 🔑 item)
+## Status: staging is LIVE (Layer A verified)
+
+`acreos-staging` is provisioned and serving:
+
+| | |
+|---|---|
+| App | `acreos-staging` (`fly.staging.toml`, no-op release_command) |
+| URL | https://acreos-staging.fly.dev |
+| DB | `acreos-staging-pgv` — custom `pgvector/pgvector:pg16` app (`fly.pgvector.staging.toml`), schema via `db:push` |
+| Health | DB healthy; "degraded" only reflects optional redis/stripe being unconfigured |
+| **Layer A (public value path)** | ✅ **VERIFIED** — `/api/public/parcel-check` returns REAL federal data (FEMA NFHL flood zone + USGS 3DEP elevation + USDA SSURGO, `fromCache:false`) |
+
+### Remaining founder-only flips (require durable secrets I must not fabricate)
+
+These are deliberately NOT automated, because they need a durable, founder-owned
+staging Fly token (the session token used to provision is temporary/rotated) and
+a real Clerk **test** instance (the persona-cookie bypass is Fly-disabled by
+design, so Layers B/C cannot authenticate against staging without one):
+
+1. **Durable staging deploy token** — set CI's `FLY_API_TOKEN` to an org-scoped
+   (or `acreos-staging`-scoped) token so the staging-deploy workflow can reach
+   the app.
+2. **The flip** — `gh variable set FLY_STAGING_APP --body "acreos-staging"`.
+   This wakes `staging.yml` (auto-deploy on push) + `realism-audit.yml`. Layer A
+   runs immediately (URL is derived from the app name, no token needed).
+3. **Layer B (authed)** — stand up a Clerk TEST instance; set
+   `gh secret set CLERK_SIGN_IN_TICKET` (+ `CLERK_PUBLISHABLE_KEY`) and the
+   matching `CLERK_SECRET_KEY`/`VITE_CLERK_PUBLISHABLE_KEY` Fly secrets on
+   `acreos-staging` (currently dummy keys).
+4. **Layer C (IDOR/load)** — `gh secret set DATABASE_URL_STAGING` (the staging
+   DB URL) so the seeders can run.
+5. **Real test-mode integration keys** — the value paths below.
 
 ### 1. Stand up staging with REAL test-mode keys (the unlock)
 Set these on the staging Fly app (test/sandbox modes — no real money/postage/SMS):
