@@ -82,16 +82,29 @@ jobs:
           echo "$RESP" | grep -qiE "flood|elevation|FEMA|USGS" \
             || { echo "::error::parcel-check returned no real data — Regrid/open-data not wired on staging"; exit 1; }
 
+      # The `secrets` context is NOT available in `if:` conditions (GitHub
+      # rejects the whole workflow at startup if you try — that's a "workflow
+      # file issue", not a skip). So probe secret PRESENCE here, where secrets
+      # ARE allowed (step-level env), and emit 1/0 flags. Later steps gate on
+      # these outputs (which ARE allowed in `if:`). Values never surface — only
+      # their presence as 1/0.
+      - name: Probe optional secret presence
+        id: have
+        env:
+          CLERK_TICKET: ${{ secrets.CLERK_SIGN_IN_TICKET }}
+          DB_URL: ${{ secrets.DATABASE_URL_STAGING }}
+        run: |
+          echo "clerk=$([ -n "$CLERK_TICKET" ] && echo 1 || echo 0)" >> "$GITHUB_OUTPUT"
+          echo "db=$([ -n "$DB_URL" ] && echo 1 || echo 0)" >> "$GITHUB_OUTPUT"
+
       # ── Layer B: authed realism walk (REAL Clerk auth, REALISM=1). Gated on the
       # Clerk test ticket because the persona cookie bypass is Fly-disabled.
       - name: Install Playwright browsers
-        if: ${{ env.HAVE_CLERK == '1' }}
+        if: ${{ steps.have.outputs.clerk == '1' }}
         run: npx playwright install --with-deps chromium webkit
-        env:
-          HAVE_CLERK: ${{ secrets.CLERK_SIGN_IN_TICKET != '' && '1' || '0' }}
 
       - name: Authed realism walk + JTBD (REALISM=1) vs staging
-        if: ${{ secrets.CLERK_SIGN_IN_TICKET != '' }}
+        if: ${{ steps.have.outputs.clerk == '1' }}
         env:
           REALISM: "1"
           PLAYWRIGHT_BASE_URL: ${{ steps.url.outputs.url }}
@@ -106,12 +119,12 @@ jobs:
           echo "::notice::Authed realism walk ran. Wire the multi-persona REALISM door-walk here once a staging seed exists."
 
       - name: Note when authed layer skipped
-        if: ${{ secrets.CLERK_SIGN_IN_TICKET == '' }}
+        if: ${{ steps.have.outputs.clerk == '0' }}
         run: echo "::notice::CLERK_SIGN_IN_TICKET unset — authed realism layer skipped. Public parcel-check still ran."
 
       # ── Layer C: IDOR + load need staging DB access (seed two orgs / 5k rows).
       - name: IDOR + load (needs staging DB)
-        if: ${{ secrets.DATABASE_URL_STAGING != '' }}
+        if: ${{ steps.have.outputs.db == '1' }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
           PLAYWRIGHT_BASE_URL: ${{ steps.url.outputs.url }}
