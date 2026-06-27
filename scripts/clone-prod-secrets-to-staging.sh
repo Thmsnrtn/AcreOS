@@ -40,11 +40,29 @@ command -v flyctl >/dev/null || { echo "flyctl not installed"; exit 1; }
 flyctl auth whoami >/dev/null 2>&1 || { echo "not logged in to Fly — run: fly auth login"; exit 1; }
 
 echo "Cloning secrets ${PROD} → ${STAGING} (matching: ${FILTER})"
-# printenv on the prod machine → filter → import to staging. The pipe never
-# surfaces values. `fly secrets import` reads NAME=VALUE from stdin.
-flyctl ssh console -a "$PROD" -C "printenv" \
-  | grep -E "$FILTER" \
-  | flyctl secrets import -a "$STAGING"
+
+# Read the APP PROCESS's environment (PID 1), which is where Fly injects
+# secrets — a fresh `fly ssh console` shell's own `printenv` does NOT reliably
+# include them. /proc/1/environ is NUL-delimited; tr it to lines. Values flow
+# machine→machine through the pipe and never print to your terminal.
+TMP_KV="$(mktemp)"; trap 'rm -f "$TMP_KV"' EXIT
+flyctl ssh console -a "$PROD" -C "cat /proc/1/environ" \
+  | tr '\0' '\n' \
+  | grep -E "$FILTER" > "$TMP_KV" || true
+
+COUNT=$(wc -l < "$TMP_KV" | tr -d ' ')
+if [ "$COUNT" -eq 0 ]; then
+  echo "✗ Matched 0 keys on ${PROD}. Nothing imported."
+  echo "  Check the names actually set on prod (names only, no values):"
+  echo "    fly secrets list -a ${PROD}"
+  echo "  If they differ from the filter in this script, tell the agent the NAMES."
+  exit 1
+fi
+
+# Report names only (never values) so you can see what's about to copy.
+echo "Matched ${COUNT} key(s) to copy:"
+cut -d= -f1 "$TMP_KV" | sed 's/^/  • /'
+flyctl secrets import -a "$STAGING" < "$TMP_KV"
 
 echo "Done. Verify (names + digests only, never values):  fly secrets list -a ${STAGING}"
 echo "Then tell the agent — it will re-hit /api/health to confirm each integration flipped to configured."
