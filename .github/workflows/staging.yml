@@ -92,8 +92,15 @@ jobs:
       - name: Deploy to Fly.io staging app
         id: deploy
         run: |
+          # --config fly.staging.toml: identical to fly.toml EXCEPT the
+          # release_command is a no-op `true`. Staging's schema is built by
+          # `npm run db:push` (full current schema from shared/schema.ts), so the
+          # incremental migrate.mjs seed layer is skipped — its founder-seed
+          # INSERTs (custom_autonomy_rules) FK-violate on a fresh staging DB and
+          # would abort the release. See tests/README-realism-mode.md.
           flyctl deploy \
             --app "${{ vars.FLY_STAGING_APP || 'acreos-staging' }}" \
+            --config fly.staging.toml \
             --remote-only \
             --wait-timeout 300 \
             --strategy rolling

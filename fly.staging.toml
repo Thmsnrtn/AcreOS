@@ -1,0 +1,99 @@
+app = 'acreos'
+primary_region = 'iad'
+
+[build]
+  # GIT_SHA is baked into the client bundle for Sentry release tagging,
+  # source-map symbolication, AND the /api/version self-heal that
+  # auto-reloads stale tabs when a new build is detected. The Dockerfile
+  # declares `ARG GIT_SHA` (not VITE_GIT_SHA) and re-exports it as
+  # VITE_GIT_SHA inside each stage. Pass via:
+  #   fly deploy --build-arg GIT_SHA=$(git rev-parse HEAD)
+  # SENTRY_AUTH_TOKEN must be set as a fly secret OR passed at deploy
+  # time so `sentry-cli sourcemaps upload` runs during the build step.
+  [build.args]
+    GIT_SHA = ""
+
+[deploy]
+  # Idempotent schema patch runs in a one-shot release VM before new
+  # machines take traffic. See scripts/migrate.mjs for details.
+  release_command = "true"  # staging: schema built via db:push (no founder seed inserts)
+
+[env]
+  NODE_ENV = 'production'
+  PORT = '5000'
+
+# ──────────────────────────────────────────────────────────────────────
+# Process groups — Wave: cost. The customer-facing app machines stay
+# lean and never block on PDF render / eval / image / embedding /
+# recognition / 1099 batch work. Those effects flow through the
+# `outbox` table and are consumed by the worker process group.
+#
+# `app`    — Express + WebSocket. Public HTTP. Performance VM, 2 CPUs.
+# `worker` — server/worker.ts. No public ports. Shared CPU, 1 GB RAM.
+#            Polls outbox every 5s for pdf_render, eval_run,
+#            image_process, embedding_refresh, recognition_run,
+#            1099_batch_generate.
+# ──────────────────────────────────────────────────────────────────────
+[processes]
+  app = "node dist/index.cjs"
+  worker = "node dist/worker.cjs"
+
+[http_service]
+  internal_port = 5000
+  force_https = true
+  # min_machines_running = 1 (Tom, 2026-06-12) — keep ONE web machine hot so
+  # the first request after idle doesn't pay the suspend-wake latency Tom was
+  # feeling ("slow on first hit, snappy after"). This is NOT the old ~$576/mo
+  # HA config (that was 2× performance-2x hot 24/7); a single shared-cpu-4x/1GB
+  # app machine always-on is ~$5–10/mo — a deliberate, cheap UX buy. auto_stop
+  # stays 'suspend' so any machines scaled OUT under load still suspend on
+  # scale-in; we just floor the pool at 1 instead of 0. Supersedes the Phase-0
+  # zero-capital min=0 tradeoff. See memory project_cold_start_lag_fly_suspend.
+  auto_stop_machines = 'suspend'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+  [http_service.concurrency]
+    type = 'requests'
+    # Scale out at 70% concurrency, scale in at 20%
+    soft_limit = 200
+    hard_limit = 250
+
+[checks]
+  [checks.health]
+    port = 5000
+    type = 'http'
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '15s'
+    method = 'GET'
+    path = '/api/health/cached'
+    processes = ['app']
+
+# Default VM (app process group). Phase 0: shared-cpu-4x (2 shared vCPU,
+# 1 GB RAM) is the smallest VM the Node + Express + Drizzle bundle
+# starts reliably on. Combined with auto_stop_machines=suspend above,
+# typical idle-month cost is <$5/mo. When MRR crosses $200, the
+# revenue-trigger ladder bumps this back up.
+[[vm]]
+  size = 'shared-cpu-4x'
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 2
+  processes = ['app']
+
+# Worker VM — shared CPU is fine because PDF render / eval batches are
+# bursty + tolerant of contention. min_machines_running = 1 keeps a
+# single drainable consumer hot at all times. Bumped from 1×/1GB to
+# 2×/2GB to absorb the scheduled-jobs catalogue that now also runs
+# here (formerly gated off the app by DISABLE_BACKGROUND_JOBS) — drip
+# campaigns + autonomous executor + onboarding sweeper + briefings
+# share this machine with the outbox drain loop.
+[[vm]]
+  size = 'shared-cpu-2x'
+  memory = '2gb'
+  cpu_kind = 'shared'
+  cpus = 2
+  processes = ['worker']
+  min_machines_running = 1

@@ -16,7 +16,7 @@
 set -euo pipefail
 
 APP="${FLY_STAGING_APP:-acreos-staging}"
-DB="${APP}-db"
+DB="${APP}-pgv"          # custom pgvector Postgres app (NOT Fly managed PG)
 ENV_FILE=".env.staging"
 
 say() { printf "\n\033[1m▶ %s\033[0m\n" "$*"; }
@@ -38,12 +38,27 @@ fi
 say "Creating Fly app '$APP' (skips if it exists)"
 flyctl apps create "$APP" 2>/dev/null || echo "  app '$APP' already exists — continuing"
 
-say "Creating + attaching staging Postgres '$DB' (skips if it exists)"
-if ! flyctl postgres list 2>/dev/null | grep -q "$DB"; then
-  flyctl postgres create --name "$DB" --region iad --initial-cluster-size 1 --vm-size shared-cpu-1x --volume-size 1
-  flyctl postgres attach "$DB" --app "$APP"
+# Custom pgvector Postgres — Fly's MANAGED Postgres lacks the pgvector
+# extension AcreOS needs (and apt-installing it OOMs a 256MB managed PG box).
+# We run the official pgvector/pgvector:pg16 image from fly.pgvector.staging.toml.
+say "Creating staging pgvector Postgres '$DB' (skips if it exists)"
+if ! flyctl apps list 2>/dev/null | grep -q "$DB"; then
+  flyctl apps create "$DB"
+  flyctl volumes create pgdata -a "$DB" -r iad -n 1 -s 1 --yes
+  PGPW="$(openssl rand -hex 16)"
+  flyctl secrets set -a "$DB" "POSTGRES_PASSWORD=${PGPW}"
+  flyctl deploy -a "$DB" -c fly.pgvector.staging.toml --remote-only --wait-timeout 600
+  # App reaches PG over 6PN (.internal). Set DATABASE_URL on the app NOW so the
+  # secret push below doesn't skip it (the file's DATABASE_URL is a placeholder).
+  flyctl secrets set -a "$APP" \
+    "DATABASE_URL=postgresql://acreos:${PGPW}@${DB}.internal:5432/acreos"
+  echo "  → Build the schema (full, from shared/schema.ts) over a proxy tunnel:"
+  echo "      flyctl proxy 15432:5432 -a ${DB} &"
+  echo "      DATABASE_URL=postgresql://acreos:${PGPW}@localhost:15432/acreos npm run db:push"
+  echo "    (migrate.mjs's incremental seed layer is intentionally skipped — staging"
+  echo "     uses db:push + the no-op release_command in fly.staging.toml.)"
 else
-  echo "  postgres '$DB' already exists — continuing"
+  echo "  pgvector Postgres '$DB' already exists — continuing"
 fi
 
 # ── 2. Fly secrets from .env.staging (values never leave your machine) ──────
