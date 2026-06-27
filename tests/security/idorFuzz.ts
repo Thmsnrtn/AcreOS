@@ -38,6 +38,8 @@ interface ResourceSpec {
   seed: (client: pg.Client, orgId: number) => Promise<string | null>;
   /** Why it matters (for the report). */
   sensitivity: string;
+  /** DB table — set for types we also attack with PUT/DELETE (survival check). */
+  table?: string;
 }
 
 async function ins(client: pg.Client, sql: string, params: unknown[]): Promise<string | null> {
@@ -53,6 +55,7 @@ async function ins(client: pg.Client, sql: string, params: unknown[]): Promise<s
 const RESOURCES: ResourceSpec[] = [
   {
     type: "leads",
+    table: "leads",
     sensitivity: "PII: owner name, email, phone, mailing address",
     path: (id) => `/api/leads/${id}`,
     seed: (c, org) =>
@@ -60,6 +63,7 @@ const RESOURCES: ResourceSpec[] = [
   },
   {
     type: "properties",
+    table: "properties",
     sensitivity: "parcel/owner records",
     path: (id) => `/api/properties/${id}`,
     seed: (c, org) =>
@@ -67,6 +71,7 @@ const RESOURCES: ResourceSpec[] = [
   },
   {
     type: "deals",
+    table: "deals",
     sensitivity: "deal terms + borrower linkage",
     path: (id) => `/api/deals/${id}`,
     seed: async (c, org) => {
@@ -77,6 +82,7 @@ const RESOURCES: ResourceSpec[] = [
   },
   {
     type: "notes",
+    table: "notes",
     sensitivity: "FINANCIAL: borrower, principal, rate, payment schedule",
     path: (id) => `/api/notes/${id}`,
     seed: (c, org) =>
@@ -84,6 +90,7 @@ const RESOURCES: ResourceSpec[] = [
   },
   {
     type: "generated-documents",
+    table: "generated_documents",
     sensitivity: "LEGAL: generated/signed documents (promissory notes, deeds)",
     path: (id) => `/api/generated-documents/${id}`,
     seed: (c, org) =>
@@ -120,6 +127,31 @@ async function req(path: string, slug: string): Promise<{ status: number; body: 
   return { status: res.status, body };
 }
 
+/** Mint a valid CSRF token for a persona (GET issues the double-submit cookie). */
+async function csrfFor(slug: string): Promise<string> {
+  const res = await fetch(`${BASE}/api/auth/user`, { headers: { Cookie: `__session=${personaCookieValue(slug)}` } });
+  const setc = (res.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
+  for (const c of setc) {
+    const m = c.match(/csrf_token=([^;]+)/);
+    if (m) return m[1];
+  }
+  return "";
+}
+
+/** A mutating request as `slug` with a valid CSRF token (double-submit). */
+async function mutate(path: string, slug: string, method: "PUT" | "DELETE", csrf: string, body?: unknown): Promise<number> {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: {
+      Cookie: `__session=${personaCookieValue(slug)}; csrf_token=${csrf}`,
+      "x-csrf-token": csrf,
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res.status;
+}
+
 async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL required");
@@ -139,10 +171,12 @@ async function main() {
 
   const findings: Array<{ type: string; verdict: string; detail: string }> = [];
   let breaches = 0;
+  const seeded: Record<string, { aId: string; bId: string }> = {};
 
   for (const r of RESOURCES) {
     const aId = await r.seed(client, orgA);
     const bId = await r.seed(client, orgB);
+    if (aId && bId) seeded[r.type] = { aId, bId };
     if (!aId || !bId) {
       console.log(`▢ ${r.type.padEnd(20)} SKIP (could not seed)`);
       findings.push({ type: r.type, verdict: "skip", detail: "seed failed" });
@@ -172,8 +206,28 @@ async function main() {
     findings.push({ type: r.type, verdict, detail: `control=${ctrl.status} attack=${atk.status} | ${r.sensitivity}` });
   }
 
+  // ── WRITE vector: can A MODIFY or DELETE B's data? (worse than a read.)
+  // A gets a valid CSRF token, then PUT/DELETEs B's resource. Expect 403/404 —
+  // and crucially, B's row must STILL EXIST in the DB afterward (the airtight
+  // proof, immune to a misleading status code).
+  console.log("\n── cross-tenant WRITES (A mutating B) ──");
+  let writeBreaches = 0;
+  const csrfA = await csrfFor(A_SLUG);
+  for (const r of RESOURCES.filter((x) => x.table)) {
+    const s = seeded[r.type];
+    if (!s) continue;
+    const put = await mutate(r.path(s.bId), A_SLUG, "PUT", csrfA, { name: "HACKED", first_name: "HACKED" });
+    const del = await mutate(r.path(s.bId), A_SLUG, "DELETE", csrfA);
+    const survived = (await client.query(`SELECT 1 FROM ${r.table} WHERE id = $1`, [s.bId])).rowCount === 1;
+    const ok = (put === 403 || put === 404) && (del === 403 || del === 404) && survived;
+    if (!ok) writeBreaches++;
+    console.log(`${ok ? "✓" : "✗"} ${r.type.padEnd(20)} PUT(B)=${put}  DELETE(B)=${del}  B-row-survived=${survived}${ok ? "" : "  ← WRITE BREACH"}`);
+    if (!ok) findings.push({ type: r.type, verdict: "WRITE-BREACH", detail: `PUT=${put} DELETE=${del} survived=${survived}` });
+  }
+  breaches += writeBreaches;
+
   await client.end();
-  console.log(`\n${breaches === 0 ? "✓ No cross-tenant read breaches found" : `✗ ${breaches} BREACH(es) — cross-tenant data exposure`} across ${RESOURCES.length} resource types.`);
+  console.log(`\n${breaches === 0 ? "✓ No cross-tenant read OR write breaches found" : `✗ ${breaches} BREACH(es) — cross-tenant data exposure`} across ${RESOURCES.length} resource types (reads) + writes.`);
 
   // ── Coverage denominator (answer the red team's "7-of-100" critique honestly).
   // Enumerate the customer-facing org-scoped :id GET routes and report what

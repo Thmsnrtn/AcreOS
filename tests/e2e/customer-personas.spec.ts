@@ -247,6 +247,11 @@ for (const p of CUSTOMER_PERSONAS) {
       if (BEACON_RE.test(url) || CONFIG_GATED_RE.test(url)) degradedRequests.push(line);
       else failedRequests.push(line);
     });
+    // REALISM=1 (run against staging with real test-mode integration keys):
+    // INVERT the scoring — a 5xx from a now-CONFIGURED core integration is a
+    // HARD finding, not "honestly off". This is the red team's keystone fix:
+    // never certify launch-readiness with the product's value paths disabled.
+    const realism = process.env.REALISM === "1";
     page.on("response", (r) => {
       const status = r.status();
       const url = r.url();
@@ -257,8 +262,9 @@ for (const p of CUSTOMER_PERSONAS) {
       }
       if (status < 500) return;
       const line = `${status} ${r.request().method()} ${url}`;
-      if (CONFIG_GATED_RE.test(url) || BEACON_RE.test(url)) degradedRequests.push(line);
-      else failedRequests.push(line);
+      if (!realism && (CONFIG_GATED_RE.test(url) || BEACON_RE.test(url))) degradedRequests.push(line);
+      else if (realism && BEACON_RE.test(url)) degradedRequests.push(line); // beacons are always benign
+      else failedRequests.push(line); // realism mode: configured-integration 5xx is HARD
     });
 
     const personaDir = path.join(OUT_DIR, p.slug);

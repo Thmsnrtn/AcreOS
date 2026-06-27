@@ -38,6 +38,18 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
 
+    // Same JTBD flows on the real WebKit (Safari) engine — the closest to real
+    // iOS Safari without a device cloud. This is where Safari-only bugs (the
+    // recurring iOS double-tap class) would surface. Needs `npx playwright
+    // install webkit`. For a true real-device run, point at BrowserStack/Sauce
+    // (set BROWSERSTACK_USERNAME/_ACCESS_KEY and a wsEndpoint) — see
+    // tests/README-launch-audit.md.
+    {
+      name: "jtbd-webkit",
+      testMatch: /jtbd-outcomes\.spec\.ts/,
+      use: { browserName: "webkit", ...devices["iPhone 14"] },
+    },
+
     // Desktop
     { name: "desktop-chrome", use: { ...devices["Desktop Chrome"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /(?:.*\.setup\.ts|customer-personas\.spec\.ts|jtbd-outcomes\.spec\.ts)/ },
     // Firefox disabled — NS_ERROR_NET_EMPTY_RESPONSE with Clerk middleware; re-enable when resolved
