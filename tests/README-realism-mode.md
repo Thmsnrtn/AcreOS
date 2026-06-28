@@ -48,7 +48,12 @@ are added). Until then both workflows skip cleanly (amber, not red).
 | URL | https://acreos-staging.fly.dev |
 | DB | `acreos-staging-pgv` — custom `pgvector/pgvector:pg16` app (`fly.pgvector.staging.toml`), schema via `db:push` |
 | Health | DB healthy; "degraded" only reflects optional redis/stripe being unconfigured |
-| **Layer A (public value path)** | ✅ **VERIFIED** — `/api/public/parcel-check` returns REAL federal data (FEMA NFHL flood zone + USGS 3DEP elevation + USDA SSURGO, `fromCache:false`) |
+| **Layer A (public value path)** | ✅ **VERIFIED** — `/api/public/parcel-check` returns REAL federal data (FEMA NFHL + USGS 3DEP + USDA SSURGO + USFWS NWI + US Census ACS, `fromCache:false`) |
+| **Real integrations** | ✅ Cloned prod→staging (safe set, via `clone-prod-secrets-to-staging.sh`). Health: **Regrid healthy**, **OpenRouter/Pax healthy**, **Clerk wired**. (Send-side — Lob/Twilio/SES/Stripe — deliberately not copied; they stay "unconfigured".) |
+| **Auth funnel wired** | ✅ Protected APIs return **401** unauthenticated (Clerk gate enforced); `/sign-in` returns **200** (Clerk frontend wired). |
+| Regrid bug found + fixed | ✅ Audit surfaced Regrid `degraded — Status 404` on staging **and prod**: 3 call sites pinged a bare `/api/v2/parcels` (404) / wrong host. Fixed to `/api/v2/parcels/address` (commit `237110ca`). Includes the broken `validate-regrid` settings feature (was always `valid:false`). |
+| **Layer C (IDOR + load)** | ✅ Green locally this session (8/8 cross-tenant isolate, no read/write breach; 5k-lead 40-way load held). Valid home is local — the persona-cookie bypass is Fly-disabled, so it can't run against staging. |
+| Remaining: full logged-in walk (Layer B) | ⏳ Needs a real Clerk session. Auth is proven *wired*; the logged-in JTBD walk needs either a dedicated Clerk **test instance** (clean) or accepting test users in the **prod** Clerk pool (staging uses prod Clerk keys). Founder decision — see below. |
 
 ### Remaining founder-only flips (require durable secrets I must not fabricate)
 
