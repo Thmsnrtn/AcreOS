@@ -41,14 +41,17 @@ flyctl auth whoami >/dev/null 2>&1 || { echo "not logged in to Fly — run: fly 
 
 echo "Cloning secrets ${PROD} → ${STAGING} (matching: ${FILTER})"
 
-# Read the APP PROCESS's environment (PID 1), which is where Fly injects
-# secrets — a fresh `fly ssh console` shell's own `printenv` does NOT reliably
-# include them. /proc/1/environ is NUL-delimited; tr it to lines. Values flow
-# machine→machine through the pipe and never print to your terminal.
+# Read the secrets from the APP PROCESS's environment. Fly injects secrets into
+# the app process — which is NOT PID 1 (PID 1 is an init/supervisor) and is NOT
+# a fresh `fly ssh` shell either. So scan EVERY process's environ and union the
+# matches; whichever PID is the Node app will carry the keys. NUL-delimited →
+# tr to lines → filter → de-dupe. Values flow machine→machine through the pipe
+# and never print to your terminal.
 TMP_KV="$(mktemp)"; trap 'rm -f "$TMP_KV"' EXIT
-flyctl ssh console -a "$PROD" -C "cat /proc/1/environ" \
+flyctl ssh console -a "$PROD" -C "sh -c 'cat /proc/[0-9]*/environ 2>/dev/null'" \
   | tr '\0' '\n' \
-  | grep -E "$FILTER" > "$TMP_KV" || true
+  | grep -E "$FILTER" \
+  | sort -u > "$TMP_KV" || true
 
 COUNT=$(wc -l < "$TMP_KV" | tr -d ' ')
 if [ "$COUNT" -eq 0 ]; then
