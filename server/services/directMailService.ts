@@ -22,6 +22,10 @@ interface SendPostcardOptions {
   backHtml: string;
   size?: '4x6' | '6x9' | '6x11';
   skipCredits?: boolean;
+  // Lob requires use_type ("marketing" | "operational") unless an account
+  // default is configured — omitting it makes every send fail. Default to
+  // marketing (land-owner outreach is promotional); override for transactional.
+  useType?: 'marketing' | 'operational';
 }
 
 interface SendLetterOptions {
@@ -33,6 +37,7 @@ interface SendLetterOptions {
   color?: boolean;
   doubleSided?: boolean;
   skipCredits?: boolean;
+  useType?: 'marketing' | 'operational';
 }
 
 interface SendResult {
@@ -245,7 +250,7 @@ async function postLobCostToLedger(
 }
 
 export async function sendPostcard(options: SendPostcardOptions): Promise<SendResult> {
-  const { organizationId, senderIdentity, recipientName, recipientAddress, frontHtml, backHtml, size = '4x6' } = options;
+  const { organizationId, senderIdentity, recipientName, recipientAddress, frontHtml, backHtml, size = '4x6', useType = 'marketing' } = options;
 
   logger.info(`[DirectMailService] Sending postcard for org ${organizationId} to ${recipientName}`);
 
@@ -295,6 +300,7 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
       front: frontHtml,
       back: backHtml,
       size,
+      use_type: useType,
     });
     
     logger.info(`[DirectMailService] Postcard sent successfully: ${result.id} (source: ${source})`);
@@ -319,7 +325,7 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
 }
 
 export async function sendLetter(options: SendLetterOptions): Promise<SendResult> {
-  const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false } = options;
+  const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false, useType = 'marketing' } = options;
 
   logger.info(`[DirectMailService] Sending letter for org ${organizationId} to ${recipientName}`);
 
@@ -367,6 +373,7 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
       file: htmlContent,
       color,
       double_sided: doubleSided,
+      use_type: useType,
     });
     
     logger.info(`[DirectMailService] Letter sent successfully: ${result.id} (source: ${source})`);
