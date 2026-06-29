@@ -111,8 +111,12 @@ export async function getLobClient(orgId: number): Promise<LobClientResult> {
   }
   
   const isProduction = process.env.NODE_ENV === 'production';
-  const apiKey = isProduction 
-    ? process.env.LOB_LIVE_API_KEY 
+  // Prefer the live key in production, but FALL BACK to the test key when no
+  // live key is set (e.g. staging, which runs NODE_ENV=production). Without the
+  // fallback, LOB_TEST_API_KEY was unreachable on any deployed env. Prod (live
+  // key set) is unchanged.
+  const apiKey = isProduction
+    ? (process.env.LOB_LIVE_API_KEY || process.env.LOB_TEST_API_KEY)
     : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
   
   if (!apiKey) {
@@ -128,8 +132,12 @@ export async function getLobClient(orgId: number): Promise<LobClientResult> {
 
 function getPlatformLobClient(): InstanceType<typeof Lob> {
   const isProduction = process.env.NODE_ENV === 'production';
-  const apiKey = isProduction 
-    ? process.env.LOB_LIVE_API_KEY 
+  // Prefer the live key in production, but FALL BACK to the test key when no
+  // live key is set (e.g. staging, which runs NODE_ENV=production). Without the
+  // fallback, LOB_TEST_API_KEY was unreachable on any deployed env. Prod (live
+  // key set) is unchanged.
+  const apiKey = isProduction
+    ? (process.env.LOB_LIVE_API_KEY || process.env.LOB_TEST_API_KEY)
     : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
   
   if (!apiKey) {
