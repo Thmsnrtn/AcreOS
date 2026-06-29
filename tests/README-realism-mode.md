@@ -76,6 +76,36 @@ design, so Layers B/C cannot authenticate against staging without one):
    DB URL) so the seeders can run.
 5. **Real test-mode integration keys** — the value paths below.
 
+### Enabling Layer B — the Clerk domain unblock (founder, ~10 min)
+
+The blocker (proven): staging serves `pk_live` → `clerk.acreos.io` (prod Clerk,
+origin-locked to `acreos.io`), so no browser session can form on
+`acreos-staging.fly.dev`. Use a **dedicated Clerk Development instance** (the
+clean fix — keeps prod auth untouched):
+
+1. **Clerk Dashboard → your app → top-left instance switcher → "Development".**
+   Dev instances accept `localhost` + any added origin and don't bot-block test
+   automation. (Avoid satellite domains on the prod instance — heavier, and it
+   mixes prod auth with staging.)
+2. **Add the staging origin:** Dev instance → **Configure → Domains** (and
+   **Paths / Allowed origins**) → add `https://acreos-staging.fly.dev`.
+3. **Copy that instance's keys** (`pk_test_…`, `sk_test_…`) and set them on
+   staging **yourself** (never through me — credential rule):
+   ```bash
+   fly secrets set -a acreos-staging \
+     CLERK_PUBLISHABLE_KEY=pk_test_… VITE_CLERK_PUBLISHABLE_KEY=pk_test_… \
+     CLERK_SECRET_KEY=sk_test_…
+   ```
+   Staging redeploys automatically on `secrets set`.
+4. **Tell me** — I'll mint a sign-in ticket against the dev instance and drive
+   the full logged-in JTBD walk (the harness in `auth-clerk-ticket.setup.ts` +
+   the Playwright walk already exist; only the domain was blocking).
+
+CI alternative: once the dev keys are on staging, set the GitHub secrets
+(`CLERK_SIGN_IN_TICKET`, `CLERK_PUBLISHABLE_KEY`) + the repo `FLY_STAGING_APP`
+variable and `realism-audit.yml` runs Layer B in CI, where `CLERK_SECRET_KEY`
+lives as a secret — never on a dev box.
+
 ### 1. Stand up staging with REAL test-mode keys (the unlock)
 Set these on the staging Fly app (test/sandbox modes — no real money/postage/SMS):
 ```
