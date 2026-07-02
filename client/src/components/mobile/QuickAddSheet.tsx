@@ -151,7 +151,7 @@ function MicButton({
       aria-label={ariaLabel + (listening ? " — recording" : "")}
       className={`absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full flex items-center justify-center transition-colors ${
         listening
-          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 animate-pulse"
+          ? "bg-acr-neg-soft text-acr-neg animate-pulse"
           : "text-muted-foreground hover:bg-muted active:bg-muted"
       }`}
     >
