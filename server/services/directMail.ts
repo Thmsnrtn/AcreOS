@@ -3,6 +3,7 @@ import { storage } from '../storage';
 import { decryptJsonCredentials } from './fieldEncryption';
 import { logger } from "../utils/logger";
 import { shouldSimulate, recordSimulatedAction } from "../utils/simulationMode";
+import { isLiveSendArmed } from './mail/liveSendInterlock';
 
 async function logLobApiUsage(
   orgId: number | undefined,
@@ -139,6 +140,21 @@ export class DirectMailService {
     return modes;
   }
 
+  /**
+   * Degrade 'live' to 'test' while the platform live-send interlock is
+   * disarmed (mail/liveSendInterlock.ts). org.settings.mailMode = 'live' is
+   * a per-org preference; the interlock is the platform-wide launch gate
+   * and always wins. Callers report the returned mode so isTestMode in
+   * results never claims physical mail that didn't print.
+   */
+  private effectiveMode(requested: MailMode): MailMode {
+    if (requested === 'live' && !isLiveSendArmed()) {
+      logger.warn('[DirectMail] live mode requested while live sending is disarmed — using Lob test environment');
+      return 'test';
+    }
+    return requested;
+  }
+
   private getLobClient(mode: MailMode): any {
     if (mode === 'test') {
       if (!this.testLob) {
@@ -153,7 +169,7 @@ export class DirectMailService {
     }
   }
 
-  async getOrgLobClient(orgId: number): Promise<{ client: any; source: 'organization' | 'platform' } | null> {
+  async getOrgLobClient(orgId: number): Promise<{ client: any; source: 'organization' | 'platform'; isTestKey: boolean } | null> {
     try {
       const integration = await storage.getOrganizationIntegration(orgId, 'lob');
       
@@ -168,6 +184,7 @@ export class DirectMailService {
           return {
             client: new Lob({ apiKey: decrypted.apiKey }),
             source: 'organization',
+            isTestKey: decrypted.apiKey.startsWith('test_'),
           };
         }
       }
@@ -216,17 +233,19 @@ export class DirectMailService {
 
     let lob: any;
     let credentialSource: 'organization' | 'platform' = 'platform';
+    // Whether the send actually ran in Lob's test environment (no physical
+    // mail) — org keys by prefix, platform keys by interlock-degraded mode.
+    let usedTestEnv: boolean;
 
-    if (orgId) {
-      const orgClient = await this.getOrgLobClient(orgId);
-      if (orgClient) {
-        lob = orgClient.client;
-        credentialSource = orgClient.source;
-      }
-    }
-
-    if (!lob) {
-      lob = this.getLobClient(mode);
+    const orgClient = orgId ? await this.getOrgLobClient(orgId) : null;
+    if (orgClient) {
+      lob = orgClient.client;
+      credentialSource = orgClient.source;
+      usedTestEnv = orgClient.isTestKey;
+    } else {
+      const effective = this.effectiveMode(mode);
+      lob = this.getLobClient(effective);
+      usedTestEnv = effective === 'test';
     }
 
     const result = await lob.postcards.create({
@@ -252,12 +271,12 @@ export class DirectMailService {
     });
     
     const costCents = options.size === '4x6' ? 80 : options.size === '6x9' ? 95 : 115;
-    logLobApiUsage(orgId, 'send_postcard', costCents, { size: options.size, isTestMode: mode === 'test' });
-    
+    logLobApiUsage(orgId, 'send_postcard', costCents, { size: options.size, isTestMode: usedTestEnv });
+
     return {
       id: result.id,
       expectedDeliveryDate: result.expected_delivery_date,
-      isTestMode: mode === 'test',
+      isTestMode: usedTestEnv,
       credentialSource,
     };
   }
@@ -281,17 +300,18 @@ export class DirectMailService {
 
     let lob: any;
     let credentialSource: 'organization' | 'platform' = 'platform';
+    // See sendPostcard — honest test-environment tracking.
+    let usedTestEnv: boolean;
 
-    if (orgId) {
-      const orgClient = await this.getOrgLobClient(orgId);
-      if (orgClient) {
-        lob = orgClient.client;
-        credentialSource = orgClient.source;
-      }
-    }
-
-    if (!lob) {
-      lob = this.getLobClient(mode);
+    const orgClient = orgId ? await this.getOrgLobClient(orgId) : null;
+    if (orgClient) {
+      lob = orgClient.client;
+      credentialSource = orgClient.source;
+      usedTestEnv = orgClient.isTestKey;
+    } else {
+      const effective = this.effectiveMode(mode);
+      lob = this.getLobClient(effective);
+      usedTestEnv = effective === 'test';
     }
 
     const result = await lob.letters.create({
@@ -317,12 +337,12 @@ export class DirectMailService {
     });
     
     const costCents = (options.pageCount || 1) <= 1 ? 150 : 150 + ((options.pageCount || 1) - 1) * 15;
-    logLobApiUsage(orgId, 'send_letter', costCents, { pageCount: options.pageCount || 1, isTestMode: mode === 'test' });
-    
+    logLobApiUsage(orgId, 'send_letter', costCents, { pageCount: options.pageCount || 1, isTestMode: usedTestEnv });
+
     return {
       id: result.id,
       expectedDeliveryDate: result.expected_delivery_date,
-      isTestMode: mode === 'test',
+      isTestMode: usedTestEnv,
       credentialSource,
     };
   }
@@ -342,7 +362,9 @@ export class DirectMailService {
       totalCost: perPiece * recipientCount,
       recipientCount,
       pieceType,
-      isTestMode: mode === 'test',
+      // Reflect what a send would ACTUALLY do — while the interlock is
+      // disarmed a 'live' request still runs in Lob's test environment.
+      isTestMode: this.effectiveMode(mode) === 'test',
     };
   }
 
@@ -352,8 +374,10 @@ export class DirectMailService {
     deliverability: string;
     normalizedAddress?: DirectMailRecipient;
   }> {
-    // Use test mode by default for verification to save costs
-    const lob = this.getLobClient(this.hasTestKey ? 'test' : mode);
+    // Use test mode by default for verification to save costs. The
+    // interlock also applies: without a test key and while disarmed this
+    // throws rather than silently using the live key.
+    const lob = this.getLobClient(this.hasTestKey ? 'test' : this.effectiveMode(mode));
     
     try {
       const result = await lob.usVerifications.verify({

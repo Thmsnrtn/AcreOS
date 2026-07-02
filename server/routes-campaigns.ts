@@ -860,7 +860,9 @@ export function registerCampaignRoutes(app: Express): void {
           }
 
           const expectedDeliveryDate = result.expected_delivery_date ? new Date(result.expected_delivery_date) : undefined;
-          sendResults.push({ leadId: lead.id, success: true, lobId: result.id, expectedDeliveryDate, isTest: isTestMode });
+          // Trust the service's honest flag — the live-send interlock may
+          // have degraded a 'live' request to Lob's test environment.
+          sendResults.push({ leadId: lead.id, success: true, lobId: result.id, expectedDeliveryDate, isTest: result.isTestMode ?? isTestMode });
           lobJobIds.push(result.id);
 
           // Phase 3 Week 14 — Activation telemetry. First successfully-sent
@@ -959,16 +961,23 @@ export function registerCampaignRoutes(app: Express): void {
         status: 'active',
       });
 
+      // Honest test-mode aggregate: the org may have REQUESTED live mode,
+      // but the live-send interlock can degrade the actual sends to Lob's
+      // test environment. Report what happened, not what was asked for.
+      const actuallyTestMode = successCount > 0
+        ? sendResults.every((r) => !r.success || r.isTest === true)
+        : isTestMode;
+
       res.json({
         success: true,
-        isTestMode,
+        isTestMode: actuallyTestMode,
         mailingOrderId: mailingOrder.id,
         piecesQueued: successCount,
         piecesFailed: failCount,
         totalCost: (costPerPiece * successCount) / 100,
         refunded: failCount > 0 ? (costPerPiece * failCount) / 100 : 0,
-        message: isTestMode
-          ? `${successCount} test mail pieces queued (no actual mail sent)${failCount > 0 ? `, ${failCount} failed` : ''}`
+        message: actuallyTestMode
+          ? `${successCount} test mail pieces queued (no physical mail was printed)${failCount > 0 ? `, ${failCount} failed` : ''}`
           : `${successCount} mail pieces sent${failCount > 0 ? `, ${failCount} failed (refunded)` : ''}`,
         warning: identityWarning,
         details: sendResults,
