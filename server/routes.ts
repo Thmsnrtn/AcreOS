@@ -392,13 +392,27 @@ export async function registerRoutes(
   // Public feature flags endpoint — needed before Clerk middleware for sidebar rendering
   app.get("/api/config/features", async (_req, res) => {
     try {
-      const flags = await storage.getEnabledFeatureFlags();
-      const enabledKeys = flags.map((f: any) => f.key);
-      const enabledRoutes = flags.flatMap((f: any) => (f.controlledRoutes || []) as string[]);
-      res.json({ enabledKeys, enabledRoutes });
+      const { featureFlagService } = await import("./services/featureFlags");
+      const flags = await featureFlagService.getAll();
+      // enabled* keeps its historical semantics ('on' === enabled boolean).
+      // disabled* is the explicit deny-list: a flag whose state is 'off' is
+      // off for every audience, so the client can hide its routes even when
+      // ALL flags are off (previously indistinguishable from "flags unused",
+      // which made a full module freeze un-hideable in the nav). Tier/beta/
+      // founder-only states are deliberately in neither list — this endpoint
+      // has no user context to resolve them.
+      const enabledKeys = flags.filter((f) => f.state === "on").map((f) => f.key);
+      const enabledRoutes = flags
+        .filter((f) => f.state === "on")
+        .flatMap((f) => f.controlledRoutes);
+      const disabledKeys = flags.filter((f) => f.state === "off").map((f) => f.key);
+      const disabledRoutes = flags
+        .filter((f) => f.state === "off")
+        .flatMap((f) => f.controlledRoutes);
+      res.json({ enabledKeys, enabledRoutes, disabledKeys, disabledRoutes });
     } catch {
       // On error, return all routes enabled so sidebar shows everything
-      res.json({ enabledKeys: [], enabledRoutes: [] });
+      res.json({ enabledKeys: [], enabledRoutes: [], disabledKeys: [], disabledRoutes: [] });
     }
   });
 
