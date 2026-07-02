@@ -302,7 +302,7 @@ import { registerPlatformFeatureRoutes } from "./routes-platform-features";
 // reads or writes them.
 
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { organizations, leads, properties, deals, npsResponses, feedbackSubmissions, churnRiskScores } from "@shared/schema";
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
@@ -548,13 +548,13 @@ export async function registerRoutes(
     try {
       const { email, vertical } = req.body;
       if (!email || !vertical) {
-        return res.status(400).json({ error: "Email and vertical are required" });
+        return Errors.badRequest(res, "Email and vertical are required");
       }
       const { adjacentVerticalsWaitlist } = await import("../shared/schema");
       await db.insert(adjacentVerticalsWaitlist).values({ email, vertical });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: "Failed to join waitlist" });
+      Errors.internal(res, err);
     }
   });
 
@@ -680,7 +680,7 @@ export async function registerRoutes(
     const { healthCheckService } = await import("./services/healthCheck");
     const service = await healthCheckService.checkService(req.params.service);
     if (!service) {
-      return res.status(404).json({ message: "Unknown service" });
+      return Errors.notFound(res, "service");
     }
     res.json(service);
   });
@@ -843,7 +843,7 @@ export async function registerRoutes(
         generatedAt: new Date().toISOString(),
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -866,7 +866,7 @@ export async function registerRoutes(
       const results = await fullTextSearch.search(org.id, query, limit);
       res.json({ results, query, total: results.length });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -989,7 +989,7 @@ export async function registerRoutes(
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
       const leadsToDelete = await storage.getLeadsByIds(org.id, ids);
@@ -1008,7 +1008,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Bulk delete preview error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to preview bulk delete" });
+      Errors.internal(res, error);
     }
   });
 
@@ -1019,12 +1019,12 @@ export async function registerRoutes(
       const leadId = Number(req.params.id);
       
       if (isNaN(leadId)) {
-        return res.status(400).json({ message: "Invalid lead ID" });
+        return Errors.badRequest(res, "Invalid lead ID");
       }
       
       const existingLead = await storage.getLead(org.id, leadId);
       if (!existingLead) {
-        return res.status(404).json({ message: "Lead not found" });
+        return Errors.notFound(res, "lead");
       }
       
       const now = new Date();
@@ -1055,7 +1055,7 @@ export async function registerRoutes(
       });
     } catch (err) {
       logger.error("Mark contacted error", err instanceof Error ? err : undefined);
-      res.status(500).json({ message: "Failed to mark lead as contacted" });
+      Errors.internal(res, err);
     }
   });
 
@@ -1066,7 +1066,7 @@ export async function registerRoutes(
       const { primaryId, duplicateId } = req.body;
       
       if (!primaryId || !duplicateId) {
-        return res.status(400).json({ message: "Primary and duplicate lead IDs are required" });
+        return Errors.badRequest(res, "Primary and duplicate lead IDs are required");
       }
       
       const merged = await storage.mergeLeads(org.id, primaryId, duplicateId);
@@ -1078,7 +1078,7 @@ export async function registerRoutes(
       });
     } catch (err) {
       logger.error("Merge leads error", err instanceof Error ? err : undefined);
-      res.status(500).json({ message: "Failed to merge leads" });
+      Errors.internal(res, err);
     }
   });
 
@@ -1089,12 +1089,12 @@ export async function registerRoutes(
       const leadId = Number(req.params.id);
       
       if (isNaN(leadId)) {
-        return res.status(400).json({ message: "Invalid lead ID" });
+        return Errors.badRequest(res, "Invalid lead ID");
       }
       
       const existingLead = await storage.getLead(org.id, leadId);
       if (!existingLead) {
-        return res.status(404).json({ message: "Lead not found" });
+        return Errors.notFound(res, "lead");
       }
       
       const contactMethod = req.body.method || "manual"; // call, email, sms, manual
@@ -1136,7 +1136,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Record contact error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to record contact" });
+      Errors.internal(res, error);
     }
   });
 
@@ -1146,7 +1146,7 @@ export async function registerRoutes(
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
       const user = req.user as any;
@@ -1175,7 +1175,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Bulk delete leads error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to bulk delete leads" });
+      Errors.internal(res, error);
     }
   });
   
@@ -1187,7 +1187,7 @@ export async function registerRoutes(
       res.json(deletedLeads);
     } catch (error: any) {
       logger.error("Get deleted leads error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to get deleted leads" });
+      Errors.internal(res, error);
     }
   });
   
@@ -1198,7 +1198,7 @@ export async function registerRoutes(
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
       const user = req.user as any;
@@ -1220,7 +1220,7 @@ export async function registerRoutes(
       res.json({ restoredCount });
     } catch (error: any) {
       logger.error("Restore leads error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to restore leads" });
+      Errors.internal(res, error);
     }
   });
   
@@ -1231,7 +1231,7 @@ export async function registerRoutes(
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
       const user = req.user as any;
@@ -1253,7 +1253,7 @@ export async function registerRoutes(
       res.json({ deletedCount });
     } catch (error: any) {
       logger.error("Permanent delete leads error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to permanently delete leads" });
+      Errors.internal(res, error);
     }
   });
 
@@ -1428,20 +1428,17 @@ export async function registerRoutes(
       
       // Validate required fields
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
       if (!newStage || typeof newStage !== "string") {
-        return res.status(400).json({ message: "newStage is required" });
+        return Errors.badRequest(res, "newStage is required");
       }
       
       // Validate stage is a valid deal stage
       const validStages = ["negotiating", "offer_sent", "countered", "accepted", "in_escrow", "closed", "cancelled"];
       if (!validStages.includes(newStage)) {
-        return res.status(400).json({ 
-          message: `Invalid stage. Must be one of: ${validStages.join(", ")}`,
-          validStages 
-        });
+        return Errors.badRequest(res, `Invalid stage. Must be one of: ${validStages.join(", ")}`, { validStages });
       }
       
       // Get the current state of all deals for safety/undo
@@ -1452,10 +1449,7 @@ export async function registerRoutes(
       const missingIds = ids.filter((id: number) => !foundIds.includes(id));
       
       if (missingIds.length > 0) {
-        return res.status(404).json({ 
-          message: `Some deals not found: ${missingIds.join(", ")}`,
-          missingIds 
-        });
+        return sendError(res, 404, "NOT_FOUND", `Some deals not found: ${missingIds.join(", ")}`, { missingIds });
       }
       
       // Filter out deals that are already in the target stage
@@ -1522,7 +1516,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Bulk stage update deals error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to bulk update deal stages" });
+      Errors.internal(res, error);
     }
   });
   
@@ -1533,15 +1527,13 @@ export async function registerRoutes(
       const { previousStates } = req.body;
       
       if (!Array.isArray(previousStates) || previousStates.length === 0) {
-        return res.status(400).json({ message: "previousStates must be a non-empty array" });
+        return Errors.badRequest(res, "previousStates must be a non-empty array");
       }
       
       // Validate structure of previousStates
       for (const state of previousStates) {
         if (!state.id || !state.previousStage) {
-          return res.status(400).json({ 
-            message: "Each previousState must have id and previousStage properties" 
-          });
+          return Errors.badRequest(res, "Each previousState must have id and previousStage properties");
         }
       }
       
@@ -1593,7 +1585,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Bulk stage undo error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to undo bulk stage update" });
+      Errors.internal(res, error);
     }
   });
 
@@ -1717,7 +1709,7 @@ export async function registerRoutes(
       const flags = await db.select().from(platformFeatureFlags).limit(1000);
       res.json(flags);
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to fetch feature flags" });
+      Errors.internal(res, err);
     }
   });
 
@@ -1727,7 +1719,7 @@ export async function registerRoutes(
       const { eq } = await import("drizzle-orm");
       const { enabled } = req.body;
       if (typeof enabled !== "boolean") {
-        return res.status(400).json({ message: "enabled (boolean) is required" });
+        return Errors.badRequest(res, "enabled (boolean) is required");
       }
       const [updated] = await db
         .update(platformFeatureFlags)
@@ -1735,11 +1727,11 @@ export async function registerRoutes(
         .where(eq(platformFeatureFlags.key, req.params.key))
         .returning();
       if (!updated) {
-        return res.status(404).json({ message: "Feature flag not found" });
+        return Errors.notFound(res, "feature flag");
       }
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to update feature flag" });
+      Errors.internal(res, err);
     }
   });
 
@@ -2005,15 +1997,17 @@ export async function registerRoutes(
   // Epic H: Auto-Delinquent Scraper route
   app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     const { county, state } = req.body as { county: string; state: string };
-    if (!county || !state) return res.status(400).json({ error: "county and state are required" });
+    if (!county || !state) return Errors.badRequest(res, "county and state are required");
     const { findAutoScrapeSource, scrapeCountyDelinquentList } = await import("./services/delinquentListScraper");
     const source = findAutoScrapeSource(county, state);
     if (!source) {
-      return res.status(404).json({
-        error: "No automated source available for this county",
-        message: `Auto-scraping not yet available for ${county}, ${state}. Use manual CSV upload instead.`,
-        manualUploadUrl: "/api/import/tax-delinquent",
-      });
+      return sendError(
+        res,
+        404,
+        "NOT_FOUND",
+        `Auto-scraping not yet available for ${county}, ${state}. Use manual CSV upload instead.`,
+        { manualUploadUrl: "/api/import/tax-delinquent" },
+      );
     }
     const result = await scrapeCountyDelinquentList(source);
     res.json(result);
@@ -2404,12 +2398,12 @@ export async function registerRoutes(
     try {
       const { address1, address2, city, state, zip } = req.body;
       if (!address1 || !city || !state) {
-        return res.status(400).json({ message: "address1, city, and state are required" });
+        return Errors.badRequest(res, "address1, city, and state are required");
       }
       const result = await verifyAddress({ address1, address2, city, state, zip });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2436,7 +2430,7 @@ export async function registerRoutes(
       res.json(tasks);
     } catch (error: any) {
       logger.error("Get tasks error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to fetch tasks" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2447,13 +2441,13 @@ export async function registerRoutes(
       
       const task = await storage.getTask(orgId, id);
       if (!task) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "task");
       }
       
       res.json(task);
     } catch (error: any) {
       logger.error("Get task error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to fetch task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2495,7 +2489,7 @@ export async function registerRoutes(
       res.status(201).json(task);
     } catch (error: any) {
       logger.error("Create task error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to create task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2507,7 +2501,7 @@ export async function registerRoutes(
       
       const existingTask = await storage.getTask(orgId, id);
       if (!existingTask) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "task");
       }
       
       const updates: any = { ...req.body };
@@ -2541,7 +2535,7 @@ export async function registerRoutes(
       res.json(task);
     } catch (error: any) {
       logger.error("Update task error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to update task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2552,7 +2546,7 @@ export async function registerRoutes(
       
       const task = await storage.getTask(orgId, id);
       if (!task) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "task");
       }
       
       const user = req.user as any;
@@ -2574,7 +2568,7 @@ export async function registerRoutes(
       res.json({ message: "Task deleted" });
     } catch (error: any) {
       logger.error("Delete task error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to delete task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2586,7 +2580,7 @@ export async function registerRoutes(
       
       const existingTask = await storage.getTask(orgId, id);
       if (!existingTask) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "task");
       }
       
       const completedTask = await storage.completeTask(id);
@@ -2608,7 +2602,7 @@ export async function registerRoutes(
       res.json({ completedTask });
     } catch (error: any) {
       logger.error("Complete task error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to complete task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2625,7 +2619,7 @@ export async function registerRoutes(
       res.json({ processed: recurringTasksDue.length, created: createdTasks });
     } catch (error: any) {
       logger.error("Process recurring tasks error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to process recurring tasks" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2677,7 +2671,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Get dashboard tasks summary error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to fetch tasks summary" });
+      Errors.internal(res, error);
     }
   });
 

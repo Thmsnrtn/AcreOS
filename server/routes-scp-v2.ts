@@ -195,13 +195,13 @@ export function registerSCPv2Routes(app: Express) {
     try {
       const { agent, new_trust_score } = req.body;
       if (!agent || new_trust_score === undefined) {
-        return res.status(400).json({ error: "Missing agent or new_trust_score" });
+        return Errors.badRequest(res, "Missing agent or new_trust_score");
       }
 
       const { companyAgentService } = await import("./services/companyAgents");
       const currentAgent = await companyAgentService.getByCodename(agent);
       if (!currentAgent) {
-        return res.status(404).json({ error: `Agent ${agent} not found` });
+        return Errors.notFound(res, `agent "${agent}"`);
       }
 
       const delta = new_trust_score - (currentAgent.trustScore ?? 50);
@@ -228,13 +228,13 @@ export function registerSCPv2Routes(app: Express) {
     try {
       const { agent, new_trust_score } = req.body;
       if (!agent || new_trust_score === undefined) {
-        return res.status(400).json({ error: "Missing agent or new_trust_score" });
+        return Errors.badRequest(res, "Missing agent or new_trust_score");
       }
 
       const { companyAgentService } = await import("./services/companyAgents");
       const currentAgent = await companyAgentService.getByCodename(agent);
       if (!currentAgent) {
-        return res.status(404).json({ error: `Agent ${agent} not found` });
+        return Errors.notFound(res, `agent "${agent}"`);
       }
 
       const delta = new_trust_score - (currentAgent.trustScore ?? 50);
@@ -313,13 +313,13 @@ export function registerSCPv2Routes(app: Express) {
     try {
       const { agent, to_version, reason } = req.body;
       if (!agent) {
-        return res.status(400).json({ error: "Missing agent" });
+        return Errors.badRequest(res, "Missing agent");
       }
 
       const cv = await getConfigVersioning();
       const currentVersion = cv.getAgentVersion(agent);
       if (!currentVersion) {
-        return res.status(404).json({ error: `Agent ${agent} not found` });
+        return Errors.notFound(res, `agent "${agent}"`);
       }
 
       const { executeRollback } = await getGoldenSuiteService();
@@ -358,7 +358,7 @@ export function registerSCPv2Routes(app: Express) {
     try {
       const { query } = req.body;
       if (!query) {
-        return res.status(400).json({ error: "Missing query" });
+        return Errors.badRequest(res, "Missing query");
       }
 
       const response = await handleTalkQuery(query);
