@@ -650,6 +650,6 @@ function HeadlineTtfvCard({ summary }: { summary: FunnelSummary | undefined }) {
 function toneClass(tone: "pos" | "warn" | "neg" | "muted"): string {
   if (tone === "pos") return "text-acr-pos";
   if (tone === "neg") return "text-acr-neg";
-  if (tone === "warn") return "text-amber-500 dark:text-amber-400";
+  if (tone === "warn") return "text-acr-warn";
   return "";
 }

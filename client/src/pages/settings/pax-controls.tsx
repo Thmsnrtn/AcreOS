@@ -92,7 +92,7 @@ function fmtRemaining(pausedUntil: string): string {
 function statusTone(status: string): { label: string; cls: string } {
   if (status === "acknowledged") return { label: "acknowledged", cls: "bg-acr-brand-soft text-acr-brand" };
   if (status === "dismissed") return { label: "dismissed", cls: "bg-muted text-muted-foreground" };
-  if (status === "escalated") return { label: "escalated", cls: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200" };
+  if (status === "escalated") return { label: "escalated", cls: "bg-acr-warn-soft text-acr-warn" };
   if (status === "auto_resolved") return { label: "auto-resolved", cls: "bg-acr-pos-soft text-acr-pos" };
   return { label: status || "detected", cls: "bg-muted text-muted-foreground" };
 }
@@ -268,7 +268,7 @@ export default function PaxControlsPage() {
             <Skeleton className="h-5 w-48" />
           ) : paused && autonomy?.pax?.pausedUntil ? (
             <>
-              <PauseCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
+              <PauseCircle className="w-5 h-5 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm">Pax is paused</div>
                 <div className="text-xs text-muted-foreground">
@@ -350,7 +350,7 @@ export default function PaxControlsPage() {
       <Card className="rounded-card mb-4" data-testid="card-pax-pause">
         <CardHeader>
           <CardTitle className="text-section-h2 flex items-center gap-2">
-            <PauseCircle className="w-5 h-5 text-amber-600" aria-hidden="true" />
+            <PauseCircle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
             Pause all Pax automation for 24 hours
           </CardTitle>
           <CardDescription>
@@ -365,7 +365,7 @@ export default function PaxControlsPage() {
             onClick={() => pauseMutation.mutate()}
             disabled={pauseMutation.isPending || paused}
             data-testid="button-pax-pause-24h"
-            className="border-amber-300 text-amber-700 hover:bg-amber-50 hover:border-amber-400 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
+            className="border-acr-warn text-acr-warn hover:bg-acr-warn-soft"
           >
             <PauseCircle className="w-4 h-4 mr-2" aria-hidden="true" />
             {paused ? "Already paused" : "Pause Pax for 24 hours"}

@@ -330,7 +330,7 @@ function Stat({
 }) {
   const tone =
     emphasis === "positive"
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-acr-pos"
       : emphasis === "negative"
         ? "text-destructive"
         : "text-foreground";

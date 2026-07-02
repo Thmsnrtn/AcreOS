@@ -52,9 +52,12 @@ Two parallel token systems coexist **by design**:
 
 - **System A — `--acr-*` raw tokens** (hex / rgba). Precise semantic color
   (brand, ink, surface, semantic states, heat, density, charts). Consumed via
-  Tailwind's `acr.*` map: `bg-acr-brand`, `text-acr-ink-3`. Because the values
-  are raw hex, the `bg-acr-brand/50` alpha-modifier syntax does **not** work —
-  use the pre-computed `-soft` variants for tinted/transparent versions.
+  Tailwind's `acr.*` map: `bg-acr-brand`, `text-acr-ink-3`. Alpha modifiers
+  (`bg-acr-brand/50`) resolve through CSS `color-mix` via the `acrToken`
+  wrapper in `tailwind.config.ts` (before 2026-07-02 they silently compiled
+  to NOTHING — ~650 authored washes rendered no color at all). Prefer the
+  pre-computed `-soft` variants for the standard tinted surface; use a
+  literal modifier only when a non-standard alpha is genuinely needed.
 - **System B — shadcn HSL parallel** (`--background`, `--primary`, `--card` …,
   emitted as `H S% L%` triplets). Drives shadcn/ui defaults and Tailwind's
   `bg-background`, `text-foreground`, and **is** alpha-modifier compatible

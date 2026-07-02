@@ -137,7 +137,7 @@ export default function ByokSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+            <ShieldCheck className="h-5 w-5 text-acr-pos" aria-hidden="true" />
             How this works
           </CardTitle>
         </CardHeader>
@@ -184,7 +184,7 @@ export default function ByokSettingsPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{meta.name}</span>
                         {row.status === "byok" ? (
-                          <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-600">
+                          <Badge variant="default" className="bg-acr-pos text-acr-brand-ink hover:bg-acr-pos">
                             BYOK · …{row.fingerprint}
                           </Badge>
                         ) : (

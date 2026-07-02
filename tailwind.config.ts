@@ -1,5 +1,21 @@
 import type { Config } from "tailwindcss";
 
+/**
+ * Alpha-capable acr-* token. The --acr-* CSS vars hold raw hex, so
+ * Tailwind's native `<alpha-value>` injection can't apply — and before
+ * this wrapper, `bg-acr-pos/10` silently compiled to NOTHING (the class
+ * was dropped), stranding ~650 authored washes/tints across the app.
+ * A literal opacity modifier now mixes the token with transparency via
+ * CSS color-mix (Baseline 2023); no modifier — or a var()-based legacy
+ * opacity-plugin value — returns the raw var unchanged.
+ */
+const acrToken =
+  (cssVar: string) =>
+  ({ opacityValue }: { opacityValue?: string } = {}): string => {
+    if (!opacityValue || opacityValue.includes("var(")) return `var(${cssVar})`;
+    return `color-mix(in srgb, var(${cssVar}) calc(${opacityValue} * 100%), transparent)`;
+  };
+
 export default {
   darkMode: ["class"],
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
@@ -153,55 +169,56 @@ export default {
           offline: "rgb(156 163 175)",
         },
         // Prototype-derived semantic tokens (acreos/theme.jsx homestead).
-        // Literal hex/rgba — alpha modifiers (e.g. `bg-acr-brand/50`) are not
-        // alpha-aware; use `*-soft` variants for tinted variants.
+        // Raw hex/rgba vars wrapped by acrToken so literal alpha modifiers
+        // (e.g. `bg-acr-brand/50`) resolve via color-mix; `*-soft` variants
+        // remain the semantic choice for standard tinted surfaces.
         acr: {
-          bg:           "var(--acr-bg)",
-          "bg-sunken":  "var(--acr-bg-sunken)",
-          "bg-raised":  "var(--acr-bg-raised)",
-          surface:      "var(--acr-surface)",
-          "surface-2":  "var(--acr-surface-2)",
-          "sidebar-bg": "var(--acr-sidebar-bg)",
-          "sidebar-ink": "var(--acr-sidebar-ink)",
-          ink:    "var(--acr-ink)",
-          "ink-2": "var(--acr-ink-2)",
-          "ink-3": "var(--acr-ink-3)",
-          "ink-4": "var(--acr-ink-4)",
-          line:        "var(--acr-line)",
-          "line-soft": "var(--acr-line-soft)",
-          brand:        "var(--acr-brand)",
-          "brand-ink":  "var(--acr-brand-ink)",
-          "brand-soft": "var(--acr-brand-soft)",
-          accent: "var(--acr-accent)",
-          pos:        "var(--acr-pos)",
-          "pos-soft": "var(--acr-pos-soft)",
-          warn:       "var(--acr-warn)",
-          "warn-soft": "var(--acr-warn-soft)",
-          neg:       "var(--acr-neg)",
-          "neg-soft": "var(--acr-neg-soft)",
-          glow: "var(--acr-glow)",
+          bg:           acrToken("--acr-bg"),
+          "bg-sunken":  acrToken("--acr-bg-sunken"),
+          "bg-raised":  acrToken("--acr-bg-raised"),
+          surface:      acrToken("--acr-surface"),
+          "surface-2":  acrToken("--acr-surface-2"),
+          "sidebar-bg": acrToken("--acr-sidebar-bg"),
+          "sidebar-ink": acrToken("--acr-sidebar-ink"),
+          ink:    acrToken("--acr-ink"),
+          "ink-2": acrToken("--acr-ink-2"),
+          "ink-3": acrToken("--acr-ink-3"),
+          "ink-4": acrToken("--acr-ink-4"),
+          line:        acrToken("--acr-line"),
+          "line-soft": acrToken("--acr-line-soft"),
+          brand:        acrToken("--acr-brand"),
+          "brand-ink":  acrToken("--acr-brand-ink"),
+          "brand-soft": acrToken("--acr-brand-soft"),
+          accent: acrToken("--acr-accent"),
+          pos:        acrToken("--acr-pos"),
+          "pos-soft": acrToken("--acr-pos-soft"),
+          warn:       acrToken("--acr-warn"),
+          "warn-soft": acrToken("--acr-warn-soft"),
+          neg:       acrToken("--acr-neg"),
+          "neg-soft": acrToken("--acr-neg-soft"),
+          glow: acrToken("--acr-glow"),
           // Borrower portal — warm public-surface gradient endpoints.
           // Defined as CSS vars in index.css (light + dark) so the portal's
           // distinct parchment identity is tokenized, not hardcoded hex.
-          "portal-from": "var(--acr-portal-grad-from)",
-          "portal-to":   "var(--acr-portal-grad-to)",
-          "chart-a": "var(--acr-chart-a)",
-          "chart-b": "var(--acr-chart-b)",
-          "chart-c": "var(--acr-chart-c)",
-          "chart-d": "var(--acr-chart-d)",
+          "portal-from": acrToken("--acr-portal-grad-from"),
+          "portal-to":   acrToken("--acr-portal-grad-to"),
+          "chart-a": acrToken("--acr-chart-a"),
+          "chart-b": acrToken("--acr-chart-b"),
+          "chart-c": acrToken("--acr-chart-c"),
+          "chart-d": acrToken("--acr-chart-d"),
           // Bridge surface — single amber accent for live / active / now.
           // Defined as a CSS var in index.css so it can theoretically
           // theme without touching component code.
-          "bridge-accent": "var(--acr-bridge-accent)",
+          "bridge-accent": acrToken("--acr-bridge-accent"),
           // Heat tokens — activity/demand intensity (Kai finding #1, 2026-06-01).
           // Distinct from neg/warn/pos which encode outcome sentiment.
           // cold = quiet/low, warm = building/medium, hot = high/active.
-          "heat-cold":      "var(--acr-heat-cold)",
-          "heat-warm":      "var(--acr-heat-warm)",
-          "heat-hot":       "var(--acr-heat-hot)",
-          "heat-cold-soft": "var(--acr-heat-cold-soft)",
-          "heat-warm-soft": "var(--acr-heat-warm-soft)",
-          "heat-hot-soft":  "var(--acr-heat-hot-soft)",
+          "heat-cold":      acrToken("--acr-heat-cold"),
+          "heat-warm":      acrToken("--acr-heat-warm"),
+          "heat-hot":       acrToken("--acr-heat-hot"),
+          "heat-cold-soft": acrToken("--acr-heat-cold-soft"),
+          "heat-warm-soft": acrToken("--acr-heat-warm-soft"),
+          "heat-hot-soft":  acrToken("--acr-heat-hot-soft"),
         },
       },
       fontFamily: {

@@ -774,7 +774,7 @@ function Metric({
             (tone === "negative"
               ? "text-destructive"
               : tone === "positive"
-                ? "text-emerald-600 dark:text-emerald-400"
+                ? "text-acr-pos"
                 : "")
           }
         >
