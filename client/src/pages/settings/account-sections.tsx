@@ -195,6 +195,7 @@ export function PrivacyDataSettings() {
     queryFn: () => fetch("/api/privacy/status", { credentials: "include" }).then(r => r.json()),
   });
 
+  // allow-no-invalidation: read-only export download — mutates nothing
   const exportMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/privacy/export", {
@@ -221,6 +222,7 @@ export function PrivacyDataSettings() {
       }),
   });
 
+  // allow-no-invalidation: account anonymization signs the user out — the session (and cache) ends
   const deleteMutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", "/api/privacy/delete", { confirm: "DELETE MY DATA" }),

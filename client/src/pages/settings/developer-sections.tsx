@@ -70,6 +70,7 @@ export function ApiKeyManager() {
     },
   });
 
+  // allow-no-invalidation: onSuccess calls the key list's refetch() — refetch-based, not key-based
   const createKey = useMutation({
     mutationFn: async () => {
       const expiresInDays = newKeyExpiry === "never" ? null : parseInt(newKeyExpiry);
@@ -94,6 +95,7 @@ export function ApiKeyManager() {
       }),
   });
 
+  // allow-no-invalidation: onSuccess calls the key list's refetch() — refetch-based, not key-based
   const revokeKey = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("DELETE", `/api/org/api-keys/${id}`, undefined);
