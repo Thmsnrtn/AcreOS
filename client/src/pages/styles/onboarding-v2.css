@@ -251,9 +251,11 @@
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 
-.ob2-type-card:hover {
-  background: var(--acr-bg-raised);
-  border-color: var(--acr-ink-4);
+@media (hover: hover) {
+  .ob2-type-card:hover {
+    background: var(--acr-bg-raised);
+    border-color: var(--acr-ink-4);
+  }
 }
 
 .ob2-type-card--on {
@@ -307,9 +309,11 @@
   position: relative;
 }
 
-.ob2-sample-card:hover:not(:disabled) {
-  background: var(--acr-bg-raised);
-  box-shadow: 0 0 0 1px var(--acr-brand);
+@media (hover: hover) {
+  .ob2-sample-card:hover:not(:disabled) {
+    background: var(--acr-bg-raised);
+    box-shadow: 0 0 0 1px var(--acr-brand);
+  }
 }
 
 .ob2-sample-card:disabled {
@@ -389,9 +393,11 @@
   align-items: center;
 }
 
-.ob2-link:hover:not(:disabled) {
-  color: var(--acr-ink);
-  text-decoration-color: var(--acr-line);
+@media (hover: hover) {
+  .ob2-link:hover:not(:disabled) {
+    color: var(--acr-ink);
+    text-decoration-color: var(--acr-line);
+  }
 }
 
 .ob2-link:disabled {
@@ -447,8 +453,10 @@
   min-height: 44px;
 }
 
-.ob2-csv-change:hover {
-  color: var(--acr-ink);
+@media (hover: hover) {
+  .ob2-csv-change:hover {
+    color: var(--acr-ink);
+  }
 }
 
 .ob2-success-note {
@@ -481,8 +489,10 @@
   min-height: 44px;
 }
 
-.ob2-btn-secondary:hover {
-  background: var(--acr-bg-raised);
+@media (hover: hover) {
+  .ob2-btn-secondary:hover {
+    background: var(--acr-bg-raised);
+  }
 }
 
 /* ─── Reveal screen (Step 2: ready) ──────────────────────────────────────── */
@@ -553,9 +563,11 @@
   gap: 8px;
 }
 
-.ob2-btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--acr-ink) 88%, transparent);
-  transform: translateY(-1px);
+@media (hover: hover) {
+  .ob2-btn-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--acr-ink) 88%, transparent);
+    transform: translateY(-1px);
+  }
 }
 
 .ob2-btn-primary:active:not(:disabled) {
@@ -587,8 +599,10 @@
   transition: color 0.15s;
 }
 
-.ob2-back:hover {
-  color: var(--acr-ink);
+@media (hover: hover) {
+  .ob2-back:hover {
+    color: var(--acr-ink);
+  }
 }
 
 .ob2-back:disabled {
