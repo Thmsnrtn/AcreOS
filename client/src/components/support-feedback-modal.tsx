@@ -78,6 +78,7 @@ export function SupportFeedbackModal({
     }
   }, [open, defaultCategory]);
 
+  // allow-no-invalidation: feedback submission — no cached query reads it
   const mutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/feedback", {

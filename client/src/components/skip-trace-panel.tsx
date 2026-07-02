@@ -51,6 +51,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
     queryKey: ['/api/skip-traces/lead', lead.id],
   });
 
+  // allow-no-invalidation: starts an async trace; the polling query (setIsPolling) picks up results
   const runSkipTrace = useMutation({
     mutationFn: async () => {
       const res = await apiRequest('POST', '/api/skip-traces', { leadId: lead.id });

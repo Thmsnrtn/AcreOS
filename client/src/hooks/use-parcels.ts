@@ -35,6 +35,7 @@ interface ParcelData {
 export function useParcelLookup() {
   const { toast } = useToast();
   
+  // allow-no-invalidation: read-only parcel lookup — results feed the caller's form, nothing persisted
   return useMutation({
     mutationFn: async (request: ParcelLookupRequest): Promise<ParcelData> => {
       const res = await apiRequest("POST", "/api/parcels/lookup", request);

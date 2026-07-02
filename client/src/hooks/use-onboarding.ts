@@ -109,6 +109,7 @@ export function useOnboarding() {
     },
   });
 
+  // allow-no-invalidation: onSuccess calls the status query's refetch() — refetch-based, not key-based
   const updateStepMutation = useMutation({
     mutationFn: async ({ step, data, skipped }: { step: number; data?: any; skipped?: boolean }) => {
       const res = await apiRequest("PUT", "/api/onboarding/step", { step, data, skipped });

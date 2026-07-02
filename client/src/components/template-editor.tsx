@@ -227,6 +227,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
     },
   );
 
+  // allow-no-invalidation: preview renders from editor-local state (setPreviewContent)
   const previewMutation = useMutation({
     mutationFn: async (templateId: number) => {
       return apiRequest("POST", `/api/document-templates/${templateId}/preview`, {});

@@ -451,6 +451,7 @@ export function useCreditHistory(opts: { days?: number; category?: string | null
 }
 
 export function useRechargeCredits() {
+  // allow-no-invalidation: returns a Stripe checkout URL the browser navigates away to
   return useMutation<{ checkoutUrl: string }, Error, { packCents: number }>({
     mutationFn: async ({ packCents }) => {
       const res = await apiRequest(
