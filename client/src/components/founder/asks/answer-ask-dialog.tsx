@@ -42,6 +42,7 @@ export function AnswerAskDialog({ ask, onClose, onSubmitted }: AnswerAskDialogPr
   // Using inline useState resets requires effect; do it via a key prop on
   // the form below.
 
+  // allow-no-invalidation: onSuccess calls the parent's onSubmitted() prop, which refreshes the asks list
   const mutation = useMutation({
     mutationFn: async (input: {
       askId: number;

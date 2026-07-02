@@ -38,6 +38,7 @@ export function SupersedeAskDialog({
   const { toast } = useToast();
   const [reason, setReason] = useState("");
 
+  // allow-no-invalidation: onSuccess calls the parent's onSubmitted() prop, which refreshes the asks list
   const mutation = useMutation({
     mutationFn: async (input: { askId: number; reason: string }) => {
       const res = await apiRequest(

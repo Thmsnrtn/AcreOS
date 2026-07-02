@@ -75,6 +75,7 @@ export function TwoFactorResetPanel({
   const apiProofType = (t: ProofType): "video_call" | "court_doc" | "id_photo" =>
     t === "notarized_statement" ? "court_doc" : t;
 
+  // allow-no-invalidation: onSuccess calls the parent's onAction() prop, which refreshes the console
   const mutation = useMutation({
     mutationFn: async () => {
       const refLabel =
