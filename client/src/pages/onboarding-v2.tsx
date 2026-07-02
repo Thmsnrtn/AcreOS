@@ -313,6 +313,7 @@ export default function OnboardingV2() {
     },
   });
 
+  // allow-no-invalidation: provisions templates before any app queries exist in the cache — /today fetches fresh after navigate
   const provisionMutation = useMutation({
     mutationFn: async (bt: BusinessType) => {
       const res = await apiRequest("POST", "/api/onboarding/provision", {
@@ -332,6 +333,11 @@ export default function OnboardingV2() {
     mutationFn: async ({ persona, businessType: bt }: { persona: Persona; businessType: BusinessType }) => {
       const res = await apiRequest("PUT", "/api/me/persona", { persona, businessType: bt });
       return res.json();
+    },
+    onSuccess: () => {
+      // Persona gates nav content — the cached user must not go stale
+      // across the SPA navigate() into /today.
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
   });
 
@@ -408,6 +414,11 @@ export default function OnboardingV2() {
       });
       if (!res.ok) throw new Error("Failed to record step");
       return res.json();
+    },
+    onSuccess: () => {
+      // Step progress is read by the onboarding status query — keep the
+      // wizard's progress indicators live as steps record.
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
     },
   });
 
