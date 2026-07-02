@@ -330,6 +330,7 @@ function EmailMessageDetail({
   const [paxAttribution, setPaxAttribution] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
 
+  // allow-no-invalidation: AI draft lands in the reply textarea's local state
   const draftReplyMutation = useMutation({
     mutationFn: async (priorDraft?: string) => {
       const res = await apiRequest("POST", "/api/ai/draft-reply", {
@@ -415,6 +416,7 @@ function EmailMessageDetail({
     onSuccess: () => onBack(),
   });
 
+  // allow-no-invalidation: outbound reply — the inbound message list is unchanged by sending
   const sendReplyMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/send-email", {

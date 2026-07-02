@@ -73,6 +73,7 @@ export default function PrivacySettingsPage() {
   const invalidateStatus = () =>
     qc.invalidateQueries({ queryKey: ["/api/privacy/status"] });
 
+  // allow-no-invalidation: onSuccess calls the local invalidateStatus() helper above
   const exportMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/privacy/export", {});
@@ -97,6 +98,7 @@ export default function PrivacySettingsPage() {
       }),
   });
 
+  // allow-no-invalidation: onSuccess calls the local invalidateStatus() helper above
   const deleteMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/privacy/delete", {
