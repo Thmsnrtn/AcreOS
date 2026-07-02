@@ -878,7 +878,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
     <div
       // Bold Tahoe re-skin (§4 depth): tokenized modal scrim — `bg-surface-scrim`
       // (the .40 backdrop role) instead of a raw `bg-black/50`, layered at the
-      // semantic `z-modal` instead of `z-50`. Behavior (onClick close, a11y)
+      // semantic `z-modal` instead of `z-floating`. Behavior (onClick close, a11y)
       // unchanged.
       className="fixed inset-0 z-modal bg-surface-scrim backdrop-blur-sm"
       onClick={onClose}

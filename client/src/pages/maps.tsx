@@ -530,7 +530,7 @@ function PropertyIntelligencePanel({
     >
       {/* Header */}
       {/* Bold Tahoe re-skin (Wave R, §4 depth): semantic `z-docked` (= the 10 it
-          already had) for the sticky panel header instead of the raw z-10. */}
+          already had) for the sticky panel header instead of the raw z-docked. */}
       <div className="p-3 border-b bg-gradient-to-r from-primary/5 to-primary/10 flex items-start justify-between gap-2 sticky top-0 z-docked">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -1208,7 +1208,7 @@ export default function MapsPage() {
             takes the lighter `bg-surface-veil` (.80) translucency role so the
             two planes read as distinct, the bold `backdrop-blur-lg` depth read,
             and a softened `border-border/50` edge-of-light hairline. `z-docked`
-            (10) keeps the semantic layer it already had (z-10). No shadow — it
+            (10) keeps the semantic layer it already had (z-docked). No shadow — it
             sits under the primary topbar's shadow. Visual-only; layout/sizing
             unchanged. See docs/design/reskin-treatment.md. */}
         <div className="flex items-center gap-2 px-4 md:px-6 py-2.5 border-b border-border/50 bg-surface-veil backdrop-blur-lg sticky top-0 z-docked">
@@ -1633,7 +1633,7 @@ export default function MapsPage() {
                 onClose={() => setShowMarketHeat(false)}
                 // Bold Tahoe re-skin (Wave R, §4 depth): keep the semantic
                 // stacking layer (`z-docked` = the 10 it already had) instead of
-                // the raw z-10; the panel's own canvas-overlay glass + shadow is
+                // the raw z-docked; the panel's own canvas-overlay glass + shadow is
                 // applied in MarketHeatPanel.tsx. Position/size unchanged.
                 className="absolute top-2 left-2 z-docked w-80 max-w-[calc(100%-1rem)] max-h-[calc(100%-1rem)]"
               />

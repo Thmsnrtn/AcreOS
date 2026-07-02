@@ -61,7 +61,7 @@ export function MobileBottomNav() {
           aria-haspopup="dialog"
           aria-expanded={isQuickAddOpen}
           onClick={() => setIsQuickAddOpen(true)}
-          className="fixed right-4 z-50 flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-level-3 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="fixed right-4 z-floating flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-level-3 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           style={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px) + 16px)" }}
           data-testid="mobile-quick-add-fab"
         >
@@ -71,7 +71,7 @@ export function MobileBottomNav() {
 
       <nav
         aria-label="Mobile navigation"
-        className="fixed bottom-0 left-0 right-0 z-50 bg-surface-chrome backdrop-blur-lg border-t border-border"
+        className="fixed bottom-0 left-0 right-0 z-floating bg-surface-chrome backdrop-blur-lg border-t border-border"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
         data-testid="mobile-bottom-nav"
       >

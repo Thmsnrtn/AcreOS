@@ -364,7 +364,7 @@ function CtaCard({ onClick }: { onClick: () => void }) {
 
 function MobileStickyCta({ onClick }: { onClick: () => void }) {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface-chrome p-3 backdrop-blur-md lg:hidden">
+    <div className="fixed inset-x-0 bottom-0 z-overlay border-t border-border bg-surface-chrome p-3 backdrop-blur-md lg:hidden">
       <a
         href="/auth?mode=register&utm_source=calculator&utm_medium=internal&utm_campaign=calculator_cta"
         onClick={onClick}

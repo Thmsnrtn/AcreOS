@@ -96,7 +96,7 @@ export function NotificationBanner() {
           role={latestNotif.priority <= 2 ? "alert" : "status"}
           aria-live={latestNotif.priority <= 2 ? "assertive" : "polite"}
           className={cn(
-            "fixed top-16 right-4 md:right-16 z-50 max-w-sm",
+            "fixed top-16 right-4 md:right-16 z-floating max-w-sm",
             "bg-card border shadow-lg rounded-card p-4",
             "animate-in slide-in-from-top-2 fade-in duration-300",
             latestNotif.priority <= 2 && "border-acr-neg dark:border-acr-neg-soft",
@@ -146,7 +146,7 @@ export function NotificationBanner() {
         <div
           role="dialog"
           aria-label="Notifications"
-          className="fixed top-16 right-4 md:right-16 z-50 w-80 max-h-96 bg-card border shadow-xl rounded-card overflow-hidden"
+          className="fixed top-16 right-4 md:right-16 z-floating w-80 max-h-96 bg-card border shadow-xl rounded-card overflow-hidden"
         >
           <div className="flex items-center justify-between p-3 border-b">
             <p className="font-medium text-sm">Notifications</p>

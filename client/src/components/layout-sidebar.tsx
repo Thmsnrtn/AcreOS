@@ -1666,7 +1666,7 @@ export function Sidebar() {
       <aside
         aria-label="Sidebar"
         className={cn(
-          "hidden md:flex flex-col fixed inset-y-0 left-0 z-50 m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
+          "hidden md:flex flex-col fixed inset-y-0 left-0 z-floating m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
           isCollapsed ? "w-[68px]" : "w-64"
         )}
       >
@@ -1942,7 +1942,7 @@ function NewFounderSidebar({
     <aside
       aria-label="Founder navigation"
       className={cn(
-        "hidden md:flex flex-col fixed inset-y-0 left-0 z-50 m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
+        "hidden md:flex flex-col fixed inset-y-0 left-0 z-floating m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
         isCollapsed ? "w-[68px]" : "w-64"
       )}
       data-testid="new-founder-sidebar"

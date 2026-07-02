@@ -719,7 +719,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {paginatedProperties.map((property) => (
                 <div key={property.id} className="relative">
-                  <div className="absolute top-3 left-3 z-10">
+                  <div className="absolute top-3 left-3 z-docked">
                     <Checkbox
                       checked={selectedPropertyIds.has(property.id)}
                       onCheckedChange={(checked) => handleSelectProperty(property.id, checked === true)}
@@ -1041,13 +1041,13 @@ function PropertyCard({ property, onDelete }: {
             </div>
           </div>
         )}
-        <div className="absolute top-2 right-2 flex gap-1 z-10 items-center">
+        <div className="absolute top-2 right-2 flex gap-1 z-docked items-center">
           <LandCreditBadge propertyId={property.id} size="sm" />
           <Badge variant={property.status === 'available' ? 'default' : 'secondary'} className="capitalize shadow-sm text-xs">
             {property.status.replace(/_/g, ' ')}
           </Badge>
         </div>
-        <div className="absolute top-2 left-2 flex gap-1 z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-2 left-2 flex gap-1 z-docked opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <Button
             variant="destructive"
             size="icon"

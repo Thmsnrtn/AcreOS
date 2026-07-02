@@ -211,8 +211,8 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
   // Bottom-right on desktop, bottom-left (above the FounderMobileBottomNav
   // which is h-16) on mobile.
   const triggerPositionClass = isMobile
-    ? "fixed left-4 bottom-20 z-40"
-    : "fixed right-4 bottom-4 z-40";
+    ? "fixed left-4 bottom-20 z-overlay"
+    : "fixed right-4 bottom-4 z-overlay";
 
   return (
     <>
@@ -262,7 +262,7 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
             {isMobile && (
               <motion.div
                 key="dock-backdrop"
-                className="fixed inset-0 bg-surface-scrim z-40"
+                className="fixed inset-0 bg-surface-scrim z-overlay"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -278,8 +278,8 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
               data-testid="atlas-dock-panel"
               className={cn(
                 isMobile
-                  ? "fixed inset-x-0 bottom-0 z-50 h-[80vh] rounded-t-2xl"
-                  : "fixed right-0 top-0 bottom-0 z-50 w-[384px] border-l",
+                  ? "fixed inset-x-0 bottom-0 z-floating h-[80vh] rounded-t-2xl"
+                  : "fixed right-0 top-0 bottom-0 z-floating w-[384px] border-l",
                 "bg-background border-border flex flex-col shadow-2xl",
               )}
               initial={

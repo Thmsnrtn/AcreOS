@@ -1026,7 +1026,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
   const availableLeads = leads?.filter((l: any) => l.address && l.city && l.state && l.zip) || [];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-floating bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
@@ -1034,7 +1034,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
         className="fixed right-0 top-0 h-full w-full max-w-xl bg-background shadow-2xl overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 bg-surface-chrome backdrop-blur border-b p-6">
+        <div className="sticky top-0 z-docked bg-surface-chrome backdrop-blur border-b p-6">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h2 id={titleId} className="text-xl font-bold">{campaign.name}</h2>

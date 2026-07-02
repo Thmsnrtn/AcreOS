@@ -230,7 +230,7 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
     <div className="min-h-[100dvh] bg-background pb-24" data-testid="mobile-lead-detail">
       {/* Sticky back nav — fixed so it survives the long notes scroll. */}
       <header
-        className="sticky top-0 z-20 bg-surface-chrome backdrop-blur-md border-b border-border px-2 py-2 flex items-center"
+        className="sticky top-0 z-dropdown bg-surface-chrome backdrop-blur-md border-b border-border px-2 py-2 flex items-center"
         style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)" }}
       >
         <button

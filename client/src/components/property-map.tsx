@@ -370,7 +370,7 @@ function ElevationProfileOverlay({
   const areaPath = `${pathData} L ${W} ${H} L 0 ${H} Z`;
 
   return (
-    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 bg-background/97 backdrop-blur-md rounded-xl shadow-2xl border border-border/60 p-3 w-80">
+    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-docked bg-background/97 backdrop-blur-md rounded-xl shadow-2xl border border-border/60 p-3 w-80">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
           <Mountain className="h-3.5 w-3.5 text-acr-warn" />
@@ -443,7 +443,7 @@ function ElevationProfileOverlay({
 function CompassRose({ bearing }: { bearing: number }) {
   return (
     <div
-      className="absolute bottom-12 right-3 z-10 pointer-events-none select-none"
+      className="absolute bottom-12 right-3 z-docked pointer-events-none select-none"
       data-testid="compass-rose"
       title={`Bearing: ${Math.round(bearing)}°`}
     >
@@ -534,7 +534,7 @@ function SunControlPanel({
 
   return (
     <div
-      className="absolute bottom-28 right-3 z-20 bg-background/97 backdrop-blur-md rounded-xl shadow-2xl border border-border/60 p-3 w-60"
+      className="absolute bottom-28 right-3 z-dropdown bg-background/97 backdrop-blur-md rounded-xl shadow-2xl border border-border/60 p-3 w-60"
       data-testid="sun-control-panel"
     >
       <div className="flex items-center justify-between mb-2.5">
@@ -564,7 +564,7 @@ function SunControlPanel({
             }}
           />
         )}
-        <span className="text-white text-xs font-bold drop-shadow-md z-10">
+        <span className="text-white text-xs font-bold drop-shadow-md z-docked">
           {formatSolarTime(sunHour)}
         </span>
       </div>
@@ -2419,7 +2419,7 @@ export function PropertyMap({
     <div 
       className={cn(
         "relative rounded-md overflow-hidden",
-        isFullscreen && "fixed inset-0 z-50 rounded-none"
+        isFullscreen && "fixed inset-0 z-floating rounded-none"
       )}
       style={isFullscreen ? undefined : { height, width: "100%" }}
       data-testid="property-map-container"
@@ -2433,7 +2433,7 @@ export function PropertyMap({
 
       {showControls && (
         <>
-          <div className="absolute top-3 left-3 flex flex-col gap-2 z-10">
+          <div className="absolute top-3 left-3 flex flex-col gap-2 z-docked">
             <div className="flex gap-1 bg-surface-veil backdrop-blur-sm rounded-md p-1 shadow-lg">
               <Button
                 size="icon"
@@ -2604,7 +2604,7 @@ export function PropertyMap({
           </div>
 
           {showNearbyParcels && nearbyParcels.length > 0 && (
-            <div className="absolute top-3 right-14 z-10 w-64">
+            <div className="absolute top-3 right-14 z-docked w-64">
               <Collapsible open={nearbyPanelOpen} onOpenChange={setNearbyPanelOpen}>
                 <div className="bg-surface-haze backdrop-blur-sm rounded-md shadow-lg">
                   <CollapsibleTrigger asChild>
@@ -2694,7 +2694,7 @@ export function PropertyMap({
           )}
 
           {showComps && comps.length > 0 && (
-            <div className="absolute bottom-3 right-3 z-10 w-72">
+            <div className="absolute bottom-3 right-3 z-docked w-72">
               <Collapsible open={compsPanelOpen} onOpenChange={setCompsPanelOpen}>
                 <div className="bg-surface-haze backdrop-blur-sm rounded-md shadow-lg">
                   <CollapsibleTrigger asChild>
@@ -2782,7 +2782,7 @@ export function PropertyMap({
 
           {/* Overlay legend — only for layers that successfully loaded. Floats
               above the layer-panel toggle, bottom-left. */}
-          <div className="absolute bottom-16 left-3 z-10 max-w-[calc(100%-1.5rem)] space-y-1.5">
+          <div className="absolute bottom-16 left-3 z-docked max-w-[calc(100%-1.5rem)] space-y-1.5">
             {/* Approximate-extent honesty caption — explains the dashed outline so
                 an inferred footprint is never mistaken for a surveyed boundary. */}
             {hasApproximateBoundary && layerState.propertyHeatmap && (
@@ -2819,7 +2819,7 @@ export function PropertyMap({
             />
           </div>
 
-          <div className="absolute bottom-3 left-3 z-10">
+          <div className="absolute bottom-3 left-3 z-docked">
             <Collapsible open={isLayerPanelOpen} onOpenChange={setIsLayerPanelOpen}>
               <div className="bg-surface-haze backdrop-blur-sm rounded-md shadow-lg overflow-visible">
                 <CollapsibleTrigger asChild>
@@ -3126,7 +3126,7 @@ export function PropertyMap({
           size="icon"
           variant="outline"
           onClick={toggleFullscreen}
-          className="absolute top-3 right-3 z-10 bg-surface-veil backdrop-blur-sm"
+          className="absolute top-3 right-3 z-docked bg-surface-veil backdrop-blur-sm"
           aria-label="Exit fullscreen"
           data-testid="button-exit-fullscreen"
         >
@@ -3136,7 +3136,7 @@ export function PropertyMap({
 
       {measurementMode !== "none" && (
         <div 
-          className="absolute top-3 left-1/2 transform -translate-x-1/2 z-10 bg-surface-haze backdrop-blur-sm rounded-md shadow-lg p-3 min-w-[200px]"
+          className="absolute top-3 left-1/2 transform -translate-x-1/2 z-docked bg-surface-haze backdrop-blur-sm rounded-md shadow-lg p-3 min-w-[200px]"
           data-testid="measurement-overlay"
         >
           <div className="flex items-center justify-between gap-3 mb-2">
@@ -3529,7 +3529,7 @@ export function SinglePropertyMap({
           inferred footprint is never mistaken for a surveyed boundary. */}
       {isApproximate && (
         <div
-          className="absolute bottom-2 left-2 z-10 flex items-center gap-2 bg-surface-haze backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg pointer-events-none"
+          className="absolute bottom-2 left-2 z-docked flex items-center gap-2 bg-surface-haze backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg pointer-events-none"
           data-testid="legend-approximate-extent"
         >
           <svg width="20" height="6" viewBox="0 0 20 6" className="shrink-0 text-muted-foreground" aria-hidden="true">

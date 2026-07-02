@@ -137,7 +137,7 @@ export function BridgeAtlasSheet({
     <motion.aside
       aria-label="Atlas"
       className={cn(
-        "fixed inset-x-0 z-30 flex flex-col rounded-t-2xl border-t border-white/[0.08] bg-background",
+        "fixed inset-x-0 z-sticky flex flex-col rounded-t-2xl border-t border-white/[0.08] bg-background",
         // Bottom anchor: nav is h-16 so we sit on top of it.
         "bottom-16",
       )}

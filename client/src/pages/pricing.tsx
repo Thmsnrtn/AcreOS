@@ -160,7 +160,7 @@ export default function PricingPage() {
       />
       <JsonLd id="ld-pricing-product" data={pricingProductSchema()} />
       {/* Nav */}
-      <nav className="border-b bg-surface-chrome backdrop-blur sticky top-0 z-50">
+      <nav className="border-b bg-surface-chrome backdrop-blur sticky top-0 z-floating">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity min-h-11 py-1">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />

@@ -269,7 +269,7 @@ export function FeatureHint({
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 exit={{ scale: 0 }}
-                className="absolute -top-1 -right-1 w-3 h-3 bg-acr-warn rounded-full z-10"
+                className="absolute -top-1 -right-1 w-3 h-3 bg-acr-warn rounded-full z-docked"
               />
             )}
           </AnimatePresence>

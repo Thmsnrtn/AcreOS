@@ -402,12 +402,12 @@ export default function AuthPage() {
           continuity when the user clicks "Sign in" from the landing
           page.  Heavy gradient keeps copy readable on both themes. */}
       <div
-        className="absolute inset-0 -z-10 bg-cover bg-center opacity-40 dark:opacity-25"
+        className="absolute inset-0 -z-docked bg-cover bg-center opacity-40 dark:opacity-25"
         style={{ backgroundImage: "url(/images/aerial_view_wide_hor_0f1000c4.jpg)" }}
         aria-hidden="true"
       />
       <div
-        className="absolute inset-0 -z-10 bg-gradient-to-b from-background/70 via-background/85 to-background"
+        className="absolute inset-0 -z-docked bg-gradient-to-b from-background/70 via-background/85 to-background"
         aria-hidden="true"
       />
       <div className="w-full max-w-md flex flex-col items-center gap-6">

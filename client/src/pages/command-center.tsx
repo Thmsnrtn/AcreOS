@@ -1969,13 +1969,13 @@ export default function CommandCenterPage() {
             <Dialog>
               <DialogTrigger asChild>
                 {/* shrink-0 so the flex-1 tab list never compresses the gear
-                    out of its own box, and relative z-10 so the gear paints
+                    out of its own box, and relative z-docked so the gear paints
                     above the tab list — on a founder session (5 tabs) the
                     full-width TabsList bled over the gear and its subtree
                     intercepted the tap (Customer Surface Monitor J1, the
                     third overlay-interception of this step after the FAB +
                     cookie banner). */}
-                <Button variant="ghost" size="icon" aria-label="AI settings" data-testid="button-ai-settings" className="shrink-0 relative z-10">
+                <Button variant="ghost" size="icon" aria-label="AI settings" data-testid="button-ai-settings" className="shrink-0 relative z-docked">
                   <Settings className="w-4 h-4" />
                 </Button>
               </DialogTrigger>
