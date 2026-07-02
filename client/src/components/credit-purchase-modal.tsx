@@ -25,6 +25,7 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
   const [selectedPack, setSelectedPack] = useState<string>("pack_25");
   const groupLabelId = useId();
 
+  // allow-no-invalidation: redirects to Stripe checkout (window.location.href) — cache resets on return
   const purchaseMutation = useMutation({
     mutationFn: async (packId: string) => {
       const res = await apiRequest("POST", "/api/credits/purchase", { packId }, { idempotent: true });

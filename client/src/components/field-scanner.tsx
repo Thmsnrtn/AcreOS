@@ -146,6 +146,7 @@ export function FieldScanner({ propertyId, onComplete }: FieldScannerProps) {
     return canvas.toDataURL("image/jpeg", 0.8);
   }, []);
 
+  // allow-no-invalidation: scan observations land in scanner-local state and the onComplete callback
   const scanMutation = useMutation({
     mutationFn: async (photos: string[]) => {
       const images = photos.map((p) => p.replace(/^data:image\/\w+;base64,/, ""));

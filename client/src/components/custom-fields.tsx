@@ -489,6 +489,7 @@ export function CustomFieldValuesEditor({ entityType, entityId, compact = false 
     enabled: entityId > 0,
   });
 
+  // allow-no-invalidation: onSuccess calls refetchValues() — refetch-based, not key-based
   const saveMutation = useMutation({
     mutationFn: async ({ definitionId, value }: { definitionId: number; value: string | null }) => {
       return apiRequest("POST", "/api/custom-fields/values", {

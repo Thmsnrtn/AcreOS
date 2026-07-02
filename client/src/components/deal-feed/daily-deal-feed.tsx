@@ -492,6 +492,7 @@ export function DailyDealFeed({ compact = false }: { compact?: boolean }) {
     },
   });
 
+  // allow-no-invalidation: preference shapes FUTURE feed generation — today's cached feed is intentionally untouched
   const preferenceMutation = useMutation({
     mutationFn: async (preference: { focusSmaller: boolean; bucket: string }) => {
       return apiRequest("POST", "/api/deal-feed/preference", preference);

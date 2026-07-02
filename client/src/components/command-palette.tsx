@@ -522,6 +522,7 @@ export function CommandPalette() {
   // discoverable from the palette so first-time founders find it.
   const { mode: personaMode, setMode: setPersonaMode } = usePersonaMode();
 
+  // allow-no-invalidation: AI answer lands in palette-local state (setAiResponse)
   const aiMutation = useMutation({
     mutationFn: async (question: string) => {
       const res = await apiRequest("POST", "/api/realtime/ask", { message: question });
