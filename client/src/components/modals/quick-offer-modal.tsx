@@ -50,6 +50,7 @@ export function QuickOfferModal() {
     }
   }, [open, parcelId]);
 
+  // allow-no-invalidation: AI suggestion lands in modal-local state — no cached reads change
   const analyzeMutation = useMutation({
     mutationFn: async (parcel: string): Promise<AtlasSuggestion> => {
       const res = await apiRequest("POST", "/api/atlas/analyze", { parcelId: parcel });
@@ -75,6 +76,7 @@ export function QuickOfferModal() {
     },
   });
 
+  // allow-no-invalidation: no query reads /api/offers today (batches use /api/offer-batches); nothing cached goes stale
   const sendMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/offers", {

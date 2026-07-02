@@ -97,6 +97,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
   const [isNegotiationOpen, setIsNegotiationOpen] = useState(false);
   const [pendingTemplateId, setPendingTemplateId] = useState<number | null>(null);
 
+  // allow-no-invalidation: generated script lands in component-local state (setNegotiationScript)
   const negotiationMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/ai/negotiation/script", {
@@ -117,6 +118,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
     },
   });
   
+  // allow-no-invalidation: recommendation lands in the pricing popover's local state
   const pricingMutation = useMutation({
     mutationFn: async () => {
       if (!deal.propertyId) throw new Error("No property associated with this deal");

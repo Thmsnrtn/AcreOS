@@ -60,6 +60,7 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
   });
   const isAdvanced = (dealStats?.offersSent ?? 0) >= 3;
 
+  // allow-no-invalidation: pipeline state is stepped through wizard-locally; no cached reads change
   const initiateMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/negotiation/pipeline/initiate`, { dealId });
@@ -67,6 +68,7 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
     },
   });
 
+  // allow-no-invalidation: generated letter lands in wizard-local state (setLetter)
   const letterMutation = useMutation({
     mutationFn: async (tier: string) => {
       const res = await apiRequest("POST", `/api/negotiation/pipeline/letter`, { dealId, tier });
