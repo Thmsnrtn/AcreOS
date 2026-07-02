@@ -1211,12 +1211,15 @@ function AIOperationsTabContent() {
       toast({ title: "Due diligence started", description: "Analysis is now running in the background." });
       setDueDiligenceDialogOpen(false);
       setPropertyIdInput("");
+      // A new dossier row now exists — same invalidation as useRequestAIDossier.
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/due-diligence"] });
     },
     onError: () => {
       toast({ title: "Couldn't start due diligence", description: "No analysis was queued. Try again or check the system status.", variant: "destructive" });
     },
   });
 
+  // allow-no-invalidation: recommendation is surfaced in the success toast — no cached query reads it
   const getPricingMutation = useMutation({
     mutationFn: async (propertyId: number) => {
       const res = await apiRequest("POST", "/api/ai/pricing/acquisition", { propertyId });
@@ -1249,6 +1252,7 @@ function AIOperationsTabContent() {
     },
   });
 
+  // allow-no-invalidation: GET verification — reads compliance rules, mutates nothing
   const checkComplianceMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("GET", "/api/ai/compliance/rules");
@@ -1632,6 +1636,7 @@ export default function CommandCenterPage() {
     },
   });
 
+  // allow-no-invalidation: pure NLP classification — result drives local chat flow only
   const classifyIntentMutation = useMutation({
     mutationFn: async (message: string) => {
       const res = await apiRequest("POST", "/api/assistant/classify-intent", { message });

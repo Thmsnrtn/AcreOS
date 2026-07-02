@@ -83,6 +83,7 @@ export function ImportExportManager() {
     },
   });
 
+  // allow-no-invalidation: parses the file and returns a preview — nothing imported yet
   const previewMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
@@ -145,6 +146,7 @@ export function ImportExportManager() {
     },
   });
 
+  // allow-no-invalidation: read-only export download — mutates nothing
   const exportMutation = useMutation({
     mutationFn: async () => {
       const params = new URLSearchParams();
@@ -180,6 +182,7 @@ export function ImportExportManager() {
     },
   });
 
+  // allow-no-invalidation: read-only backup download — mutates nothing
   const backupMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/export/backup", { credentials: "include" });

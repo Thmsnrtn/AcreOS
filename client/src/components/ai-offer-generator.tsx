@@ -129,6 +129,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     marketValue: property.marketValue ? Number(property.marketValue) : undefined,
   };
 
+  // allow-no-invalidation: AI generation result lands in wizard-local state (setOfferData) — no cached reads change
   const generateOfferMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/ai/generate-offer", propertyData);
@@ -152,6 +153,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     },
   });
 
+  // allow-no-invalidation: AI generation result lands in wizard-local state (setLetterContent) — no cached reads change
   const generateLetterMutation = useMutation({
     mutationFn: async () => {
       const offerAmount = selectedOffer?.offerAmount || Number(customOfferAmount);
@@ -190,6 +192,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     },
   });
 
+  // allow-no-invalidation: AI prediction is displayed in the wizard only — no cached reads change
   const predictAcceptanceMutation = useMutation({
     mutationFn: async () => {
       const offerAmount = Number(customOfferAmount) || selectedOffer?.offerAmount || 0;
