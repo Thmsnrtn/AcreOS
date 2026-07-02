@@ -461,6 +461,7 @@ export function PaxCopilotRail() {
   });
   const [sseObservations, setSseObservations] = useState<PaxObservation[]>([]);
 
+  // allow-no-invalidation: onSuccess calls refetchObs() — refetch-based, not key-based
   const dismissMutation = useMutation({
     mutationFn: async (id: number) => {
       await fetch(`/api/pax/observations/${id}/acknowledge`, { method: "POST", credentials: "include" });

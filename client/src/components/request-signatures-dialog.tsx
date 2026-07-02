@@ -82,6 +82,7 @@ export function RequestSignaturesDialog({
   );
   const [links, setLinks] = useState<SigningLink[] | null>(null);
 
+  // allow-no-invalidation: onSuccess calls the parent's onSuccess prop, which refreshes the document view
   const mutation = useMutation({
     mutationFn: async () => {
       const clean = signers
