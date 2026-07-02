@@ -99,6 +99,7 @@ export function useUpdateMailMode() {
 }
 
 export function useMailEstimate() {
+  // allow-no-invalidation: pure quote computation — the POST mutates nothing server-side
   return useMutation({
     mutationFn: async (data: { pieceType: string; recipientCount?: number; recipientIds?: number[]; campaignId?: number }) => {
       const res = await apiRequest("POST", "/api/direct-mail/estimate", data);
@@ -156,6 +157,7 @@ interface VerifyAddressResult {
 }
 
 export function useVerifyAddress() {
+  // allow-no-invalidation: Lob address verification is a read-only lookup — nothing persisted
   return useMutation({
     mutationFn: async (address: { line1: string; line2?: string; city: string; state: string; zip: string }) => {
       const res = await apiRequest("POST", "/api/direct-mail/verify-address", address);
@@ -165,6 +167,7 @@ export function useVerifyAddress() {
 }
 
 export function useBulkVerifyAddresses() {
+  // allow-no-invalidation: bulk verification only reads leads and returns results — nothing persisted
   return useMutation({
     mutationFn: async (leadIds: number[]) => {
       const res = await apiRequest("POST", "/api/direct-mail/bulk-verify-addresses", { leadIds });
@@ -278,6 +281,7 @@ export function useMailAttribution(campaignId: number) {
 
 // Test send hook — sends a single test email to the logged-in user
 export function useTestSendCampaign() {
+  // allow-no-invalidation: sends one test email to the logged-in user — no cached reads change
   return useMutation({
     mutationFn: async (campaignId: number) => {
       const res = await apiRequest("POST", `/api/campaigns/${campaignId}/test-send`, undefined, { idempotent: true });

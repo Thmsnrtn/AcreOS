@@ -252,12 +252,14 @@ export default function FounderGrowthCampaignsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bundleData, wizardStep]);
 
+  // allow-no-invalidation: refreshes via refetchAccount() in onSuccess — refetch-based, not key-based
   const saveAdAccountMutation = useMutation({
     mutationFn: async (data: typeof adForm) => apiRequest("PUT", "/api/founder/growth/ad-account", data),
     onSuccess: () => { refetchAccount(); setShowAdAccountForm(false); toast({ title: "Ad account saved" }); },
     onError: () => toast({ title: "Couldn't save ad account", description: "Your existing ad account credentials are unchanged.", variant: "destructive" }),
   });
 
+  // allow-no-invalidation: result feeds the wizard's bundle poller (useQuery on bundleId) — no cached list changes
   const generateCreativeMutation = useMutation({
     mutationFn: async ({ templateKey }: { templateKey: string }) =>
       apiRequest("POST", "/api/founder/growth/generate-creative", { templateKey }).then((r) => r.json()),
@@ -268,6 +270,7 @@ export default function FounderGrowthCampaignsPage() {
     onError: (err: any) => toast({ title: "Couldn't start generation", description: `${err?.message || "Try again"} — no creative bundle was generated.`, variant: "destructive" }),
   });
 
+  // allow-no-invalidation: the fresh bundle is applied to wizard-local state via setBundle(data)
   const regenerateCopyMutation = useMutation({
     mutationFn: async ({ id, angle }: { id: string; angle: string }) =>
       apiRequest("POST", `/api/founder/growth/creative-bundles/${id}/regenerate-copy`, { angle }).then((r) => r.json()),
@@ -279,6 +282,7 @@ export default function FounderGrowthCampaignsPage() {
     onError: () => { setRegeneratingAngle(null); toast({ title: "Couldn't regenerate copy", description: "The existing variant is unchanged.", variant: "destructive" }); },
   });
 
+  // allow-no-invalidation: refreshes via refetchCampaigns() in onSuccess — refetch-based, not key-based
   const deployMutation = useMutation({
     mutationFn: async () => {
       if (!bundleId) throw new Error("No bundle");
@@ -308,6 +312,7 @@ export default function FounderGrowthCampaignsPage() {
     successToast: { title: "Campaign updated" },
   });
 
+  // allow-no-invalidation: refreshes via refetchCampaigns() in onSuccess — refetch-based, not key-based
   const syncStatsMutation = useMutation({
     mutationFn: async (id: number) => apiRequest("POST", `/api/founder/growth/campaigns/${id}/sync`),
     onSuccess: () => { refetchCampaigns(); toast({ title: "Stats synced" }); },
