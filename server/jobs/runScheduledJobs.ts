@@ -3494,6 +3494,18 @@ function startNpmWatchJob() {
           `[npm-watch] daily run: scanned=${r.advisoriesScanned} matched=${r.advisoriesMatched} persisted=${r.advisoriesPersisted} dupes=${r.advisoriesSkippedDuplicate}${r.auditError ? ` err=${r.auditError}` : ''}`,
           'npm-watch',
         );
+        // Step-away gap #4 — the immune-response wire. The watch above only
+        // RECORDS advisories; this runs the plan→act chain (gated repair plan,
+        // self-patch PR when earned + enabled, deduped founder ask for the
+        // witnessed class, honesty-ledger report row). Never throws.
+        const { runImmuneResponse } = await import(
+          '../services/autopilot/immuneResponse'
+        );
+        const immune = await runImmuneResponse();
+        log(
+          `[npm-watch] immune response: ${immune.line} selfPatch=${immune.selfPatch.ran ? immune.selfPatch.prUrl ?? 'PR' : immune.selfPatch.reason} ask=${immune.askCreated}`,
+          'npm-watch',
+        );
       }).catch((err) => {
         log(`[npm-watch] daily run failed: ${err}`, 'npm-watch');
       });

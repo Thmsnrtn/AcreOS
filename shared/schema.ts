@@ -17817,6 +17817,11 @@ export type InsertIntegrationStatus = z.infer<typeof insertIntegrationStatusSche
 // ============================================================================
 export * from "./schema/accounting-ops";
 
+// ============================================================================
+// FOUNDER AUTOPILOT — immune-system run reports (./schema/autopilot-immune.ts)
+// ============================================================================
+export * from "./schema/autopilot-immune";
+
 
 // ============================================================================
 // NOTE INVESTOR VERTICAL — extracted to ./schema/notes-vertical.ts

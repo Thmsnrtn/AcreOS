@@ -5260,6 +5260,27 @@ const STATEMENTS = [
   `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "attempts" integer NOT NULL DEFAULT 0`,
   `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "not_before_at" timestamptz`,
 
+  // Step-away gap #4 — immune-system run reports (migration 0185). One
+  // append-only row per daily immune-response run; the board report + Control
+  // door read this instead of the plan evaporating at process exit.
+  `CREATE TABLE IF NOT EXISTS "autopilot_immune_reports" (
+     "id" serial PRIMARY KEY,
+     "ran_at" timestamptz NOT NULL DEFAULT now(),
+     "advisories_total" integer NOT NULL DEFAULT 0,
+     "by_severity" jsonb NOT NULL DEFAULT '{}',
+     "auto_count" integer NOT NULL DEFAULT 0,
+     "witnessed_count" integer NOT NULL DEFAULT 0,
+     "skip_count" integer NOT NULL DEFAULT 0,
+     "plan_items" jsonb NOT NULL DEFAULT '[]',
+     "line" text NOT NULL,
+     "auto_merge_earned" boolean NOT NULL DEFAULT false,
+     "self_patch_ran" boolean NOT NULL DEFAULT false,
+     "self_patch_reason" text,
+     "self_patch_pr_url" text,
+     "ask_created" boolean NOT NULL DEFAULT false
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_immune_reports_ran_idx" ON "autopilot_immune_reports" ("ran_at")`,
+
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
      "dispatch_id" integer NOT NULL,

@@ -16,7 +16,7 @@ grade changes.
 | Property | Grade | One-line verdict |
 |---|---|---|
 | Operates itself | B | Thinking spine live on a 30-min tick; support auto-resolve genuinely learns; every outward touch still ends at a founder tap |
-| Maintains itself | C− | Dispatch retry + DLQ landed (transient blips no longer discard autonomous actions); immune system (advisories → gated self-patch PR) still wired end-to-nowhere |
+| Maintains itself | B− | Dispatch retry + DLQ landed; immune system now wired end-to-end (daily audit → gated plan → self-patch PR when earned/enabled → deduped founder ask → honesty ledger). Remaining: founder must set the git/PR envs + flip SELF_PATCH_ENABLED |
 | Grows itself | C− | Growth reasoning + budget ramp are real; the paid-ads limb has **no provider** (drafts only); SEO/content senses exist |
 | Evolves itself | C | Threshold/autonomy/efficacy loops close automatically; LLM judges + golden-suite regression + 3-tier memory are **unwired**; code evolution stops at PRs |
 | Reports to its owner | B+ | The Letter is structurally honest; paging was the weak seam (fixed below) |
@@ -62,12 +62,17 @@ grade changes.
    caps, cancellations, and any post-tool failure stay terminal — the
    original at-most-once stance for outward effects is preserved, and the
    orphan reaper still never requeues.
-4. **Wire the immune system.** `npm_watch` records advisories; nothing calls
-   `planSecurityResponse` → `runGatedSelfPatch`. Connect the daily advisory
-   scan to the planner and let `SELF_PATCH_ENABLED` + the code-change gate do
-   their designed jobs (patch-level bumps → PR, never merge). This is the
-   single biggest "maintains itself" unlock and it's all built — it just
-   isn't plugged in.
+4. **Wire the immune system (DONE 2026-07-03).** The daily `npm_watch` job now
+   runs the full chain: audit → `planSecurityResponse` (security rides the
+   OPS trust ladder; auto-PR earned at execute_gated+) → `runGatedSelfPatch`
+   behind `SELF_PATCH_ENABLED` + a capability preflight (git work tree +
+   GitHub credentials — a deployed image without them reports honestly) →
+   ONE deduped founder ask for the witnessed class → an
+   `autopilot_immune_reports` honesty-ledger row every run, which the board
+   report reads as its dependency-health line. The motor opens PULL REQUESTS
+   only; CI + deploy gate + founder review still stand. *Still open:* env
+   `GITHUB_TOKEN`/`GITHUB_REPOSITORY` must be set where the motor should run,
+   and `SELF_PATCH_ENABLED` stays a founder decision.
 5. **Witness delegation (`witnessGrant`)** — wire the evaluation into the
    witnessed-send choke so the founder can grant scoped, expiring delegation
    (e.g. support sends under $X auto-witnessed after a domain earns
