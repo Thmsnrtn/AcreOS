@@ -62,6 +62,7 @@ export default function PropertyEnrichmentPage() {
       }),
   });
 
+  // allow-no-invalidation: queues an async enrichment batch — results land server-side over time
   const batchMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/properties/bulk-enrich"),
     onSuccess: () => toast({ title: "Bulk enrichment queued.", description: "Properties will update as each lookup completes." }),

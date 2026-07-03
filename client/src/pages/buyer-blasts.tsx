@@ -324,6 +324,7 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
     setFinancingType("cash"); setPreview(null);
   };
 
+  // allow-no-invalidation: dry-run preview — nothing sent, results render from mutation.data
   const dryRun = useMutation({
     mutationFn: async () => {
       const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "";

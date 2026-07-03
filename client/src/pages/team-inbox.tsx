@@ -137,6 +137,7 @@ function NewChannelDialog({ onCreated }: { onCreated: () => void }) {
   const { toast } = useToast();
   const channelNameId = useId();
 
+  // allow-no-invalidation: onSuccess calls the parent's onCreated() prop, which refreshes the channel list
   const create = useMutation({
     mutationFn: () =>
       fetch("/api/team-messaging/channels", {

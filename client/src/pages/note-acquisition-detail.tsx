@@ -448,6 +448,7 @@ function PromoteDialog({ open, onOpenChange, acquisition, onPromoted }: {
   const [acquisitionDate, setAcquisitionDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [originalLender, setOriginalLender] = useState(acquisition.sourcedFrom ?? "");
 
+  // allow-no-invalidation: onSuccess hands off via onPromoted(noteId) — the parent navigates and refreshes
   const promoteMutation = useMutation({
     mutationFn: async () => {
       const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "";

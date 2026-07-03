@@ -412,6 +412,7 @@ export default function AVMPage() {
     },
   });
 
+  // allow-no-invalidation: kicks off an async background batch — valuations land server-side over time
   const bulkMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch('/api/avm/bulk', {

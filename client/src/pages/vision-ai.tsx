@@ -188,6 +188,7 @@ export default function VisionAIPage() {
     onError: (e: any) => toast({ title: "Couldn't analyze photos", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
 
+  // allow-no-invalidation: generated description is surfaced via toast — no cached query reads it
   const descriptionMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/vision-ai/properties/${selectedPropertyId}/description`, {

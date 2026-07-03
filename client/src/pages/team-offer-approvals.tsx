@@ -94,6 +94,8 @@ export default function OfferApprovalsPage() {
       return await res.json();
     },
     onSuccess: () => {
+      // The threshold governs which offers require approval — refresh the list.
+      queryClient.invalidateQueries({ queryKey: ["/api/team-readiness/offer-approvals"] });
       toast({ title: "Threshold updated" });
     },
     onError: (error) => {

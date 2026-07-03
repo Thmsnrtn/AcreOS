@@ -45,6 +45,7 @@ export default function FounderKeysPage() {
   const [editProvider, setEditProvider] = useState<string | null>(null);
   const [newKey, setNewKey] = useState("");
 
+  // allow-no-invalidation: onSuccess calls refetch() — refetch-based, not key-based
   const updateMutation = useMutation({
     mutationFn: async ({ provider, apiKey }: { provider: string; apiKey: string }) =>
       apiRequest("PUT", `/api/admin/system-api-keys/${provider}`, { apiKey }),
