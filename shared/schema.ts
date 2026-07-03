@@ -5829,6 +5829,12 @@ export const ACTIVATION_EVENTS = [
   // index like every other activation event.
   "trial_to_paid",
   "first_value_reached",
+  // TTFM North-Star companion (2026-07-03) — the magic moment: a SELLER
+  // answered. Mail out the door is our effort; this is the market talking
+  // back, and it's the event that decides whether a trial becomes a
+  // believer. Fired at the two inbound seams (reply-email webhook, inbound
+  // SMS webhook) with eventValue.channel = "email" | "sms".
+  "first_seller_response",
 ] as const;
 export type ActivationEvent =
   | typeof ACTIVATION_EVENTS[number]

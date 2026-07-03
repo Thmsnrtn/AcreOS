@@ -468,6 +468,19 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
             MessageSid
           );
           logger.info(`[Twilio Webhook] Inbound SMS stored for org ${matchingOrg.organizationId}`);
+
+          // TTFM companion metric — the org's first seller response.
+          // Opt-keyword traffic (STOP/START) returned above, so this only
+          // fires for a real inbound message. Idempotent FIRST-occurrence.
+          try {
+            const { recordActivationEventAsync } = await import("./services/activation");
+            recordActivationEventAsync({
+              orgId: matchingOrg.organizationId,
+              userId: null,
+              eventName: "first_seller_response",
+              eventValue: { channel: "sms" },
+            });
+          } catch { /* non-fatal */ }
         } catch (inboundError: any) {
           logger.error("[Twilio Webhook] Error storing inbound SMS", undefined, { metadata: { detail: inboundError.message } });
         }

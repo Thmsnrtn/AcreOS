@@ -113,6 +113,18 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
       and(eq(leads.id, leadId), eq(leads.organizationId, lead.organizationId))
     );
 
+    // TTFM companion metric — the org's first seller response. Idempotent
+    // FIRST-occurrence on (org, eventName); fire-and-forget.
+    try {
+      const { recordActivationEventAsync } = await import("./activation");
+      recordActivationEventAsync({
+        orgId: lead.organizationId,
+        userId: null,
+        eventName: "first_seller_response",
+        eventValue: { channel: "email", leadId },
+      });
+    } catch { /* non-fatal */ }
+
     // Log activity
     await activityLogger.logEmailSent(
       lead.organizationId,
