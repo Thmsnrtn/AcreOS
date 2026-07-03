@@ -225,6 +225,9 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "solene_continuous_tick", intervalMs: 30 * MIN, critical: false },
   { name: "solene_loop_watchdog", intervalMs: 30 * MIN, critical: false },
   { name: "solene_agent_claims_expiry", intervalMs: 5 * MIN, critical: false },
+  // Step-away gap #5 — taps frozen witnessed-send actions covered by a live
+  // founder-issued WitnessGrant. No-op with zero grants issued.
+  { name: "autopilot_auto_witness_sweep", intervalMs: 5 * MIN, critical: false },
   { name: "solene_team_state_regenerator", intervalMs: 15 * MIN, critical: false },
   { name: "solene_weekly_retro", intervalMs: WEEK, critical: false },
   { name: "solene_failure_modes_seed", intervalMs: DAY, critical: false },

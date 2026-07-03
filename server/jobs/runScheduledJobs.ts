@@ -2772,6 +2772,30 @@ function startAgentClaimsExpiryJob() {
   }, FIVE_MINUTES);
 }
 
+function startAutoWitnessSweepJob() {
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  const TTL_SECONDS = 4 * 60 + 30;
+  log(
+    'Registering auto-witness sweep (every 5 minutes; no-op with zero grants)',
+    'auto-witness',
+  );
+
+  trackInterval(() => {
+    withJobLock('autopilot_auto_witness_sweep', TTL_SECONDS, async () => {
+      const { runAutoWitnessSweep } = await import('../services/autopilot/autoWitness');
+      const r = await runAutoWitnessSweep();
+      if (r.witnessed > 0) {
+        log(
+          `[auto-witness] delegated ${r.witnessed}/${r.considered} frozen action(s) under founder-issued grants`,
+          'auto-witness',
+        );
+      }
+    }).catch((err) => {
+      log(`[auto-witness] sweep failed: ${err}`, 'auto-witness');
+    });
+  }, FIVE_MINUTES);
+}
+
 function startSoleneTeamStateRegeneratorJob() {
   // The regenerator script writes to ./docs/internal/ and depends on the
   // git working tree being present. On Fly machines neither is true:
@@ -4282,6 +4306,13 @@ export async function runScheduledJobs(): Promise<void> {
   // a crashed dispatch or forgotten releaseClaim() can't leave a stale row
   // blocking future commits via the pre-commit hook.
   startAgentClaimsExpiryJob();
+
+  // Step-away gap #5 — auto-witness sweep (every 5m). Taps frozen witnessed-
+  // send actions covered by a live founder-issued WitnessGrant, through the
+  // SAME approvePendingHand path a founder tap uses. With zero grants issued
+  // this is a pure no-op; the founder issues/revokes grants on the Control
+  // door. Money/broadcast classes require explicit opt-in per grant.
+  startAutoWitnessSweepJob();
 
   // Solene — team-state map regenerator (every 15m). Refreshes the
   // auto-generated section of docs/internal/solene-team-state.md so the

@@ -15,7 +15,7 @@ grade changes.
 
 | Property | Grade | One-line verdict |
 |---|---|---|
-| Operates itself | B | Thinking spine live on a 30-min tick; support auto-resolve genuinely learns; every outward touch still ends at a founder tap |
+| Operates itself | B+ | Thinking spine live on a 30-min tick; support auto-resolve genuinely learns; outward touches now flow under bounded founder-issued WitnessGrants (zero grants = founder taps everything, unchanged) |
 | Maintains itself | B− | Dispatch retry + DLQ landed; immune system now wired end-to-end (daily audit → gated plan → self-patch PR when earned/enabled → deduped founder ask → honesty ledger). Remaining: founder must set the git/PR envs + flip SELF_PATCH_ENABLED |
 | Grows itself | C− | Growth reasoning + budget ramp are real; the paid-ads limb has **no provider** (drafts only); SEO/content senses exist |
 | Evolves itself | C | Threshold/autonomy/efficacy loops close automatically; LLM judges + golden-suite regression + 3-tier memory are **unwired**; code evolution stops at PRs |
@@ -73,11 +73,18 @@ grade changes.
    only; CI + deploy gate + founder review still stand. *Still open:* env
    `GITHUB_TOKEN`/`GITHUB_REPOSITORY` must be set where the motor should run,
    and `SELF_PATCH_ENABLED` stays a founder decision.
-5. **Witness delegation (`witnessGrant`)** — wire the evaluation into the
-   witnessed-send choke so the founder can grant scoped, expiring delegation
-   (e.g. support sends under $X auto-witnessed after a domain earns
-   `autonomous_gated`). This is the throughput ceiling on the whole outward
-   surface; without it "step away" means "outward actions stop".
+5. **Witness delegation (DONE 2026-07-03).** The pure `witnessGrant` policy
+   engine is now wired per its own integration contract: grants persist in
+   `witness_grants` (money + broadcast belts DEFAULT DENIED; ≤30-day expiry;
+   revocable instantly from the Control door's Delegation card), and a
+   5-minute auto-witness sweep taps frozen pending actions a live grant
+   covers — through the SAME approvePendingHand path a founder tap uses
+   (hash re-verify, atomic claim, panic-stop re-read, proof-receipt). The
+   budget slot is consumed by conditional UPDATE *before* the tap, so a
+   revoke wins any race; a money hand with no provable amount in its frozen
+   args is never covered; attribution on every receipt reads
+   "solene (delegated by <founder> via witness-grant #N)". Zero grants
+   issued = exactly the old behavior.
 6. **Arm the evolution verifiers.** The LLM-judge stack + golden-suite
    regression never execute (no caller). Minimum viable: a founder-triggered
    batch-evolution run from the Controls door; judges gate, founder merges.

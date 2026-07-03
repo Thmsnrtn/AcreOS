@@ -17822,6 +17822,11 @@ export * from "./schema/accounting-ops";
 // ============================================================================
 export * from "./schema/autopilot-immune";
 
+// ============================================================================
+// FOUNDER AUTOPILOT — persisted WitnessGrants (./schema/autopilot-witness-grants.ts)
+// ============================================================================
+export * from "./schema/autopilot-witness-grants";
+
 
 // ============================================================================
 // NOTE INVESTOR VERTICAL — extracted to ./schema/notes-vertical.ts

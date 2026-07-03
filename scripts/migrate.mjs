@@ -5281,6 +5281,29 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "autopilot_immune_reports_ran_idx" ON "autopilot_immune_reports" ("ran_at")`,
 
+  // Step-away gap #5 — persisted WitnessGrants (migration 0186). Founder-issued
+  // bounded/expiring/revocable delegation of the witnessed-send tap; the
+  // deny_money/deny_broadcast belts default TRUE (explicit opt-in only).
+  `CREATE TABLE IF NOT EXISTS "witness_grants" (
+     "id" serial PRIMARY KEY,
+     "grantor_id" text NOT NULL,
+     "grantee_id" text NOT NULL,
+     "domains" jsonb NOT NULL DEFAULT '[]',
+     "max_cost_usd" numeric(10,2) NOT NULL,
+     "max_actions" integer NOT NULL,
+     "expires_at" timestamptz NOT NULL,
+     "deny_money" boolean NOT NULL DEFAULT true,
+     "deny_broadcast" boolean NOT NULL DEFAULT true,
+     "used_count" integer NOT NULL DEFAULT 0,
+     "revoked" boolean NOT NULL DEFAULT false,
+     "revoked_at" timestamptz,
+     "revoke_reason" text,
+     "issued_at" timestamptz NOT NULL DEFAULT now(),
+     "note" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "witness_grants_grantee_idx" ON "witness_grants" ("grantee_id", "revoked", "expires_at")`,
+  `CREATE INDEX IF NOT EXISTS "witness_grants_issued_idx" ON "witness_grants" ("issued_at")`,
+
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
      "dispatch_id" integer NOT NULL,

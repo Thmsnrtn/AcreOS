@@ -11,6 +11,7 @@
  * founder can always pause or re-trust any domain directly from the UI.
  */
 import type { Express, Response } from "express";
+import { z } from "zod";
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { getUserId, getOrganizationId } from "./types/request";
@@ -627,6 +628,85 @@ export function registerAutopilotRoutes(app: Express): void {
         const outcome = await rejectPendingHand(id);
         if (outcome.outcome === "not_found") return Errors.notFound(res, "Pending action");
         return res.json({ ok: true, outcome: outcome.outcome });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── WitnessGrants (step-away gap #5) — bounded delegation of the tap ──────
+  // The founder issues/revokes scoped, expiring grants; the 5-minute auto-
+  // witness sweep taps frozen actions a live grant covers. Zero grants =
+  // exactly today's behavior.
+  app.get(
+    "/api/founder/autopilot/witness-grants",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { listWitnessGrants } = await import("./services/autopilot/witnessGrantStore");
+        const grants = await listWitnessGrants();
+        return res.json({ grants });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/autopilot/witness-grants",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const bodySchema = z.object({
+        granteeId: z.string().min(1).max(128).default("solene"),
+        domains: z.array(z.enum(AUTOPILOT_DOMAINS as unknown as [string, ...string[]])).min(1),
+        maxCostUsd: z.number().positive().finite(),
+        maxActions: z.number().int().positive().max(10_000),
+        expiresInDays: z.number().positive().max(30),
+        allowMoney: z.boolean().optional(),
+        allowBroadcast: z.boolean().optional(),
+        note: z.string().max(2_000).optional(),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
+      try {
+        const { issueWitnessGrant } = await import("./services/autopilot/witnessGrantStore");
+        const grant = await issueWitnessGrant({
+          grantorId: getUserId(req),
+          granteeId: parsed.data.granteeId,
+          domains: parsed.data.domains as AutopilotDomain[],
+          maxCostUsd: parsed.data.maxCostUsd,
+          maxActions: parsed.data.maxActions,
+          expiresAt: new Date(Date.now() + parsed.data.expiresInDays * 24 * 60 * 60 * 1000),
+          allowMoney: parsed.data.allowMoney,
+          allowBroadcast: parsed.data.allowBroadcast,
+          note: parsed.data.note ?? null,
+        });
+        return res.json({ grant });
+      } catch (err) {
+        // issueWitnessGrant throws plain Errors for bound violations — they are
+        // founder-fixable validation failures, not 5xx.
+        return Errors.badRequest(res, err instanceof Error ? err.message : String(err));
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/autopilot/witness-grants/:id/revoke",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid id");
+      const reason = typeof req.body?.reason === "string" && req.body.reason.trim().length > 0
+        ? req.body.reason.trim()
+        : "revoked by founder";
+      try {
+        const { revokeWitnessGrant } = await import("./services/autopilot/witnessGrantStore");
+        const revoked = await revokeWitnessGrant(id, reason);
+        if (!revoked) return Errors.notFound(res, "Witness grant");
+        return res.json({ ok: true });
       } catch (err) {
         return Errors.internal(res, err);
       }

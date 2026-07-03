@@ -14,12 +14,15 @@ import { motion } from "framer-motion";
 import {
   Power, Send, ShieldCheck, PauseCircle, ChevronUp, Loader2, AlertCircle,
   ScrollText, MessageSquareQuote, Sparkles, ArrowRight, TrendingUp, OctagonX,
+  KeyRound,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
@@ -388,6 +391,11 @@ export default function FounderAutopilotControlPage() {
               </Card>
             </motion.section>
 
+            {/* Delegation — bounded, expiring, revocable witness grants */}
+            <motion.section variants={staggerItem}>
+              <WitnessGrantsSection />
+            </motion.section>
+
             {/* Quick links */}
             <motion.section variants={staggerItem} className="grid gap-3 sm:grid-cols-3">
               <ControlLink href="/founder/autopilot" icon={Sparkles} title="The daily letter" />
@@ -440,6 +448,212 @@ function MasterToggle({ icon: Icon, title, description, enabled, source, pending
         {source === "env" && <p className="text-[11px] text-muted-foreground">Currently following the server default. Flipping it here takes over.</p>}
       </CardContent>
     </Card>
+  );
+}
+
+// ── Delegation — WitnessGrants (step-away gap #5) ───────────────────────────
+// Every outward action still freezes for a tap; a grant lets the machine tap
+// FOR the founder inside explicit bounds. Money + broadcasts stay founder-only
+// unless a grant explicitly opts in. Revocation is instant.
+
+interface GrantRow {
+  id: number;
+  grantorId: string;
+  granteeId: string;
+  domains: string[];
+  maxCostUsd: string;
+  maxActions: number;
+  usedCount: number;
+  expiresAt: string;
+  denyMoney: boolean;
+  denyBroadcast: boolean;
+  revoked: boolean;
+  issuedAt: string;
+  note: string | null;
+}
+
+const GRANTS_KEY = ["/api/founder/autopilot/witness-grants"];
+const GRANT_DOMAINS = ["growth", "support", "deploy", "ops", "finance"] as const;
+
+function WitnessGrantsSection() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [formOpen, setFormOpen] = useState(false);
+  const [domains, setDomains] = useState<string[]>(["support"]);
+  const [maxCostUsd, setMaxCostUsd] = useState("5");
+  const [maxActions, setMaxActions] = useState("20");
+  const [expiresInDays, setExpiresInDays] = useState("7");
+  const [allowMoney, setAllowMoney] = useState(false);
+  const [allowBroadcast, setAllowBroadcast] = useState(false);
+
+  const grants = useQuery<{ grants: GrantRow[] }>({
+    queryKey: GRANTS_KEY,
+    queryFn: async () => {
+      const res = await fetch("/api/founder/autopilot/witness-grants", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load grants (${res.status})`);
+      return res.json();
+    },
+    staleTime: 15_000,
+  });
+
+  const issue = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/founder/autopilot/witness-grants", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          granteeId: "solene",
+          domains,
+          maxCostUsd: Number(maxCostUsd),
+          maxActions: Number(maxActions),
+          expiresInDays: Number(expiresInDays),
+          allowMoney,
+          allowBroadcast,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `Couldn't issue (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: GRANTS_KEY });
+      setFormOpen(false);
+      toast({ title: "Delegation issued", description: "The autopilot may now tap covered actions itself. Revoke any time." });
+    },
+    onError: (err) => toast({ title: "Couldn't issue", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+
+  const revoke = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/founder/autopilot/witness-grants/${id}/revoke`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: "revoked from Control Center" }),
+      });
+      if (!res.ok) throw new Error(`Couldn't revoke (${res.status})`);
+      return res.json();
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: GRANTS_KEY });
+      toast({ title: "Delegation revoked", description: "That grant is dead — those actions wait for your tap again." });
+    },
+    onError: (err) => toast({ title: "Couldn't revoke", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+
+  const rows = grants.data?.grants ?? [];
+  const live = rows.filter((g) => !g.revoked && new Date(g.expiresAt).getTime() > Date.now() && g.usedCount < g.maxActions);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <KeyRound className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <h2 className="text-sm font-semibold text-foreground">Delegation</h2>
+        <span className="text-xs text-muted-foreground">— let the autopilot tap for you, inside bounds you set</span>
+      </div>
+      <Card>
+        <CardContent className="p-4 space-y-4">
+          {grants.isLoading ? (
+            <Skeleton className="h-16 w-full rounded-card" />
+          ) : grants.isError ? (
+            <QueryErrorState error={grants.error instanceof Error ? grants.error : new Error("Failed")} title="Delegations unavailable" onRetry={() => void grants.refetch()} />
+          ) : (
+            <>
+              {rows.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No delegations. Every outward action waits for your tap — that's the default, and it never changes unless
+                  you issue a grant here. A grant is bounded (domains, per-action cost, total actions, expiry) and revocable instantly.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border/60">
+                  {rows.slice(0, 8).map((g) => {
+                    const dead = g.revoked || new Date(g.expiresAt).getTime() <= Date.now() || g.usedCount >= g.maxActions;
+                    return (
+                      <li key={g.id} className="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm text-foreground">
+                            {g.domains.map(prettyDomain).join(" · ")} — up to ${Number(g.maxCostUsd).toFixed(0)}/action
+                            <span className="text-muted-foreground"> · {g.usedCount}/{g.maxActions} used</span>
+                          </p>
+                          <p className="text-micro text-muted-foreground">
+                            {g.revoked ? "Revoked" : `Expires ${formatRelative(g.expiresAt)}`}
+                            {!g.denyMoney && <span className="text-acr-warn"> · may move money</span>}
+                            {!g.denyBroadcast && <span className="text-acr-warn"> · may broadcast</span>}
+                          </p>
+                        </div>
+                        {!dead && (
+                          <Button
+                            size="sm" variant="outline" className="shrink-0 min-h-[40px]"
+                            onClick={() => revoke.mutate(g.id)} disabled={revoke.isPending}
+                            data-testid={`revoke-grant-${g.id}`}
+                          >
+                            Revoke
+                          </Button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {formOpen ? (
+                <div className="space-y-3 rounded-card border border-border/60 bg-muted/20 p-3">
+                  <div className="flex flex-wrap gap-2">
+                    {GRANT_DOMAINS.map((d) => {
+                      const on = domains.includes(d);
+                      return (
+                        <Button
+                          key={d} type="button" size="sm" variant={on ? "default" : "outline"} className="min-h-[36px]"
+                          onClick={() => setDomains((cur) => (on ? cur.filter((x) => x !== d) : [...cur, d]))}
+                          aria-pressed={on}
+                          data-testid={`grant-domain-${d}`}
+                        >
+                          {prettyDomain(d)}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="grant-cost" className="text-xs">Per-action ceiling ($)</Label>
+                      <Input id="grant-cost" type="number" min="0.01" step="1" value={maxCostUsd} onChange={(e) => setMaxCostUsd(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="grant-actions" className="text-xs">Total actions</Label>
+                      <Input id="grant-actions" type="number" min="1" step="1" value={maxActions} onChange={(e) => setMaxActions(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="grant-days" className="text-xs">Expires in (days)</Label>
+                      <Input id="grant-days" type="number" min="1" max="30" step="1" value={expiresInDays} onChange={(e) => setExpiresInDays(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-4 text-xs text-foreground">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={allowMoney} onChange={(e) => setAllowMoney(e.target.checked)} className="h-4 w-4" />
+                      Allow money-moving actions (refunds, retries)
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={allowBroadcast} onChange={(e) => setAllowBroadcast(e.target.checked)} className="h-4 w-4" />
+                      Allow public broadcasts
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" className="min-h-[44px]" onClick={() => issue.mutate()} disabled={issue.isPending || domains.length === 0}>
+                      {issue.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Issue delegation"}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="min-h-[44px]" onClick={() => setFormOpen(false)} disabled={issue.isPending}>{Verbs.CANCEL}</Button>
+                  </div>
+                </div>
+              ) : (
+                <Button size="sm" variant="outline" className="min-h-[44px]" onClick={() => setFormOpen(true)} data-testid="new-grant">
+                  {live.length > 0 ? "Issue another delegation" : "Issue a delegation"}
+                </Button>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
