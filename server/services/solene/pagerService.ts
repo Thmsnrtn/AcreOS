@@ -32,6 +32,10 @@ const DEFAULT_TOPIC = "acreos-solene-urgent-norton-9k4m7q3z";
 
 const NTFY_TIMEOUT_MS = 5000;
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export interface SendPageInput {
   severity: SolenePageSeverity;
   subject: string;
@@ -119,6 +123,45 @@ export async function sendSolenePage(input: SendPageInput): Promise<SendPageResu
       err instanceof Error ? err : undefined,
     );
   }
+  }
+
+  // Second channel (step-away hardening): when the push did NOT reach the
+  // founder — ntfy failed, or production refused the unset topic — fall back
+  // to email via FOUNDER_EMAIL. One transport outage must never silence a
+  // critical page. The email reaching the founder counts as delivery; the
+  // detail records the full path honestly. Best-effort: an email failure
+  // never throws past here.
+  if (deliveryStatus !== "delivered") {
+    const founderEmail = process.env.FOUNDER_EMAIL?.trim();
+    if (founderEmail) {
+      try {
+        const { emailService } = await import("../emailService");
+        const result = await emailService.sendEmail({
+          to: founderEmail,
+          from: process.env.SOLENE_PAGE_FROM ?? "alerts@acreos.io",
+          fromName: "Solene (AcreOS autopilot)",
+          subject: `[Solene ${severity.toUpperCase()}] ${subject}`,
+          html: `<p><strong>${escapeHtml(subject)}</strong></p><pre style="font-family:monospace;white-space:pre-wrap">${escapeHtml(body)}</pre><p style="color:#666;font-size:12px">Sent by email because the push channel ${
+            topic === null ? "is unconfigured (SOLENE_PAGE_TOPIC unset)" : "failed"
+          }.</p>`,
+        });
+        if (result.success) {
+          deliveryDetail = `${deliveryDetail ?? "push not delivered"}; email fallback delivered to FOUNDER_EMAIL`;
+          deliveryStatus = "delivered";
+        } else {
+          deliveryDetail = `${deliveryDetail ?? "push not delivered"}; email fallback ALSO failed: ${(result.error ?? "unknown").slice(0, 150)}`;
+          logger.error(
+            "[solenePager] BOTH page channels failed — founder is unreachable for this page",
+          );
+        }
+      } catch (err) {
+        deliveryDetail = `${deliveryDetail ?? "push not delivered"}; email fallback threw: ${err instanceof Error ? err.message.slice(0, 150) : String(err).slice(0, 150)}`;
+        logger.error(
+          "[solenePager] BOTH page channels failed — founder is unreachable for this page",
+          err instanceof Error ? err : undefined,
+        );
+      }
+    }
   }
 
   // Persist regardless of delivery outcome.

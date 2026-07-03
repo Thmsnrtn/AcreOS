@@ -330,6 +330,17 @@ export async function gatherContextPack(): Promise<ContextPack> {
     });
   }
 
+  // Blind-sense watchdog (step-away #2 residue): record this gather's dark
+  // list; page the founder when the SAME sense stays dark across consecutive
+  // gathers. Fire-and-forget — the watchdog must never block or break a tick.
+  void import("./senseWatchdog")
+    .then(({ recordGatherAndCheck }) => recordGatherAndCheck(degraded))
+    .catch((err) => {
+      logger.warn(
+        `[cognitionContext] sense watchdog failed (tick unaffected): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+
   // THE BET: append the causal theory of the business so the Operator reasons
   // over a falsifiable MODEL (levers → causal edges → outcomes), not just a
   // snapshot. v0 uses the seed model; B2's causal ledger refines its edges from

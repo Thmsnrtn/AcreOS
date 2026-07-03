@@ -58,6 +58,20 @@ vi.mock("../../db", () => {
   return { db };
 });
 
+// Email fallback (second channel) mock.
+const EMAILS: Array<{ to: string; subject: string }> = [];
+let emailMode: "ok" | "fail" = "ok";
+vi.mock("../emailService", () => ({
+  emailService: {
+    sendEmail: vi.fn(async (input: { to: string; subject: string }) => {
+      EMAILS.push({ to: input.to, subject: input.subject });
+      return emailMode === "ok"
+        ? { success: true }
+        : { success: false, error: "smtp down" };
+    }),
+  },
+}));
+
 // Capture fetch calls for assertions.
 interface FetchCall {
   url: string;
@@ -74,8 +88,11 @@ beforeEach(() => {
   nextPageId = 1;
   throwOnInsert = false;
   fetchMode = "ok";
+  emailMode = "ok";
+  EMAILS.length = 0;
   delete process.env.SOLENE_PAGE_TOPIC;
   delete process.env.NODE_ENV;
+  delete process.env.FOUNDER_EMAIL;
 
   globalThis.fetch = vi.fn(async (url: any, init: any) => {
     FETCH_CALLS.push({ url: String(url), init });
@@ -211,6 +228,52 @@ describe("sendSolenePage failure handling", () => {
     expect(result.deliveryDetail).toContain("network unreachable");
     expect(PAGES).toHaveLength(1);
     expect(PAGES[0].deliveryStatus).toBe("failed");
+  });
+
+  it("falls back to email when ntfy fails and FOUNDER_EMAIL is set — page still DELIVERED", async () => {
+    fetchMode = "http_500";
+    process.env.FOUNDER_EMAIL = "tom@example.com";
+    const result = await sendSolenePage({
+      severity: "critical",
+      subject: "5xx spike",
+      body: "details",
+    });
+    expect(EMAILS).toHaveLength(1);
+    expect(EMAILS[0].to).toBe("tom@example.com");
+    expect(EMAILS[0].subject).toContain("CRITICAL");
+    expect(result.deliveryStatus).toBe("delivered");
+    expect(result.deliveryDetail).toContain("email fallback delivered");
+  });
+
+  it("records failure honestly when BOTH channels fail", async () => {
+    fetchMode = "throw";
+    emailMode = "fail";
+    process.env.FOUNDER_EMAIL = "tom@example.com";
+    const result = await sendSolenePage({
+      severity: "urgent",
+      subject: "x",
+      body: "y",
+    });
+    expect(result.deliveryStatus).toBe("failed");
+    expect(result.deliveryDetail).toContain("email fallback ALSO failed");
+  });
+
+  it("skips the email fallback entirely when FOUNDER_EMAIL is unset", async () => {
+    fetchMode = "http_500";
+    const result = await sendSolenePage({ severity: "urgent", subject: "x", body: "y" });
+    expect(EMAILS).toHaveLength(0);
+    expect(result.deliveryStatus).toBe("failed");
+  });
+
+  it("in production with no topic, the email fallback still reaches the founder", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.FOUNDER_EMAIL = "tom@example.com";
+    const result = await sendSolenePage({ severity: "critical", subject: "incident", body: "z" });
+    expect(FETCH_CALLS).toHaveLength(0); // push refused (no topic)
+    expect(EMAILS).toHaveLength(1);
+    expect(result.deliveryStatus).toBe("delivered");
+    expect(result.deliveryDetail).toContain("push refused");
+    expect(result.deliveryDetail).toContain("email fallback delivered");
   });
 
   it("never throws when db persistence fails — returns null eventId", async () => {

@@ -141,6 +141,11 @@ export default function FounderHomePage() {
             ) : null}
           </motion.div>
 
+          {/* The standing answer to "can I leave?" — one line, links to Controls */}
+          <motion.div variants={staggerItem}>
+            <StepAwayLine />
+          </motion.div>
+
           {/* The vital sign — Pulse strip */}
           <motion.div variants={staggerItem} className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <VitalStat
@@ -191,6 +196,42 @@ export default function FounderHomePage() {
         </motion.div>
       )}
     </PageShell>
+  );
+}
+
+/**
+ * One-line step-away verdict on the daily read, backed by the machine-verified
+ * readiness endpoint. Renders nothing while loading or on error — the Letter
+ * must never block on an auxiliary signal.
+ */
+function StepAwayLine() {
+  const { data } = useQuery<{ verdict: "ready" | "not_ready"; headline: string; horizonDays: number }>({
+    queryKey: ["/api/founder/autopilot/step-away"],
+    queryFn: async () => {
+      const res = await fetch("/api/founder/autopilot/step-away", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  if (!data) return null;
+  const ready = data.verdict === "ready";
+  return (
+    <PrefetchLink
+      href="/founder/autopilot/control"
+      className={`flex items-center gap-2 rounded-lg border p-3 text-sm hover-elevate ${
+        ready ? "border-acr-pos/30 bg-acr-pos/5" : "border-acr-warn/30 bg-acr-warn/5"
+      }`}
+      data-testid="letter-step-away-line"
+    >
+      {ready ? (
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-[hsl(var(--acr-pos))]" aria-hidden="true" />
+      ) : (
+        <Sparkles className="h-4 w-4 shrink-0 text-[hsl(var(--acr-warn))]" aria-hidden="true" />
+      )}
+      <span className="min-w-0 flex-1 truncate font-medium">{data.headline}</span>
+      <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+    </PrefetchLink>
   );
 }
 

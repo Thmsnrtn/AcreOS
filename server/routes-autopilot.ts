@@ -634,6 +634,22 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── Step-Away Readiness — the machine-verified "can I leave?" answer ─────
+  app.get(
+    "/api/founder/autopilot/step-away",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { buildStepAwayReadiness } = await import("./services/autopilot/stepAwayReadiness");
+        const readiness = await buildStepAwayReadiness();
+        return res.json(readiness);
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── WitnessGrants (step-away gap #5) — bounded delegation of the tap ──────
   // The founder issues/revokes scoped, expiring grants; the 5-minute auto-
   // witness sweep taps frozen actions a live grant covers. Zero grants =

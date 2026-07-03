@@ -186,6 +186,11 @@ export default function FounderAutopilotControlPage() {
           <QueryErrorState error={error instanceof Error ? error : new Error("Failed")} title="Control Center unavailable" onRetry={() => void refetch()} />
         ) : (
           <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="visible">
+            {/* The "can I leave?" answer — machine-verified, never vibes. */}
+            <motion.section variants={staggerItem}>
+              <StepAwaySection />
+            </motion.section>
+
             {/* Live heartbeat — what it last did + whether it's healthy. */}
             {live.data && (
               <motion.section variants={staggerItem}>
@@ -446,6 +451,131 @@ function MasterToggle({ icon: Icon, title, description, enabled, source, pending
           </Button>
         )}
         {source === "env" && <p className="text-[11px] text-muted-foreground">Currently following the server default. Flipping it here takes over.</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Step-Away Readiness — the "can I leave?" card ───────────────────────────
+// Every line is read from the same switches/gates/ledgers the runtime obeys.
+// Critical items gate the verdict; the rest are "worth doing". A check the
+// server can't verify shows as attention, never green.
+
+interface ReadinessCheck {
+  key: string;
+  title: string;
+  status: "ready" | "action_needed" | "attention";
+  detail: string;
+  fix?: string;
+  href?: string;
+  critical: boolean;
+}
+
+interface StepAwayData {
+  verdict: "ready" | "not_ready";
+  headline: string;
+  horizonDays: number;
+  readyCount: number;
+  totalCount: number;
+  checks: ReadinessCheck[];
+}
+
+const STEP_AWAY_KEY = ["/api/founder/autopilot/step-away"];
+
+function readinessTone(status: ReadinessCheck["status"]) {
+  return status === "ready" ? "text-acr-success" : status === "attention" ? "text-acr-neg" : "text-acr-warn";
+}
+
+function StepAwaySection() {
+  const [open, setOpen] = useState(false);
+  const readiness = useQuery<StepAwayData>({
+    queryKey: STEP_AWAY_KEY,
+    queryFn: async () => {
+      const res = await fetch("/api/founder/autopilot/step-away", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load readiness (${res.status})`);
+      return res.json();
+    },
+    refetchInterval: 60_000,
+  });
+
+  if (readiness.isLoading) return <Skeleton className="h-24 w-full rounded-card" />;
+  if (readiness.isError || !readiness.data) {
+    return (
+      <QueryErrorState
+        error={readiness.error instanceof Error ? readiness.error : new Error("Failed")}
+        title="Readiness unavailable"
+        onRetry={() => void readiness.refetch()}
+      />
+    );
+  }
+
+  const d = readiness.data;
+  const ready = d.verdict === "ready";
+
+  return (
+    <Card className={ready ? "border-acr-success/40 bg-acr-success/5" : "border-acr-warn/40 bg-acr-warn/5"}>
+      <CardContent className="p-4 space-y-3">
+        <button
+          type="button"
+          className="flex w-full items-start gap-3 text-left min-h-[44px]"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          data-testid="step-away-toggle"
+        >
+          <div className={`rounded-card p-2 shrink-0 ${ready ? "bg-acr-success/10" : "bg-acr-warn/10"}`}>
+            {ready ? (
+              <ShieldCheck className="h-5 w-5 text-acr-success" aria-hidden="true" />
+            ) : (
+              <AlertCircle className="h-5 w-5 text-acr-warn" aria-hidden="true" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-foreground">
+                {ready ? "Ready for you to step away" : "Not ready yet"}
+              </p>
+              <Badge variant="outline" className="text-micro">
+                {d.readyCount}/{d.totalCount} armed
+              </Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{d.headline}</p>
+          </div>
+          {open ? (
+            <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground mt-1" aria-hidden="true" />
+          ) : (
+            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground mt-1" aria-hidden="true" />
+          )}
+        </button>
+
+        {open && (
+          <ul className="divide-y divide-border/60">
+            {d.checks.map((c) => (
+              <li key={c.key} className="py-2 space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${c.status === "ready" ? "bg-acr-success" : c.status === "attention" ? "bg-acr-neg" : "bg-acr-warn"}`} aria-hidden="true" />
+                  <span className="text-sm text-foreground">{c.title}</span>
+                  {c.critical && c.status !== "ready" && (
+                    <Badge variant="destructive" className="text-micro">blocks step-away</Badge>
+                  )}
+                  <span className={`ml-auto text-micro ${readinessTone(c.status)}`}>
+                    {c.status === "ready" ? "Ready" : c.status === "attention" ? "Attention" : "Worth doing"}
+                  </span>
+                </div>
+                <p className="pl-3.5 text-xs text-muted-foreground">{c.detail}</p>
+                {c.fix && (
+                  <p className="pl-3.5 text-xs text-foreground/80">
+                    → {c.fix}
+                    {c.href && (
+                      <Link href={c.href} className="ml-1 text-primary underline-offset-2 hover:underline">
+                        Open
+                      </Link>
+                    )}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </CardContent>
     </Card>
   );

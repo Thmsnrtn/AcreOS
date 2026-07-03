@@ -45,13 +45,17 @@ grade changes.
    back to the repo-visible public ntfy topic (telemetry leak + void
    delivery); unset env now refuses the push loudly and persists the event.
    Panic-stop page failures now log as errors instead of vanishing.
-   *Still open:* a second notification channel (email/SMS via existing
-   integrations) so one transport outage can't silence a critical page.
+   *Second channel (DONE, same day):* every page that fails the push —
+   transport error OR unconfigured topic — falls back to email via
+   `FOUNDER_EMAIL`; the event row records the full delivery path honestly,
+   and a both-channels-failed page logs as its own loud incident.
 2. **Blind-sense honesty (DONE 2026-07-03).** `gatherContextPack` now tracks
    dark senses; the Operator briefing carries a PARTIAL TELEMETRY block
    ("UNKNOWN, not zero — don't ground plans on it") and the pack exposes
-   `degradedSenses`. *Still open:* the loop-stall watchdog should also page
-   when the same sense stays dark across N consecutive gathers.
+   `degradedSenses`. *Watchdog (DONE, same day):* every gather is recorded on
+   the `autopilot_senses` ledger; a sense dark on 3 consecutive gathers pages
+   the founder (24h per-sense cooldown) — a persistently blind instrument is
+   an incident, not a footnote.
 3. **Dispatch retry + DLQ (DONE 2026-07-03).** Bounded, SIDE-EFFECT-AWARE
    retry: `failDispatch(..., { transient: true })` requeues with exponential
    backoff (2/4/8 min via `not_before_at`), capped at `DISPATCH_MAX_ATTEMPTS`
@@ -119,6 +123,19 @@ grade changes.
    ledger) is pure, tested, and unimported — the loop still picks one move
    per tick. Integrate when items 3–5 land; multi-step commitment without
    retry/delegation would just queue more founder taps.
+
+## The founder's operating surface (2026-07-03)
+
+The "can I leave?" question now has ONE machine-verified answer:
+`GET /api/founder/autopilot/step-away` (`stepAwayReadiness.ts`) audits the
+same switches/gates/ledgers the runtime obeys — panic stop, two-channel
+reachability, loop health, budget discipline (critical, gate the verdict) +
+decision queue, delegation coverage, dead letters, immune motor (worth-doing).
+An unreadable signal is NEVER shown green. It renders as the expandable
+card at the top of the Control Center and as a one-line verdict on the
+Letter, each item carrying its plain-language fix and a deep link. The
+runway number is the Trust Ledger's earned-autonomy horizon — no marketing
+figures.
 
 ## Operating invariants (do not regress)
 
