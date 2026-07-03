@@ -8,12 +8,6 @@
       "note": "Idempotency/debit key suffix — entropy for uniqueness, not a fact."
     },
     {
-      "file": "server/routes-data-api.ts",
-      "line": 177,
-      "category": "id",
-      "note": "API key value generation — entropy for a secret token."
-    },
-    {
       "file": "server/routes-subdivisions.ts",
       "line": 513,
       "category": "id",

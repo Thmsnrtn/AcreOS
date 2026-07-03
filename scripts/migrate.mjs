@@ -5349,6 +5349,11 @@ const STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "unattached_inbound_external_uq" ON "unattached_inbound_messages" ("external_id") WHERE "external_id" IS NOT NULL`,
   `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "timezone" text`,
 
+  // Data-API key hardening (migration 0191, roadmap W1.6) — SHA-256 at rest.
+  `ALTER TABLE "system_api_keys" ADD COLUMN IF NOT EXISTS "key_hash" text`,
+  `ALTER TABLE "system_api_keys" ADD COLUMN IF NOT EXISTS "key_last4" text`,
+  `CREATE INDEX IF NOT EXISTS "system_api_keys_key_hash_idx" ON "system_api_keys" ("key_hash")`,
+
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
      "dispatch_id" integer NOT NULL,
