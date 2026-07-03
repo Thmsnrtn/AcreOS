@@ -78,14 +78,31 @@ export interface SelfPatchCapability {
   reason: string;
 }
 
+/**
+ * GitHub credentials — Platform Connections first (founder-pasted, no
+ * redeploy), env fallback. Fail-soft to env-only if the connections layer
+ * is unavailable.
+ */
+async function githubCreds(): Promise<{ token: string; repo: string }> {
+  let token = process.env.GITHUB_TOKEN?.trim() ?? "";
+  let repo = process.env.GITHUB_REPOSITORY?.trim() ?? "";
+  try {
+    const { resolveGithubCredentials } = await import("../connections/platformConnections");
+    const resolved = await resolveGithubCredentials();
+    token = resolved.token ?? token;
+    repo = resolved.repository ?? repo;
+  } catch { /* env-only */ }
+  return { token, repo };
+}
+
 /** Preflight: can this environment actually run the motor half? Never throws. */
 export async function assertSelfPatchCapable(cwd = process.cwd()): Promise<SelfPatchCapability> {
-  if (!process.env.GITHUB_TOKEN || process.env.GITHUB_TOKEN.trim().length === 0) {
-    return { capable: false, reason: "GITHUB_TOKEN not set — no PR path" };
+  const { token, repo } = await githubCreds();
+  if (!token) {
+    return { capable: false, reason: "GitHub token not connected (Control Center → Connections) and GITHUB_TOKEN unset — no PR path" };
   }
-  const repo = process.env.GITHUB_REPOSITORY ?? "";
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
-    return { capable: false, reason: "GITHUB_REPOSITORY not set (expected owner/name) — no PR path" };
+    return { capable: false, reason: "GitHub repository not connected and GITHUB_REPOSITORY unset/malformed (expected owner/name) — no PR path" };
   }
   try {
     await run("git", ["rev-parse", "--is-inside-work-tree"], cwd);
@@ -157,12 +174,12 @@ export function createSelfPatchGitOps(cwd = process.cwd()): RealGitOps {
     },
 
     async openPr(branch: string, title: string, body: string): Promise<string> {
-      const repo = process.env.GITHUB_REPOSITORY!;
+      const { token, repo } = await githubCreds();
       const base = process.env.GITHUB_DEFAULT_BRANCH ?? "main";
       const res = await fetch(`https://api.github.com/repos/${repo}/pulls`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+          Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github+json",
           "Content-Type": "application/json",
         },

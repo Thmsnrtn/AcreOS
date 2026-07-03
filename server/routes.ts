@@ -1820,6 +1820,11 @@ export async function registerRoutes(
     registerSovereignIntegrationRoutes(app);
     const { registerFounderIntegrationsRoutes } = await import("./routes-founder-integrations");
     registerFounderIntegrationsRoutes(app);
+    // Platform Connections — native connect-an-account infra: founder-entered
+    // credentials (encrypted, DB-first with env fallback), live verify, and
+    // the prewired OAuth flows for ad accounts.
+    const { registerConnectionsRoutes } = await import("./routes-connections");
+    registerConnectionsRoutes(app);
     // Phase 7 Months 7: Hartwell title-partner API — POST /title-orders +
     // inbound webhook + ALTA Pillar 2 wire instructions + partner registry.
     const { registerTitlePartnerRoutes } = await import("./routes-title-partners");

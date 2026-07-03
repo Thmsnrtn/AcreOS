@@ -124,6 +124,21 @@ grade changes.
    per tick. Integrate when items 3–5 land; multi-step commitment without
    retry/delegation would just queue more founder taps.
 
+## Platform Connections (2026-07-03)
+
+Connecting the accounts the platform runs on is now NATIVE: the Connections
+card on the Control Center (`platformConnections.ts`, built on the BYOK
+vault's storage discipline) stores founder-pasted credentials AES-256-GCM
+encrypted, displays secrets as …last4 only, and resolves DB-FIRST with env
+fallback — a pasted key is live immediately, no Fly secret, no redeploy, and
+a broken connections layer degrades to env (never takes down a working
+service). Live Verify hits each provider's real API. Wired consumers: the
+self-patch motor + evolution PR polling (GitHub), the pager (topic + email
+fallback), and the step-away readiness checks. The ad accounts (gap #7) are
+PREWIRED as OAuth: save the Meta app / Google OAuth client credentials, tap
+Connect, log in with the real account — tokens store encrypted server-side;
+`run_ad_campaign` stays draft→witnessed regardless.
+
 ## The founder's operating surface (2026-07-03)
 
 The "can I leave?" question now has ONE machine-verified answer:

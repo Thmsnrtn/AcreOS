@@ -1066,8 +1066,16 @@ export async function scanDueRegressionChecks(): Promise<{
   }
 
   // 2. PR-mode merge detection — arms Stage 6 for founder-merged evolutions.
-  const token = process.env.GITHUB_TOKEN;
-  const repo = process.env.GITHUB_REPOSITORY;
+  // Credentials resolve through Platform Connections (founder-pasted, no
+  // redeploy) with env fallback; fail-soft to env-only.
+  let token: string | null = process.env.GITHUB_TOKEN ?? null;
+  let repo: string | null = process.env.GITHUB_REPOSITORY ?? null;
+  try {
+    const { resolveGithubCredentials } = await import("./connections/platformConnections");
+    const resolved = await resolveGithubCredentials();
+    token = resolved.token ?? token;
+    repo = resolved.repository ?? repo;
+  } catch { /* env-only */ }
   if (token && repo && /^[\w.-]+\/[\w.-]+$/.test(repo)) {
     try {
       const parked = await db

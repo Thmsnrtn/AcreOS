@@ -91,6 +91,9 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-certification.ts", mountPath: "/api/certification", kind: "router", export: "default" },
   { file: "routes-closing.ts", mountPath: null, kind: "register", export: "registerClosingRoutes" },
   { file: "routes-cmo.ts", mountPath: null, kind: "register", export: "registerCmoRoutes" },
+  // Platform Connections — native connect-an-account infra (encrypted
+  // founder-entered credentials, DB-first/env-fallback, OAuth prewire).
+  { file: "routes-connections.ts", mountPath: null, kind: "register", export: "registerConnectionsRoutes" },
   { file: "routes-cohort-analysis.ts", mountPath: "/api/analytics/cohorts", kind: "router", export: "default" },
   { file: "routes-cohort-ltv.ts", mountPath: null, kind: "register", export: "registerCohortLtvRoutes" },
   { file: "routes-cohort-retention.ts", mountPath: null, kind: "register", export: "registerCohortRetentionRoutes" },

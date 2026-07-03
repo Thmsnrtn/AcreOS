@@ -32,6 +32,10 @@ vi.mock("./settings", () => ({
   isPanicStopped: () => panicStopped,
   isSelfPatchEnabled: async () => process.env.SELF_PATCH_ENABLED === "true",
 }));
+// Platform Connections — nothing connected in these tests; env toggles drive.
+vi.mock("../connections/platformConnections", () => ({
+  resolveConnection: async () => ({ value: null, source: "missing" as const }),
+}));
 vi.mock("../solene/pagerService", () => ({ pageTopic: () => topic }));
 vi.mock("./loopStall", () => ({
   observeLoopHealth: async () => {

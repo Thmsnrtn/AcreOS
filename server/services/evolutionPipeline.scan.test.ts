@@ -18,6 +18,15 @@ vi.mock("../utils/logger", () => ({
 // The module constructs an OpenAI client at import; neutralize it.
 vi.mock("openai", () => ({ default: class { constructor(_o: unknown) {} } }));
 
+// Platform Connections resolution — env-passthrough so the scripted db mock
+// below isn't consumed by credential lookups.
+vi.mock("./connections/platformConnections", () => ({
+  resolveGithubCredentials: async () => ({
+    token: process.env.GITHUB_TOKEN ?? null,
+    repository: process.env.GITHUB_REPOSITORY ?? null,
+  }),
+}));
+
 // Queue-based db mock: each select/update-returning pops the next scripted
 // response. update.set(patch) records every patch for assertions.
 const SELECTS: any[][] = [];

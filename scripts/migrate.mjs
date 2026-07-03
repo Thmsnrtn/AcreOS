@@ -5313,6 +5313,23 @@ const STATEMENTS = [
   // publish/cognition; null → env SELF_PATCH_ENABLED fallback (OFF).
   `ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "self_patch_enabled" boolean`,
 
+  // Platform Connections (migration 0189) — founder-entered credentials for
+  // the accounts the platform itself runs on; DB-first, env fallback.
+  `CREATE TABLE IF NOT EXISTS "platform_connections" (
+     "id" serial PRIMARY KEY,
+     "provider" text NOT NULL,
+     "field" text NOT NULL,
+     "secret_encrypted" bytea,
+     "value_plain" text,
+     "fingerprint" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_by" text,
+     "last_used_at" timestamptz,
+     "revoked_at" timestamptz
+   )`,
+  `CREATE INDEX IF NOT EXISTS "platform_connections_provider_idx" ON "platform_connections" ("provider", "field")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "platform_connections_active_uidx" ON "platform_connections" ("provider", "field") WHERE "revoked_at" IS NULL`,
+
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
      "dispatch_id" integer NOT NULL,

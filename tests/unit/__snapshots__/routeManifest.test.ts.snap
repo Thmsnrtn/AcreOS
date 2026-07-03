@@ -62,6 +62,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-commissions.ts",
   "routes-communications.ts",
   "routes-compliance.ts",
+  "routes-connections.ts",
   "routes-construction-draws.ts",
   "routes-contractors.ts",
   "routes-core-ai.ts",

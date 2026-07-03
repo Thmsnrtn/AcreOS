@@ -69,7 +69,15 @@ export function pageTopic(): string | null {
  */
 export async function sendSolenePage(input: SendPageInput): Promise<SendPageResult> {
   const { severity, subject, body } = input;
-  const topic = pageTopic();
+  // Topic resolution: a founder-connected value (Platform Connections, no
+  // redeploy) wins; otherwise the env/production semantics of pageTopic().
+  // Fail-soft — a broken connections layer never blocks a page.
+  let topic = pageTopic();
+  try {
+    const { resolveConnection } = await import("../connections/platformConnections");
+    const connected = await resolveConnection("paging", "topic");
+    if (connected.source === "db" && connected.value) topic = connected.value;
+  } catch { /* env semantics stand */ }
 
   const priority = severity === "critical" ? "5" : "4";
   const tags = severity === "critical" ? "warning,siren" : "warning";
@@ -132,7 +140,12 @@ export async function sendSolenePage(input: SendPageInput): Promise<SendPageResu
   // detail records the full path honestly. Best-effort: an email failure
   // never throws past here.
   if (deliveryStatus !== "delivered") {
-    const founderEmail = process.env.FOUNDER_EMAIL?.trim();
+    let founderEmail = process.env.FOUNDER_EMAIL?.trim() || null;
+    try {
+      const { resolveConnection } = await import("../connections/platformConnections");
+      const connected = await resolveConnection("paging", "founder_email");
+      if (connected.source === "db" && connected.value) founderEmail = connected.value;
+    } catch { /* env stands */ }
     if (founderEmail) {
       try {
         const { emailService } = await import("../emailService");

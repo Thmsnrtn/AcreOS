@@ -74,14 +74,23 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
     const base = { key: "paging", title: "It can reach you", critical: true, href: "/founder/autopilot/control" };
     try {
       const { pageTopic } = await import("../solene/pagerService");
-      const topic = pageTopic();
-      const emailFallback = Boolean(process.env.FOUNDER_EMAIL?.trim());
-      if (topic === null && !emailFallback) {
-        checks.push({ ...base, status: "action_needed", detail: "NO page channel is configured: SOLENE_PAGE_TOPIC is unset in production and FOUNDER_EMAIL is unset. Incidents would be invisible until you next log in.", fix: "Set SOLENE_PAGE_TOPIC (a private ntfy topic your phone subscribes to) and FOUNDER_EMAIL as Fly secrets." });
-      } else if (topic === null) {
-        checks.push({ ...base, status: "action_needed", detail: "Push paging is unconfigured (SOLENE_PAGE_TOPIC unset) — pages fall back to email only.", fix: "Set SOLENE_PAGE_TOPIC so critical pages hit your phone, not just your inbox." });
+      // A founder-connected value (Platform Connections) counts; otherwise
+      // the env/production semantics of pageTopic(). Fail-soft to env-only.
+      let topicConfigured = pageTopic() !== null;
+      let emailFallback = Boolean(process.env.FOUNDER_EMAIL?.trim());
+      try {
+        const { resolveConnection } = await import("../connections/platformConnections");
+        const t = await resolveConnection("paging", "topic");
+        if (t.source === "db" && t.value) topicConfigured = true;
+        const e = await resolveConnection("paging", "founder_email");
+        if (e.source === "db" && e.value) emailFallback = true;
+      } catch { /* env stands */ }
+      if (!topicConfigured && !emailFallback) {
+        checks.push({ ...base, status: "action_needed", detail: "NO page channel is configured — incidents would be invisible until you next log in.", fix: "Open Connections on the Control Center and fill in Paging (a private ntfy topic + your email)." });
+      } else if (!topicConfigured) {
+        checks.push({ ...base, status: "action_needed", detail: "Push paging is unconfigured — pages fall back to email only.", fix: "Add the private ntfy topic under Connections → Paging so critical pages hit your phone." });
       } else if (!emailFallback) {
-        checks.push({ ...base, status: "action_needed", detail: "Push paging is configured, but there is no email fallback — a single ntfy outage could silence a critical page.", fix: "Set FOUNDER_EMAIL so every failed push falls back to your inbox." });
+        checks.push({ ...base, status: "action_needed", detail: "Push paging is configured, but there is no email fallback — a single ntfy outage could silence a critical page.", fix: "Add your email under Connections → Paging so every failed push falls back to your inbox." });
       } else {
         checks.push({ ...base, status: "ready", detail: "Two independent page channels: push (ntfy) with automatic email fallback." });
       }

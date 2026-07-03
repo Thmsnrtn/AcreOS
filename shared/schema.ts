@@ -17837,6 +17837,12 @@ export * from "./schema/autopilot-immune";
 // ============================================================================
 export * from "./schema/autopilot-witness-grants";
 
+// ============================================================================
+// PLATFORM CONNECTIONS — founder-entered platform credentials
+// (./schema/platform-connections.ts)
+// ============================================================================
+export * from "./schema/platform-connections";
+
 
 // ============================================================================
 // NOTE INVESTOR VERTICAL — extracted to ./schema/notes-vertical.ts

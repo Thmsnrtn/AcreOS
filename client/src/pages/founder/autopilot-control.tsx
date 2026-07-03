@@ -14,7 +14,7 @@ import { motion } from "framer-motion";
 import {
   Power, Send, ShieldCheck, PauseCircle, ChevronUp, Loader2, AlertCircle,
   ScrollText, MessageSquareQuote, Sparkles, ArrowRight, TrendingUp, OctagonX,
-  KeyRound,
+  KeyRound, Plug,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -414,6 +414,11 @@ export default function FounderAutopilotControlPage() {
               <WitnessGrantsSection />
             </motion.section>
 
+            {/* Connections — connect the accounts the platform runs on, in-app */}
+            <motion.section variants={staggerItem}>
+              <ConnectionsSection />
+            </motion.section>
+
             {/* Quick links */}
             <motion.section variants={staggerItem} className="grid gap-3 sm:grid-cols-3">
               <ControlLink href="/founder/autopilot" icon={Sparkles} title="The daily letter" />
@@ -793,6 +798,235 @@ function WitnessGrantsSection() {
                 </Button>
               )}
             </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Connections — connect the platform's accounts from inside AcreOS ────────
+// Values save encrypted (DB-first, env fallback — a pasted key works with no
+// redeploy). Secrets render as …last4 only. OAuth providers (ad accounts) get
+// a Connect button once their app credentials are saved.
+
+interface ConnectionField {
+  name: string;
+  label: string;
+  secret: boolean;
+  source: "db" | "env" | "missing";
+  fingerprint: string | null;
+}
+
+interface ConnectionProvider {
+  key: string;
+  label: string;
+  category: string;
+  powers: string;
+  note?: string;
+  oauth?: { note: string; connected: boolean };
+  fields: ConnectionField[];
+  connected: boolean;
+  lastVerifiedAt: string | null;
+  lastVerificationStatus: string | null;
+}
+
+const CONNECTIONS_KEY = ["/api/founder/connections"];
+
+function ConnectionsSection() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [openProvider, setOpenProvider] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  const connections = useQuery<{ providers: ConnectionProvider[] }>({
+    queryKey: CONNECTIONS_KEY,
+    queryFn: async () => {
+      const res = await fetch("/api/founder/connections", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load connections (${res.status})`);
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const save = useMutation({
+    mutationFn: async (vars: { provider: string; values: Record<string, string> }) => {
+      const res = await fetch(`/api/founder/connections/${vars.provider}/fields`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ values: vars.values }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `Couldn't save (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: CONNECTIONS_KEY });
+      void qc.invalidateQueries({ queryKey: STEP_AWAY_KEY });
+      setDrafts({});
+      toast({ title: "Saved", description: "Stored encrypted. It's live now — no redeploy needed." });
+    },
+    onError: (err) => toast({ title: "Couldn't save", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+
+  const verify = useMutation({
+    mutationFn: async (provider: string) => {
+      const res = await fetch(`/api/founder/connections/${provider}/verify`, {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!res.ok) throw new Error(`Verify failed (${res.status})`);
+      return res.json() as Promise<{ ok: boolean; detail: string }>;
+    },
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: CONNECTIONS_KEY });
+      toast({ title: r.ok ? "Verified" : "Not working yet", description: r.detail, variant: r.ok ? undefined : "destructive" });
+    },
+    onError: (err) => toast({ title: "Couldn't verify", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+
+  const disconnect = useMutation({
+    mutationFn: async (provider: string) => {
+      const res = await fetch(`/api/founder/connections/${provider}/disconnect`, {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!res.ok) throw new Error(`Disconnect failed (${res.status})`);
+      return res.json();
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: CONNECTIONS_KEY });
+      void qc.invalidateQueries({ queryKey: STEP_AWAY_KEY });
+      toast({ title: "Disconnected", description: "Values entered here are revoked. Server-side secrets (if set) govern again." });
+    },
+    onError: (err) => toast({ title: "Couldn't disconnect", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+
+  const connectOAuth = useMutation({
+    mutationFn: async (provider: string) => {
+      const res = await fetch(`/api/founder/connections/${provider}/oauth/start`, { credentials: "include" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `Couldn't start connect (${res.status})`);
+      }
+      return res.json() as Promise<{ url: string }>;
+    },
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: CONNECTIONS_KEY });
+      window.location.assign(r.url);
+    },
+    onError: (err) => toast({ title: "Couldn't start connect", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+
+  const providers = connections.data?.providers ?? [];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Plug className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <h2 className="text-sm font-semibold text-foreground">Connections</h2>
+        <span className="text-xs text-muted-foreground">— the accounts your company runs on, connected from right here</span>
+      </div>
+      <Card>
+        <CardContent className="p-4">
+          {connections.isLoading ? (
+            <Skeleton className="h-24 w-full rounded-card" />
+          ) : connections.isError ? (
+            <QueryErrorState error={connections.error instanceof Error ? connections.error : new Error("Failed")} title="Connections unavailable" onRetry={() => void connections.refetch()} />
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {providers.map((p) => {
+                const open = openProvider === p.key;
+                const verified = p.lastVerificationStatus === "verified";
+                return (
+                  <li key={p.key} className="py-2">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 text-left min-h-[44px]"
+                      onClick={() => setOpenProvider(open ? null : p.key)}
+                      aria-expanded={open}
+                      data-testid={`connection-${p.key}`}
+                    >
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${p.connected ? (verified ? "bg-acr-pos" : "bg-acr-warn") : "bg-muted-foreground/40"}`}
+                        aria-hidden="true"
+                      />
+                      <span className="text-sm font-medium text-foreground">{p.label}</span>
+                      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{p.powers}</span>
+                      <span className="shrink-0 text-micro text-muted-foreground">
+                        {p.connected ? (verified ? "Verified" : "Set — verify?") : "Not connected"}
+                      </span>
+                    </button>
+                    {open && (
+                      <div className="mt-2 space-y-3 rounded-card border border-border/60 bg-muted/20 p-3">
+                        {p.note && <p className="text-xs text-muted-foreground">{p.note}</p>}
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {p.fields.map((f) => {
+                            const draftKey = `${p.key}.${f.name}`;
+                            const placeholder =
+                              f.source === "db"
+                                ? f.secret
+                                  ? `saved ${f.fingerprint ?? ""} — paste to replace`
+                                  : "saved — type to replace"
+                                : f.source === "env"
+                                  ? "using server secret — paste to override"
+                                  : "not set";
+                            return (
+                              <div key={f.name} className="space-y-1">
+                                <Label htmlFor={draftKey} className="text-xs">{f.label}</Label>
+                                <Input
+                                  id={draftKey}
+                                  type={f.secret ? "password" : "text"}
+                                  autoComplete="off"
+                                  placeholder={placeholder}
+                                  value={drafts[draftKey] ?? ""}
+                                  onChange={(e) => setDrafts((d) => ({ ...d, [draftKey]: e.target.value }))}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            size="sm" className="min-h-[40px]"
+                            disabled={save.isPending || !p.fields.some((f) => (drafts[`${p.key}.${f.name}`] ?? "").trim())}
+                            onClick={() => {
+                              const values: Record<string, string> = {};
+                              for (const f of p.fields) {
+                                const v = (drafts[`${p.key}.${f.name}`] ?? "").trim();
+                                if (v) values[f.name] = v;
+                              }
+                              save.mutate({ provider: p.key, values });
+                            }}
+                          >
+                            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Save"}
+                          </Button>
+                          <Button size="sm" variant="outline" className="min-h-[40px]" disabled={verify.isPending} onClick={() => verify.mutate(p.key)}>
+                            {verify.isPending && verify.variables === p.key ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Verify"}
+                          </Button>
+                          {p.oauth && (
+                            <Button size="sm" variant={p.oauth.connected ? "outline" : "default"} className="min-h-[40px]" disabled={connectOAuth.isPending} onClick={() => connectOAuth.mutate(p.key)}>
+                              {p.oauth.connected ? "Reconnect account" : "Connect account"}
+                            </Button>
+                          )}
+                          {p.fields.some((f) => f.source === "db") && (
+                            <Button size="sm" variant="ghost" className="min-h-[40px] text-muted-foreground" disabled={disconnect.isPending} onClick={() => disconnect.mutate(p.key)}>
+                              Disconnect
+                            </Button>
+                          )}
+                        </div>
+                        {p.oauth && !p.oauth.connected && (
+                          <p className="text-micro text-muted-foreground">{p.oauth.note}</p>
+                        )}
+                        {p.lastVerificationStatus && !verified && (
+                          <p className="text-micro text-acr-warn">{p.lastVerificationStatus}</p>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </CardContent>
       </Card>
