@@ -18,7 +18,7 @@ grade changes.
 | Operates itself | B+ | Thinking spine live on a 30-min tick; support auto-resolve genuinely learns; outward touches now flow under bounded founder-issued WitnessGrants (zero grants = founder taps everything, unchanged) |
 | Maintains itself | B− | Dispatch retry + DLQ landed; immune system now wired end-to-end (daily audit → gated plan → self-patch PR when earned/enabled → deduped founder ask → honesty ledger). Remaining: founder must set the git/PR envs + flip SELF_PATCH_ENABLED |
 | Grows itself | C− | Growth reasoning + budget ramp are real; the paid-ads limb has **no provider** (drafts only); SEO/content senses exist |
-| Evolves itself | C | Threshold/autonomy/efficacy loops close automatically; LLM judges + golden-suite regression + 3-tier memory are **unwired**; code evolution stops at PRs |
+| Evolves itself | C+ | Threshold/autonomy/efficacy loops close automatically; LLM judges + golden-suite regression now gate deltas when armed, and Stage-6 regression checks fire durably (PR mode included); 3-tier memory still unwired; code evolution stops at PRs (by design) |
 | Reports to its owner | B+ | The Letter is structurally honest; paging was the weak seam (fixed below) |
 | Economics discipline | A− | Fail-closed money gates at every layer; earn-to-ramp +50% steps; hard ceiling 10× base |
 
@@ -85,12 +85,22 @@ grade changes.
    args is never covered; attribution on every receipt reads
    "solene (delegated by <founder> via witness-grant #N)". Zero grants
    issued = exactly the old behavior.
-6. **Arm the evolution verifiers.** The LLM-judge stack + golden-suite
-   regression never execute (no caller). Minimum viable: a founder-triggered
-   batch-evolution run from the Controls door; judges gate, founder merges.
-   Also: replace the in-process `setTimeout` regression check (lost on
-   redeploy, never armed in PR mode) with a persisted due-time scanned by the
-   jobs catalogue.
+6. **Evolution verifiers armed (DONE 2026-07-03).** Three fixes: (a) the
+   LLM-judge gauntlet (constitution/safety triple-Sonnet veto + golden-suite
+   regression judge, all fail-closed) now gates every evolution delta when
+   the founder arms `SCP_LLM_JUDGES_ENABLED`; heuristic gates remain the
+   floor either way. (b) Stage-6 regression checks run from a PERSISTED
+   due-time via the 10-min `evolution_regression_scan` job (claim-by-nulling,
+   exactly-once) — the old in-process `setTimeout` died on redeploy; the
+   scanner also polls open evolution PRs (when GitHub creds exist) so a
+   founder MERGE arms the check and a close-unmerged abandons the row —
+   Stage 6 now fires in PR mode for the first time. (c) SECURITY: the whole
+   `/api/scp/v2` surface (trust promote/demote, evolution pause/resume/
+   rollback) had NO auth — now behind a prefix-level founder guard, plus a
+   founder-triggered `POST /evolution/run` (honest batch: consolidation now,
+   per-delta evolution when interaction capture lands). *Still open:*
+   interaction-capture seam so batch runs can feed real sessions into
+   `runEvolution`.
 7. **Give growth a real limb.** `run_ad_campaign` has zero providers —
    register the first real provider behind the existing draft→witnessed
    ladder. Until then "bring in users" rests entirely on content/SEO.

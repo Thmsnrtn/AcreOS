@@ -13927,6 +13927,12 @@ export const evolutionHistory = pgTable("evolution_history", {
   // Founder reviews + merges in GitHub. Null until the PR is opened.
   prNumber: integer("pr_number"),
   prUrl: text("pr_url"),
+  // Step-away gap #6 — persisted Stage-6 due-time. The old in-process
+  // setTimeout was lost on redeploy and never armed in PR mode; the
+  // evolution_regression_scan job now fires stage6RegressionCheck for any
+  // deployed row whose due-time has passed. NULL = no check owed (either
+  // already run — the scanner claims by nulling it — or not deployed yet).
+  regressionCheckDueAt: timestamp("regression_check_due_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [

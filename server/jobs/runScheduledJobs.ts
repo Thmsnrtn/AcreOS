@@ -2772,6 +2772,30 @@ function startAgentClaimsExpiryJob() {
   }, FIVE_MINUTES);
 }
 
+function startEvolutionRegressionScanJob() {
+  const TEN_MINUTES = 10 * 60 * 1000;
+  const TTL_SECONDS = 9 * 60;
+  log(
+    'Registering evolution regression scan (every 10 minutes; durable Stage-6)',
+    'evolution-regression',
+  );
+
+  trackInterval(() => {
+    withJobLock('evolution_regression_scan', TTL_SECONDS, async () => {
+      const { scanDueRegressionChecks } = await import('../services/evolutionPipeline');
+      const r = await scanDueRegressionChecks();
+      if (r.checked > 0 || r.mergesDetected > 0) {
+        log(
+          `[evolution-regression] checks run=${r.checked} merged PRs armed=${r.mergesDetected}`,
+          'evolution-regression',
+        );
+      }
+    }).catch((err) => {
+      log(`[evolution-regression] scan failed: ${err}`, 'evolution-regression');
+    });
+  }, TEN_MINUTES);
+}
+
 function startAutoWitnessSweepJob() {
   const FIVE_MINUTES = 5 * 60 * 1000;
   const TTL_SECONDS = 4 * 60 + 30;
@@ -4313,6 +4337,12 @@ export async function runScheduledJobs(): Promise<void> {
   // this is a pure no-op; the founder issues/revokes grants on the Control
   // door. Money/broadcast classes require explicit opt-in per grant.
   startAutoWitnessSweepJob();
+
+  // Step-away gap #6 — durable Stage-6 regression scan (every 10m). Fires the
+  // 30-min post-deploy evolution regression check from a persisted due-time
+  // (the old in-process setTimeout died on redeploy and never armed in PR
+  // mode), and detects founder-merged evolution PRs to arm their checks.
+  startEvolutionRegressionScanJob();
 
   // Solene — team-state map regenerator (every 15m). Refreshes the
   // auto-generated section of docs/internal/solene-team-state.md so the

@@ -5304,6 +5304,11 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "witness_grants_grantee_idx" ON "witness_grants" ("grantee_id", "revoked", "expires_at")`,
   `CREATE INDEX IF NOT EXISTS "witness_grants_issued_idx" ON "witness_grants" ("issued_at")`,
 
+  // Step-away gap #6 — persisted Stage-6 regression due-time (migration 0187).
+  // Replaces the in-process setTimeout (lost on redeploy, never armed in PR
+  // mode) with a due-time the evolution_regression_scan job fires durably.
+  `ALTER TABLE "evolution_history" ADD COLUMN IF NOT EXISTS "regression_check_due_at" timestamptz`,
+
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
      "dispatch_id" integer NOT NULL,

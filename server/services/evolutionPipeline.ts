@@ -971,7 +971,10 @@ export async function stage5Deploy(
     });
   }
 
-  // 2. Mark as deployed
+  // 2. Mark as deployed + stamp the persisted Stage-6 due-time. The old
+  // in-process setTimeout died with the process (a redeploy inside the 30-min
+  // window silently skipped the regression check forever); the
+  // evolution_regression_scan job now fires the check durably.
   try {
     await db
       .update(evolutionHistory)
@@ -979,6 +982,7 @@ export async function stage5Deploy(
         status: "deployed",
         deployedAt: new Date(),
         errorRateBeforeDeploy: String(baselineErrorRate),
+        regressionCheckDueAt: new Date(Date.now() + REGRESSION_CHECK_DELAY_MS),
         stagesCompleted: sql`array_append(${evolutionHistory.stagesCompleted}, 'stage5')`,
         updatedAt: new Date(),
       })
@@ -991,21 +995,131 @@ export async function stage5Deploy(
     return false;
   }
 
-  log("[evolution-pipeline] stage5Deploy — DEPLOYED, scheduling regression check in 30m", {
+  log("[evolution-pipeline] stage5Deploy — DEPLOYED, regression check due in 30m (durable scan)", {
     historyId,
   });
 
-  // 3. Schedule 30-minute regression check (async, non-blocking)
-  setTimeout(() => {
-    stage6RegressionCheck(historyId).catch((err) =>
-      logError("stage6RegressionCheck — unhandled error", {
-        historyId,
-        error: String(err),
-      })
-    );
-  }, 30 * 60 * 1000);
-
   return true;
+}
+
+/** How long after deploy the Stage-6 regression check becomes due. */
+export const REGRESSION_CHECK_DELAY_MS = 30 * 60 * 1000;
+
+/**
+ * Durable Stage-6 driver (step-away gap #6) — run by the
+ * evolution_regression_scan job every 10 minutes.
+ *
+ *  1. DUE CHECKS: for every deployed row whose regression_check_due_at has
+ *     passed, atomically CLAIM the check (null the due-time via conditional
+ *     UPDATE — exactly one scanner runs it) and fire stage6RegressionCheck.
+ *  2. PR MODE: rows parked at 'pr_opened' never got a check at all ("never
+ *     armed in PR mode"). When GITHUB_TOKEN + GITHUB_REPOSITORY are present,
+ *     poll each open evolution PR; on merge, capture the baseline, flip the
+ *     row to deployed, and stamp the due-time so step 1 picks it up.
+ *
+ * Never throws; returns honest counts.
+ */
+export async function scanDueRegressionChecks(): Promise<{
+  checked: number;
+  mergesDetected: number;
+}> {
+  let checked = 0;
+  let mergesDetected = 0;
+
+  // 1. Fire due checks (claim-by-nulling so a check runs exactly once).
+  try {
+    const due = await db
+      .select({ id: evolutionHistory.id })
+      .from(evolutionHistory)
+      .where(
+        and(
+          eq(evolutionHistory.status, "deployed"),
+          sql`${evolutionHistory.regressionCheckDueAt} IS NOT NULL`,
+          sql`${evolutionHistory.regressionCheckDueAt} <= now()`
+        )
+      );
+    for (const row of due) {
+      const claimed = await db
+        .update(evolutionHistory)
+        .set({ regressionCheckDueAt: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(evolutionHistory.id, row.id),
+            sql`${evolutionHistory.regressionCheckDueAt} IS NOT NULL`
+          )
+        )
+        .returning({ id: evolutionHistory.id });
+      if (claimed.length === 0) continue; // another scanner took it
+      try {
+        await stage6RegressionCheck(row.id);
+        checked++;
+      } catch (err) {
+        logError("scanDueRegressionChecks — stage6 threw", {
+          historyId: row.id,
+          error: String(err),
+        });
+      }
+    }
+  } catch (err) {
+    logError("scanDueRegressionChecks — due scan failed", { error: String(err) });
+  }
+
+  // 2. PR-mode merge detection — arms Stage 6 for founder-merged evolutions.
+  const token = process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPOSITORY;
+  if (token && repo && /^[\w.-]+\/[\w.-]+$/.test(repo)) {
+    try {
+      const parked = await db
+        .select({ id: evolutionHistory.id, prNumber: evolutionHistory.prNumber })
+        .from(evolutionHistory)
+        .where(eq(evolutionHistory.status, "pr_opened"));
+      for (const row of parked) {
+        if (!row.prNumber) continue;
+        try {
+          const res = await fetch(`https://api.github.com/repos/${repo}/pulls/${row.prNumber}`, {
+            headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+          });
+          if (!res.ok) continue;
+          const pr = (await res.json()) as { merged?: boolean; state?: string };
+          if (pr.merged === true) {
+            await db
+              .update(evolutionHistory)
+              .set({
+                status: "deployed",
+                deployedAt: new Date(),
+                regressionCheckDueAt: new Date(Date.now() + REGRESSION_CHECK_DELAY_MS),
+                updatedAt: new Date(),
+              })
+              .where(and(eq(evolutionHistory.id, row.id), eq(evolutionHistory.status, "pr_opened")));
+            mergesDetected++;
+            log("scanDueRegressionChecks — evolution PR merged, Stage 6 armed", {
+              historyId: row.id,
+              prNumber: row.prNumber,
+            });
+          } else if (pr.state === "closed") {
+            // Closed without merge = the founder rejected it. Terminal.
+            await db
+              .update(evolutionHistory)
+              .set({ status: "abandoned", updatedAt: new Date() })
+              .where(and(eq(evolutionHistory.id, row.id), eq(evolutionHistory.status, "pr_opened")));
+            log("scanDueRegressionChecks — evolution PR closed unmerged, abandoned", {
+              historyId: row.id,
+              prNumber: row.prNumber,
+            });
+          }
+        } catch (err) {
+          logError("scanDueRegressionChecks — PR poll failed", {
+            historyId: row.id,
+            error: String(err),
+          });
+        }
+      }
+    } catch (err) {
+      logError("scanDueRegressionChecks — pr_opened scan failed", { error: String(err) });
+    }
+  }
+
+  return { checked, mergesDetected };
 }
 
 // ---------------------------------------------------------------------------
