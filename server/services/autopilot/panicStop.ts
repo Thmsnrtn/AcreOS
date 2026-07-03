@@ -91,8 +91,13 @@ export async function panicStop(params: { reason: string; by: string }): Promise
       subject: "Autopilot PANIC STOP tripped",
       body: `${reason}\nSwitches off: ${result.switchesOff.join(", ") || "none"}\nDomains quarantined: ${result.domainsQuarantined.length}`,
     });
-  } catch {
-    /* paging best-effort */
+  } catch (err) {
+    // Best-effort by design (the stop itself already applied), but a
+    // founder-invisible panic stop is its own incident — log loudly.
+    logger.error(
+      "[autopilot/panicStop] PANIC STOP page failed — founder may not know the stop tripped",
+      err instanceof Error ? err : undefined,
+    );
   }
 
   return result;

@@ -1,0 +1,98 @@
+# Autopilot Step-Away Doctrine
+
+*2026-07-03 — full-depth audit of the founder autopilot (Solene) against the
+owner's bar: "the platform maintains and operates itself; I can step away and
+it brings in users, grows, and compounds ROI."*
+
+The founder autopilot is the machine that runs **AcreOS itself** — support,
+billing recovery, deliverability, incidents, growth budget, The Letter.
+(Pax is the separate customer-side copilot; it sells subscriptions, Solene
+lets the owner leave.) This doctrine grades the machine, records what the
+audit proved, and fixes the order of work. It should be updated whenever a
+grade changes.
+
+## Grades (2026-07-03)
+
+| Property | Grade | One-line verdict |
+|---|---|---|
+| Operates itself | B | Thinking spine live on a 30-min tick; support auto-resolve genuinely learns; every outward touch still ends at a founder tap |
+| Maintains itself | D | Immune system (advisories → gated self-patch PR) is wired end-to-nowhere; no retry/DLQ on autonomous dispatches |
+| Grows itself | C− | Growth reasoning + budget ramp are real; the paid-ads limb has **no provider** (drafts only); SEO/content senses exist |
+| Evolves itself | C | Threshold/autonomy/efficacy loops close automatically; LLM judges + golden-suite regression + 3-tier memory are **unwired**; code evolution stops at PRs |
+| Reports to its owner | B+ | The Letter is structurally honest; paging was the weak seam (fixed below) |
+| Economics discipline | A− | Fail-closed money gates at every layer; earn-to-ramp +50% steps; hard ceiling 10× base |
+
+## What the audit established (load-bearing facts)
+
+- **The loop is real and scheduled**: `solene_continuous_tick` every 30 min +
+  daily Operator cadence, on the worker, job-locked. Dormant-by-default via
+  three DB switches (`dispatchEnabled` / `publishEnabled` / `cognitionEnabled`,
+  all OFF) under the un-overridable `SOLENE_PANIC_STOP` env floor.
+- **Every gate fails closed** on the policy stack (compliance → grounding →
+  cost ceiling → domain autonomy → witnessed-send), and the money gates
+  (ensemble monthly cap at 90%, $15/day platform ceiling, $5/dispatch) fail
+  closed on read errors. The discretionary reserve gate alone fails open —
+  acceptable because the hard caps back it.
+- **Autonomy is earned**: every domain seeds at `observe`; 10 clean
+  resolved-vote cycles + calibration holds to promote; a real-world bounce
+  demotes automatically. This is the right trust physics — keep it sacred.
+- **The Letter never lies**: deterministic prose from real pulse/asks/trust/
+  calibration/runway; "kept watch" while hands are dormant.
+
+## The gap register (ordered for step-away value)
+
+1. **Paging hardened (DONE 2026-07-03).** Production pages no longer fall
+   back to the repo-visible public ntfy topic (telemetry leak + void
+   delivery); unset env now refuses the push loudly and persists the event.
+   Panic-stop page failures now log as errors instead of vanishing.
+   *Still open:* a second notification channel (email/SMS via existing
+   integrations) so one transport outage can't silence a critical page.
+2. **Blind-sense honesty (DONE 2026-07-03).** `gatherContextPack` now tracks
+   dark senses; the Operator briefing carries a PARTIAL TELEMETRY block
+   ("UNKNOWN, not zero — don't ground plans on it") and the pack exposes
+   `degradedSenses`. *Still open:* the loop-stall watchdog should also page
+   when the same sense stays dark across N consecutive gathers.
+3. **Dispatch retry + DLQ.** The Solene dispatch queue terminally fails on
+   transient errors (unlike the outbox's 5-retry + DLQ). Add bounded retry
+   with backoff for `transient` classifications and a dead-letter surface on
+   the Control door. Without this, a provider blip silently discards an
+   autonomous action until a future tick re-plans it.
+4. **Wire the immune system.** `npm_watch` records advisories; nothing calls
+   `planSecurityResponse` → `runGatedSelfPatch`. Connect the daily advisory
+   scan to the planner and let `SELF_PATCH_ENABLED` + the code-change gate do
+   their designed jobs (patch-level bumps → PR, never merge). This is the
+   single biggest "maintains itself" unlock and it's all built — it just
+   isn't plugged in.
+5. **Witness delegation (`witnessGrant`)** — wire the evaluation into the
+   witnessed-send choke so the founder can grant scoped, expiring delegation
+   (e.g. support sends under $X auto-witnessed after a domain earns
+   `autonomous_gated`). This is the throughput ceiling on the whole outward
+   surface; without it "step away" means "outward actions stop".
+6. **Arm the evolution verifiers.** The LLM-judge stack + golden-suite
+   regression never execute (no caller). Minimum viable: a founder-triggered
+   batch-evolution run from the Controls door; judges gate, founder merges.
+   Also: replace the in-process `setTimeout` regression check (lost on
+   redeploy, never armed in PR mode) with a persisted due-time scanned by the
+   jobs catalogue.
+7. **Give growth a real limb.** `run_ad_campaign` has zero providers —
+   register the first real provider behind the existing draft→witnessed
+   ladder. Until then "bring in users" rests entirely on content/SEO.
+8. **Retire or wire the SCP dead weight.** The 3-tier memory system and SCP
+   auto-rollback are advertised but inert; either connect them to the live
+   loop's memory recall / config versioning or delete them so the map stays
+   honest. Model-pin drift (opus-4-6/4-7/4-8 across files) should centralize
+   into one models module.
+9. **Planner integration.** `planner.ts` (multi-step plans + commitment
+   ledger) is pure, tested, and unimported — the loop still picks one move
+   per tick. Integrate when items 3–5 land; multi-step commitment without
+   retry/delegation would just queue more founder taps.
+
+## Operating invariants (do not regress)
+
+- Panic stop stays env-level and unwritable by the machine.
+- New outward hand ⇒ `requiresApproval: true` at registration (registry
+  invariant) until its domain earns promotion.
+- Learning that changes behavior must close through the experience log's
+  outcome ladder — never through unlabelled estimates (`shadowRegret`'s
+  SACRED LINE stands).
+- The Letter reports what happened, never what was intended.

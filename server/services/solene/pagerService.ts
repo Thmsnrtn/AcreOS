@@ -44,10 +44,17 @@ export interface SendPageResult {
   deliveryDetail: string | null;
 }
 
-/** Resolve the ntfy topic from env (or fall back to the default). */
-export function pageTopic(): string {
+/**
+ * Resolve the ntfy topic. In production an UNSET env returns null — the
+ * built-in default topic string ships in the public repo, so pushing real
+ * operational pages (incidents, MRR alerts, panic stops) to it would leak
+ * founder telemetry to anyone who subscribes, while looking "delivered".
+ * Dev/test keep the default so local paging is testable out of the box.
+ */
+export function pageTopic(): string | null {
   const t = process.env.SOLENE_PAGE_TOPIC;
   if (typeof t === "string" && t.length > 0) return t;
+  if (process.env.NODE_ENV === "production") return null;
   return DEFAULT_TOPIC;
 }
 
@@ -66,15 +73,16 @@ export async function sendSolenePage(input: SendPageInput): Promise<SendPageResu
   let deliveryStatus: SolenePageDeliveryStatus = "skipped";
   let deliveryDetail: string | null = null;
 
-  if (!process.env.SOLENE_PAGE_TOPIC && process.env.NODE_ENV === "production") {
-    // In prod, fall back to default topic but still log so we can see if
-    // Tom forgot to set the env. Not a fatal failure — the default is
-    // deliberately a real (opaque) topic; the env var is the rotation knob.
-    logger.warn(
-      "[solenePager] SOLENE_PAGE_TOPIC not set; using built-in default topic",
+  if (topic === null) {
+    // Production with no SOLENE_PAGE_TOPIC: refuse to push to the public
+    // repo-visible default (telemetry leak + nobody is subscribed). The
+    // event row below still persists so the Control surface shows the
+    // page; the error log is the loud signal that paging is unconfigured.
+    logger.error(
+      "[solenePager] SOLENE_PAGE_TOPIC not set in production — page NOT pushed (persisted only). Set the env to restore founder notifications.",
     );
-  }
-
+    deliveryDetail = "SOLENE_PAGE_TOPIC unset in production — push refused";
+  } else {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), NTFY_TIMEOUT_MS);
@@ -110,6 +118,7 @@ export async function sendSolenePage(input: SendPageInput): Promise<SendPageResu
       "[solenePager] ntfy push threw",
       err instanceof Error ? err : undefined,
     );
+  }
   }
 
   // Persist regardless of delivery outcome.

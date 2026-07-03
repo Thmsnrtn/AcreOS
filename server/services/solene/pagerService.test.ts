@@ -109,6 +109,17 @@ describe("pageTopic", () => {
     process.env.SOLENE_PAGE_TOPIC = "rotated-topic-name";
     expect(pageTopic()).toBe("rotated-topic-name");
   });
+
+  it("returns null in production when env unset — the repo-visible default topic must never carry real pages", () => {
+    delete process.env.SOLENE_PAGE_TOPIC;
+    const prevEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      expect(pageTopic()).toBeNull();
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+    }
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────
