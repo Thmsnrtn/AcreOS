@@ -12,6 +12,8 @@
  * choice is metered in the financial ledger so Tom sees the cost.
  */
 
+import { MODELS } from "../models";
+
 export type AtlasIntent =
   | "tool_arg_extraction"   // slot-filling, deterministic
   | "format_tool_result"    // turning a JSON blob into prose
@@ -23,22 +25,24 @@ export type AtlasIntent =
 
 export type ModelOverride = "opus" | "sonnet" | "haiku" | "fast" | "cheap" | null;
 
+// Pins resolved through models.ts (2026-07-03 centralization — this file
+// carried a stale Opus 4-7 and an undated Haiku alias).
 const MODEL_BY_INTENT: Record<AtlasIntent, string> = {
-  tool_arg_extraction: "anthropic/claude-haiku-4-5",
-  format_tool_result: "anthropic/claude-sonnet-4-6",
-  reasoning: "anthropic/claude-opus-4-7",
-  code_generation: "anthropic/claude-opus-4-7",
-  agent_quote_summary: "anthropic/claude-sonnet-4-6",
-  morning_brief: "anthropic/claude-opus-4-7",
-  default: "anthropic/claude-opus-4-7",
+  tool_arg_extraction: MODELS.HAIKU,
+  format_tool_result: MODELS.SONNET,
+  reasoning: MODELS.OPUS,
+  code_generation: MODELS.OPUS,
+  agent_quote_summary: MODELS.SONNET,
+  morning_brief: MODELS.OPUS,
+  default: MODELS.OPUS,
 };
 
 const OVERRIDE_TO_MODEL: Record<NonNullable<ModelOverride>, string> = {
-  opus: "anthropic/claude-opus-4-7",
-  sonnet: "anthropic/claude-sonnet-4-6",
-  haiku: "anthropic/claude-haiku-4-5",
-  fast: "anthropic/claude-sonnet-4-6",
-  cheap: "anthropic/claude-haiku-4-5",
+  opus: MODELS.OPUS,
+  sonnet: MODELS.SONNET,
+  haiku: MODELS.HAIKU,
+  fast: MODELS.SONNET,
+  cheap: MODELS.HAIKU,
 };
 
 export function selectModelForTurn(opts: {

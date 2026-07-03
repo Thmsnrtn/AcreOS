@@ -36,6 +36,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { ANTHROPIC_MODELS } from "../models";
 import { logger } from "../../utils/logger";
 import { db } from "../../db";
 import {
@@ -52,7 +53,7 @@ import {
 // ============================================================================
 
 export const PRECALL_MODEL =
-  process.env.SOLENE_PRECALL_MODEL ?? "claude-haiku-4-5-20251001";
+  process.env.SOLENE_PRECALL_MODEL ?? ANTHROPIC_MODELS.HAIKU;
 
 // Per-1M-token Haiku pricing. Env-overridable so Beatrice's regwatch can
 // adjust without a code deploy.

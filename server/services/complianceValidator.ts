@@ -37,6 +37,7 @@
 import crypto from "node:crypto";
 import { logger } from "../utils/logger";
 import { routeAITask, TaskComplexity, AIProvider } from "./aiRouter";
+import { MODELS } from "./models";
 import type { InsertComplianceValidation } from "@shared/schema";
 import { TAX_ADVISORY_COPY } from "../utils/taxAdvisory";
 
@@ -167,7 +168,7 @@ Return STRICT JSON per the schema above.`;
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
-const VALIDATOR_MODEL = "anthropic/claude-opus-4-7";
+const VALIDATOR_MODEL = MODELS.OPUS;
 const DEFAULT_THINKING_BUDGET = 4096;
 
 /**

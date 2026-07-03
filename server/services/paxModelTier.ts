@@ -38,14 +38,16 @@ import { db } from "../db";
 import { aiCallLog } from "@shared/schema";
 import { organizations } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { MODELS } from "./models";
 
 // ── Model constants ──────────────────────────────────────────────────────────
-// OpenRouter prefixes match `MODEL_*` in server/services/aiRouter.ts so this
-// file stays consistent with the rest of the routing layer.
+// Resolved through models.ts — the single source of truth — so this router can
+// never drift from aiRouter again (it carried a stale Opus 4-7 pin until the
+// 2026-07-03 model-pin centralization).
 
-export const PAX_MODEL_HAIKU = "anthropic/claude-haiku-4-5-20251001";
-export const PAX_MODEL_SONNET = "anthropic/claude-sonnet-4-6";
-export const PAX_MODEL_OPUS = "anthropic/claude-opus-4-7";
+export const PAX_MODEL_HAIKU = MODELS.HAIKU;
+export const PAX_MODEL_SONNET = MODELS.SONNET;
+export const PAX_MODEL_OPUS = MODELS.OPUS;
 
 // ── Soft caps (monthly Pax message counts) ──────────────────────────────────
 // Free's HARD daily cap (25 msg/day) is enforced by shared/billing/tier-limits.ts

@@ -28,6 +28,7 @@ import type {
   SoleneDispatchAgentRole,
 } from "@shared/schema/solene-dispatch";
 import { DISPATCH_MAX_TURNS } from "@shared/schema/solene-dispatch";
+import { ANTHROPIC_MODELS } from "../models";
 import { logger } from "../../utils/logger";
 import { listActiveClaims } from "./agentClaims";
 import { loadAgentIdentityBlock } from "./agentIdentity";
@@ -59,12 +60,13 @@ import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
 // Tom wants every agent on the same tier — but day-to-day routing is
 // per-role.
 const DEFAULT_MODEL =
-  process.env.SOLENE_DISPATCH_MODEL ?? "claude-sonnet-4-6";
+  process.env.SOLENE_DISPATCH_MODEL ?? ANTHROPIC_MODELS.SONNET;
 
 // Strategic-tier model. Used when selectModelForDispatch() routes the
-// dispatch up to Opus.
+// dispatch up to Opus. Resolved through models.ts (2026-07-03 pin
+// centralization — this held a stale Opus 4-7 while models.ts pinned 4-8).
 const STRATEGIC_MODEL =
-  process.env.SOLENE_DISPATCH_STRATEGIC_MODEL ?? "claude-opus-4-7";
+  process.env.SOLENE_DISPATCH_STRATEGIC_MODEL ?? ANTHROPIC_MODELS.OPUS;
 const TRANSCRIPT_DIR =
   process.env.SOLENE_DISPATCH_TRANSCRIPT_DIR ??
   "/tmp/solene-dispatches";
@@ -105,17 +107,25 @@ interface ModelPricing {
   cachedInput: number;
 }
 const MODEL_PRICING: Record<string, ModelPricing> = {
-  "claude-opus-4-7": {
-    input: Number(process.env.SOLENE_DISPATCH_OPUS_INPUT_PER_M ?? "15"),
-    output: Number(process.env.SOLENE_DISPATCH_OPUS_OUTPUT_PER_M ?? "75"),
-    cachedInput: Number(process.env.SOLENE_DISPATCH_OPUS_CACHED_INPUT_PER_M ?? "1.5"),
+  // Current Opus (4-8): $5/$25 per 1M, cached input ~10% ($0.5).
+  [ANTHROPIC_MODELS.OPUS]: {
+    input: Number(process.env.SOLENE_DISPATCH_OPUS_INPUT_PER_M ?? "5"),
+    output: Number(process.env.SOLENE_DISPATCH_OPUS_OUTPUT_PER_M ?? "25"),
+    cachedInput: Number(process.env.SOLENE_DISPATCH_OPUS_CACHED_INPUT_PER_M ?? "0.5"),
   },
-  "claude-sonnet-4-6": {
+  // Legacy Opus 4-7 row kept so queued rows carrying a per-dispatch
+  // model="claude-opus-4-7" pin still price at that model's real rates.
+  "claude-opus-4-7": {
+    input: 15,
+    output: 75,
+    cachedInput: 1.5,
+  },
+  [ANTHROPIC_MODELS.SONNET]: {
     input: Number(process.env.SOLENE_DISPATCH_SONNET_INPUT_PER_M ?? "3"),
     output: Number(process.env.SOLENE_DISPATCH_SONNET_OUTPUT_PER_M ?? "15"),
     cachedInput: Number(process.env.SOLENE_DISPATCH_SONNET_CACHED_INPUT_PER_M ?? "0.3"),
   },
-  "claude-haiku-4-5-20251001": {
+  [ANTHROPIC_MODELS.HAIKU]: {
     input: Number(process.env.SOLENE_DISPATCH_HAIKU_INPUT_PER_M ?? "0.25"),
     output: Number(process.env.SOLENE_DISPATCH_HAIKU_OUTPUT_PER_M ?? "1.25"),
     cachedInput: Number(process.env.SOLENE_DISPATCH_HAIKU_CACHED_INPUT_PER_M ?? "0.025"),
@@ -126,7 +136,7 @@ function pricingFor(model: string): ModelPricing {
   // Fall back to Sonnet pricing if the model isn't in the table — safer than
   // assuming Opus rates for an unknown model, which would over-bill the
   // capital tracker and potentially trigger the cost cap early.
-  return MODEL_PRICING[model] ?? MODEL_PRICING["claude-sonnet-4-6"];
+  return MODEL_PRICING[model] ?? MODEL_PRICING[ANTHROPIC_MODELS.SONNET];
 }
 
 // ----------------------------------------------------------------------------

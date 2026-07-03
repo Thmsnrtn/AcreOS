@@ -107,8 +107,14 @@ grade changes.
 8. **Retire or wire the SCP dead weight.** The 3-tier memory system and SCP
    auto-rollback are advertised but inert; either connect them to the live
    loop's memory recall / config versioning or delete them so the map stays
-   honest. Model-pin drift (opus-4-6/4-7/4-8 across files) should centralize
-   into one models module.
+   honest. *Model pins centralized (DONE 2026-07-03):* `models.ts` now also
+   exports bare-SDK `ANTHROPIC_MODELS` (derived, lockstep by construction);
+   the stale pins in paxModelTier (Opus 4-7), selfAssessmentAgent +
+   evolutionPipeline (Opus 4-6!), founder-chat model-selector, llmJudge
+   (undated Haiku alias), complianceValidator, dispatchRunner, byok, and the
+   pre-call checker all resolve through it — with the dispatch pricing table
+   updated to real Opus 4-8 rates ($5/$25, was billing 4-7's $15/$75) and a
+   legacy 4-7 row kept for old per-dispatch pins.
 9. **Planner integration.** `planner.ts` (multi-step plans + commitment
    ledger) is pure, tested, and unimported — the loop still picks one move
    per tick. Integrate when items 3–5 land; multi-step commitment without

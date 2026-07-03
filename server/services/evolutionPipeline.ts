@@ -29,6 +29,7 @@ import {
   aiTelemetryEvents,
 } from "@shared/schema";
 import { eq, desc, and, isNull, sql, gte, lt } from "drizzle-orm";
+import { MODELS } from "./models";
 import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
@@ -45,9 +46,9 @@ const openrouterClient = new OpenAI({
   },
 });
 
-const ASSESSMENT_MODEL = "anthropic/claude-opus-4-6";
-const REVIEW_MODEL = "openai/gpt-4o";
-const REASONER_MODEL = "deepseek/deepseek-reasoner";
+const ASSESSMENT_MODEL = MODELS.OPUS;
+const REVIEW_MODEL = MODELS.VISION;
+const REASONER_MODEL = MODELS.DEEPSEEK_REASONER;
 
 // ---------------------------------------------------------------------------
 // Safety allowlists
