@@ -83,6 +83,7 @@ import { CancellationDialog } from "@/components/cancellation-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import "./today.css";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 // ─────────────────────────────────────────────────────────────────────────
 // IA collapse — Phase 2 Week 4 (P1-26 / Reyna §2). 17 tabs → 7 canonical
@@ -550,7 +551,7 @@ export default function Settings() {
                               aria-label="Cancel subscription"
                             >
                               <XCircle className="w-4 h-4 mr-1" aria-hidden="true" />
-                              Cancel
+                              {Verbs.CANCEL}
                             </Button>
                           </div>
                           <CancellationDialog

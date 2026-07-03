@@ -42,6 +42,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { Verbs } from "@/lib/labels";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -288,7 +289,7 @@ export default function FounderOnboardingFunnelPage() {
               }}
               aria-label="Retry loading onboarding funnel"
             >
-              Retry
+              {Verbs.RETRY}
             </Button>
           </CardContent>
         </Card>

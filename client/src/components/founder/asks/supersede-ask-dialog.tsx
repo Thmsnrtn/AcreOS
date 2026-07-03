@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { truncate, type FounderAsk } from "./ask-shared";
+import { Verbs } from "@/lib/labels";
 
 interface SupersedeAskDialogProps {
   ask: FounderAsk | null;
@@ -137,7 +138,7 @@ export function SupersedeAskDialog({
             data-testid="button-supersede-cancel"
             aria-label="Cancel supersede"
           >
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button
             variant="destructive"

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
+import { Verbs } from "@/lib/labels";
 import { 
   Upload, 
   Download, 
@@ -420,7 +421,7 @@ export function ImportExportManager() {
                     ) : (
                       <Upload className="w-4 h-4 mr-2" />
                     )}
-                    Import {preview.validRows} Valid Rows
+                    {Verbs.IMPORT} {preview.validRows} Valid Rows
                   </Button>
                 </div>
 
@@ -639,7 +640,7 @@ export function ImportExportManager() {
               ) : (
                 <FileDown className="w-4 h-4 mr-2" />
               )}
-              Export {selectedExportType.charAt(0).toUpperCase() + selectedExportType.slice(1)} to {exportFormat.toUpperCase()}
+              {Verbs.EXPORT} {selectedExportType.charAt(0).toUpperCase() + selectedExportType.slice(1)} to {exportFormat.toUpperCase()}
             </Button>
           </TabsContent>
 

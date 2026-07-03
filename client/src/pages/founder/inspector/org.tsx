@@ -55,6 +55,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -604,7 +605,7 @@ function PauseLobDialog({
               setReason("");
             }}
           >
-            Confirm
+            {Verbs.CONFIRM}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -666,7 +667,7 @@ function ThrottleDialog({
               setReason("");
             }}
           >
-            Save
+            {Verbs.SAVE}
           </Button>
         </DialogFooter>
       </DialogContent>

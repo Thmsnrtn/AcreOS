@@ -24,6 +24,7 @@ import { getMapEngine, STYLE_URLS, isMapEngineConfigured, type MapStyleName } fr
 import "mapbox-gl/dist/mapbox-gl.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 // Rosy River B1 Phase 2 — engine-aware map renderer.
 //
@@ -1338,7 +1339,7 @@ export function PropertyMap({
         aria-label={`${OVERLAY_SOURCE_LABELS[sourceId]} failed to load. Retry.`}
       >
         <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-        Retry
+        {Verbs.RETRY}
       </button>
     );
   }, [layerStatus, retryLayer]);
@@ -2383,7 +2384,7 @@ export function PropertyMap({
             onClick={() => window.location.reload()}
           >
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            Retry
+            {Verbs.RETRY}
           </Button>
           {import.meta.env.DEV && (
             <p className="text-micro mt-3 opacity-70">

@@ -22,6 +22,7 @@ import {
   Loader2, Plus, Trash2, ChevronRight
 } from "lucide-react";
 import { format } from "date-fns";
+import { Verbs } from "@/lib/labels";
 
 type AbTestWithVariants = AbTest & { variants: AbTestVariant[] };
 
@@ -368,7 +369,7 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" className="min-h-11" onClick={() => setIsCreateDialogOpen(false)}>
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                   <Button
                     type="submit"

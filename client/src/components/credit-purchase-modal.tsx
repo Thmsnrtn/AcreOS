@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, CreditCard, Check } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Verbs } from "@/lib/labels";
 
 const CREDIT_PACKS = [
   { id: "pack_10", name: "$10", credits: 1000, price: 10 },
@@ -115,7 +116,7 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
             disabled={purchaseMutation.isPending}
             data-testid="button-cancel-purchase"
           >
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button
             type="button"

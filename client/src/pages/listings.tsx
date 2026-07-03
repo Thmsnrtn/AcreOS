@@ -33,6 +33,7 @@ import {
   Globe, Share2, Edit, Building, MapPin, ImageIcon,
   Calculator
 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 // Platforms requiring partner API credentials. The backend now returns
 // a per-platform status — "missing_credentials" replaces the static
@@ -598,7 +599,7 @@ export default function ListingsPage() {
                       onClick={() => setIsCreateOpen(false)}
                       data-testid="button-cancel-create"
                     >
-                      Cancel
+                      {Verbs.CANCEL}
                     </Button>
                     <Button
                       type="submit"

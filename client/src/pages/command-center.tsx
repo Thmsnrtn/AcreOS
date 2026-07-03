@@ -86,6 +86,7 @@ import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 import { ReadAloudButton } from "@/components/ReadAloudButton";
 import { useAuth } from "@/hooks/use-auth";
+import { Verbs } from "@/lib/labels";
 
 interface Agent {
   name: string;
@@ -684,7 +685,7 @@ function TeamTabContent() {
                             onClick={() => setTaskDialogOpen(false)}
                             data-testid="button-cancel-va-task"
                           >
-                            Cancel
+                            {Verbs.CANCEL}
                           </Button>
                           <Button
                             onClick={() => {

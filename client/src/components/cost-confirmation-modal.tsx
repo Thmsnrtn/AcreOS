@@ -7,6 +7,7 @@ import { AlertTriangle, CreditCard, Plus } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { CreditPurchaseModal } from "@/components/credit-purchase-modal";
 import { usd } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface CostConfirmationProps {
   open: boolean;
@@ -135,14 +136,14 @@ export function CostConfirmationModal({
               onClick={() => onOpenChange(false)}
               data-testid="button-cancel-action"
             >
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               onClick={handleConfirm}
               disabled={isEstimating || hasInsufficientCredits}
               data-testid="button-confirm-action"
             >
-              Confirm
+              {Verbs.CONFIRM}
             </Button>
           </DialogFooter>
         </DialogContent>

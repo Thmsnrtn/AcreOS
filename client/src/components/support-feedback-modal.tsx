@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Send } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 type Category = "support" | "feedback" | "question";
 
@@ -220,7 +221,7 @@ export function SupportFeedbackModal({
               onClick={() => onOpenChange(false)}
               disabled={mutation.isPending}
             >
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               type="submit"

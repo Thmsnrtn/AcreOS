@@ -38,6 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { Verbs } from "@/lib/labels";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -297,7 +298,7 @@ export default function FounderDispatchesPage() {
               onClick={() => refetch()}
               aria-label="Retry loading dispatches"
             >
-              Retry
+              {Verbs.RETRY}
             </Button>
           </CardContent>
         </Card>
@@ -430,7 +431,7 @@ export default function FounderDispatchesPage() {
                                   className="w-3 h-3 mr-1"
                                   aria-hidden="true"
                                 />
-                                Cancel
+                                {Verbs.CANCEL}
                               </Button>
                             ) : (
                               <span className="text-muted-foreground italic">

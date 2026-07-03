@@ -27,6 +27,7 @@ import {
   ChevronLeft, Zap, Shield, ArrowRight, Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Verbs } from "@/lib/labels";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -859,7 +860,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
             {stepService && Object.values(fieldValues).some(v => v.trim()) && (
               <Button variant="outline" size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                Save
+                {Verbs.SAVE}
               </Button>
             )}
             {step < STEPS.length - 1 ? (

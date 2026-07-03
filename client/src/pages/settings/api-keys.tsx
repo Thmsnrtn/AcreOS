@@ -36,6 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage } from "@/lib/error-utils";
 import { Copy, KeyRound, RefreshCw, Trash2, AlertTriangle } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 const ALL_SCOPES = [
   "leads:read",
@@ -207,7 +208,7 @@ export default function ApiKeysSettingsPage() {
               </div>
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setCreateOpen(false)}>
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
                 <Button
                   onClick={() => createMutation.mutate()}

@@ -35,6 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { Trash2, Plus, FlaskConical, ArrowUp, ArrowDown, Users } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface WeightedAssignee {
   teamMemberId: number;
@@ -259,7 +260,7 @@ export default function LeadAssignmentSettingsPage() {
                         <ArrowDown className="h-4 w-4" />
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setDraft(rule)}>
-                        Edit
+                        {Verbs.EDIT}
                       </Button>
                       <Button
                         size="icon"
@@ -414,7 +415,7 @@ export default function LeadAssignmentSettingsPage() {
                   {saveMutation.isPending ? "Saving…" : "Save rule"}
                 </Button>
                 <Button variant="outline" onClick={() => setDraft(null)}>
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
               </div>
             </CardContent>

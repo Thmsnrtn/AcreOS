@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { TestTube, Trophy, Sparkles, AlertTriangle, CheckCircle, Plus, Loader2 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface CampaignVariant {
   id: number;
@@ -238,7 +239,7 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" className="min-h-11" onClick={() => setIsAddDialogOpen(false)}>
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                   <Button
                     type="submit"

@@ -32,6 +32,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface Assignment {
   id: string;
@@ -266,7 +267,7 @@ function GenerateAssignmentDialog({ open, onOpenChange, noteId, noteNumber }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>Cancel</Button>
+          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>{Verbs.CANCEL}</Button>
           <Button
             onClick={() => generateMutation.mutate()}
             disabled={!assigneeName || generateMutation.isPending}

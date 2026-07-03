@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { URGENCY_TONE, agentClass, type FounderAsk } from "./ask-shared";
+import { Verbs } from "@/lib/labels";
 
 interface AnswerAskDialogProps {
   ask: FounderAsk | null;
@@ -289,7 +290,7 @@ export function AnswerAskDialog({ ask, onClose, onSubmitted }: AnswerAskDialogPr
             data-testid="button-answer-cancel"
             aria-label="Cancel answering"
           >
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button
             onClick={submit}

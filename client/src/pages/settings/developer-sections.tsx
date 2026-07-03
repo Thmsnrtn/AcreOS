@@ -166,7 +166,7 @@ export function ApiKeyManager() {
                 }}
                 aria-label="Copy API key to clipboard"
               >
-                Copy
+                {Verbs.COPY}
               </Button>
               <Button
                 size="icon"
@@ -249,7 +249,7 @@ export function ApiKeyManager() {
                   data-testid="button-create-api-key-submit"
                 >
                   {createKey.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : null}
-                  Create
+                  {Verbs.CREATE}
                 </Button>
                 <Button type="button" variant="outline" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => setShowCreate(false)}>{Verbs.CANCEL}</Button>
               </div>
@@ -341,7 +341,7 @@ export function ApiKeyManager() {
                               aria-label={`Confirm revoke ${k.name}`}
                             >
                               {revokeKey.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" aria-hidden="true" /> : null}
-                              Confirm
+                              {Verbs.CONFIRM}
                             </Button>
                             <Button
                               size="sm"
@@ -350,7 +350,7 @@ export function ApiKeyManager() {
                               onClick={() => setRevokeId(null)}
                               aria-label={`Cancel revoke of ${k.name}`}
                             >
-                              Cancel
+                              {Verbs.CANCEL}
                             </Button>
                           </div>
                         ) : (

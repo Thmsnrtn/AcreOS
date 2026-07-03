@@ -18,6 +18,7 @@ import {
   Loader2,
   Clock,
 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface OpenRequest {
   id: string;
@@ -379,7 +380,7 @@ export default function PrivacySettingsPage() {
                     }}
                     aria-label="Cancel deletion request"
                   >
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                 </div>
               </div>

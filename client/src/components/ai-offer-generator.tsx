@@ -31,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import type { Property } from "@shared/schema";
 import { useProviderStatus } from "@/hooks/use-provider-status";
+import { Verbs } from "@/lib/labels";
 
 interface OfferSuggestion {
   strategyName: string;
@@ -633,7 +634,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                     aria-label="Copy generated letter to clipboard"
                   >
                     <Copy className="w-4 h-4 mr-2" aria-hidden="true" />
-                    Copy
+                    {Verbs.COPY}
                   </Button>
                 </div>
                 {letterSubject && (

@@ -3,6 +3,6 @@
   "acreos/no-founder-codenames-in-customer-jsx": 0,
   "acreos/icon-button-needs-aria-label": 0,
   "acreos/no-hardcoded-color-literals": 0,
-  "acreos/prefer-verbs-canon": 154,
+  "acreos/prefer-verbs-canon": 0,
   "acreos/use-mutation-must-invalidate": 0
 }

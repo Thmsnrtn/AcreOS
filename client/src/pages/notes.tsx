@@ -34,6 +34,7 @@ import { NotesImportDialog } from "@/components/notes-import-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useOrganization } from "@/hooks/use-organization";
 import { getTerm, personaForInvestorType } from "@/lib/personaVocabulary";
+import { Verbs } from "@/lib/labels";
 
 // Shape returned by GET /api/notes (mirrors acquiredNotes minus the encrypted TIN).
 interface AcquiredNoteRow {
@@ -270,7 +271,7 @@ export default function NotesPage() {
             Couldn't load notes. Please try again.
           </p>
           <Button variant="outline" onClick={() => refetch()} data-testid="notes-retry-button">
-            Retry
+            {Verbs.RETRY}
           </Button>
         </Card>
       ) : notes.length === 0 ? (

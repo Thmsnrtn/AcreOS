@@ -42,6 +42,7 @@ import { FinanceBook } from "@/components/finance/FinanceBook";
 import { usePersona, useTerm } from "@/hooks/use-persona";
 import { AtrGate } from "@/components/AtrGate";
 import { useAuth } from "@/hooks/use-auth";
+import { Verbs } from "@/lib/labels";
 
 interface StripeConnectStatus {
   isConnected: boolean;
@@ -1951,7 +1952,7 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
 
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={onClose} className="flex-1 min-h-11 pointer-fine:sm:min-h-9" disabled={isPending}>
-                Cancel
+                {Verbs.CANCEL}
               </Button>
               <Button
                 type="submit"

@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
+import { Verbs } from "@/lib/labels";
 
 interface CommissionTier {
   minDeals: number;
@@ -283,7 +284,7 @@ function PaymentDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button type="submit" disabled={!canSubmit}>
               Record payment

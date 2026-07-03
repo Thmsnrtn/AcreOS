@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import type { NoteAcquisitionStage } from "@/pages/notes-pipeline";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface ChecklistItem {
   done?: boolean;
@@ -523,7 +524,7 @@ function PromoteDialog({ open, onOpenChange, acquisition, onPromoted }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button
             onClick={() => promoteMutation.mutate()}
             disabled={!noteNumber || !originalPrincipal || !acquisitionPrice || !currentBalance || !termMonths || !originationDate || !maturityDate || !acquisitionDate || promoteMutation.isPending}

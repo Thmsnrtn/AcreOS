@@ -33,6 +33,7 @@ import {
   Plus, Trash2, Loader2, Save, X, Eye, Variable, 
   FileText, ChevronDown, GripVertical, Settings2
 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 const DOCUMENT_TYPES = [
   { value: "promissory_note", label: "Promissory Note" },
@@ -735,7 +736,7 @@ Sincerely,
                   data-testid="button-cancel"
                 >
                   <X className="w-4 h-4 mr-2" />
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
               )}
               <Button 

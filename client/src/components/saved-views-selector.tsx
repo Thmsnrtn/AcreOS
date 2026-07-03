@@ -29,6 +29,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { ChevronDown, Plus, Star, Trash2, Settings, Eye, EyeOff, Check } from "lucide-react";
 import type { SavedView, CustomFieldEntityType } from "@shared/schema";
+import { Verbs } from "@/lib/labels";
 
 interface SavedViewsSelectorProps {
   entityType: CustomFieldEntityType;
@@ -322,7 +323,7 @@ export function SavedViewsSelector({
           </form>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setIsSaveDialogOpen(false)} data-testid="button-cancel-save">
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               type="submit"

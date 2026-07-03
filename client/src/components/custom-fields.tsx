@@ -40,6 +40,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, MoreVertical, GripVertical, Type, Hash, Calendar, List, CheckSquare } from "lucide-react";
 import type { CustomFieldDefinition, CustomFieldValue, CustomFieldEntityType, CustomFieldType } from "@shared/schema";
+import { Verbs } from "@/lib/labels";
 
 const FIELD_TYPE_ICONS: Record<CustomFieldType, typeof Type> = {
   text: Type,
@@ -360,7 +361,7 @@ export function CustomFieldsManager() {
 
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={handleCloseDialog} data-testid="button-cancel">
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                   <Button
                     type="submit"
@@ -433,7 +434,7 @@ export function CustomFieldsManager() {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => handleEditField(field)} data-testid={`button-edit-field-${field.id}`}>
                                   <Pencil className="w-4 h-4 mr-2" aria-hidden="true" />
-                                  Edit
+                                  {Verbs.EDIT}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="text-destructive"
@@ -441,7 +442,7 @@ export function CustomFieldsManager() {
                                   data-testid={`button-delete-field-${field.id}`}
                                 >
                                   <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
-                                  Delete
+                                  {Verbs.DELETE}
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -560,7 +561,7 @@ export function CustomFieldValuesEditor({ entityType, entityId, compact = false 
                     disabled={saveMutation.isPending}
                     data-testid={`button-save-custom-field-${def.id}`}
                   >
-                    Save
+                    {Verbs.SAVE}
                   </Button>
                 )}
               </div>
@@ -585,7 +586,7 @@ export function CustomFieldValuesEditor({ entityType, entityId, compact = false 
                     disabled={saveMutation.isPending}
                     data-testid={`button-save-custom-field-${def.id}`}
                   >
-                    Save
+                    {Verbs.SAVE}
                   </Button>
                 )}
               </div>
@@ -608,7 +609,7 @@ export function CustomFieldValuesEditor({ entityType, entityId, compact = false 
                     disabled={saveMutation.isPending}
                     data-testid={`button-save-custom-field-${def.id}`}
                   >
-                    Save
+                    {Verbs.SAVE}
                   </Button>
                 )}
               </div>

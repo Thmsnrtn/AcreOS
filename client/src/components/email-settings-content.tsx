@@ -45,6 +45,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Verbs } from "@/lib/labels";
 
 interface DnsRecord {
   type: string;
@@ -574,7 +575,7 @@ export function EmailSettingsContent() {
                     }}
                     data-testid="button-cancel-add-domain"
                   >
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                   <Button
                     type="submit"

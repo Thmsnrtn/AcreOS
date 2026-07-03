@@ -43,6 +43,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Link } from "wouter";
+import { Verbs } from "@/lib/labels";
 
 type ChannelFilter = "all" | "email" | "sms";
 type StatusFilter = "all" | "unread" | "starred" | "archived";
@@ -505,7 +506,7 @@ function EmailMessageDetail({
             ) : (
               <Archive className="h-4 w-4 mr-1" aria-hidden="true" />
             )}
-            Archive
+            {Verbs.ARCHIVE}
           </Button>
 
           <Button
@@ -663,7 +664,7 @@ function EmailMessageDetail({
                     }}
                     data-testid="button-cancel-reply"
                   >
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                   <Button
                     onClick={() => sendReplyMutation.mutate()}

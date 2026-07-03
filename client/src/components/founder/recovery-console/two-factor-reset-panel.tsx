@@ -40,6 +40,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { ShieldAlert } from "lucide-react";
 import { PROOF_LABEL, type ProofType, type UserHit } from "./recovery-shared";
+import { Verbs } from "@/lib/labels";
 
 export function TwoFactorResetPanel({
   user,
@@ -243,7 +244,7 @@ export function TwoFactorResetPanel({
               onClick={close}
               aria-label="Cancel 2FA reset"
             >
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <div className="flex gap-2">
               {step > 1 && (

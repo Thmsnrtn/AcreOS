@@ -10,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Verbs } from "@/lib/labels";
 
 export interface PaxArtifactData {
   artifactType: "table" | "document" | "card";
@@ -243,7 +244,7 @@ export function PaxArtifact({ artifactType, title, data, onDismiss }: PaxArtifac
             onClick={handlePrint}
           >
             <Download className="w-2.5 h-2.5" />
-            Export
+            {Verbs.EXPORT}
           </Button>
         </div>
       )}

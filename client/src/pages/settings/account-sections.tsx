@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 // ── Referral Settings ──────────────────────────────────────────────────────
 
@@ -127,7 +128,7 @@ export function ReferralSettings() {
                   aria-label="Copy referral link to clipboard"
                 >
                   <Link2 className="w-4 h-4 mr-1" aria-hidden="true" />
-                  Copy
+                  {Verbs.COPY}
                 </Button>
               </div>
             )}
@@ -376,7 +377,7 @@ export function PrivacyDataSettings() {
                     className="min-h-11 pointer-fine:sm:min-h-9"
                     onClick={() => { setShowDeleteForm(false); setDeleteConfirmText(""); }}
                   >
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                 </div>
               </div>

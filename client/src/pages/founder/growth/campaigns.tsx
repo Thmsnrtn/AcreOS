@@ -30,6 +30,7 @@ import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface GrowthCampaignItem {
   id: number;
@@ -429,7 +430,7 @@ export default function FounderGrowthCampaignsPage() {
                 disabled={saveAdAccountMutation.isPending || !adForm.adAccountId || !adForm.accessToken}>
                 Save Credentials
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowAdAccountForm(false)}>Cancel</Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowAdAccountForm(false)}>{Verbs.CANCEL}</Button>
             </div>
           </div>
         )}
@@ -591,7 +592,7 @@ export default function FounderGrowthCampaignsPage() {
                 </div>
 
                 <DialogFooter>
-                  <Button variant="ghost" onClick={() => setWizardOpen(false)}>Cancel</Button>
+                  <Button variant="ghost" onClick={() => setWizardOpen(false)}>{Verbs.CANCEL}</Button>
                   <Button
                     onClick={() => generateCreativeMutation.mutate({ templateKey: wizardTemplate })}
                     disabled={!wizardTemplate || !wizardName || generateCreativeMutation.isPending}
@@ -760,7 +761,7 @@ export default function FounderGrowthCampaignsPage() {
                                 />
                               </div>
                               <Button size="sm" className="w-full h-7 text-xs mt-1" onClick={() => saveCopyEdit(copy.angle)}>
-                                <Check className="w-3 h-3 mr-1" /> Save
+                                <Check className="w-3 h-3 mr-1" /> {Verbs.SAVE}
                               </Button>
                             </div>
                           ) : (

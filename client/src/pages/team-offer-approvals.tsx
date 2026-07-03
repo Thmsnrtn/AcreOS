@@ -34,6 +34,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { formatDateTime } from "@/lib/format";
 import { CheckCircle2, XCircle, Inbox } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface OfferApproval {
   id: number;
@@ -140,7 +141,7 @@ export default function OfferApprovalsPage() {
                 }
                 disabled={thresholdMutation.isPending}
               >
-                Save
+                {Verbs.SAVE}
               </Button>
               <Button
                 variant="outline"

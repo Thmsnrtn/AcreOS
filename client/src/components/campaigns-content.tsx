@@ -33,6 +33,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { Verbs } from "@/lib/labels";
 
 const campaignTypes = [
   { value: 'direct_mail', label: 'Direct Mail', icon: Mail },
@@ -936,7 +937,7 @@ function SendMailDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="button-cancel-send">
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button
             onClick={handleSend}

@@ -42,6 +42,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage } from "@/lib/error-utils";
 import { Trash2, KeyRound, ShieldCheck } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface ChannelStatus {
   channel: string;
@@ -266,7 +267,7 @@ export default function ByokSettingsPage() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpenChannel(null)}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               onClick={() => {

@@ -47,6 +47,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { formatDateTime } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface Blast {
   id: string;
@@ -454,7 +455,7 @@ function ComposerDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button variant="outline" onClick={() => dryRun.mutate()} disabled={!propertyId || dryRun.isPending}>
             <Eye className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
             {dryRun.isPending ? "Previewing…" : "Preview"}

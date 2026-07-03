@@ -24,6 +24,7 @@ import {
   Sparkles,
   FileText,
 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface Draft {
   id: number;
@@ -95,7 +96,7 @@ function DraftCard({ draft }: { draft: Draft }) {
               {saveMutation.isPending ? "Saving…" : "Save"}
             </Button>
             <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditing(false)}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
           </div>
         </div>
@@ -108,7 +109,7 @@ function DraftCard({ draft }: { draft: Draft }) {
       {!editing && draft.status === "draft" && (
         <div className="flex items-center gap-2">
           <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditing(true)} aria-label={`Edit ${draft.title}`}>
-            <PenTool className="h-3 w-3 mr-1" aria-hidden="true" /> Edit
+            <PenTool className="h-3 w-3 mr-1" aria-hidden="true" /> {Verbs.EDIT}
           </Button>
           <Button type="button" size="sm" variant="default" className="h-7 text-xs" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending} aria-busy={approveMutation.isPending} aria-label={`Approve ${draft.title}`}>
             <CheckCircle2 className="h-3 w-3 mr-1" aria-hidden="true" /> {approveMutation.isPending ? "Approving…" : "Approve"}
@@ -121,7 +122,7 @@ function DraftCard({ draft }: { draft: Draft }) {
             onClick={() => navigator.clipboard.writeText(draft.content)}
             aria-label={`Copy ${draft.title} to clipboard`}
           >
-            <Copy className="h-3 w-3 mr-1" aria-hidden="true" /> Copy
+            <Copy className="h-3 w-3 mr-1" aria-hidden="true" /> {Verbs.COPY}
           </Button>
         </div>
       )}

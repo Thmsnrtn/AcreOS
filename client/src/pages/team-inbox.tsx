@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { relative } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Verbs } from "@/lib/labels";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -199,7 +200,7 @@ function NewChannelDialog({ onCreated }: { onCreated: () => void }) {
             disabled={!name.trim() || create.isPending}
           >
             {create.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" aria-hidden="true" /> : null}
-            Create
+            {Verbs.CREATE}
           </Button>
         </form>
       </DialogContent>

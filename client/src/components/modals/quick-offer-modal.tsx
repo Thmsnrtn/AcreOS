@@ -23,6 +23,7 @@ import { useModals } from "@/stores/modal-store";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Sparkles, Send, Loader2 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface AtlasSuggestion {
   recommendedOfferTotal: number;
@@ -170,7 +171,7 @@ export function QuickOfferModal() {
 
         <div className="flex items-center justify-end gap-2 pt-4 border-t mt-4">
           <Button variant="ghost" onClick={close} data-testid="button-quick-offer-cancel">
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button
             onClick={() => sendMutation.mutate()}

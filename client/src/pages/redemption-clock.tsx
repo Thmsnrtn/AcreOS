@@ -54,6 +54,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { queryClient } from "@/lib/queryClient";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface Certificate {
   id: string;
@@ -567,7 +568,7 @@ function CreateCertificateDialog({ open, onOpenChange }: { open: boolean; onOpen
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>Cancel</Button>
+          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>{Verbs.CANCEL}</Button>
           <Button
             onClick={() => submit.mutate()}
             disabled={!state || !county || !apn || !saleDate || !purchase || submit.isPending}

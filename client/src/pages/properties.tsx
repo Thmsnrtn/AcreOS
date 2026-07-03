@@ -137,6 +137,7 @@ import { ResearchSummaryPanel } from "@/components/research-summary-panel";
 import { DataProvenanceTag } from "@/components/data-provenance-tag";
 import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 // `embedded` — mounted inside the /pipeline door's Properties tab
 // (pipeline.tsx), which already renders the app shell. See
@@ -576,7 +577,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
               </div>
               <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:gap-2 md:ml-auto">
                 <Button variant="outline" className="min-h-[44px] pointer-fine:md:min-h-8" onClick={handleBulkExportProperties} data-testid="button-bulk-export-properties">
-                  <Download className="w-4 h-4 mr-1" /> Export
+                  <Download className="w-4 h-4 mr-1" /> {Verbs.EXPORT}
                 </Button>
                 {selectedPropertyIds.size >= 2 && (
                   <Button
@@ -605,7 +606,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                   </SelectContent>
                 </Select>
                 <Button variant="destructive" className="min-h-[44px] pointer-fine:md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-properties">
-                  <Trash2 className="w-4 h-4 mr-1" /> Delete
+                  <Trash2 className="w-4 h-4 mr-1" /> {Verbs.DELETE}
                 </Button>
                 <Button aria-label="Clear selection" variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties">
                   <X className="w-4 h-4" />
@@ -927,7 +928,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
             {!importResult ? (
               <>
                 <Button variant="outline" onClick={resetImportDialog}>
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
                 <Button
                   onClick={handleImport}

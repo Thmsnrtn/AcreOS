@@ -23,6 +23,7 @@ import { StatusBadge, type StatusKind } from "@/components/StatusBadge";
 import { EmptyState } from "@/components/empty-state";
 import { PageSkeleton } from "@/components/page-skeleton";
 import type { AbTest, AbTestVariant, Campaign } from "@shared/schema";
+import { Verbs } from "@/lib/labels";
 
 type AbTestWithVariants = AbTest & { variants: AbTestVariant[] };
 
@@ -382,7 +383,7 @@ export function AbTestsContent() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => { setIsCreateDialogOpen(false); resetForm(); }}>
-                Cancel
+                {Verbs.CANCEL}
               </Button>
               <Button
                 type="submit"

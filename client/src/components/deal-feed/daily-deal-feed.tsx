@@ -33,6 +33,7 @@ import {
 import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { AIReasoning } from "@/components/ai-reasoning";
+import { Verbs } from "@/lib/labels";
 
 interface DealOpportunity {
   id: string;
@@ -265,7 +266,7 @@ function HeroDealCard({
               onClick={() => onAction(opportunity.id, "interested")}
               aria-label="Save this opportunity"
             >
-              <Bookmark className="w-3 h-3 mr-1" /> Save
+              <Bookmark className="w-3 h-3 mr-1" /> {Verbs.SAVE}
             </Button>
             <Button
               size="sm"
@@ -431,7 +432,7 @@ function DealCard({
                 onClick={() => onAction(opportunity.id, "interested")}
                 aria-label="Save this opportunity"
               >
-                <Bookmark className="w-3 h-3 mr-1" /> Save
+                <Bookmark className="w-3 h-3 mr-1" /> {Verbs.SAVE}
               </Button>
               <Button
                 size="sm"
@@ -608,7 +609,7 @@ export function DailyDealFeed({ compact = false }: { compact?: boolean }) {
             disabled={refreshMutation.isPending}
           >
             <RefreshCw className={`w-3 h-3 mr-1 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
-            Retry
+            {Verbs.RETRY}
           </Button>
         </CardContent>
       </Card>
