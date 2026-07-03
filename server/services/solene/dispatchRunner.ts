@@ -601,10 +601,17 @@ export async function runDispatch(
       });
       await appendTranscript(transcriptPath, { event: "rejected", reason: msg });
       try {
-        await failDispatch(dispatchId, {
-          errorMessage: msg,
-          resultFullPath: transcriptPath,
-        });
+        // Retry classification: a cap READ failure is a telemetry blip that
+        // happened before any model call or tool ran — safe to requeue with
+        // backoff. Cap EXCEEDED is a real monthly bound — terminal.
+        await failDispatch(
+          dispatchId,
+          {
+            errorMessage: msg,
+            resultFullPath: transcriptPath,
+          },
+          { transient: code === "ENSEMBLE_CAP_READ_FAILED" },
+        );
       } catch (failErr) {
         logger.warn(
           `[dispatchRunner] failDispatch after ensemble cap swallow id=${dispatchId}: ${failErr instanceof Error ? failErr.message : String(failErr)}`,
@@ -779,6 +786,11 @@ export async function runDispatch(
   let finalText = "";
   const filesModified = new Set<string>();
   const commitsReferenced = new Set<string>();
+  // Side-effect witness for the retry classifier: counts tool executions we
+  // STARTED (incremented before executeDispatchTool, so a mid-tool crash still
+  // registers). A dispatch that dies with this at 0 provably had no outward
+  // effect and is safe to requeue; any other failure stays terminal.
+  let toolCallsExecuted = 0;
 
   let terminationReason: RunDispatchResult["terminationReason"] = "error";
   let timedOut = false;
@@ -960,6 +972,7 @@ export async function runDispatch(
         // SECURITY (elite-audit P0): worker-run dispatches are autonomous agents —
         // their bash runs with a SECRET-SCRUBBED env (no prod creds), so they
         // cannot deploy / exfiltrate / move money outside the witnessed-send hands.
+        toolCallsExecuted++;
         const exec = await executeDispatchTool(tu.name, tu.input, {
           dispatchId,
           agentRole: row.agentRole,
@@ -1066,7 +1079,13 @@ export async function runDispatch(
         terminationReason === "timeout" || terminationReason === "cost_cap"
           ? "cancelled"
           : "failed";
-      await failDispatch(dispatchId, failureInput, { status: cancelStatus });
+      // Retry classification: only a thrown error with ZERO tool executions is
+      // provably side-effect-free (a provider blip before any work happened) —
+      // safe to requeue with backoff. Timeouts, cost caps, max-turns, and any
+      // failure after a tool ran stay terminal: the original at-most-once
+      // stance for outward effects.
+      const transient = terminationReason === "error" && toolCallsExecuted === 0;
+      await failDispatch(dispatchId, failureInput, { status: cancelStatus, transient });
     }
   } catch (err) {
     logger.error(

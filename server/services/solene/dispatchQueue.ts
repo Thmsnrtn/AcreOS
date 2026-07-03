@@ -40,6 +40,7 @@ import {
   DISPATCH_MAX_COST_USD,
   DISPATCH_DEFAULT_COST_USD,
   DISPATCH_DEFAULT_TIMEOUT_MS,
+  DISPATCH_MAX_ATTEMPTS,
   type SoleneDispatchAgentRole,
   type SoleneDispatchQueueRow,
   type SoleneDispatchResultRow,
@@ -248,12 +249,15 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
     review_status: string | null;
     reviewed_by_dispatch_id: number | null;
     original_dispatch_id: number | null;
+    attempts: number;
+    not_before_at: Date | null;
   }>(sql`
     UPDATE solene_dispatch_queue
-    SET status = 'in_progress', started_at = now()
+    SET status = 'in_progress', started_at = now(), attempts = attempts + 1
     WHERE id = (
       SELECT id FROM solene_dispatch_queue
       WHERE status = 'queued'
+        AND (not_before_at IS NULL OR not_before_at <= now())
       ORDER BY priority DESC, queued_at ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -263,7 +267,7 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
       agent_role, prompt_text, max_cost_usd, timeout_ms,
       started_at, completed_at, result_summary, result_full_path,
       enqueued_by, review_status, reviewed_by_dispatch_id,
-      original_dispatch_id, idempotency_key
+      original_dispatch_id, idempotency_key, attempts, not_before_at
   `);
 
   // drizzle's `execute` returns slightly different shapes across drivers.
@@ -297,6 +301,8 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
     // Batch 5 cost-audit — optional per-dispatch model override
     // (selectModelForDispatch picks when null).
     model: r.model ?? null,
+    attempts: r.attempts ?? 1,
+    notBeforeAt: r.not_before_at ?? null,
   };
 }
 
@@ -383,27 +389,99 @@ export async function completeDispatch(
 }
 
 // ----------------------------------------------------------------------------
-// failDispatch
+// failDispatch — terminal fail, OR bounded requeue for proven-transient failures.
 // ----------------------------------------------------------------------------
 
+/**
+ * Pure: backoff delay before a retried dispatch becomes claimable again.
+ * `attempts` is the number of runs already started (claim-time counter), so
+ * after the first failed run (attempts=1) the row waits 2 minutes, after the
+ * second 4 minutes. Exponential, deliberately short — these are provider
+ * blips, not incident recovery.
+ */
+export function retryBackoffMs(attempts: number): number {
+  const n = Math.max(1, Math.floor(attempts));
+  return Math.pow(2, n) * 60_000;
+}
+
+/** Marker prepended to the result summary when retries are exhausted, so the
+ *  Control-door dispatch list reads as a dead-letter surface without a new
+ *  status enum value (terminal DLQ rows keep status='failed'). */
+export const DEAD_LETTER_MARKER = "[dead-letter]";
+
+/**
+ * Record a failed run. Default is TERMINAL (the original at-most-once stance —
+ * we never risk a double outward effect by re-running blind).
+ *
+ * `opts.transient = true` is the caller's PROOF that the failure happened
+ * before any side effect: no tool executed, nothing sent, nothing charged
+ * (e.g. the ensemble-cap READ failed, or the model call itself threw before
+ * the first tool ran). Only then do we requeue with exponential backoff,
+ * up to DISPATCH_MAX_ATTEMPTS total runs; after that the row dead-letters
+ * (status='failed', summary prefixed with DEAD_LETTER_MARKER).
+ *
+ * Every attempt — requeued or terminal — still inserts its own
+ * solene_dispatch_results row, so the audit trail shows each real run.
+ */
 export async function failDispatch(
   id: number,
   error: DispatchFailureInput,
-  opts: { status?: "failed" | "cancelled" } = {},
-): Promise<void> {
-  const status = opts.status ?? "failed";
+  opts: { status?: "failed" | "cancelled"; transient?: boolean } = {},
+): Promise<{ requeued: boolean; attempts: number }> {
+  const requestedStatus = opts.status ?? "failed";
   const now = new Date();
-  await db.transaction(async (tx) => {
-    await tx
-      .update(soleneDispatchQueue)
-      .set({
-        status,
-        completedAt: now,
-        resultSummary: error.errorMessage.slice(0, 4000),
-        resultFullPath: error.resultFullPath ?? null,
-      })
-      .where(eq(soleneDispatchQueue.id, id));
 
+  return await db.transaction(async (tx) => {
+    // Read attempts inside the transaction so the retry decision and the
+    // status write can't race another writer.
+    const [row] = await tx
+      .select({ attempts: soleneDispatchQueue.attempts })
+      .from(soleneDispatchQueue)
+      .where(eq(soleneDispatchQueue.id, id))
+      .limit(1);
+    const attempts = row?.attempts ?? DISPATCH_MAX_ATTEMPTS;
+
+    // A cancellation is a decision, not a blip — never retried.
+    const canRetry =
+      opts.transient === true &&
+      requestedStatus !== "cancelled" &&
+      attempts < DISPATCH_MAX_ATTEMPTS;
+
+    const exhaustedTransient =
+      opts.transient === true &&
+      requestedStatus !== "cancelled" &&
+      attempts >= DISPATCH_MAX_ATTEMPTS;
+
+    const summary = exhaustedTransient
+      ? `${DEAD_LETTER_MARKER} ${error.errorMessage}`.slice(0, 4000)
+      : error.errorMessage.slice(0, 4000);
+
+    if (canRetry) {
+      const notBeforeAt = new Date(now.getTime() + retryBackoffMs(attempts));
+      await tx
+        .update(soleneDispatchQueue)
+        .set({
+          status: "queued",
+          startedAt: null,
+          completedAt: null,
+          notBeforeAt,
+          resultSummary: `retry ${attempts}/${DISPATCH_MAX_ATTEMPTS} scheduled (transient): ${error.errorMessage}`.slice(0, 4000),
+          resultFullPath: error.resultFullPath ?? null,
+        })
+        .where(eq(soleneDispatchQueue.id, id));
+    } else {
+      await tx
+        .update(soleneDispatchQueue)
+        .set({
+          status: requestedStatus,
+          completedAt: now,
+          resultSummary: summary,
+          resultFullPath: error.resultFullPath ?? null,
+        })
+        .where(eq(soleneDispatchQueue.id, id));
+    }
+
+    // Per-attempt audit row regardless of requeue/terminal.
     await tx.insert(soleneDispatchResults).values({
       dispatchId: id,
       success: false,
@@ -411,11 +489,23 @@ export async function failDispatch(
       durationMs: Math.max(0, Math.floor(error.durationMs ?? 0)),
       tokenInput: Math.max(0, Math.floor(error.tokenInput ?? 0)),
       tokenOutput: Math.max(0, Math.floor(error.tokenOutput ?? 0)),
-      errorMessage: error.errorMessage.slice(0, 4000),
+      errorMessage: summary,
       commitsReferenced: error.commitsReferenced ?? null,
       filesModified: error.filesModified ?? null,
       followUpOpportunities: {},
     });
+
+    if (canRetry) {
+      logger.info(
+        `[dispatchQueue] transient failure — requeued id=${id} attempt=${attempts}/${DISPATCH_MAX_ATTEMPTS} backoffMs=${retryBackoffMs(attempts)}`,
+      );
+    } else if (exhaustedTransient) {
+      logger.warn(
+        `[dispatchQueue] transient failure with retries exhausted — dead-lettered id=${id} after ${attempts} attempt(s)`,
+      );
+    }
+
+    return { requeued: canRetry, attempts };
   });
 }
 

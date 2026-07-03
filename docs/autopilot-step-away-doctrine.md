@@ -16,7 +16,7 @@ grade changes.
 | Property | Grade | One-line verdict |
 |---|---|---|
 | Operates itself | B | Thinking spine live on a 30-min tick; support auto-resolve genuinely learns; every outward touch still ends at a founder tap |
-| Maintains itself | D | Immune system (advisories → gated self-patch PR) is wired end-to-nowhere; no retry/DLQ on autonomous dispatches |
+| Maintains itself | C− | Dispatch retry + DLQ landed (transient blips no longer discard autonomous actions); immune system (advisories → gated self-patch PR) still wired end-to-nowhere |
 | Grows itself | C− | Growth reasoning + budget ramp are real; the paid-ads limb has **no provider** (drafts only); SEO/content senses exist |
 | Evolves itself | C | Threshold/autonomy/efficacy loops close automatically; LLM judges + golden-suite regression + 3-tier memory are **unwired**; code evolution stops at PRs |
 | Reports to its owner | B+ | The Letter is structurally honest; paging was the weak seam (fixed below) |
@@ -52,11 +52,16 @@ grade changes.
    ("UNKNOWN, not zero — don't ground plans on it") and the pack exposes
    `degradedSenses`. *Still open:* the loop-stall watchdog should also page
    when the same sense stays dark across N consecutive gathers.
-3. **Dispatch retry + DLQ.** The Solene dispatch queue terminally fails on
-   transient errors (unlike the outbox's 5-retry + DLQ). Add bounded retry
-   with backoff for `transient` classifications and a dead-letter surface on
-   the Control door. Without this, a provider blip silently discards an
-   autonomous action until a future tick re-plans it.
+3. **Dispatch retry + DLQ (DONE 2026-07-03).** Bounded, SIDE-EFFECT-AWARE
+   retry: `failDispatch(..., { transient: true })` requeues with exponential
+   backoff (2/4/8 min via `not_before_at`), capped at `DISPATCH_MAX_ATTEMPTS`
+   (3 total runs, counted at claim time), then dead-letters with the
+   `[dead-letter]` marker the dispatches page surfaces. Only failures PROVEN
+   to precede any side effect classify transient: an ensemble-cap READ
+   failure, or a thrown run with `toolCallsExecuted === 0`. Timeouts, cost
+   caps, cancellations, and any post-tool failure stay terminal — the
+   original at-most-once stance for outward effects is preserved, and the
+   orphan reaper still never requeues.
 4. **Wire the immune system.** `npm_watch` records advisories; nothing calls
    `planSecurityResponse` → `runGatedSelfPatch`. Connect the daily advisory
    scan to the planner and let `SELF_PATCH_ENABLED` + the code-change gate do

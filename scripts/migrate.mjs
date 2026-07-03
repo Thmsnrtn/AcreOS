@@ -5255,6 +5255,10 @@ const STATEMENTS = [
   // (legacy + non-autopilot enqueues) are never deduped.
   `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "idempotency_key" text`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "solene_dispatch_queue_idempotency_key_uq" ON "solene_dispatch_queue" ("idempotency_key") WHERE "idempotency_key" IS NOT NULL`,
+  // Step-away gap #3 — bounded side-effect-aware retry. attempts increments at
+  // CLAIM time; not_before_at is the backoff gate claimNextDispatch respects.
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "attempts" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "not_before_at" timestamptz`,
 
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
