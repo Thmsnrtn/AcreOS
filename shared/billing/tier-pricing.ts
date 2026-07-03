@@ -293,6 +293,27 @@ export function isTierPurchasable(tier: Tier, interval: BillingInterval): boolea
 }
 
 /**
+ * Reverse map: which tier does a Stripe price ID belong to? (Roadmap W1.2,
+ * 2026-07 audit.) The subscription webhook resolved tier ONLY from
+ * `product.metadata.tier`; when that metadata was missing or misconfigured a
+ * PAYING customer stayed on free entitlements and MRR undercounted them.
+ * This gives the webhook a deterministic fallback derived from the same
+ * STRIPE_PRICE_* env vars checkout uses — the price the customer actually
+ * paid can never disagree with the tier it maps to.
+ */
+export function tierForStripePriceId(priceId: string | null | undefined): Tier | null {
+  if (!priceId) return null;
+  const tiers: Tier[] = ["starter", "pro", "scale"];
+  const intervals: BillingInterval[] = ["monthly", "yearly"];
+  for (const tier of tiers) {
+    for (const interval of intervals) {
+      if (stripePriceIdFor(tier, interval) === priceId) return tier;
+    }
+  }
+  return null;
+}
+
+/**
  * Error thrown when a checkout is attempted for a tier whose Stripe price ID
  * is not configured. The message names the missing env var (never a value) so
  * route handlers can surface an honest 503 rather than handing `undefined` to

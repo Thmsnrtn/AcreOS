@@ -88,11 +88,19 @@ export interface TierLimits {
  * lots of headroom; only the COGS-inverting tail crosses them. Adjust here
  * (single source of truth) — every gate, banner, and test reads this.
  */
+// Margin math reconciled 2026-07-03 (roadmap audit): canonical prices are
+// $20/$49/$79 (tier-pricing.ts) — the previous annotations cited a $29
+// Starter and a $199 Scale that never shipped. At real prices the platform-
+// key COGS bound (threshold × ~$0.015/turn) is: starter ≈ $11.25 of $20
+// (56% of revenue — thin, watch it), pro ≈ $22.50 of $49, scale ≈ $90 of
+// $79 — UNDERWATER at full utilization; scale pricing assumes heavy users
+// cross into the BYOK lane. Roadmap W4 also tracks that non-chat AI
+// surfaces bypass these thresholds entirely.
 export const AI_TURNS_BYOK_THRESHOLDS: Record<SubscriptionTier, number | null> = {
   free: null,       // evaluation tier — the 75/mo ai_requests cap governs; no BYOK lane
-  starter: 750,     // ~25 turns/day avg; max included COGS ≈ $11.25 vs $29/mo
-  pro: 1500,        // ~50 turns/day avg; max included COGS ≈ $22.50 vs $49/mo
-  scale: 6000,      // multi-seat teams; max included COGS ≈ $90 vs $199/mo + seats
+  starter: 750,     // ~25 turns/day avg
+  pro: 1500,        // ~50 turns/day avg
+  scale: 6000,      // multi-seat teams
   enterprise: null, // negotiated per-deal — no self-serve threshold
 };
 
@@ -140,10 +148,12 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     properties: 50,
     notes: 25,
     // Monthly cap. Was 500/DAY, which at ~$0.015/turn × 500 × 30 = $225/mo
-    // COGS vs ~$16.67/mo revenue (-980% margin). At 1,500/mo cap, max COGS
-    // is ~$22.50/mo against $29/mo revenue → positive contribution margin
-    // with headroom for the steady-state user who runs Pax a few dozen
-    // turns/day. See docs/internal/pricing/alternatives-2026-06-06.md.
+    // COGS vs $20/mo revenue (~-1000% margin). At the 1,500/mo cap the
+    // PLATFORM-key exposure is bounded earlier by the 750-turn BYOK
+    // threshold (~$11.25 COGS vs $20/mo revenue); 1,500 governs total turns
+    // across lanes. (Prices reconciled 2026-07-03 — this previously cited a
+    // $29 Starter that never shipped.) See
+    // docs/internal/pricing/alternatives-2026-06-06.md.
     ai_requests: 1500,
     campaigns: 5,
     sequences: 2,

@@ -315,14 +315,21 @@ export class WebhookHandlers {
         const org = await storage.getOrganization(organizationId);
         if (org) {
           const tierName = (org.subscriptionTier || 'starter').charAt(0).toUpperCase() + (org.subscriptionTier || 'starter').slice(1);
-          const tierLimits: Record<string, { leads: string; properties: string; ai: string }> = {
-            sprout: { leads: '50', properties: '10', ai: '25/month' },
-            starter: { leads: '200', properties: '50', ai: '100/month' },
-            pro: { leads: '1,000', properties: '250', ai: '500/month' },
-            scale: { leads: '5,000', properties: '1,000', ai: '2,000/month' },
-            enterprise: { leads: 'Unlimited', properties: 'Unlimited', ai: 'Unlimited' },
+          // Roadmap W1.3: this email previously hardcoded entitlements that
+          // disagreed with the real limits (and named a non-existent tier) —
+          // customers were told the wrong plan on day one. Render from
+          // TIER_LIMITS, the single source of truth, with unlimited (null)
+          // spelled out honestly.
+          const { TIER_LIMITS } = await import('@shared/billing/tier-limits');
+          const tierKey = (org.subscriptionTier || 'starter') as keyof typeof TIER_LIMITS;
+          const real = TIER_LIMITS[tierKey] ?? TIER_LIMITS.starter;
+          const fmt = (n: number | null | undefined): string =>
+            n == null ? 'Unlimited' : n.toLocaleString('en-US');
+          const limits = {
+            leads: fmt(real.leads),
+            properties: fmt(real.properties),
+            ai: real.aiTurnsByokThreshold == null ? 'Unlimited' : `${fmt(real.aiTurnsByokThreshold)}/month`,
           };
-          const limits = tierLimits[org.subscriptionTier || 'starter'] || tierLimits.starter;
 
           // Find the user's email from session metadata or org owner
           const userEmail = session.customer_email || session.metadata?.userEmail;
@@ -608,7 +615,12 @@ export class WebhookHandlers {
         paused: 'paused',
       };
 
-      // Determine tier from product metadata
+      // Determine tier from product metadata, with a price-ID fallback
+      // (roadmap W1.2): metadata-only resolution stranded paying customers on
+      // free entitlements whenever `product.metadata.tier` was unset — and
+      // MRR (summed from subscriptionTier) undercounted them. The price the
+      // customer actually paid is the ground truth; map it back through the
+      // same STRIPE_PRICE_* env vars checkout uses.
       const priceId = subscription.items?.data?.[0]?.price?.id;
       let newTier: string | undefined;
 
@@ -617,6 +629,20 @@ export class WebhookHandlers {
         const price = await stripe.prices.retrieve(priceId, { expand: ['product'] });
         const product = price.product as Stripe.Product;
         newTier = product.metadata?.tier;
+        if (!newTier) {
+          const { tierForStripePriceId } = await import('@shared/billing/tier-pricing');
+          const mapped = tierForStripePriceId(priceId);
+          if (mapped) {
+            newTier = mapped;
+            logger.warn(
+              `[webhook] product.metadata.tier missing for price ${priceId} — resolved tier "${mapped}" from the price-ID mapping. Fix the Stripe product metadata.`,
+            );
+          } else {
+            logger.error(
+              `[webhook] cannot resolve tier for price ${priceId}: no product metadata AND no STRIPE_PRICE_* mapping — org ${org.id} tier NOT updated`,
+            );
+          }
+        }
       }
 
       const updates: Record<string, any> = {

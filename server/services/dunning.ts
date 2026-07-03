@@ -545,8 +545,19 @@ class DunningService {
           //               flapping sequence can't spam the customer.
           const notification = this.getScheduledNotification(daysSinceFailure);
           if (notification) {
-            const recentEvents = await storage.getDunningEvents(org.id, "pending");
-            const latestEvent = recentEvents[0];
+            // Roadmap W1.1 (2026-07 audit): the reminder ladder was DEAD for
+            // exactly the recoverable accounts. handlePaymentFailure() parks
+            // events at "scheduled_retry" whenever Stripe set a next retry
+            // (the normal case), but this selector only fetched "pending" —
+            // so latestEvent was undefined and the day-3/7/14 reminder →
+            // warning → final-notice emails never sent. Select the latest
+            // OPEN event (pending OR scheduled_retry), mirroring
+            // getActiveCases' definition of open.
+            const allEvents = await storage.getDunningEvents(org.id);
+            const openEvents = allEvents.filter(
+              (e) => e.status === "pending" || e.status === "scheduled_retry",
+            );
+            const latestEvent = openEvents[0];
 
             if (latestEvent) {
               const sentNotifications = latestEvent.notificationsSent || [];
