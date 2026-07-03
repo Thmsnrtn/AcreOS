@@ -9,7 +9,7 @@
  *    counted as worth-doing in the headline
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -33,9 +33,28 @@ vi.mock("./settings", () => ({
   isSelfPatchEnabled: async () => process.env.SELF_PATCH_ENABLED === "true",
 }));
 // Platform Connections — nothing connected in these tests; env toggles drive.
+let githubCreds: { token: string | null; repository: string | null } = { token: "ghp_t", repository: "tom/acreos" };
 vi.mock("../connections/platformConnections", () => ({
   resolveConnection: async () => ({ value: null, source: "missing" as const }),
+  resolveGithubCredentials: async () => githubCreds,
 }));
+
+// Release-freshness fetches: live /api/version + GitHub main tip.
+let liveSha: string | null = "abc1234def";
+let tipSha: string | null = "abc1234def5678901234567890123456789012ab";
+const originalFetch = globalThis.fetch;
+function armFetchMock() {
+  globalThis.fetch = vi.fn(async (url: any) => {
+    const u = String(url);
+    if (u.includes("/api/version")) {
+      return { ok: liveSha !== null, json: async () => ({ sha: liveSha }) } as Response;
+    }
+    if (u.includes("api.github.com")) {
+      return { ok: tipSha !== null, status: tipSha ? 200 : 500, json: async () => ({ sha: tipSha }) } as Response;
+    }
+    return { ok: false, status: 404, json: async () => ({}) } as Response;
+  }) as any;
+}
 vi.mock("../solene/pagerService", () => ({ pageTopic: () => topic }));
 vi.mock("./loopStall", () => ({
   observeLoopHealth: async () => {
@@ -73,6 +92,14 @@ beforeEach(() => {
   patchCapable = { capable: true, reason: "ok" };
   process.env.FOUNDER_EMAIL = "tom@example.com";
   process.env.SELF_PATCH_ENABLED = "true";
+  githubCreds = { token: "ghp_t", repository: "tom/acreos" };
+  liveSha = "abc1234def";
+  tipSha = "abc1234def5678901234567890123456789012ab";
+  armFetchMock();
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 describe("buildStepAwayReadiness", () => {
@@ -139,6 +166,35 @@ describe("buildStepAwayReadiness", () => {
     capStatus = { ...capStatus, monthToDateUsd: 50, exceeded: true };
     const r = await buildStepAwayReadiness();
     expect(r.checks.find((c) => c.key === "budget")!.status).toBe("ready");
+  });
+
+  it("a STALE release blocks step-away (2026-07-03 incident class)", async () => {
+    liveSha = "962a3d8"; // production behind
+    tipSha = "92b7bdb0000000000000000000000000000000ab"; // main moved on
+    const r = await buildStepAwayReadiness();
+    const fresh = r.checks.find((c) => c.key === "release_fresh")!;
+    expect(fresh.status).toBe("attention");
+    expect(fresh.detail).toContain("STALE RELEASE");
+    expect(r.verdict).toBe("not_ready");
+  });
+
+  it("an unreachable live site blocks step-away", async () => {
+    liveSha = null;
+    const r = await buildStepAwayReadiness();
+    const fresh = r.checks.find((c) => c.key === "release_fresh")!;
+    expect(fresh.status).toBe("attention");
+    expect(r.verdict).toBe("not_ready");
+  });
+
+  it("no GitHub connection → freshness is worth-doing, never a false green, never a block", async () => {
+    githubCreds = { token: null, repository: null };
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.GITHUB_REPOSITORY;
+    const r = await buildStepAwayReadiness();
+    const fresh = r.checks.find((c) => c.key === "release_fresh")!;
+    expect(fresh.status).toBe("action_needed");
+    expect(fresh.critical).toBe(false);
+    expect(r.verdict).toBe("ready");
   });
 
   it("optional gaps (no grants, immune off, queue busy) leave the verdict READY but counted", async () => {

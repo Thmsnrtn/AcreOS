@@ -117,6 +117,62 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
     }
   }
 
+  // ── 3b. Release freshness (2026-07-03 stale-release incident) ─────────────
+  // The live site sat four days behind main while only the hourly watchdog
+  // symptom-paged. This check answers "is production current?" from inside
+  // the product: live /api/version vs the tip of main via the GitHub
+  // connection. Verifiable + stale or unreachable → attention (blocks
+  // step-away). Unverifiable (no GitHub connection) → worth-doing, honest.
+  {
+    const base = { key: "release_fresh", title: "The live site is current", critical: true, href: "/founder/autopilot/control" };
+    try {
+      let token: string | null = process.env.GITHUB_TOKEN ?? null;
+      let repo: string | null = process.env.GITHUB_REPOSITORY ?? null;
+      try {
+        const { resolveGithubCredentials } = await import("../connections/platformConnections");
+        const resolved = await resolveGithubCredentials();
+        token = resolved.token ?? token;
+        repo = resolved.repository ?? repo;
+      } catch { /* env-only */ }
+
+      if (!token || !repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+        checks.push({
+          ...base,
+          critical: false,
+          status: "action_needed",
+          detail: "Cannot verify the deployed build against main — GitHub isn't connected. (The hourly release watchdog still runs in CI.)",
+          fix: "Connect GitHub under Controls → Connections so freshness is verified here, not just by phone pages.",
+        });
+      } else {
+        const timeout = (ms: number) => {
+          const c = new AbortController();
+          setTimeout(() => c.abort(), ms);
+          return c.signal;
+        };
+        const liveRes = await fetch("https://acreos.io/api/version", { signal: timeout(8000) });
+        const live = liveRes.ok ? ((await liveRes.json()) as { sha?: string }) : null;
+        if (!live?.sha) {
+          checks.push({ ...base, status: "attention", detail: "The live site's /api/version is unreachable — production may be down or unhealthy.", fix: "Check the site and Fly status before stepping away." });
+        } else {
+          const ghRes = await fetch(`https://api.github.com/repos/${repo}/commits/${process.env.GITHUB_DEFAULT_BRANCH ?? "main"}`, {
+            headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+            signal: timeout(8000),
+          });
+          const tip = ghRes.ok ? ((await ghRes.json()) as { sha?: string }) : null;
+          if (!tip?.sha) {
+            checks.push({ ...base, critical: false, status: "action_needed", detail: `GitHub wouldn't report main's tip (HTTP ${ghRes.status}) — freshness unverified this pass.`, fix: "Verify the GitHub connection (Controls → Connections → Verify)." });
+          } else if (tip.sha.startsWith(live.sha) || live.sha.startsWith(tip.sha) || tip.sha === live.sha) {
+            checks.push({ ...base, status: "ready", detail: `Production is serving main's tip (${live.sha.slice(0, 7)}).` });
+          } else {
+            checks.push({ ...base, status: "attention", detail: `STALE RELEASE: production serves ${live.sha.slice(0, 7)} but main's tip is ${tip.sha.slice(0, 7)} — a deploy failed or never ran.`, fix: "Open the latest Deploy run on GitHub Actions; the gate-failure page carries the reason." });
+          }
+        }
+      }
+    } catch (err) {
+      checks.push(attention(base, err instanceof Error ? err.message : String(err)));
+    }
+  }
+
   // ── 4. Budget discipline (critical) ───────────────────────────────────────
   {
     const base = { key: "budget", title: "Spending is bounded", critical: true, href: "/founder/autopilot/control" };

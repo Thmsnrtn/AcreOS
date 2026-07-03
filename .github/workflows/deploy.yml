@@ -338,3 +338,42 @@ jobs:
           fi
           # Verify by presence/length only — NEVER print the secret value.
           echo "DEPLOY_ALERT_WEBHOOK is set (length ${#DEPLOY_ALERT_WEBHOOK}). Alert spine wired. ✓"
+
+  # ── Gate-failure alarm (2026-07-03, stale-release incident) ────────────────
+  # The deploy job's own failure-alert step never fires when the TEST gate
+  # fails, because `needs: test` means deploy never starts. That is exactly
+  # what happened on 2026-06-29: the pre-deploy tsc gate failed, no page went
+  # out at CAUSE time, and the founder learned about it from eleven hourly
+  # stale-release symptom pages instead of one failure page with the reason.
+  # This job pages ONCE, immediately, when the gate refuses a main push.
+  notify-gate-failure:
+    name: Page founder on pre-deploy gate failure
+    needs: test
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post gate-failure alert
+        env:
+          DEPLOY_ALERT_WEBHOOK: ${{ secrets.DEPLOY_ALERT_WEBHOOK }}
+        run: |
+          MSG="🚨 AcreOS deploy BLOCKED at the pre-deploy gate for ${GITHUB_SHA:0:7} — main will NOT ship until this is fixed. https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          echo "$MSG"
+          if [ -z "$DEPLOY_ALERT_WEBHOOK" ]; then
+            echo "::error title=DEPLOY_ALERT_WEBHOOK secret is NOT set::Gate failed and no alert could be sent."
+            exit 1
+          fi
+          if echo "$DEPLOY_ALERT_WEBHOOK" | grep -qi "ntfy"; then
+            curl --fail --silent --show-error --max-time 15 \
+              -H "Title: AcreOS deploy gate FAILED" \
+              -H "Priority: high" \
+              -H "Tags: warning" \
+              -d "$MSG" \
+              "$DEPLOY_ALERT_WEBHOOK" \
+              || echo "Alert webhook POST failed — investigate."
+          else
+            curl --fail --silent --show-error --max-time 15 \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg t "$MSG" '{text:$t, message:$t, content:$t}')" \
+              "$DEPLOY_ALERT_WEBHOOK" \
+              || echo "Alert webhook POST failed — investigate."
+          fi
