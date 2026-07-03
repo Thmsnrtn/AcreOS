@@ -172,9 +172,51 @@ export class SmsService {
 export const smsService = new SmsService();
 
 /**
+ * TCPA gate-by-construction (roadmap W1.5, 2026-07 audit). The consent +
+ * quiet-hours checks used to live only in CALLERS (sequenceProcessor,
+ * communications) — any path that reached this sender directly (manual
+ * send, AI tools, the autopilot hand via sendSMSToLead) skipped them
+ * entirely. The gate now lives in the sender itself:
+ *   • recipient matches a LEAD in the org → full tcpaGateForSms (consent +
+ *     recipient-local quiet hours). Blocked → refuse, named reason.
+ *   • recipient matches no lead → allowed (customer/transactional traffic
+ *     like billing notices isn't seller marketing).
+ *   • consent state UNVERIFIABLE (db error) → FAIL CLOSED. A marketing SMS
+ *     with unprovable consent is a TCPA violation waiting for a plaintiff;
+ *     a delayed transactional SMS retries.
+ */
+async function tcpaGateForRecipient(
+  organizationId: number,
+  to: string,
+): Promise<{ allowed: boolean; reason?: string }> {
+  const last10 = to.replace(/\D/g, "").slice(-10);
+  if (last10.length < 7) return { allowed: true }; // short codes / malformed — carrier will reject
+  try {
+    const candidates = await db
+      .select({ id: leads.id, phone: leads.phone })
+      .from(leads)
+      .where(eq(leads.organizationId, organizationId));
+    const matched = candidates.find((l) => {
+      const leadPhone = l.phone?.replace(/\D/g, "") || "";
+      if (leadPhone.length < 7) return false;
+      return leadPhone.slice(-10) === last10;
+    });
+    if (!matched) return { allowed: true };
+    const { tcpaGateForSms } = await import("./tcpaCompliance");
+    return await tcpaGateForSms(matched.id, organizationId, to);
+  } catch (err) {
+    logger.error(
+      "[SMS] TCPA gate could not verify consent — refusing send (fail closed)",
+      err instanceof Error ? err : undefined,
+    );
+    return { allowed: false, reason: "consent state unverifiable — refusing to send" };
+  }
+}
+
+/**
  * Org-scoped SMS send. The Twilio adapter handles BYOK credential
- * resolution + sim-mode short-circuit; here we only need to post the
- * cost to the financial ledger after a real send succeeds.
+ * resolution + sim-mode short-circuit; here we gate for TCPA (see above)
+ * and post the cost to the financial ledger after a real send succeeds.
  */
 export async function sendOrgSMS(
   organizationId: number,
@@ -182,6 +224,13 @@ export async function sendOrgSMS(
   message: string,
   mediaUrls?: string[],
 ): Promise<SmsResult> {
+  const gate = await tcpaGateForRecipient(organizationId, to);
+  if (!gate.allowed) {
+    logger.warn(`[SMS] send to lead blocked by TCPA gate: ${gate.reason}`, {
+      metadata: { organizationId },
+    });
+    return { success: false, error: `TCPA gate: ${gate.reason}` };
+  }
   try {
     const result = await commsRouter.route({
       to,
@@ -280,6 +329,8 @@ export async function handleIncomingSMS(
   conversationId?: number;
   dbMessageId?: number;
   leadId?: number;
+  /** True when no lead matched — stored as an unattached reply for triage. */
+  unmatched?: boolean;
   error?: string;
 }> {
   const cleanPhone = fromPhone.replace(/\D/g, "");
@@ -459,13 +510,37 @@ export async function handleIncomingSMS(
   }
 
   if (!existingConversation) {
-    logger.info(
-      `[SMS] No matching lead found for phone ${fromPhone} in org ${organizationId}. Message not stored.`,
-    );
-    return {
-      success: false,
-      error: `No matching lead found for phone number ${fromPhone}. Consider creating a lead first.`,
-    };
+    // Roadmap W1.4: an unmatched inbound used to be logged and DISCARDED —
+    // a seller replying from a spouse's phone or a number skip-tracing never
+    // returned was a hot response, lost. Persist it for Inbox triage
+    // (attach-to-lead / create-lead), replay-deduped on the MessageSid.
+    try {
+      const { unattachedInboundMessages } = await import("@shared/schema/unattached-inbound");
+      await db
+        .insert(unattachedInboundMessages)
+        .values({
+          organizationId,
+          channel: "sms",
+          fromAddress: fromPhone,
+          toAddress: toPhone,
+          body,
+          externalId: messageSid,
+        })
+        .onConflictDoNothing({ target: unattachedInboundMessages.externalId });
+      logger.info(
+        `[SMS] Inbound from ${fromPhone} matched no lead in org ${organizationId} — stored as unattached reply for triage.`,
+      );
+      return { success: true, unmatched: true };
+    } catch (err) {
+      logger.error(
+        "[SMS] failed to store unattached inbound message",
+        err instanceof Error ? err : undefined,
+      );
+      return {
+        success: false,
+        error: `No matching lead found for phone number ${fromPhone}, and the unattached-reply store failed.`,
+      };
+    }
   }
 
   // Webhook-replay defense: partial unique index on (external_id) makes
@@ -497,6 +572,23 @@ export async function handleIncomingSMS(
     .update(conversations)
     .set({ lastMessageAt: new Date(), status: "active" })
     .where(eq(conversations.id, existingConversation.id));
+
+  // Roadmap W1.4: the EMAIL inbound path flips the lead to "responded" (the
+  // signal Today's priority queue and the funnel read) — SMS, the dominant
+  // seller-reply channel, never did. Mirror it exactly.
+  if (leadId) {
+    try {
+      await db
+        .update(leads)
+        .set({ status: "responded", updatedAt: new Date() })
+        .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
+    } catch (err) {
+      logger.warn(
+        "[SMS] failed to mark lead responded (message stored fine)",
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
 
   return {
     success: true,

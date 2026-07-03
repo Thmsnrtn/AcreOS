@@ -889,6 +889,11 @@ export const leads = pgTable("leads", {
   optOutDate: timestamp("opt_out_date"),
   optOutReason: text("opt_out_reason"),
   doNotContact: boolean("do_not_contact").default(false),
+  // Roadmap W1.5 (2026-07): IANA timezone for TCPA quiet-hours (8am–9pm
+  // RECIPIENT-local). Area-code inference is unreliable post-number-porting;
+  // this column is the honest source — populated from the mailing address
+  // (enrichment follow-up) or set manually. Null → area-code fallback.
+  timezone: text("timezone"),
   
   // Soft delete support for safe bulk operations with recovery
   deletedAt: timestamp("deleted_at"), // null = active, timestamp = soft deleted
@@ -17842,6 +17847,12 @@ export * from "./schema/autopilot-witness-grants";
 // (./schema/platform-connections.ts)
 // ============================================================================
 export * from "./schema/platform-connections";
+
+// ============================================================================
+// UNATTACHED INBOUND REPLIES — SMS from numbers matching no lead
+// (./schema/unattached-inbound.ts)
+// ============================================================================
+export * from "./schema/unattached-inbound";
 
 
 // ============================================================================

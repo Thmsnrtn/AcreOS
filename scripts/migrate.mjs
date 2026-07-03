@@ -5330,6 +5330,25 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "platform_connections_provider_idx" ON "platform_connections" ("provider", "field")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "platform_connections_active_uidx" ON "platform_connections" ("provider", "field") WHERE "revoked_at" IS NULL`,
 
+  // SMS response capture + quiet-hours truth (migration 0190, roadmap W1.4/5).
+  `CREATE TABLE IF NOT EXISTS "unattached_inbound_messages" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL,
+     "channel" text NOT NULL,
+     "from_address" text NOT NULL,
+     "to_address" text,
+     "body" text NOT NULL,
+     "external_id" text,
+     "received_at" timestamptz NOT NULL DEFAULT now(),
+     "resolution" text,
+     "resolved_lead_id" integer,
+     "resolved_at" timestamptz,
+     "resolved_by" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "unattached_inbound_org_idx" ON "unattached_inbound_messages" ("organization_id", "received_at")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "unattached_inbound_external_uq" ON "unattached_inbound_messages" ("external_id") WHERE "external_id" IS NOT NULL`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "timezone" text`,
+
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
      "dispatch_id" integer NOT NULL,
