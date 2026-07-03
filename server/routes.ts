@@ -1825,6 +1825,11 @@ export async function registerRoutes(
     // the prewired OAuth flows for ad accounts.
     const { registerConnectionsRoutes } = await import("./routes-connections");
     registerConnectionsRoutes(app);
+    // Free-distribution: per-route server-rendered <head> for the public
+    // content surfaces (field-notes / compare / learn) — social cards and
+    // first-pass crawlers stop seeing the homepage head on every URL.
+    const { registerSeoHeadRoutes } = await import("./routes-seo-head");
+    registerSeoHeadRoutes(app);
     // Phase 7 Months 7: Hartwell title-partner API — POST /title-orders +
     // inbound webhook + ALTA Pillar 2 wire instructions + partner registry.
     const { registerTitlePartnerRoutes } = await import("./routes-title-partners");

@@ -272,6 +272,8 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-rosy-river.ts", mountPath: null, kind: "register", export: "registerRosyRiverRoutes" },
   { file: "routes-scp-v2.ts", mountPath: null, kind: "register", export: "registerSCPv2Routes" },
   { file: "routes-seller-intent.ts", mountPath: "/api/seller-intent", kind: "router", export: "default" },
+  // Free-distribution: per-route server-rendered <head> for public pages.
+  { file: "routes-seo-head.ts", mountPath: null, kind: "register", export: "registerSeoHeadRoutes" },
   { file: "routes-sendgrid-events.ts", mountPath: null, kind: "register", export: "registerSendGridEventRoutes" },
   { file: "routes-ses-events.ts", mountPath: null, kind: "register", export: "registerSesEventRoutes" },
   { file: "routes-servicer.ts", mountPath: null, kind: "register", export: "registerServicerRoutes" },

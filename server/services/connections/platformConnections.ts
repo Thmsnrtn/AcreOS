@@ -117,6 +117,14 @@ export const CONNECTION_PROVIDERS: readonly ConnectionProviderSpec[] = [
     ],
   },
   {
+    key: "indexnow",
+    label: "IndexNow (search discovery)",
+    category: "growth",
+    powers: "Bing/Yandex crawl new field notes and parcel reports within hours instead of weeks.",
+    fields: [{ name: "key", label: "IndexNow key", secret: false, envVar: "INDEXNOW_KEY", placeholder: "auto-minted — no account needed" }],
+    note: "Self-minted, no signup: the platform auto-generates this key on first use and proves ownership by serving it at /indexnow-key.txt. Nothing for you to do unless you want to rotate it.",
+  },
+  {
     key: "meta_ads",
     label: "Meta Ads",
     category: "growth",
@@ -493,6 +501,18 @@ async function runVerify(provider: string): Promise<{ ok: boolean; detail: strin
         headers: { Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}` },
       });
       return res.ok ? { ok: true, detail: "credentials accepted" } : { ok: false, detail: `HTTP ${res.status}` };
+    }
+    case "indexnow": {
+      const { resolveIndexNowKey, publicBaseUrl } = await import("../autopilot/searchEngineSubmit");
+      const key = await resolveIndexNowKey();
+      if (!key) return { ok: false, detail: "no key resolvable (auto-mint failed?) — check logs" };
+      const base = publicBaseUrl() ?? "https://acreos.io";
+      const res = await timedFetch(`${base}/indexnow-key.txt`, {});
+      if (!res.ok) return { ok: false, detail: `key file not served (HTTP ${res.status}) — pings would be rejected` };
+      const served = (await res.text()).trim();
+      return served === key
+        ? { ok: true, detail: "key file live — discovery pings will be honored" }
+        : { ok: false, detail: "served key file does not match the resolved key (stale deploy?)" };
     }
     case "meta_ads": {
       const token = await resolveConnectionValue(provider, "oauth_access_token");
