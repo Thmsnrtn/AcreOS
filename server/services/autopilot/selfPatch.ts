@@ -48,8 +48,19 @@ export interface SelfPatchResult {
   witnessedCount: number;
 }
 
-function envEnabled(): boolean {
-  return process.env.SELF_PATCH_ENABLED === "true";
+/**
+ * The master switch — DB-backed via autopilot_settings (a Control Center tap)
+ * with the env SELF_PATCH_ENABLED as the fallback default, matching the
+ * dispatch/publish/cognition pattern. Settings unavailable → env only
+ * (safe-off unless the founder set the secret).
+ */
+async function switchEnabled(): Promise<boolean> {
+  try {
+    const { isSelfPatchEnabled } = await import("./settings");
+    return await isSelfPatchEnabled();
+  } catch {
+    return process.env.SELF_PATCH_ENABLED === "true";
+  }
 }
 
 /**
@@ -66,7 +77,7 @@ export async function runGatedSelfPatch(
   branchSuffix: string,
 ): Promise<SelfPatchResult> {
   try {
-    if (!envEnabled()) return { ran: false, reason: "SELF_PATCH_ENABLED is off", witnessedCount: 0 };
+    if (!(await switchEnabled())) return { ran: false, reason: "self-patch switch is off (Control Center / SELF_PATCH_ENABLED)", witnessedCount: 0 };
     if (!autoMergeEarned) return { ran: false, reason: "security domain has not earned safe-class auto-PR (everything witnessed)", witnessedCount: 0 };
 
     const summary = parseAudit(await git.audit());

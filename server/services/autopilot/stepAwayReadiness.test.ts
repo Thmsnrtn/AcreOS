@@ -28,7 +28,10 @@ let deadLetterRows: Array<{ id: number }> = [];
 let patchCapable = { capable: true, reason: "ok" };
 let ledgerLevels = ["execute_gated", "autonomous_gated", "draft", "observe", "observe"];
 
-vi.mock("./settings", () => ({ isPanicStopped: () => panicStopped }));
+vi.mock("./settings", () => ({
+  isPanicStopped: () => panicStopped,
+  isSelfPatchEnabled: async () => process.env.SELF_PATCH_ENABLED === "true",
+}));
 vi.mock("../solene/pagerService", () => ({ pageTopic: () => topic }));
 vi.mock("./loopStall", () => ({
   observeLoopHealth: async () => {

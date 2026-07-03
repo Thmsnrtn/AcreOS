@@ -206,8 +206,8 @@ export function registerAutopilotRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       const { key, value } = (req.body ?? {}) as { key?: string; value?: boolean };
-      if (key !== "dispatchEnabled" && key !== "publishEnabled" && key !== "cognitionEnabled") {
-        return Errors.badRequest(res, "Invalid setting key", { allowed: ["dispatchEnabled", "publishEnabled", "cognitionEnabled"] });
+      if (key !== "dispatchEnabled" && key !== "publishEnabled" && key !== "cognitionEnabled" && key !== "selfPatchEnabled") {
+        return Errors.badRequest(res, "Invalid setting key", { allowed: ["dispatchEnabled", "publishEnabled", "cognitionEnabled", "selfPatchEnabled"] });
       }
       if (typeof value !== "boolean") {
         return Errors.badRequest(res, "value must be a boolean");

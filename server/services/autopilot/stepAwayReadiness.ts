@@ -192,19 +192,20 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
 
   // ── 8. Immune motor ───────────────────────────────────────────────────────
   {
-    const base = { key: "immune", title: "It can patch itself", critical: false };
+    const base = { key: "immune", title: "It can patch itself", critical: false, href: "/founder/autopilot/control" };
     try {
-      const enabled = process.env.SELF_PATCH_ENABLED === "true";
+      const { isSelfPatchEnabled } = await import("./settings");
+      const enabled = await isSelfPatchEnabled();
       const { assertSelfPatchCapable } = await import("./selfPatchGitOps");
       const cap = await assertSelfPatchCapable();
       if (enabled && cap.capable) {
         checks.push({ ...base, status: "ready", detail: "Security advisories with a safe (patch-only) fix become pull requests on their own; you review and merge from anywhere." });
       } else {
         const why = [
-          !enabled ? "SELF_PATCH_ENABLED is off" : null,
+          !enabled ? "the self-patch switch is off" : null,
           !cap.capable ? cap.reason : null,
         ].filter(Boolean).join("; ");
-        checks.push({ ...base, status: "action_needed", detail: `Advisories are still watched and planned daily, but fixes wait for you (${why}).`, fix: "Optional: set SELF_PATCH_ENABLED=true plus GITHUB_TOKEN/GITHUB_REPOSITORY where the motor should run." });
+        checks.push({ ...base, status: "action_needed", detail: `Advisories are still watched and planned daily, but fixes wait for you (${why}).`, fix: "Optional: flip Self-patching on the Control Center (plus GITHUB_TOKEN/GITHUB_REPOSITORY where the motor should run)." });
       }
     } catch (err) {
       checks.push(attention(base, err instanceof Error ? err.message : String(err)));

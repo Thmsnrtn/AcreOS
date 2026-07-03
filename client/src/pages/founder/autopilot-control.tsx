@@ -34,7 +34,7 @@ import { Verbs } from "@/lib/labels";
 
 interface LedgerEntry { domain: string; level: string; cleanCycleCount: number; threshold: number; qualityLine?: string | null }
 interface ControlData {
-  settings: { dispatchEnabled: boolean; publishEnabled: boolean; growthBudgetOverrideUsd: number | null; source: { dispatch: "db" | "env"; publish: "db" | "env" } };
+  settings: { dispatchEnabled: boolean; publishEnabled: boolean; selfPatchEnabled?: boolean; growthBudgetOverrideUsd: number | null; source: { dispatch: "db" | "env"; publish: "db" | "env" } };
   ledger: LedgerEntry[];
   openAsks: number;
   calibration: { grade: string; n: number } | null;
@@ -98,7 +98,7 @@ export default function FounderAutopilotControlPage() {
   });
 
   const setSetting = useMutation({
-    mutationFn: async (vars: { key: "dispatchEnabled" | "publishEnabled"; value: boolean }) => {
+    mutationFn: async (vars: { key: "dispatchEnabled" | "publishEnabled" | "selfPatchEnabled"; value: boolean }) => {
       const res = await fetch("/api/founder/autopilot/settings", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" }, body: JSON.stringify(vars),
@@ -108,7 +108,14 @@ export default function FounderAutopilotControlPage() {
     },
     onSuccess: (_d, vars) => {
       void qc.invalidateQueries({ queryKey: CONTROL_KEY });
-      toast({ title: vars.value ? "Switched on" : "Switched off", description: vars.key === "dispatchEnabled" ? "The autopilot hands." : "Auto-publish." });
+      void qc.invalidateQueries({ queryKey: STEP_AWAY_KEY });
+      toast({
+        title: vars.value ? "Switched on" : "Switched off",
+        description:
+          vars.key === "dispatchEnabled" ? "The autopilot hands." :
+          vars.key === "selfPatchEnabled" ? "Self-patching (security fixes become PRs for your review)." :
+          "Auto-publish.",
+      });
     },
     onError: (err) => toast({ title: "Couldn't update", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
   });
@@ -239,6 +246,12 @@ export default function FounderAutopilotControlPage() {
                 enabled={data.settings.publishEnabled} source={data.settings.source.publish}
                 pending={setSetting.isPending && setSetting.variables?.key === "publishEnabled"}
                 onToggle={(v) => setSetting.mutate({ key: "publishEnabled", value: v })}
+              />
+              <MasterToggle
+                icon={ShieldCheck} title="Self-patching" description="Let the immune system open pull requests for safe (patch-only) security fixes. Never merges — CI and your review always stand."
+                enabled={data.settings.selfPatchEnabled ?? false} source="db"
+                pending={setSetting.isPending && setSetting.variables?.key === "selfPatchEnabled"}
+                onToggle={(v) => setSetting.mutate({ key: "selfPatchEnabled", value: v })}
               />
             </motion.section>
 

@@ -12818,6 +12818,10 @@ export const autopilotSettings = pgTable("autopilot_settings", {
   growthBudgetOverrideUsd: doublePrecision("growth_budget_override_usd"),
   // Master switch for the autonomous daily Operator cadence. null → env fallback (OFF).
   cognitionEnabled: boolean("cognition_enabled"),
+  // Master switch for the immune system's motor half (gated self-patch PRs).
+  // null → env SELF_PATCH_ENABLED fallback (OFF). Flipping it is a Control
+  // Center tap, not a Fly secret + redeploy.
+  selfPatchEnabled: boolean("self_patch_enabled"),
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: text("updated_by"),
 });

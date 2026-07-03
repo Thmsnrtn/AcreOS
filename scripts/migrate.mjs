@@ -5309,6 +5309,10 @@ const STATEMENTS = [
   // mode) with a due-time the evolution_regression_scan job fires durably.
   `ALTER TABLE "evolution_history" ADD COLUMN IF NOT EXISTS "regression_check_due_at" timestamptz`,
 
+  // Self-patch master switch (migration 0188) — DB-backed like dispatch/
+  // publish/cognition; null → env SELF_PATCH_ENABLED fallback (OFF).
+  `ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "self_patch_enabled" boolean`,
+
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
      "dispatch_id" integer NOT NULL,
