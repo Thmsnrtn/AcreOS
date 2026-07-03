@@ -14,6 +14,8 @@ declare module 'lob' {
     front: string;
     back: string;
     size: '4x6' | '6x9' | '6x11';
+    // Lob requires use_type unless an account default is configured.
+    use_type?: 'marketing' | 'operational';
   }
 
   interface LetterCreateParams {
@@ -22,6 +24,7 @@ declare module 'lob' {
     file: string;
     color?: boolean;
     double_sided?: boolean;
+    use_type?: 'marketing' | 'operational';
   }
 
   interface LobResult {
