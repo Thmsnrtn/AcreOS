@@ -625,8 +625,13 @@ const NAV_MODULES: NavModule[] = [
 
   // ── Founder business ──────────────────────────────────────────────
   // The full autonomous-operation surface. Appears only to founders.
-  // Covers the monthly 1-hour workflow: todo (hub) → letter (narrative)
-  // → trends (trust gauge) → individual approval surfaces.
+  // FOUR-DOOR DOCTRINE (client/src/lib/founder-doors.ts): the primary
+  // children ARE the four doors — the same model the mobile bottom nav
+  // renders — so desktop and mobile teach the identical mental map:
+  //   Letter (read) → Decisions (act) → Controls (configure) → Story (verify).
+  // Everything else is a deep tool, reached deliberately via the overflow
+  // (led by the categorized All-tools index), never competing for daily
+  // attention.
   {
     id: "founder-business",
     label: "Founder",
@@ -634,21 +639,20 @@ const NAV_MODULES: NavModule[] = [
     href: "/founder",
     description: "Autonomous-operation command center",
     founderOnly: true,
-    // ── Three primary screens (Phase Zero-Zero 3-screen model) ────────
-    // Tom's daily 15-minute check: Pulse → Cost → Customers.
-    // Everything else lives in the "Deep Tools" overflow below.
     children: [
-      { label: "Pulse", icon: Activity, href: "/founder", description: "Daily one-line + Autonomy Horizon + capital + phase — the pull-first CEO surface" },
-      { label: "Costs", icon: DollarSign, href: "/founder/admin/costs", description: "AI spend, infra, unit economics, optimizer, providers, paid-data trial — one hub" },
-      { label: "Customers", icon: Users, href: "/founder/customers", description: "Distribution truth — paid / trial / churned counts + UTM sources + recent signups" },
+      { label: "The Letter", icon: Sparkles, href: "/founder", description: "The daily read — what happened, what it decided, whether you can step away. 90% of days: read and close." },
+      { label: "Decisions", icon: Shield, href: "/founder/decisions", description: "The ONLY place you're required — the witnessed-send queue, asks, appeals" },
+      { label: "Controls", icon: Sliders, href: "/founder/autopilot/control", description: "Step-away readiness, master switches, trust levels, delegation, budgets, emergency stop" },
+      { label: "Story", icon: BookOpen, href: "/founder/autopilot/story", description: "The glass-box audit timeline — for verifying, not operating" },
     ],
-    // ── Deep Tools ────────────────────────────────────────────────────
-    // Every founder surface that's not load-bearing for the daily check.
-    // Expanded on demand; collapsed by default. Includes: chat bridge,
-    // steering, studio, inspector, CMO, all extracted sub-routes, agent
-    // surfaces, and the legacy dashboard (redirect only).
+    // ── Deep tools ────────────────────────────────────────────────────
+    // Visited deliberately; collapsed by default. All-tools leads as the
+    // categorized index of everything below (and everything not listed).
     overflow: [
-      // ── Daily-adjacent (weekly touch) ─────────────────────────────
+      { label: "All tools", icon: LayoutDashboard, href: "/founder/all-tools", description: "Categorized index of every founder deep-dive surface" },
+      { label: "Costs", icon: DollarSign, href: "/founder/admin/costs", description: "AI spend, infra, unit economics, optimizer, providers — one hub" },
+      { label: "Customers", icon: Users, href: "/founder/customers", description: "Distribution truth — paid / trial / churned counts + UTM sources + recent signups" },
+      // ── Weekly-touch surfaces ─────────────────────────────────────
       { label: "Bridge", icon: CheckCircle2, href: "/founder/bridge", description: "Chat + telemetry bridge" },
       { label: "Steering", icon: TrendingUp, href: "/founder/steering", description: "Weekly / monthly check-in: what changed, what's the trend, one strategic call" },
       { label: "Studio", icon: Sliders, href: "/founder/studio", description: "Every dial — autonomy thresholds, cost caps, lifecycle, voice, safety" },
@@ -667,8 +671,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Onboarding funnel", icon: Activity, href: "/founder/onboarding-funnel", description: "Signup-to-first-value time per org with 90s-target indicator + abandonment-by-step + per-org drill-down" },
       { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", description: "Agent prompt revision approvals" },
       { label: "Prompt history", icon: History, href: "/founder/prompt-history", description: "Per-agent version timeline with diffs" },
-      // ── Decisions / strategy ───────────────────────────────────────
-      { label: "Decisions", icon: Shield, href: "/founder/decisions", description: "Autonomous decision audit log" },
+      // ── Strategy ───────────────────────────────────────────────────
       { label: "Strategy", icon: Lightbulb, href: "/founder/strategy", description: "Strategic proposals (weekly + synthesis)" },
       { label: "System trends", icon: TrendingUp, href: "/founder/trends", description: "90-day trust gauge" },
       { label: "Monthly letter", icon: FileText, href: "/founder/letter", description: "Chief-of-Staff narrative" },
