@@ -124,6 +124,7 @@ export const CONNECTION_PROVIDERS: readonly ConnectionProviderSpec[] = [
     fields: [
       { name: "app_id", label: "Meta app ID", secret: false, envVar: "META_APP_ID" },
       { name: "app_secret", label: "Meta app secret", secret: true, envVar: "META_APP_SECRET" },
+      { name: "ad_account_id", label: "Ad account ID (numbers only)", secret: false, envVar: "META_AD_ACCOUNT_ID", placeholder: "e.g. 1234567890" },
       // oauth_access_token / oauth_account_id are written by the OAuth flow.
     ],
     oauth: { kind: "oauth2", note: "After saving the app credentials, tap Connect to log in with your Meta account — AcreOS stores the resulting token encrypted." },

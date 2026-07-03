@@ -17,7 +17,7 @@ grade changes.
 |---|---|---|
 | Operates itself | B+ | Thinking spine live on a 30-min tick; support auto-resolve genuinely learns; outward touches now flow under bounded founder-issued WitnessGrants (zero grants = founder taps everything, unchanged) |
 | Maintains itself | B− | Dispatch retry + DLQ landed; immune system now wired end-to-end (daily audit → gated plan → self-patch PR when earned/enabled → deduped founder ask → honesty ledger). Remaining: founder must set the git/PR envs + flip SELF_PATCH_ENABLED |
-| Grows itself | C− | Growth reasoning + budget ramp are real; the paid-ads limb has **no provider** (drafts only); SEO/content senses exist |
+| Grows itself | B− | Growth reasoning + budget ramp are real; the paid-ads limb has its first REAL provider (Meta, witnessed, paused-by-default) behind the in-app account link; SEO/content senses exist |
 | Evolves itself | C+ | Threshold/autonomy/efficacy loops close automatically; LLM judges + golden-suite regression now gate deltas when armed, and Stage-6 regression checks fire durably (PR mode included); 3-tier memory still unwired; code evolution stops at PRs (by design) |
 | Reports to its owner | B+ | The Letter is structurally honest; paging was the weak seam (fixed below) |
 | Economics discipline | A− | Fail-closed money gates at every layer; earn-to-ramp +50% steps; hard ceiling 10× base |
@@ -105,9 +105,16 @@ grade changes.
    per-delta evolution when interaction capture lands). *Still open:*
    interaction-capture seam so batch runs can feed real sessions into
    `runEvolution`.
-7. **Give growth a real limb.** `run_ad_campaign` has zero providers —
-   register the first real provider behind the existing draft→witnessed
-   ladder. Until then "bring in users" rests entirely on content/SEO.
+7. **Growth limb (DONE 2026-07-03).** The Meta adapter is the first real ad
+   provider, registered into the adProvider seam and riding the meta_ads
+   Platform Connection (OAuth login + ad account id, linked in-app). Every
+   witnessed execution creates a REAL campaign — always `status=PAUSED`
+   (the machine prepares spend end-to-end but can never start it; the
+   founder activates in Ads Manager), always `special_ad_categories:
+   ["HOUSING"]` (land/property is housing-class under Meta policy), daily
+   budget bound attached. Unlinked = the same honest draft-only result as
+   before. Google Ads is prewired at the connection layer for a second
+   adapter.
 8. **Retire or wire the SCP dead weight.** The 3-tier memory system and SCP
    auto-rollback are advertised but inert; either connect them to the live
    loop's memory recall / config versioning or delete them so the map stays
