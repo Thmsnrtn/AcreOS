@@ -572,7 +572,10 @@ const NAV_MODULES: NavModule[] = [
     icon: Layers,
     href: "/permits",
     description: "Lots, permits, plans, pricing grid, county timelines",
-    businessTypeOnly: ["subdivider"],
+    // W2.5: "developer" derives the subdivider persona (persona-mapping.ts) —
+    // developers get the same lots/permits/plats model, so the module gate
+    // matches both businessTypes instead of stranding developer signups.
+    businessTypeOnly: ["subdivider", "developer"],
     children: [
       { label: "Permits", icon: ClipboardList, href: "/permits", description: "County-by-county permit checklists w/ stalled-gate alerts" },
       { label: "County timelines", icon: Calendar, href: "/county-timelines", description: "Subdivision approval lead times by county" },

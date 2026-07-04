@@ -1,4 +1,5 @@
 import DOMPurify from "isomorphic-dompurify";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import "./today.css";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -1190,7 +1191,11 @@ export default function InboxPage() {
     >
       <Sidebar />
 
-      <main className={`flex-1 pt-16 md:pt-0 flex flex-col h-[100dvh] pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0 transition-all duration-200 ${isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"}`}>
+      {/* id="main-content" — the skip-link landmark PageShell normally owns.
+          The inbox keeps its custom full-height frame but must not lose the
+          landmark (W2.4 shell consistency). */}
+      <main id="main-content" className={`flex-1 pt-16 md:pt-0 flex flex-col h-[100dvh] pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0 transition-all duration-200 ${isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"}`}>
+        <ErrorBoundary>
         <div className="flex items-center justify-between gap-4 p-4 border-b flex-wrap">
           {/* Inbox hero header — canonical text-hero (32px/600) via acr-cc-greeting.
               No inline fontSize override: the token governs. */}
@@ -1468,6 +1473,7 @@ export default function InboxPage() {
             )}
           </div>
         </div>
+        </ErrorBoundary>
       </main>
     </div>
   );

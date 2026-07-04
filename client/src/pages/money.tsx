@@ -15,6 +15,7 @@ import {
 // CapitalMarkets bundle. The active tab loads on mount; siblings load on
 // click via Suspense fallback.
 import { NotesImportDialog } from "@/components/notes-import-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const FinancePage = lazy(() => import("@/pages/finance"));
@@ -46,10 +47,10 @@ function TabFallback() {
     <div className="space-y-4 py-4" role="status" aria-live="polite">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-24 rounded-card bg-muted/40 animate-pulse" />
+          <Skeleton key={i} className="h-24 rounded-card" announce={false} />
         ))}
       </div>
-      <div className="h-40 rounded-card bg-muted/30 animate-pulse" />
+      <Skeleton className="h-40 rounded-card" announce={false} />
       <span className="sr-only">Loading Finance…</span>
     </div>
   );

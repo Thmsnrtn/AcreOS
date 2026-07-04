@@ -1578,10 +1578,23 @@ export default function MapsPage() {
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-surface-sheer backdrop-blur-lg" role="status">
                   <div className="pointer-events-auto flex flex-col items-center max-w-sm">
                     <MapPin className="w-12 h-12 text-muted-foreground mb-4" aria-hidden="true" />
-                    <h3 className="font-semibold text-lg">No parcel coordinates yet</h3>
-                    <p className="text-muted-foreground text-sm mt-2">
-                      Click <strong>Fetch boundaries</strong> on the Inventory page to auto-geocode your properties, or add lat/lng manually on a parcel's Overview tab. Basemap shown above.
-                    </p>
+                    {/* W2.3: note personas think in collateral, not parcels —
+                        the zero-state speaks their language. */}
+                    {persona === "note_investor" || persona === "note_originator" || persona === "note_servicer" ? (
+                      <>
+                        <h3 className="font-semibold text-lg">No collateral on the map yet</h3>
+                        <p className="text-muted-foreground text-sm mt-2">
+                          When a note's collateral property has coordinates it appears here — soils, flood, and elevation intel included. Click <strong>Fetch boundaries</strong> on the Inventory page to auto-geocode, or add lat/lng on the property's Overview tab.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h3 className="font-semibold text-lg">No parcel coordinates yet</h3>
+                        <p className="text-muted-foreground text-sm mt-2">
+                          Click <strong>Fetch boundaries</strong> on the Inventory page to auto-geocode your properties, or add lat/lng manually on a parcel's Overview tab. Basemap shown above.
+                        </p>
+                      </>
+                    )}
                     {/* RAFE (Tahoe Wave-2): the data-aha is our differentiator,
                         but it shouldn't depend on the customer first having
                         geocoded parcels. "See a sample" runs a REAL free-data

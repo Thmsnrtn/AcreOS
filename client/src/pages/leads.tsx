@@ -264,7 +264,7 @@ function ScoreDetailsDialog({
             Score Details: {lead.firstName} {lead.lastName}
           </ResponsiveModalTitle>
           <ResponsiveModalDescription>
-            Betty-style lead scoring breakdown
+            How this lead&apos;s score is calculated
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
 
