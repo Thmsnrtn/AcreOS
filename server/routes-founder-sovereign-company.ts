@@ -11,6 +11,7 @@
  */
 
 import { type Express } from "express";
+import { isAuthenticated, requireFounder } from "./auth";
 import { workflowEngine } from "./services/agentWorkflowEngine";
 import { warRoomService } from "./services/warRoomService";
 import { agentInitiativeService } from "./services/agentInitiatives";
@@ -21,6 +22,12 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 
 export function registerFounderV6Routes(app: Express) {
+  // Defense-in-depth (2026-07 security sweep): these routes were protected
+  // ONLY by the app.use('/api/founder/v6', …) gate registered earlier in
+  // routes.ts — a future reordering would have made every endpoint here
+  // fully public. The file now self-gates regardless of mount order.
+  app.use("/api/founder/v6", isAuthenticated, requireFounder);
+
 
   // ─── Workflows ───────────────────────────────────────────────────────────
 

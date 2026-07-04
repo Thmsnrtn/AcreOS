@@ -699,12 +699,15 @@ export async function getPortfolioAnnualSummary(
   const activeNotes = allNotes.filter((n) => n.status === "active");
   const paidOffNotes = allNotes.filter((n) => n.status === "paid_off");
 
-  const totalBalance = activeNotes.reduce((sum, n) => sum + parseFloat(n.currentBalance || "0"), 0);
-  const weightedRateSum = activeNotes.reduce(
-    (sum, n) => sum + parseFloat(n.interestRate || "0") * parseFloat(n.currentBalance || "0"),
+  // W3.3: balances sum in integer cents; the yield weighting uses the same
+  // exact cents so the ratio is stable regardless of note count.
+  const totalBalanceCents = sumCents(activeNotes.map((n) => n.currentBalance));
+  const totalBalance = totalBalanceCents / 100;
+  const weightedRateSumCents = activeNotes.reduce(
+    (sum, n) => sum + Number(n.interestRate || 0) * centsFromDecimal(n.currentBalance),
     0
   );
-  const portfolioYield = totalBalance > 0 ? weightedRateSum / totalBalance : 0;
+  const portfolioYield = totalBalanceCents > 0 ? weightedRateSumCents / totalBalanceCents : 0;
 
   const totalRevenue = report.totalInterestIncome + report.totalPrincipalReceived + report.totalLateFeesCollected;
 
