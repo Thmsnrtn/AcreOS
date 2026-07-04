@@ -316,12 +316,17 @@ async function processDomainAudits() {
     // verified-for-sending status straight from SES, so a failing identity
     // pages here instead of only via an AWS Health email in a human inbox.
     const { platformEmailIdentityDetector } = await import('../services/audit/detectors/platformEmailIdentityDetector');
+    // Tess (reliability) — credential LIVENESS: re-authenticates every
+    // configured vendor key against a free endpoint daily. Born 2026-07-04:
+    // four keys were dead while presence checks said "live".
+    const { credentialLivenessDetector } = await import('../services/audit/detectors/credentialLivenessDetector');
 
     const result = await runDomainAudits([
       ...financeDetectors,
       observationRateDetector,
       ...aiQualityDetectors,
       platformEmailIdentityDetector,
+      credentialLivenessDetector,
     ]);
     // Auto-age open findings whose condition stopped firing >7d ago.
     const staled = await staleFindings(7);
