@@ -110,9 +110,11 @@ import { Verbs } from "@/lib/labels";
 // ai               →  integrations       (AI cost + provider settings)
 // ai-tasks         →  integrations       (Pax tasks)
 //
-// Legacy `?tab=` query params auto-rewrite to the canonical bucket via
-// LEGACY_TO_CANONICAL below — every old deep link still lands somewhere
-// sensible.
+// Legacy HASH values (#payments, #referral, …) auto-rewrite to the
+// canonical bucket via LEGACY_TO_CANONICAL below. NOTE: only the HASH is
+// read — `?tab=billing` query params are IGNORED (this comment previously
+// claimed otherwise and misled the dunning-email link author into a broken
+// recovery link; deep links must use /settings#billing form).
 //
 // Tax & Compliance is a NEW bucket (no legacy 1:1) because the
 // onboarding-tax-identity merge added /settings/tax-identity but never

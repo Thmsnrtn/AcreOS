@@ -5354,6 +5354,20 @@ const STATEMENTS = [
   `ALTER TABLE "system_api_keys" ADD COLUMN IF NOT EXISTS "key_last4" text`,
   `CREATE INDEX IF NOT EXISTS "system_api_keys_key_hash_idx" ON "system_api_keys" ("key_hash")`,
 
+  // Hot-path indexes (migration 0194, 2026-07 platform sweep) — worst of the
+  // zero-index org-scoped tables (timelines, payments, AI cost aggregation).
+  `CREATE INDEX IF NOT EXISTS "activity_events_org_entity_idx" ON "activity_events" ("organization_id", "entity_type", "entity_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "lead_activities_lead_created_idx" ON "lead_activities" ("lead_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "lead_activities_org_idx" ON "lead_activities" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "payments_org_idx" ON "payments" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "payments_note_status_idx" ON "payments" ("note_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "ai_telemetry_events_org_created_idx" ON "ai_telemetry_events" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "notifications_org_created_idx" ON "notifications" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "tasks_org_status_idx" ON "tasks" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "inbox_messages_org_received_idx" ON "inbox_messages" ("organization_id", "received_at")`,
+  `CREATE INDEX IF NOT EXISTS "usage_events_org_created_idx" ON "usage_events" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "api_usage_logs_org_created_idx" ON "api_usage_logs" ("organization_id", "created_at")`,
+
   // Contract assignments (migration 0193, roadmap W6.1) — the wholesaler's
   // assignment-of-contract record: deal → end buyer → fee (cents) → doc.
   `CREATE TABLE IF NOT EXISTS "contract_assignments" (

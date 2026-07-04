@@ -82,7 +82,16 @@ export function Footer() {
             >
               Contact us
             </button>
-            <Link href="/help#support">Support</Link>
+            {/* /help is auth-gated — a logged-out visitor clicking it bounced
+                to /auth. The support form modal is the public support path. */}
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              className="lp-footer-link-btn"
+              data-testid="footer-support"
+            >
+              Support
+            </button>
             <Link href="/status">Status</Link>
           </div>
         </div>

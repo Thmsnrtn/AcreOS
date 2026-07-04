@@ -193,7 +193,9 @@ const DocumentIntelligencePage = React.lazy(() => import("@/pages/document-intel
 
 // Operations
 const MapsPage = React.lazy(() => import("@/pages/maps"));
-const CommandCenterPage = React.lazy(() => import("@/pages/command-center"));
+// CommandCenterPage binding removed (client perf audit 2026-07-04): the
+// /command-center route is a Redirect to /ai#chat and pax.tsx owns the only
+// live lazy import of pages/command-center.tsx.
 // ConsciousOrganizationPage refit 2026-06-11 (Census W3-1) — moved to
 // @/pages/founder/scenarios, served at /founder/scenarios (lazy import below).
 // AnticipatoryEnterprisePage retired 2026-06-11 (Census W3-1) — page deleted;

@@ -59,11 +59,13 @@ const deprecatedPaymentRateLimiter = createRateLimiter({ maxRequests: 10, window
 // gets explicit machine-readable notice. After the sunset date the
 // endpoint returns 410 Gone.
 //
-// 90-day window — today (2026-05-03) → 2026-08-01. Configurable via
-// BORROWER_PORTAL_SUNSET_DATE env var so ops can extend without a
-// code deploy if a customer migration runs long.
+// SECURITY (2026-07 audit): sunset pulled forward from 2026-08-01 to NOW.
+// These routes authenticate on the URL token alone (no session, no email),
+// and historical tokens were minted with Math.random() — predictable. With
+// zero external borrowers on the platform, there is no migration to wait
+// for; the env var can extend the window if a real integration surfaces.
 const BORROWER_PORTAL_SUNSET_DATE =
-  process.env.BORROWER_PORTAL_SUNSET_DATE || "2026-08-01";
+  process.env.BORROWER_PORTAL_SUNSET_DATE || "2026-07-04";
 
 // Successor URI advertised in the Link header per RFC 8594 §3.
 const BORROWER_PORTAL_SUCCESSOR = "/portal/v2";
@@ -899,7 +901,9 @@ export function registerBorrowerRoutes(app: Express): void {
   });
 
   // Toggle autopay for borrower portal
-  api.post("/api/portal/:accessToken/autopay", deprecatedPaymentRateLimiter, async (req, res) => {
+  // SECURITY (2026-07 audit): this route was missing the sunset gate its two
+  // siblings carry — the only token-only write path with no retirement date.
+  api.post("/api/portal/:accessToken/autopay", sunsetMiddleware(), deprecatedPaymentRateLimiter, async (req, res) => {
     try {
       const { accessToken } = req.params;
       const { enabled, email } = req.body;
@@ -938,8 +942,12 @@ export function registerBorrowerRoutes(app: Express): void {
     }
   });
   
-  // Get payoff quote for borrower portal
-  api.get("/api/borrower/payoff-quote", async (req, res) => {
+  // Get payoff quote for borrower portal.
+  // SECURITY (2026-07 audit): this endpoint discloses borrower name, balance,
+  // and payoff totals authenticated only by token+email in the QUERY STRING —
+  // it was the sole borrower PII surface with NO rate limiter, making the
+  // weak factor brute-forceable. Same limiter as the other portal routes.
+  api.get("/api/borrower/payoff-quote", portalPaymentRateLimiter, async (req, res) => {
     try {
       const { accessToken, email } = req.query;
       

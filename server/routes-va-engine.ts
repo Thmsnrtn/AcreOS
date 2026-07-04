@@ -786,7 +786,18 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "County research");
       }
-      const research = await storage.updateCountyResearch(id, req.body);
+      // SECURITY (2026-07 audit): county_research is GLOBAL reference data
+      // shared across every tenant (no organizationId column), and this
+      // handler previously piped raw req.body into the update — any
+      // authenticated user in any org could overwrite the assessor/GIS
+      // contacts every other tenant relies on, on any column. Validate the
+      // payload; global writes stay possible (community-maintained data)
+      // but only through the schema's known fields.
+      const parsed = insertCountyResearchSchema.partial().safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.issues);
+      }
+      const research = await storage.updateCountyResearch(id, parsed.data);
       res.json(research);
     } catch (error: any) {
       logger.error("Update county research error", error);
@@ -1833,12 +1844,21 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         updatedAt: new Date().toISOString(),
       };
 
-      await storage.updateOrganization(org.id, {
-        settings: {
-          ...(orgRecord as any)?.settings,
-          va_tasks: tasks,
-        },
-      } as any);
+      // 2026-07 audit: atomic jsonb_set on the va_tasks key only — the old
+      // whole-object spread clobbered concurrently-written sibling settings
+      // keys (mailMode, aiSettings, …) with this handler's stale copy.
+      {
+        const { db } = await import("./db");
+        const { organizations } = await import("@shared/schema");
+        const { sql: sqlTag, eq: eqOp } = await import("drizzle-orm");
+        await db
+          .update(organizations)
+          .set({
+            settings: sqlTag`jsonb_set(COALESCE(${organizations.settings}, '{}'), '{va_tasks}', ${JSON.stringify(tasks)}::jsonb)` as any,
+            updatedAt: new Date(),
+          })
+          .where(eqOp(organizations.id, org.id));
+      }
 
       res.json({ success: true, task: tasks[taskIndex] });
     } catch (error: any) {

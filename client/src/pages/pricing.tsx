@@ -85,7 +85,10 @@ const FEATURES: Feature[] = [
   },
   {
     name: "Campaigns",
-    free: fmtCountOrCross(TIER_LIMITS.free.campaigns),
+    // W2.1: the free tier ships a 5-piece lifetime first send (the wedge) —
+    // a bare ✗ here contradicted the in-app checklist's "first 5 pieces on
+    // us" promise on the very page meant to convert.
+    free: "5 letters free",
     starter: fmtCountOrCross(TIER_LIMITS.starter.campaigns),
     pro: fmtCountOrCross(TIER_LIMITS.pro.campaigns),
     scale: fmtCountOrCross(TIER_LIMITS.scale.campaigns),

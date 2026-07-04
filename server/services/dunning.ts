@@ -311,7 +311,10 @@ class DunningService {
       }
 
       const amountDue = `$${(amountCents / 100).toFixed(2)}`;
-      const updatePaymentUrl = `${APP_URL}/settings?tab=billing`;
+      // W-sweep 2026-07-04: settings tabs are HASH-routed — ?tab=billing was
+      // silently ignored and dumped a failing payer on the Account tab. The
+      // #billing hash also auto-opens the plan/payment panel.
+      const updatePaymentUrl = `${APP_URL}/settings#billing`;
       const templates = dunningEmailTemplates(org, amountDue, updatePaymentUrl);
       const template = templates[templateType as keyof typeof templates];
       if (!template) {
@@ -386,7 +389,7 @@ class DunningService {
       const amountDue = `$${(amountCents / 100).toFixed(2)}`;
       const message =
         `Hi ${org.name}, AcreOS — your card was declined for ${amountDue}. ` +
-        `Update at acreos.io/settings/billing to keep service running.`;
+        `Update at acreos.io/settings#billing to keep service running.`;
 
       const { smsService } = await import("./smsService");
       const result = await smsService.sendSMS({ to: phone, message });

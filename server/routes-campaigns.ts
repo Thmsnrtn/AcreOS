@@ -1356,9 +1356,20 @@ export function registerCampaignRoutes(app: Express): void {
       return Errors.badRequest(res, "Test mode not available - no test API key configured");
     }
     
-    // Update organization settings
-    const updatedSettings = { ...org.settings, mailMode: mode };
-    const updated = await storage.updateOrganization(org.id, { settings: updatedSettings });
+    // Update organization settings. 2026-07 audit: atomic jsonb_set on the
+    // single key — the old read-modify-write of the WHOLE settings object
+    // silently dropped any concurrently-written sibling key (last-write-wins
+    // clobber). Pattern from server/ai/supportAgent.ts.
+    const { db } = await import("./db");
+    const { organizations } = await import("@shared/schema");
+    const { sql: sqlTag, eq: eqOp } = await import("drizzle-orm");
+    await db
+      .update(organizations)
+      .set({
+        settings: sqlTag`jsonb_set(COALESCE(${organizations.settings}, '{}'), '{mailMode}', ${JSON.stringify(mode)}::jsonb)` as any,
+        updatedAt: new Date(),
+      })
+      .where(eqOp(organizations.id, org.id));
     
     res.json({ 
       success: true, 
