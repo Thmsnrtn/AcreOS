@@ -42,7 +42,8 @@
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 
 import { db } from "../../db";
-import { financialLedger, organizations } from "@shared/schema";
+import { financialLedger, organizations, mrrSnapshots } from "@shared/schema";
+import { desc, lte } from "drizzle-orm";
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import type { BillingInterval } from "@shared/billing/tier-pricing";
 import { soleneCapitalEvents } from "@shared/schema/solene-capital";
@@ -300,6 +301,12 @@ async function monthlyAiBurnUsd(windowStart: Date, windowEnd: Date): Promise<num
 
 /** Live MRR (USD) summed across paying active orgs. */
 async function liveMrrUsd(): Promise<number> {
+  const { cents } = await liveMrrDetail();
+  return cents / 100;
+}
+
+/** Live MRR in cents + paying-org count (shared by runway + the snapshot job). */
+async function liveMrrDetail(): Promise<{ cents: number; payingOrgs: number }> {
   const rows = await db
     .select({
       tier: organizations.subscriptionTier,
@@ -308,14 +315,52 @@ async function liveMrrUsd(): Promise<number> {
     })
     .from(organizations);
   let cents = 0;
+  let payingOrgs = 0;
   for (const r of rows) {
     if (r.status !== "active") continue;
-    cents += monthlyRevenueCentsFor(
+    const orgCents = monthlyRevenueCentsFor(
       r.tier,
       (r.interval as BillingInterval) ?? "monthly",
     );
+    cents += orgCents;
+    if (orgCents > 0) payingOrgs++;
   }
-  return cents / 100;
+  return { cents, payingOrgs };
+}
+
+/**
+ * W4.5 — write this week's MRR snapshot. Called by the rostered
+ * mrr_snapshot_weekly job. Idempotence is cadence-based (the job runs
+ * weekly under a lock); multiple rows in a week are harmless — the reader
+ * picks the newest row older than 6 days.
+ */
+export async function captureMrrSnapshot(): Promise<{ mrrCents: number; payingOrgs: number }> {
+  const { cents, payingOrgs } = await liveMrrDetail();
+  await db.insert(mrrSnapshots).values({ mrrCents: cents, payingOrgs });
+  logger.info("[runway] weekly MRR snapshot captured", {
+    metadata: { mrrCents: cents, payingOrgs },
+  });
+  return { mrrCents: cents, payingOrgs };
+}
+
+/**
+ * W4.5 — prior-week MRR from snapshot history: the newest snapshot at
+ * least 6 days old. Returns null when no history exists yet (first week
+ * after deploy) so the caller can fall back honestly.
+ */
+async function priorWeekMrrUsd(): Promise<number | null> {
+  try {
+    const sixDaysAgo = new Date(Date.now() - 6 * ONE_DAY_MS);
+    const [row] = await db
+      .select({ mrrCents: mrrSnapshots.mrrCents })
+      .from(mrrSnapshots)
+      .where(lte(mrrSnapshots.capturedAt, sixDaysAgo))
+      .orderBy(desc(mrrSnapshots.capturedAt))
+      .limit(1);
+    return row ? row.mrrCents / 100 : null;
+  } catch {
+    return null; // table may not exist yet on a fresh install
+  }
 }
 
 /**
@@ -355,10 +400,11 @@ export async function computeRunway(): Promise<RunwayResult> {
     liveMrrUsd(),
   ]);
 
-  // MRR prior-week proxy: we don't persist a weekly MRR snapshot yet, so use
-  // today's MRR as the prior baseline (delta defaults to 0 until a snapshot
-  // history exists). Honest: we label growth rate 0 when there's no history.
-  const mrrPriorWeekUsd = mrrUsd;
+  // W4.5: prior-week MRR now comes from real snapshot history (the weekly
+  // mrr_snapshot job). Until the first snapshot ages past 6 days, fall back
+  // to today's MRR — growth honestly reads 0 with no history, but no longer
+  // FOREVER (the old proxy made upside == base since launch).
+  const mrrPriorWeekUsd = (await priorWeekMrrUsd()) ?? mrrUsd;
   const wowMrrGrowthRate =
     mrrPriorWeekUsd > 0 ? (mrrUsd - mrrPriorWeekUsd) / mrrPriorWeekUsd : 0;
 

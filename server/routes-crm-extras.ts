@@ -34,7 +34,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
         assertFeeSimpleOrThrow(parcel ?? null, "blind-offer");
       }
 
-      const result = await generateOfferSuggestions(propertyData);
+      const result = await generateOfferSuggestions(propertyData, { organizationId: org?.id });
 
       if (!result.success) {
         return Errors.badRequest(res, String(result.error ?? "Bad request"));

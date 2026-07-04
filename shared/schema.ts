@@ -8565,6 +8565,21 @@ export type SubscriptionHistoryRow = typeof subscriptionHistory.$inferSelect;
 // alert_triggered/alert_severity carry the policy result so the surface
 // can render historical bands without re-applying thresholds.
 
+// ============================================
+// MRR SNAPSHOTS (roadmap W4.5, 2026-07)
+// ============================================
+// Weekly point-in-time MRR so week-over-week growth is computed from
+// HISTORY instead of defaulting to zero (which made the runway "upside"
+// scenario identical to base since launch). Written by the
+// mrr_snapshot_weekly job; read by runwayModel + founder bridge.
+
+export const mrrSnapshots = pgTable("mrr_snapshots", {
+  id: serial("id").primaryKey(),
+  capturedAt: timestamp("captured_at").defaultNow().notNull(),
+  mrrCents: integer("mrr_cents").notNull(),
+  payingOrgs: integer("paying_orgs").notNull().default(0),
+});
+
 export const customerConcentration = pgTable("customer_concentration", {
   id: serial("id").primaryKey(),
   computedAt: timestamp("computed_at").defaultNow().notNull(),

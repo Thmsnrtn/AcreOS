@@ -158,35 +158,23 @@ export function registerLeadRoutes(app: Express): void {
         ? { ...(sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : {}), ...(trimmedQ ? { q: trimmedQ } : {}) }
         : undefined;
 
-    // If stage filter is present, we must compute scores on all leads before filtering (no SQL-level stage)
+    // W5.3: stage filtering + pagination now run in SQL (the score formula
+    // is mirrored in leadRepo.computedScoreSql). The old path loaded the
+    // ENTIRE org's leads into memory and scored them in JS on every
+    // request — O(org size) per page view.
     if (stage && ["hot", "warm", "cold", "dead"].includes(stage)) {
-      // getLeads only takes assignedTo — pass that subset of filters here.
-      const allLeads = await storage.getLeads(org.id, filters?.assignedTo !== undefined ? { assignedTo: filters.assignedTo } : undefined);
-      const leadsWithScores = allLeads.map(lead => {
+      const result = await storage.getLeadsByComputedStage(
+        org.id,
+        stage as "hot" | "warm" | "cold" | "dead",
+        { page, pageSize },
+        filters,
+      );
+      const data = result.data.map(lead => {
         const { score, factors } = leadNurturerService.calculateLeadScore(lead);
         const computedStage = leadNurturerService.segmentLead(score);
         return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
       });
-      let filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);
-      if (trimmedQ) {
-        const ql = trimmedQ.toLowerCase();
-        const phoneDigits = trimmedQ.replace(/\D/g, "");
-        filteredLeads = filteredLeads.filter((l) => {
-          const haystack = [l.firstName, l.lastName, l.email, l.address, l.city, l.state, l.zip]
-            .filter(Boolean).join(" ").toLowerCase();
-          if (haystack.includes(ql)) return true;
-          if (phoneDigits.length >= 3) {
-            const pn = (l.phoneNormalized || (l.phone || "").replace(/\D/g, ""));
-            if (pn.includes(phoneDigits)) return true;
-          }
-          return false;
-        });
-      }
-      const total = filteredLeads.length;
-      const totalPages = Math.max(1, Math.ceil(total / pageSize));
-      const start = (page - 1) * pageSize;
-      const data = filteredLeads.slice(start, start + pageSize);
-      return res.json({ data, total, page, pageSize, totalPages });
+      return res.json({ data, total: result.total, page, pageSize, totalPages: result.totalPages });
     }
 
     // Server-side pagination with SQL LIMIT/OFFSET
@@ -229,9 +217,19 @@ export function registerLeadRoutes(app: Express): void {
       }
     }
 
-    const allLeads = await storage.getLeads(org.id, sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined);
+    // W5.3: cursor pagination + stage filter now run in SQL — the old path
+    // loaded EVERY lead in the org into memory on every scroll tick.
+    const stageFilter = stage && ["hot", "warm", "cold", "dead"].includes(stage)
+      ? (stage as "hot" | "warm" | "cold" | "dead")
+      : undefined;
+    const cursorId = cursor ? Number(cursor) : undefined;
+    const result = await storage.getLeadsCursor(
+      org.id,
+      { limit, cursor: Number.isFinite(cursorId) ? cursorId : undefined, stage: stageFilter },
+      sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined,
+    );
 
-    const leadsWithScores = allLeads.map(lead => {
+    const paginatedLeads = result.data.map(lead => {
       const { score, factors } = leadNurturerService.calculateLeadScore(lead);
       const computedStage = leadNurturerService.segmentLead(score);
       return {
@@ -242,25 +240,8 @@ export function registerLeadRoutes(app: Express): void {
       };
     });
 
-    let filteredLeads = leadsWithScores;
-    if (stage && ["hot", "warm", "cold", "dead"].includes(stage)) {
-      filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);
-    }
-    
-    // Sort by ID for consistent cursor pagination
-    filteredLeads.sort((a, b) => b.id - a.id);
-    
-    const total = filteredLeads.length;
-    let startIndex = 0;
-    
-    if (cursor) {
-      const cursorId = Number(cursor);
-      startIndex = filteredLeads.findIndex(l => l.id < cursorId);
-      if (startIndex === -1) startIndex = filteredLeads.length;
-    }
-    
-    const paginatedLeads = filteredLeads.slice(startIndex, startIndex + limit);
-    const hasMore = startIndex + limit < total;
+    const total = result.total;
+    const hasMore = result.hasMore;
     const nextCursor = hasMore ? String(paginatedLeads[paginatedLeads.length - 1]?.id) : null;
     
     res.json({

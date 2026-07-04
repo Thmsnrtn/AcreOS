@@ -170,8 +170,11 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     notes: 50,
     // Monthly cap. Pro is the workhorse tier; 12,000 turns/mo (~400/day)
     // supports a single operator running Pax across the full pipeline.
-    // Max COGS ~$180/mo against $41-$49/mo revenue is offset by BYOK
-    // bypass for power users and the credit-pool gate on expensive lanes.
+    // Canonical price is $49/mo (tier-pricing.ts, reconciled 2026-07-03).
+    // Worst-case platform-key COGS is bounded well before the 12,000 cap by
+    // the 2,500-turn BYOK threshold (~$37.50) plus the tier-proportional AI
+    // cost ceiling (aiCostCeiling.ts); past the threshold, turns ride the
+    // customer's own key at $0 COGS to us.
     ai_requests: 12000,
     campaigns: null,
     sequences: null,

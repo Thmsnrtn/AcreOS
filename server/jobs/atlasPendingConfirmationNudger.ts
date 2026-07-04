@@ -29,6 +29,7 @@ const NUDGE_AFTER_SECONDS = 60;
 const POLL_INTERVAL_MS = 60_000;
 
 let timer: NodeJS.Timeout | null = null;
+let started = false;
 
 interface NudgableCtx {
   pushedAt?: string;
@@ -92,15 +93,24 @@ export async function runNudgePass(now = new Date()): Promise<number> {
 
 /** Start the polling loop. Safe to call once at boot — idempotent. */
 export function startAtlasPendingConfirmationNudger(): void {
-  if (timer) return;
-  // First pass after one full interval so server boot isn't slowed.
-  timer = setInterval(() => {
-    runNudgePass().catch((err) =>
-      logger.error("atlas pending-confirmation nudger pass crashed", err),
-    );
-  }, POLL_INTERVAL_MS);
-  // Don't keep the process alive just for this poller.
-  if (typeof timer.unref === "function") timer.unref();
+  if (started) return;
+  started = true;
+  // W5.1: this was a bare setInterval — no cross-machine lock, no
+  // job_health_logs row, invisible to the deadman. Routed through the job
+  // runtime: scheduler (no overlap + DLQ) → withJobLock (lock + liveness
+  // row) → roster entry in jobRegistry (deadman coverage). Cadence kept.
+  void import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+    void import("../utils/jobRuntime").then(({ withJobLock }) => {
+      scheduleSelfRescheduling({
+        name: "atlas_pending_confirmation_nudge",
+        intervalMs: POLL_INTERVAL_MS,
+        initialDelayMs: POLL_INTERVAL_MS, // first pass after one interval — boot isn't slowed
+        run: async () => {
+          await withJobLock("atlas_pending_confirmation_nudge", 55, runNudgePass);
+        },
+      });
+    });
+  });
   logger.info("atlas pending-confirmation nudger started", {
     metadata: { intervalMs: POLL_INTERVAL_MS, nudgeAfterSec: NUDGE_AFTER_SECONDS },
   });

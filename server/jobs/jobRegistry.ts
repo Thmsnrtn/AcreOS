@@ -146,6 +146,14 @@ export const JOB_ROSTER: JobRosterEntry[] = [
     disabledWhen: () => process.env.AUTONOMOUS_DECISION_EXECUTOR_DISABLED === "1" },
 
   { name: "finance_agent", intervalMs: 30 * MIN, critical: false },
+  // W5.1 — former bare setIntervals routed through the runtime (2026-07).
+  // The task processor auto-executes agent actions: critical.
+  { name: "autonomous_task_processor", intervalMs: 30 * 1000, critical: true },
+  { name: "atlas_pending_confirmation_nudge", intervalMs: MIN, critical: false },
+  // founder_digest took the job lock (job_health_logs rows existed) but was
+  // never rostered — locked yet invisible to the deadman. Daily send window
+  // gated inside an hourly tick; roster tracks the hourly tick.
+  { name: "founder_digest", intervalMs: HOUR, critical: false },
   { name: "api_queue", intervalMs: 10 * 1000, critical: false },
   { name: "alerting", intervalMs: HOUR, critical: true },
   { name: "digest", intervalMs: 6 * HOUR, critical: false },
@@ -164,6 +172,8 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "parcel_delta_detector", intervalMs: 6 * HOUR, critical: false },
   { name: "founder_weekly_digest", intervalMs: WEEK, critical: false },
   { name: "cost_optimizer_weekly_digest", intervalMs: WEEK, critical: false },
+  // W4.5 — weekly MRR snapshot (Monday window shared with the digests).
+  { name: "mrr_snapshot_weekly", intervalMs: WEEK, critical: false },
   { name: "growth_automation", intervalMs: 6 * HOUR, critical: false },
   // Wall-clock daily 06:00 (local==UTC on the Fly worker). cron not yet consumed.
   { name: "churn_engine_daily", intervalMs: DAY, critical: true, cron: "0 6 * * *" },

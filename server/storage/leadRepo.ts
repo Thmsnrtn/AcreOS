@@ -82,6 +82,140 @@ export const leadRepo = {
     return { data, total: totalNum, page: options.page, pageSize: options.pageSize, totalPages };
   },
 
+  /**
+   * W5.3 — SQL mirror of leadNurturerService.calculateLeadScore/segmentLead
+   * so stage-filtered lists paginate in the database instead of loading the
+   * entire org's leads into memory and scoring them in JS.
+   *
+   * MUST stay in lockstep with SCORING_WEIGHTS + STAGE_THRESHOLDS in
+   * server/services/leadNurturer.ts (tests/unit/leadStageSql.test.ts pins
+   * the two implementations to each other). Every term is deterministic
+   * from row columns + now(), which is what makes the SQL mirror possible.
+   */
+  computedScoreSql(): SQL<number> {
+    const daysSince = sql`floor(extract(epoch from (now() - coalesce(${leads.lastContactedAt}, ${leads.createdAt}, now() - interval '30 days'))) / 86400)`;
+    return sql<number>`least(100, greatest(0,
+      50
+      + case when coalesce(${leads.responses}, 0) > 0 and ${daysSince} <= 7 then 40 else 0 end
+      + least(coalesce(${leads.emailOpens}, 0) * 10 + coalesce(${leads.emailClicks}, 0) * 15, 30)
+      + case ${leads.source} when 'referral' then 15 when 'website' then 10 else 0 end
+      + case ${leads.status}
+          when 'negotiating' then 25
+          when 'interested' then 15
+          when 'responded' then 20
+          when 'qualified' then 20
+          when 'accepted' then 35
+          when 'under_contract' then 35
+          when 'dead' then -50
+          else 0
+        end
+      + greatest(${daysSince} * -2, -20)
+    ))::int`;
+  },
+
+  /** Stage → score band, mirroring segmentLead's thresholds. */
+  stageConditionSql(this: DatabaseStorage, stage: "hot" | "warm" | "cold" | "dead"): SQL {
+    const score = leadRepo.computedScoreSql();
+    switch (stage) {
+      case "hot": return sql`${score} >= 80`;
+      case "warm": return sql`${score} >= 50 and ${score} < 80`;
+      case "cold": return sql`${score} >= 20 and ${score} < 50`;
+      case "dead": return sql`${score} < 20`;
+    }
+  },
+
+  /**
+   * Paginated, stage-filtered lead list — filtering AND pagination in SQL.
+   * Same q/assignedTo semantics as getLeadsPaginated. Ordered by computed
+   * score (hottest first) then id desc for a stable cursorless page walk.
+   */
+  async getLeadsByComputedStage(
+    this: DatabaseStorage,
+    orgId: number,
+    stage: "hot" | "warm" | "cold" | "dead",
+    options: { page: number; pageSize: number },
+    filters?: { assignedTo?: number | null; q?: string },
+  ): Promise<PaginatedResult<Lead>> {
+    const conditions: any[] = [
+      eq(leads.organizationId, orgId),
+      sql`${leads.deletedAt} IS NULL`,
+      leadRepo.stageConditionSql.call(this, stage),
+    ];
+    if (filters?.assignedTo === null) {
+      conditions.push(sql`${leads.assignedTo} IS NULL`);
+    } else if (filters?.assignedTo !== undefined) {
+      conditions.push(eq(leads.assignedTo, filters.assignedTo));
+    }
+    const q = filters?.q?.trim();
+    if (q) {
+      const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+      const phoneDigits = q.replace(/\D/g, "");
+      const phoneLike = phoneDigits.length >= 3 ? `%${phoneDigits}%` : null;
+      const ors: any[] = [
+        ilike(leads.firstName, like),
+        ilike(leads.lastName, like),
+        ilike(leads.email, like),
+        ilike(leads.address, like),
+        ilike(leads.city, like),
+        ilike(leads.state, like),
+        ilike(leads.zip, like),
+        sql`(${leads.firstName} || ' ' || ${leads.lastName}) ILIKE ${like}`,
+      ];
+      if (phoneLike) ors.push(ilike(leads.phoneNormalized, phoneLike));
+      conditions.push(or(...ors)!);
+    }
+    const whereClause = and(...conditions);
+    const [{ count: total }] = await db.select({ count: count() }).from(leads).where(whereClause);
+    const totalNum = Number(total);
+    const totalPages = Math.max(1, Math.ceil(totalNum / options.pageSize));
+    const offset = (options.page - 1) * options.pageSize;
+
+    const data = await db.select().from(leads)
+      .where(whereClause)
+      .orderBy(desc(leadRepo.computedScoreSql()), desc(leads.id))
+      .limit(options.pageSize)
+      .offset(offset);
+
+    return { data, total: totalNum, page: options.page, pageSize: options.pageSize, totalPages };
+  },
+
+  /**
+   * W5.3 — cursor-paginated (id desc) lead walk for the infinite-scroll
+   * endpoint, with the stage filter applied in SQL. The old implementation
+   * loaded EVERY lead in the org (even unfiltered) and sliced in JS.
+   */
+  async getLeadsCursor(
+    this: DatabaseStorage,
+    orgId: number,
+    opts: { limit: number; cursor?: number; stage?: "hot" | "warm" | "cold" | "dead" },
+    filters?: { assignedTo?: number | null },
+  ): Promise<{ data: Lead[]; total: number; hasMore: boolean }> {
+    const conditions: any[] = [eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`];
+    if (opts.stage) conditions.push(leadRepo.stageConditionSql.call(this, opts.stage));
+    if (filters?.assignedTo === null) {
+      conditions.push(sql`${leads.assignedTo} IS NULL`);
+    } else if (filters?.assignedTo !== undefined) {
+      conditions.push(eq(leads.assignedTo, filters.assignedTo));
+    }
+    const whereClause = and(...conditions);
+    const [{ count: total }] = await db.select({ count: count() }).from(leads).where(whereClause);
+
+    const pageConditions = opts.cursor
+      ? and(whereClause, sql`${leads.id} < ${opts.cursor}`)
+      : whereClause;
+    // limit+1 so hasMore is exact without a second count at the cursor.
+    const rows = await db.select().from(leads)
+      .where(pageConditions)
+      .orderBy(desc(leads.id))
+      .limit(opts.limit + 1);
+
+    return {
+      data: rows.slice(0, opts.limit),
+      total: Number(total),
+      hasMore: rows.length > opts.limit,
+    };
+  },
+
   async getLead(this: DatabaseStorage, orgId: number, id: number): Promise<Lead | undefined> {
     const [lead] = await db.select().from(leads)
       .where(and(eq(leads.organizationId, orgId), eq(leads.id, id)));

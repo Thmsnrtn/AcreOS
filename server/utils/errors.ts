@@ -156,6 +156,14 @@ export const Errors = {
     );
   },
 
+  /**
+   * 402 — the account can read everything but must resolve a billing state
+   * (dunning read-only window, paused subscription) before mutating.
+   */
+  paymentRequired(res: Response, message: string, details?: unknown, opts?: ErrorOptions): void {
+    sendError(res, 402, "PAYMENT_REQUIRED", message, details, buildDocsUrl(opts) ?? "/help/article/billing");
+  },
+
   legalHoldActive(res: Response, message: string, details?: unknown, opts?: ErrorOptions): void {
     // 423 Locked — surface the FRCP 37(e) delete-block as a distinct status
     // so client UI can render a "this is under legal hold" panel rather than

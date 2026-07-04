@@ -5354,6 +5354,16 @@ const STATEMENTS = [
   `ALTER TABLE "system_api_keys" ADD COLUMN IF NOT EXISTS "key_last4" text`,
   `CREATE INDEX IF NOT EXISTS "system_api_keys_key_hash_idx" ON "system_api_keys" ("key_hash")`,
 
+  // Weekly MRR snapshots (migration 0192, roadmap W4.5) — WoW growth was
+  // structurally 0 with no history; runway upside == base since launch.
+  `CREATE TABLE IF NOT EXISTS "mrr_snapshots" (
+     "id" serial PRIMARY KEY,
+     "captured_at" timestamp NOT NULL DEFAULT now(),
+     "mrr_cents" integer NOT NULL,
+     "paying_orgs" integer NOT NULL DEFAULT 0
+   )`,
+  `CREATE INDEX IF NOT EXISTS "mrr_snapshots_captured_idx" ON "mrr_snapshots" ("captured_at")`,
+
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
      "dispatch_id" integer NOT NULL,

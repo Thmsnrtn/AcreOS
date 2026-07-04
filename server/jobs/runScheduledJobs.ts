@@ -923,6 +923,15 @@ function startFounderWeeklyDigestJob() {
           log(`Cost optimiser weekly digest failed: ${err}`, 'cost-optimizer-digest');
         });
       }).catch(err => log(`Cost optimiser digest import failed: ${err}`, 'cost-optimizer-digest'));
+
+      // W4.5 — weekly MRR snapshot in the same Monday window, so WoW growth
+      // and the runway upside scenario compute from history instead of
+      // defaulting to zero. Separate lock; failure never blocks the digests.
+      import('../services/finance/runwayModel').then(({ captureMrrSnapshot }) => {
+        withJobLock('mrr_snapshot_weekly', TTL_SECONDS, captureMrrSnapshot).catch(err => {
+          log(`MRR snapshot failed: ${err}`, 'mrr-snapshot');
+        });
+      }).catch(err => log(`MRR snapshot import failed: ${err}`, 'mrr-snapshot'));
     }
   }, ONE_HOUR);
 }

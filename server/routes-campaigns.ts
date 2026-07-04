@@ -21,6 +21,7 @@ import { Errors } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
 import { logger } from "./utils/logger";
 import { checkUsageLimit } from "./services/usageLimits";
+import { usageLimitGate, aiByokThresholdGate } from "./middleware/usageLimitGate";
 import { usageMeteringService, creditService } from "./services/credits";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { idempotencyMiddleware } from "./middleware/idempotency";
@@ -1216,14 +1217,24 @@ export function registerCampaignRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/campaigns/:id/optimize", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // W4.1 — the optimizer runs a gpt-4o call per invocation and used to be
+  // the only AI surface with NO turn meter at all: it never counted against
+  // ai_requests, never consulted the BYOK threshold, and billed platform
+  // COGS invisibly. Same gate stack as chat now.
+  api.post("/api/campaigns/:id/optimize", isAuthenticated, getOrCreateOrg, usageLimitGate("ai_requests"), aiByokThresholdGate(), async (req, res) => {
     try {
       const org = req.organization;
       const campaignId = parseInt(req.params.id);
-      
+
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) {
         return Errors.notFound(res, "Campaign");
+      }
+
+      try {
+        await storage.trackUsage(org.id, "ai_request");
+      } catch (err) {
+        logger.warn("[campaign-optimize] trackUsage failed (continuing)", err instanceof Error ? err : undefined);
       }
 
       const { campaignOptimizerService } = await import("./services/campaignOptimizer");

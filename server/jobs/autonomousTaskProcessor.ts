@@ -329,17 +329,32 @@ export async function runOnce(): Promise<void> {
   }
 }
 
+let schedulerStarted = false;
+
 export function startAutonomousTaskProcessor(): void {
-  if (runnerInterval) return; // already started
+  if (runnerInterval || schedulerStarted) return; // already started
+  schedulerStarted = true;
 
   logger.info(`[autonomousTaskProcessor] Starting — polling every ${RUN_INTERVAL_MS / 1000}s`);
 
-  // Run immediately on start, then on interval
-  runOnce().catch(err => logger.error("[autonomousTaskProcessor] Initial run failed", err));
-
-  runnerInterval = setInterval(() => {
-    runOnce().catch(err => logger.error("[autonomousTaskProcessor] Interval run failed", err));
-  }, RUN_INTERVAL_MS);
+  // W5.1: this loop AUTO-EXECUTES agent actions and used to run as a bare
+  // setInterval with only an in-memory isRunning guard — every machine in a
+  // multi-machine deploy ran it concurrently, and its death was invisible
+  // to the deadman. Now: scheduler (no overlap + DLQ) → withJobLock
+  // (cross-machine mutual exclusion + job_health_logs liveness) → roster
+  // entry (deadman pages if it goes dark). Cadence preserved.
+  void import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+    void import("../utils/jobRuntime").then(({ withJobLock }) => {
+      scheduleSelfRescheduling({
+        name: "autonomous_task_processor",
+        intervalMs: RUN_INTERVAL_MS,
+        initialDelayMs: 5_000, // near-immediate first pass, off the boot path
+        run: async () => {
+          await withJobLock("autonomous_task_processor", 25, runOnce);
+        },
+      });
+    });
+  });
 }
 
 export function stopAutonomousTaskProcessor(): void {
