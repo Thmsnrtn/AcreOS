@@ -44,10 +44,34 @@ Re-run the same command after ~15 minutes; expect `DKIM SUCCESS`. The
 
 ## If the script fails
 
+- **UnrecognizedClientException ("security token … invalid"):** the AWS
+  access key in Fly secrets was deleted/deactivated in IAM. Mint a new key
+  for the SES IAM user (AWS console → IAM → Users → Security credentials →
+  Create access key), then
+  `fly secrets set AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=… -a acreos`
+  (machines restart) and re-run.
 - **Cloudflare zone not found / token error:** the Cloudflare API token on the
-  Fly machine lacks `Zone:Read` + `DNS:Edit` on the domain — this is the most
-  likely original cause of the CNAMEs silently never landing. Fix the token in
+  Fly machine lacks `Zone:Read` + `DNS:Edit` on the domain. Fix the token in
   Fly secrets and re-run.
 - **Expected 3 DKIM tokens, got N:** the SES identity is in a bad state —
   delete it in the SES console and re-run the script (it recreates the
   identity; tokens WILL change, and the script publishes the new ones).
+
+## 2026-07-04 incident record (what actually happened)
+
+Remote diagnosis via the `ses-dkim-fix.yml` workflow (Actions → flyctl ssh →
+`scripts/ses-dkim-diagnose.mjs`) established:
+
+1. The AWS access key on the machine is a well-formed permanent key
+   (AKIA…, length 20, no session token, no whitespace) that AWS rejects —
+   it was deleted or deactivated in IAM at some point.
+2. Cloudflare DOES hold three SES DKIM CNAMEs (unproxied, correct form),
+   but only ONE of the three amazonses token endpoints still serves a DKIM
+   key. The identity was recreated at some point, rotating the tokens; two
+   published CNAMEs are stale leftovers of the old generation, so SES
+   could never see all three current records → 72h window expired → FAILED.
+3. Because every ses-setup run since the key died aborts at the first SES
+   call, nothing could self-heal. The fix chain is: new AWS key → re-run
+   the workflow (it reads the CURRENT tokens, upserts the CNAMEs, restarts
+   the FAILED verification). Stale `*._domainkey` CNAMEs whose amazonses
+   target serves no TXT can be deleted in Cloudflare afterwards (cosmetic).
