@@ -50,9 +50,20 @@ Waves 1-6's discrete items are SHIPPED on `claude/codebase-quality-audit-ko1u69`
 
 **Still open:** W6.3 fix-and-flip repositioning (needs the investor-type
 bucket decision); W7 continuous debt (storage.ts decomposition, res-status
-563→0, req-as-any 73→0, console 7→0, SCP memory wire, planner, Google Ads
-adapter, interaction-capture seam); W5.2 remaining test surfaces
-(stripeService, directMailService); the three founder decisions below.
+558→0, req-as-any 73→0, storage-linecount); maps/inbox/documents query
+consolidation (mirror Today's aggregate-endpoint pattern); the three
+founder decisions below.
+
+**Resolved 2026-07-04 (platform sweep r1-r4):** borrower-token CSPRNG +
+portal sunset; hot-path indexes; retention truth; dunning/pricing/footer
+marketing fixes; client diet (119MB); mass-assignment floor (22 sites);
+schema-drift ratchet; right-to-erasure (deleteOrganization); escrow/ACH/fee
+cents math; skip-trace throttle; founder-route self-gating;
+directMailService billing tests. **SCP retire-or-wire resolved as KEEP**:
+scpConfigVersioning is live-wired into Pax prompt versioning, so retiring
+would break real surfaces — and evolution-on-real-sessions is blocked on
+having real sessions (i.e., users). Revisit the interaction-capture seam
+at first paying cohort.
 
 ---
 
