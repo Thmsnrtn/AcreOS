@@ -173,9 +173,11 @@ export function registerAnalyticsRoutes(app: Express): void {
         storage.getLeads(org.id),
       ]);
 
+      // W3.4: "won" was never a written deal status — dead branch removed
+      // (the canonical terminal-success status is "closed").
       const recentDeals = deals.filter((d: any) => {
         const closed = d.closedAt || d.updatedAt || d.createdAt;
-        return closed && new Date(closed) >= thirtyDaysAgo && (d.status === "closed" || d.status === "won");
+        return closed && new Date(closed) >= thirtyDaysAgo && d.status === "closed";
       });
 
       const recentLeads = leads.filter((l: any) => {
@@ -186,7 +188,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const totalRevenue = recentDeals.reduce((sum: number, d: any) => sum + (d.purchasePrice || d.salePrice || 0), 0);
 
       const conversionRate = leads.length > 0
-        ? ((deals.filter((d: any) => d.status === "closed" || d.status === "won").length / leads.length) * 100).toFixed(1)
+        ? ((deals.filter((d: any) => d.status === "closed").length / leads.length) * 100).toFixed(1)
         : "0.0";
 
       const kpis = [

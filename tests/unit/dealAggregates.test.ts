@@ -85,8 +85,8 @@ const row = (over: Partial<DealAggregateRow>): DealAggregateRow => ({
   status: "negotiating",
   type: "acquisition",
   count: 0,
-  pipelineValue: 0,
-  acceptedValue: 0,
+  pipelineValueCents: 0,
+  acceptedValueCents: 0,
   stalledCount: 0,
   warnAtLeastCount: 0,
   ...over,
@@ -109,10 +109,10 @@ describe("foldDealAggregates", () => {
 
   it("computes header KPIs across statuses and types", () => {
     const out = foldDealAggregates([
-      row({ status: "negotiating", type: "acquisition", count: 30, pipelineValue: 300_000, stalledCount: 4, warnAtLeastCount: 10 }),
-      row({ status: "offer_sent", type: "disposition", count: 5, pipelineValue: 50_000, stalledCount: 1, warnAtLeastCount: 1 }),
-      row({ status: "closed", type: "acquisition", count: 8, pipelineValue: 80_000, acceptedValue: 75_000 }),
-      row({ status: "cancelled", type: "acquisition", count: 3, pipelineValue: 33_000 }),
+      row({ status: "negotiating", type: "acquisition", count: 30, pipelineValueCents: 30_000_000, stalledCount: 4, warnAtLeastCount: 10 }),
+      row({ status: "offer_sent", type: "disposition", count: 5, pipelineValueCents: 5_000_000, stalledCount: 1, warnAtLeastCount: 1 }),
+      row({ status: "closed", type: "acquisition", count: 8, pipelineValueCents: 8_000_000, acceptedValueCents: 7_500_000 }),
+      row({ status: "cancelled", type: "acquisition", count: 3, pipelineValueCents: 3_300_000 }),
     ]);
 
     // totalDeals counts everything, including cancelled (bar denominator).
@@ -131,8 +131,8 @@ describe("foldDealAggregates", () => {
 
   it("merges (status, type) groups into one stage entry per status", () => {
     const out = foldDealAggregates([
-      row({ status: "negotiating", type: "acquisition", count: 2, pipelineValue: 20 }),
-      row({ status: "negotiating", type: "disposition", count: 3, pipelineValue: 30 }),
+      row({ status: "negotiating", type: "acquisition", count: 2, pipelineValueCents: 2_000 }),
+      row({ status: "negotiating", type: "disposition", count: 3, pipelineValueCents: 3_000 }),
     ]);
     expect(out.stages).toEqual([{ status: "negotiating", count: 5, value: 50 }]);
   });
@@ -173,8 +173,8 @@ describe("GET /api/deals/aggregates", () => {
 
   it("returns folded org-scoped aggregates", async () => {
     groupedRows = [
-      row({ status: "negotiating", type: "acquisition", count: 40, pipelineValue: 400_000, stalledCount: 3, warnAtLeastCount: 5 }),
-      row({ status: "closed", type: "acquisition", count: 10, acceptedValue: 120_000 }),
+      row({ status: "negotiating", type: "acquisition", count: 40, pipelineValueCents: 40_000_000, stalledCount: 3, warnAtLeastCount: 5 }),
+      row({ status: "closed", type: "acquisition", count: 10, acceptedValueCents: 12_000_000 }),
     ];
     lastWhereArg = null;
 
@@ -205,7 +205,7 @@ describe("GET /api/deals/aggregates", () => {
   });
 
   it("accepts the acquisition/disposition type filter", async () => {
-    groupedRows = [row({ status: "negotiating", type: "disposition", count: 2, pipelineValue: 9_000 })];
+    groupedRows = [row({ status: "negotiating", type: "disposition", count: 2, pipelineValueCents: 900_000 })];
     const res = await request(app).get("/api/deals/aggregates?type=disposition");
     expect(res.status).toBe(200);
     expect(res.body.totals.dispositions).toBe(2);

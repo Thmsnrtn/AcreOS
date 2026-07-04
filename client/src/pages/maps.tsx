@@ -642,7 +642,6 @@ function PropertyIntelligencePanel({
               {acres > 0 && (
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {acres.toLocaleString()} acres
-                  {intel.daysOnMarket && ` · ${intel.daysOnMarket}d on market`}
                 </p>
               )}
             </div>

@@ -93,7 +93,10 @@ async function runAutoFollowUpEngine(
     .where(
       and(
         eq(leads.organizationId, organizationId),
-        eq(leads.status, "active"),
+        // W3.4: "active" is never written to leads.status — in-play means
+        // not closed/dead. The old filter matched zero rows, so the deal
+        // machine never saw a single lead.
+        sql`${leads.status} NOT IN ('closed', 'dead')`,
         gte(leads.score as any, 50)
       )
     )
@@ -425,7 +428,7 @@ async function collectEnhancedBriefingData(
   const allActiveLeads = await db
     .select()
     .from(leads)
-    .where(and(eq(leads.organizationId, orgId), eq(leads.status, "active")))
+    .where(and(eq(leads.organizationId, orgId), sql`${leads.status} NOT IN ('closed', 'dead')`))
     .orderBy(desc(leads.score as any))
     .limit(500);
 

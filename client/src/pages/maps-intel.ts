@@ -29,7 +29,8 @@ export interface PropertyIntelligence {
   zoningCode?: string;
   zoningDescription?: string;
   opportunityScore?: number;
-  daysOnMarket?: number;
+  // daysOnMarket removed (W3.2): no listing source exists — the AVM never
+  // produced it, so the field could only ever render a fabricated number.
   lastAssessedValue?: number;
   annualTaxes?: number;
   // Owner (T3-3B). Only ever set when the enrichment/assessor lookup ACTUALLY
@@ -127,7 +128,6 @@ export function deriveIntel(
     source: avm?.source,
     sourceAsOf: avm?.sourceAsOf,
     classification: avm?.classification,
-    daysOnMarket: avm?.daysOnMarket,
     lastAssessedValue: avm?.lastAssessedValue,
     annualTaxes: avm?.annualTaxes,
     // Owner (T3-3B) — honest-null. Prefer an owner the AVM/enrichment contract

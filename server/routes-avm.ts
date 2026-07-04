@@ -56,10 +56,20 @@ router.post('/generate', async (req: AuthenticatedRequest, res: Response) => {
       throw err;
     }
 
+    // W3.1 — an honest refusal is not a billable valuation.
+    if (valuation.status === 'insufficient_data' && debit.debitedCents > 0) {
+      await refundPoolDebit({
+        organizationId: org.id,
+        originalEventId: debitKey,
+        amountCents: debit.debitedCents,
+        reason: 'AVM refused — insufficient data',
+      });
+    }
+
     res.json({
       valuation,
       creditPool: {
-        debitedCents: debit.debitedCents,
+        debitedCents: valuation.status === 'insufficient_data' ? 0 : debit.debitedCents,
         remaining: debit.remaining,
         poolMonthly: debit.poolMonthly,
       },
@@ -146,11 +156,21 @@ router.post('/property/:propertyId', async (req: AuthenticatedRequest, res: Resp
       throw err;
     }
 
+    // W3.1 — an honest refusal is not a billable valuation.
+    if (valuation.status === 'insufficient_data' && debit.debitedCents > 0) {
+      await refundPoolDebit({
+        organizationId: org.id,
+        originalEventId: debitKey,
+        amountCents: debit.debitedCents,
+        reason: 'AVM refused — insufficient data',
+      });
+    }
+
     res.json({
       valuation,
       property,
       creditPool: {
-        debitedCents: debit.debitedCents,
+        debitedCents: valuation.status === 'insufficient_data' ? 0 : debit.debitedCents,
         remaining: debit.remaining,
         poolMonthly: debit.poolMonthly,
       },
@@ -165,13 +185,58 @@ router.post('/property/:propertyId', async (req: AuthenticatedRequest, res: Resp
 // VALUATION HISTORY
 // =====================
 
+// W3.1(b): honest labels for every stored model version. The client renders
+// `methodology` verbatim — the AI-guess path must read as an AI estimate,
+// and pre-honesty baseline rows must not masquerade as modeled values.
+const METHODOLOGY_LABELS: Record<string, string> = {
+  hybrid_comps_ml: 'AcreOS Valuation Model (comparable sales + market adjustments)',
+  gbm_model: 'AcreOS trained model estimate (no local comparables)',
+  ai_market_estimate: 'AI estimate (no local comparables) — an educated guess by a language model, not a comps-based value',
+  regional_baseline: 'Legacy flat-rate estimate (recorded before the honesty patch — treat with caution)',
+  baseline: 'Legacy flat-rate estimate (recorded before the honesty patch — treat with caution)',
+};
+
 router.get('/history/:propertyId', cacheResponse(300), async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const history = await acreOSValuation.getValuationHistory(
+    const rows = await acreOSValuation.getValuationHistory(
       org.id.toString(),
       req.params.propertyId
     );
+
+    // Raw valuation_predictions rows don't match the client's render shape
+    // (predictedValue vs estimatedValue, valueRange vs confidenceInterval),
+    // so the estimate card silently rendered blanks on reload. Map here,
+    // computing price/acre from the property's recorded acreage.
+    const propertyIdNum = parseInt(req.params.propertyId, 10);
+    let acres: number | null = null;
+    if (Number.isFinite(propertyIdNum)) {
+      const [prop] = await db
+        .select({ sizeAcres: properties.sizeAcres })
+        .from(properties)
+        .where(and(eq(properties.id, propertyIdNum), eq(properties.organizationId, org.id)));
+      acres = prop?.sizeAcres ? parseFloat(prop.sizeAcres) : null;
+    }
+
+    const history = rows.map((r: any) => {
+      const estimatedValue = Number(r.predictedValue) || 0;
+      const valueRange = (r.valueRange ?? {}) as { low?: number; high?: number };
+      return {
+        ...r,
+        estimatedValue,
+        pricePerAcre: acres && acres > 0 ? Math.round(estimatedValue / acres) : 0,
+        confidence: Number(r.confidenceScore) || 0,
+        confidenceInterval: {
+          low: valueRange.low ?? estimatedValue,
+          high: valueRange.high ?? estimatedValue,
+        },
+        methodology: METHODOLOGY_LABELS[r.modelVersion] ?? r.modelVersion,
+        comparables: [],
+        marketAdjustments: [],
+        comparableCount: r.comparableCount ?? 0,
+      };
+    });
+
     res.json({ history });
   } catch (error: any) {
     Errors.internal(res, error);

@@ -4,6 +4,7 @@ import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray, or } from "drizzle-orm";
 import { insertLeadSchema, leads } from "@shared/schema";
+import { LEAD_STATUSES, isLeadStatus, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
@@ -668,6 +669,17 @@ export function registerLeadRoutes(app: Express): void {
 
       const validated = updateLeadSchema.parse(req.body);
 
+      // W3.4 — lead status is a real vocabulary with validated transitions
+      // (shared/lifecycle/pipeline-status). Funnel metrics key off these
+      // strings; a typo here used to silently vanish a lead from every
+      // conversion query.
+      if (validated.status && validated.status !== existingLead.status) {
+        const transitionError = validateLeadTransition(existingLead.status, validated.status);
+        if (transitionError) {
+          return Errors.badRequest(res, transitionError);
+        }
+      }
+
       // Lens 48 — `assignedTo` from body must point at a member of the
       // requesting org. Without this check a customer admin could assign
       // a lead to a user in a different tenant (creating dangling
@@ -879,6 +891,30 @@ export function registerLeadRoutes(app: Express): void {
         return Errors.badRequest(res, parsed.error.issues[0].message);
       }
       const { ids, updates } = parsed.data;
+
+      // W3.4 — a bulk status write must be a valid status value AND a legal
+      // transition for every targeted lead (same machine as the single-lead
+      // PUT; this route used to accept any string).
+      if (typeof (updates as Record<string, unknown>).status === "string") {
+        const nextStatus = (updates as Record<string, string>).status;
+        if (!isLeadStatus(nextStatus)) {
+          return Errors.badRequest(
+            res,
+            `"${nextStatus}" is not a valid lead status (expected one of: ${LEAD_STATUSES.join(", ")})`,
+          );
+        }
+        const targeted = await storage.getLeadsByIds(org.id, ids);
+        const blocked = targeted
+          .map((l) => ({ id: l.id, error: validateLeadTransition(l.status, nextStatus) }))
+          .filter((b): b is { id: number; error: string } => b.error !== null);
+        if (blocked.length > 0) {
+          return Errors.badRequest(
+            res,
+            `${blocked.length} lead(s) cannot move to "${nextStatus}": ${blocked[0].error}`,
+            { blocked },
+          );
+        }
+      }
 
       const updatedCount = await storage.bulkUpdateLeads(org.id, ids, updates);
       

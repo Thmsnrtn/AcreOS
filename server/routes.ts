@@ -1449,26 +1449,41 @@ export async function registerRoutes(
         return Errors.badRequest(res, "newStage is required");
       }
       
-      // Validate stage is a valid deal stage
-      const validStages = ["negotiating", "offer_sent", "countered", "accepted", "in_escrow", "closed", "cancelled"];
-      if (!validStages.includes(newStage)) {
-        return Errors.badRequest(res, `Invalid stage. Must be one of: ${validStages.join(", ")}`, { validStages });
+      // Validate stage against the shared vocabulary (W3.4 — this route
+      // used to carry its own duplicated list and NO transition check,
+      // letting a bulk drag jump negotiating → closed around the state
+      // machine the single-deal routes enforce).
+      const { DEAL_STATUSES, validateDealTransition } = await import("@shared/lifecycle/pipeline-status");
+      if (!(DEAL_STATUSES as readonly string[]).includes(newStage)) {
+        return Errors.badRequest(res, `Invalid stage. Must be one of: ${DEAL_STATUSES.join(", ")}`, { validStages: DEAL_STATUSES });
       }
-      
+
       // Get the current state of all deals for safety/undo
       const existingDeals = await storage.getDealsByIds(org.id, ids);
-      
+
       // Check if any deals weren't found
       const foundIds = existingDeals.map(d => d.id);
       const missingIds = ids.filter((id: number) => !foundIds.includes(id));
-      
+
       if (missingIds.length > 0) {
         return sendError(res, 404, "NOT_FOUND", `Some deals not found: ${missingIds.join(", ")}`, { missingIds });
       }
-      
+
       // Filter out deals that are already in the target stage
       const dealsToUpdate = existingDeals.filter(d => d.status !== newStage);
       const alreadyInStage = existingDeals.filter(d => d.status === newStage);
+
+      // Enforce the same per-deal transition rules as PUT /api/deals/:id.
+      const blocked = dealsToUpdate
+        .map(d => ({ id: d.id, error: validateDealTransition(d.status, newStage) }))
+        .filter((b): b is { id: number; error: string } => b.error !== null);
+      if (blocked.length > 0) {
+        return Errors.badRequest(
+          res,
+          `${blocked.length} deal(s) cannot move to "${newStage}": ${blocked[0].error}`,
+          { blocked },
+        );
+      }
       
       if (dealsToUpdate.length === 0) {
         return res.status(200).json({

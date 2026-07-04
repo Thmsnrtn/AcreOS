@@ -15,6 +15,7 @@ import { notes, payments, properties, leads, organizations, trustLedger } from "
 import { eq, and, gte, lte, sql, desc, sum, asc } from "drizzle-orm";
 import { format, startOfYear, endOfYear } from "date-fns";
 import { decryptValue } from "./configManager";
+import { centsFromDecimal, sumCents } from "@shared/finance/cents";
 
 // ============================================
 // DEAL P&L CALCULATION
@@ -68,23 +69,25 @@ export function calculateDealPnL(
   dealType: "flip" | "seller_finance" | "wholesale",
   downPaymentReceived?: number
 ): DealPnL {
-  const totalCosts = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const acquisitionCosts = expenses
-    .filter((e) => ["purchase", "back_taxes", "title", "recording"].includes(e.category))
-    .reduce((sum, e) => sum + e.amount, 0);
-  const improvementCosts = expenses
-    .filter((e) => e.category === "improvement")
-    .reduce((sum, e) => sum + e.amount, 0);
-  const marketingCosts = expenses
-    .filter((e) => e.category === "marketing")
-    .reduce((sum, e) => sum + e.amount, 0);
-  const legalCosts = expenses
-    .filter((e) => ["legal", "recording"].includes(e.category))
-    .reduce((sum, e) => sum + e.amount, 0);
+  // W3.3: sum expense categories in integer cents; the dollar fields on the
+  // returned P&L are exact 2-decimal values instead of drifted floats.
+  const totalCosts = sumCents(expenses.map((e) => e.amount)) / 100;
+  const acquisitionCosts = sumCents(
+    expenses.filter((e) => ["purchase", "back_taxes", "title", "recording"].includes(e.category)).map((e) => e.amount),
+  ) / 100;
+  const improvementCosts = sumCents(
+    expenses.filter((e) => e.category === "improvement").map((e) => e.amount),
+  ) / 100;
+  const marketingCosts = sumCents(
+    expenses.filter((e) => e.category === "marketing").map((e) => e.amount),
+  ) / 100;
+  const legalCosts = sumCents(
+    expenses.filter((e) => ["legal", "recording"].includes(e.category)).map((e) => e.amount),
+  ) / 100;
 
-  const totalInvestment = purchasePrice + totalCosts;
-  const grossProfit = sellingPrice - purchasePrice;
-  const netProfit = sellingPrice - totalInvestment;
+  const totalInvestment = (centsFromDecimal(purchasePrice) + centsFromDecimal(totalCosts)) / 100;
+  const grossProfit = (centsFromDecimal(sellingPrice) - centsFromDecimal(purchasePrice)) / 100;
+  const netProfit = (centsFromDecimal(sellingPrice) - centsFromDecimal(totalInvestment)) / 100;
   const roi = totalInvestment > 0 ? (netProfit / totalInvestment) * 100 : 0;
   const cashInvested = purchasePrice + totalCosts - (downPaymentReceived || 0);
   const cashOnCashReturn = cashInvested > 0 ? (netProfit / cashInvested) * 100 : 0;
@@ -223,25 +226,41 @@ export async function generateAnnualInterestReport(
       });
     }
 
+    // W3.3 (2026-07 audit): accumulate in INTEGER CENTS. This is an IRS
+    // reporting path — the old float `+=` drifted across a year of
+    // payments, and the $600 1099 threshold was tested against the drifted
+    // float. The acquired-note path (routes-notes.ts, SUM(interest_cents))
+    // already did this right; this adopts the same model. The summary
+    // fields hold cents during the loop and convert to dollars ONCE below.
     const summary = noteMap.get(note.id)!;
-    summary.principalCollected += parseFloat(payment.principalAmount || "0");
-    summary.interestCollected += parseFloat(payment.interestAmount || "0");
-    summary.lateFeeCollected += parseFloat(payment.lateFeeAmount || "0");
+    summary.principalCollected += centsFromDecimal(payment.principalAmount);
+    summary.interestCollected += centsFromDecimal(payment.interestAmount);
+    summary.lateFeeCollected += centsFromDecimal(payment.lateFeeAmount);
     summary.paymentsCount++;
-    summary.requires1099 = summary.interestCollected >= 600;
   }
 
   const notes_array = Array.from(noteMap.values());
-  const totalInterest = notes_array.reduce((sum, n) => sum + n.interestCollected, 0);
-  const totalPrincipal = notes_array.reduce((sum, n) => sum + n.principalCollected, 0);
-  const totalLateFees = notes_array.reduce((sum, n) => sum + n.lateFeeCollected, 0);
+  let totalInterestCents = 0;
+  let totalPrincipalCents = 0;
+  let totalLateFeeCents = 0;
+  for (const n of notes_array) {
+    totalInterestCents += n.interestCollected;
+    totalPrincipalCents += n.principalCollected;
+    totalLateFeeCents += n.lateFeeCollected;
+    // IRS 1099-INT threshold: $600.00 = 60,000 cents, compared exactly.
+    n.requires1099 = n.interestCollected >= 60_000;
+    // Convert the per-note cents to dollars at the report edge.
+    n.principalCollected = n.principalCollected / 100;
+    n.interestCollected = n.interestCollected / 100;
+    n.lateFeeCollected = n.lateFeeCollected / 100;
+  }
 
   return {
     taxYear,
     organizationId: orgId,
-    totalInterestIncome: totalInterest,
-    totalPrincipalReceived: totalPrincipal,
-    totalLateFeesCollected: totalLateFees,
+    totalInterestIncome: totalInterestCents / 100,
+    totalPrincipalReceived: totalPrincipalCents / 100,
+    totalLateFeesCollected: totalLateFeeCents / 100,
     notesWith1099Required: notes_array.filter((n) => n.requires1099).length,
     notes: notes_array,
     generatedAt: new Date().toISOString(),
@@ -572,8 +591,11 @@ export async function syncPaymentsToQbo(
 
   for (const { payment, note, lead } of recentPayments) {
     try {
-      // Create a QBO Income entry for interest income
-      const interestAmt = parseFloat(payment.interestAmount || "0");
+      // W3.3: round at the cents boundary BEFORE building the QBO payload —
+      // parseFloat could push a 2-decimal `numeric` through float
+      // representation error straight into the ledger of record.
+      const interestAmt = centsFromDecimal(payment.interestAmount) / 100;
+      const principalAmt = centsFromDecimal(payment.principalAmount) / 100;
       if (interestAmt > 0) {
         await fetch(`${base}/salesreceipt`, {
           method: "POST",
@@ -598,15 +620,15 @@ export async function syncPaymentsToQbo(
                 },
                 Description: `Interest — Note #${note.id}`,
               },
-              ...(parseFloat(payment.principalAmount || "0") > 0
+              ...(principalAmt > 0
                 ? [
                     {
-                      Amount: parseFloat(payment.principalAmount || "0"),
+                      Amount: principalAmt,
                       DetailType: "SalesItemLineDetail",
                       SalesItemLineDetail: {
                         ItemRef: { name: "Principal Received", value: "Principal" },
                         Qty: 1,
-                        UnitPrice: parseFloat(payment.principalAmount || "0"),
+                        UnitPrice: principalAmt,
                       },
                       Description: `Principal — Note #${note.id}`,
                     },
@@ -883,16 +905,23 @@ export async function generateProfitLoss(
     )
     .orderBy(asc(trustLedger.createdAt));
 
-  const breakdown: Record<string, number> = {};
-  let totalIncome = 0;
-  let totalExpenses = 0;
+  // W3.3: ledger totals accumulate in integer cents (breakdownCents keys
+  // convert once at the return edge below).
+  const breakdownCents: Record<string, number> = {};
+  let totalIncomeCents = 0;
+  let totalExpensesCents = 0;
 
   for (const entry of entries) {
-    const amount = parseFloat(entry.amount);
-    breakdown[entry.entryType] = (breakdown[entry.entryType] || 0) + amount;
-    if (amount > 0) totalIncome += amount;
-    else totalExpenses += Math.abs(amount);
+    const amountCents = centsFromDecimal(entry.amount);
+    breakdownCents[entry.entryType] = (breakdownCents[entry.entryType] || 0) + amountCents;
+    if (amountCents > 0) totalIncomeCents += amountCents;
+    else totalExpensesCents += Math.abs(amountCents);
   }
+  const totalIncome = totalIncomeCents / 100;
+  const totalExpenses = totalExpensesCents / 100;
+  const breakdown: Record<string, number> = Object.fromEntries(
+    Object.entries(breakdownCents).map(([k, v]) => [k, v / 100]),
+  );
 
   // Opening balance = latest entry BEFORE fromDate
   const [openingEntry] = await db
@@ -907,18 +936,18 @@ export async function generateProfitLoss(
     .orderBy(desc(trustLedger.createdAt))
     .limit(1);
 
-  const openingBalance = parseFloat(openingEntry?.runningBalance ?? '0');
-  const closingBalance = openingBalance + totalIncome - totalExpenses;
+  const openingBalanceCents = centsFromDecimal(openingEntry?.runningBalance);
+  const closingBalanceCents = openingBalanceCents + totalIncomeCents - totalExpensesCents;
 
   return {
     organizationId,
     fromDate,
     toDate,
-    totalIncome: Math.round(totalIncome * 100) / 100,
-    totalExpenses: Math.round(totalExpenses * 100) / 100,
-    netIncome: Math.round((totalIncome - totalExpenses) * 100) / 100,
+    totalIncome,
+    totalExpenses,
+    netIncome: (totalIncomeCents - totalExpensesCents) / 100,
     breakdown,
-    openingBalance: Math.round(openingBalance * 100) / 100,
-    closingBalance: Math.round(closingBalance * 100) / 100,
+    openingBalance: openingBalanceCents / 100,
+    closingBalance: closingBalanceCents / 100,
   };
 }

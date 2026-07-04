@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { storage } from "./storage";
 import { z } from "zod";
+import { DEAL_STATUS_TRANSITIONS as SHARED_DEAL_TRANSITIONS } from "@shared/lifecycle/pipeline-status";
 import { insertDealSchema } from "@shared/schema";
 import type { DueDiligenceChecklistItem } from "@shared/schema";
 import { isAuthenticated } from "./auth";
@@ -186,8 +187,11 @@ export function registerDealRoutes(app: Express): void {
           type: deals.type,
           count: sql<number>`count(*)::int`,
           // Same fallback chain the client used: offer amount, else accepted.
-          pipelineValue: sql<number>`coalesce(sum(coalesce(${deals.offerAmount}, ${deals.acceptedAmount}, 0)), 0)::float8`,
-          acceptedValue: sql<number>`coalesce(sum(coalesce(${deals.acceptedAmount}, 0)), 0)::float8`,
+          // W3.3: sum in integer CENTS (::bigint), never ::float8 — the old
+          // cast accumulated float error in the door-header KPIs. Dollars
+          // reappear only in foldDealAggregates' response edge.
+          pipelineValueCents: sql<number>`coalesce(sum(round(coalesce(${deals.offerAmount}, ${deals.acceptedAmount}, 0) * 100)), 0)::bigint`,
+          acceptedValueCents: sql<number>`coalesce(sum(round(coalesce(${deals.acceptedAmount}, 0) * 100)), 0)::bigint`,
           stalledCount: sql<number>`(count(*) filter (where ${daysInStage} >= ${benchmarkCase} * 2))::int`,
           // ceil() because client day-counts are integers compared against a
           // fractional 1.25x threshold. Includes stalled; folded out later.
@@ -292,16 +296,11 @@ export function registerDealRoutes(app: Express): void {
     }
   });
 
-  // Valid deal status transitions — no skipping states (Task #210)
-  const DEAL_STATUS_TRANSITIONS: Record<string, string[]> = {
-    negotiating: ["offer_sent", "cancelled"],
-    offer_sent: ["countered", "accepted", "cancelled"],
-    countered: ["offer_sent", "accepted", "cancelled"],
-    accepted: ["in_escrow", "cancelled"],
-    in_escrow: ["closed", "cancelled"],
-    closed: [],
-    cancelled: [],
-  };
+  // Valid deal status transitions — no skipping states (Task #210).
+  // W3.4: the table now lives in shared/lifecycle/pipeline-status.ts so the
+  // bulk route and services validate against the SAME machine. String-keyed
+  // view because existing rows may carry legacy statuses.
+  const DEAL_STATUS_TRANSITIONS: Record<string, readonly string[]> = SHARED_DEAL_TRANSITIONS;
 
   api.put("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
