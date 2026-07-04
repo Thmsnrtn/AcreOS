@@ -20,6 +20,42 @@ Within a wave, revenue/legal correctness beats polish.
 
 ---
 
+## Execution ledger (updated 2026-07-04)
+
+Waves 1-6's discrete items are SHIPPED on `claude/codebase-quality-audit-ko1u69`:
+
+- **W1** (950eabd, 9c1c4e9, ec5dae1, 0bdecdf): dunning ladder revived; tier
+  fallback + honest welcome email; SMS response capture + TCPA
+  gate-by-construction; Data-API keys hashed + founder-gated; mail interlock
+  closed; atomic credit-pool gate; honest BYOK payer; transactional Stripe
+  webhooks with claim-release retry recovery.
+- **W2** (34ca0dc): free-tier 5-piece lifetime first send (wedge open);
+  checklist completable; offer-first onboarding finish; persona empty
+  states; subdivider choosable; /campaigns on PageShell; drawer vocabulary;
+  Betty leak removed.
+- **W3** (e38db04): AVM refuse-not-fabricate + AI-estimate labeling; comps
+  arm's-length screens + recency floors; daysOnMarket surface removed;
+  integer-cents money (shared/finance/cents.ts) across deal KPIs / 1099 /
+  QBO / P&L; shared/lifecycle/pipeline-status.ts stage machine + live-drift
+  fixes ("won", "active").
+- **W4+W5** (d220bb1): doc-intel + campaign-optimizer metered; offer AI
+  attributed; tier-proportional cost ceilings; platform bucket chat floor;
+  cached-last-known gate enforcement; dunning read-only ENFORCED
+  (dunningAccessGate); mrr_snapshots + weekly job → real WoW growth;
+  FIRST_DEAL_CLOSED detected; task processor + Atlas nudger + founder
+  digest rostered; leads stage/cursor pagination in SQL.
+- **W6** (06c1d0f): contract_assignments (the wholesaler mechanic) + doc
+  autofill + dashboard real fees; /api/deals/:id/track single-track view +
+  lead-timeline join bug fix.
+
+**Still open:** W6.3 fix-and-flip repositioning (needs the investor-type
+bucket decision); W7 continuous debt (storage.ts decomposition, res-status
+563→0, req-as-any 73→0, console 7→0, SCP memory wire, planner, Google Ads
+adapter, interaction-capture seam); W5.2 remaining test surfaces
+(stripeService, directMailService); the three founder decisions below.
+
+---
+
 ## Wave 1 — Stop the bleeding (revenue, legal, correctness) — IN PROGRESS
 
 The audit found the revenue machine and the compliance surface each have one
