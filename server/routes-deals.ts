@@ -10,7 +10,7 @@ import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
 import { db, withTransaction } from "./db";
-import { outcomeTelemetry, dueDiligenceItems, deals } from "@shared/schema";
+import { outcomeTelemetry, dueDiligenceItems, deals, contractAssignments, CONTRACT_ASSIGNMENT_STATUSES } from "@shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import {
   STAGE_BENCHMARK_DAYS,
@@ -205,6 +205,157 @@ export function registerDealRoutes(app: Express): void {
     } catch (error) {
       logger.error("Failed to compute deal aggregates", { organizationId: req.organizationId });
       return Errors.internal(res, error);
+    }
+  });
+
+  // W6.2 — the single-track view. Every slice page (leads, campaigns,
+  // deals, inbox) shows one fragment; this endpoint unions the activity
+  // events of the deal, its property, AND the seller lead (bridged via
+  // property.sellerId — deals carry no leadId) into one chronological
+  // lead → mail → response → offer → contract → close track.
+  api.get("/api/deals/:id/track", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const dealId = Number(req.params.id);
+      if (!Number.isFinite(dealId)) return Errors.badRequest(res, "Invalid deal id");
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) return Errors.notFound(res, "Deal");
+
+      const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
+      const events = await storage.getActivityEvents(org.id, "deal", dealId, eventTypes);
+
+      if (deal.propertyId) {
+        try {
+          const propertyEvents = await storage.getActivityEvents(org.id, "property", deal.propertyId, eventTypes);
+          events.push(...propertyEvents);
+          const property = await storage.getProperty(org.id, deal.propertyId);
+          if (property?.sellerId) {
+            const leadEvents = await storage.getActivityEvents(org.id, "lead", property.sellerId, eventTypes);
+            events.push(...leadEvents);
+          }
+        } catch {
+          // Partial track beats no track — the deal's own events still return.
+        }
+      }
+
+      const seen = new Set<number>();
+      const merged = events
+        .filter((e: any) => (seen.has(e.id) ? false : (seen.add(e.id), true)))
+        .sort((a: any, b: any) => {
+          const dateA = new Date(a.eventDate || a.createdAt).getTime();
+          const dateB = new Date(b.eventDate || b.createdAt).getTime();
+          return dateB - dateA;
+        });
+
+      res.json(merged);
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // ── W6.1 — contract assignments (the wholesaler's defining mechanic) ──────
+  // Record: original contract (this deal) → end buyer → fee → assignment doc.
+  // The e-sign pipeline already exists (Assignment Contract system template,
+  // /api/documents/generate, request-signature with the state-disclosure
+  // gate); these endpoints add the missing assignment RECORD so the fee is
+  // real data instead of the netProfit proxy.
+  const assignmentCreateSchema = z.object({
+    endBuyerProfileId: z.number().int().positive().optional(),
+    endBuyerName: z.string().max(200).optional(),
+    assignmentFeeCents: z.number().int().nonnegative(),
+    originalContractDate: z.string().optional(), // yyyy-mm-dd
+    notes: z.string().max(4000).optional(),
+  });
+
+  api.get("/api/deals/:id/assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const dealId = Number(req.params.id);
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) return Errors.notFound(res, "Deal");
+      const rows = await db
+        .select()
+        .from(contractAssignments)
+        .where(and(eq(contractAssignments.organizationId, org.id), eq(contractAssignments.dealId, dealId)));
+      res.json(rows);
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  api.post("/api/deals/:id/assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const dealId = Number(req.params.id);
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) return Errors.notFound(res, "Deal");
+
+      const parsed = assignmentCreateSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      if (!parsed.data.endBuyerProfileId && !parsed.data.endBuyerName) {
+        return Errors.badRequest(res, "Provide an end buyer (profile id or name)");
+      }
+
+      // Assignment-legality guard: surface the state rule with the record so
+      // the client can warn/block per wholesalerStateRules (license_required,
+      // advertising_restricted, double_close_only recommendations).
+      let stateRule: unknown = null;
+      try {
+        const property = deal.propertyId ? await storage.getProperty(org.id, deal.propertyId) : null;
+        if (property?.state) {
+          const { wholesalerStateRules } = await import("@shared/schema");
+          const [rule] = await db
+            .select()
+            .from(wholesalerStateRules)
+            .where(eq(wholesalerStateRules.state, property.state));
+          stateRule = rule ?? null;
+        }
+      } catch { /* rule lookup is advisory */ }
+
+      const [created] = await db
+        .insert(contractAssignments)
+        .values({
+          organizationId: org.id,
+          dealId,
+          endBuyerProfileId: parsed.data.endBuyerProfileId ?? null,
+          endBuyerName: parsed.data.endBuyerName ?? null,
+          assignmentFeeCents: parsed.data.assignmentFeeCents,
+          originalContractDate: parsed.data.originalContractDate ?? null,
+          notes: parsed.data.notes ?? null,
+          status: "draft",
+        })
+        .returning();
+
+      res.status(201).json({ assignment: created, stateRule });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  api.patch("/api/deals/:dealId/assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const id = Number(req.params.id);
+      const updateSchema = z.object({
+        status: z.enum(CONTRACT_ASSIGNMENT_STATUSES).optional(),
+        assignmentFeeCents: z.number().int().nonnegative().optional(),
+        generatedDocumentId: z.number().int().positive().optional(),
+        endBuyerProfileId: z.number().int().positive().nullable().optional(),
+        endBuyerName: z.string().max(200).nullable().optional(),
+        notes: z.string().max(4000).nullable().optional(),
+      });
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [updated] = await db
+        .update(contractAssignments)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(and(eq(contractAssignments.id, id), eq(contractAssignments.organizationId, org.id)))
+        .returning();
+      if (!updated) return Errors.notFound(res, "Assignment");
+      res.json(updated);
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 

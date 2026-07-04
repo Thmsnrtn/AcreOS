@@ -86,7 +86,7 @@ router.post('/property/:propertyId', async (req: AuthenticatedRequest, res: Resp
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId, 10);
     if (Number.isNaN(propertyId)) {
-      return res.status(400).json({ error: 'Invalid property id' });
+      return Errors.badRequest(res, 'Invalid property id');
     }
     const [property] = await db
       .select()

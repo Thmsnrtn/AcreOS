@@ -29,13 +29,10 @@ import { logger } from "../utils/logger";
 // One-time import-time deprecation warning. Wrapped in NODE_ENV check so
 // production doesn't spam logs during the deprecation window.
 if (process.env.NODE_ENV !== "test") {
-  // eslint-disable-next-line no-console
-  console.warn(
-    "[DEPRECATION] server/services/encryption.ts is deprecated and will be " +
-    "removed on or after 2026-06-02. Import from server/services/fieldEncryption instead."
-  );
+  // W7 console hygiene: the structured logger carries this warning; the
+  // duplicate raw console.warn is gone.
   logger.warn?.(
-    "[encryption.ts] DEPRECATED — migrate imports to server/services/fieldEncryption"
+    "[encryption.ts] DEPRECATED (removal on/after 2026-06-02) — migrate imports to server/services/fieldEncryption"
   );
 }
 

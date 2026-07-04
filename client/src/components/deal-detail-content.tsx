@@ -758,7 +758,15 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
             </TabsContent>
 
             <TabsContent value="timeline" className="space-y-6">
-              <ActivityTimeline entityType="deal" entityId={deal.id} />
+              {/* W6.2 — the single track: /track unions events across the
+                  deal, its property, and the seller lead, so this timeline
+                  reads lead → mail → response → offer → contract → close
+                  instead of only the deal's own slice. */}
+              <ActivityTimeline
+                entityType="deal"
+                entityId={deal.id}
+                endpointOverride={`/api/deals/${deal.id}/track`}
+              />
             </TabsContent>
 
             <TabsContent value="checklist" className="space-y-6">

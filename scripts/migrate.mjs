@@ -5354,6 +5354,25 @@ const STATEMENTS = [
   `ALTER TABLE "system_api_keys" ADD COLUMN IF NOT EXISTS "key_last4" text`,
   `CREATE INDEX IF NOT EXISTS "system_api_keys_key_hash_idx" ON "system_api_keys" ("key_hash")`,
 
+  // Contract assignments (migration 0193, roadmap W6.1) — the wholesaler's
+  // assignment-of-contract record: deal → end buyer → fee (cents) → doc.
+  `CREATE TABLE IF NOT EXISTS "contract_assignments" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL,
+     "deal_id" integer NOT NULL,
+     "end_buyer_profile_id" integer,
+     "end_buyer_name" text,
+     "assignment_fee_cents" bigint NOT NULL DEFAULT 0,
+     "original_contract_date" date,
+     "generated_document_id" integer,
+     "status" text NOT NULL DEFAULT 'draft',
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "contract_assignments_org_deal_idx" ON "contract_assignments" ("organization_id", "deal_id")`,
+  `CREATE INDEX IF NOT EXISTS "contract_assignments_status_idx" ON "contract_assignments" ("organization_id", "status")`,
+
   // Weekly MRR snapshots (migration 0192, roadmap W4.5) — WoW growth was
   // structurally 0 with no history; runway upside == base since launch.
   `CREATE TABLE IF NOT EXISTS "mrr_snapshots" (

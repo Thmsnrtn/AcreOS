@@ -3,7 +3,7 @@ import { getOrganization, getUserId, type AuthenticatedRequest } from "./types/r
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray, or } from "drizzle-orm";
-import { insertLeadSchema, leads } from "@shared/schema";
+import { insertLeadSchema, leads, properties, deals } from "@shared/schema";
 import { LEAD_STATUSES, isLeadStatus, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -1064,12 +1064,28 @@ export function registerLeadRoutes(app: Express): void {
     // Also fetch related deal stage changes and campaign touches for a richer timeline
     if (includeDealChanges) {
       try {
-        const dealEvents = await storage.getActivityEvents(org.id, "deal", leadId, undefined);
-        // Merge deal events that reference this lead, avoiding duplicates
+        // W6.2 bug fix: this used to query deal events with entityId=leadId —
+        // deal events are keyed by DEAL id, so the merge silently returned
+        // nothing since it shipped. The real bridge is lead → properties
+        // (sellerId) → deals (propertyId).
+        const sellerProps = await db
+          .select({ id: properties.id })
+          .from(properties)
+          .where(and(eq(properties.organizationId, org.id), eq(properties.sellerId, leadId)));
+        const dealRows = sellerProps.length > 0
+          ? await db
+              .select({ id: deals.id })
+              .from(deals)
+              .where(and(eq(deals.organizationId, org.id), inArray(deals.propertyId, sellerProps.map((p) => p.id))))
+          : [];
         const existingIds = new Set(events.map((e: any) => e.id));
-        for (const de of dealEvents) {
-          if (!existingIds.has((de as any).id)) {
-            events.push(de);
+        for (const d of dealRows) {
+          const dealEvents = await storage.getActivityEvents(org.id, "deal", d.id, undefined);
+          for (const de of dealEvents) {
+            if (!existingIds.has((de as any).id)) {
+              existingIds.add((de as any).id);
+              events.push(de);
+            }
           }
         }
         // Sort merged list by date descending
