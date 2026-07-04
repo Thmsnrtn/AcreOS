@@ -216,11 +216,44 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
   // the action is always allowed (their key, their spend, zero COGS to us).
   const byokChannels = BYOK_CHANNELS_FOR_ACTION[args.action] ?? [];
   for (const channel of byokChannels) {
-    let active = false;
-    try {
-      active = await isByokEnabled(args.organizationId, channel);
-    } catch {
-      // Lookup hiccup → treat as no-BYOK and fall through to the pool.
+    // W1.8 (2026-07 audit): a lookup hiccup used to be swallowed as
+    // "no BYOK" and fall through to the pool — silently debiting pool
+    // credits from a customer whose own key was about to serve the send
+    // (the adapter resolves BYOK independently). Never guess the billing
+    // answer: retry the cheap existence check, and if it still cannot be
+    // answered, refuse in gate mode (fail closed, consistent with Tier 1I)
+    // instead of picking a payer at random. Record mode continues — the
+    // spend already happened and an over-recorded COGS row beats a
+    // missing one.
+    let active: boolean | null = null;
+    for (let attempt = 0; attempt < 3 && active === null; attempt++) {
+      try {
+        active = await isByokEnabled(args.organizationId, channel);
+      } catch (err) {
+        if (attempt === 2) {
+          logger.error(
+            "[credit-pool] BYOK lookup failed after retries — refusing to guess the payer",
+            err instanceof Error ? err : undefined,
+          );
+        } else {
+          await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
+        }
+      }
+    }
+    if (active === null) {
+      if ((args.enforce ?? "gate") === "gate") {
+        const poolMonthly = TIER_LIMITS[tier].creditPool;
+        return {
+          allowed: false,
+          debitedCents: 0,
+          remaining: 0,
+          poolMonthly,
+          ledgerRowId: null,
+          overPool: false,
+          reason: "pool_debit_error",
+        };
+      }
+      // record mode: treat as no-BYOK and keep the COGS row honest.
       active = false;
     }
     if (active) {
@@ -262,51 +295,86 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
   const enforce = args.enforce ?? "gate";
 
   try {
-    // FAIL CLOSED on a genuinely-exhausted pool (gate mode only): when the
-    // month's pool is already fully spent BEFORE this debit, refuse without
-    // writing a ledger row. The boundary debit that merely pushes PAST the
-    // pool is still honored (generous edge — `overPool: true` flags it).
-    if (enforce === "gate") {
-      const poolMonthly = TIER_LIMITS[tier].creditPool;
-      const usedBefore = await poolUsageThisMonth(args.organizationId);
-      if (usedBefore >= poolMonthly) {
-        logger.warn("[credit-pool] debit refused — pool exhausted", {
-          metadata: {
-            organizationId: args.organizationId,
-            action: args.action,
-            usedBefore,
-            poolMonthly,
-            tier,
-          },
-        });
-        return {
-          allowed: false,
-          debitedCents: 0,
-          remaining: 0,
-          poolMonthly,
-          ledgerRowId: null,
-          overPool: true,
-          reason: "pool_exhausted",
-        };
-      }
-    }
+    // FAIL CLOSED on a genuinely-exhausted pool (gate mode only). Roadmap
+    // W1.8 (2026-07 audit): this used to be a separate SELECT (usedBefore)
+    // followed by an unconditional INSERT — two concurrent debits near the
+    // cap could BOTH pass the read and BOTH insert (TOCTOU), overspending
+    // COGS past the pool. The gate is now a single atomic conditional
+    // insert: the exhaustion re-check runs INSIDE the INSERT's WHERE at the
+    // database, so no interleaving can slip a second boundary debit through.
+    // Semantics preserved: a debit is honored while used < pool (even if it
+    // pushes PAST the pool — the generous boundary edge, flagged overPool);
+    // refused once used >= pool. Idempotency (ON CONFLICT on
+    // external_event_id) is unchanged.
+    const poolMonthlyForGate = TIER_LIMITS[tier].creditPool;
+    const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+    const uniqueFeatures = Array.from(new Set(Object.values(POOL_FEATURE_FOR_ACTION)));
 
-    const inserted = await db
-      .insert(financialLedger)
-      .values({
-        organizationId: args.organizationId,
-        bucket: "opex_available",
-        category: "opex_spent",
-        amountCents: -cents,
-        feature,
-        provider,
-        externalEventId: args.externalEventId,
-        postedAt: new Date(),
-        postedBy: `system:credit-pool:${args.action}`,
-        notes: args.notes ?? null,
-      })
-      .onConflictDoNothing({ target: financialLedger.externalEventId })
-      .returning({ id: financialLedger.id });
+    let inserted: Array<{ id: number }>;
+    if (enforce === "gate") {
+      const res = await db.execute<{ id: number }>(sql`
+        INSERT INTO financial_ledger
+          (organization_id, bucket, category, amount_cents, feature, provider,
+           external_event_id, posted_at, posted_by, notes)
+        SELECT ${args.organizationId}, 'opex_available', 'opex_spent', ${-cents},
+               ${feature}, ${provider ?? null}, ${args.externalEventId}, now(),
+               ${`system:credit-pool:${args.action}`}, ${args.notes ?? null}
+        WHERE (
+          SELECT coalesce(sum(abs(amount_cents)), 0)
+          FROM financial_ledger
+          WHERE organization_id = ${args.organizationId}
+            AND category = 'opex_spent'
+            AND feature = ANY(${uniqueFeatures}::text[])
+            AND posted_at >= ${monthStart}
+        ) < ${poolMonthlyForGate}
+        ON CONFLICT (external_event_id) DO NOTHING
+        RETURNING id
+      `);
+      inserted = Array.isArray(res) ? (res as Array<{ id: number }>) : ((res as { rows?: Array<{ id: number }> })?.rows ?? []);
+
+      if (inserted.length === 0) {
+        // Zero rows = either an idempotent replay (row already exists for
+        // this externalEventId) or the gate refused. Disambiguate honestly.
+        const [replay] = await db
+          .select({ id: financialLedger.id })
+          .from(financialLedger)
+          .where(eq(financialLedger.externalEventId, args.externalEventId))
+          .limit(1);
+        if (!replay) {
+          logger.warn("[credit-pool] debit refused — pool exhausted (atomic gate)", {
+            metadata: { organizationId: args.organizationId, action: args.action, poolMonthly: poolMonthlyForGate, tier },
+          });
+          return {
+            allowed: false,
+            debitedCents: 0,
+            remaining: 0,
+            poolMonthly: poolMonthlyForGate,
+            ledgerRowId: null,
+            overPool: true,
+            reason: "pool_exhausted",
+          };
+        }
+        // Replay: fall through with zero-debit success (matches prior behavior).
+      }
+    } else {
+      // record mode — the spend already happened; always write the row.
+      inserted = await db
+        .insert(financialLedger)
+        .values({
+          organizationId: args.organizationId,
+          bucket: "opex_available",
+          category: "opex_spent",
+          amountCents: -cents,
+          feature,
+          provider,
+          externalEventId: args.externalEventId,
+          postedAt: new Date(),
+          postedBy: `system:credit-pool:${args.action}`,
+          notes: args.notes ?? null,
+        })
+        .onConflictDoNothing({ target: financialLedger.externalEventId })
+        .returning({ id: financialLedger.id });
+    }
 
     const poolMonthly = TIER_LIMITS[tier].creditPool;
     const usedAfter = await poolUsageThisMonth(args.organizationId);

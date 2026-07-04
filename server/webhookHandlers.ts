@@ -1,12 +1,18 @@
 import { getUncachableStripeClient, getStripeSecretKey } from './stripeClient';
 import { storage, db } from './storage';
+import { withTransaction } from './db';
 import { creditService } from './services/credits';
-import { CreditPackId, stripeProcessedEvents } from '@shared/schema';
+import {
+  CreditPackId,
+  stripeProcessedEvents,
+  organizations,
+  subscriptionEvents,
+  subscriptionHistory,
+} from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { logger } from './utils/logger';
 import { addMonths } from './utils/dateUtils';
-import { recordSubscriptionHistoryEvent } from './routes-subscription';
 import { recordSense } from './services/autopilot/perception';
 
 export class WebhookHandlers {
@@ -68,12 +74,40 @@ export class WebhookHandlers {
       return;
     }
 
-    // Event claimed — dispatch. Errors are logged but don't re-throw,
-    // preventing infinite Stripe retries on unrecoverable failures.
+    // Event claimed — dispatch. W1.8 (2026-07 audit): errors used to be
+    // swallowed here, which combined with claim-before-process meant a
+    // failed handler acked 200 AND left the claim row behind — Stripe's
+    // retry was skipped as a "duplicate" and the update was lost forever
+    // (charged-but-not-provisioned with no recovery path). Now a failure
+    // releases the claim and re-throws: the route returns non-2xx, pages
+    // on-call, and Stripe's bounded retry ladder re-delivers an event we
+    // can claim again. Handlers that swallow their own non-critical errors
+    // (emails, telemetry) are unaffected — only state-critical failures
+    // propagate this far.
     try {
       await WebhookHandlers.dispatchEvent(event);
     } catch (err: any) {
-      logger.error(`[webhook] Unrecoverable error processing ${event.type} (${event.id})`, err);
+      logger.error(`[webhook] Error processing ${event.type} (${event.id}) — releasing claim for Stripe retry`, err);
+      await WebhookHandlers.releaseClaim(event.id);
+      throw err;
+    }
+  }
+
+  /**
+   * Release a previously-claimed event so a Stripe redelivery can be
+   * processed. Best-effort: if the delete itself fails we've already paged
+   * on-call via the route's non-2xx path.
+   */
+  private static async releaseClaim(eventId: string): Promise<void> {
+    try {
+      await db
+        .delete(stripeProcessedEvents)
+        .where(eq(stripeProcessedEvents.stripeEventId, eventId));
+    } catch (err) {
+      logger.warn(
+        `[webhook] Failed to release claim for ${eventId} — a Stripe retry will be skipped as duplicate`,
+        err instanceof Error ? err : undefined,
+      );
     }
   }
 
@@ -253,10 +287,41 @@ export class WebhookHandlers {
 
       if (!subscriptionId) return;
 
-      await storage.updateOrganization(organizationId, {
-        stripeSubscriptionId: subscriptionId,
-        subscriptionStatus: 'active',
-        trialUsed: true, // Mark here, not at checkout creation — abandoned checkouts must not consume the trial
+      // W1.8: subscription state + the "subscribed" audit row commit
+      // atomically. A crash between them used to leave a provisioned org
+      // with no history marker (or, worse orderings elsewhere, history
+      // without state). Failure rolls both back and propagates so Stripe
+      // redelivers.
+      await withTransaction(async (tx) => {
+        const [orgAfter] = await tx
+          .update(organizations)
+          .set({
+            stripeSubscriptionId: subscriptionId,
+            subscriptionStatus: 'active',
+            trialUsed: true, // Mark here, not at checkout creation — abandoned checkouts must not consume the trial
+            updatedAt: new Date(),
+          })
+          .where(eq(organizations.id, organizationId))
+          .returning({
+            subscriptionTier: organizations.subscriptionTier,
+            billingInterval: organizations.billingInterval,
+          });
+
+        // Renoir audit-log: capture the initial "subscribed" event with the
+        // priced state. customer.subscription.updated will follow with the
+        // tier-resolved row, but having an explicit subscribed marker makes
+        // tenure math straightforward.
+        await tx.insert(subscriptionHistory).values({
+          organizationId,
+          eventType: 'subscribed',
+          tier: orgAfter?.subscriptionTier ?? null,
+          billingInterval: orgAfter?.billingInterval ?? null,
+          priceCents: null,
+          metadata: {
+            stripeSubscriptionId: subscriptionId,
+            source: 'webhook:checkout.session.completed',
+          } as any,
+        });
       });
 
       logger.info(`[webhook] Subscription checkout completed: Org ${organizationId}, sub ${subscriptionId}`);
@@ -284,30 +349,6 @@ export class WebhookHandlers {
           eventValue: { stripeSubscriptionId: subscriptionId, source: 'webhook:checkout.session.completed' },
         });
       } catch { /* non-fatal */ }
-
-      // Renoir audit-log: capture the initial "subscribed" event with the
-      // priced state. customer.subscription.updated will follow with the
-      // tier-resolved row, but having an explicit subscribed marker makes
-      // tenure math straightforward.
-      try {
-        const orgAfter = await storage.getOrganization(organizationId);
-        await recordSubscriptionHistoryEvent({
-          organizationId,
-          eventType: 'subscribed',
-          tier: orgAfter?.subscriptionTier || null,
-          billingInterval: orgAfter?.billingInterval || null,
-          priceCents: null,
-          metadata: {
-            stripeSubscriptionId: subscriptionId,
-            source: 'webhook:checkout.session.completed',
-          },
-        });
-      } catch (auditErr) {
-        logger.warn(
-          '[webhook] subscription_history audit insert failed',
-          auditErr instanceof Error ? auditErr : undefined,
-        );
-      }
 
       // Send subscription welcome email
       try {
@@ -357,7 +398,11 @@ export class WebhookHandlers {
         logger.warn('[webhook] Could not send subscription welcome email (email service may not be configured)', emailErr instanceof Error ? emailErr : undefined);
       }
     } catch (err) {
+      // State-critical failure — propagate so processWebhook releases the
+      // claim and Stripe redelivers (a swallowed error here = a customer
+      // charged but never provisioned, silently).
       logger.error('[webhook] Error processing subscription checkout', err instanceof Error ? err : undefined);
+      throw err;
     }
   }
 
@@ -442,33 +487,42 @@ export class WebhookHandlers {
 
       const previousTier = org.subscriptionTier || 'free';
 
-      // Update org to free tier
-      await storage.updateOrganization(org.id, {
-        subscriptionTier: 'free',
-        subscriptionStatus: 'cancelled',
-        dunningStage: 'cancelled',
-        stripeSubscriptionId: null,
-      });
+      // W1.8: downgrade + both audit rows commit atomically. A crash
+      // mid-sequence used to leave an org on the free tier with no cancel
+      // event and no lifecycle history — tenure/churn math silently wrong.
+      await withTransaction(async (tx) => {
+        // Update org to free tier
+        await tx
+          .update(organizations)
+          .set({
+            subscriptionTier: 'free',
+            subscriptionStatus: 'cancelled',
+            dunningStage: 'cancelled',
+            stripeSubscriptionId: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(organizations.id, org.id));
 
-      // Log the subscription cancel event
-      await storage.logSubscriptionEvent({
-        organizationId: org.id,
-        eventType: 'cancel',
-        fromTier: previousTier,
-        toTier: null,
-      });
+        // Log the subscription cancel event
+        await tx.insert(subscriptionEvents).values({
+          organizationId: org.id,
+          eventType: 'cancel',
+          fromTier: previousTier,
+          toTier: null,
+        });
 
-      // Renoir audit-log: priced lifecycle history for reactivation context.
-      await recordSubscriptionHistoryEvent({
-        organizationId: org.id,
-        eventType: 'canceled',
-        tier: previousTier,
-        billingInterval: org.billingInterval || null,
-        priceCents: null,
-        metadata: {
-          stripeSubscriptionId: subscription.id,
-          source: 'webhook:customer.subscription.deleted',
-        },
+        // Renoir audit-log: priced lifecycle history for reactivation context.
+        await tx.insert(subscriptionHistory).values({
+          organizationId: org.id,
+          eventType: 'canceled',
+          tier: previousTier,
+          billingInterval: org.billingInterval || null,
+          priceCents: null,
+          metadata: {
+            stripeSubscriptionId: subscription.id,
+            source: 'webhook:customer.subscription.deleted',
+          } as any,
+        });
       });
 
       // Send cancellation confirmation email
@@ -585,7 +639,11 @@ export class WebhookHandlers {
 
       logger.info(`Subscription cancelled: Org ${org.id}`);
     } catch (err) {
+      // State-critical failure — propagate for claim release + Stripe retry.
+      // (The email/survey/ML blocks above swallow their own errors; only the
+      // downgrade transaction can land here.)
       logger.error('Error processing subscription cancelled', err instanceof Error ? err : undefined);
+      throw err;
     }
   }
 
@@ -660,16 +718,27 @@ export class WebhookHandlers {
           : recurringInterval === 'month' ? 'monthly'
           : null;
 
+      const previousTier = org.subscriptionTier;
       if (newTier) {
-        const previousTier = org.subscriptionTier;
         updates.subscriptionTier = newTier;
+      }
+      const tierChanged = !!newTier && previousTier !== newTier;
 
-        if (previousTier !== newTier) {
-          await storage.logSubscriptionEvent({
+      // W1.8: state + audit rows commit atomically. The old ordering wrote
+      // both audit rows BEFORE updateOrganization — a crash between them
+      // recorded a tier change that never happened.
+      await withTransaction(async (tx) => {
+        await tx
+          .update(organizations)
+          .set({ ...updates, updatedAt: new Date() })
+          .where(eq(organizations.id, org.id));
+
+        if (tierChanged) {
+          await tx.insert(subscriptionEvents).values({
             organizationId: org.id,
             eventType: 'change',
             fromTier: previousTier,
-            toTier: newTier,
+            toTier: newTier!,
           });
 
           // Renoir audit-log: classify as reactivated when the org was on
@@ -679,22 +748,20 @@ export class WebhookHandlers {
             !previousTier ||
             previousTier === 'free' ||
             org.subscriptionStatus === 'cancelled';
-          await recordSubscriptionHistoryEvent({
+          await tx.insert(subscriptionHistory).values({
             organizationId: org.id,
             eventType: wasInactive ? 'reactivated' : 'tier_changed',
-            tier: newTier,
+            tier: newTier!,
             billingInterval: billingIntervalLabel,
             priceCents: priceUnitAmount,
             metadata: {
               stripeSubscriptionId: subscription.id,
               fromTier: previousTier ?? null,
               source: 'webhook:customer.subscription.updated',
-            },
+            } as any,
           });
         }
-      }
-
-      await storage.updateOrganization(org.id, updates);
+      });
       logger.info(`[webhook] Subscription updated: Org ${org.id}, Status: ${subscription.status}${newTier ? `, Tier: ${newTier}` : ''}`);
 
       // Founder notification: new paid signup or upgrade
@@ -715,7 +782,9 @@ export class WebhookHandlers {
         }
       }
     } catch (err) {
+      // State-critical failure — propagate for claim release + Stripe retry.
       logger.error('Error processing subscription updated', err instanceof Error ? err : undefined);
+      throw err;
     }
   }
 
