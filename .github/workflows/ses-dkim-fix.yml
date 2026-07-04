@@ -40,6 +40,14 @@ jobs:
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Vendor credential health probe (read-only, no values)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          B64="$(base64 -w0 scripts/vendor-health-probe.mjs)"
+          flyctl ssh console -a acreos -C "sh -c 'echo ${B64} | base64 -d > /app/scripts/vendor-health-probe.mjs && node /app/scripts/vendor-health-probe.mjs'"
+
       - name: Cloudflare-only diagnostic (no AWS needed)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
