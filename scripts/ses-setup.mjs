@@ -39,6 +39,7 @@ import {
   SESv2Client,
   CreateEmailIdentityCommand,
   GetEmailIdentityCommand,
+  PutEmailIdentityDkimSigningAttributesCommand,
   PutEmailIdentityMailFromAttributesCommand,
   CreateConfigurationSetCommand,
   GetAccountCommand,
@@ -187,7 +188,25 @@ async function run() {
   }
 
   step(3, `Retrieving DKIM tokens`);
-  const idDetails = await ses.send(new GetEmailIdentityCommand({ EmailIdentity: DOMAIN }));
+  let idDetails = await ses.send(new GetEmailIdentityCommand({ EmailIdentity: DOMAIN }));
+
+  // SES gives DNS detection 72 hours; after that the identity's DKIM status
+  // flips to FAILED and stays there — publishing the CNAMEs alone will NOT
+  // make SES look again. Re-asserting Easy DKIM restarts the verification
+  // clock (and returns the current tokens). Idempotent for healthy states.
+  const initialDkimStatus = idDetails.DkimAttributes?.Status || "UNKNOWN";
+  if (initialDkimStatus === "FAILED" || initialDkimStatus === "TEMPORARY_FAILURE") {
+    warn(`DKIM status is ${initialDkimStatus} — restarting Easy DKIM verification`);
+    await ses.send(
+      new PutEmailIdentityDkimSigningAttributesCommand({
+        EmailIdentity: DOMAIN,
+        SigningAttributesOrigin: "AWS_SES",
+      }),
+    );
+    idDetails = await ses.send(new GetEmailIdentityCommand({ EmailIdentity: DOMAIN }));
+    ok(`verification restarted — SES will re-check DNS for the next 72h`);
+  }
+
   const tokens = idDetails.DkimAttributes?.Tokens || [];
   if (tokens.length !== 3) {
     fail(`Expected 3 DKIM tokens, got ${tokens.length}. Re-check SES identity.`);

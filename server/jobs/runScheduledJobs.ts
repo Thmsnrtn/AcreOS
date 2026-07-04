@@ -312,11 +312,16 @@ async function processDomainAudits() {
     // Andrei (domain "ai") — Pax quality-drift detectors: hallucination-flag-rate
     // spike (load-bearing), eval-pass-rate regression, cost-per-interaction creep.
     const { aiQualityDetectors } = await import('../services/andrei/aiQualityAudit');
+    // Tess (reliability) — SES platform identity watchdog: DKIM / MAIL FROM /
+    // verified-for-sending status straight from SES, so a failing identity
+    // pages here instead of only via an AWS Health email in a human inbox.
+    const { platformEmailIdentityDetector } = await import('../services/audit/detectors/platformEmailIdentityDetector');
 
     const result = await runDomainAudits([
       ...financeDetectors,
       observationRateDetector,
       ...aiQualityDetectors,
+      platformEmailIdentityDetector,
     ]);
     // Auto-age open findings whose condition stopped firing >7d ago.
     const staled = await staleFindings(7);
