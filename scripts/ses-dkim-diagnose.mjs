@@ -59,6 +59,27 @@ if (awsKeys.includes("AWS_SESSION_TOKEN")) {
   );
 }
 
+// Key SHAPE only — prefix + length are shown by AWS's own console and are
+// not secret; the key material itself is never printed.
+const akid = process.env.AWS_ACCESS_KEY_ID || "";
+if (akid) {
+  const prefix = akid.slice(0, 4);
+  const clean = /^[A-Z0-9]+$/.test(akid.trim()) && akid === akid.trim();
+  console.log(
+    `  AWS_ACCESS_KEY_ID shape: prefix=${prefix} length=${akid.length} wellFormed=${clean}`,
+  );
+  if (prefix === "ASIA") {
+    console.log(
+      `  !! ASIA prefix = TEMPORARY (STS) credentials — they require AWS_SESSION_TOKEN and expire within hours. This machine has no session token, which produces exactly "security token invalid". Fix: create a PERMANENT access key (AKIA…) for the SES IAM user and fly secrets set both vars.`,
+    );
+  }
+  if (!clean) {
+    console.log(
+      `  !! AWS_ACCESS_KEY_ID contains whitespace or unexpected characters — likely a copy/paste artifact in fly secrets set.`,
+    );
+  }
+}
+
 console.log(`\n── Cloudflare zone scan for ${DOMAIN} ──`);
 const zones = await cf(`/zones?name=${encodeURIComponent(DOMAIN)}`);
 if (!zones.length) {
