@@ -24,6 +24,14 @@ export interface HeadSpec {
   ogType?: "website" | "article";
   /** Optional JSON-LD object appended before </head>. */
   jsonLd?: Record<string, unknown>;
+  /**
+   * Emit <meta name="robots" content="noindex"> server-side. Keeps the
+   * crawler story consistent with pages whose CLIENT asserts noindex (the
+   * compare pages, until their competitor matrices are founder-verified) —
+   * without this, the server head said "index me" while the SPA said the
+   * opposite.
+   */
+  noindex?: boolean;
 }
 
 export function escapeHtml(s: string): string {
@@ -82,6 +90,9 @@ export function injectHead(shellHtml: string, spec: HeadSpec, baseUrl: string): 
     // Canonical: replace an existing one or insert fresh.
     const canonicalTag = `<link rel="canonical" href="${escapeHtml(canonical)}" />`;
     html = upsertMeta(html, /<link\s+rel="canonical"[^>]*>/i, canonicalTag);
+    if (spec.noindex) {
+      html = upsertMeta(html, /<meta\s+name="robots"[^>]*>/i, `<meta name="robots" content="noindex" />`);
+    }
     if (spec.jsonLd) {
       // </script> inside JSON would close the tag early — escape the slash.
       const json = JSON.stringify(spec.jsonLd).replace(/<\//g, "<\\/");
@@ -149,6 +160,53 @@ export function headForCompare(slug: string): HeadSpec {
     title: `AcreOS vs ${competitor} — land investing platform comparison · AcreOS`,
     description: `How AcreOS compares to ${competitor} for land investors: county data, direct mail, seller-response capture, deal pipeline, and pricing — feature by feature.`,
     canonicalPath: `/compare/${slug}`,
+    ogType: "website",
+    // Match the client's noindex until the competitor matrices are
+    // founder-verified — one consistent signal to crawlers.
+    noindex: true,
+  };
+}
+
+/**
+ * /tools/parcel-check — the landing hero's own secondary CTA and the
+ * "the parcel check IS the demo" proof surface. Without a server head it
+ * shared as the generic shell card (2026-07 marketing audit).
+ */
+export function headForParcelCheck(): HeadSpec {
+  return {
+    title: "Free parcel check — soils, flood, wetlands, road access · AcreOS",
+    description:
+      "Look up any US parcel free: soil quality, flood zone, wetlands, elevation, and road access from public data — no signup required. See what the land is really like before you offer.",
+    canonicalPath: "/tools/parcel-check",
+    ogType: "website",
+  };
+}
+
+/** /tools/calculator — the free land-deal calculator. */
+export function headForCalculator(): HeadSpec {
+  return {
+    title: "Free land deal calculator — offer, margin, carry cost · AcreOS",
+    description:
+      "Run the numbers on a land deal in seconds: offer price bands, expected margin, holding costs, and resale scenarios. Free, no signup.",
+    canonicalPath: "/tools/calculator",
+    ogType: "website",
+  };
+}
+
+/**
+ * /p/:state/:county/:apn — shareable public parcel reports. Derived from
+ * the URL alone (no DB read) so a shared link unfurls with the parcel's own
+ * identity instead of the homepage card.
+ */
+export function headForPublicParcelReport(state: string, county: string, apn: string): HeadSpec {
+  const pretty = (s: string) =>
+    s.replace(/-/g, " ").split(" ").map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
+  const countyLabel = pretty(county);
+  const stateLabel = state.toUpperCase();
+  return {
+    title: `Parcel ${apn} — ${countyLabel} County, ${stateLabel} · AcreOS parcel report`,
+    description: `Free parcel report for APN ${apn} in ${countyLabel} County, ${stateLabel}: soils, flood zone, wetlands, elevation, road access, and owner-of-record from public data.`,
+    canonicalPath: `/p/${state}/${county}/${apn}`,
     ogType: "website",
   };
 }

@@ -62,6 +62,22 @@ describe("injectHead", () => {
     expect(out).toContain('rel="canonical"');
   });
 
+  it("emits a robots noindex meta when the spec asks for one", () => {
+    const out = injectHead(
+      SHELL,
+      { title: "T", description: "D", canonicalPath: "/compare/acreos-vs-x", noindex: true },
+      "https://acreos.io",
+    );
+    expect(out).toContain('name="robots" content="noindex"');
+    // And absent when not requested.
+    const indexed = injectHead(
+      SHELL,
+      { title: "T", description: "D", canonicalPath: "/learn" },
+      "https://acreos.io",
+    );
+    expect(indexed).not.toContain('name="robots" content="noindex"');
+  });
+
   it("appends JSON-LD with </script> neutralized inside the payload", () => {
     const out = injectHead(
       SHELL,

@@ -103,11 +103,11 @@ export function ComparisonPage({ config }: { config: ComparisonConfig }) {
       titleTestId="text-compare-h1"
       description={config.metaDescription}
       canonicalUrl={`${SITE.url}/compare/${config.slug}`}
-      // Prevent indexing on incomplete pages — once founder fills the
-      // `data-todo` slots and removes this guard, the noindex is gone.
-      // For now we ship the route + schema but keep robots out of the
-      // half-finished prose. (Search Console will still discover the URL
-      // via the sitemap once we strip this.)
+      // Prose is real (2026-07 sweep) but the competitor matrix columns are
+      // deliberately blank until the founder verifies each claim against the
+      // competitor's CURRENT product — we don't publish guessed feature
+      // claims. Remove this noindex (and the matching flag in
+      // serverHead.headForCompare) once the matrices are filled.
       noindex
       width="wide"
       structuredData={<JsonLd id={`compare-${config.slug}`} data={productSchema} />}
@@ -127,11 +127,10 @@ export function ComparisonPage({ config }: { config: ComparisonConfig }) {
       intro={
         <p
           className="text-lg text-muted-foreground"
-          data-todo="positioning-summary"
           data-testid="text-compare-summary"
         >
           {config.positioning ??
-            `Positioning summary for AcreOS vs ${config.competitor} goes here. Founder voice — describe the wedge in plain English. (TODO)`}
+            `AcreOS is built for one loop: pull county data, mail the right owners, capture every seller response, and turn it into an offer — with an autopilot that runs the busywork. Below is how that stacks up against ${config.competitor}, capability by capability. Where we haven't verified ${config.competitor}'s current feature, the cell is left blank rather than guessed.`}
         </p>
       }
     >
@@ -175,20 +174,46 @@ export function ComparisonPage({ config }: { config: ComparisonConfig }) {
         </CardContent>
       </Card>
 
-      <section className="space-y-4 mb-10" data-todo="why-switch-section">
-        <h2 className="text-2xl font-semibold">Why investors switch</h2>
-        <p className="text-muted-foreground">
-          Founder fills this section with three concrete reasons land investors moved from{" "}
-          {config.competitor} to AcreOS. (TODO)
-        </p>
+      <section className="space-y-4 mb-10">
+        <h2 className="text-2xl font-semibold">What you get with AcreOS</h2>
+        <ul className="space-y-3 text-muted-foreground list-disc pl-5">
+          <li>
+            <span className="font-medium text-foreground">The whole loop in one place.</span>{" "}
+            County data → targeted mail → seller responses captured automatically (SMS and
+            email land on the lead, not in a separate inbox) → offer out the door. No
+            stitching three tools together.
+          </li>
+          <li>
+            <span className="font-medium text-foreground">Numbers that refuse to lie.</span>{" "}
+            Valuations come from comparable sales or a trained model — and when there isn't
+            enough data, AcreOS says "not enough data" instead of inventing a figure you might
+            bid real money on.
+          </li>
+          <li>
+            <span className="font-medium text-foreground">An autopilot, not just a database.</span>{" "}
+            Pax drafts replies, watches your pipeline, and queues next actions — everything
+            outbound waits for your explicit approval before it leaves the building.
+          </li>
+        </ul>
       </section>
 
-      <section className="space-y-4 mb-10" data-todo="migration-section">
+      <section className="space-y-4 mb-10">
         <h2 className="text-2xl font-semibold">Migrating from {config.competitor}</h2>
-        <p className="text-muted-foreground">
-          Plain-English checklist for moving lists, mail history, and pipeline state out of{" "}
-          {config.competitor} into AcreOS. (TODO)
-        </p>
+        <ol className="space-y-3 text-muted-foreground list-decimal pl-5">
+          <li>
+            Export your owner/lead lists from {config.competitor} as CSV — AcreOS imports
+            standard CSVs directly on the Leads page (names, addresses, phones, and any
+            custom columns map on import).
+          </li>
+          <li>
+            Bring notes on past mail touches as a column in the same CSV; they land on each
+            lead's timeline so your response history isn't lost.
+          </li>
+          <li>
+            Recreate in-flight deals on the pipeline — most investors move active deals in
+            under an hour, and your first mail batch can go out the same day.
+          </li>
+        </ol>
       </section>
 
       <div className="flex flex-col sm:flex-row gap-3">

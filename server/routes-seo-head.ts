@@ -28,6 +28,9 @@ import {
   headForFieldNotesArchive,
   headForCompare,
   headForLearnPath,
+  headForParcelCheck,
+  headForCalculator,
+  headForPublicParcelReport,
   type HeadSpec,
 } from "./services/seo/serverHead";
 
@@ -125,5 +128,41 @@ export function registerSeoHeadRoutes(app: Express): void {
     }
   });
 
-  logger.info("[seoHead] per-route public heads registered (field-notes, compare, learn)");
+  // 2026-07 marketing audit: the proof surfaces. /tools/parcel-check is the
+  // landing hero's own CTA and /p/ reports are built to be SHARED — both
+  // unfurled as the generic shell card because only client-side <OpenGraph>
+  // set their meta (invisible to non-JS scrapers).
+  app.get("/tools/parcel-check", (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      sendWithHead(res, next, headForParcelCheck());
+    } catch (err) {
+      logger.warn("[seoHead] parcel-check head failed — plain shell", err instanceof Error ? err : undefined);
+      next();
+    }
+  });
+
+  app.get("/tools/calculator", (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      sendWithHead(res, next, headForCalculator());
+    } catch (err) {
+      logger.warn("[seoHead] calculator head failed — plain shell", err instanceof Error ? err : undefined);
+      next();
+    }
+  });
+
+  app.get("/p/:state/:county/:apn", (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { state, county, apn } = req.params;
+      // Sanitize: URL-shaped identifiers only; anything odd → plain shell.
+      if (!/^[a-z]{2}$/i.test(state) || !/^[a-z0-9-]{1,60}$/i.test(county) || !/^[a-zA-Z0-9.-]{1,40}$/.test(apn)) {
+        return next();
+      }
+      sendWithHead(res, next, headForPublicParcelReport(state, county, apn));
+    } catch (err) {
+      logger.warn("[seoHead] parcel-report head failed — plain shell", err instanceof Error ? err : undefined);
+      next();
+    }
+  });
+
+  logger.info("[seoHead] per-route public heads registered (field-notes, compare, learn, tools, /p)");
 }

@@ -9,6 +9,7 @@ import { eq, and, gte, lte, count, sql, desc } from "drizzle-orm";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
+import { omitProtectedFields } from "./utils/updatePayload";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 
@@ -269,7 +270,7 @@ export function registerAnalyticsRoutes(app: Express): void {
         return Errors.notFound(res, "Automation rule");
       }
       
-      const updated = await storage.updateAutomationRule(id, req.body);
+      const updated = await storage.updateAutomationRule(id, omitProtectedFields(req.body));
       res.json(updated);
     } catch (error: any) {
       logger.error("Update automation rule error", error);
