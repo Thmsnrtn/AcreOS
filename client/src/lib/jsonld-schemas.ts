@@ -65,7 +65,7 @@ export function productLandingSchema() {
     description: ORG_DESCRIPTION,
     brand: { "@type": "Brand", name: "AcreOS" },
     url: SITE_URL,
-    image: `${SITE_URL}/images/aerial_view_wide_hor_0f1000c4.jpg`,
+    image: `${SITE_URL}/images/aerial_view_wide_hor_2dcf51b8.jpg`,
     offers: {
       "@type": "AggregateOffer",
       priceCurrency: "USD",

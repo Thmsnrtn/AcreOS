@@ -403,7 +403,7 @@ export default function AuthPage() {
           page.  Heavy gradient keeps copy readable on both themes. */}
       <div
         className="absolute inset-0 -z-docked bg-cover bg-center opacity-40 dark:opacity-25"
-        style={{ backgroundImage: "url(/images/aerial_view_wide_hor_0f1000c4.jpg)" }}
+        style={{ backgroundImage: "url(/images/aerial_view_wide_hor_2dcf51b8.jpg)" }}
         aria-hidden="true"
       />
       <div
