@@ -193,7 +193,9 @@ export async function anonymizeUser(userId: string): Promise<DeletionReport> {
   // 5a. Task #48: Delete AI conversation history and org-scoped agent memory
   // aiConversations are user-scoped; agentMemory is org-scoped (deleted if user owns the org)
   const deletedAiMemory: { id: number }[] = []; // agentMemory is org-scoped, not user-scoped
-  // Note: org-level agentMemory is purged separately via deleteOrganization(orgId)
+  // Org-level agentMemory (and every other org-scoped table) is purged by
+  // server/services/orgDeletion.ts deleteOrganization(orgId) — implemented
+  // 2026-07-04; this comment referenced it for months before it existed.
 
   const deletedAiConversations = await db.delete(aiConversations)
     .where(eq(aiConversations.userId, String(userId)))
