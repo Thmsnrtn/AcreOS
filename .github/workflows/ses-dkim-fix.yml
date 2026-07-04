@@ -1,0 +1,48 @@
+# One-shot, manually-dispatched remediation for the SES DKIM FAILED state
+# (AWS Health: "Email DKIM setup FAILURE for acreos.io", 2026-07).
+#
+# Why a workflow: the AWS + Cloudflare credentials live only as Fly secrets,
+# so the fix must execute ON a Fly machine. This job uses the same
+# FLY_API_TOKEN as deploy.yml to ssh in and run scripts/ses-setup.mjs.
+#
+# Why the base64 upload: the deployed image predates the FAILED-state
+# handling in ses-setup.mjs (restarting Easy DKIM verification — without
+# which SES never re-checks DNS after its 72h window). We ship this
+# branch's copy of the script to the machine and run it there. The single
+# ssh invocation writes + executes in one session so both hit the same
+# machine. Falls back to the deployed script (DNS upsert only) if the
+# upload path fails.
+#
+# Safe to re-run: the script is idempotent and read-checks every step.
+# Nothing secret is printed — DKIM tokens are public DNS content.
+name: SES DKIM fix (manual one-shot)
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  fix:
+    name: Run SES setup on the Fly machine
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Run hardened ses-setup.mjs on the machine
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          B64="$(base64 -w0 scripts/ses-setup.mjs)"
+          # Write next to the deployed scripts so ESM imports resolve
+          # against /app/node_modules, then execute — one ssh session,
+          # one machine.
+          if ! flyctl ssh console -a acreos -C "sh -c 'echo ${B64} | base64 -d > /app/scripts/ses-setup-hotfix.mjs && node /app/scripts/ses-setup-hotfix.mjs'"; then
+            echo "::warning::Hotfix upload path failed — falling back to the deployed script (publishes DNS but cannot restart a FAILED verification)."
+            flyctl ssh console -a acreos -C "node /app/scripts/ses-setup.mjs"
+          fi
