@@ -201,6 +201,7 @@ async function run() {
       new PutEmailIdentityDkimSigningAttributesCommand({
         EmailIdentity: DOMAIN,
         SigningAttributesOrigin: "AWS_SES",
+        SigningAttributes: { NextSigningKeyLength: "RSA_2048_BIT" },
       }),
     );
     idDetails = await ses.send(new GetEmailIdentityCommand({ EmailIdentity: DOMAIN }));

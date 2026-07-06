@@ -13,7 +13,7 @@ app="${2:-acreos}"
 
 # GNU base64 has -w0; macOS/BSD base64 wraps by default and lacks it.
 if b64=$(base64 -w0 "${script}" 2>/dev/null); then :; else
-  b64=$(base64 "${script}" | tr -d '\n')
+  b64=$(base64 < "${script}" | tr -d '\n')
 fi
 
 name="recovery-$(basename "${script}")"
