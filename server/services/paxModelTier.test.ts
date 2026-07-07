@@ -85,6 +85,7 @@ import {
   PAX_MODEL_OPUS,
   MONTHLY_SOFT_CAP_PRO,
   MONTHLY_SOFT_CAP_SCALE,
+  MONTHLY_HAIKU_FLOOR_SCALE,
 } from "./paxModelTier";
 
 beforeEach(() => {
@@ -172,13 +173,25 @@ describe("pickPaxModelForOrg", () => {
   it("scale tier under monthly cap → Opus", async () => {
     mocks.setSelectQueue([
       [{ subscriptionTier: "scale" }],
-      [{ n: 499 }],
+      [{ n: MONTHLY_SOFT_CAP_SCALE - 1 }],
     ]);
     const choice = await pickPaxModelForOrg(42);
     expect(choice.model).toBe(PAX_MODEL_OPUS);
     expect(choice.tier).toBe("scale");
     expect(choice.reason).toBe("tier_default");
     expect(choice.isDowngraded).toBe(false);
+  });
+
+  it("scale tier past the Haiku floor → Haiku (2026-07-07 margin guard)", async () => {
+    mocks.setSelectQueue([
+      [{ subscriptionTier: "scale" }],
+      [{ n: MONTHLY_HAIKU_FLOOR_SCALE }],
+    ]);
+    const choice = await pickPaxModelForOrg(42);
+    expect(choice.model).toBe(PAX_MODEL_HAIKU);
+    expect(choice.tier).toBe("scale");
+    expect(choice.reason).toBe("monthly_haiku_floor_downgrade");
+    expect(choice.isDowngraded).toBe(true);
   });
 
   it("scale tier at monthly cap → Sonnet downgrade", async () => {
