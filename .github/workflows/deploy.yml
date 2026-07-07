@@ -3,6 +3,13 @@ name: Deploy to Fly.io
 on:
   push:
     branches: [main]
+  # Manual re-kick (2026-07-07): a Fly release-command VM failed to start
+  # ("deadline_exceeded: machine still starting" — transient platform
+  # failure, run 28885355298) and there was NO way to re-run the deploy
+  # short of pushing a new commit to main. workflow_dispatch gives the
+  # founder a one-click retry from the Actions tab; the full pre-deploy
+  # gate still runs.
+  workflow_dispatch:
 
 concurrency:
   group: production-deploy
