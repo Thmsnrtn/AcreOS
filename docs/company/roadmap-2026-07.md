@@ -58,6 +58,20 @@ bucket decision); W7 continuous debt (storage.ts decomposition, res-status
 consolidation (mirror Today's aggregate-endpoint pattern); the three
 founder decisions below.
 
+**Shipped 2026-07-07 (mature-machine H0 pass, `claude/platform-roadmap-strategy-eve1ah`):**
+strategy layer added (`mature-machine.md` north-star + `deletion-ledger.md`
+with keep/kill/freeze verdicts); DNC/litigator scrub SEAM built at the
+sendOrgSMS choke point (migration 0195 — vendor pick remains Founder
+decision #1; seam is inert until DNC_SCRUB_PROVIDER is set); module-state
+audit executed (authority delegations + execution throttle → Postgres,
+migration 0196; five stores pinned; rest resolved-by-deletion); ESLint
+blocking; coverage converted from aspirational lines:50 (measured: 18.22%,
+permanently red) to a blocking ratchet with per-file floors on money/send
+paths; docs/exhaustive-completion (863 files) archived with all runtime
+refs updated; Capital tab + Marketplace sidebar entry un-wired (frozen
+features no longer advertised in customer chrome); LCS methodology
+versioned (v1) and published on the explainer; README/replit.md truth pass.
+
 **Resolved 2026-07-04 (platform sweep r1-r4):** borrower-token CSPRNG +
 portal sunset; hot-path indexes; retention truth; dunning/pricing/footer
 marketing fixes; client diet (119MB); mass-assignment floor (22 sites);
