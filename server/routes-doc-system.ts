@@ -156,6 +156,26 @@ export function registerDocSystemRoutes(app: Express): void {
   // DOCUMENT TEMPLATES (Phase 4.3-4.5)
   // ============================================
 
+  // GET /api/documents/overview — the Documents page's single-round-trip
+  // aggregate (mirrors /api/today's gather-once pattern). Returns the three
+  // page-owned lists together; deals/properties dropdown data intentionally
+  // stays on the shared /api/deals + /api/properties caches.
+  api.get("/api/documents/overview", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      await storage.seedSystemTemplates();
+      const [templates, documents, packages] = await Promise.all([
+        storage.getDocumentTemplates(org.id),
+        storage.getGeneratedDocuments(org.id, {}),
+        storage.getDocumentPackages(org.id, {}),
+      ]);
+      res.json({ templates, documents, packages, generatedAt: new Date().toISOString() });
+    } catch (error: any) {
+      logger.error("Documents overview error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
+    }
+  });
+
   // GET /api/document-templates - List all templates (system + org-specific)
   api.get("/api/document-templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

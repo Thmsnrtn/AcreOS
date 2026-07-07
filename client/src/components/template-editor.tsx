@@ -200,6 +200,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
     },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/overview"] });
       toast({ title: "Template created successfully" });
       onSave?.(response as unknown as DocumentTemplate);
     },

@@ -222,6 +222,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/document-packages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/overview"] });
       toast({ title: "Documents generated successfully" });
     },
     onError: (error: any) => {
