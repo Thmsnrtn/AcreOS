@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
+import { isFrozenRoute } from "@shared/feature-freeze";
 
 export interface FeatureFlagsResponse {
   enabledKeys: string[];
@@ -17,12 +18,17 @@ export interface FeatureFlagsResponse {
 
 /**
  * Pure route/flag decision logic, exported for tests. Precedence:
+ * 0. FROZEN route (shared/feature-freeze.ts, deletion-ledger verdicts) →
+ *    hidden — checked before EVERYTHING, including the fail-open rules, so
+ *    an unseeded flags table or a /api/config/features outage can never
+ *    un-hide a frozen door (launch-week WS1 fix, 2026-07-07)
  * 1. no data (loading / unauthenticated / error) → show everything
  * 2. explicit deny-list hit → hidden
  * 3. empty enabled-list → show everything (flags system unused)
  * 4. otherwise → must be in the enabled-list
  */
 export function resolveRouteEnabled(data: FeatureFlagsResponse | undefined, route: string): boolean {
+  if (isFrozenRoute(route)) return false;
   if (!data) return true;
   if (data.disabledRoutes?.includes(route)) return false;
   if (data.enabledRoutes.length === 0) return true;

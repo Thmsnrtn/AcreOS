@@ -601,7 +601,10 @@ const NAV_MODULES: NavModule[] = [
     overflow: [
       { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
       { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month forecasting" },
-      { label: "Capital Markets", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
+      // Capital Markets entry removed 2026-07-07 (deletion ledger): the
+      // feature is FROZEN behind feature_capital_markets — same precedent as
+      // the Marketplace entry above. Restore when note securitization is a
+      // real revenue line (H4).
       { label: "Analytics", icon: Brain, href: "/analytics", description: "Insights and reporting" },
     ],
   },

@@ -7630,6 +7630,17 @@ const STATEMENTS = [
    )`,
   `CREATE INDEX IF NOT EXISTS "marketing_spend_spent_at_idx" ON "marketing_spend" ("spent_at")`,
   `CREATE INDEX IF NOT EXISTS "marketing_spend_channel_spent_at_idx" ON "marketing_spend" ("channel", "spent_at")`,
+
+  // Reactivation surveys (migration 0198, launch-week WS1) — the welcome-back
+  // page's survey POST finally has a real endpoint + durable store.
+  `CREATE TABLE IF NOT EXISTS "reactivation_surveys" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "user_id" text,
+     "return_reason" text NOT NULL,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "reactivation_surveys_org_created_idx" ON "reactivation_surveys" ("organization_id", "created_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
