@@ -585,6 +585,38 @@ export function registerCommunicationRoutes(app: Express): void {
     }
   });
 
+  // GET /api/inbox/unified — the Inbox page's single-round-trip aggregate:
+  // email messages + SMS conversations together (the client previously
+  // fired two parallel list queries and merged them in JS). `channel`
+  // mirrors the page's channel filter so a filtered view doesn't pay for
+  // the other channel's fetch. Registered before /api/inbox/:id so the
+  // param route can't swallow "unified".
+  api.get("/api/inbox/unified", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const channel = typeof req.query.channel === "string" ? req.query.channel : "all";
+      const wantEmail = channel === "all" || channel === "email";
+      const wantSms = channel === "all" || channel === "sms";
+
+      const isRead = req.query.isRead !== undefined ? req.query.isRead === 'true' : undefined;
+      const isArchived = req.query.isArchived !== undefined ? req.query.isArchived === 'true' : undefined;
+      const isStarred = req.query.isStarred !== undefined ? req.query.isStarred === 'true' : undefined;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+
+      const [emailsRaw, smsConversations] = await Promise.all([
+        wantEmail ? storage.getInboxMessages(org.id, { isRead, isArchived, limit, offset }) : Promise.resolve([]),
+        wantSms ? storage.getConversations(org.id, { channel: "sms" }) : Promise.resolve([]),
+      ]);
+      const emails = isStarred !== undefined ? emailsRaw.filter(m => m.isStarred === isStarred) : emailsRaw;
+
+      res.json({ emails, smsConversations, generatedAt: new Date().toISOString() });
+    } catch (error: any) {
+      logger.error("Get unified inbox error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch unified inbox"));
+    }
+  });
+
   // GET /api/inbox/unread-count - Get unread count
   api.get("/api/inbox/unread-count", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
