@@ -187,7 +187,10 @@ export function InboxTab() {
         }
       }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/conversations"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/conversations"] });
+      qc.invalidateQueries({ queryKey: ["/api/inbox/unified"] });
+    },
   });
 
   const onAction = (id: number, action: "contacted" | "dismissed") => {
