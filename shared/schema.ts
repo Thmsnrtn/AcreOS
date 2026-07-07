@@ -8778,6 +8778,25 @@ export type DeferredRevenueRow = typeof deferredRevenue.$inferSelect;
 // CANCELLATION SURVEYS & REFUND REQUESTS
 // ============================================
 
+// ── 0198 — Reactivation surveys (win-back "what brought you back") ──────────
+// Written by POST /api/subscription/reactivation-survey (welcome-back page).
+// Best-effort growth signal — the client swallows failures — but the store
+// itself is durable (the 90-day activity_log retention would erase it).
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0198_reactivation_surveys.sql.
+export const reactivationSurveys = pgTable("reactivation_surveys", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  userId: text("user_id"),
+  // e.g. "missed_features" | "new_deals" | "pricing" | "other" — free string,
+  // the client owns the vocabulary.
+  returnReason: text("return_reason").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  byOrgCreated: index("reactivation_surveys_org_created_idx").on(table.organizationId, table.createdAt),
+}));
+
+export type ReactivationSurvey = typeof reactivationSurveys.$inferSelect;
+
 export const cancellationSurveys = pgTable("cancellation_surveys", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),

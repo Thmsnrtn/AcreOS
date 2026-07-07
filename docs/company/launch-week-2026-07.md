@@ -19,15 +19,26 @@ established PR flow.*
 Exit test: a stranger signs up, imports a lead, sends mail, gets a reply,
 makes an offer, and pays — zero errors, mobile and desktop.
 
-- [ ] Fan-out audit: every reachable surface across the five doors
-      (Today/Map/Deals/Finance/Pax) + Inbox/Settings, for each ACTIVE
-      persona, mobile + desktop — buttons, forms, empty states, deep links.
+- [x] Fan-out audit: route inventory (155 customer routes), static
+      dead-end audit, and a 140-route Playwright render sweep against a
+      production build (2026-07-07). Found: 2 PRODUCTION bugs (SEO-headed
+      pages served without runtime env → ad-landing/SEO pages blank;
+      /transparency JSON shadowing the page), the feature-flag fail-open,
+      2 dead command-palette entries, 21 orphan routes (ledgered), dead
+      buttons/copy. Interactive-flow + persona-variant passes still to do.
 - [ ] Same sweep for signup → onboarding-v2 → first value.
 - [ ] Billing surfaces: upgrade, seats, credits purchase, cancel, dunning
       banners.
-- [ ] Triage ledger written: fix-now / gate-off (honest "coming soon" over
-      reachable-but-broken beta) / defer-with-note.
-- [ ] Fix wave(s) shipped through full CI.
+- [x] Triage ledger written into this section + fix wave 1 (2026-07-07):
+      FIX-NOW shipped — seo-head env injection, transparency route split,
+      FROZEN_ROUTES code-enforced deny-list, white-label config 200,
+      reactivation-survey endpoint (migration 0198), Capital Markets
+      sidebar entry, dead palette entries, dead disabled buttons, pax
+      autonomy copy, orphan offer-wizard deleted. DEFER (ledgered): unify
+      the two sitemap/robots generators (cosmetic — prod robots.txt has
+      Allow:/); ui-state 404-by-design noise in telemetry.
+- [x] Fix wave 1 shipped through full CI (2026-07-07). Further waves as
+      the interactive-flow pass finds more.
 - [ ] Wedge E2E extended: email reply leg + billing upgrade journey.
 - [ ] Credentialed desktop signup E2E in CI (needs founder: Clerk test
       creds as GitHub Actions secrets).

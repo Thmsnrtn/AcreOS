@@ -548,7 +548,7 @@ export default function TransparencyPage() {
 
   const { data, isLoading, isError, error, refetch, isFetching } =
     useQuery<TransparencyResponse>({
-      queryKey: ["/transparency"],
+      queryKey: ["/api/transparency"],
     });
 
   return (

@@ -33,6 +33,7 @@ import {
   headForPublicParcelReport,
   type HeadSpec,
 } from "./services/seo/serverHead";
+import { finalizeShellHtml } from "./static";
 
 const SHELL_CACHE_TTL_MS = 60_000;
 let shellCache: { at: number; html: string } | null = null;
@@ -73,7 +74,14 @@ function sendWithHead(res: Response, next: NextFunction, spec: HeadSpec): void {
   if (!shell) return next(); // no shell resolvable (odd dev state) → SPA fallback
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "public, max-age=300");
-  res.send(injectHead(shell, spec, baseUrl()));
+  // finalizeShellHtml injects window.__ENV__ + stamps the CSP nonce — the
+  // same finishing step the static catch-all and the /p report pages run.
+  // Missing here (WS1 sweep, 2026-07-07), every SEO-headed page shipped a
+  // shell with NO runtime env: production builds resolve the Clerk
+  // publishable key at runtime, so main.tsx threw and these exact pages —
+  // the ad-landing and SEO surfaces — rendered BLANK for real visitors.
+  const nonce: string = (res.locals && res.locals.cspNonce) || "";
+  res.send(finalizeShellHtml(injectHead(shell, spec, baseUrl()), nonce));
 }
 
 export function registerSeoHeadRoutes(app: Express): void {

@@ -1130,9 +1130,9 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             <Button onClick={() => setShowRecordPayment(true)} className="flex-1 min-h-11 pointer-fine:sm:min-h-9" data-testid="button-record-payment">
               <Receipt className="w-4 h-4 mr-2" aria-hidden="true" /> Record payment
             </Button>
-            <Button variant="outline" className="flex-1 min-h-11 pointer-fine:sm:min-h-9" disabled title="Coming soon — use Generate payment link above">
-              <CreditCard className="w-4 h-4 mr-2" aria-hidden="true" /> Send payment link
-            </Button>
+            {/* "Send payment link" removed 2026-07-07 (WS1): it was a
+                permanently-disabled "Coming soon" button — Generate payment
+                link above covers the job. Restore when a send channel ships. */}
           </div>
 
           <Tabs defaultValue="payments" onValueChange={(v) => v === 'dunning' && !dunningData && fetchDunningData()}>
@@ -1494,18 +1494,10 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     <Button size="sm" variant="outline" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => handleSendReminder('final_warning')} disabled={isSendingReminder} data-testid="button-escalate">
                       <ArrowUpRight className="w-4 h-4 mr-1" aria-hidden="true" /> Escalate
                     </Button>
-                    {/* Log call: backend endpoint not yet shipped. Disable
-                        with a tooltip so users don't tap an inert button. */}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="min-h-11 pointer-fine:sm:min-h-9"
-                      disabled
-                      title="Coming soon — call logging will appear here"
-                      data-testid="button-record-contact"
-                    >
-                      <Phone className="w-4 h-4 mr-1" aria-hidden="true" /> Log call
-                    </Button>
+                    {/* "Log call" removed 2026-07-07 (WS1): the backend
+                        endpoint never shipped, so this was a permanently
+                        disabled "Coming soon" button. Restore with the
+                        endpoint. */}
                   </div>
 
                   <Card>
