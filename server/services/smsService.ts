@@ -32,7 +32,7 @@ import {
   sequenceEnrollments,
   activityLog,
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { commsRouter, type CommsRouter } from "./comms/router";
 import { twilioProvider } from "./comms/providers/twilio";
@@ -552,7 +552,15 @@ export async function handleIncomingSMS(
           body,
           externalId: messageSid,
         })
-        .onConflictDoNothing({ target: unattachedInboundMessages.externalId });
+        // The dedup index is PARTIAL (… WHERE external_id IS NOT NULL,
+        // migration 0190). Postgres only matches ON CONFLICT to a partial
+        // index when the statement carries the same predicate — without it
+        // this insert throws 42P10 and the hot unattached reply is DROPPED.
+        // Caught by tests/e2e-mobile/wedge-journey.spec.ts, 2026-07-07.
+        .onConflictDoNothing({
+          target: unattachedInboundMessages.externalId,
+          where: sql`external_id IS NOT NULL`,
+        });
       logger.info(
         `[SMS] Inbound from ${fromPhone} matched no lead in org ${organizationId} — stored as unattached reply for triage.`,
       );
@@ -583,7 +591,16 @@ export async function handleIncomingSMS(
       status: "received",
       externalId: messageSid,
     })
-    .onConflictDoNothing({ target: messages.externalId })
+    // messages_external_id_unique is a PARTIAL index (… WHERE external_id
+    // IS NOT NULL, migration 0034). ON CONFLICT must repeat the predicate or
+    // Postgres rejects the statement (42P10) — which made EVERY matched
+    // inbound seller SMS throw, get caught upstream, and vanish while the
+    // webhook still returned 200 to Twilio. The dominant seller-reply
+    // channel was silently dead. Caught by the wedge-journey E2E, 2026-07-07.
+    .onConflictDoNothing({
+      target: messages.externalId,
+      where: sql`external_id IS NOT NULL`,
+    })
     .returning();
 
   const newMessage = insertedRows[0];
