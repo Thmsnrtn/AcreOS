@@ -1,5 +1,9 @@
 # AcreOS Roadmap — July 2026
 
+*Horizon context: this roadmap executes H0 and early H1 of the north-star
+document, `mature-machine.md` (gates, horizons, and the autonomy switch
+schedule live there; waves live here).*
+
 *Synthesized 2026-07-03 from a four-lens expert audit (product/UX, veteran
 land investor, CFO/COO, principal engineer + security) plus the accumulated
 step-away doctrine and debt registers. Each finding below was verified
