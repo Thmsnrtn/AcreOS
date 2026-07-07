@@ -54,6 +54,18 @@ bucket decision); W7 continuous debt (storage.ts decomposition, res-status
 consolidation (mirror Today's aggregate-endpoint pattern); the three
 founder decisions below.
 
+**Resolved 2026-07-06 (ops/secrets incident):** SES DKIM FAILED for
+acreos.io traced to a dead IAM key + stale DKIM tokens from a recreated
+identity; fixed end-to-end (key rotation via the founder-recovery kit,
+ses-setup.mjs FAILED-state restart + NextSigningKeyLength, fresh CNAMEs).
+Anthropic/OpenAI/SendGrid keys rotated; Cloudflare Email Routing enabled
+(inbound @acreos.io forwards to the founder; DMARC rua now deliverable);
+apex SPF merged correctly. Cause-time watchdogs live in prod:
+platform_email_identity + credential_liveness (daily domain_audit sweep,
+critical findings page via the alert spine). Full audit:
+docs/company/secrets-audit-2026-07-04.md. Still dark by choice: Twilio
+(10DLC purchase), ATTOM/BatchData (data licenses).
+
 **Resolved 2026-07-04 (platform sweep r1-r4):** borrower-token CSPRNG +
 portal sunset; hot-path indexes; retention truth; dunning/pricing/footer
 marketing fixes; client diet (119MB); mass-assignment floor (22 sites);
