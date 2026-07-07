@@ -54,9 +54,18 @@ Waves 1-6's discrete items are SHIPPED on `claude/codebase-quality-audit-ko1u69`
 
 **Still open:** W6.3 fix-and-flip repositioning (needs the investor-type
 bucket decision); W7 continuous debt (storage.ts decomposition, res-status
-558→0, req-as-any 73→0, storage-linecount); maps/inbox/documents query
-consolidation (mirror Today's aggregate-endpoint pattern); the three
-founder decisions below.
+558→0, req-as-any 73→0, storage-linecount); the three founder decisions
+below.
+
+**Resolved 2026-07-07 (query consolidation):** Documents (3 page-owned
+queries → GET /api/documents/overview) and Inbox (email + SMS lists →
+GET /api/inbox/unified, channel filter server-side) now load in one round
+trip each, mirroring /api/today; all mutation sites invalidate the
+aggregate prefixes alongside legacy keys. Map deliberately NOT
+consolidated: its two on-mount queries (/api/properties, /api/deals) use
+shared cache keys other pages read — a Map-only aggregate would fork
+those caches for a 2→1 request win. Lob health false-negative fixed
+(healthCheck/addressValidation now accept the generic LOB_API_KEY).
 
 **Shipped 2026-07-07 (mature-machine H0 pass, `claude/platform-roadmap-strategy-eve1ah`):**
 strategy layer added (`mature-machine.md` north-star + `deletion-ledger.md`
