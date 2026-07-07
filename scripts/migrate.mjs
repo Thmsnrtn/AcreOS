@@ -7615,6 +7615,21 @@ const STATEMENTS = [
      "count" integer NOT NULL DEFAULT 0
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "agent_execution_counts_key_bucket_idx" ON "agent_execution_counts" ("agent_key", "bucket_start")`,
+
+  // Marketing spend ledger (migration 0197, 2026-07-07 cost audit) — the CAC
+  // numerator. Actuals only; budgets are never recorded here.
+  `CREATE TABLE IF NOT EXISTS "marketing_spend" (
+     "id" serial PRIMARY KEY,
+     "channel" text NOT NULL,
+     "amount_cents" integer NOT NULL,
+     "spent_at" timestamp NOT NULL,
+     "source" text NOT NULL DEFAULT 'manual',
+     "campaign_ref" text,
+     "note" text,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "marketing_spend_spent_at_idx" ON "marketing_spend" ("spent_at")`,
+  `CREATE INDEX IF NOT EXISTS "marketing_spend_channel_spent_at_idx" ON "marketing_spend" ("channel", "spent_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

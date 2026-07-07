@@ -8580,6 +8580,40 @@ export const mrrSnapshots = pgTable("mrr_snapshots", {
   payingOrgs: integer("paying_orgs").notNull().default(0),
 });
 
+// ── 0197 — Marketing spend ledger (the CAC numerator) ───────────────────────
+// Until this table existed the unit-economics dashboard honestly reported
+// cacAvailable:false and the budget ramp computed CAC from AI-dispatch spend
+// alone — real ad dollars had no ledger anywhere (2026-07-07 cost audit).
+// One row per spend entry. PLATFORM-GLOBAL (no organization_id): this is
+// AcreOS's own acquisition spend, not tenant data. Sources: 'manual'
+// (founder-entered), 'ad_provider' (a future Meta/Google spend-sync), or
+// 'autopilot'. Amounts are ACTUALS — never record budgets/commitments here;
+// a budget is not spend (no-fabrication).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0197_marketing_spend.sql.
+export const marketingSpend = pgTable("marketing_spend", {
+  id: serial("id").primaryKey(),
+  // "meta" | "google" | "content" | "referral" | "sponsorship" | "other"
+  channel: text("channel").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  // The date the spend occurred (provider-reported date for synced rows).
+  spentAt: timestamp("spent_at").notNull(),
+  // "manual" | "ad_provider" | "autopilot"
+  source: text("source").notNull().default("manual"),
+  // Provider-side campaign id / name, when known.
+  campaignRef: text("campaign_ref"),
+  note: text("note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  bySpentAt: index("marketing_spend_spent_at_idx").on(table.spentAt),
+  byChannelSpentAt: index("marketing_spend_channel_spent_at_idx").on(
+    table.channel,
+    table.spentAt,
+  ),
+}));
+
+export type MarketingSpendEntry = typeof marketingSpend.$inferSelect;
+
 export const customerConcentration = pgTable("customer_concentration", {
   id: serial("id").primaryKey(),
   computedAt: timestamp("computed_at").defaultNow().notNull(),

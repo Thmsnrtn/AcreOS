@@ -10,6 +10,14 @@
  *   • dormant by ABSENCE: with no ad provider wired, it spends nothing and
  *     returns a draft-only result (see adProvider).
  * It earns autonomy LAST, and only on proven CAC.
+ *
+ * SPEND LEDGER SEAM (2026-07-07 cost audit): when a live provider adapter
+ * reports actual delivered spend, record it via
+ * services/marketingSpend.recordMarketingSpend (source 'ad_provider') —
+ * that ledger is the CAC numerator for the unit-economics dashboard and the
+ * budget-ramp proof. Record provider-reported ACTUALS only; the
+ * daily_budget_cents launched here is a commitment, not spend, and must
+ * never be written to the ledger.
  */
 import { registerHand } from "./registry";
 import { handError, type HandResult } from "./types";

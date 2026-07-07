@@ -1067,8 +1067,14 @@ function startAutonomousDecisionExecutorJob() {
     });
   }, 2 * 60 * 1000);
 
-  // Then every 30 minutes
-  trackInterval(() => {
+  // Then every 30 minutes. Idle pacing (2026-07-07 cost audit): below the
+  // paying-customer threshold only 1 in N slots does real work — the
+  // executor's inbox barely changes on an idle platform, and this job was
+  // the historical #1 LLM burn source. Full cadence resumes automatically
+  // as soon as paying customers exist.
+  trackInterval(async () => {
+    const { shouldRunAtPace } = await import("./idlePace");
+    if (!(await shouldRunAtPace('autonomous_decision_executor', THIRTY_MINUTES))) return;
     withJobLock('autonomous_decision_executor', TTL_SECONDS, runDecisionExecutorTickBounded).catch(err => {
       log(`Autonomous decision executor run failed: ${err}`, 'decision-executor');
     });
