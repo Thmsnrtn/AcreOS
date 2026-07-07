@@ -45,7 +45,7 @@ import {
 // Foundation for AcreOS's monthly-close pipeline. This PR ships the schema
 // + seed only — recognition worker, trial-balance generator, GL-PDF, and
 // IIF/QBO export are scheduled for Lavender Week 10 (see
-// docs/exhaustive-completion/lavender-week10-todo.md).
+// docs/archive/exhaustive-completion/lavender-week10-todo.md).
 //
 //   * `chartOfAccounts`        — per-org tree of accounts. Customer-defined
 //                                accountNumber so orgs can mirror their CPA

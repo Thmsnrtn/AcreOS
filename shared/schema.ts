@@ -233,7 +233,7 @@ export const organizations = pgTable("organizations", {
   // Max number of action-required items the /founder/now inbox will
   // surface per day. Agents may write more to decisions_inbox_items;
   // overflow gets `deferred_until: tomorrow` rather than appearing.
-  // 5 is a deliberate cap — see docs/exhaustive-completion/pillar-s-
+  // 5 is a deliberate cap — see docs/archive/exhaustive-completion/pillar-s-
   // one-inbox.md for the rationale.
   founderDailyAttentionCap: integer("founder_daily_attention_cap").notNull().default(5),
   // ─── Underwriting defaults (Hank fix) ──────────────────────────────
@@ -8875,7 +8875,7 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   // Pillar K (note-investor) lifecycle events. Existing templates
   // referenced note.balloon_approaching + note.ltv_alert but the union
   // didn't declare them; new note-lifecycle templates below add the
-  // remaining four. See docs/exhaustive-completion/pillar-k-note-
+  // remaining four. See docs/archive/exhaustive-completion/pillar-k-note-
   // investors-25-personas.md for the persona insights driving these.
   "note.balloon_approaching",
   "note.ltv_alert",

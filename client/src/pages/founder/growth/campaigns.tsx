@@ -1,7 +1,7 @@
 /**
  * /founder/growth/campaigns — Growth & Ads wizard (extracted F-D #5 Phase B).
  *
- * Per docs/exhaustive-completion/founder-dashboard-growth-extraction-phase-A.md.
+ * Per docs/archive/exhaustive-completion/founder-dashboard-growth-extraction-phase-A.md.
  * Pure move; no behavior change. Same /api/founder/growth/* endpoints,
  * same query keys, same 4-step wizard state machine.
  */

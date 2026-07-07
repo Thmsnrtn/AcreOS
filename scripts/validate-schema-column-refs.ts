@@ -14,7 +14,7 @@
  * reference a missing column. The query just throws "Cannot convert
  * undefined or null to object" inside drizzle's prepare phase — see
  * the activity-timeline post-mortem in
- * docs/exhaustive-completion/pillar-i-reliability-infrastructure.md.
+ * docs/archive/exhaustive-completion/pillar-i-reliability-infrastructure.md.
  *
  * Usage:
  *   npx tsx scripts/validate-schema-column-refs.ts

@@ -5335,7 +5335,7 @@ export async function runScheduledJobs(): Promise<void> {
   // Compares the live Stripe account against shared/billing/tier-pricing.ts.
   // Surfaces missing tiers, price drift, and orphan acreos_product
   // entries as /founder/now inbox items. See
-  // docs/exhaustive-completion/pillar-t-self-healing-ops.md.
+  // docs/archive/exhaustive-completion/pillar-t-self-healing-ops.md.
   import("../services/stripeDriftDetector").then(({ runStripeDriftJob }) => {
     import("./scheduler").then(({ scheduleSelfRescheduling }) => {
       log("Stripe drift detector registered (self-rescheduling, 24h)", "ops");
@@ -5412,7 +5412,7 @@ export async function runScheduledJobs(): Promise<void> {
   });
 
   // ─── Pillar U — monthly pillar review ────────────────────────────────
-  // Reads docs/exhaustive-completion/pillar-*.md, scores each on
+  // Reads docs/archive/exhaustive-completion/pillar-*.md, scores each on
   // shipped-artifact recency, writes pillar-review-{YYYY-MM-DD}.md,
   // surfaces stale/dead pillars as /founder/now inbox items.
   import("../services/pillarReviewer").then(({ runPillarReviewJob }) => {

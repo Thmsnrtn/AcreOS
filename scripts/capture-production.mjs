@@ -4,8 +4,8 @@
  * at all 6 breakpoints + per-surface mechanical checks.
  *
  * Output:
- *   docs/exhaustive-completion/production-screenshots/<slug>-<bp>.png
- *   docs/exhaustive-completion/mechanical-checks/<slug>.md
+ *   docs/archive/exhaustive-completion/production-screenshots/<slug>-<bp>.png
+ *   docs/archive/exhaustive-completion/mechanical-checks/<slug>.md
  *
  * Mechanical checks per surface (per breakpoint):
  *   - Console errors count and content
@@ -19,8 +19,8 @@ import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const BASE = "https://acreos.io";
-const SCREENSHOT_OUT = "docs/exhaustive-completion/production-screenshots";
-const CHECKS_OUT = "docs/exhaustive-completion/mechanical-checks";
+const SCREENSHOT_OUT = "docs/archive/exhaustive-completion/production-screenshots";
+const CHECKS_OUT = "docs/archive/exhaustive-completion/mechanical-checks";
 
 const SURFACES = [
   { slug: "landing", url: "/" },
