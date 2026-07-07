@@ -159,9 +159,12 @@ class HealthCheckService {
     const start = Date.now();
     
     try {
-      const lobKey = process.env.LOB_LIVE_API_KEY || process.env.LOB_TEST_API_KEY;
+      // LOB_API_KEY is the generic name lobService/directMail/configManager
+      // accept — without it here, health reports "unconfigured" (and drags
+      // overall to degraded) while mail actually works (2026-07-06 audit).
+      const lobKey = process.env.LOB_LIVE_API_KEY || process.env.LOB_TEST_API_KEY || process.env.LOB_API_KEY;
       if (!lobKey) {
-        return this.createHealth(name, 'unconfigured', undefined, 'LOB_LIVE_API_KEY or LOB_TEST_API_KEY not configured');
+        return this.createHealth(name, 'unconfigured', undefined, 'LOB_LIVE_API_KEY, LOB_TEST_API_KEY, or LOB_API_KEY not configured');
       }
 
       const response = await fetch('https://api.lob.com/v1/addresses', {
