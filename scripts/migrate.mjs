@@ -7592,6 +7592,29 @@ const STATEMENTS = [
      "expires_at" timestamp NOT NULL
    )`,
   `CREATE INDEX IF NOT EXISTS "dnc_scrub_results_org_phone_idx" ON "dnc_scrub_results" ("organization_id", "phone_last10", "scrubbed_at")`,
+
+  // Agent state persistence (migration 0196, module-state audit 2026-07-07) —
+  // temporary authority delegations + the autonomous-action rate throttle
+  // move from per-process Maps to Postgres so 2+ machines share one truth.
+  `CREATE TABLE IF NOT EXISTS "authority_delegations" (
+     "id" serial PRIMARY KEY,
+     "agent_codename" text NOT NULL,
+     "elevated_actions" jsonb NOT NULL DEFAULT '["*"]',
+     "from_level" integer NOT NULL DEFAULT 2,
+     "to_level" integer NOT NULL DEFAULT 0,
+     "reason" text NOT NULL,
+     "expires_at" timestamp NOT NULL,
+     "revoked_at" timestamp,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "authority_delegations_agent_expires_idx" ON "authority_delegations" ("agent_codename", "expires_at")`,
+  `CREATE TABLE IF NOT EXISTS "agent_execution_counts" (
+     "id" serial PRIMARY KEY,
+     "agent_key" text NOT NULL,
+     "bucket_start" timestamp NOT NULL,
+     "count" integer NOT NULL DEFAULT 0
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "agent_execution_counts_key_bucket_idx" ON "agent_execution_counts" ("agent_key", "bucket_start")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

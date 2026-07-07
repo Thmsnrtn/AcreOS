@@ -43,6 +43,40 @@ each execution in place with a date and commit SHA. Codebase targets:
 4. Update this ledger in place with date + commit SHA per execution;
    report LOC/table deltas against the §1.6 targets at each gate crossing.
 
+## Module-state residue (audit 2026-07-07)
+
+The module-level mutable-state audit (mature-machine H0 §6.3) found ~11
+correctness risks across 2+ machines. Disposition:
+
+**Fixed (DB-backed, migration 0196):**
+- `temporaryDelegation.ts` → `authority_delegations` — a founder authority grant
+  was invisible to the authority gate on the worker and vanished on deploy.
+- `executionEngine.ts` rate throttle → `agent_execution_counts` — per-process
+  counters made the autonomous-action cap N× on N machines; now a race-free
+  upsert, fail-closed when unverifiable.
+
+**Resolved by deletion (no fix needed — module is a KILL above):**
+- `reactiveOrchestrationV14.ts` cooldown tracker (V14 narrative suite)
+- `callRouting.ts` agent/queue/call state (voice)
+- `scpLLMJudges.ts` cost accumulator (SCPv2)
+- `investorVerification.ts` KYC store (marketplace satellite — FROZEN; must be
+  DB-backed before any marketplace reactivation)
+- The unwired SCP engines holding in-memory financial ledgers / outbound
+  queues (`scpFinancialAutonomy`, `scpOutboundExecution`,
+  `scpIntegrationFabric`, `scpStrategicIntelligence`, `scpDynamicTools`,
+  `autonomousSalesPipeline`, `externalCommunicationsManager`,
+  `predictiveAutoscaler`) — dead code today; if any is ever wired, DB-backing
+  is a precondition, but the standing verdict is KILL with their parents.
+
+**Pinned (header comment at the state declaration; fix before load-bearing use):**
+- `notificationDispatcher.ts` → persist to the existing `notifications` table
+- `marketWatchlist.ts` → DB tables + sequences
+- `abTestEngine.ts` → persist outcomes, aggregate in SQL
+- `betaProgram.ts` → DB-back before pointing ANY real signup traffic at
+  `POST /api/beta/waitlist` (currently uncalled by the client)
+- `ceoReminders.ts` → systemMeta-backed cache, single-founder tolerable
+- `agentEvolutionEngine.ts` `sharedInsights` → display-only divergence today
+
 ## Immediate un-wire items (H0, ahead of the campaign)
 
 - [ ] Remove the unconditional "Capital" tab from `client/src/pages/money.tsx`

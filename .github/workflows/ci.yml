@@ -33,9 +33,11 @@ jobs:
       - name: TypeScript type check + ratchets
         run: npm run check
 
+      # Blocking since 2026-07-07: `eslint client/src --max-warnings 0` passes
+      # clean (the acreos/* ratchet baseline is all-zero), so a red here is a
+      # real regression, not legacy noise.
       - name: ESLint
         run: npm run lint
-        continue-on-error: true
 
       # Truth-engine audit — public-facing claims must each map to a
       # named source. A landing copy edit that doesn't update sources

@@ -45,6 +45,11 @@ interface CEOReminder {
 }
 
 // In-memory store backed by systemMeta for persistence
+// MODULE-STATE PIN (audit 2026-07-07): the cache is per-process — a reminder
+// created via the app machine is stale on the worker until its next reload,
+// and concurrent writes can clobber each other's systemMeta flush. Acceptable
+// for a single-founder reminder list; revisit if it becomes load-bearing —
+// tracked in docs/company/deletion-ledger.md "Module-state residue".
 let reminders: CEOReminder[] = [];
 let loaded = false;
 

@@ -13234,6 +13234,69 @@ export const insertDncScrubResultSchema = createInsertSchema(dncScrubResults).om
 export type DncScrubResult = typeof dncScrubResults.$inferSelect;
 export type InsertDncScrubResult = z.infer<typeof insertDncScrubResultSchema>;
 
+// ── 0196 — Authority delegations (temporary authority elevations) ───────────
+// "Let Sophie handle all support without asking me until Friday." Previously a
+// module-level Map — on 2+ Fly machines a grant made on the app machine was
+// INVISIBLE to the authority gate running on the worker (where autonomous
+// execution actually happens) and vanished on every deploy. DB-backed so the
+// gate reads the same truth everywhere (module-state audit, 2026-07-07).
+//
+// GLOBAL / founder-level table — delegations elevate PLATFORM agents
+// (companyAgents), not org data, so there is intentionally no organization_id
+// (exempt from the org-leading-index gate like sanctions_list_entries).
+// Active = revoked_at IS NULL AND expires_at > now().
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0196_agent_state_persistence.sql.
+export const authorityDelegations = pgTable("authority_delegations", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  // Actions elevated by this delegation; ["*"] means all actions.
+  elevatedActions: jsonb("elevated_actions").$type<string[]>().notNull().default(["*"]),
+  fromLevel: integer("from_level").notNull().default(2),
+  // Elevated authority level (0 = full autonomy).
+  toLevel: integer("to_level").notNull().default(0),
+  reason: text("reason").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  // Gate lookup path: active delegations for an agent.
+  byAgentExpires: index("authority_delegations_agent_expires_idx").on(
+    table.agentCodename,
+    table.expiresAt,
+  ),
+}));
+
+export type AuthorityDelegation = typeof authorityDelegations.$inferSelect;
+
+// ── 0196 — Agent execution counts (autonomous-action rate throttle) ─────────
+// Hourly action counters backing executionEngine's safety throttle
+// (100/hr global, 30/hr/agent). Previously a module-level Map — each machine
+// kept its own counter, so the effective cap was N× the configured cap and
+// the throttle silently didn't throttle. Single-statement upsert
+// (INSERT … ON CONFLICT … count+1 RETURNING) keeps it race-free across
+// machines (module-state audit, 2026-07-07).
+//
+// GLOBAL table — the throttle caps PLATFORM agents, not org traffic; no
+// organization_id by design. Rows are garbage-collected opportunistically
+// (buckets older than 2h).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0196_agent_state_persistence.sql.
+export const agentExecutionCounts = pgTable("agent_execution_counts", {
+  id: serial("id").primaryKey(),
+  // "__global__" or the agent codename.
+  agentKey: text("agent_key").notNull(),
+  bucketStart: timestamp("bucket_start").notNull(),
+  count: integer("count").notNull().default(0),
+}, (table) => ({
+  byKeyBucket: uniqueIndex("agent_execution_counts_key_bucket_idx").on(
+    table.agentKey,
+    table.bucketStart,
+  ),
+}));
+
+export type AgentExecutionCount = typeof agentExecutionCounts.$inferSelect;
+
 // Revenue Protection Interventions — automated churn/dunning outreach log
 export const revenueProtectionInterventions = pgTable("revenue_protection_interventions", {
   id: serial("id").primaryKey(),
