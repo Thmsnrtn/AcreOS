@@ -812,7 +812,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
   },
   // ── Pillar K — Note-investor lifecycle templates ──────────────────────
   // Five templates drawn from the 25-persona insight mine in
-  // docs/exhaustive-completion/pillar-k-note-investors-25-personas.md.
+  // docs/archive/exhaustive-completion/pillar-k-note-investors-25-personas.md.
   // Each addresses a moment in the note's life that recurred across
   // multiple personas. Together they replace the manual spreadsheet
   // workflow many veteran note investors (Maris, Geena, Octavia) run
@@ -949,7 +949,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
   // Three templates capturing the three highest-frequency landlord
   // moments: lease renewal countdown, maintenance request triage,
   // and rent received receipt. From the 25-persona insight mine in
-  // docs/exhaustive-completion/pillar-p-landlords-25-personas.md.
+  // docs/archive/exhaustive-completion/pillar-p-landlords-25-personas.md.
   {
     id: "tpl_landlord_lease_renewal_countdown",
     name: "Landlord — Lease Renewal (60-day countdown)",
@@ -1235,7 +1235,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
   },
   // ── Pillar M — Wholesaler lifecycle templates ───────────────────────
   // Three templates from the 25-persona insight mine in
-  // docs/exhaustive-completion/pillar-m-wholesalers-25-personas.md.
+  // docs/archive/exhaustive-completion/pillar-m-wholesalers-25-personas.md.
   // Wholesalers' workflow diverges from land flips at three moments:
   // the deal goes under contract (auto-broadcast to buyers), the
   // assignment is pending (collection deadline + paperwork prep),
@@ -1333,7 +1333,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
   },
   // ── Pillar L — Tax-delinquent specialist lifecycle templates ────────
   // Three templates from the 25-persona insight mine in
-  // docs/exhaustive-completion/pillar-l-tax-delinquent-25-personas.md.
+  // docs/archive/exhaustive-completion/pillar-l-tax-delinquent-25-personas.md.
   // The state rules referenced live in
   // shared/regulatory/taxLienStateRules.ts; templates interpolate
   // {{stateRedemptionPeriodMonths}} and {{stateForeclosureNoticeMonths}}

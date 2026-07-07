@@ -87,11 +87,14 @@ export default async function globalSetup() {
 
     // 4. Seed realistic, assertable data so pages render real content (not
     // just empty states). Distinctive values let the spec assert on them.
-    // Idempotent: clear this org's demo rows first, then insert.
-    await client.query(`DELETE FROM deals WHERE organization_id = $1`, [orgId]);
-    await client.query(`DELETE FROM notes WHERE organization_id = $1`, [orgId]);
-    await client.query(`DELETE FROM properties WHERE organization_id = $1`, [orgId]);
-    await client.query(`DELETE FROM leads WHERE organization_id = $1`, [orgId]);
+    // Idempotent: clear demo rows first. TRUNCATE … CASCADE (not per-org
+    // DELETE) because journey specs create child rows with FKs onto leads
+    // (conversations → messages, campaign_delivery_events, consent events…)
+    // that block a plain DELETE on local reruns. This DB is a dedicated
+    // throwaway E2E database — nothing in it is precious.
+    await client.query(
+      `TRUNCATE deals, notes, properties, leads, campaigns RESTART IDENTITY CASCADE`,
+    );
 
     await client.query(
       `INSERT INTO leads (organization_id, first_name, last_name, status, score, state, city)
@@ -99,6 +102,40 @@ export default async function globalSetup() {
          ($1, 'Marina', 'Hollowell', 'new', 88, 'AZ', 'Buckeye'),
          ($1, 'Desmond', 'Trujillo', 'contacted', 72, 'TX', 'Marfa'),
          ($1, 'Priya', 'Vanterpool', 'negotiating', 64, 'CO', 'Alamosa')`,
+      [orgId],
+    );
+
+    // 4b. Wedge-journey fixtures (tests/e2e-mobile/wedge-journey.spec.ts):
+    //   - a lead with a phone + express TCPA consent (the campaign send-sms
+    //     pre-filter drops anything less). The spec sets lead.timezone at
+    //     runtime to a currently-daytime zone so quiet hours can't flake.
+    //   - prepaid credits so the send's upfront credit debit succeeds.
+    //   - org-level simulationMode so the "send" records a simulated action
+    //     instead of touching Twilio (server/utils/simulationMode.ts).
+    //   - a twilio integration row whose fromPhoneNumber lets the inbound
+    //     webhook (/api/webhooks/twilio/sms) match this org.
+    await client.query(
+      `INSERT INTO leads (organization_id, first_name, last_name, status, score, state, city,
+                          phone, tcpa_consent, consent_date, consent_source)
+       VALUES ($1, 'Wedge', 'Seller', 'new', 91, 'AZ', 'Wickenburg',
+               '+14805550142', true, now(), 'e2e_seed')`,
+      [orgId],
+    );
+    await client.query(
+      `UPDATE organizations
+       SET credit_balance = '100000',
+           settings = COALESCE(settings, '{}'::jsonb) || '{"simulationMode": true}'::jsonb
+       WHERE id = $1`,
+      [orgId],
+    );
+    await client.query(
+      `DELETE FROM organization_integrations WHERE organization_id = $1 AND provider = 'twilio'`,
+      [orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_integrations (organization_id, provider, is_enabled, credentials)
+       VALUES ($1, 'twilio', true,
+               '{"fromPhoneNumber": "+15005550006", "accountSid": "ACe2e00000000000000000000000000000"}'::jsonb)`,
       [orgId],
     );
 

@@ -233,7 +233,7 @@ export const organizations = pgTable("organizations", {
   // Max number of action-required items the /founder/now inbox will
   // surface per day. Agents may write more to decisions_inbox_items;
   // overflow gets `deferred_until: tomorrow` rather than appearing.
-  // 5 is a deliberate cap — see docs/exhaustive-completion/pillar-s-
+  // 5 is a deliberate cap — see docs/archive/exhaustive-completion/pillar-s-
   // one-inbox.md for the rationale.
   founderDailyAttentionCap: integer("founder_daily_attention_cap").notNull().default(5),
   // ─── Underwriting defaults (Hank fix) ──────────────────────────────
@@ -8875,7 +8875,7 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   // Pillar K (note-investor) lifecycle events. Existing templates
   // referenced note.balloon_approaching + note.ltv_alert but the union
   // didn't declare them; new note-lifecycle templates below add the
-  // remaining four. See docs/exhaustive-completion/pillar-k-note-
+  // remaining four. See docs/archive/exhaustive-completion/pillar-k-note-
   // investors-25-personas.md for the persona insights driving these.
   "note.balloon_approaching",
   "note.ltv_alert",
@@ -13180,6 +13180,122 @@ export const insertSanctionsListEntrySchema = createInsertSchema(sanctionsListEn
 });
 export type SanctionsListEntry = typeof sanctionsListEntries.$inferSelect;
 export type InsertSanctionsListEntry = z.infer<typeof insertSanctionsListEntrySchema>;
+
+// ── 0195 — DNC / litigator scrub results (TCPA cold-outreach seam) ──────────
+// Cached outcome of scrubbing a PHONE NUMBER against a Do-Not-Call registry
+// and/or a known-TCPA-litigator list via a pluggable vendor adapter
+// (server/services/compliance/dncScrub.ts). The vendor decision is a pending
+// founder call (roadmap-2026-07 "Founder decisions" #1); until a vendor is
+// configured the seam is INERT (gate allows, `scrubbed:false`) and this table
+// simply stays empty. Once configured:
+//   • `litigator`  — always blocks outbound SMS/calls, even with consent.
+//   • `dnc_listed` — blocks unless the lead carries express TCPA consent
+//                    (express consent lawfully overrides registry listing).
+//   • scrub ERROR on a lead-matched marketing send — FAIL CLOSED (block);
+//     on unmatched/transactional traffic — fail open (billing must flow).
+// Rows expire (`expiresAt`) because DNC lists demand periodic re-scrub
+// (the federal SAN convention is every 31 days).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0195_dnc_scrub_results.sql.
+export const dncScrubResults = pgTable("dnc_scrub_results", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  // Normalized digits of the scrubbed number (last 10, US-centric — matches
+  // the lead-matching convention in smsService.tcpaGateForRecipient).
+  phoneLast10: text("phone_last10").notNull(),
+  // "clean" | "dnc_listed" | "litigator". Transient scrub ERRORS are never
+  // cached — they must re-run, not poison the cache.
+  status: text("status").notNull(),
+  // Which vendor adapter produced the result ("fixture" | vendor name).
+  provider: text("provider").notNull(),
+  // Vendor's list identifier (e.g. "federal-dnc", "litigator-v3"), if given.
+  listSource: text("list_source"),
+  // Vendor's stated reason/detail for a listing, if given.
+  reason: text("reason"),
+  scrubbedAt: timestamp("scrubbed_at").notNull().defaultNow(),
+  // Scrub validity window — re-scrub after this (default 30 days).
+  expiresAt: timestamp("expires_at").notNull(),
+}, (table) => ({
+  // Lead with organization_id (Tahoe shard-readiness — leading-org composite).
+  // Gate lookup path: latest un-expired scrub for (org, phone).
+  byOrgPhone: index("dnc_scrub_results_org_phone_idx").on(
+    table.organizationId,
+    table.phoneLast10,
+    table.scrubbedAt,
+  ),
+}));
+
+export const insertDncScrubResultSchema = createInsertSchema(dncScrubResults).omit({
+  id: true,
+  scrubbedAt: true,
+});
+export type DncScrubResult = typeof dncScrubResults.$inferSelect;
+export type InsertDncScrubResult = z.infer<typeof insertDncScrubResultSchema>;
+
+// ── 0196 — Authority delegations (temporary authority elevations) ───────────
+// "Let Sophie handle all support without asking me until Friday." Previously a
+// module-level Map — on 2+ Fly machines a grant made on the app machine was
+// INVISIBLE to the authority gate running on the worker (where autonomous
+// execution actually happens) and vanished on every deploy. DB-backed so the
+// gate reads the same truth everywhere (module-state audit, 2026-07-07).
+//
+// GLOBAL / founder-level table — delegations elevate PLATFORM agents
+// (companyAgents), not org data, so there is intentionally no organization_id
+// (exempt from the org-leading-index gate like sanctions_list_entries).
+// Active = revoked_at IS NULL AND expires_at > now().
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0196_agent_state_persistence.sql.
+export const authorityDelegations = pgTable("authority_delegations", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  // Actions elevated by this delegation; ["*"] means all actions.
+  elevatedActions: jsonb("elevated_actions").$type<string[]>().notNull().default(["*"]),
+  fromLevel: integer("from_level").notNull().default(2),
+  // Elevated authority level (0 = full autonomy).
+  toLevel: integer("to_level").notNull().default(0),
+  reason: text("reason").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  // Gate lookup path: active delegations for an agent.
+  byAgentExpires: index("authority_delegations_agent_expires_idx").on(
+    table.agentCodename,
+    table.expiresAt,
+  ),
+}));
+
+export type AuthorityDelegation = typeof authorityDelegations.$inferSelect;
+
+// ── 0196 — Agent execution counts (autonomous-action rate throttle) ─────────
+// Hourly action counters backing executionEngine's safety throttle
+// (100/hr global, 30/hr/agent). Previously a module-level Map — each machine
+// kept its own counter, so the effective cap was N× the configured cap and
+// the throttle silently didn't throttle. Single-statement upsert
+// (INSERT … ON CONFLICT … count+1 RETURNING) keeps it race-free across
+// machines (module-state audit, 2026-07-07).
+//
+// GLOBAL table — the throttle caps PLATFORM agents, not org traffic; no
+// organization_id by design. Rows are garbage-collected opportunistically
+// (buckets older than 2h).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0196_agent_state_persistence.sql.
+export const agentExecutionCounts = pgTable("agent_execution_counts", {
+  id: serial("id").primaryKey(),
+  // "__global__" or the agent codename.
+  agentKey: text("agent_key").notNull(),
+  bucketStart: timestamp("bucket_start").notNull(),
+  count: integer("count").notNull().default(0),
+}, (table) => ({
+  byKeyBucket: uniqueIndex("agent_execution_counts_key_bucket_idx").on(
+    table.agentKey,
+    table.bucketStart,
+  ),
+}));
+
+export type AgentExecutionCount = typeof agentExecutionCounts.$inferSelect;
 
 // Revenue Protection Interventions — automated churn/dunning outreach log
 export const revenueProtectionInterventions = pgTable("revenue_protection_interventions", {

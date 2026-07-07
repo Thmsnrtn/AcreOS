@@ -7576,6 +7576,45 @@ const STATEMENTS = [
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "growth_targets_state_county_idx" ON "growth_targets" ("state", "county_slug")`,
   `CREATE INDEX IF NOT EXISTS "growth_targets_status_score_idx" ON "growth_targets" ("status", "demand_score")`,
+
+  // DNC / litigator scrub results (migration 0195, mature-machine H0 §6.1) —
+  // the TCPA cold-outreach seam. Inert until DNC_SCRUB_PROVIDER is configured
+  // (pending founder vendor decision); see server/services/compliance/dncScrub.ts.
+  `CREATE TABLE IF NOT EXISTS "dnc_scrub_results" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "phone_last10" text NOT NULL,
+     "status" text NOT NULL,
+     "provider" text NOT NULL,
+     "list_source" text,
+     "reason" text,
+     "scrubbed_at" timestamp NOT NULL DEFAULT now(),
+     "expires_at" timestamp NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "dnc_scrub_results_org_phone_idx" ON "dnc_scrub_results" ("organization_id", "phone_last10", "scrubbed_at")`,
+
+  // Agent state persistence (migration 0196, module-state audit 2026-07-07) —
+  // temporary authority delegations + the autonomous-action rate throttle
+  // move from per-process Maps to Postgres so 2+ machines share one truth.
+  `CREATE TABLE IF NOT EXISTS "authority_delegations" (
+     "id" serial PRIMARY KEY,
+     "agent_codename" text NOT NULL,
+     "elevated_actions" jsonb NOT NULL DEFAULT '["*"]',
+     "from_level" integer NOT NULL DEFAULT 2,
+     "to_level" integer NOT NULL DEFAULT 0,
+     "reason" text NOT NULL,
+     "expires_at" timestamp NOT NULL,
+     "revoked_at" timestamp,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "authority_delegations_agent_expires_idx" ON "authority_delegations" ("agent_codename", "expires_at")`,
+  `CREATE TABLE IF NOT EXISTS "agent_execution_counts" (
+     "id" serial PRIMARY KEY,
+     "agent_key" text NOT NULL,
+     "bucket_start" timestamp NOT NULL,
+     "count" integer NOT NULL DEFAULT 0
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "agent_execution_counts_key_bucket_idx" ON "agent_execution_counts" ("agent_key", "bucket_start")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

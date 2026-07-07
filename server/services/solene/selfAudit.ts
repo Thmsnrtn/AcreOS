@@ -178,7 +178,7 @@ const STALE_MRR_PATTERN = /\$\s?(\d{2,5})\s+MRR\b/i;
 
 // Pattern 5: verify_before_dispatch_failure
 const QUEUE_DOC_PATTERNS: RegExp[] = [
-  /\bdocs\/exhaustive-completion\//i,
+  /\bdocs\/archive\/exhaustive-completion\//i,
   /\bdocs\/audits?\//i,
   /\b_refinement-resume\.md\b/i,
   /\bextraction[-\s]queue\b/i,

@@ -274,7 +274,7 @@ export async function generateAnnualInterestReport(
 // after the box it populates so downstream PDF / e-file emitters can map
 // fields without ambiguity. The earlier shape was 1098-style and produced
 // invalid filings — see Phineas-IRS §3 / Olympia §1 / Hilda §3 / Martin §1
-// audits in docs/exhaustive-completion/elite-team-deeper-2026-05-01/.
+// audits in docs/archive/exhaustive-completion/elite-team-deeper-2026-05-01/.
 
 /** IRS-valid taxpayer identification placeholders we must never emit. */
 const PLACEHOLDER_PAYER_TIN = "00-0000000";

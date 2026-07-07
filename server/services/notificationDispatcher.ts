@@ -60,7 +60,11 @@ interface StoredNotification {
   payload: Record<string, any>;
 }
 
-// In-memory store for in-app notifications (will persist to DB in production)
+// MODULE-STATE PIN (audit 2026-07-07): per-process, in-memory — on 2+ Fly
+// machines a notification written here on one machine is invisible on the
+// other, and all are lost on deploy. Fix before load-bearing use: persist to
+// the existing `notifications` table (shared/schema.ts) — tracked in
+// docs/company/deletion-ledger.md "Module-state residue".
 const notificationStore: StoredNotification[] = [];
 const MAX_NOTIFICATIONS = 200;
 

@@ -27,7 +27,7 @@ export async function runPillarReviewJob(): Promise<{
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const reportPath = path.join(repoRoot, `docs/exhaustive-completion/pillar-review-${today}.md`);
+  const reportPath = path.join(repoRoot, `docs/archive/exhaustive-completion/pillar-review-${today}.md`);
   if (!fs.existsSync(reportPath)) {
     return { reportPath: "", staleCount: 0, deadCount: 0 };
   }

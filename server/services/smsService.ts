@@ -32,7 +32,7 @@ import {
   sequenceEnrollments,
   activityLog,
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { commsRouter, type CommsRouter } from "./comms/router";
 import { twilioProvider } from "./comms/providers/twilio";
@@ -184,6 +184,12 @@ export const smsService = new SmsService();
  *   • consent state UNVERIFIABLE (db error) → FAIL CLOSED. A marketing SMS
  *     with unprovable consent is a TCPA violation waiting for a plaintiff;
  *     a delayed transactional SMS retries.
+ *   • DNC/litigator scrub (mature-machine H0 §6.1) — layered AFTER the
+ *     consent gate at this same choke point. INERT until the founder's
+ *     vendor decision configures DNC_SCRUB_PROVIDER; once configured,
+ *     litigator numbers block even with consent, DNC-listed numbers block
+ *     without express consent, and both traffic classes (lead-matched and
+ *     unmatched) get scrubbed. See services/compliance/dncScrub.ts.
  */
 async function tcpaGateForRecipient(
   organizationId: number,
@@ -201,9 +207,29 @@ async function tcpaGateForRecipient(
       if (leadPhone.length < 7) return false;
       return leadPhone.slice(-10) === last10;
     });
-    if (!matched) return { allowed: true };
+    const { dncGateForSms } = await import("./compliance/dncScrub");
+    if (!matched) {
+      // Unmatched = transactional class. Scrub still applies when configured
+      // (litigator numbers block; scrub errors fail OPEN so billing flows).
+      const dnc = await dncGateForSms(organizationId, to, {
+        leadMatched: false,
+        hasConsent: false,
+      });
+      if (!dnc.allowed) return { allowed: false, reason: dnc.reason };
+      return { allowed: true };
+    }
     const { tcpaGateForSms } = await import("./tcpaCompliance");
-    return await tcpaGateForSms(matched.id, organizationId, to);
+    const consentGate = await tcpaGateForSms(matched.id, organizationId, to);
+    if (!consentGate.allowed) return consentGate;
+    // Reaching here means the lead has express consent (canSms requires it),
+    // so a DNC listing is lawfully overridden — the scrub's teeth on this
+    // path are the litigator list and the fail-closed error posture.
+    const dnc = await dncGateForSms(organizationId, to, {
+      leadMatched: true,
+      hasConsent: true,
+    });
+    if (!dnc.allowed) return { allowed: false, reason: dnc.reason };
+    return { allowed: true };
   } catch (err) {
     logger.error(
       "[SMS] TCPA gate could not verify consent — refusing send (fail closed)",
@@ -526,7 +552,15 @@ export async function handleIncomingSMS(
           body,
           externalId: messageSid,
         })
-        .onConflictDoNothing({ target: unattachedInboundMessages.externalId });
+        // The dedup index is PARTIAL (… WHERE external_id IS NOT NULL,
+        // migration 0190). Postgres only matches ON CONFLICT to a partial
+        // index when the statement carries the same predicate — without it
+        // this insert throws 42P10 and the hot unattached reply is DROPPED.
+        // Caught by tests/e2e-mobile/wedge-journey.spec.ts, 2026-07-07.
+        .onConflictDoNothing({
+          target: unattachedInboundMessages.externalId,
+          where: sql`external_id IS NOT NULL`,
+        });
       logger.info(
         `[SMS] Inbound from ${fromPhone} matched no lead in org ${organizationId} — stored as unattached reply for triage.`,
       );
@@ -557,7 +591,16 @@ export async function handleIncomingSMS(
       status: "received",
       externalId: messageSid,
     })
-    .onConflictDoNothing({ target: messages.externalId })
+    // messages_external_id_unique is a PARTIAL index (… WHERE external_id
+    // IS NOT NULL, migration 0034). ON CONFLICT must repeat the predicate or
+    // Postgres rejects the statement (42P10) — which made EVERY matched
+    // inbound seller SMS throw, get caught upstream, and vanish while the
+    // webhook still returned 200 to Twilio. The dominant seller-reply
+    // channel was silently dead. Caught by the wedge-journey E2E, 2026-07-07.
+    .onConflictDoNothing({
+      target: messages.externalId,
+      where: sql`external_id IS NOT NULL`,
+    })
     .returning();
 
   const newMessage = insertedRows[0];

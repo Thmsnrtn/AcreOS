@@ -7,13 +7,12 @@ import {
   PieChart,
   TrendingUp,
   BarChart3,
-  Landmark,
   Upload,
 } from "lucide-react";
 // All embedded pages are lazy-loaded so opening /money doesn't ship the
-// entire FinancePage (1,824 LOC) + PortfolioPage / Optimizer / CashFlow /
-// CapitalMarkets bundle. The active tab loads on mount; siblings load on
-// click via Suspense fallback.
+// entire FinancePage (1,824 LOC) + PortfolioPage / Optimizer / CashFlow
+// bundle. The active tab loads on mount; siblings load on click via
+// Suspense fallback.
 import { NotesImportDialog } from "@/components/notes-import-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -21,20 +20,25 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 const FinancePage = lazy(() => import("@/pages/finance"));
 const PortfolioOptimizerPage = lazy(() => import("@/pages/portfolio-optimizer"));
 const CashFlowPage = lazy(() => import("@/pages/cash-flow"));
-const CapitalMarketsPage = lazy(() => import("@/pages/capital-markets"));
 const PortfolioPage = lazy(() => import("@/pages/portfolio"));
 
 // Tab values now MATCH their labels (and their mounted content). Previously
 // the labels were swapped to match content while the values were left stale,
 // so a deep link to #portfolio opened the Optimizer. Old hashes are migrated
 // in getTabFromHash so existing links/bookmarks still land correctly.
-type TabValue = "notes" | "portfolio" | "optimizer" | "forecast" | "capital";
+type TabValue = "notes" | "portfolio" | "optimizer" | "forecast";
 
-const TAB_VALUES: TabValue[] = ["notes", "portfolio", "optimizer", "forecast", "capital"];
+// "capital" removed 2026-07-07 (deletion ledger): the Capital tab rendered
+// unconditionally while /api/capital-markets is gated off — an erroring
+// panel for every non-founder. The page stays FROZEN behind the
+// feature_capital_markets flag at /capital-markets; restore the tab when
+// note securitization is a real revenue line (H4).
+const TAB_VALUES: TabValue[] = ["notes", "portfolio", "optimizer", "forecast"];
 
 // Legacy hash → current value. The old "finance" value rendered the Portfolio
-// page; map it forward so bookmarks don't break.
-const LEGACY_HASH: Record<string, TabValue> = { finance: "portfolio" };
+// page; map it forward so bookmarks don't break. "capital" maps to the door
+// default since its tab was removed (see TAB_VALUES note above).
+const LEGACY_HASH: Record<string, TabValue> = { finance: "portfolio", capital: "notes" };
 
 function getTabFromHash(): TabValue {
   const raw = window.location.hash.replace("#", "");
@@ -125,10 +129,6 @@ export default function FinancePageShell() {
             <TrendingUp className="h-4 w-4" aria-hidden="true" />
             <span>Forecast</span>
           </TabsTrigger>
-          <TabsTrigger value="capital" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-capital">
-            <Landmark className="h-4 w-4" aria-hidden="true" />
-            <span>Capital</span>
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="notes" data-testid="tab-content-notes">
@@ -155,12 +155,6 @@ export default function FinancePageShell() {
         <TabsContent value="forecast" data-testid="tab-content-forecast">
           <Suspense fallback={<TabFallback />}>
             <CashFlowPage />
-          </Suspense>
-        </TabsContent>
-
-        <TabsContent value="capital" data-testid="tab-content-capital">
-          <Suspense fallback={<TabFallback />}>
-            <CapitalMarketsPage />
           </Suspense>
         </TabsContent>
       </Tabs>

@@ -4,12 +4,12 @@
  * bundle so the founder can walk visual diffs efficiently.
  *
  * Output:
- *   docs/exhaustive-completion/comparisons/index.html  — surface index
- *   docs/exhaustive-completion/comparisons/<slug>.html — per-surface diff
+ *   docs/archive/exhaustive-completion/comparisons/index.html  — surface index
+ *   docs/archive/exhaustive-completion/comparisons/<slug>.html — per-surface diff
  */
 import { writeFile, mkdir } from "node:fs/promises";
 
-const OUT = "docs/exhaustive-completion/comparisons";
+const OUT = "docs/archive/exhaustive-completion/comparisons";
 const PROTO_REL = "../prototype-screenshots";
 const PROD_REL = "../production-screenshots";
 const FOUNDER_REL = "../founder-screenshots";

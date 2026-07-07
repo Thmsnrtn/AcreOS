@@ -443,7 +443,9 @@ const NAV_MODULES: NavModule[] = [
       { label: "Leads", icon: ContactRound, href: "/leads", description: "Land seller leads CRM" },
     ],
     overflow: [
-      { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals" },
+      // Marketplace entry removed 2026-07-07 (deletion ledger): the feature
+      // is FROZEN behind feature_marketplace (off) — the sidebar shouldn't
+      // advertise a door that 404s. Restore only at the G2 liquidity proof.
       { label: "Valuations", icon: TrendingUp, href: "/avm", description: "Automated property valuations" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
       // Leads sub-surfaces (folded in with Leads, 2026-05-29).

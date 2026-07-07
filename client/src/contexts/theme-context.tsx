@@ -5,7 +5,7 @@ import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 /**
  * Theme system — five themes × light/dark + five font pairings.
  *
- * Spec: docs/exhaustive-completion/prototype-design-system.md (§3 themes,
+ * Spec: docs/archive/exhaustive-completion/prototype-design-system.md (§3 themes,
  * §4 type pairings, §0.2 Phase B locked decisions).
  *
  * Apple-native auto semantics: when the user explicitly picks `light` or

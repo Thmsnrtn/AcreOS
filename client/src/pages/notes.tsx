@@ -4,7 +4,7 @@
  * Lists acquired notes for the org with status pills, a status filter, and
  * per-row payer / balance / next payment / status. Foundation surface —
  * the BPO + tape diligence + Sophie agent expansion ride a follow-up PR
- * (see docs/exhaustive-completion/note-investor-followups.md).
+ * (see docs/archive/exhaustive-completion/note-investor-followups.md).
  *
  * Loading state uses Skeleton matching the table shape (per UI patterns
  * in CLAUDE.md). Empty state uses the canonical EmptyState with a
