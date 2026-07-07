@@ -13181,6 +13181,59 @@ export const insertSanctionsListEntrySchema = createInsertSchema(sanctionsListEn
 export type SanctionsListEntry = typeof sanctionsListEntries.$inferSelect;
 export type InsertSanctionsListEntry = z.infer<typeof insertSanctionsListEntrySchema>;
 
+// ── 0195 — DNC / litigator scrub results (TCPA cold-outreach seam) ──────────
+// Cached outcome of scrubbing a PHONE NUMBER against a Do-Not-Call registry
+// and/or a known-TCPA-litigator list via a pluggable vendor adapter
+// (server/services/compliance/dncScrub.ts). The vendor decision is a pending
+// founder call (roadmap-2026-07 "Founder decisions" #1); until a vendor is
+// configured the seam is INERT (gate allows, `scrubbed:false`) and this table
+// simply stays empty. Once configured:
+//   • `litigator`  — always blocks outbound SMS/calls, even with consent.
+//   • `dnc_listed` — blocks unless the lead carries express TCPA consent
+//                    (express consent lawfully overrides registry listing).
+//   • scrub ERROR on a lead-matched marketing send — FAIL CLOSED (block);
+//     on unmatched/transactional traffic — fail open (billing must flow).
+// Rows expire (`expiresAt`) because DNC lists demand periodic re-scrub
+// (the federal SAN convention is every 31 days).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0195_dnc_scrub_results.sql.
+export const dncScrubResults = pgTable("dnc_scrub_results", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  // Normalized digits of the scrubbed number (last 10, US-centric — matches
+  // the lead-matching convention in smsService.tcpaGateForRecipient).
+  phoneLast10: text("phone_last10").notNull(),
+  // "clean" | "dnc_listed" | "litigator". Transient scrub ERRORS are never
+  // cached — they must re-run, not poison the cache.
+  status: text("status").notNull(),
+  // Which vendor adapter produced the result ("fixture" | vendor name).
+  provider: text("provider").notNull(),
+  // Vendor's list identifier (e.g. "federal-dnc", "litigator-v3"), if given.
+  listSource: text("list_source"),
+  // Vendor's stated reason/detail for a listing, if given.
+  reason: text("reason"),
+  scrubbedAt: timestamp("scrubbed_at").notNull().defaultNow(),
+  // Scrub validity window — re-scrub after this (default 30 days).
+  expiresAt: timestamp("expires_at").notNull(),
+}, (table) => ({
+  // Lead with organization_id (Tahoe shard-readiness — leading-org composite).
+  // Gate lookup path: latest un-expired scrub for (org, phone).
+  byOrgPhone: index("dnc_scrub_results_org_phone_idx").on(
+    table.organizationId,
+    table.phoneLast10,
+    table.scrubbedAt,
+  ),
+}));
+
+export const insertDncScrubResultSchema = createInsertSchema(dncScrubResults).omit({
+  id: true,
+  scrubbedAt: true,
+});
+export type DncScrubResult = typeof dncScrubResults.$inferSelect;
+export type InsertDncScrubResult = z.infer<typeof insertDncScrubResultSchema>;
+
 // Revenue Protection Interventions — automated churn/dunning outreach log
 export const revenueProtectionInterventions = pgTable("revenue_protection_interventions", {
   id: serial("id").primaryKey(),

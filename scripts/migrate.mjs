@@ -7576,6 +7576,22 @@ const STATEMENTS = [
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "growth_targets_state_county_idx" ON "growth_targets" ("state", "county_slug")`,
   `CREATE INDEX IF NOT EXISTS "growth_targets_status_score_idx" ON "growth_targets" ("status", "demand_score")`,
+
+  // DNC / litigator scrub results (migration 0195, mature-machine H0 §6.1) —
+  // the TCPA cold-outreach seam. Inert until DNC_SCRUB_PROVIDER is configured
+  // (pending founder vendor decision); see server/services/compliance/dncScrub.ts.
+  `CREATE TABLE IF NOT EXISTS "dnc_scrub_results" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "phone_last10" text NOT NULL,
+     "status" text NOT NULL,
+     "provider" text NOT NULL,
+     "list_source" text,
+     "reason" text,
+     "scrubbed_at" timestamp NOT NULL DEFAULT now(),
+     "expires_at" timestamp NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "dnc_scrub_results_org_phone_idx" ON "dnc_scrub_results" ("organization_id", "phone_last10", "scrubbed_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

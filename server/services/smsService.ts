@@ -184,6 +184,12 @@ export const smsService = new SmsService();
  *   • consent state UNVERIFIABLE (db error) → FAIL CLOSED. A marketing SMS
  *     with unprovable consent is a TCPA violation waiting for a plaintiff;
  *     a delayed transactional SMS retries.
+ *   • DNC/litigator scrub (mature-machine H0 §6.1) — layered AFTER the
+ *     consent gate at this same choke point. INERT until the founder's
+ *     vendor decision configures DNC_SCRUB_PROVIDER; once configured,
+ *     litigator numbers block even with consent, DNC-listed numbers block
+ *     without express consent, and both traffic classes (lead-matched and
+ *     unmatched) get scrubbed. See services/compliance/dncScrub.ts.
  */
 async function tcpaGateForRecipient(
   organizationId: number,
@@ -201,9 +207,29 @@ async function tcpaGateForRecipient(
       if (leadPhone.length < 7) return false;
       return leadPhone.slice(-10) === last10;
     });
-    if (!matched) return { allowed: true };
+    const { dncGateForSms } = await import("./compliance/dncScrub");
+    if (!matched) {
+      // Unmatched = transactional class. Scrub still applies when configured
+      // (litigator numbers block; scrub errors fail OPEN so billing flows).
+      const dnc = await dncGateForSms(organizationId, to, {
+        leadMatched: false,
+        hasConsent: false,
+      });
+      if (!dnc.allowed) return { allowed: false, reason: dnc.reason };
+      return { allowed: true };
+    }
     const { tcpaGateForSms } = await import("./tcpaCompliance");
-    return await tcpaGateForSms(matched.id, organizationId, to);
+    const consentGate = await tcpaGateForSms(matched.id, organizationId, to);
+    if (!consentGate.allowed) return consentGate;
+    // Reaching here means the lead has express consent (canSms requires it),
+    // so a DNC listing is lawfully overridden — the scrub's teeth on this
+    // path are the litigator list and the fail-closed error posture.
+    const dnc = await dncGateForSms(organizationId, to, {
+      leadMatched: true,
+      hasConsent: true,
+    });
+    if (!dnc.allowed) return { allowed: false, reason: dnc.reason };
+    return { allowed: true };
   } catch (err) {
     logger.error(
       "[SMS] TCPA gate could not verify consent — refusing send (fail closed)",
