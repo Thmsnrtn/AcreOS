@@ -81,8 +81,12 @@ Rule: every number is real or explicitly "no data yet." Mobile-first.
       spend, envelope+runway were already real. CAC stays on
       /founder/money unit-economics (its correct deep-panel home);
       switch states live behind the Controls door.
-- [ ] Mobile pass on the cockpit (inventory verified responsive
-      primitives; needs an on-device eyeball pass).
+- [x] Mobile pass on the cockpit (2026-07-08): all four founder doors
+      screenshotted on a Pixel-5 viewport against the production build
+      with seeded data and delivered to the founder. Pulse renders the
+      honest tiles (Uptime/Errors "no data yet", REAL wedge counts from
+      seed data), Controls shows the full switch/trust/connections stack
+      cleanly, Decisions + Story render non-blank. No layout defects.
 
 ## WS3 — The Brain (Solene as chief of staff)
 
