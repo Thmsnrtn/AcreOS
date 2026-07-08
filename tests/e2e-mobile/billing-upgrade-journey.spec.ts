@@ -172,7 +172,12 @@ test.describe("billing upgrade journey (Settings → Billing)", () => {
     // creation, owner's canManageBilling permission, idempotency key) and
     // hands the browser to Stripe-hosted checkout ─────────────────────────
     await upgradeButton.click();
-    await page.waitForURL(/checkout\.stripe\.com/, { timeout: 45_000 });
-    expect(page.url()).toContain("checkout.stripe.com");
+    // Hostname-exact (not substring/regex): a substring match on the URL
+    // would also accept e.g. evil.example/checkout.stripe.com (CodeQL
+    // js/incomplete-url-substring-sanitization).
+    await page.waitForURL((url) => url.hostname === "checkout.stripe.com", {
+      timeout: 45_000,
+    });
+    expect(new URL(page.url()).hostname).toBe("checkout.stripe.com");
   });
 });

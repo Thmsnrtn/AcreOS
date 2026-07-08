@@ -224,6 +224,17 @@ Exit test: five hard CEO questions, every answer sourced.
 
 ## Status log
 
+- 2026-07-08 ~12:45Z — **Security workflow GREEN on the PR #113 branch**
+  (head `375cbdf`) — first green since 2026-07-07. The findings-table
+  step named the real culprit on its first run: CVE-2026-48702
+  (sigstore/rekor v1.5.0, HIGH) vendored in the gh binary — a gh module
+  dep, NOT the Go stdlib, which is why the 1.26.5 toolchain bump alone
+  didn't clear it. Fixed by GH_VERSION → v2.96.0 (`b6fa9ff`). Same run
+  surfaced the separate CodeQL PR check flagging 1 new HIGH in the new
+  billing spec (URL substring/unanchored-regex match on the Stripe
+  checkout redirect) — fixed with hostname-exact assertions. PR #113
+  merges automatically once deploy-gating checks are green (standing
+  authorization below).
 - 2026-07-08 ~12:10Z — **Founder granted STANDING merge authorization**
   ("I would like you to automatically be merging"): PRs from launch-week
   work merge automatically once deploy-gating checks are green (CI, Test,
