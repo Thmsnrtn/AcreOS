@@ -667,7 +667,11 @@ export default function Settings() {
                                   <Button
                                     size="sm"
                                     className="mt-2 min-h-11 pointer-fine:sm:min-h-9"
-                                    onClick={() => document.getElementById("pricing-section")?.scrollIntoView({ behavior: "smooth" })}
+                                    onClick={() => {
+                                      // Plans live in the Billing tab now — switch, then scroll once it paints.
+                                      handleTabChange("billing");
+                                      setTimeout(() => document.getElementById("pricing-section")?.scrollIntoView({ behavior: "smooth" }), 50);
+                                    }}
                                     data-testid="button-upgrade-from-usage"
                                   >
                                     <Crown className="w-4 h-4 mr-2" aria-hidden="true" />
@@ -766,19 +770,27 @@ export default function Settings() {
                       id="show-tips"
                       checked={showTips}
                       onCheckedChange={async (checked) => {
-                        await updateOrgMutation.mutateAsync({
-                          settings: {
-                            ...(organization?.settings || {}),
-                            showTips: checked,
-                            checklistDismissed: checked ? false : settings?.checklistDismissed,
-                          },
-                        });
-                        toast({
-                          title: checked ? "Tips enabled" : "Tips disabled",
-                          description: checked 
-                            ? "You'll now see helpful tips throughout the app."
-                            : "Tips have been hidden. You can re-enable them anytime.",
-                        });
+                        try {
+                          await updateOrgMutation.mutateAsync({
+                            settings: {
+                              ...(organization?.settings || {}),
+                              showTips: checked,
+                              checklistDismissed: checked ? false : settings?.checklistDismissed,
+                            },
+                          });
+                          toast({
+                            title: checked ? "Tips enabled" : "Tips disabled",
+                            description: checked
+                              ? "You'll now see helpful tips throughout the app."
+                              : "Tips have been hidden. You can re-enable them anytime.",
+                          });
+                        } catch {
+                          toast({
+                            title: "Couldn't save your preference",
+                            description: "The change didn't stick — please try again.",
+                            variant: "destructive",
+                          });
+                        }
                       }}
                       disabled={updateOrgMutation.isPending}
                       data-testid="switch-show-tips"
@@ -831,155 +843,6 @@ export default function Settings() {
                   </div>
                 </CardContent>
               </Card>
-
-              <div id="pricing-section" className="space-y-4">
-                <h2 className="text-section-h2">Available Plans</h2>
-                
-                {productsLoading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {[1, 2, 3].map((i) => (
-                      <Card key={i}>
-                        <CardContent className="pt-6 space-y-4">
-                          <Skeleton className="h-6 w-24" announce={i === 1} announceText="Loading available plans" />
-                          <Skeleton className="h-8 w-20" announce={false} />
-                          <Skeleton className="h-4 w-full" announce={false} />
-                          <Skeleton className="h-10 w-full" announce={false} />
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                ) : productsError ? (
-                  <Card>
-                    <CardContent className="py-6">
-                      <QueryErrorState
-                        error={productsErrorObj as Error}
-                        onRetry={() => refetchProducts()}
-                        isRetrying={productsRefetching}
-                        compact
-                        title="Couldn't load plans"
-                        description="Your current subscription is unaffected — this is just a display issue."
-                        testId="error-available-plans"
-                      />
-                    </CardContent>
-                  </Card>
-                ) : products && products.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {products
-                      .filter(p => p.active && p.prices.length > 0)
-                      // Only the 3 base tier cards (Starter / Pro / Scale).
-                      // Seat add-ons + vertical packs come from the same
-                      // /api/stripe/products endpoint but are managed via
-                      // the seats UI + per-vertical pack picker (Phase 5
-                      // §5). Tagging convention: metadata.tier is
-                      // starter|pro|scale on base tiers; seat-addons carry
-                      // metadata.type=seat_addon; packs carry
-                      // metadata.type=vertical_pack.
-                      .filter(p => {
-                        const tier = p.metadata?.tier;
-                        const type = p.metadata?.type;
-                        return (tier === "starter" || tier === "pro" || tier === "scale") && !type;
-                      })
-                      .sort((a, b) => {
-                        const order: Record<string, number> = { starter: 0, pro: 1, scale: 2 };
-                        return (order[a.metadata?.tier ?? ""] ?? 99) - (order[b.metadata?.tier ?? ""] ?? 99);
-                      })
-                      .map((product) => {
-                        const price = product.prices.find(p => p.active && p.recurring);
-                        const isCurrent = isCurrentTier(product.name);
-                        
-                        return (
-                          <Card 
-                            key={product.id} 
-                            className={isCurrent ? "border-primary" : ""}
-                            data-testid={`card-plan-${product.id}`}
-                          >
-                            <CardHeader>
-                              <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
-                                {product.name}
-                                {isCurrent && (
-                                  <Badge variant="default" className="text-xs">Current</Badge>
-                                )}
-                              </CardTitle>
-                              {price && (
-                                <div className="text-2xl font-bold">
-                                  {formatPrice(price.unit_amount, price.currency)}
-                                  <span className="text-sm font-normal text-muted-foreground">
-                                    /{price.recurring?.interval}
-                                  </span>
-                                </div>
-                              )}
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                              {product.description && (
-                                <p className="text-sm text-muted-foreground">{product.description}</p>
-                              )}
-                              
-                              {product.metadata && Object.keys(product.metadata).length > 0 && (
-                                <ul className="space-y-2">
-                                  {Object.entries(product.metadata)
-                                    .filter(([key]) => key.startsWith("feature_"))
-                                    .map(([key, value]) => (
-                                      <li key={key} className="flex items-center gap-2 text-sm">
-                                        <Check className="w-4 h-4 text-acr-pos flex-shrink-0" />
-                                        <span>{value}</span>
-                                      </li>
-                                    ))}
-                                </ul>
-                              )}
-                              
-                              {price && !isCurrent && (
-                                <Button
-                                  className="w-full min-h-11 pointer-fine:sm:min-h-9"
-                                  onClick={() => handleUpgrade(price.id)}
-                                  disabled={checkoutMutation.isPending}
-                                  data-testid={`button-upgrade-${product.id}`}
-                                >
-                                  {checkoutMutation.isPending ? (
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                  ) : null}
-                                  Upgrade to {product.name}
-                                </Button>
-                              )}
-                              
-                              {isCurrent && subscriptionData?.subscription && (
-                                <Button
-                                  variant="outline"
-                                  className="w-full min-h-11 pointer-fine:sm:min-h-9"
-                                  onClick={handleManageSubscription}
-                                  disabled={portalMutation.isPending}
-                                  data-testid={`button-manage-${product.id}`}
-                                >
-                                  {portalMutation.isPending ? (
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                  ) : null}
-                                  Manage Plan
-                                </Button>
-                              )}
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                  </div>
-                ) : (
-                  <Card>
-                    <CardContent className="py-2">
-                      <EmptyState
-                        icon={CreditCard}
-                        headline="No plans to show"
-                        subtitle="Plans didn't come back from billing just now. A refresh usually clears this up."
-                        cta={{
-                          label: "Refresh plans",
-                          onClick: () => refetchProducts(),
-                          "data-testid": "empty-refresh-plans",
-                        }}
-                        actionIcon={null}
-                        className="py-6"
-                        testId="empty-available-plans"
-                      />
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
 
               {/* Tax identity (org-side 1099 issuer fields) — owner-only edit. */}
               <Card data-testid="card-tax-identity-link">
@@ -1349,6 +1212,160 @@ export default function Settings() {
             </TabsContent>
 
             <TabsContent value="billing" className="space-y-8 mt-6" data-testid="tab-content-billing">
+              {/* Plans + upgrade grid — moved here from the Account tab (WS1,
+                  2026-07-07): every server upgradeUrl deep-links to
+                  /settings#billing, but the tab named Billing only held
+                  Stripe Connect, so customers looking to upgrade found no
+                  plans. */}
+              <div id="pricing-section" className="space-y-4">
+                <h2 className="text-section-h2">Available Plans</h2>
+                
+                {productsLoading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[1, 2, 3].map((i) => (
+                      <Card key={i}>
+                        <CardContent className="pt-6 space-y-4">
+                          <Skeleton className="h-6 w-24" announce={i === 1} announceText="Loading available plans" />
+                          <Skeleton className="h-8 w-20" announce={false} />
+                          <Skeleton className="h-4 w-full" announce={false} />
+                          <Skeleton className="h-10 w-full" announce={false} />
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : productsError ? (
+                  <Card>
+                    <CardContent className="py-6">
+                      <QueryErrorState
+                        error={productsErrorObj as Error}
+                        onRetry={() => refetchProducts()}
+                        isRetrying={productsRefetching}
+                        compact
+                        title="Couldn't load plans"
+                        description="Your current subscription is unaffected — this is just a display issue."
+                        testId="error-available-plans"
+                      />
+                    </CardContent>
+                  </Card>
+                ) : products && products.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {products
+                      .filter(p => p.active && p.prices.length > 0)
+                      // Only the 3 base tier cards (Starter / Pro / Scale).
+                      // Seat add-ons + vertical packs come from the same
+                      // /api/stripe/products endpoint but are managed via
+                      // the seats UI + per-vertical pack picker (Phase 5
+                      // §5). Tagging convention: metadata.tier is
+                      // starter|pro|scale on base tiers; seat-addons carry
+                      // metadata.type=seat_addon; packs carry
+                      // metadata.type=vertical_pack.
+                      .filter(p => {
+                        const tier = p.metadata?.tier;
+                        const type = p.metadata?.type;
+                        return (tier === "starter" || tier === "pro" || tier === "scale") && !type;
+                      })
+                      .sort((a, b) => {
+                        const order: Record<string, number> = { starter: 0, pro: 1, scale: 2 };
+                        return (order[a.metadata?.tier ?? ""] ?? 99) - (order[b.metadata?.tier ?? ""] ?? 99);
+                      })
+                      .map((product) => {
+                        const price = product.prices.find(p => p.active && p.recurring);
+                        const isCurrent = isCurrentTier(product.name);
+                        
+                        return (
+                          <Card 
+                            key={product.id} 
+                            className={isCurrent ? "border-primary" : ""}
+                            data-testid={`card-plan-${product.id}`}
+                          >
+                            <CardHeader>
+                              <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
+                                {product.name}
+                                {isCurrent && (
+                                  <Badge variant="default" className="text-xs">Current</Badge>
+                                )}
+                              </CardTitle>
+                              {price && (
+                                <div className="text-2xl font-bold">
+                                  {formatPrice(price.unit_amount, price.currency)}
+                                  <span className="text-sm font-normal text-muted-foreground">
+                                    /{price.recurring?.interval}
+                                  </span>
+                                </div>
+                              )}
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              {product.description && (
+                                <p className="text-sm text-muted-foreground">{product.description}</p>
+                              )}
+                              
+                              {product.metadata && Object.keys(product.metadata).length > 0 && (
+                                <ul className="space-y-2">
+                                  {Object.entries(product.metadata)
+                                    .filter(([key]) => key.startsWith("feature_"))
+                                    .map(([key, value]) => (
+                                      <li key={key} className="flex items-center gap-2 text-sm">
+                                        <Check className="w-4 h-4 text-acr-pos flex-shrink-0" />
+                                        <span>{value}</span>
+                                      </li>
+                                    ))}
+                                </ul>
+                              )}
+                              
+                              {price && !isCurrent && (
+                                <Button
+                                  className="w-full min-h-11 pointer-fine:sm:min-h-9"
+                                  onClick={() => handleUpgrade(price.id)}
+                                  disabled={checkoutMutation.isPending}
+                                  data-testid={`button-upgrade-${product.id}`}
+                                >
+                                  {checkoutMutation.isPending ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  ) : null}
+                                  Upgrade to {product.name}
+                                </Button>
+                              )}
+                              
+                              {isCurrent && subscriptionData?.subscription && (
+                                <Button
+                                  variant="outline"
+                                  className="w-full min-h-11 pointer-fine:sm:min-h-9"
+                                  onClick={handleManageSubscription}
+                                  disabled={portalMutation.isPending}
+                                  data-testid={`button-manage-${product.id}`}
+                                >
+                                  {portalMutation.isPending ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  ) : null}
+                                  Manage Plan
+                                </Button>
+                              )}
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="py-2">
+                      <EmptyState
+                        icon={CreditCard}
+                        headline="No plans to show"
+                        subtitle="Plans didn't come back from billing just now. A refresh usually clears this up."
+                        cta={{
+                          label: "Refresh plans",
+                          onClick: () => refetchProducts(),
+                          "data-testid": "empty-refresh-plans",
+                        }}
+                        actionIcon={null}
+                        className="py-6"
+                        testId="empty-available-plans"
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
               <StripeConnectSettings />
             </TabsContent>
 
@@ -1422,10 +1439,10 @@ export default function Settings() {
                 <div>
                   <h2 className="text-section-h2 flex items-center gap-2">
                     <Link2 className="w-5 h-5" />
-                    Bring Your Own Keys (BYOK)
+                    Use your own provider accounts
                   </h2>
                   <p className="text-muted-foreground text-sm">
-                    Connect your own API keys to external services for unlimited usage and complete control.
+                    Plug in your own Twilio, SendGrid, or Lob account so texts, emails, and mail bill to you directly instead of drawing from AcreOS credits.
                   </p>
                   {/* Trust microcopy at the moment of key entry. BYOK
                       adoption is gated on the user believing we won't
@@ -1533,8 +1550,8 @@ export default function Settings() {
                     Tax identity (W-9)
                   </CardTitle>
                   <CardDescription>
-                    Manage your W-9 tax identity and TIN for 1099 reporting. Required
-                    for borrowers and any seller you pay {">"} $600 in a tax year.
+                    Add your business's tax details (EIN or SSN) so AcreOS can issue
+                    the 1099 forms you owe anyone you pay more than $600 in a year.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

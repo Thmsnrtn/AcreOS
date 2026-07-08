@@ -79,7 +79,9 @@ export function registerAutopilotRoutes(app: Express): void {
         const reason = ((req.body ?? {}) as { reason?: string }).reason?.trim() || "founder-initiated panic stop";
         const { panicStop } = await import("./services/autopilot/panicStop");
         const result = await panicStop({ reason, by: getUserId(req) });
-        logger.error("[autopilot] founder tripped PANIC STOP via API", { reason });
+        // logger.error's 2nd arg is the Error — passing {reason} there logged
+        // "[object Object]" and lost the reason (WS5 drill, 2026-07-08).
+        logger.error("[autopilot] founder tripped PANIC STOP via API", undefined, { metadata: { reason } });
         return res.json({ ok: true, ...result });
       } catch (err) {
         return Errors.internal(res, err);
@@ -363,7 +365,7 @@ export function registerAutopilotRoutes(app: Express): void {
       }
       try {
         const { parseSteerCommand, handleSteer } = await import("./services/autopilot/steer");
-        const { setDomainLevel: setLvl, getDomainLevel, nextLevel } = await import(
+        const { setDomainLevel: setLvl, getDomainLevel, nextLevel, AUTOPILOT_DOMAINS } = await import(
           "./services/autopilot/domainAutonomy"
         );
         const { createStandingOrder } = await import("./services/autopilot/standingOrders");
@@ -392,6 +394,27 @@ export function registerAutopilotRoutes(app: Express): void {
               const [latest] = await getRecentStory(1);
               const trace = latest?.reasoningTrace as { narrative?: string } | null;
               return trace?.narrative ?? "Nothing's run yet — once the autopilot acts, I'll be able to explain each move.";
+            },
+            listDomains: () => AUTOPILOT_DOMAINS,
+            spend: async () => {
+              // Real ledger only — never an estimate. If either read fails we
+              // say so instead of guessing.
+              const { getMonthlyEnvelopeStatus, getSpendSummary } = await import(
+                "./services/solene/capitalTracker"
+              );
+              try {
+                const [week, env] = await Promise.all([
+                  getSpendSummary(7 * 24),
+                  getMonthlyEnvelopeStatus(),
+                ]);
+                return (
+                  `Last 7 days: $${week.totalUsd.toFixed(2)} across ${week.eventCount} events. ` +
+                  `Month-to-date: $${env.monthToDateUsd.toFixed(2)} of the $${env.envelopeUsd.toFixed(0)} envelope ` +
+                  `(${Math.round(env.percentUsed)}% used, status ${env.status}; projected $${env.projectedMonthlyUsd.toFixed(2)} for the month).`
+                );
+              } catch {
+                return "I can't read the spend ledger right now — no number rather than a guess.";
+              }
             },
           },
           getUserId(req),
@@ -434,6 +457,43 @@ export function registerAutopilotRoutes(app: Express): void {
         const { getLatestMorningPulse } = await import("./services/solene/continuousLoop");
         const pulse = await getLatestMorningPulse();
 
+        // F1 pulse strip (experience-legibility.md): the brain's actual
+        // heartbeat is the solene_continuous_tick job (30-min cadence in
+        // jobRegistry) — read its latest successful run from job_runs.
+        // Honest null when it has never run (fresh env, jobs disabled);
+        // stale after 2 missed cadences, wired to the same reality the
+        // deadman watches.
+        const LOOP_JOB = "solene_continuous_tick";
+        const LOOP_CADENCE_MS = 30 * 60 * 1000;
+        let loop: {
+          lastCycleAt: string | null;
+          cadenceMs: number;
+          nextDueAt: string | null;
+          stale: boolean;
+        } = { lastCycleAt: null, cadenceMs: LOOP_CADENCE_MS, nextDueAt: null, stale: false };
+        try {
+          const { db } = await import("./storage");
+          const { jobRuns } = await import("@shared/schema");
+          const { and, desc, eq, isNotNull } = await import("drizzle-orm");
+          const [run] = await db
+            .select({ completedAt: jobRuns.completedAt })
+            .from(jobRuns)
+            .where(and(eq(jobRuns.jobName, LOOP_JOB), eq(jobRuns.status, "success"), isNotNull(jobRuns.completedAt)))
+            .orderBy(desc(jobRuns.completedAt))
+            .limit(1);
+          if (run?.completedAt) {
+            const last = new Date(run.completedAt);
+            loop = {
+              lastCycleAt: last.toISOString(),
+              cadenceMs: LOOP_CADENCE_MS,
+              nextDueAt: new Date(last.getTime() + LOOP_CADENCE_MS).toISOString(),
+              stale: Date.now() - last.getTime() > 2 * LOOP_CADENCE_MS,
+            };
+          }
+        } catch {
+          /* keep honest nulls */
+        }
+
         let supportThresholdLine: string | null = null;
         let supportThresholdPct: number | null = null;
         try {
@@ -457,6 +517,7 @@ export function registerAutopilotRoutes(app: Express): void {
         }
 
         return res.json({
+          loop,
           lastTickAt: pulse?.generatedAt ?? null,
           oneLine: pulse?.oneLine ?? null,
           mrr: pulse?.mrr ?? null,
@@ -472,6 +533,85 @@ export function registerAutopilotRoutes(app: Express): void {
           supportThresholdPct,
           pendingCount,
         });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Wedge receipts — F3 of the experience-legibility cluster ────────────
+  // "No number without a tappable source": the Letter's Outreach/Replies/
+  // Offers tiles open the actual rows these counts are made of. Same tables
+  // and 7-day cutoff as the narrate.ts gatherer, formatted server-side into
+  // plain receipt lines so the client stays dumb and the wording stays in
+  // one place.
+  app.get(
+    "/api/founder/autopilot/receipts/wedge",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const metric = String(req.query.metric ?? "");
+      if (!["outreach", "replies", "offers"].includes(metric)) {
+        return Errors.badRequest(res, `Unknown metric "${metric}"`, {
+          allowed: ["outreach", "replies", "offers"],
+        });
+      }
+      try {
+        const { db } = await import("./db");
+        const { campaignDeliveryEvents, messages, offers, leads } = await import("@shared/schema");
+        const { and, desc, eq, gte } = await import("drizzle-orm");
+        const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const LIMIT = 50;
+        let rows: Array<{ at: string | null; line: string }> = [];
+        if (metric === "outreach") {
+          const out = await db
+            .select({
+              at: campaignDeliveryEvents.sentAt,
+              channel: campaignDeliveryEvents.channel,
+              status: campaignDeliveryEvents.status,
+              first: leads.firstName,
+              last: leads.lastName,
+            })
+            .from(campaignDeliveryEvents)
+            .leftJoin(leads, eq(campaignDeliveryEvents.leadId, leads.id))
+            .where(gte(campaignDeliveryEvents.sentAt, cutoff))
+            .orderBy(desc(campaignDeliveryEvents.sentAt))
+            .limit(LIMIT);
+          rows = out.map((r) => ({
+            at: r.at ? new Date(r.at).toISOString() : null,
+            line: `${r.channel === "direct_mail" ? "Letter" : r.channel === "sms" ? "Text" : "Email"} to ${[r.first, r.last].filter(Boolean).join(" ") || "a lead"} — ${r.status}`,
+          }));
+        } else if (metric === "replies") {
+          const out = await db
+            .select({ at: messages.createdAt, content: messages.content })
+            .from(messages)
+            .where(and(eq(messages.direction, "inbound"), gte(messages.createdAt, cutoff)))
+            .orderBy(desc(messages.createdAt))
+            .limit(LIMIT);
+          rows = out.map((r) => ({
+            at: r.at ? new Date(r.at).toISOString() : null,
+            line: `Reply: “${(r.content ?? "").slice(0, 80)}${(r.content ?? "").length > 80 ? "…" : ""}”`,
+          }));
+        } else {
+          const out = await db
+            .select({
+              at: offers.createdAt,
+              status: offers.status,
+              cash: offers.cashOffer,
+              first: leads.firstName,
+              last: leads.lastName,
+            })
+            .from(offers)
+            .leftJoin(leads, eq(offers.leadId, leads.id))
+            .where(gte(offers.createdAt, cutoff))
+            .orderBy(desc(offers.createdAt))
+            .limit(LIMIT);
+          rows = out.map((r) => ({
+            at: r.at ? new Date(r.at).toISOString() : null,
+            line: `Offer${r.cash ? ` $${Number(r.cash).toLocaleString("en-US")}` : ""} to ${[r.first, r.last].filter(Boolean).join(" ") || "a lead"} — ${r.status}`,
+          }));
+        }
+        return res.json({ metric, windowDays: 7, rows });
       } catch (err) {
         return Errors.internal(res, err);
       }

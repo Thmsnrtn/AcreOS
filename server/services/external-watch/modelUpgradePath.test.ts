@@ -438,8 +438,8 @@ describe("decideAction", () => {
 // ============================================================================
 
 describe("getCurrentDispatchModel", () => {
-  it("returns default when env unset", () => {
-    expect(getCurrentDispatchModel()).toBe("claude-opus-4-7");
+  it("returns default when env unset (mirrors dispatchRunner's SONNET default)", () => {
+    expect(getCurrentDispatchModel()).toBe("claude-sonnet-4-6");
   });
   it("uses SOLENE_DISPATCH_MODEL env override", () => {
     process.env.SOLENE_DISPATCH_MODEL = "claude-opus-4-8";
@@ -476,8 +476,8 @@ describe("processWatchEvent", () => {
       id: 101,
       source: "anthropic_api",
       sourceUrl: "https://docs.anthropic.com/y",
-      title: "Deprecation: claude-opus-4.7 reaches EOL 2026-12-31",
-      summary: "Migrate to the next Opus before the deadline.",
+      title: "Deprecation: claude-sonnet-4.6 reaches EOL 2026-12-31",
+      summary: "Migrate to the next Sonnet before the deadline.",
       ackStatus: "pending",
       publishedAt: new Date(),
     });
@@ -487,7 +487,7 @@ describe("processWatchEvent", () => {
     expect(RECOMMENDATIONS[0].recommendation).toBe("adopt_now");
     expect(PAGE_CALLS).toHaveLength(1);
     expect(PAGE_CALLS[0].severity).toBe("urgent");
-    expect(PAGE_CALLS[0].subject).toMatch(/claude-opus-4\.7/);
+    expect(PAGE_CALLS[0].subject).toMatch(/claude-sonnet-4\.6/);
   });
 
   it("does NOT page on flag_only / schedule_eval", async () => {

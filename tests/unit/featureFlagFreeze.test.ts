@@ -81,13 +81,20 @@ describe("resolveRouteEnabled precedence (client nav)", () => {
     expect(resolveRouteEnabled(FROZEN, "/deals")).toBe(true);
   });
 
-  it("no data (loading/unauthenticated/error) shows everything", () => {
-    expect(resolveRouteEnabled(undefined, "/marketplace")).toBe(true);
+  it("no data (loading/unauthenticated/error) shows everything — except FROZEN routes", () => {
+    // 2026-07-07: /marketplace moved to the code-enforced FROZEN_ROUTES
+    // deny-list (rule 0), so the fail-open contract is asserted on a real,
+    // unfrozen feature route instead.
+    expect(resolveRouteEnabled(undefined, "/avm")).toBe(true);
+    expect(resolveRouteEnabled(undefined, "/marketplace")).toBe(false);
   });
 
   it("legacy server without deny-lists keeps historical behavior", () => {
     const legacy: FeatureFlagsResponse = { enabledKeys: [], enabledRoutes: [] };
-    expect(resolveRouteEnabled(legacy, "/marketplace")).toBe(true);
+    // Unfrozen routes keep the historical empty-list fail-open; frozen ones
+    // are denied by rule 0 regardless of server vintage.
+    expect(resolveRouteEnabled(legacy, "/avm")).toBe(true);
+    expect(resolveRouteEnabled(legacy, "/marketplace")).toBe(false);
     const partial: FeatureFlagsResponse = {
       enabledKeys: ["feature_avm"],
       enabledRoutes: ["/avm"],
@@ -104,5 +111,51 @@ describe("resolveRouteEnabled precedence (client nav)", () => {
       disabledRoutes: ["/avm"],
     };
     expect(resolveRouteEnabled(conflicted, "/avm")).toBe(false);
+  });
+});
+
+// ── FROZEN_ROUTES hard deny-list (launch-week WS1, 2026-07-07) ──────────────
+// The deletion-ledger freeze verdicts must hold even when the flags system
+// gives the client NOTHING to work with — the exact states that previously
+// failed open.
+import { FROZEN_ROUTES, isFrozenRoute } from "../../shared/feature-freeze";
+
+describe("FROZEN_ROUTES — code-enforced freeze", () => {
+  it("denies frozen routes with NO flag data (endpoint error / unauthenticated)", () => {
+    for (const route of FROZEN_ROUTES) {
+      expect(resolveRouteEnabled(undefined, route), route).toBe(false);
+    }
+  });
+
+  it("denies frozen routes when the flags table is unseeded (all lists empty)", () => {
+    const empty: FeatureFlagsResponse = {
+      enabledKeys: [],
+      enabledRoutes: [],
+      disabledKeys: [],
+      disabledRoutes: [],
+    };
+    for (const route of FROZEN_ROUTES) {
+      expect(resolveRouteEnabled(empty, route), route).toBe(false);
+    }
+  });
+
+  it("denies frozen routes even when a stale flag row says enabled", () => {
+    const staleEnabled: FeatureFlagsResponse = {
+      enabledKeys: ["feature_marketplace"],
+      enabledRoutes: ["/marketplace"],
+    };
+    expect(resolveRouteEnabled(staleEnabled, "/marketplace")).toBe(false);
+  });
+
+  it("does NOT affect real features in the fail-open states", () => {
+    expect(resolveRouteEnabled(undefined, "/avm")).toBe(true);
+    expect(isFrozenRoute("/avm")).toBe(false);
+    expect(isFrozenRoute("/today")).toBe(false);
+  });
+
+  it("covers exactly the deletion-ledger freeze/kill surfaces", () => {
+    expect([...FROZEN_ROUTES].sort()).toEqual(
+      ["/capital-markets", "/marketplace", "/negotiation", "/vision-ai"].sort(),
+    );
   });
 });

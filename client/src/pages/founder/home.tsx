@@ -11,6 +11,7 @@
  * Replaces the old /founder (Pulse) + /founder/autopilot (Letter) overviews,
  * which now redirect here. Built from the verified founder/autopilot.tsx patterns.
  */
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, Activity, BookOpen, Mic, SlidersHorizontal, Gauge, Newspaper, TrendingUp, LayoutGrid } from "lucide-react";
@@ -22,8 +23,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
+import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatRelative } from "@/lib/format";
 
 interface FounderBrief {
   greeting: string;
@@ -35,12 +37,20 @@ interface FounderBrief {
     mrr: number;
     trials: number;
     weeklySpendUsd: number;
-    envelopeStatus: "green" | "amber" | "red";
-    uptimePct: number;
+    /** "unknown" when the pulse couldn't be read — rendered as "no data yet", never a guessed green. */
+    envelopeStatus: "green" | "amber" | "red" | "unknown";
+    /** Measured uptime; null until enough real heartbeat data exists. */
+    uptimePct: number | null;
     /** Weeks of runway at current burn; null when not burning / unknown. */
     runwayWeeks: number | null;
     /** Week-over-week MRR change (signed %); null when no real prior datapoint. */
     mrrWowPct: number | null;
+    /** Wedge throughput (7d): outreach sent, replies in, offers made. null when unreadable. */
+    wedge: { outreachSent7d: number; replies7d: number; offers7d: number } | null;
+    /** 5xx rate over the last 24h (percent). null when no traffic recorded. */
+    errorRatePct: number | null;
+    /** Deployed version (short SHA). null when unknown. */
+    prodVersion: string | null;
   };
   /** The brain's current focus, in plain language (observational). Real, already computed server-side. */
   focusLine: string | null;
@@ -54,10 +64,12 @@ function wowLabel(pct: number): string {
 
 // Plain-language budget status — never render the raw "amber" token at a CEO.
 // Interprets the real envelopeStatus into words + keeps the color tone.
-const BUDGET_STATUS: Record<"green" | "amber" | "red", { label: string; tone?: "amber" | "red" }> = {
+// "unknown" (pulse unreadable) says so — it is never dressed up as green.
+const BUDGET_STATUS: Record<"green" | "amber" | "red" | "unknown", { label: string; tone?: "amber" | "red" }> = {
   green: { label: "On track" },
   amber: { label: "Getting tight", tone: "amber" },
   red: { label: "Needs attention", tone: "red" },
+  unknown: { label: "No data yet" },
 };
 
 const HUB = [
@@ -74,6 +86,8 @@ const HUB = [
 
 export default function FounderHomePage() {
   useDocumentTitle("Your company · Founder");
+  // F3 receipts — which wedge tile's rows are open (null = none).
+  const [receiptMetric, setReceiptMetric] = useState<"outreach" | "replies" | "offers" | null>(null);
   const { data, isLoading, error, refetch } = useQuery<{ brief: FounderBrief }>({
     queryKey: ["/api/founder/solene/brief"],
     queryFn: async () => (await apiRequest("GET", "/api/founder/solene/brief")).json(),
@@ -84,6 +98,8 @@ export default function FounderHomePage() {
 
   return (
     <PageShell maxWidth="4xl" label="Your company">
+      {/* F1 — ambient liveness on every door (experience-legibility.md) */}
+      <div className="mb-4"><FounderPulseStrip /></div>
       {isLoading ? (
         <div className="space-y-4" aria-busy="true">
           <Skeleton className="h-24 w-full" />
@@ -162,8 +178,61 @@ export default function FounderHomePage() {
               tone={BUDGET_STATUS[brief.vitalSign.envelopeStatus].tone}
               sub={brief.vitalSign.runwayWeeks != null ? `~${brief.vitalSign.runwayWeeks} wks runway` : undefined}
             />
-            <VitalStat label="Uptime" value={`${brief.vitalSign.uptimePct.toFixed(1)}%`} />
+            <VitalStat
+              label="Uptime"
+              value={brief.vitalSign.uptimePct != null ? `${brief.vitalSign.uptimePct.toFixed(1)}%` : "—"}
+              sub={
+                brief.vitalSign.uptimePct == null
+                  ? "no data yet"
+                  : brief.vitalSign.prodVersion
+                    ? `on ${brief.vitalSign.prodVersion.slice(0, 7)}`
+                    : undefined
+              }
+            />
           </motion.div>
+
+          {/* The wedge + platform health — the launch-week funnel at a glance.
+              The three wedge tiles are receipts (F3): tap a number to open
+              the exact rows it counts. */}
+          <motion.div variants={staggerItem} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <VitalStat
+              label="Outreach (7d)"
+              value={brief.vitalSign.wedge ? String(brief.vitalSign.wedge.outreachSent7d) : "—"}
+              sub={brief.vitalSign.wedge ? "tap for the rows" : "no data yet"}
+              onClick={brief.vitalSign.wedge ? () => setReceiptMetric((m) => (m === "outreach" ? null : "outreach")) : undefined}
+              active={receiptMetric === "outreach"}
+              testId="tile-outreach-7d"
+            />
+            <VitalStat
+              label="Replies (7d)"
+              value={brief.vitalSign.wedge ? String(brief.vitalSign.wedge.replies7d) : "—"}
+              sub={brief.vitalSign.wedge ? "tap for the rows" : "no data yet"}
+              onClick={brief.vitalSign.wedge ? () => setReceiptMetric((m) => (m === "replies" ? null : "replies")) : undefined}
+              active={receiptMetric === "replies"}
+              testId="tile-replies-7d"
+            />
+            <VitalStat
+              label="Offers (7d)"
+              value={brief.vitalSign.wedge ? String(brief.vitalSign.wedge.offers7d) : "—"}
+              sub={brief.vitalSign.wedge ? "tap for the rows" : "no data yet"}
+              onClick={brief.vitalSign.wedge ? () => setReceiptMetric((m) => (m === "offers" ? null : "offers")) : undefined}
+              active={receiptMetric === "offers"}
+              testId="tile-offers-7d"
+            />
+            <VitalStat
+              label="Errors (24h)"
+              value={brief.vitalSign.errorRatePct != null ? `${brief.vitalSign.errorRatePct.toFixed(1)}%` : "—"}
+              tone={brief.vitalSign.errorRatePct != null && brief.vitalSign.errorRatePct >= 1 ? "red" : undefined}
+              sub={brief.vitalSign.errorRatePct == null ? "no traffic yet" : "5xx share of requests"}
+            />
+          </motion.div>
+
+          {/* F3 — the open receipt (rows behind the tapped tile) */}
+          {receiptMetric && (
+            <motion.div variants={staggerItem}>
+              <WedgeReceipts metric={receiptMetric} />
+            </motion.div>
+          )}
 
           {/* Talk to your company */}
           <motion.div variants={staggerItem}>
@@ -235,14 +304,73 @@ function StepAwayLine() {
   );
 }
 
-function VitalStat({ label, value, tone, sub, subTone }: { label: string; value: string; tone?: "amber" | "red"; sub?: string; subTone?: "amber" }) {
+function VitalStat({ label, value, tone, sub, subTone, onClick, active, testId }: { label: string; value: string; tone?: "amber" | "red"; sub?: string; subTone?: "amber"; onClick?: () => void; active?: boolean; testId?: string }) {
   const toneClass = tone === "red" ? "text-destructive" : tone === "amber" ? "text-[hsl(var(--acr-warn))]" : "";
   const subClass = subTone === "amber" ? "text-[hsl(var(--acr-warn))]" : "text-muted-foreground";
-  return (
-    <div className="rounded-lg border border-border bg-card p-3">
+  const body = (
+    <>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={`mt-0.5 text-base font-semibold tabular-nums ${toneClass}`}>{value}</p>
       {sub ? <p className={`mt-0.5 text-[11px] tabular-nums ${subClass}`}>{sub}</p> : null}
+    </>
+  );
+  // Tappable variant — F3 receipts: the tile IS the claim; tapping opens
+  // the rows the number is made of.
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-expanded={active}
+        data-testid={testId}
+        className={`rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 active:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "border-primary ring-1 ring-primary/20 bg-primary/5" : "border-border bg-card"}`}
+      >
+        {body}
+      </button>
+    );
+  }
+  return <div className="rounded-lg border border-border bg-card p-3">{body}</div>;
+}
+
+// ── F3 receipts — the rows behind a wedge tile's number ─────────────────────
+const RECEIPT_TITLE: Record<string, string> = {
+  outreach: "Every send in the last 7 days",
+  replies: "Every reply in the last 7 days",
+  offers: "Every offer in the last 7 days",
+};
+
+function WedgeReceipts({ metric }: { metric: "outreach" | "replies" | "offers" }) {
+  const { data, isLoading, isError } = useQuery<{ rows: Array<{ at: string | null; line: string }> }>({
+    queryKey: ["/api/founder/autopilot/receipts/wedge", metric],
+    queryFn: async () => {
+      const res = await fetch(`/api/founder/autopilot/receipts/wedge?metric=${metric}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`receipts ${res.status}`);
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+  return (
+    <div className="rounded-lg border border-border bg-card p-3" data-testid={`wedge-receipts-${metric}`}>
+      <p className="text-xs font-medium text-foreground mb-2">{RECEIPT_TITLE[metric]}</p>
+      {isLoading ? (
+        <div className="space-y-1.5" aria-busy="true">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+      ) : isError ? (
+        <p className="text-xs text-muted-foreground">Couldn't load the rows right now — the count above still comes from the same table.</p>
+      ) : !data || data.rows.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Nothing in the last 7 days — that number is a true zero.</p>
+      ) : (
+        <ul className="space-y-1.5" role="list">
+          {data.rows.map((r, i) => (
+            <li key={i} className="flex items-baseline gap-2 text-xs">
+              <span className="shrink-0 tabular-nums text-muted-foreground">{r.at ? formatRelative(r.at) : "—"}</span>
+              <span className="min-w-0 text-foreground">{r.line}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

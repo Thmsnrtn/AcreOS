@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
+import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { staggerContainer, staggerItem } from "@/lib/animations";
@@ -68,6 +69,72 @@ function levelTone(l: string) {
   return l === "autonomous_gated" ? "text-acr-success" : l === "execute_gated" ? "text-primary" : l === "draft" ? "text-acr-warn" : "text-muted-foreground";
 }
 function prettyDomain(d: string) { return d.charAt(0).toUpperCase() + d.slice(1); }
+
+// ── Postures — F2 of the experience-legibility cluster ─────────────────────
+// One tap sets the whole company to a coherent stance instead of asking the
+// founder to reason about three switches × N trust dials. Hands-off
+// deliberately targets "Acts — safety-checked" (execute_gated), NOT
+// independent: full autonomy stays per-domain earned trust the founder
+// grants individually, and hard-stops always ask regardless of posture.
+interface Posture {
+  id: string;
+  label: string;
+  line: string;
+  switches: { dispatchEnabled: boolean; publishEnabled: boolean; selfPatchEnabled: boolean };
+  level: string;
+}
+const POSTURES: Posture[] = [
+  {
+    id: "cautious", label: "Cautious",
+    line: "Everything watches and drafts — nothing acts, nothing publishes.",
+    switches: { dispatchEnabled: false, publishEnabled: false, selfPatchEnabled: false },
+    level: "observe",
+  },
+  {
+    id: "standard", label: "Standard",
+    line: "The brain works inside the company; anything outward drafts and waits for your tap.",
+    switches: { dispatchEnabled: true, publishEnabled: false, selfPatchEnabled: false },
+    level: "draft",
+  },
+  {
+    id: "handsoff", label: "Hands-off",
+    line: "Acts end-to-end through every safety gate, publishes grounded content, patches itself. Hard-stops still always ask you.",
+    switches: { dispatchEnabled: true, publishEnabled: true, selfPatchEnabled: true },
+    level: "execute_gated",
+  },
+];
+
+/** Which posture the current switches + trust dials add up to, if any. */
+function detectPosture(data: ControlData): string | null {
+  for (const p of POSTURES) {
+    const s = data.settings;
+    const switchesMatch =
+      s.dispatchEnabled === p.switches.dispatchEnabled &&
+      s.publishEnabled === p.switches.publishEnabled &&
+      (s.selfPatchEnabled ?? false) === p.switches.selfPatchEnabled;
+    const levelsMatch = data.ledger.every((l) => l.level === p.level);
+    if (switchesMatch && levelsMatch) return p.id;
+  }
+  return null;
+}
+
+/** Plain sentences describing exactly what applying `p` would change. */
+function postureDiff(data: ControlData, p: Posture): string[] {
+  const out: string[] = [];
+  const s = data.settings;
+  const flag = (label: string, cur: boolean, next: boolean) => {
+    if (cur !== next) out.push(`${label}: ${cur ? "on → off" : "off → on"}`);
+  };
+  flag("Autopilot hands", s.dispatchEnabled, p.switches.dispatchEnabled);
+  flag("Auto-publish", s.publishEnabled, p.switches.publishEnabled);
+  flag("Self-patching", s.selfPatchEnabled ?? false, p.switches.selfPatchEnabled);
+  for (const l of data.ledger) {
+    if (l.level !== p.level) {
+      out.push(`${prettyDomain(l.domain)}: ${LEVEL_LABEL[l.level] ?? l.level} → ${LEVEL_LABEL[p.level] ?? p.level}`);
+    }
+  }
+  return out;
+}
 
 export default function FounderAutopilotControlPage() {
   useDocumentTitle("Control Center · Founder");
@@ -170,8 +237,55 @@ export default function FounderAutopilotControlPage() {
     onError: (err) => toast({ title: "Couldn't update", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
   });
 
+  // Posture apply — F2. Sequential on purpose: each step reuses the exact
+  // per-control endpoints (same audit trail, same receipts), and a partial
+  // failure surfaces honestly instead of pretending the posture landed.
+  const [confirmingPosture, setConfirmingPosture] = useState<string | null>(null);
+  const [applyingPosture, setApplyingPosture] = useState(false);
+  const applyPosture = async (p: Posture) => {
+    if (!data) return;
+    setApplyingPosture(true);
+    const failures: string[] = [];
+    const s = data.settings;
+    const switchSteps: Array<{ key: "dispatchEnabled" | "publishEnabled" | "selfPatchEnabled"; value: boolean; cur: boolean }> = [
+      { key: "dispatchEnabled", value: p.switches.dispatchEnabled, cur: s.dispatchEnabled },
+      { key: "publishEnabled", value: p.switches.publishEnabled, cur: s.publishEnabled },
+      { key: "selfPatchEnabled", value: p.switches.selfPatchEnabled, cur: s.selfPatchEnabled ?? false },
+    ];
+    for (const step of switchSteps) {
+      if (step.cur === step.value) continue;
+      try {
+        await setSetting.mutateAsync({ key: step.key, value: step.value });
+      } catch {
+        failures.push(step.key);
+      }
+    }
+    for (const l of data.ledger) {
+      if (l.level === p.level) continue;
+      try {
+        await setLevel.mutateAsync({ domain: l.domain, level: p.level });
+      } catch {
+        failures.push(l.domain);
+      }
+    }
+    setApplyingPosture(false);
+    setConfirmingPosture(null);
+    void qc.invalidateQueries({ queryKey: CONTROL_KEY });
+    if (failures.length === 0) {
+      toast({ title: `Posture: ${p.label}`, description: p.line });
+    } else {
+      toast({
+        title: `Posture partially applied`,
+        description: `Couldn't change: ${failures.join(", ")}. Everything else is set — check the dials below.`,
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <PageShell maxWidth="4xl" label="Autopilot Control Center">
+      {/* F1 — ambient liveness on every door (experience-legibility.md) */}
+      <div className="mb-4"><FounderPulseStrip /></div>
       <div className="space-y-6">
         <header className="space-y-1">
           <div className="flex items-center gap-2">
@@ -232,6 +346,72 @@ export default function FounderAutopilotControlPage() {
                 </Card>
               </motion.section>
             )}
+
+            {/* Postures — one tap, one coherent stance (F2). */}
+            <motion.section variants={staggerItem}>
+              <div className="mb-2 flex items-baseline gap-2">
+                <h2 className="text-sm font-semibold text-foreground">Posture</h2>
+                <span className="text-xs text-muted-foreground">— set the whole company's stance in one tap; every dial below follows</span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {POSTURES.map((p) => {
+                  const active = data ? detectPosture(data) === p.id : false;
+                  const diff = data ? postureDiff(data, p) : [];
+                  const confirming = confirmingPosture === p.id;
+                  return (
+                    <div
+                      key={p.id}
+                      className={`rounded-card border p-4 flex flex-col gap-2 ${active ? "border-primary ring-1 ring-primary/20 bg-primary/5" : "border-border bg-card"}`}
+                      data-testid={`posture-${p.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-foreground">{p.label}</p>
+                        {active && <Badge variant="secondary" className="text-micro">current</Badge>}
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed flex-1">{p.line}</p>
+                      {!active && !confirming && (
+                        <Button
+                          size="sm" variant="outline" className="w-full"
+                          disabled={applyingPosture || !data}
+                          onClick={() => setConfirmingPosture(p.id)}
+                          data-testid={`posture-${p.id}-set`}
+                        >
+                          Set posture
+                        </Button>
+                      )}
+                      {confirming && (
+                        <div className="space-y-2" data-testid={`posture-${p.id}-confirm`}>
+                          <div className="rounded-md bg-muted/50 border border-border px-2.5 py-2">
+                            <p className="text-micro font-medium text-foreground mb-1">This will change:</p>
+                            <ul className="space-y-0.5">
+                              {diff.slice(0, 8).map((d) => (
+                                <li key={d} className="text-micro text-muted-foreground">{d}</li>
+                              ))}
+                              {diff.length > 8 && (
+                                <li className="text-micro text-muted-foreground">…and {diff.length - 8} more</li>
+                              )}
+                            </ul>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" className="flex-1" disabled={applyingPosture} onClick={() => void applyPosture(p)}>
+                              {applyingPosture ? "Setting…" : `Confirm ${p.label}`}
+                            </Button>
+                            <Button size="sm" variant="ghost" disabled={applyingPosture} onClick={() => setConfirmingPosture(null)}>
+                              {Verbs.CANCEL}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {data && detectPosture(data) === null && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Right now you're on a custom mix — the dials below don't add up to any single posture. That's fine; postures are shortcuts, not rules.
+                </p>
+              )}
+            </motion.section>
 
             {/* Master switches */}
             <motion.section variants={staggerItem} className="grid gap-4 sm:grid-cols-2">

@@ -294,12 +294,16 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
   const verdict: StepAwayReadiness["verdict"] = criticalNotReady.length === 0 ? "ready" : "not_ready";
   const worthDoing = checks.filter((c) => !c.critical && c.status !== "ready").length;
 
+  // Real pluralization — "thing(s)"/"item(s)" is machine-speak on the one
+  // surface that must read like a human wrote it (mobile eyeball pass,
+  // 2026-07-08).
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
   const headline =
     verdict === "ready"
       ? worthDoing === 0
-        ? `You can step away. Every system is armed; the ledger supports ~${horizonDays} day(s) of unattended runway.`
-        : `You can step away — the safety net is complete. ${worthDoing} optional item(s) below would let it do more while you're gone.`
-      : `${criticalNotReady.length} thing(s) need you before you step away: ${criticalNotReady.map((c) => c.title.toLowerCase()).join(", ")}.`;
+        ? `You can step away. Every system is armed; the ledger supports ~${plural(horizonDays, "day")} of unattended runway.`
+        : `You can step away — the safety net is complete. ${plural(worthDoing, "optional item")} below would let it do more while you're gone.`
+      : `${plural(criticalNotReady.length, "thing")} need${criticalNotReady.length === 1 ? "s" : ""} you before you step away: ${criticalNotReady.map((c) => c.title.toLowerCase()).join(", ")}.`;
 
   return { verdict, headline, horizonDays, readyCount, totalCount: checks.length, checks };
 }

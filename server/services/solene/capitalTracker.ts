@@ -388,6 +388,33 @@ export async function assertWithinEnsembleCap(opts?: {
     throw new EnsembleCapReadFailedError("MTD spend lookup unavailable");
   }
   if (status.exceeded) {
+    // A tripped cap is the autopilot silently stopping ALL paid dispatch work
+    // for the rest of the month — the founder must hear about it, not
+    // discover it. Alert-spine dedupe (one per month) keeps it from paging on
+    // every refused enqueue. Best-effort: the alert must never mask the
+    // refusal itself. (WS5 alert-spine drill, 2026-07-08: this was the one
+    // brake with no alarm attached.)
+    try {
+      const { raiseAlert } = await import("../alertSpine");
+      const month = new Date().toISOString().slice(0, 7);
+      await raiseAlert({
+        severity: "warning",
+        source: "ensemble_cap",
+        title: "Agent-dispatch spend cap tripped — autopilot paused paid dispatches",
+        detail:
+          `Month-to-date agent_dispatch spend $${status.monthToDateUsd.toFixed(2)} crossed the ` +
+          `red threshold $${status.redThresholdUsd.toFixed(2)} (cap $${status.capUsd.toFixed(2)}). ` +
+          `New dispatches are refused until the month rolls over or the founder overrides.`,
+        dedupeKey: `ensemble-cap-tripped:${month}`,
+        domain: "finance",
+        citedReason: "The kill-cap is a brake, not a mute — spend stopping must be as loud as spend running.",
+      });
+    } catch (alertErr) {
+      logger.warn(
+        "[capitalTracker] ensemble-cap alert failed (refusal still enforced)",
+        alertErr instanceof Error ? alertErr : undefined,
+      );
+    }
     throw new EnsembleCapExceededError(
       status.monthToDateUsd,
       status.redThresholdUsd,

@@ -292,8 +292,9 @@ export default function PaxControlsPage() {
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm">Pax is active</div>
                 <div className="text-xs text-muted-foreground">
-                  Today's autonomy threshold is saved as a preference; auto-execution
-                  is not yet wired. Pax asks before every action.
+                  Pax always asks before taking an action on your behalf.
+                  Your autonomy threshold is saved and will apply as Pax earns
+                  more independence.
                 </div>
               </div>
             </>

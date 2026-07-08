@@ -248,7 +248,7 @@ function PaxNotificationBadge() {
             clone+ref it → React "Function components cannot be given refs". */}
         <TooltipTrigger asChild>
           <PopoverTrigger
-            className="relative p-1.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors"
+            className="relative p-1.5 pointer-coarse:p-3.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors"
             aria-label="Pax AI insights"
             data-testid="button-pax-notifications"
           >
@@ -601,7 +601,10 @@ const NAV_MODULES: NavModule[] = [
     overflow: [
       { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
       { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month forecasting" },
-      { label: "Capital Markets", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
+      // Capital Markets entry removed 2026-07-07 (deletion ledger): the
+      // feature is FROZEN behind feature_capital_markets — same precedent as
+      // the Marketplace entry above. Restore when note securitization is a
+      // real revenue line (H4).
       { label: "Analytics", icon: Brain, href: "/analytics", description: "Insights and reporting" },
     ],
   },
@@ -1164,7 +1167,7 @@ export function Sidebar() {
                 {!hasChildren ? (
                   <Link
                     href={module.href}
-                    className="flex items-center gap-2 flex-1 min-w-0"
+                    className="flex items-center gap-2 flex-1 min-w-0 py-3 -my-3"
                     aria-current={active ? "page" : undefined}
                     aria-label={module.label}
                     data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
@@ -1202,7 +1205,7 @@ export function Sidebar() {
                     />
                     <Link
                       href={module.href}
-                      className="font-medium text-sm flex-1 truncate"
+                      className="font-medium text-sm flex-1 truncate py-3 -my-3"
                       data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
                       onClick={(e) => e.stopPropagation()}
                       onMouseEnter={() => handlePrefetch(module.href)}
@@ -1239,7 +1242,7 @@ export function Sidebar() {
                         key={child.href}
                         href={child.href}
                         className={cn(
-                          "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] text-xs",
+                          "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] pointer-coarse:min-h-11 text-xs",
                           childActive
                             ? "nav-item-active"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
@@ -1278,7 +1281,7 @@ export function Sidebar() {
                       <button
                         type="button"
                         onClick={() => toggleOverflow(module.id)}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 min-h-[34px] text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground w-full"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 min-h-[34px] pointer-coarse:min-h-11 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground w-full"
                         data-testid={`button-overflow-${module.id}`}
                         aria-expanded={expandedOverflow.has(module.id)}
                       >
@@ -1301,7 +1304,7 @@ export function Sidebar() {
                             key={child.href}
                             href={child.href}
                             className={cn(
-                              "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] text-xs",
+                              "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] pointer-coarse:min-h-11 text-xs",
                               childActive
                                 ? "nav-item-active"
                                 : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"

@@ -7615,6 +7615,38 @@ const STATEMENTS = [
      "count" integer NOT NULL DEFAULT 0
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "agent_execution_counts_key_bucket_idx" ON "agent_execution_counts" ("agent_key", "bucket_start")`,
+
+  // Marketing spend ledger (migration 0197, 2026-07-07 cost audit) — the CAC
+  // numerator. Actuals only; budgets are never recorded here.
+  `CREATE TABLE IF NOT EXISTS "marketing_spend" (
+     "id" serial PRIMARY KEY,
+     "channel" text NOT NULL,
+     "amount_cents" integer NOT NULL,
+     "spent_at" timestamp NOT NULL,
+     "source" text NOT NULL DEFAULT 'manual',
+     "campaign_ref" text,
+     "note" text,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "marketing_spend_spent_at_idx" ON "marketing_spend" ("spent_at")`,
+  `CREATE INDEX IF NOT EXISTS "marketing_spend_channel_spent_at_idx" ON "marketing_spend" ("channel", "spent_at")`,
+
+  // Reactivation surveys (migration 0198, launch-week WS1) — the welcome-back
+  // page's survey POST finally has a real endpoint + durable store.
+  `CREATE TABLE IF NOT EXISTS "reactivation_surveys" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "user_id" text,
+     "return_reason" text NOT NULL,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "reactivation_surveys_org_created_idx" ON "reactivation_surveys" ("organization_id", "created_at")`,
+
+  // Outbox claim timestamp (migration 0199, launch-week WS5 worker-kill
+  // drill) — recovery of rows orphaned in status='running' needs the claim
+  // time; created_at is enqueue time and would mis-reap a claimed backlog.
+  `ALTER TABLE outbox ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP`,
+  `CREATE INDEX IF NOT EXISTS outbox_running_claimed_idx ON outbox (claimed_at) WHERE status = 'running'`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -26,7 +26,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { storage, db } from "./storage";
-import { eq, sql, and, gte } from "drizzle-orm";
+import { eq, sql, and, gte, desc } from "drizzle-orm";
 import { leads, deals, properties, campaignResponses, campaignDeliveryEvents } from "@shared/schema";
 import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
 
@@ -49,14 +49,21 @@ export function registerCampaignRoutes(app: Express): void {
     res.json(campaign);
   });
 
-  api.post("/api/campaigns", isAuthenticated, getOrCreateOrg, requirePermission("canCreateCampaign"), async (req, res) => {
+  api.post("/api/campaigns", isAuthenticated, getOrCreateOrg, requirePermission("canCreateCampaign"), usageLimitGate("campaigns"), async (req, res) => {
     try {
       const org = req.organization;
       const trackingCode = storage.generateTrackingCode();
-      const input = insertCampaignSchema.parse({ 
-        ...req.body, 
+      // The wizard submits untouched optional numeric/date inputs as "" —
+      // Postgres rejects '' for numeric/timestamp columns and the raw insert
+      // error surfaced as a bare 500 (WS1 interactive pass, 2026-07-07).
+      const body: Record<string, unknown> = { ...req.body };
+      for (const key of ["budget", "scheduledDate", "completedDate"]) {
+        if (body[key] === "") body[key] = null;
+      }
+      const input = insertCampaignSchema.parse({
+        ...body,
         organizationId: org.id,
-        trackingCode 
+        trackingCode
       });
       const campaign = await storage.createCampaign(input);
       
@@ -91,6 +98,46 @@ export function registerCampaignRoutes(app: Express): void {
 
     const responses = await storage.getCampaignResponses(org.id, campaignId);
     res.json(responses);
+  });
+
+  // C2 receipts (experience-legibility.md): the rows behind a campaign's
+  // "Sent" number — every delivery event with the lead it went to. The
+  // aggregate counts and this list read the same table, so the number and
+  // its evidence can never disagree.
+  api.get("/api/campaigns/:id/delivery-events", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
+    const campaignId = Number(req.params.id);
+    if (!Number.isFinite(campaignId)) return Errors.badRequest(res, "Invalid campaign ID");
+    const campaign = await storage.getCampaign(org.id, campaignId);
+    if (!campaign) return Errors.notFound(res, "Campaign");
+    try {
+      const rows = await db
+        .select({
+          at: campaignDeliveryEvents.sentAt,
+          channel: campaignDeliveryEvents.channel,
+          status: campaignDeliveryEvents.status,
+          leadFirst: leads.firstName,
+          leadLast: leads.lastName,
+          leadId: campaignDeliveryEvents.leadId,
+        })
+        .from(campaignDeliveryEvents)
+        .leftJoin(leads, eq(campaignDeliveryEvents.leadId, leads.id))
+        .where(eq(campaignDeliveryEvents.campaignId, campaignId))
+        .orderBy(desc(campaignDeliveryEvents.sentAt))
+        .limit(100);
+      res.json({
+        campaignId,
+        rows: rows.map((r) => ({
+          at: r.at ? new Date(r.at).toISOString() : null,
+          channel: r.channel,
+          status: r.status,
+          leadId: r.leadId,
+          leadName: [r.leadFirst, r.leadLast].filter(Boolean).join(" ") || null,
+        })),
+      });
+    } catch (error) {
+      Errors.internal(res, error instanceof Error ? error : new Error(String(error)));
+    }
   });
 
   // Get campaign analytics with response data

@@ -3455,8 +3455,13 @@ export const insertLeadSchema = createInsertSchema(leads).omit({
   // F-D23: drizzle-zod treats text columns as bare z.string() — invalid
   // emails like "not-an-email" sailed through to the DB. Tighten to email
   // format (still optional since the column is nullable for callers who
-  // only have a phone or just a parcel-owner name).
-  email: z.string().email().optional().nullable(),
+  // only have a phone or just a parcel-owner name). An untouched form field
+  // arrives as "" — that's an absent email, not an invalid one (WS1,
+  // 2026-07-07): coerce to null instead of 422ing the whole lead.
+  email: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+    z.string().email().optional().nullable(),
+  ),
 });
 export const insertLeadActivitySchema = createInsertSchema(leadActivities).omit({
   id: true, createdAt: true,
@@ -8580,6 +8585,40 @@ export const mrrSnapshots = pgTable("mrr_snapshots", {
   payingOrgs: integer("paying_orgs").notNull().default(0),
 });
 
+// ── 0197 — Marketing spend ledger (the CAC numerator) ───────────────────────
+// Until this table existed the unit-economics dashboard honestly reported
+// cacAvailable:false and the budget ramp computed CAC from AI-dispatch spend
+// alone — real ad dollars had no ledger anywhere (2026-07-07 cost audit).
+// One row per spend entry. PLATFORM-GLOBAL (no organization_id): this is
+// AcreOS's own acquisition spend, not tenant data. Sources: 'manual'
+// (founder-entered), 'ad_provider' (a future Meta/Google spend-sync), or
+// 'autopilot'. Amounts are ACTUALS — never record budgets/commitments here;
+// a budget is not spend (no-fabrication).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0197_marketing_spend.sql.
+export const marketingSpend = pgTable("marketing_spend", {
+  id: serial("id").primaryKey(),
+  // "meta" | "google" | "content" | "referral" | "sponsorship" | "other"
+  channel: text("channel").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  // The date the spend occurred (provider-reported date for synced rows).
+  spentAt: timestamp("spent_at").notNull(),
+  // "manual" | "ad_provider" | "autopilot"
+  source: text("source").notNull().default("manual"),
+  // Provider-side campaign id / name, when known.
+  campaignRef: text("campaign_ref"),
+  note: text("note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  bySpentAt: index("marketing_spend_spent_at_idx").on(table.spentAt),
+  byChannelSpentAt: index("marketing_spend_channel_spent_at_idx").on(
+    table.channel,
+    table.spentAt,
+  ),
+}));
+
+export type MarketingSpendEntry = typeof marketingSpend.$inferSelect;
+
 export const customerConcentration = pgTable("customer_concentration", {
   id: serial("id").primaryKey(),
   computedAt: timestamp("computed_at").defaultNow().notNull(),
@@ -8743,6 +8782,25 @@ export type DeferredRevenueRow = typeof deferredRevenue.$inferSelect;
 // ============================================
 // CANCELLATION SURVEYS & REFUND REQUESTS
 // ============================================
+
+// ── 0198 — Reactivation surveys (win-back "what brought you back") ──────────
+// Written by POST /api/subscription/reactivation-survey (welcome-back page).
+// Best-effort growth signal — the client swallows failures — but the store
+// itself is durable (the 90-day activity_log retention would erase it).
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0198_reactivation_surveys.sql.
+export const reactivationSurveys = pgTable("reactivation_surveys", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  userId: text("user_id"),
+  // e.g. "missed_features" | "new_deals" | "pricing" | "other" — free string,
+  // the client owns the vocabulary.
+  returnReason: text("return_reason").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  byOrgCreated: index("reactivation_surveys_org_created_idx").on(table.organizationId, table.createdAt),
+}));
+
+export type ReactivationSurvey = typeof reactivationSurveys.$inferSelect;
 
 export const cancellationSurveys = pgTable("cancellation_surveys", {
   id: serial("id").primaryKey(),

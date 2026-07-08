@@ -114,21 +114,25 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
     cachedInput: Number(process.env.SOLENE_DISPATCH_OPUS_CACHED_INPUT_PER_M ?? "0.5"),
   },
   // Legacy Opus 4-7 row kept so queued rows carrying a per-dispatch
-  // model="claude-opus-4-7" pin still price at that model's real rates.
+  // model="claude-opus-4-7" pin still price at that model's real rates —
+  // which are $5/$25 (claude-api skill, 2026-07-08); this row previously
+  // carried the pre-4.6 Opus price and over-attributed those dispatches 3×.
   "claude-opus-4-7": {
-    input: 15,
-    output: 75,
-    cachedInput: 1.5,
+    input: 5,
+    output: 25,
+    cachedInput: 0.5,
   },
   [ANTHROPIC_MODELS.SONNET]: {
     input: Number(process.env.SOLENE_DISPATCH_SONNET_INPUT_PER_M ?? "3"),
     output: Number(process.env.SOLENE_DISPATCH_SONNET_OUTPUT_PER_M ?? "15"),
     cachedInput: Number(process.env.SOLENE_DISPATCH_SONNET_CACHED_INPUT_PER_M ?? "0.3"),
   },
+  // Haiku 4.5 publishes at $1/$5 (claude-api skill, 2026-07-08) — the old
+  // $0.25/$1.25 defaults were Haiku-3.5-era and undercounted spend 4×.
   [ANTHROPIC_MODELS.HAIKU]: {
-    input: Number(process.env.SOLENE_DISPATCH_HAIKU_INPUT_PER_M ?? "0.25"),
-    output: Number(process.env.SOLENE_DISPATCH_HAIKU_OUTPUT_PER_M ?? "1.25"),
-    cachedInput: Number(process.env.SOLENE_DISPATCH_HAIKU_CACHED_INPUT_PER_M ?? "0.025"),
+    input: Number(process.env.SOLENE_DISPATCH_HAIKU_INPUT_PER_M ?? "1"),
+    output: Number(process.env.SOLENE_DISPATCH_HAIKU_OUTPUT_PER_M ?? "5"),
+    cachedInput: Number(process.env.SOLENE_DISPATCH_HAIKU_CACHED_INPUT_PER_M ?? "0.1"),
   },
 };
 

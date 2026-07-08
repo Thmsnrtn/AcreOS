@@ -85,11 +85,15 @@ export async function maybeProposeBudgetRamp(deps: BudgetRampDeps): Promise<numb
     if (await rampProposalCoolingDown(now)) return 0;
 
     // LOWER-BOUND signups (attribution is a floor) ÷ UPPER-BOUND spend (total
-    // month-to-date autopilot dispatch spend, a superset of growth spend) ⇒ a
-    // conservative CAC: a ramp only fires when acquisition looks healthy even
-    // under the most pessimistic reading of the numbers.
+    // month-to-date autopilot dispatch spend PLUS recorded marketing_spend
+    // actuals — 2026-07-07 cost audit: real ad dollars now have a ledger and
+    // the CAC proof must see them) ⇒ a conservative CAC: a ramp only fires
+    // when acquisition looks healthy even under the most pessimistic reading.
     const summary = await getConversionSummary();
-    const spendUsd = await getMonthToDateSpendForType("agent_dispatch");
+    const dispatchSpendUsd = await getMonthToDateSpendForType("agent_dispatch");
+    const { marketingSpendMonthToDateUsd } = await import("../marketingSpend");
+    const adSpendUsd = await marketingSpendMonthToDateUsd().catch(() => 0);
+    const spendUsd = dispatchSpendUsd + adSpendUsd;
     const decision = shouldRampBudget({ attributedSignups: summary.totalSignups, spendUsd });
     if (!decision.ramp) return 0;
 

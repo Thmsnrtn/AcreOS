@@ -72,6 +72,16 @@ refs updated; Capital tab + Marketplace sidebar entry un-wired (frozen
 features no longer advertised in customer chrome); LCS methodology
 versioned (v1) and published on the explainer; README/replit.md truth pass.
 
+**Shipped 2026-07-07 (cost audit + fixes, see `cost-audit-2026-07-07.md`):**
+Scale-tier AI margin guard (two-stage Opus→Sonnet→Haiku downgrade — was
+underwater at full utilization); idle-aware job pacing (decision executor +
+embedding refresh run 1-in-8 slots below 5 paying customers); financial
+forecaster wired to real tier-mix MRR + the shared costModel (was flat
+$49/org + $200 burn guess) with honest reserve-based runway;
+marketing_spend ledger (migration 0197) — the CAC numerator — with founder
+endpoints, unit-economics CAC/payback/LTV:CAC now computable, and the
+budget-ramp CAC proof seeing real ad dollars.
+
 **Resolved 2026-07-04 (platform sweep r1-r4):** borrower-token CSPRNG +
 portal sunset; hot-path indexes; retention truth; dunning/pricing/footer
 marketing fixes; client diet (119MB); mass-assignment floor (22 sites);
@@ -222,6 +232,11 @@ for land). Wholesale = thinnest — no assignment-contract mechanic.**
   witnessGrant.ts.
 - Strategic ladder: marketplace build starts at ~25 customers; public API
   productization at ~50 (Wave 1's Data-API hardening is its precondition).
+- Experience legibility (founder-queued 2026-07-08): pulse strip,
+  receipts, plain-language controls on the founder doors + customer
+  settings — design + work clusters in
+  `docs/company/experience-legibility.md`; first cluster (F1) starts
+  after launch-week remainders clear.
 
 ---
 

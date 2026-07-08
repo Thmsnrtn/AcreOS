@@ -406,13 +406,28 @@ export async function registerRoutes(
         .filter((f) => f.state === "on")
         .flatMap((f) => f.controlledRoutes);
       const disabledKeys = flags.filter((f) => f.state === "off").map((f) => f.key);
-      const disabledRoutes = flags
-        .filter((f) => f.state === "off")
-        .flatMap((f) => f.controlledRoutes);
+      // FROZEN routes (shared/feature-freeze.ts, deletion-ledger verdicts)
+      // are merged into the deny-list on BOTH paths so their hiding never
+      // depends on the flags table being seeded — the client also enforces
+      // this list locally, but older cached bundles get it from here.
+      const { FROZEN_ROUTES } = await import("@shared/feature-freeze");
+      const disabledRoutes = [
+        ...new Set([
+          ...flags.filter((f) => f.state === "off").flatMap((f) => f.controlledRoutes),
+          ...FROZEN_ROUTES,
+        ]),
+      ];
       res.json({ enabledKeys, enabledRoutes, disabledKeys, disabledRoutes });
     } catch {
-      // On error, return all routes enabled so sidebar shows everything
-      res.json({ enabledKeys: [], enabledRoutes: [], disabledKeys: [], disabledRoutes: [] });
+      // On error, return all routes enabled so the sidebar shows every REAL
+      // feature — but frozen doors stay denied even on this path.
+      const { FROZEN_ROUTES } = await import("@shared/feature-freeze");
+      res.json({
+        enabledKeys: [],
+        enabledRoutes: [],
+        disabledKeys: [],
+        disabledRoutes: [...FROZEN_ROUTES],
+      });
     }
   });
 
@@ -1296,6 +1311,23 @@ export async function registerRoutes(
 
   // Phase 2-4: Voice Learning, Context Profile, White-Label, Real-Time
   app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);
+  // GET /config answers BEFORE the feature gate (WS1 sweep, 2026-07-07):
+  // useWhiteLabel() fetches it on every authed page load, and with the
+  // white-label flag frozen the gate 404'd it — a guaranteed failed request
+  // per page view for every customer, polluting telemetry with noise. An
+  // honest "no white-label config" is a 200, not a 404; the mutating/admin
+  // routes stay behind the gate.
+  app.get('/api/white-label/config', isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { featureFlagService, buildFlagContext } = await import("./services/featureFlags");
+      const enabled = await featureFlagService.isEnabled("feature_white_label", buildFlagContext(req));
+      if (!enabled) return res.json({ config: null });
+    } catch {
+      return res.json({ config: null });
+    }
+    // Enabled (or founder bypass) — fall through to the gated mount below.
+    next();
+  });
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, featureGate("feature_white_label"), whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
   // Phase 0 hardening — per-user 60s sliding cap + per-org daily USD budget
@@ -1421,6 +1453,14 @@ export async function registerRoutes(
   // the catch-all 401s them. See server/services/signingTokens.ts.
   const { registerPublicSignRoutes } = await import("./routes-public-sign");
   registerPublicSignRoutes(app);
+
+  // Public transparency report JSON (/api/transparency + /schema) — anonymous
+  // by design (linked from the public page + external auditors). Moved here
+  // from the tail of this function (2026-07-08): registered after the
+  // '/api' isAuthenticated catch-all below, the catch-all 401'd anonymous
+  // visitors before the handler ever ran — the exact trap this comment
+  // block documents for /api/docs and the e-sign routes.
+  registerTransparencyRoutes(app);
 
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
@@ -2095,9 +2135,9 @@ export async function registerRoutes(
   // ledger (dr_drills). GitHub Actions deploy.yml writes deploys here; the
   // founder records DR drills here after each quarterly run.
   registerAdminComplianceRoutes(app);
-  // Quinn (Chief of Alignment) — public /transparency stub + schema endpoint.
-  // Tahoe wave E9. UI ships in a future wave; the substrate is live.
-  registerTransparencyRoutes(app);
+  // Quinn (Chief of Alignment) — public transparency endpoints are
+  // registered EARLIER (before the '/api' isAuthenticated catch-all) so
+  // anonymous visitors reach them; see the block above epicServicesRouter.
   // Quinn + Rafe — "appeal the AI" recourse loop. Customer surface
   // (see a refusal-with-reason + file an appeal) and the founder review
   // surface (uphold/reverse with rationale, close the loop back to the

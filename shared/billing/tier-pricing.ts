@@ -88,7 +88,8 @@ export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_OPERATOR_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_OPERATOR_YEARLY"),
     displayName: "Pro",
-    // $20/seat after the first.
+    // $20/seat past the INCLUDED 2 (tier-limits.ts includedSeats — the
+    // previous "after the first" note here had drifted from that source).
     priceMonthlyPerSeatCents: 2000,
     stripePriceIdSeatMonthly: envPriceId("STRIPE_PRICE_OPERATOR_SEAT_MONTHLY"),
     stripePriceIdSeatYearly: envPriceId("STRIPE_PRICE_OPERATOR_SEAT_YEARLY"),
@@ -100,10 +101,11 @@ export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_EMPIRE_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_EMPIRE_YEARLY"),
     displayName: "Scale",
-    // $40/seat after the first — matches the pricing-page promise
-    // ($40 was already advertised on /pricing for the Scale tier's
-    // "Team seats" row; this aligns the canonical price source).
-    priceMonthlyPerSeatCents: 4000,
+    // $25/seat past the INCLUDED 10 (tier-limits.ts includedSeats).
+    // Was $40 — founder decision 2026-07-08: the marginal Scale seat must
+    // not cost more than the marginal Pro seat ($20); see
+    // docs/company/decision-memos/2026-07-08-founding-member-pricing.md.
+    priceMonthlyPerSeatCents: 2500,
     stripePriceIdSeatMonthly: envPriceId("STRIPE_PRICE_EMPIRE_SEAT_MONTHLY"),
     stripePriceIdSeatYearly: envPriceId("STRIPE_PRICE_EMPIRE_SEAT_YEARLY"),
     maxSeats: null,

@@ -27,7 +27,7 @@ export type SubscriptionTier = "free" | "starter" | "pro" | "scale" | "enterpris
  * `event_type='ai_request'`, and ~15 downstream callers; only the WINDOW
  * (monthly) and the CAP (rebaselined) changed.
  */
-export type ResourceType = "leads" | "properties" | "notes" | "ai_requests";
+export type ResourceType = "leads" | "properties" | "notes" | "ai_requests" | "campaigns";
 
 export interface TierLimits {
   leads: number | null;
@@ -90,12 +90,17 @@ export interface TierLimits {
  */
 // Margin math reconciled 2026-07-03 (roadmap audit): canonical prices are
 // $20/$49/$79 (tier-pricing.ts) — the previous annotations cited a $29
-// Starter and a $199 Scale that never shipped. At real prices the platform-
-// key COGS bound (threshold × ~$0.015/turn) is: starter ≈ $11.25 of $20
-// (56% of revenue — thin, watch it), pro ≈ $22.50 of $49, scale ≈ $90 of
-// $79 — UNDERWATER at full utilization; scale pricing assumes heavy users
-// cross into the BYOK lane. Roadmap W4 also tracks that non-chat AI
-// surfaces bypass these thresholds entirely.
+// Starter and a $199 Scale that never shipped.
+// Re-bounded 2026-07-07 (cost audit): Scale's old shape (500 Opus turns +
+// Sonnet to 6,000) bounded worst-case platform-key COGS at ~$90 on a $79
+// plan — underwater at full utilization. paxModelTier.ts now runs a
+// two-stage downgrade (Opus→Sonnet at 200, →Haiku at 3,000), bounding
+// Scale at ≈ $4.50 + $38 + $12 ≈ $54 of $79 (~32% margin at absolute full
+// utilization). Starter/pro bounds with the Haiku tail past their soft
+// caps: starter ≈ $11.25 of $20 (56% of revenue — thin, watch it),
+// pro ≈ $15.50 of $49. Roadmap W4 also tracks that non-chat AI surfaces
+// bypass these thresholds entirely (they hit the per-org COGS ceilings in
+// aiCostCeiling.ts instead).
 export const AI_TURNS_BYOK_THRESHOLDS: Record<SubscriptionTier, number | null> = {
   free: null,       // evaluation tier — the 75/mo ai_requests cap governs; no BYOK lane
   starter: 750,     // ~25 turns/day avg
@@ -197,7 +202,11 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     byokSupport: true,
     includedSeats: 10,
     maxSeats: 100,
-    seatPriceCents: 4000, // $40/seat
+    // $25/seat past the included 10 (was $40 — founder decision 2026-07-08:
+    // the marginal Scale seat cost DOUBLE the marginal Pro seat, taxing
+    // exactly the teams the tier is for. See
+    // docs/company/decision-memos/2026-07-08-founding-member-pricing.md).
+    seatPriceCents: 2500,
     creditPool: 8000,
     aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.scale,
   },

@@ -3,6 +3,13 @@ name: Deploy to Fly.io
 on:
   push:
     branches: [main]
+  # Manual re-kick (2026-07-07): a Fly release-command VM failed to start
+  # ("deadline_exceeded: machine still starting" — transient platform
+  # failure, run 28885355298) and there was NO way to re-run the deploy
+  # short of pushing a new commit to main. workflow_dispatch gives the
+  # founder a one-click retry from the Actions tab; the full pre-deploy
+  # gate still runs.
+  workflow_dispatch:
 
 concurrency:
   group: production-deploy
@@ -137,7 +144,27 @@ jobs:
         # under provisioning pressure — a recurring "timeout reached waiting for
         # machine's state to change" abort even with MIGRATION_COUNT=0. Doubling
         # the headroom absorbs the flake; migrate.mjs itself is idempotent + fast.
-        run: flyctl deploy --remote-only --wait-timeout 600 --build-arg GIT_SHA=${{ github.sha }}
+        #
+        # 2026-07-07: the 600s headroom was exceeded TWICE in one afternoon
+        # (runs 28885355298, 28890427978) — the release VM sat in
+        # created/starting for 10 minutes with Fly's status page showing no
+        # incident, so more headroom alone doesn't absorb this class of flake.
+        # Retry the whole deploy up to 3 attempts with backoff instead. Safe by
+        # construction: a failed release command aborts BEFORE any machine
+        # rolls, and migrate.mjs is idempotent; the remote builder caches, so
+        # retries skip straight back to the release step.
+        run: |
+          set +e
+          code=1
+          for attempt in 1 2 3; do
+            echo "── flyctl deploy attempt ${attempt}/3 ──"
+            flyctl deploy --remote-only --wait-timeout 600 --build-arg GIT_SHA=${{ github.sha }}
+            code=$?
+            if [ "$code" -eq 0 ]; then exit 0; fi
+            echo "::warning::flyctl deploy attempt ${attempt}/3 failed (exit ${code})"
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 120)); fi
+          done
+          exit "$code"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
