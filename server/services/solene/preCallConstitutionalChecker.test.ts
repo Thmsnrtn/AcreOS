@@ -437,14 +437,14 @@ describe("checkPromptAgainstConstitution — fail-open paths", () => {
 
 describe("cost calculation", () => {
   it("matches Haiku pricing defaults at known token counts", () => {
-    // Defaults: $0.25/M input, $1.25/M output.
-    // 1,000,000 input tokens → $0.25; 1,000,000 output tokens → $1.25.
-    expect(__test.estimateCostUsd(1_000_000, 0)).toBeCloseTo(0.25, 8);
-    expect(__test.estimateCostUsd(0, 1_000_000)).toBeCloseTo(1.25, 8);
+    // Defaults: $1/M input, $5/M output (Haiku 4.5 — corrected 2026-07-08
+    // from the Haiku-3.5-era $0.25/$1.25 that undercounted spend 4×).
+    expect(__test.estimateCostUsd(1_000_000, 0)).toBeCloseTo(1, 8);
+    expect(__test.estimateCostUsd(0, 1_000_000)).toBeCloseTo(5, 8);
     // 100 in + 20 out (the test fixture's defaults).
     const c = __test.estimateCostUsd(100, 20);
     expect(c).toBeCloseTo(
-      (100 / 1_000_000) * 0.25 + (20 / 1_000_000) * 1.25,
+      (100 / 1_000_000) * 1 + (20 / 1_000_000) * 5,
       10,
     );
   });
@@ -466,9 +466,9 @@ describe("cost calculation", () => {
       promptText: "trivial",
       dispatchId: 7,
     });
-    // 0.25 + 1.25 = 1.50.
-    expect(result.costUsd).toBeCloseTo(1.5, 8);
-    expect(DECISIONS[0].costUsd).toBe("1.500000");
+    // 1M in + 1M out at Haiku 4.5 pricing: $1 + $5 = $6 (corrected 2026-07-08).
+    expect(result.costUsd).toBeCloseTo(6, 8);
+    expect(DECISIONS[0].costUsd).toBe("6.000000");
   });
 });
 

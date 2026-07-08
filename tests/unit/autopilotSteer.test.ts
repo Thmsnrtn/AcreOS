@@ -42,6 +42,31 @@ describe("autopilot conversational steering — parse natural language safely", 
     expect(parseSteerCommand("xyzzy frobnicate the thing")).toMatchObject({ kind: "unknown" });
     expect(parseSteerCommand("")).toMatchObject({ kind: "unknown" });
   });
+
+  it("pauses the whole autopilot on company-scoped verbs", () => {
+    expect(parseSteerCommand("pause the autopilot")).toEqual({ kind: "pause_all" });
+    expect(parseSteerCommand("stop everything")).toEqual({ kind: "pause_all" });
+    expect(parseSteerCommand("pause")).toEqual({ kind: "pause_all" });
+  });
+
+  it("resumes: whole-company resume, and domain resume re-grants via trust", () => {
+    expect(parseSteerCommand("resume the autopilot")).toEqual({ kind: "resume_all" });
+    expect(parseSteerCommand("unpause everything")).toEqual({ kind: "resume_all" });
+    expect(parseSteerCommand("resume")).toEqual({ kind: "resume_all" });
+    expect(parseSteerCommand("resume growth")).toEqual({ kind: "trust_domain", domain: "growth" });
+  });
+
+  it("routes spend / runway questions to the capital ledger", () => {
+    expect(parseSteerCommand("what did we spend this week?")).toEqual({ kind: "spend" });
+    expect(parseSteerCommand("what's our runway?")).toEqual({ kind: "spend" });
+    expect(parseSteerCommand("how much have we spent on AI?")).toEqual({ kind: "spend" });
+  });
+
+  it("spend words inside a standing order still create the order", () => {
+    expect(parseSteerCommand("never spend more than $5 a day on ads")).toMatchObject({
+      kind: "set_standing_order",
+    });
+  });
 });
 
 describe("autopilot steering handlers — act through governed services", () => {
@@ -52,6 +77,8 @@ describe("autopilot steering handlers — act through governed services", () => 
     createStandingOrder: async () => undefined,
     status: async () => "Status: all green.",
     why: async () => "Because the system was stable, I advanced growth.",
+    listDomains: () => ["growth", "support", "deploy", "ops", "finance"],
+    spend: async () => "Last 7 days: $1.23. Month-to-date: $4.56 of the $50 envelope (9% used, status green).",
     ...over,
   });
 
@@ -82,6 +109,27 @@ describe("autopilot steering handlers — act through governed services", () => 
   it("status + why read real state through their deps", async () => {
     expect((await handleSteer({ kind: "status" }, deps())).reply).toMatch(/all green/);
     expect((await handleSteer({ kind: "why" }, deps())).reply).toMatch(/advanced growth/);
+  });
+
+  it("pause_all sets every domain to observe; resume_all re-grants draft", async () => {
+    const calls: Array<[string, string]> = [];
+    const d = deps({ setDomainLevel: async (dom, l) => { calls.push([dom, l]); } });
+    const paused = await handleSteer({ kind: "pause_all" }, d);
+    expect(calls).toHaveLength(5);
+    expect(calls.every(([, l]) => l === "observe")).toBe(true);
+    expect(paused.reply).toMatch(/paused/i);
+
+    calls.length = 0;
+    const resumed = await handleSteer({ kind: "resume_all" }, d);
+    expect(calls).toHaveLength(5);
+    expect(calls.every(([, l]) => l === "draft")).toBe(true);
+    expect(resumed.reply).toMatch(/back on/i);
+  });
+
+  it("spend reads the real ledger through its dep", async () => {
+    const r = await handleSteer({ kind: "spend" }, deps());
+    expect(r.reply).toMatch(/\$1\.23/);
+    expect(r.reply).toMatch(/envelope/);
   });
 
   it("never throws — a failing dep degrades to a graceful reply", async () => {

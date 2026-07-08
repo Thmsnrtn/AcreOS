@@ -235,14 +235,16 @@ afterEach(() => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe("scoreDispatchProposal — cost calculation", () => {
-  it("computes cost at known token counts (1M in + 1M out → $15 + $75 = $90)", async () => {
+  it("computes cost at known token counts (1M in + 1M out → $3 + $15 = $18)", async () => {
+    // Sonnet dispatch-default pricing — corrected 2026-07-08 from the
+    // pre-4.6 Opus $15/$75 the scorer wrongly carried.
     const result = await scoreDispatchProposal({
       agentRole: "iris",
       promptText: "test",
       estimatedTokens: { input: 1_000_000, output: 1_000_000 },
       expectedValueUsd: 100,
     });
-    expect(result.estimatedCostUsd).toBeCloseTo(90, 4);
+    expect(result.estimatedCostUsd).toBeCloseTo(18, 4);
   });
 
   it("handles fractional millions (500k in + 200k out)", async () => {
@@ -252,8 +254,8 @@ describe("scoreDispatchProposal — cost calculation", () => {
       estimatedTokens: { input: 500_000, output: 200_000 },
       expectedValueUsd: 100,
     });
-    // 0.5 * 15 + 0.2 * 75 = 7.5 + 15 = 22.5
-    expect(result.estimatedCostUsd).toBeCloseTo(22.5, 4);
+    // 0.5 * 3 + 0.2 * 15 = 1.5 + 3 = 4.5 (Sonnet dispatch-default pricing)
+    expect(result.estimatedCostUsd).toBeCloseTo(4.5, 4);
   });
 });
 
@@ -311,13 +313,14 @@ describe("scoreDispatchProposal — envelope weighting", () => {
     const result = await scoreDispatchProposal({
       agentRole: "iris",
       promptText: "test",
-      // Set tokens so cost is meaningful relative to value.
-      estimatedTokens: { input: 1_000_000, output: 1_000_000 }, // $90
-      expectedValueUsd: 100,
+      // Set tokens so cost is meaningful relative to value (1M+1M = $18 at
+      // the corrected Sonnet pricing; value 10 keeps the score unclamped).
+      estimatedTokens: { input: 1_000_000, output: 1_000_000 }, // $18
+      expectedValueUsd: 10,
     });
     expect(result.envelopeStatus).toBe("amber");
-    // 100 * 0.8 * 0.7 / 90 = 0.6222... → proceed boundary
-    expect(result.score).toBeCloseTo((100 * 0.8 * 0.7) / 90, 3);
+    // 10 * 0.8 * 0.7 / 18 = 0.3111...
+    expect(result.score).toBeCloseTo((10 * 0.8 * 0.7) / 18, 3);
   });
 
   it("applies red weight 0.4 (severe penalty)", async () => {
@@ -325,11 +328,11 @@ describe("scoreDispatchProposal — envelope weighting", () => {
     const result = await scoreDispatchProposal({
       agentRole: "iris",
       promptText: "test",
-      estimatedTokens: { input: 1_000_000, output: 1_000_000 }, // $90
-      expectedValueUsd: 100,
+      estimatedTokens: { input: 1_000_000, output: 1_000_000 }, // $18
+      expectedValueUsd: 10,
     });
     expect(result.envelopeStatus).toBe("red");
-    expect(result.score).toBeCloseTo((100 * 0.8 * 0.4) / 90, 3);
+    expect(result.score).toBeCloseTo((10 * 0.8 * 0.4) / 18, 3);
   });
 
   it("ENVELOPE_WEIGHTS constants reflect the documented map", () => {
@@ -395,11 +398,9 @@ describe("scoreDispatchProposal — recommendation boundaries", () => {
     // cost $1, value $0.29 → score 0.29
     const result = await scoreDispatchProposal({
       agentRole: "iris",
-      // 1M output * $75/M = $75 cost... need cost ≈ $1. Use 13_333 in + 13_333 out
-      // = (13333/1e6)*15 + (13333/1e6)*75 = 0.2 + 1 = 1.2. Adjust:
-      // Easier: pick input=0, output=13_333 → cost = (13333/1e6)*75 = 0.99998 ≈ 1
+      // Need cost ≈ $1 at $15/M output: 66_667 * 15 / 1e6 = 1.00000 ≈ 1.
       promptText: "test",
-      estimatedTokens: { input: 0, output: 13_333 },
+      estimatedTokens: { input: 0, output: 66_667 },
       expectedValueUsd: 0.29,
     });
     expect(result.score).toBeLessThan(DECISION_SCORE_THRESHOLDS.rejectBelow);
@@ -410,7 +411,7 @@ describe("scoreDispatchProposal — recommendation boundaries", () => {
     const result = await scoreDispatchProposal({
       agentRole: "iris",
       promptText: "test",
-      estimatedTokens: { input: 0, output: 13_333 }, // ≈ $1 cost
+      estimatedTokens: { input: 0, output: 66_667 }, // ≈ $1 cost
       expectedValueUsd: 0.59,
     });
     expect(result.score).toBeGreaterThanOrEqual(
@@ -426,7 +427,7 @@ describe("scoreDispatchProposal — recommendation boundaries", () => {
     const result = await scoreDispatchProposal({
       agentRole: "iris",
       promptText: "test",
-      estimatedTokens: { input: 0, output: 13_333 }, // ≈ $1 cost
+      estimatedTokens: { input: 0, output: 66_667 }, // ≈ $1 cost
       expectedValueUsd: 0.61,
     });
     expect(result.score).toBeGreaterThanOrEqual(
@@ -439,7 +440,7 @@ describe("scoreDispatchProposal — recommendation boundaries", () => {
     const result = await scoreDispatchProposal({
       agentRole: "iris",
       promptText: "test",
-      estimatedTokens: { input: 0, output: 13_333 },
+      estimatedTokens: { input: 0, output: 66_667 },
       expectedValueUsd: 0.45,
     });
     expect(result.recommendation).toBe("defer");

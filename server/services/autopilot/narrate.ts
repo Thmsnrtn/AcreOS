@@ -38,8 +38,10 @@ export interface FounderBriefInputs {
     mrr: number;
     trials: number;
     weeklySpendUsd: number;
-    envelopeStatus: "green" | "amber" | "red";
-    uptimePct: number;
+    /** "unknown" only when the pulse itself couldn't be read — never guessed green. */
+    envelopeStatus: "green" | "amber" | "red" | "unknown";
+    /** Measured uptime; null until there's enough real heartbeat data to claim one. */
+    uptimePct: number | null;
     dispatchesCompletedLast24h: number;
     dispatchesFlaggedLast24h: number;
     decisionsWaitingCount: number;
@@ -71,6 +73,17 @@ export interface FounderBriefInputs {
    * omit the trend rather than invent one.
    */
   mrrWowPct?: number | null;
+  /**
+   * Wedge throughput, last 7 days, platform-wide: outreach pieces sent
+   * (campaign delivery events), inbound seller replies, offers created.
+   * Real counts (zeros are honest zeros); null only when the tables were
+   * unreadable.
+   */
+  wedge?: { outreachSent7d: number; replies7d: number; offers7d: number } | null;
+  /** 5xx rate over the durable 24h telemetry window, as a percent. null when no traffic recorded. */
+  errorRatePct?: number | null;
+  /** Deployed version (short SHA) from the pulse. null when unknown. */
+  prodVersion?: string | null;
 }
 
 export interface FounderBrief {
@@ -86,12 +99,20 @@ export interface FounderBrief {
     mrr: number;
     trials: number;
     weeklySpendUsd: number;
-    envelopeStatus: "green" | "amber" | "red";
-    uptimePct: number;
+    /** "unknown" when the pulse couldn't be read — the UI shows "no data yet", never a guessed green. */
+    envelopeStatus: "green" | "amber" | "red" | "unknown";
+    /** Measured uptime; null until there's enough real heartbeat data. Never a flattering default. */
+    uptimePct: number | null;
     /** Weeks of runway at current burn; null when not burning / unknown. Real, never invented. */
     runwayWeeks: number | null;
     /** Week-over-week MRR change (signed %); null when no real prior datapoint exists. */
     mrrWowPct: number | null;
+    /** Wedge throughput (7d): outreach sent, replies in, offers made. null when unreadable. */
+    wedge: { outreachSent7d: number; replies7d: number; offers7d: number } | null;
+    /** 5xx rate over the last 24h (percent). null when no traffic recorded. */
+    errorRatePct: number | null;
+    /** Deployed version (short SHA). null when unknown. */
+    prodVersion: string | null;
   };
   /** The brain's focus, in plain language. */
   focusLine: string | null;
@@ -151,7 +172,9 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
       ? "spend is comfortably within budget"
       : inp.pulse.envelopeStatus === "amber"
         ? "spend is approaching the budget line"
-        : "spend is constrained — runway needs attention";
+        : inp.pulse.envelopeStatus === "red"
+          ? "spend is constrained — runway needs attention"
+          : "I can't read the spend ledger right now";
   const trialsBit = inp.pulse.trials > 0 ? `, ${countNoun(inp.pulse.trials, "trial", "trials")} in the funnel` : "";
   parts.push(`${money}${trialsBit}, and ${runway}.`);
 
@@ -187,6 +210,9 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
       uptimePct: inp.pulse.uptimePct,
       runwayWeeks: inp.runwayWeeks ?? null,
       mrrWowPct: inp.mrrWowPct ?? null,
+      wedge: inp.wedge ?? null,
+      errorRatePct: inp.errorRatePct ?? null,
+      prodVersion: inp.prodVersion ?? null,
     },
     focusLine,
     trustLedger: inp.trustLedger,
@@ -239,12 +265,14 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
   if (!pulse) {
     pulse = await composeMorningPulse().catch(() => null);
   }
+  // No pulse ⇒ say so. Substituting a green envelope or a 99.9% uptime here
+  // was the one fabrication on the founder's canonical surface (WS2, 2026-07-07).
   const safePulse = {
     mrr: pulse?.mrr ?? 0,
     trials: pulse?.trials ?? 0,
     weeklySpendUsd: pulse?.weeklySpendUsd ?? 0,
-    envelopeStatus: pulse?.envelopeStatus ?? "green",
-    uptimePct: pulse?.uptimePct ?? 99.9,
+    envelopeStatus: (pulse?.envelopeStatus ?? "unknown") as "green" | "amber" | "red" | "unknown",
+    uptimePct: pulse?.uptimePct ?? null,
     dispatchesCompletedLast24h: pulse?.dispatchesCompletedLast24h ?? 0,
     dispatchesFlaggedLast24h: pulse?.dispatchesFlaggedLast24h ?? 0,
     decisionsWaitingCount: pulse?.decisionsWaitingCount ?? 0,
@@ -273,7 +301,9 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
       mrr: safePulse.mrr,
       trials: safePulse.trials,
       complianceOpenCount: pulse?.complianceOpenCount ?? 0,
-      envelopeStatus: safePulse.envelopeStatus,
+      // The brain's senses are 3-state; an unknown envelope keeps the prior
+      // (non-alarmed) posture for ranking while the DISPLAY stays honest.
+      envelopeStatus: safePulse.envelopeStatus === "unknown" ? "green" : safePulse.envelopeStatus,
       dispatchesFlaggedLast24h: safePulse.dispatchesFlaggedLast24h,
     });
     plannedFocus = rankMoves(senses)[0] ?? null;
@@ -343,6 +373,43 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
   // no prior datapoint in the window yet (a young system); never fabricated.
   const mrrWowPct = await computeMrrWowPct(safePulse.mrr, nowMs).catch(() => null);
 
+  // Wedge throughput (7d): the outreach → reply → offer funnel, counted from
+  // the real event tables. Zeros are honest zeros; null only when unreadable.
+  let wedge: FounderBriefInputs["wedge"] = null;
+  try {
+    const { db } = await import("../../db");
+    const { campaignDeliveryEvents, messages, offers } = await import("@shared/schema");
+    const { sql, gte, and, eq } = await import("drizzle-orm");
+    const cutoff = new Date(nowMs - 7 * 24 * 60 * 60 * 1000);
+    const [[sent], [replies], [made]] = await Promise.all([
+      db.select({ n: sql<number>`count(*)::int` }).from(campaignDeliveryEvents).where(gte(campaignDeliveryEvents.sentAt, cutoff)),
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(messages)
+        .where(and(eq(messages.direction, "inbound"), gte(messages.createdAt, cutoff))),
+      db.select({ n: sql<number>`count(*)::int` }).from(offers).where(gte(offers.createdAt, cutoff)),
+    ]);
+    wedge = { outreachSent7d: sent?.n ?? 0, replies7d: replies?.n ?? 0, offers7d: made?.n ?? 0 };
+  } catch {
+    wedge = null;
+  }
+
+  // Error rate — 5xx share of the durable 24h telemetry window. 4xx is
+  // excluded on purpose (auth churn isn't an outage signal). null = no traffic.
+  let errorRatePct: number | null = null;
+  try {
+    const { getTelemetrySummaryDurable } = await import("../../middleware/apiTelemetry");
+    const t = await getTelemetrySummaryDurable();
+    if (t.totals.totalCount > 0) {
+      errorRatePct = Math.round((t.totals.total5xx / t.totals.totalCount) * 1000) / 10;
+    }
+  } catch {
+    errorRatePct = null;
+  }
+
+  const prodVersion =
+    pulse?.prodVersion && pulse.prodVersion !== "unknown" ? pulse.prodVersion : null;
+
   return buildFounderBrief({
     partOfDay,
     founderName,
@@ -354,6 +421,9 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     calibration,
     runwayWeeks,
     mrrWowPct,
+    wedge,
+    errorRatePct,
+    prodVersion,
   });
 }
 

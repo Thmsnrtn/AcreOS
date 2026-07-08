@@ -27,7 +27,7 @@ export type SubscriptionTier = "free" | "starter" | "pro" | "scale" | "enterpris
  * `event_type='ai_request'`, and ~15 downstream callers; only the WINDOW
  * (monthly) and the CAP (rebaselined) changed.
  */
-export type ResourceType = "leads" | "properties" | "notes" | "ai_requests";
+export type ResourceType = "leads" | "properties" | "notes" | "ai_requests" | "campaigns";
 
 export interface TierLimits {
   leads: number | null;

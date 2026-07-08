@@ -1778,7 +1778,10 @@ export default function CommandCenterPage() {
         body: JSON.stringify({
           message,
           conversationId,
-          agentRole: "assistant",
+          // "executive" is the canonical Pax profile key. The old value
+          // "assistant" isn't in agentProfiles, so every send 422'd before
+          // reaching the model (WS1 interactive pass, 2026-07-07).
+          agentRole: "executive",
           images: imageContents.length > 0 ? imageContents : undefined,
           files: fileAttachments.length > 0 ? fileAttachments : undefined,
         }),
@@ -1861,6 +1864,8 @@ export default function CommandCenterPage() {
         clientLogger.info("Pax stream aborted by user");
       } else {
         clientLogger.error("Streaming error:", error);
+        // Make the promise true: put the draft back in the composer.
+        setInput(message);
         toast({ title: "Couldn't send message", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" });
       }
     } finally {

@@ -342,7 +342,13 @@ async function processDomainAudits() {
 
 function startDomainAuditJob() {
   const ONE_DAY = 24 * 60 * 60 * 1000;
-  const TTL_SECONDS = 23 * 60 * 60; // Lock TTL slightly less than interval
+  // Lock TTL slightly less than the interval — withJobLock never releases on
+  // completion, so this TTL IS the once-daily fleet-wide dedupe. Known
+  // tradeoff (WS5 drill, 2026-07-08): a holder that crashes mid-run blocks
+  // re-running until expiry, costing at most one day's audit — acceptable
+  // for a daily observability job; do NOT shorten without adding a
+  // completion-release, or multi-instance boots would re-run the audit daily.
+  const TTL_SECONDS = 23 * 60 * 60;
 
   log('Starting domain-audit background job (daily)', 'domain-audit');
 
@@ -709,6 +715,38 @@ function startCustomerConcentrationJob() {
           log(`Customer concentration job failed: ${err}`, 'concentration');
         });
       }).catch(err => log(`Customer concentration import failed: ${err}`, 'concentration'));
+    }
+  }, ONE_HOUR);
+}
+
+// ============================================================================
+// Launch-Week WS4 — Gate-Watcher (the self-birthing roadmap). Daily 09:00 UTC.
+// Evaluates every machine-encoded roadmap gate (mature-machine §4 autonomy
+// switch schedule + phase triggers: Phase-1 runbook at $200 MRR held 30d,
+// Sentry rung at $500, Telnyx eval at $3k, switch eligibility at 25 paying).
+// A ripened gate raises a one-tap founder Decision via founderCollab, or
+// auto-executes ONLY where the studio revenue-trigger dial already says
+// autoApprove. Hard-stops never auto-execute. Every evaluation is logged and
+// persisted to the Story surface; dedup state lives in founder_settings, so a
+// duplicate tick (second machine acquiring the lock later in the hour) is a
+// no-op.
+// ============================================================================
+function startGateWatcherJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering gate watcher job (daily 09:00 UTC)', 'gate-watcher');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 9) {
+      import('../services/autopilot/gateWatcher').then(({ runGateWatch }) => {
+        withJobLock('gate_watcher_daily', TTL_SECONDS, async () => {
+          await runGateWatch();
+        }).catch(err => {
+          log(`Gate watcher run failed: ${err}`, 'gate-watcher');
+        });
+      }).catch(err => log(`Gate watcher import failed: ${err}`, 'gate-watcher'));
     }
   }, ONE_HOUR);
 }
@@ -4127,6 +4165,11 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Customer Concentration (daily 13:00 UTC) — MRR concentration alerts
   startCustomerConcentrationJob();
+
+  // Launch-Week WS4 — Gate-Watcher (daily 09:00 UTC): condition-gated
+  // roadmap items detect their own moment and become one-tap founder
+  // Decisions (or auto-execute where the studio dial says autoApprove).
+  startGateWatcherJob();
 
   // §1026.41 periodic statements — monthly (1st of month, 09:00 UTC).
   // Generates one statement per active loan per org per cycle.

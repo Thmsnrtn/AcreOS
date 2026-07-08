@@ -7641,6 +7641,12 @@ const STATEMENTS = [
      "created_at" timestamp NOT NULL DEFAULT now()
    )`,
   `CREATE INDEX IF NOT EXISTS "reactivation_surveys_org_created_idx" ON "reactivation_surveys" ("organization_id", "created_at")`,
+
+  // Outbox claim timestamp (migration 0199, launch-week WS5 worker-kill
+  // drill) — recovery of rows orphaned in status='running' needs the claim
+  // time; created_at is enqueue time and would mis-reap a claimed backlog.
+  `ALTER TABLE outbox ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP`,
+  `CREATE INDEX IF NOT EXISTS outbox_running_claimed_idx ON outbox (claimed_at) WHERE status = 'running'`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
