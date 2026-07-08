@@ -121,9 +121,16 @@ export default async function globalSetup() {
                '+14805550142', true, now(), 'e2e_seed')`,
       [orgId],
     );
+    // The wedge journey models a PAYING customer. Since PR #112 the campaign
+    // cap is genuinely enforced (free tier = 0 campaigns — intended product
+    // behavior), so the default free-tier org can no longer create the
+    // journey's campaign. 'pro' (unlimited campaigns) also keeps the 5
+    // device projects + retries, which all share this one org, under any cap.
     await client.query(
       `UPDATE organizations
        SET credit_balance = '100000',
+           subscription_tier = 'pro',
+           subscription_status = 'active',
            settings = COALESCE(settings, '{}'::jsonb) || '{"simulationMode": true}'::jsonb
        WHERE id = $1`,
       [orgId],
