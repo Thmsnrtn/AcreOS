@@ -33,7 +33,7 @@ import { staggerContainer, staggerItem } from "@/lib/animations";
 import { formatRelative } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
 
-interface LedgerEntry { domain: string; level: string; cleanCycleCount: number; threshold: number; qualityLine?: string | null }
+interface LedgerEntry { domain: string; level: string; cleanCycleCount: number; threshold: number; qualityLine?: string | null; lastPromotedAt?: string | null; lastDemotedAt?: string | null; lastDemotionReason?: string | null }
 interface ControlData {
   settings: { dispatchEnabled: boolean; publishEnabled: boolean; selfPatchEnabled?: boolean; growthBudgetOverrideUsd: number | null; source: { dispatch: "db" | "env"; publish: "db" | "env" } };
   ledger: LedgerEntry[];
@@ -580,6 +580,15 @@ export default function FounderAutopilotControlPage() {
                           {/* Decision quality — the real basis on which autonomy is earned/held. */}
                           {d.qualityLine && (
                             <p className="pl-20 text-micro text-muted-foreground">{d.qualityLine}</p>
+                          )}
+                          {/* F3b — last-fired line: when this dial last actually moved,
+                              and why if it was pulled back. Doubles as liveness proof. */}
+                          {(d.lastDemotedAt || d.lastPromotedAt) && (
+                            <p className="pl-20 text-micro text-muted-foreground">
+                              {d.lastDemotedAt && (!d.lastPromotedAt || new Date(d.lastDemotedAt) > new Date(d.lastPromotedAt))
+                                ? `Pulled back ${formatRelative(d.lastDemotedAt)}${d.lastDemotionReason ? ` — ${d.lastDemotionReason}` : ""}`
+                                : `Trust granted ${formatRelative(d.lastPromotedAt!)}`}
+                            </p>
                           )}
                         </li>
                       );

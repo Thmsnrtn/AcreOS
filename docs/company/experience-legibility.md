@@ -66,7 +66,7 @@ that leaks a system term is a review defect.
       ago · next ~20m · N actions (24h)", amber "Nothing has run since
       3h ago — cycles are usually every 30m" (2 missed cadences), muted
       "The brain hasn't run a cycle yet". Tap → Controls. Polls 60s.
-- [ ] **F2 — Controls rewrite** (`/founder/autopilot/control`): PARTIAL
+- [x] **F2 — Controls rewrite** (`/founder/autopilot/control`): PARTIAL
       (2026-07-08). SHIPPED: the three postures — Cautious / Standard /
       Hands-off — as one-tap stances with live current-posture detection,
       a plain-language "This will change:" diff before applying, and
@@ -77,8 +77,11 @@ that leaks a system term is a review defect.
       (Cautious detected → confirm diff listed switch + 5 domains →
       Standard applied + detected). Note: most dials were ALREADY in
       consequence language (this door was rewritten before the cluster).
-      REMAINING: per-control "last fired" lines (needs receipts data —
-      lands with F3).
+      DONE (2026-07-08 eve): per-control "last fired" lines — every
+      Trust dial now shows when it last actually moved: "Trust granted
+      4h ago" or "Pulled back 20m ago — two sends bounced in a row"
+      (ledger lastPromotedAt/lastDemotedAt + demotion reason; latest
+      event wins). Verified in-browser both variants. F2 COMPLETE.
 - [ ] **F3 — Receipts**: PARTIAL (2026-07-08). SHIPPED (F3a): the
       Letter's wedge tiles are receipts — tapping Outreach/Replies/
       Offers (7d) opens the exact rows the count is made of
@@ -88,9 +91,14 @@ that leaks a system term is a review defect.
       $32,500 to Emmy Replywell — draft"). Honest empty: "Nothing in
       the last 7 days — that number is a true zero." Verified
       end-to-end in-browser (tap → rows → toggle off).
-      REMAINING (F3b): receipt chips on Solene chat replies;
-      show-the-work drawer (chat + Story); per-control "last fired"
-      lines on Controls.
+      REMAINING (F3b): receipt chips on Solene chat replies +
+      show-the-work drawer (chat + Story). Implementation note for the
+      next session: chat turns currently record NO created-artifact
+      refs — the server chat pipeline must attach {type, id} refs when
+      a turn's tool-calls create a decision/ask/dispatch, then the
+      client renders them as chips linking to Decisions/Story. The
+      drawer streams the turn's tool-call log (the data exists in the
+      chat traces).
 
 Acceptance: no number without a tappable source; no control without a
 consequence sentence; a stalled loop is visible on every surface within
