@@ -54,6 +54,11 @@ async function seedSessionCookies(page: Page, baseURL: string) {
  * deep-link behavior). A real customer dismisses it to reach the plans grid
  * underneath; so does this spec. Tolerates the dialog not opening (e.g. if
  * that behavior is ever removed) — the assertions that matter come after.
+ *
+ * Dismissal is via the dialog's close button — the affordance a touch user
+ * actually has. Escape is only a fallback: verified on ipad-mini (768px)
+ * that Escape does NOT close this dialog while the close button does
+ * (CI run 28945029549; reproduced locally at the same viewport).
  */
 async function dismissPlanComparisonDialog(page: Page) {
   const dialog = page.getByRole("dialog", { name: /compare plans/i });
@@ -62,8 +67,13 @@ async function dismissPlanComparisonDialog(page: Page) {
   } catch {
     return; // never opened — nothing to dismiss
   }
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeHidden();
+  const closeButton = dialog.getByRole("button", { name: /close/i }).first();
+  if (await closeButton.count()) {
+    await closeButton.click();
+  } else {
+    await page.keyboard.press("Escape");
+  }
+  await expect(dialog).toBeHidden({ timeout: 10_000 });
 }
 
 test.describe("billing upgrade journey (Settings → Billing)", () => {

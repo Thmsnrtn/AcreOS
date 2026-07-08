@@ -224,6 +224,24 @@ Exit test: five hard CEO questions, every answer sourced.
 
 ## Status log
 
+- 2026-07-08 ~14:30Z — **iPad touch-target defects fixed (real product
+  bugs the E2E merge-gate caught)**: on ipad-mini (768px = md → desktop
+  sidebar on a touch device) the sidebar's door links measured 20px tall
+  (anchor inside the 44px row), child links 34px, Pax bell 28×28, and
+  the toast dismiss was 24×24 AND opacity-0 (hover-revealed — invisible
+  on touch). Fixed: anchors get full-height tap areas (py-3/-my-3, zero
+  layout change), children + bell + toast dismiss use the established
+  pointer-coarse: variant (44px + always-visible dismiss on touch;
+  desktop density unchanged). NOTE the honest part: these violations
+  were pre-existing — the contract spec deliberately measures before
+  hydration (its own comment says a settle-wait exposed them "on every
+  route"), and the new specs' timing/data shifted the race. The product
+  is now compliant post-hydration so the race no longer decides.
+  Also: compare-plans dialog doesn't close on Escape at 768px (close
+  button works) — spec dismisses via the button; product quirk noted
+  for the C1 settings-legibility pass. Verified: 0 violations at
+  768×1024 (was 13); mobile-feel + billing specs green on pixel-5;
+  full suite 7981/7981.
 - 2026-07-08 ~12:45Z — **Security workflow GREEN on the PR #113 branch**
   (head `375cbdf`) — first green since 2026-07-07. The findings-table
   step named the real culprit on its first run: CVE-2026-48702
