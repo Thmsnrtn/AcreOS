@@ -105,6 +105,7 @@ import { SafeBulkDeleteDialog } from "@/components/safe-bulk-delete-dialog";
 import { LeadDetailContent } from "@/components/lead-detail-content";
 import { format } from "date-fns";
 import type { SavedView } from "@shared/schema";
+import { Verbs } from "@/lib/labels";
 
 type LeadWithScore = Lead & {
   score: number;
@@ -263,7 +264,7 @@ function ScoreDetailsDialog({
             Score Details: {lead.firstName} {lead.lastName}
           </ResponsiveModalTitle>
           <ResponsiveModalDescription>
-            Betty-style lead scoring breakdown
+            How this lead&apos;s score is calculated
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
 
@@ -1529,7 +1530,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                     </div>
                     <div className="flex flex-wrap items-center gap-2 ml-auto">
                       <Button variant="outline" size="sm" onClick={handleBulkExport} data-testid="button-bulk-export">
-                        <Download className="w-4 h-4 mr-1" /> Export
+                        <Download className="w-4 h-4 mr-1" /> {Verbs.EXPORT}
                       </Button>
                       <Select onValueChange={handleBulkStatusChange} disabled={isBulkUpdating}>
                         <SelectTrigger className="w-[150px]" aria-label="Change status for selected leads" data-testid="select-bulk-status">
@@ -1544,7 +1545,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                         </SelectContent>
                       </Select>
                       <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete">
-                        <Trash2 className="w-4 h-4 mr-1" /> Delete
+                        <Trash2 className="w-4 h-4 mr-1" /> {Verbs.DELETE}
                       </Button>
                       <Button aria-label="Clear selection" variant="ghost" size="sm" onClick={() => setSelectedLeadIds(new Set())} data-testid="button-clear-selection">
                         <X className="w-4 h-4" />
@@ -1735,7 +1736,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                       </DropdownMenuItem>
                                       <DropdownMenuItem onClick={() => setEditingLead(lead)} data-testid={`button-edit-lead-${lead.id}`}>
                                         <Edit className="w-4 h-4 mr-2" />
-                                        Edit
+                                        {Verbs.EDIT}
                                       </DropdownMenuItem>
                                       <RescoreMenuItem leadId={lead.id} />
                                       <DropdownMenuItem onClick={() => setOfferLetterLead(lead)} data-testid={`button-offer-letter-${lead.id}`}>
@@ -1748,7 +1749,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                         data-testid={`button-delete-lead-${lead.id}`}
                                       >
                                         <Trash2 className="w-4 h-4 mr-2" />
-                                        Delete
+                                        {Verbs.DELETE}
                                       </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
@@ -1903,7 +1904,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                     data-testid={`button-edit-lead-mobile-${lead.id}`}
                                   >
                                     <Edit className="w-4 h-4 mr-2" />
-                                    Edit
+                                    {Verbs.EDIT}
                                   </DropdownMenuItem>
                                   <RescoreMenuItem leadId={lead.id} />
                                   <DropdownMenuItem 
@@ -1920,7 +1921,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                     data-testid={`button-delete-lead-mobile-${lead.id}`}
                                   >
                                     <Trash2 className="w-4 h-4 mr-2" />
-                                    Delete
+                                    {Verbs.DELETE}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -2028,7 +2029,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
           </form>
           <ResponsiveModalFooter>
             <Button type="button" variant="outline" onClick={() => setOfferLetterLead(null)}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               type="submit"
@@ -2174,7 +2175,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
             {!importResult ? (
               <>
                 <Button variant="outline" className="min-h-11" onClick={resetImportDialog}>
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
                 <Button
                   onClick={handleImport}

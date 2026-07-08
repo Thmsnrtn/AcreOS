@@ -741,7 +741,7 @@ function LandStatusVerificationCard({ property }: { property: Property }) {
       {/*
         Phase A ships manual verification. Phase B will auto-resolve from
         the BIA Land Area Representations shapefile overlay; tracked in
-        docs/exhaustive-completion/founder-dashboard-extraction-queue.md.
+        docs/archive/exhaustive-completion/founder-dashboard-extraction-queue.md.
         Removed customer-facing "TODO" footer 2026-05-26 — internal-only
         note now lives here as a code comment.
       */}

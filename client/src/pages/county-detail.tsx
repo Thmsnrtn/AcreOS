@@ -37,6 +37,7 @@ import { Switch } from "@/components/ui/switch";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 interface ClerkProfile {
   acceptedPaymentMethods?: string[];
@@ -272,11 +273,11 @@ function ClerkProfileCard({ county }: { county: County }) {
           <h2 className="text-sm font-semibold">Clerk profile</h2>
           {!editing ? (
             <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditing(true)}>
-              <Edit3 className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> Edit
+              <Edit3 className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> {Verbs.EDIT}
             </Button>
           ) : (
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setProfile(display); setEditing(false); }}>Cancel</Button>
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setProfile(display); setEditing(false); }}>{Verbs.CANCEL}</Button>
               <Button size="sm" className="h-7 text-xs" onClick={() => save.mutate()} disabled={save.isPending}>
                 <Save className="w-3.5 h-3.5 mr-1" aria-hidden="true" /> {save.isPending ? "Saving…" : "Save"}
               </Button>

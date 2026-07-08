@@ -12,6 +12,9 @@
  *    (SKIP LOCKED guarantee — simulated via the mock's pull semantics)
  *  - completeDispatch writes both queue row + result row in a transaction
  *  - failDispatch with status='cancelled' writes the cancelled marker
+ *  - failDispatch transient=true requeues with backoff, bounded by
+ *    DISPATCH_MAX_ATTEMPTS, then dead-letters; non-transient stays terminal
+ *  - claimNextDispatch honors the not_before_at backoff gate
  *
  * We mock `db` to keep this test unit-scope (no Postgres required).
  */
@@ -44,6 +47,8 @@ interface QueueRow {
   result_full_path: string | null;
   enqueued_by: string | null;
   idempotency_key: string | null;
+  attempts: number;
+  not_before_at: Date | null;
 }
 
 interface ResultRow {
@@ -97,6 +102,8 @@ vi.mock("../../db", () => {
               result_full_path: null,
               enqueued_by: row.enqueuedBy ?? null,
               idempotency_key: row.idempotencyKey ?? null,
+              attempts: 0,
+              not_before_at: null,
             };
             return {
               // Non-keyed path: unconditional insert (push at returning time).
@@ -134,6 +141,7 @@ vi.mock("../../db", () => {
               if (patch.completedAt !== undefined) row.completed_at = patch.completedAt;
               if (patch.resultSummary !== undefined) row.result_summary = patch.resultSummary;
               if (patch.resultFullPath !== undefined) row.result_full_path = patch.resultFullPath;
+              if (patch.notBeforeAt !== undefined) row.not_before_at = patch.notBeforeAt;
             }
             return Promise.resolve();
           },
@@ -149,7 +157,7 @@ vi.mock("../../db", () => {
               const v = (clause as any)?.__id;
               const row = QUEUE.find((q) => q.id === v) ?? QUEUE.find((q) => q.idempotency_key === v);
               if (!row) return Promise.resolve([]);
-              return Promise.resolve([{ id: row.id, status: row.status }]);
+              return Promise.resolve([{ id: row.id, status: row.status, attempts: row.attempts }]);
             },
           }),
         }),
@@ -177,9 +185,11 @@ vi.mock("../../db", () => {
         prior.then(() => resolve(r));
       });
       try {
-        // Pull highest priority then earliest queued.
+        // Pull highest priority then earliest queued, honoring the
+        // not_before_at backoff gate (retry rows wait out their delay).
+        const now = Date.now();
         const pickable = QUEUE
-          .filter((q) => q.status === "queued")
+          .filter((q) => q.status === "queued" && (q.not_before_at === null || q.not_before_at.getTime() <= now))
           .sort((a, b) => {
             const pa = Number(a.priority);
             const pb = Number(b.priority);
@@ -190,6 +200,7 @@ vi.mock("../../db", () => {
           claimed = pickable[0];
           claimed.status = "in_progress";
           claimed.started_at = new Date();
+          claimed.attempts += 1;
         }
       } finally {
         release();
@@ -512,6 +523,108 @@ describe("computeEffectKey (pure) — exactly-once seal (panel #2)", () => {
     expect(k({ playId: "other" })).not.toBe(base);
     expect(k({ domain: "support" })).not.toBe(base);
     expect(k({ moveKind: "other" })).not.toBe(base);
+  });
+});
+
+describe("failDispatch — bounded side-effect-aware retry (step-away gap #3)", () => {
+  async function enqueueAndClaim() {
+    const { enqueueDispatch, claimNextDispatch } = await import("./dispatchQueue");
+    const id = await enqueueDispatch({
+      sourceType: "auto_dispatch",
+      sourceId: "retry-case",
+      agentRole: "iris",
+      promptText: "task",
+    });
+    await claimNextDispatch();
+    return id;
+  }
+
+  it("retryBackoffMs is exponential in minutes: 2m, 4m, 8m", async () => {
+    const { retryBackoffMs } = await import("./dispatchQueue");
+    expect(retryBackoffMs(1)).toBe(2 * 60_000);
+    expect(retryBackoffMs(2)).toBe(4 * 60_000);
+    expect(retryBackoffMs(3)).toBe(8 * 60_000);
+    // Degenerate inputs clamp to attempt 1 — never a zero/negative delay.
+    expect(retryBackoffMs(0)).toBe(2 * 60_000);
+    expect(retryBackoffMs(-5)).toBe(2 * 60_000);
+  });
+
+  it("transient failure requeues with a future not_before_at and keeps the per-attempt audit row", async () => {
+    const { failDispatch } = await import("./dispatchQueue");
+    const id = await enqueueAndClaim(); // attempts=1
+    const before = Date.now();
+    const out = await failDispatch(id, { errorMessage: "ECONNRESET from api.anthropic.com" }, { transient: true });
+    expect(out.requeued).toBe(true);
+    expect(out.attempts).toBe(1);
+    const row = QUEUE.find((q) => q.id === id)!;
+    expect(row.status).toBe("queued");
+    expect(row.started_at).toBeNull();
+    expect(row.completed_at).toBeNull();
+    expect(row.not_before_at).toBeInstanceOf(Date);
+    // attempts=1 → 2-minute backoff
+    expect(row.not_before_at!.getTime()).toBeGreaterThanOrEqual(before + 2 * 60_000 - 50);
+    // The attempt still left its audit trail.
+    const resultRow = RESULTS.find((r) => r.dispatch_id === id);
+    expect(resultRow?.success).toBe(false);
+    expect(resultRow?.error_message).toMatch(/ECONNRESET/);
+  });
+
+  it("a requeued row is NOT claimable while its backoff is in the future", async () => {
+    const { failDispatch, claimNextDispatch } = await import("./dispatchQueue");
+    const id = await enqueueAndClaim();
+    await failDispatch(id, { errorMessage: "blip" }, { transient: true });
+    // Backoff is 2 minutes out — the worker pull must skip it.
+    expect(await claimNextDispatch()).toBeNull();
+    // Simulate the backoff elapsing.
+    const row = QUEUE.find((q) => q.id === id)!;
+    row.not_before_at = new Date(Date.now() - 1000);
+    const reclaimed = await claimNextDispatch();
+    expect(reclaimed?.id).toBe(id);
+    expect(reclaimed?.attempts).toBe(2);
+  });
+
+  it("dead-letters after DISPATCH_MAX_ATTEMPTS total runs", async () => {
+    const { failDispatch, claimNextDispatch } = await import("./dispatchQueue");
+    const { DISPATCH_MAX_ATTEMPTS } = await import("@shared/schema/solene-dispatch");
+    const { DEAD_LETTER_MARKER } = await import("./dispatchQueue");
+    const id = await enqueueAndClaim(); // run 1
+    for (let run = 1; run < DISPATCH_MAX_ATTEMPTS; run++) {
+      const out = await failDispatch(id, { errorMessage: `blip ${run}` }, { transient: true });
+      expect(out.requeued).toBe(true);
+      // Elapse the backoff and re-claim for the next run.
+      QUEUE.find((q) => q.id === id)!.not_before_at = new Date(Date.now() - 1000);
+      const claimed = await claimNextDispatch();
+      expect(claimed?.id).toBe(id);
+    }
+    // Final run fails transient too — but the budget is spent.
+    const out = await failDispatch(id, { errorMessage: "blip final" }, { transient: true });
+    expect(out.requeued).toBe(false);
+    expect(out.attempts).toBe(DISPATCH_MAX_ATTEMPTS);
+    const row = QUEUE.find((q) => q.id === id)!;
+    expect(row.status).toBe("failed");
+    expect(row.result_summary).toContain(DEAD_LETTER_MARKER);
+  });
+
+  it("non-transient failure stays terminal on the first attempt (at-most-once default)", async () => {
+    const { failDispatch } = await import("./dispatchQueue");
+    const id = await enqueueAndClaim();
+    const out = await failDispatch(id, { errorMessage: "tool ran then died" });
+    expect(out.requeued).toBe(false);
+    const row = QUEUE.find((q) => q.id === id)!;
+    expect(row.status).toBe("failed");
+    expect(row.result_summary).not.toContain("[dead-letter]");
+  });
+
+  it("a cancellation is never retried, even when marked transient", async () => {
+    const { failDispatch } = await import("./dispatchQueue");
+    const id = await enqueueAndClaim();
+    const out = await failDispatch(
+      id,
+      { errorMessage: "founder kill switch" },
+      { status: "cancelled", transient: true },
+    );
+    expect(out.requeued).toBe(false);
+    expect(QUEUE.find((q) => q.id === id)!.status).toBe("cancelled");
   });
 });
 

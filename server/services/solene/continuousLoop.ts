@@ -61,7 +61,8 @@ export interface MorningPulseSnapshot {
   // Sub-sections rendered behind the one-line.
   mrr: number;
   trials: number;
-  uptimePct: number;
+  /** Measured uptime % over the rolling window; null until there's enough real data to claim one. */
+  uptimePct: number | null;
   prodVersion: string;
   complianceOpenCount: number;
   weeklySpendUsd: number;
@@ -107,7 +108,6 @@ export interface ContinuousTickResult {
 // ============================================================================
 
 const DEFAULT_AUTONOMY_HORIZON_DAYS = 7;
-const DEFAULT_UPTIME_PCT = 99.9;
 const DEFAULT_MRR = 0;
 const DEFAULT_TRIALS = 0;
 
@@ -150,16 +150,15 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
   }
 
   // Uptime: REAL, derived from worker heartbeat-gap samples over a 30-day
-  // rolling window (replaces the old hard stub). Falls back to the conservative
-  // default only when there isn't yet enough measured data to claim a number.
-  let uptimePct = DEFAULT_UPTIME_PCT;
+  // rolling window. null (not a flattering default) when there isn't enough
+  // measured data to claim a number — the founder surface shows "no data yet".
+  let uptimePct: number | null = null;
   try {
     const { getUptimePct } = await import("../autopilot/uptime");
-    const measured = await getUptimePct();
-    if (measured != null) uptimePct = measured;
+    uptimePct = await getUptimePct();
   } catch (err) {
     logger.warn(
-      "[continuousLoop] uptime read failed; using default",
+      "[continuousLoop] uptime read failed; reporting no data",
       err instanceof Error ? err : undefined,
     );
   }
@@ -203,7 +202,7 @@ export function renderOneLine(snapshot: MorningPulseSnapshot): string {
   //    {N}/{N} compliance · ${X.XX} week-cost · {N} decisions waiting ·
   //    Horizon: {D} days"
   const mrr = Math.round(snapshot.mrr).toLocaleString();
-  const uptime = snapshot.uptimePct.toFixed(1);
+  const uptime = snapshot.uptimePct != null ? `${snapshot.uptimePct.toFixed(1)}% uptime` : "uptime n/a";
   const spend = snapshot.weeklySpendUsd.toFixed(2);
   // Compliance fraction: open / open (we only track open right now —
   // both numerator and denominator are the open count, matching the
@@ -213,7 +212,7 @@ export function renderOneLine(snapshot: MorningPulseSnapshot): string {
     `${snapshot.dayLabel}`,
     `$${mrr} MRR`,
     `+${snapshot.trials} trials`,
-    `${uptime}% uptime`,
+    uptime,
     `${complianceFrac} compliance`,
     `$${spend} week-cost`,
     `${snapshot.decisionsWaitingCount} decisions waiting`,
@@ -287,7 +286,9 @@ function hydrateRow(row: SoleneMorningPulseRow): MorningPulseSnapshot {
     oneLine: String(blob.oneLine ?? ""),
     mrr: Number(blob.mrr ?? 0),
     trials: Number(blob.trials ?? 0),
-    uptimePct: Number(blob.uptimePct ?? DEFAULT_UPTIME_PCT),
+    // Legacy rows persisted before uptime went nullable may carry the old
+    // 99.9 stub — that's baked history; new snapshots only store real numbers.
+    uptimePct: typeof blob.uptimePct === "number" ? blob.uptimePct : null,
     prodVersion: String(blob.prodVersion ?? "unknown"),
     complianceOpenCount: Number(blob.complianceOpenCount ?? 0),
     weeklySpendUsd: Number(blob.weeklySpendUsd ?? 0),

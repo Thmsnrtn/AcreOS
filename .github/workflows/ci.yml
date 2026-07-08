@@ -33,9 +33,11 @@ jobs:
       - name: TypeScript type check + ratchets
         run: npm run check
 
+      # Blocking since 2026-07-07: `eslint client/src --max-warnings 0` passes
+      # clean (the acreos/* ratchet baseline is all-zero), so a red here is a
+      # real regression, not legacy noise.
       - name: ESLint
         run: npm run lint
-        continue-on-error: true
 
       # Truth-engine audit — public-facing claims must each map to a
       # named source. A landing copy edit that doesn't update sources
@@ -72,19 +74,17 @@ jobs:
         env:
           CI: true
 
-      # Coverage is REPORT-ONLY. `vitest run --coverage` adds v8 instrumentation
-      # over all of server/** + shared/**, which (a) is much heavier than the
-      # plain run above (OOM risk — hence the 6144 heap, same ceiling as the
-      # check gate) and (b) carries a `lines: 50` threshold in vitest.config.ts
-      # that exits non-zero on a coverage DIP even when every test passes. That
-      # threshold-on-the-blocking-path is exactly what trained the team to
-      # ignore CI: a green codebase showed a red "CI". `continue-on-error`
-      # keeps the coverage NUMBERS visible in the log without letting a
-      # coverage dip (a non-correctness signal) fail the build. Re-promote to
-      # blocking only by raising real coverage above the threshold first.
-      - name: Coverage report (non-blocking)
+      # Coverage is a BLOCKING RATCHET (2026-07-07). The old `lines: 50`
+      # threshold was aspirational (measured global coverage: 18.22%) so this
+      # step was permanently red behind continue-on-error — zero signal. The
+      # thresholds in vitest.config.ts now sit just UNDER measured coverage:
+      # a global floor plus per-file floors on the money/send/compliance
+      # paths (creditPool, webhookHandlers, dunning, smsService,
+      # directMailService, publicParcelReport). Green today; a red here means
+      # a change dropped coverage on code that moves money or sends messages.
+      # Raise floors as real coverage rises — never lower them.
+      - name: Coverage ratchet (blocking)
         run: npm run test:coverage
-        continue-on-error: true
         env:
           NODE_OPTIONS: --max-old-space-size=6144
           CI: true

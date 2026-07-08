@@ -45,6 +45,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { CourthouseMode } from "@/components/mobile/CourthouseMode";
+import { Verbs } from "@/lib/labels";
 
 type AcquisitionSource = "auction" | "otc" | "pre_sale_list" | "private";
 
@@ -408,7 +409,7 @@ function WorksheetEditor({ listing, onClose }: { listing: Listing; onClose: () =
         <Textarea id={`n-${listing.id}`} value={notes} onChange={(e) => setNotes(e.target.value)} className="text-xs min-h-[60px]" />
       </div>
       <div className="flex justify-end gap-2 pt-1">
-        <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+        <Button variant="ghost" size="sm" onClick={onClose}>{Verbs.CANCEL}</Button>
         <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
           <Save className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
           {save.isPending ? "Saving…" : "Save"}

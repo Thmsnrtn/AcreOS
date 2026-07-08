@@ -36,6 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage } from "@/lib/error-utils";
 import { Copy, KeyRound, RefreshCw, Trash2, AlertTriangle } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 const ALL_SCOPES = [
   "leads:read",
@@ -50,6 +51,21 @@ const ALL_SCOPES = [
 ] as const;
 
 type Scope = (typeof ALL_SCOPES)[number];
+
+// C1 legibility: plain permission first, the raw scope token second (this
+// is a developer surface, so the token stays visible as a monospace hint —
+// same pattern as developer-sections.tsx "Read — view data only").
+const SCOPE_LABEL: Record<Scope, string> = {
+  "leads:read": "See leads",
+  "leads:write": "Add or edit leads",
+  "properties:read": "See properties",
+  "properties:write": "Add or edit properties",
+  "deals:read": "See deals",
+  "deals:write": "Add or edit deals",
+  "notes:read": "See notes",
+  "notes:write": "Add or edit notes",
+  "webhooks:write": "Manage outgoing notifications",
+};
 
 interface ApiKeyRow {
   id: number;
@@ -159,8 +175,8 @@ export default function ApiKeysSettingsPage() {
           <div>
             <h1 className="text-hero">API Keys</h1>
             <p className="text-sm text-muted-foreground">
-              Generate bearer tokens for the public AcreOS API (v1). Each key is
-              scoped — give integrations only what they need.
+              Keys let other software read or change your AcreOS data. Each key
+              only gets the permissions you tick — give a tool the least it needs.
             </p>
           </div>
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -197,9 +213,12 @@ export default function ApiKeysSettingsPage() {
                         <Checkbox
                           checked={newKeyScopes.includes(scope)}
                           onCheckedChange={() => toggleScope(scope)}
-                          aria-label={`Toggle scope ${scope}`}
+                          aria-label={`${SCOPE_LABEL[scope]} (${scope})`}
                         />
-                        <code className="text-xs">{scope}</code>
+                        <span className="min-w-0">
+                          {SCOPE_LABEL[scope]}{" "}
+                          <code className="text-xs text-muted-foreground">{scope}</code>
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -207,7 +226,7 @@ export default function ApiKeysSettingsPage() {
               </div>
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setCreateOpen(false)}>
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
                 <Button
                   onClick={() => createMutation.mutate()}
@@ -226,7 +245,7 @@ export default function ApiKeysSettingsPage() {
         </header>
 
         {revealedKey && (
-          <Alert variant="default" className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+          <Alert variant="default" className="border-acr-warn bg-acr-warn-soft">
             <AlertTriangle className="h-4 w-4" aria-hidden />
             <AlertTitle>Save this key now</AlertTitle>
             <AlertDescription className="space-y-2">
@@ -329,7 +348,7 @@ export default function ApiKeysSettingsPage() {
                           variant="destructive"
                           size="sm"
                           onClick={() => {
-                            if (confirm(`Revoke "${k.name}"? Any integration using it will start receiving 401s immediately.`)) {
+                            if (confirm(`Revoke "${k.name}"? Anything still using this key stops working immediately — it will be locked out.`)) {
                               revokeMutation.mutate(k.id);
                             }
                           }}

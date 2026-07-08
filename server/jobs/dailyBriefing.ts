@@ -14,7 +14,7 @@
 
 import { db } from "../db";
 import { organizations, leads, deals, notes, payments, teamMembers } from "@shared/schema";
-import { eq, and, gte, lte, desc, lt, gt } from "drizzle-orm";
+import { eq, and, gte, lte, desc, lt, gt, sql } from "drizzle-orm";
 import { addDays, subDays, format, startOfDay, endOfDay, isAfter } from "date-fns";
 import { sendEmail } from "../services/emailService";
 import { getRelevantMemories, formatMemoriesForContext } from "../services/atlasMemory";
@@ -75,11 +75,13 @@ async function collectBriefingData(orgId: number): Promise<BriefingData | null> 
     d.closingDate && new Date(d.closingDate) <= nextWeek && new Date(d.closingDate) >= now
   );
 
-  // Lead stats
+  // Lead stats — "in play" = not closed/dead. (W3.4: this used to filter
+  // status = 'active', a value that is never written — the briefing's lead
+  // counts were silently zero forever.)
   const allLeads = await db
     .select()
     .from(leads)
-    .where(and(eq(leads.organizationId, orgId), eq(leads.status, 'active')));
+    .where(and(eq(leads.organizationId, orgId), sql`${leads.status} NOT IN ('closed', 'dead')`));
 
   const hotLeads = allLeads.filter(l => (l.score || 0) >= 75);
   const coldLeads = allLeads.filter(l => (l.score || 0) < 30);

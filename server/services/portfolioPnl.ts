@@ -17,6 +17,7 @@
 import { db } from "../db";
 import { deals, notes, payments, properties } from "@shared/schema";
 import { eq, and, gte, lte, sql, sum, count } from "drizzle-orm";
+import { centsFromDecimal } from "@shared/finance/cents";
 
 export interface PnlPeriod {
   label: string; // "2025-Q3" or "2025-09"
@@ -146,49 +147,61 @@ export async function getPortfolioPnl(
     return periodMap.get(label)!;
   };
 
+  // W3.3: all money accumulates in INTEGER CENTS; the period/report fields
+  // convert to dollars exactly once after the loops. The old float `+=`
+  // drifted across periods (and the IRR cash-flow series inherited it).
   const cashFlows: number[] = [];
-  let totalAcquisition = 0;
-  let totalSale = 0;
+  let totalAcquisitionCents = 0;
+  let totalSaleCents = 0;
 
   for (const deal of closedDeals) {
     const date = deal.closedAt ? new Date(deal.closedAt) : new Date();
     const label = periodLabel(date, granularity);
     const period = ensurePeriod(label);
 
-    const cost = Number(deal.purchasePrice ?? 0);
-    const sale = Number(deal.salePrice ?? 0);
-    period.acquisitionCost += cost;
+    const costCents = centsFromDecimal(deal.purchasePrice);
+    const saleCents = centsFromDecimal(deal.salePrice);
+    period.acquisitionCost += costCents;
     period.dealsAcquired++;
-    totalAcquisition += cost;
+    totalAcquisitionCents += costCents;
 
-    if (sale > 0) {
-      period.saleProceeds += sale;
+    if (saleCents > 0) {
+      period.saleProceeds += saleCents;
       period.dealsSold++;
-      totalSale += sale;
+      totalSaleCents += saleCents;
     }
 
-    cashFlows.push(-cost); // outflow
-    if (sale > 0) cashFlows.push(sale); // inflow
+    cashFlows.push(-costCents / 100); // outflow
+    if (saleCents > 0) cashFlows.push(saleCents / 100); // inflow
   }
 
-  let totalInterest = 0;
+  let totalInterestCents = 0;
   for (const payment of notePayments) {
     const date = payment.paidAt ? new Date(payment.paidAt) : new Date();
     const label = periodLabel(date, granularity);
     const period = ensurePeriod(label);
 
-    const interest = Number(payment.interestPortion ?? payment.amount ?? 0);
-    period.interestIncome += interest;
-    totalInterest += interest;
-    cashFlows.push(interest);
+    const interestCents = centsFromDecimal(payment.interestPortion ?? payment.amount);
+    period.interestIncome += interestCents;
+    totalInterestCents += interestCents;
+    cashFlows.push(interestCents / 100);
   }
 
-  // Compute period totals
+  // Compute period totals — converting the accumulated cents to dollars.
   for (const period of periodMap.values()) {
-    period.totalRevenue = period.saleProceeds + period.interestIncome + period.otherIncome;
-    period.grossProfit = period.totalRevenue - period.acquisitionCost;
-    period.grossMargin = period.totalRevenue > 0 ? period.grossProfit / period.totalRevenue : 0;
+    const revenueCents = period.saleProceeds + period.interestIncome + period.otherIncome;
+    const profitCents = revenueCents - period.acquisitionCost;
+    period.grossMargin = revenueCents > 0 ? profitCents / revenueCents : 0;
+    period.acquisitionCost = period.acquisitionCost / 100;
+    period.saleProceeds = period.saleProceeds / 100;
+    period.interestIncome = period.interestIncome / 100;
+    period.otherIncome = period.otherIncome / 100;
+    period.totalRevenue = revenueCents / 100;
+    period.grossProfit = profitCents / 100;
   }
+  const totalAcquisition = totalAcquisitionCents / 100;
+  const totalSale = totalSaleCents / 100;
+  const totalInterest = totalInterestCents / 100;
 
   // Notes receivable summary
   const [noteSummary] = await db

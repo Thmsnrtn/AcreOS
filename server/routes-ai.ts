@@ -236,9 +236,14 @@ export function registerAIRoutes(app: Express): void {
   
   // Send a message (non-streaming)
   // Constrain agentRole to the valid AgentRole keys so it satisfies
-  // processChat/processChatStream's typed `agentRole` option.
-  const agentRoleEnum = z.enum(
-    Object.keys(agentProfiles) as [keyof typeof agentProfiles, ...(keyof typeof agentProfiles)[]]
+  // processChat/processChatStream's typed `agentRole` option. Old client
+  // bundles sent "assistant" (never a profile key) — normalize it to the
+  // executive profile instead of 422ing every send (WS1, 2026-07-07).
+  const agentRoleEnum = z.preprocess(
+    (v) => (v === "assistant" ? "executive" : v),
+    z.enum(
+      Object.keys(agentProfiles) as [keyof typeof agentProfiles, ...(keyof typeof agentProfiles)[]]
+    ),
   );
 
   const aiChatSchema = z.object({

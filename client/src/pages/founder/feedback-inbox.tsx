@@ -39,6 +39,7 @@ import {
   MessageSquare,
   AlertCircle,
 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -337,7 +338,7 @@ export default function FounderFeedbackInboxPage() {
                           data-testid={`archive-${row.id}`}
                         >
                           <Archive className="h-3.5 w-3.5 mr-1" />
-                          Archive
+                          {Verbs.ARCHIVE}
                         </Button>
                       )}
                     </div>

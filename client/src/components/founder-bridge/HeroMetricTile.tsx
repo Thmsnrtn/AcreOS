@@ -103,9 +103,9 @@ function DeltaChip({
   const Icon = deltaPct > 0.05 ? TrendingUp : deltaPct < -0.05 ? TrendingDown : Minus;
   const tone =
     deltaPct > 0.05
-      ? "text-emerald-400/90"
+      ? "text-acr-pos"
       : deltaPct < -0.05
-        ? "text-rose-400/90"
+        ? "text-acr-neg"
         : "text-muted-foreground";
   const sign = deltaPct > 0 ? "↑" : deltaPct < 0 ? "↓" : "→";
   const abs = Math.abs(deltaPct).toFixed(1);

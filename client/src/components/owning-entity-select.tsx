@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface OwningEntitySelectProps {
   value: string | null;
@@ -98,7 +99,7 @@ export function OwningEntitySelect({
             onClick={handleCancelNew}
             aria-label="Cancel adding new entity"
           >
-            Cancel
+            {Verbs.CANCEL}
           </Button>
         </div>
       </div>

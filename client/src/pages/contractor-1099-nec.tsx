@@ -71,6 +71,7 @@ export default function Contractor1099NecPage() {
     },
   });
 
+  // allow-no-invalidation: batch results render from mutation.data — no cached query reads them
   const generate = useMutation<BatchResponse, Error>({
     mutationFn: async () => {
       const res = await fetch(`/api/contractors/1099-nec-batch?taxYear=${taxYear}`, {

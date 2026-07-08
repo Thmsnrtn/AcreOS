@@ -36,6 +36,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { ANTHROPIC_MODELS } from "../models";
 import { logger } from "../../utils/logger";
 import { db } from "../../db";
 import {
@@ -52,21 +53,22 @@ import {
 // ============================================================================
 
 export const PRECALL_MODEL =
-  process.env.SOLENE_PRECALL_MODEL ?? "claude-haiku-4-5-20251001";
+  process.env.SOLENE_PRECALL_MODEL ?? ANTHROPIC_MODELS.HAIKU;
 
 // Per-1M-token Haiku pricing. Env-overridable so Beatrice's regwatch can
-// adjust without a code deploy.
+// adjust without a code deploy. Haiku 4.5 publishes at $1/$5 — the old
+// $0.25/$1.25 defaults were Haiku-3.5-era and undercounted 4× (2026-07-08).
 const PRICE_INPUT_PER_M = Number(
-  process.env.SOLENE_PRECALL_PRICE_INPUT_PER_M ?? "0.25",
+  process.env.SOLENE_PRECALL_PRICE_INPUT_PER_M ?? "1",
 );
 const PRICE_OUTPUT_PER_M = Number(
-  process.env.SOLENE_PRECALL_PRICE_OUTPUT_PER_M ?? "1.25",
+  process.env.SOLENE_PRECALL_PRICE_OUTPUT_PER_M ?? "5",
 );
 // Cached-input price for Anthropic prompt-cache reads on the precall
 // checker's stable system prefix (the 12 immutables + checker brief). Same
 // ~10% of input ratio Anthropic publishes for Haiku.
 const PRICE_CACHED_INPUT_PER_M = Number(
-  process.env.SOLENE_PRECALL_PRICE_CACHED_INPUT_PER_M ?? "0.025",
+  process.env.SOLENE_PRECALL_PRICE_CACHED_INPUT_PER_M ?? "0.1",
 );
 
 // Generous round-trip timeout for the Haiku call. The worst case (timeout +

@@ -1,8 +1,24 @@
 import { Router, type Request, type Response } from 'express';
 import { documentIntelligenceService } from './services/documentIntelligence';
 import { Errors } from './utils/errors';
+import { usageLimitGate, aiByokThresholdGate } from './middleware/usageLimitGate';
+import { storage } from './storage';
+import { logger } from './utils/logger';
 
 const router = Router();
+
+// W4.1 — every endpoint below that triggers a gpt-4o call now runs the same
+// meter stack as chat (ai_requests limit + BYOK threshold) and counts the
+// turn. Doc-intel used to bypass ALL metering — no turn count, no pool, not
+// even the platform cost ceiling (raw OpenAI client, no routeAITask).
+const aiMeter = [usageLimitGate("ai_requests"), aiByokThresholdGate()] as const;
+async function countAiTurn(req: Request): Promise<void> {
+  try {
+    if (req.organization?.id) await storage.trackUsage(req.organization.id, "ai_request");
+  } catch (err) {
+    logger.warn("[document-intelligence] trackUsage failed (continuing)", err instanceof Error ? err : undefined);
+  }
+}
 
 
 // POST /upload — upload and process a document
@@ -28,8 +44,9 @@ router.post('/upload', async (req: Request, res: Response) => {
 });
 
 // POST /documents/:id/process — run AI analysis pipeline on a document
-router.post('/documents/:id/process', async (req: Request, res: Response) => {
+router.post('/documents/:id/process', ...aiMeter, async (req: Request, res: Response) => {
   try {
+    await countAiTurn(req);
     const analysis = await documentIntelligenceService.processDocument(parseInt(req.params.id));
     res.json({ analysis });
   } catch (err) {
@@ -50,8 +67,9 @@ router.get('/documents/:id/text', async (req: Request, res: Response) => {
 });
 
 // GET /documents/:id/key-terms — extracted contract key terms
-router.get('/documents/:id/key-terms', async (req: Request, res: Response) => {
+router.get('/documents/:id/key-terms', ...aiMeter, async (req: Request, res: Response) => {
   try {
+    await countAiTurn(req);
     const terms = await documentIntelligenceService.extractKeyTerms(parseInt(req.params.id));
     res.json({ terms });
   } catch (err) {
@@ -60,8 +78,9 @@ router.get('/documents/:id/key-terms', async (req: Request, res: Response) => {
 });
 
 // GET /documents/:id/risks — risk flags and red flags
-router.get('/documents/:id/risks', async (req: Request, res: Response) => {
+router.get('/documents/:id/risks', ...aiMeter, async (req: Request, res: Response) => {
   try {
+    await countAiTurn(req);
     const risks = await documentIntelligenceService.analyzeRisks(parseInt(req.params.id));
     res.json({ risks });
   } catch (err) {
@@ -70,8 +89,9 @@ router.get('/documents/:id/risks', async (req: Request, res: Response) => {
 });
 
 // GET /documents/:id/summary — AI-generated document summary
-router.get('/documents/:id/summary', async (req: Request, res: Response) => {
+router.get('/documents/:id/summary', ...aiMeter, async (req: Request, res: Response) => {
   try {
+    await countAiTurn(req);
     const summary = await documentIntelligenceService.generateDocumentSummary(parseInt(req.params.id));
     res.json({ summary });
   } catch (err) {

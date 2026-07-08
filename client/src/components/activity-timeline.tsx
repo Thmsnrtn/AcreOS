@@ -180,19 +180,27 @@ interface ActivityTimelineProps {
   entityType: "lead" | "property" | "deal";
   entityId: number;
   className?: string;
+  /**
+   * W6.2 — override the fetch URL (e.g. /api/deals/:id/track, which unions
+   * events across the deal, its property, AND the seller lead into one
+   * lead → mail → response → offer → close track). Without it, the default
+   * single-entity timeline endpoint is used.
+   */
+  endpointOverride?: string;
 }
 
-export function ActivityTimeline({ entityType, entityId, className }: ActivityTimelineProps) {
+export function ActivityTimeline({ entityType, entityId, className, endpointOverride }: ActivityTimelineProps) {
   const [selectedEventTypes, setSelectedEventTypes] = useState<Set<ActivityEventType>>(new Set());
 
-  const eventTypesParam = selectedEventTypes.size > 0 
-    ? `?eventTypes=${Array.from(selectedEventTypes).join(",")}` 
+  const eventTypesParam = selectedEventTypes.size > 0
+    ? `?eventTypes=${Array.from(selectedEventTypes).join(",")}`
     : "";
 
+  const endpoint = endpointOverride ?? `/api/${entityType}s/${entityId}/timeline`;
   const { data: events = [], isLoading, error } = useQuery<ActivityEvent[]>({
-    queryKey: [`/api/${entityType}s/${entityId}/timeline`, Array.from(selectedEventTypes)],
+    queryKey: [endpoint, Array.from(selectedEventTypes)],
     queryFn: async () => {
-      const res = await fetch(`/api/${entityType}s/${entityId}/timeline${eventTypesParam}`);
+      const res = await fetch(`${endpoint}${eventTypesParam}`);
       if (!res.ok) throw new Error("Failed to fetch timeline");
       return res.json();
     },

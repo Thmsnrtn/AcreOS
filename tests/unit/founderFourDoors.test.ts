@@ -45,6 +45,30 @@ describe("founder four-door doctrine", () => {
   });
 });
 
+describe("desktop sidebar teaches the same four doors", () => {
+  // 2026-07-03: the sidebar's founder module still taught the RETIRED
+  // 3-screen Pulse/Cost/Customers model — Decisions was buried in a ~30-item
+  // overflow and Controls wasn't listed at all, while the mobile bottom nav
+  // followed the doctrine. Desktop and mobile must teach the identical
+  // mental map. This locks the sidebar's primary founder children to the
+  // four canonical door hrefs, in order.
+  it("the founder module's primary children are exactly the four door hrefs, in order", () => {
+    const SIDEBAR = fs.readFileSync(
+      path.resolve(__dirname, "../../client/src/components/layout-sidebar.tsx"),
+      "utf-8",
+    );
+    const moduleStart = SIDEBAR.indexOf('id: "founder-business"');
+    expect(moduleStart, "founder-business module must exist in the sidebar").toBeGreaterThan(-1);
+    const childrenStart = SIDEBAR.indexOf("children: [", moduleStart);
+    const overflowStart = SIDEBAR.indexOf("overflow: [", moduleStart);
+    expect(childrenStart).toBeGreaterThan(-1);
+    expect(overflowStart).toBeGreaterThan(childrenStart);
+    const childrenBlock = SIDEBAR.slice(childrenStart, overflowStart);
+    const hrefs = [...childrenBlock.matchAll(/href: "([^"]+)"/g)].map((m) => m[1]);
+    expect(hrefs).toEqual(FOUNDER_DOORS.map((d) => d.href));
+  });
+});
+
 describe("founder route-sprawl ratchet", () => {
   it("the /founder/* route count never exceeds the baseline (it may only shrink)", () => {
     const count = founderRouteCount();

@@ -39,8 +39,8 @@ export function TelemetryTile({
       onDiscuss={onDiscuss}
       testId={`bridge-tile-telemetry-${label.toLowerCase().replace(/\s+/g, "-")}`}
       className={cn(
-        tone === "warn" && "border-amber-400/30",
-        tone === "alert" && "border-amber-400/60",
+        tone === "warn" && "border-acr-bridge-accent/30",
+        tone === "alert" && "border-acr-bridge-accent/60",
       )}
     >
       <div className="flex flex-1 flex-col justify-between gap-3 p-4 md:p-5">

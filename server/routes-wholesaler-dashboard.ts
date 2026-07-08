@@ -58,13 +58,39 @@ export function registerWholesalerDashboardRoutes(app: Express): void {
             eq(deals.status, "closed"),
           ));
 
+        // W6.1: real assignment fees from contract_assignments (signed, in
+        // cents). The netProfit proxy remains ONLY as a fallback for orgs
+        // whose closes predate the assignment record.
         let totalAssignmentFeesCents = 0;
+        let assignmentFeeSource: "assignments" | "net_profit_proxy" = "net_profit_proxy";
+        let signedAssignmentCount = 0;
+        try {
+          const { contractAssignments } = await import("@shared/schema");
+          const [agg] = await db
+            .select({
+              total: sql<string>`COALESCE(SUM(${contractAssignments.assignmentFeeCents}), 0)`,
+              cnt: sql<number>`COUNT(*)::int`,
+            })
+            .from(contractAssignments)
+            .where(and(
+              eq(contractAssignments.organizationId, orgId),
+              eq(contractAssignments.status, "signed"),
+            ));
+          signedAssignmentCount = Number(agg?.cnt ?? 0);
+          if (signedAssignmentCount > 0) {
+            totalAssignmentFeesCents = Number(agg?.total ?? 0);
+            assignmentFeeSource = "assignments";
+          }
+        } catch { /* table may not exist on a fresh install — proxy below */ }
+
         let speedToCloseDaysSum = 0;
         let speedToCloseDaysCount = 0;
         for (const d of closedDeals) {
-          const netProfit = (d.analysisResults as any)?.netProfit;
-          if (typeof netProfit === "number" && isFinite(netProfit)) {
-            totalAssignmentFeesCents += Math.round(netProfit * 100);
+          if (assignmentFeeSource === "net_profit_proxy") {
+            const netProfit = (d.analysisResults as any)?.netProfit;
+            if (typeof netProfit === "number" && isFinite(netProfit)) {
+              totalAssignmentFeesCents += Math.round(netProfit * 100);
+            }
           }
           if (d.offerDate && d.closingDate) {
             const days = Math.round(
@@ -76,8 +102,9 @@ export function registerWholesalerDashboardRoutes(app: Express): void {
             }
           }
         }
-        const avgAssignmentFeeCents = closedDeals.length > 0
-          ? Math.round(totalAssignmentFeesCents / closedDeals.length)
+        const feeDenominator = assignmentFeeSource === "assignments" ? signedAssignmentCount : closedDeals.length;
+        const avgAssignmentFeeCents = feeDenominator > 0
+          ? Math.round(totalAssignmentFeesCents / feeDenominator)
           : 0;
         const speedToCloseDays = speedToCloseDaysCount > 0
           ? Math.round(speedToCloseDaysSum / speedToCloseDaysCount)

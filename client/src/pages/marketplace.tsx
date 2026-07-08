@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { TrustBadge } from '@/components/trust-badge';
+import { Verbs } from "@/lib/labels";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1222,7 +1223,7 @@ export default function MarketplacePage() {
 
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
-                Cancel
+                {Verbs.CANCEL}
               </Button>
               <Button type="submit" disabled={createMutation.isPending}>
                 {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}

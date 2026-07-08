@@ -193,7 +193,9 @@ const DocumentIntelligencePage = React.lazy(() => import("@/pages/document-intel
 
 // Operations
 const MapsPage = React.lazy(() => import("@/pages/maps"));
-const CommandCenterPage = React.lazy(() => import("@/pages/command-center"));
+// CommandCenterPage binding removed (client perf audit 2026-07-04): the
+// /command-center route is a Redirect to /ai#chat and pax.tsx owns the only
+// live lazy import of pages/command-center.tsx.
 // ConsciousOrganizationPage refit 2026-06-11 (Census W3-1) — moved to
 // @/pages/founder/scenarios, served at /founder/scenarios (lazy import below).
 // AnticipatoryEnterprisePage retired 2026-06-11 (Census W3-1) — page deleted;
@@ -336,7 +338,7 @@ const FounderPaxCalibrationPage = React.lazy(() => import("@/pages/founder/pax-c
 const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"));
 // Solene's daily one-line + Autonomy Horizon + capital + phase — the
 // pull-first CEO surface at /founder. Replaces the FounderChat shell
-// which was previously served at /founder (now remains at /founder/chat).
+// that was previously served at /founder (page since deleted).
 // Phase 4 of the Solene migration — new 5-door founder UI. /founder/today
 // is the founder landing page; /founder now always renders it (the legacy
 // Pulse page at founder/index.tsx is retired).
@@ -356,10 +358,9 @@ const FounderTeamPage = React.lazy(() => import("@/pages/founder/team"));
 const FounderMoneyPage = React.lazy(() => import("@/pages/founder/money"));
 const FounderBuildPage = React.lazy(() => import("@/pages/founder/build"));
 // FounderNowPage removed (Lens 4) — /founder/now now redirects to
-// /founder/bridge. The page file lives on disk pending extraction sweep.
-// /founder is the Atlas chat shell; /founder/bridge is the fused
-// canonical home (chat + telemetry).
-const FounderChatPage = React.lazy(() => import("@/pages/founder/chat"));
+// /founder/bridge. FounderChatPage (pages/founder/chat.tsx) deleted in the
+// WS2 sweep (2026-07-07): no route ever mounted it and solene-chat is the
+// live founder chat face.
 // Phase 3 — iOS-Claude-UX chat surface that consumes the Phase 2 backend
 // at /api/founder/solene-chat/*. This is the face Tom interacts with when
 // he flips the in-app Solene flag on.
@@ -2098,9 +2099,13 @@ function AppContent() {
       {user && <Suspense fallback={null}><BetaActivationDetector /></Suspense>}
       {/* Hide the global PaxCopilotRail on /ai because that page has
           its own main-area chat UI ("AcreOS Assistant"). r3 Gabriel
-          caught the dual-chat-UI confusion (UX-R3-001). Elsewhere
-          the rail remains the primary conversational entry point. */}
-      {user && !location.startsWith("/ai") && (
+          caught the dual-chat-UI confusion (UX-R3-001). Also hidden on
+          /founder/*: the founder's conversational surface is Atlas
+          (the /founder shell + AtlasDock on subpages) — mounting the
+          customer copilot there stacked TWO chat FABs on every founder
+          door (mobile eyeball pass, 2026-07-08). Elsewhere the rail
+          remains the primary conversational entry point. */}
+      {user && !location.startsWith("/ai") && !location.startsWith("/founder") && (
         <Suspense fallback={null}>
           <PaxCopilotRail />
         </Suspense>

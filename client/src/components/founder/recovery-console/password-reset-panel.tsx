@@ -44,6 +44,7 @@ export function PasswordResetPanel({
   const [confirm, setConfirm] = useState(false);
   const [generated, setGenerated] = useState<string | null>(null);
 
+  // allow-no-invalidation: onSuccess calls the parent's onAction() prop, which refreshes the console
   const mutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest(

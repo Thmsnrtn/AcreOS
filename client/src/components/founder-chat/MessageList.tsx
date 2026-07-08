@@ -213,7 +213,7 @@ export function MessageList({
       </div>
 
       {showJumpPill && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center z-10">
+        <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center z-docked">
           <Button
             size="sm"
             variant="default"

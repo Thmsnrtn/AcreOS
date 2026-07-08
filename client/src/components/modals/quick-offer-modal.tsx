@@ -23,6 +23,7 @@ import { useModals } from "@/stores/modal-store";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Sparkles, Send, Loader2 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface AtlasSuggestion {
   recommendedOfferTotal: number;
@@ -50,6 +51,7 @@ export function QuickOfferModal() {
     }
   }, [open, parcelId]);
 
+  // allow-no-invalidation: AI suggestion lands in modal-local state — no cached reads change
   const analyzeMutation = useMutation({
     mutationFn: async (parcel: string): Promise<AtlasSuggestion> => {
       const res = await apiRequest("POST", "/api/atlas/analyze", { parcelId: parcel });
@@ -75,6 +77,7 @@ export function QuickOfferModal() {
     },
   });
 
+  // allow-no-invalidation: no query reads /api/offers today (batches use /api/offer-batches); nothing cached goes stale
   const sendMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/offers", {
@@ -168,7 +171,7 @@ export function QuickOfferModal() {
 
         <div className="flex items-center justify-end gap-2 pt-4 border-t mt-4">
           <Button variant="ghost" onClick={close} data-testid="button-quick-offer-cancel">
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button
             onClick={() => sendMutation.mutate()}

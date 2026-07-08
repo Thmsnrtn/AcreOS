@@ -77,6 +77,7 @@ export function composeBoardReport(input: BoardReportInput): string {
 export async function buildBoardReport(): Promise<{ markdown: string; generatedAt: string }> {
   let okr: string | null = null;
   let decisionQuality: string | null = null;
+  let immune: string | null = null;
   let pendingCount = 0;
   let openAsks = 0;
   let openDecisions = 0;
@@ -95,6 +96,18 @@ export async function buildBoardReport(): Promise<{ markdown: string; generatedA
   try {
     const { getDomainDecisionQuality, decisionEvalLine } = await import("./decisionEval");
     decisionQuality = decisionEvalLine(await getDomainDecisionQuality());
+  } catch {
+    /* omit */
+  }
+
+  // Dependency/immune status — the latest immune-response report row (step-away
+  // gap #4). Stale rows (>3 days) are omitted rather than shown as current.
+  try {
+    const { getLatestImmuneReport } = await import("./immuneResponse");
+    const report = await getLatestImmuneReport();
+    if (report && Date.now() - report.ranAt.getTime() < 3 * 24 * 60 * 60 * 1000) {
+      immune = report.line;
+    }
   } catch {
     /* omit */
   }
@@ -123,6 +136,7 @@ export async function buildBoardReport(): Promise<{ markdown: string; generatedA
     topMove: null,
     okr,
     decisionQuality,
+    immune,
     pendingCount,
     attention,
   });

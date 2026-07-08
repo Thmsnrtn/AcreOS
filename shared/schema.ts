@@ -233,7 +233,7 @@ export const organizations = pgTable("organizations", {
   // Max number of action-required items the /founder/now inbox will
   // surface per day. Agents may write more to decisions_inbox_items;
   // overflow gets `deferred_until: tomorrow` rather than appearing.
-  // 5 is a deliberate cap — see docs/exhaustive-completion/pillar-s-
+  // 5 is a deliberate cap — see docs/archive/exhaustive-completion/pillar-s-
   // one-inbox.md for the rationale.
   founderDailyAttentionCap: integer("founder_daily_attention_cap").notNull().default(5),
   // ─── Underwriting defaults (Hank fix) ──────────────────────────────
@@ -889,6 +889,11 @@ export const leads = pgTable("leads", {
   optOutDate: timestamp("opt_out_date"),
   optOutReason: text("opt_out_reason"),
   doNotContact: boolean("do_not_contact").default(false),
+  // Roadmap W1.5 (2026-07): IANA timezone for TCPA quiet-hours (8am–9pm
+  // RECIPIENT-local). Area-code inference is unreliable post-number-porting;
+  // this column is the honest source — populated from the mailing address
+  // (enrichment follow-up) or set manually. Null → area-code fallback.
+  timezone: text("timezone"),
   
   // Soft delete support for safe bulk operations with recovery
   deletedAt: timestamp("deleted_at"), // null = active, timestamp = soft deleted
@@ -3450,8 +3455,13 @@ export const insertLeadSchema = createInsertSchema(leads).omit({
   // F-D23: drizzle-zod treats text columns as bare z.string() — invalid
   // emails like "not-an-email" sailed through to the DB. Tighten to email
   // format (still optional since the column is nullable for callers who
-  // only have a phone or just a parcel-owner name).
-  email: z.string().email().optional().nullable(),
+  // only have a phone or just a parcel-owner name). An untouched form field
+  // arrives as "" — that's an absent email, not an invalid one (WS1,
+  // 2026-07-07): coerce to null instead of 422ing the whole lead.
+  email: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+    z.string().email().optional().nullable(),
+  ),
 });
 export const insertLeadActivitySchema = createInsertSchema(leadActivities).omit({
   id: true, createdAt: true,
@@ -5829,6 +5839,12 @@ export const ACTIVATION_EVENTS = [
   // index like every other activation event.
   "trial_to_paid",
   "first_value_reached",
+  // TTFM North-Star companion (2026-07-03) — the magic moment: a SELLER
+  // answered. Mail out the door is our effort; this is the market talking
+  // back, and it's the event that decides whether a trial becomes a
+  // believer. Fired at the two inbound seams (reply-email webhook, inbound
+  // SMS webhook) with eventValue.channel = "email" | "sms".
+  "first_seller_response",
 ] as const;
 export type ActivationEvent =
   | typeof ACTIVATION_EVENTS[number]
@@ -8554,6 +8570,55 @@ export type SubscriptionHistoryRow = typeof subscriptionHistory.$inferSelect;
 // alert_triggered/alert_severity carry the policy result so the surface
 // can render historical bands without re-applying thresholds.
 
+// ============================================
+// MRR SNAPSHOTS (roadmap W4.5, 2026-07)
+// ============================================
+// Weekly point-in-time MRR so week-over-week growth is computed from
+// HISTORY instead of defaulting to zero (which made the runway "upside"
+// scenario identical to base since launch). Written by the
+// mrr_snapshot_weekly job; read by runwayModel + founder bridge.
+
+export const mrrSnapshots = pgTable("mrr_snapshots", {
+  id: serial("id").primaryKey(),
+  capturedAt: timestamp("captured_at").defaultNow().notNull(),
+  mrrCents: integer("mrr_cents").notNull(),
+  payingOrgs: integer("paying_orgs").notNull().default(0),
+});
+
+// ── 0197 — Marketing spend ledger (the CAC numerator) ───────────────────────
+// Until this table existed the unit-economics dashboard honestly reported
+// cacAvailable:false and the budget ramp computed CAC from AI-dispatch spend
+// alone — real ad dollars had no ledger anywhere (2026-07-07 cost audit).
+// One row per spend entry. PLATFORM-GLOBAL (no organization_id): this is
+// AcreOS's own acquisition spend, not tenant data. Sources: 'manual'
+// (founder-entered), 'ad_provider' (a future Meta/Google spend-sync), or
+// 'autopilot'. Amounts are ACTUALS — never record budgets/commitments here;
+// a budget is not spend (no-fabrication).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0197_marketing_spend.sql.
+export const marketingSpend = pgTable("marketing_spend", {
+  id: serial("id").primaryKey(),
+  // "meta" | "google" | "content" | "referral" | "sponsorship" | "other"
+  channel: text("channel").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  // The date the spend occurred (provider-reported date for synced rows).
+  spentAt: timestamp("spent_at").notNull(),
+  // "manual" | "ad_provider" | "autopilot"
+  source: text("source").notNull().default("manual"),
+  // Provider-side campaign id / name, when known.
+  campaignRef: text("campaign_ref"),
+  note: text("note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  bySpentAt: index("marketing_spend_spent_at_idx").on(table.spentAt),
+  byChannelSpentAt: index("marketing_spend_channel_spent_at_idx").on(
+    table.channel,
+    table.spentAt,
+  ),
+}));
+
+export type MarketingSpendEntry = typeof marketingSpend.$inferSelect;
+
 export const customerConcentration = pgTable("customer_concentration", {
   id: serial("id").primaryKey(),
   computedAt: timestamp("computed_at").defaultNow().notNull(),
@@ -8718,6 +8783,25 @@ export type DeferredRevenueRow = typeof deferredRevenue.$inferSelect;
 // CANCELLATION SURVEYS & REFUND REQUESTS
 // ============================================
 
+// ── 0198 — Reactivation surveys (win-back "what brought you back") ──────────
+// Written by POST /api/subscription/reactivation-survey (welcome-back page).
+// Best-effort growth signal — the client swallows failures — but the store
+// itself is durable (the 90-day activity_log retention would erase it).
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0198_reactivation_surveys.sql.
+export const reactivationSurveys = pgTable("reactivation_surveys", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  userId: text("user_id"),
+  // e.g. "missed_features" | "new_deals" | "pricing" | "other" — free string,
+  // the client owns the vocabulary.
+  returnReason: text("return_reason").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  byOrgCreated: index("reactivation_surveys_org_created_idx").on(table.organizationId, table.createdAt),
+}));
+
+export type ReactivationSurvey = typeof reactivationSurveys.$inferSelect;
+
 export const cancellationSurveys = pgTable("cancellation_surveys", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
@@ -8849,7 +8933,7 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   // Pillar K (note-investor) lifecycle events. Existing templates
   // referenced note.balloon_approaching + note.ltv_alert but the union
   // didn't declare them; new note-lifecycle templates below add the
-  // remaining four. See docs/exhaustive-completion/pillar-k-note-
+  // remaining four. See docs/archive/exhaustive-completion/pillar-k-note-
   // investors-25-personas.md for the persona insights driving these.
   "note.balloon_approaching",
   "note.ltv_alert",
@@ -12812,6 +12896,10 @@ export const autopilotSettings = pgTable("autopilot_settings", {
   growthBudgetOverrideUsd: doublePrecision("growth_budget_override_usd"),
   // Master switch for the autonomous daily Operator cadence. null → env fallback (OFF).
   cognitionEnabled: boolean("cognition_enabled"),
+  // Master switch for the immune system's motor half (gated self-patch PRs).
+  // null → env SELF_PATCH_ENABLED fallback (OFF). Flipping it is a Control
+  // Center tap, not a Fly secret + redeploy.
+  selfPatchEnabled: boolean("self_patch_enabled"),
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: text("updated_by"),
 });
@@ -13150,6 +13238,122 @@ export const insertSanctionsListEntrySchema = createInsertSchema(sanctionsListEn
 });
 export type SanctionsListEntry = typeof sanctionsListEntries.$inferSelect;
 export type InsertSanctionsListEntry = z.infer<typeof insertSanctionsListEntrySchema>;
+
+// ── 0195 — DNC / litigator scrub results (TCPA cold-outreach seam) ──────────
+// Cached outcome of scrubbing a PHONE NUMBER against a Do-Not-Call registry
+// and/or a known-TCPA-litigator list via a pluggable vendor adapter
+// (server/services/compliance/dncScrub.ts). The vendor decision is a pending
+// founder call (roadmap-2026-07 "Founder decisions" #1); until a vendor is
+// configured the seam is INERT (gate allows, `scrubbed:false`) and this table
+// simply stays empty. Once configured:
+//   • `litigator`  — always blocks outbound SMS/calls, even with consent.
+//   • `dnc_listed` — blocks unless the lead carries express TCPA consent
+//                    (express consent lawfully overrides registry listing).
+//   • scrub ERROR on a lead-matched marketing send — FAIL CLOSED (block);
+//     on unmatched/transactional traffic — fail open (billing must flow).
+// Rows expire (`expiresAt`) because DNC lists demand periodic re-scrub
+// (the federal SAN convention is every 31 days).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0195_dnc_scrub_results.sql.
+export const dncScrubResults = pgTable("dnc_scrub_results", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  // Normalized digits of the scrubbed number (last 10, US-centric — matches
+  // the lead-matching convention in smsService.tcpaGateForRecipient).
+  phoneLast10: text("phone_last10").notNull(),
+  // "clean" | "dnc_listed" | "litigator". Transient scrub ERRORS are never
+  // cached — they must re-run, not poison the cache.
+  status: text("status").notNull(),
+  // Which vendor adapter produced the result ("fixture" | vendor name).
+  provider: text("provider").notNull(),
+  // Vendor's list identifier (e.g. "federal-dnc", "litigator-v3"), if given.
+  listSource: text("list_source"),
+  // Vendor's stated reason/detail for a listing, if given.
+  reason: text("reason"),
+  scrubbedAt: timestamp("scrubbed_at").notNull().defaultNow(),
+  // Scrub validity window — re-scrub after this (default 30 days).
+  expiresAt: timestamp("expires_at").notNull(),
+}, (table) => ({
+  // Lead with organization_id (Tahoe shard-readiness — leading-org composite).
+  // Gate lookup path: latest un-expired scrub for (org, phone).
+  byOrgPhone: index("dnc_scrub_results_org_phone_idx").on(
+    table.organizationId,
+    table.phoneLast10,
+    table.scrubbedAt,
+  ),
+}));
+
+export const insertDncScrubResultSchema = createInsertSchema(dncScrubResults).omit({
+  id: true,
+  scrubbedAt: true,
+});
+export type DncScrubResult = typeof dncScrubResults.$inferSelect;
+export type InsertDncScrubResult = z.infer<typeof insertDncScrubResultSchema>;
+
+// ── 0196 — Authority delegations (temporary authority elevations) ───────────
+// "Let Sophie handle all support without asking me until Friday." Previously a
+// module-level Map — on 2+ Fly machines a grant made on the app machine was
+// INVISIBLE to the authority gate running on the worker (where autonomous
+// execution actually happens) and vanished on every deploy. DB-backed so the
+// gate reads the same truth everywhere (module-state audit, 2026-07-07).
+//
+// GLOBAL / founder-level table — delegations elevate PLATFORM agents
+// (companyAgents), not org data, so there is intentionally no organization_id
+// (exempt from the org-leading-index gate like sanctions_list_entries).
+// Active = revoked_at IS NULL AND expires_at > now().
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0196_agent_state_persistence.sql.
+export const authorityDelegations = pgTable("authority_delegations", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  // Actions elevated by this delegation; ["*"] means all actions.
+  elevatedActions: jsonb("elevated_actions").$type<string[]>().notNull().default(["*"]),
+  fromLevel: integer("from_level").notNull().default(2),
+  // Elevated authority level (0 = full autonomy).
+  toLevel: integer("to_level").notNull().default(0),
+  reason: text("reason").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  // Gate lookup path: active delegations for an agent.
+  byAgentExpires: index("authority_delegations_agent_expires_idx").on(
+    table.agentCodename,
+    table.expiresAt,
+  ),
+}));
+
+export type AuthorityDelegation = typeof authorityDelegations.$inferSelect;
+
+// ── 0196 — Agent execution counts (autonomous-action rate throttle) ─────────
+// Hourly action counters backing executionEngine's safety throttle
+// (100/hr global, 30/hr/agent). Previously a module-level Map — each machine
+// kept its own counter, so the effective cap was N× the configured cap and
+// the throttle silently didn't throttle. Single-statement upsert
+// (INSERT … ON CONFLICT … count+1 RETURNING) keeps it race-free across
+// machines (module-state audit, 2026-07-07).
+//
+// GLOBAL table — the throttle caps PLATFORM agents, not org traffic; no
+// organization_id by design. Rows are garbage-collected opportunistically
+// (buckets older than 2h).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0196_agent_state_persistence.sql.
+export const agentExecutionCounts = pgTable("agent_execution_counts", {
+  id: serial("id").primaryKey(),
+  // "__global__" or the agent codename.
+  agentKey: text("agent_key").notNull(),
+  bucketStart: timestamp("bucket_start").notNull(),
+  count: integer("count").notNull().default(0),
+}, (table) => ({
+  byKeyBucket: uniqueIndex("agent_execution_counts_key_bucket_idx").on(
+    table.agentKey,
+    table.bucketStart,
+  ),
+}));
+
+export type AgentExecutionCount = typeof agentExecutionCounts.$inferSelect;
 
 // Revenue Protection Interventions — automated churn/dunning outreach log
 export const revenueProtectionInterventions = pgTable("revenue_protection_interventions", {
@@ -13921,6 +14125,12 @@ export const evolutionHistory = pgTable("evolution_history", {
   // Founder reviews + merges in GitHub. Null until the PR is opened.
   prNumber: integer("pr_number"),
   prUrl: text("pr_url"),
+  // Step-away gap #6 — persisted Stage-6 due-time. The old in-process
+  // setTimeout was lost on redeploy and never armed in PR mode; the
+  // evolution_regression_scan job now fires stage6RegressionCheck for any
+  // deployed row whose due-time has passed. NULL = no check owed (either
+  // already run — the scanner claims by nulling it — or not deployed yet).
+  regressionCheckDueAt: timestamp("regression_check_due_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -17810,6 +18020,28 @@ export type InsertIntegrationStatus = z.infer<typeof insertIntegrationStatusSche
 // ACCOUNTING + OPS — extracted to ./schema/accounting-ops.ts
 // ============================================================================
 export * from "./schema/accounting-ops";
+
+// ============================================================================
+// FOUNDER AUTOPILOT — immune-system run reports (./schema/autopilot-immune.ts)
+// ============================================================================
+export * from "./schema/autopilot-immune";
+
+// ============================================================================
+// FOUNDER AUTOPILOT — persisted WitnessGrants (./schema/autopilot-witness-grants.ts)
+// ============================================================================
+export * from "./schema/autopilot-witness-grants";
+
+// ============================================================================
+// PLATFORM CONNECTIONS — founder-entered platform credentials
+// (./schema/platform-connections.ts)
+// ============================================================================
+export * from "./schema/platform-connections";
+
+// ============================================================================
+// UNATTACHED INBOUND REPLIES — SMS from numbers matching no lead
+// (./schema/unattached-inbound.ts)
+// ============================================================================
+export * from "./schema/unattached-inbound";
 
 
 // ============================================================================

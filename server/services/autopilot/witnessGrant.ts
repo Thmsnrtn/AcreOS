@@ -126,7 +126,13 @@ export function authorizeByAnyGrant(
   return { verdict: DENY("no grant authorizes this action"), grant: null };
 }
 
-/* ── INTEGRATION CONTRACT (the reviewed follow-up — NOT wired this session) ────
+/* ── INTEGRATION CONTRACT (WIRED — consumed by autoWitness.ts) ────────────────
+ *
+ * Status (W7 comment reconciliation, 2026-07): this contract IS live —
+ * server/services/autopilot/autoWitness.ts calls authorizeByAnyGrant() and
+ * follows the steps below. The original note said "NOT wired this session,"
+ * which stayed stale after the wiring landed. The contract text remains as
+ * the reference for how a delegated tap honors the keystone:
  *
  * executeHandWitnessed currently accepts a non-empty `witnessedBy` string. To
  * honor a delegated tap WITHOUT weakening the keystone, the approval ENDPOINT

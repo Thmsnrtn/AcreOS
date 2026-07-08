@@ -248,7 +248,7 @@ function PaxNotificationBadge() {
             clone+ref it → React "Function components cannot be given refs". */}
         <TooltipTrigger asChild>
           <PopoverTrigger
-            className="relative p-1.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors"
+            className="relative p-1.5 pointer-coarse:p-3.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors"
             aria-label="Pax AI insights"
             data-testid="button-pax-notifications"
           >
@@ -443,7 +443,9 @@ const NAV_MODULES: NavModule[] = [
       { label: "Leads", icon: ContactRound, href: "/leads", description: "Land seller leads CRM" },
     ],
     overflow: [
-      { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals" },
+      // Marketplace entry removed 2026-07-07 (deletion ledger): the feature
+      // is FROZEN behind feature_marketplace (off) — the sidebar shouldn't
+      // advertise a door that 404s. Restore only at the G2 liquidity proof.
       { label: "Valuations", icon: TrendingUp, href: "/avm", description: "Automated property valuations" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
       // Leads sub-surfaces (folded in with Leads, 2026-05-29).
@@ -572,7 +574,10 @@ const NAV_MODULES: NavModule[] = [
     icon: Layers,
     href: "/permits",
     description: "Lots, permits, plans, pricing grid, county timelines",
-    businessTypeOnly: ["subdivider"],
+    // W2.5: "developer" derives the subdivider persona (persona-mapping.ts) —
+    // developers get the same lots/permits/plats model, so the module gate
+    // matches both businessTypes instead of stranding developer signups.
+    businessTypeOnly: ["subdivider", "developer"],
     children: [
       { label: "Permits", icon: ClipboardList, href: "/permits", description: "County-by-county permit checklists w/ stalled-gate alerts" },
       { label: "County timelines", icon: Calendar, href: "/county-timelines", description: "Subdivision approval lead times by county" },
@@ -596,7 +601,10 @@ const NAV_MODULES: NavModule[] = [
     overflow: [
       { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
       { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month forecasting" },
-      { label: "Capital Markets", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
+      // Capital Markets entry removed 2026-07-07 (deletion ledger): the
+      // feature is FROZEN behind feature_capital_markets — same precedent as
+      // the Marketplace entry above. Restore when note securitization is a
+      // real revenue line (H4).
       { label: "Analytics", icon: Brain, href: "/analytics", description: "Insights and reporting" },
     ],
   },
@@ -625,8 +633,13 @@ const NAV_MODULES: NavModule[] = [
 
   // ── Founder business ──────────────────────────────────────────────
   // The full autonomous-operation surface. Appears only to founders.
-  // Covers the monthly 1-hour workflow: todo (hub) → letter (narrative)
-  // → trends (trust gauge) → individual approval surfaces.
+  // FOUR-DOOR DOCTRINE (client/src/lib/founder-doors.ts): the primary
+  // children ARE the four doors — the same model the mobile bottom nav
+  // renders — so desktop and mobile teach the identical mental map:
+  //   Letter (read) → Decisions (act) → Controls (configure) → Story (verify).
+  // Everything else is a deep tool, reached deliberately via the overflow
+  // (led by the categorized All-tools index), never competing for daily
+  // attention.
   {
     id: "founder-business",
     label: "Founder",
@@ -634,21 +647,20 @@ const NAV_MODULES: NavModule[] = [
     href: "/founder",
     description: "Autonomous-operation command center",
     founderOnly: true,
-    // ── Three primary screens (Phase Zero-Zero 3-screen model) ────────
-    // Tom's daily 15-minute check: Pulse → Cost → Customers.
-    // Everything else lives in the "Deep Tools" overflow below.
     children: [
-      { label: "Pulse", icon: Activity, href: "/founder", description: "Daily one-line + Autonomy Horizon + capital + phase — the pull-first CEO surface" },
-      { label: "Costs", icon: DollarSign, href: "/founder/admin/costs", description: "AI spend, infra, unit economics, optimizer, providers, paid-data trial — one hub" },
-      { label: "Customers", icon: Users, href: "/founder/customers", description: "Distribution truth — paid / trial / churned counts + UTM sources + recent signups" },
+      { label: "The Letter", icon: Sparkles, href: "/founder", description: "The daily read — what happened, what it decided, whether you can step away. 90% of days: read and close." },
+      { label: "Decisions", icon: Shield, href: "/founder/decisions", description: "The ONLY place you're required — the witnessed-send queue, asks, appeals" },
+      { label: "Controls", icon: Sliders, href: "/founder/autopilot/control", description: "Step-away readiness, master switches, trust levels, delegation, budgets, emergency stop" },
+      { label: "Story", icon: BookOpen, href: "/founder/autopilot/story", description: "The glass-box audit timeline — for verifying, not operating" },
     ],
-    // ── Deep Tools ────────────────────────────────────────────────────
-    // Every founder surface that's not load-bearing for the daily check.
-    // Expanded on demand; collapsed by default. Includes: chat bridge,
-    // steering, studio, inspector, CMO, all extracted sub-routes, agent
-    // surfaces, and the legacy dashboard (redirect only).
+    // ── Deep tools ────────────────────────────────────────────────────
+    // Visited deliberately; collapsed by default. All-tools leads as the
+    // categorized index of everything below (and everything not listed).
     overflow: [
-      // ── Daily-adjacent (weekly touch) ─────────────────────────────
+      { label: "All tools", icon: LayoutDashboard, href: "/founder/all-tools", description: "Categorized index of every founder deep-dive surface" },
+      { label: "Costs", icon: DollarSign, href: "/founder/admin/costs", description: "AI spend, infra, unit economics, optimizer, providers — one hub" },
+      { label: "Customers", icon: Users, href: "/founder/customers", description: "Distribution truth — paid / trial / churned counts + UTM sources + recent signups" },
+      // ── Weekly-touch surfaces ─────────────────────────────────────
       { label: "Bridge", icon: CheckCircle2, href: "/founder/bridge", description: "Chat + telemetry bridge" },
       { label: "Steering", icon: TrendingUp, href: "/founder/steering", description: "Weekly / monthly check-in: what changed, what's the trend, one strategic call" },
       { label: "Studio", icon: Sliders, href: "/founder/studio", description: "Every dial — autonomy thresholds, cost caps, lifecycle, voice, safety" },
@@ -667,8 +679,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Onboarding funnel", icon: Activity, href: "/founder/onboarding-funnel", description: "Signup-to-first-value time per org with 90s-target indicator + abandonment-by-step + per-org drill-down" },
       { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", description: "Agent prompt revision approvals" },
       { label: "Prompt history", icon: History, href: "/founder/prompt-history", description: "Per-agent version timeline with diffs" },
-      // ── Decisions / strategy ───────────────────────────────────────
-      { label: "Decisions", icon: Shield, href: "/founder/decisions", description: "Autonomous decision audit log" },
+      // ── Strategy ───────────────────────────────────────────────────
       { label: "Strategy", icon: Lightbulb, href: "/founder/strategy", description: "Strategic proposals (weekly + synthesis)" },
       { label: "System trends", icon: TrendingUp, href: "/founder/trends", description: "90-day trust gauge" },
       { label: "Monthly letter", icon: FileText, href: "/founder/letter", description: "Chief-of-Staff narrative" },
@@ -1156,7 +1167,7 @@ export function Sidebar() {
                 {!hasChildren ? (
                   <Link
                     href={module.href}
-                    className="flex items-center gap-2 flex-1 min-w-0"
+                    className="flex items-center gap-2 flex-1 min-w-0 py-3 -my-3"
                     aria-current={active ? "page" : undefined}
                     aria-label={module.label}
                     data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
@@ -1194,7 +1205,7 @@ export function Sidebar() {
                     />
                     <Link
                       href={module.href}
-                      className="font-medium text-sm flex-1 truncate"
+                      className="font-medium text-sm flex-1 truncate py-3 -my-3"
                       data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
                       onClick={(e) => e.stopPropagation()}
                       onMouseEnter={() => handlePrefetch(module.href)}
@@ -1231,7 +1242,7 @@ export function Sidebar() {
                         key={child.href}
                         href={child.href}
                         className={cn(
-                          "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] text-xs",
+                          "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] pointer-coarse:min-h-11 text-xs",
                           childActive
                             ? "nav-item-active"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
@@ -1270,7 +1281,7 @@ export function Sidebar() {
                       <button
                         type="button"
                         onClick={() => toggleOverflow(module.id)}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 min-h-[34px] text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground w-full"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 min-h-[34px] pointer-coarse:min-h-11 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground w-full"
                         data-testid={`button-overflow-${module.id}`}
                         aria-expanded={expandedOverflow.has(module.id)}
                       >
@@ -1293,7 +1304,7 @@ export function Sidebar() {
                             key={child.href}
                             href={child.href}
                             className={cn(
-                              "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] text-xs",
+                              "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] pointer-coarse:min-h-11 text-xs",
                               childActive
                                 ? "nav-item-active"
                                 : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
@@ -1666,7 +1677,7 @@ export function Sidebar() {
       <aside
         aria-label="Sidebar"
         className={cn(
-          "hidden md:flex flex-col fixed inset-y-0 left-0 z-50 m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
+          "hidden md:flex flex-col fixed inset-y-0 left-0 z-floating m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
           isCollapsed ? "w-[68px]" : "w-64"
         )}
       >
@@ -1942,7 +1953,7 @@ function NewFounderSidebar({
     <aside
       aria-label="Founder navigation"
       className={cn(
-        "hidden md:flex flex-col fixed inset-y-0 left-0 z-50 m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
+        "hidden md:flex flex-col fixed inset-y-0 left-0 z-floating m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
         isCollapsed ? "w-[68px]" : "w-64"
       )}
       data-testid="new-founder-sidebar"

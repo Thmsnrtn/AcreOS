@@ -17,6 +17,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
+import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { formatRelative } from "@/lib/format";
 import { staggerContainer, staggerItem } from "@/lib/animations";
@@ -53,6 +54,58 @@ interface StoryEntry {
 
 function prettyKind(s: string): string {
   return s.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Tiny line-grammar renderer for the board report (repo convention: no
+ * markdown dependency — see solene/MessageBubble.tsx). The report emits
+ * exactly `# title`, `## section`, `- bullet`, and plain paragraphs; the
+ * previous raw <pre> showed the founder literal #/## marks.
+ */
+function BoardReportText({ markdown }: { markdown: string }) {
+  const lines = markdown.split("\n");
+  const out: ReactNode[] = [];
+  let bullets: string[] = [];
+  const flushBullets = (key: string) => {
+    if (bullets.length === 0) return;
+    out.push(
+      <ul key={key} className="list-disc pl-5 space-y-1 text-sm leading-relaxed text-foreground">
+        {bullets.map((b, i) => (
+          <li key={i}>{b}</li>
+        ))}
+      </ul>,
+    );
+    bullets = [];
+  };
+  lines.forEach((raw, i) => {
+    const line = raw.trimEnd();
+    if (line.startsWith("- ")) {
+      bullets.push(line.slice(2));
+      return;
+    }
+    flushBullets(`ul-${i}`);
+    if (line.startsWith("## ")) {
+      out.push(
+        <h3 key={i} className="text-sm font-semibold text-foreground mt-4 first:mt-0">
+          {line.slice(3)}
+        </h3>,
+      );
+    } else if (line.startsWith("# ")) {
+      out.push(
+        <h2 key={i} className="text-base font-bold text-foreground">
+          {line.slice(2)}
+        </h2>,
+      );
+    } else if (line.trim().length > 0) {
+      out.push(
+        <p key={i} className="text-sm leading-relaxed text-foreground">
+          {line}
+        </p>,
+      );
+    }
+  });
+  flushBullets("ul-end");
+  return <div className="space-y-2">{out}</div>;
 }
 
 const OUTCOME_META: Record<string, { icon: typeof CheckCircle2; tone: string; label: string }> = {
@@ -160,6 +213,8 @@ export default function FounderAutopilotStoryPage() {
 
   return (
     <PageShell maxWidth="4xl" label="The Story">
+      {/* F1 — ambient liveness on every door (experience-legibility.md) */}
+      <div className="mb-4"><FounderPulseStrip /></div>
       <div className="space-y-6">
         <header className="space-y-2">
           <div className="flex items-center gap-2">
@@ -178,10 +233,8 @@ export default function FounderAutopilotStoryPage() {
           <Skeleton className="h-40 w-full rounded-card" />
         ) : board.data?.markdown ? (
           <Card>
-            <CardContent className="p-5">
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground" data-testid="board-report">
-                {board.data.markdown}
-              </pre>
+            <CardContent className="p-5" data-testid="board-report">
+              <BoardReportText markdown={board.data.markdown} />
             </CardContent>
           </Card>
         ) : null}

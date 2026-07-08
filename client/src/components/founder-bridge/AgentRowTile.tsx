@@ -65,7 +65,7 @@ function AgentPill({ agent }: { agent: AgentHealth }) {
       className={cn(
         "flex h-9 items-center gap-2 rounded-full border px-3 text-xs tabular-nums",
         "border-acr-line bg-white/[0.02]",
-        isDown && "border-amber-400/40",
+        isDown && "border-acr-bridge-accent/40",
       )}
       data-testid={`bridge-agent-pill-${agent.codename.toLowerCase()}`}
     >
@@ -73,9 +73,9 @@ function AgentPill({ agent }: { agent: AgentHealth }) {
         aria-hidden
         className={cn(
           "h-1.5 w-1.5 rounded-full",
-          agent.status === "active" && "bg-emerald-400",
+          agent.status === "active" && "bg-acr-pos",
           isIdle && "bg-muted-foreground/60",
-          isDown && "bg-amber-400",
+          isDown && "bg-acr-bridge-accent",
         )}
       />
       <span className="font-medium text-foreground/90">{agent.codename}</span>

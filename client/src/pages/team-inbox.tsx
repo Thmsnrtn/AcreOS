@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { relative } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Verbs } from "@/lib/labels";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,7 @@ function NewChannelDialog({ onCreated }: { onCreated: () => void }) {
   const { toast } = useToast();
   const channelNameId = useId();
 
+  // allow-no-invalidation: onSuccess calls the parent's onCreated() prop, which refreshes the channel list
   const create = useMutation({
     mutationFn: () =>
       fetch("/api/team-messaging/channels", {
@@ -198,7 +200,7 @@ function NewChannelDialog({ onCreated }: { onCreated: () => void }) {
             disabled={!name.trim() || create.isPending}
           >
             {create.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" aria-hidden="true" /> : null}
-            Create
+            {Verbs.CREATE}
           </Button>
         </form>
       </DialogContent>

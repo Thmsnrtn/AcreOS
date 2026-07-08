@@ -13,6 +13,7 @@
  */
 
 import { type Express } from "express";
+import { isAuthenticated, requireFounder } from "./auth";
 import { Errors } from "./utils/errors";
 import { agentLifecycleRuntimeService } from "./services/agentLifecycleRuntimeV12";
 import { eventMeshService } from "./services/eventMeshV12";
@@ -24,6 +25,12 @@ import { integrationFrameworkService } from "./services/integrationFrameworkV12"
 import { tenantFabricService } from "./services/tenantFabricV12";
 
 export function registerFounderV12Routes(app: Express) {
+  // Defense-in-depth (2026-07 security sweep): these routes were protected
+  // ONLY by the app.use('/api/founder/v12', …) gate registered earlier in
+  // routes.ts — a future reordering would have made every endpoint here
+  // fully public. The file now self-gates regardless of mount order.
+  app.use("/api/founder/v12", isAuthenticated, requireFounder);
+
 
   // ─── 1. Agent Lifecycle Runtime ────────────────────────────────────────
 

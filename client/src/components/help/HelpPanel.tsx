@@ -619,6 +619,7 @@ export function HelpPanel() {
     }
   });
 
+  // allow-no-invalidation: onSuccess calls refetchTicket() — refetch-based, not key-based
   const sendMessageMutation = useMutation({
     mutationFn: async (message: string) => {
       const res = await apiRequest("POST", `/api/support/tickets/${selectedTicketId}/messages`, { message });

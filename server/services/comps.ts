@@ -370,6 +370,31 @@ export async function getComparableProperties(
       });
     }
 
+    // W3.2 comps discipline — assessor last-sale records ≠ arm's-length
+    // recent sales. Two default screens on PRICED comps (parcels without a
+    // recorded sale carry context and are kept):
+    //  1. Nominal-price transfers ($1/$10 family deeds, quitclaims) are not
+    //     market evidence — drop the sale from the comp set.
+    //  2. When the caller supplied no recency floor, priced sales older
+    //     than 36 months (or undatable) don't count as "recent sales".
+    // The dropped count is surfaced so callers can tell "no market" from
+    // "we screened junk out".
+    const RECENCY_FLOOR_MONTHS = 36;
+    const NOMINAL_SALE_FLOOR_DOLLARS = 1000;
+    const before = comps.length;
+    comps = comps.filter(c => {
+      if (!c.salePrice || c.salePrice <= 0) return true; // unpriced parcel context
+      if (c.salePrice < NOMINAL_SALE_FLOOR_DOLLARS) return false; // non-market transfer
+      if (!filters.minSaleDate) {
+        if (!c.saleDate) return false; // priced but undatable — unverifiable recency
+        const floor = new Date();
+        floor.setMonth(floor.getMonth() - RECENCY_FLOOR_MONTHS);
+        if (new Date(c.saleDate) < floor) return false; // stale sale
+      }
+      return true;
+    });
+    const screenedOut = before - comps.length;
+
     comps.sort((a, b) => a.distance - b.distance);
 
     const result: CompsSearchResult = {
@@ -380,7 +405,9 @@ export async function getComparableProperties(
     };
 
     if (result.limitedData) {
-      result.message = "Limited sales data available. Market analysis may be less accurate.";
+      result.message = screenedOut > 0
+        ? `Limited sales data available (${screenedOut} non-market or stale record${screenedOut === 1 ? "" : "s"} screened out). Market analysis may be less accurate.`
+        : "Limited sales data available. Market analysis may be less accurate.";
     }
 
     compsCache.set(cacheKey, { data: result, timestamp: Date.now() });

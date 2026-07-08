@@ -100,8 +100,8 @@ const SPECS: ProductSpec[] = [
     name: "AcreOS — Scale Seat",
     description: "Additional team-member seat on the Scale plan.",
     metadata: { type: "seat_addon", tier: "scale" },
-    monthlyPriceCents: 4000,   // $40/seat/mo
-    yearlyPriceCents: 40000,   // $400/seat/yr
+    monthlyPriceCents: 2500,   // $25/seat/mo (was $40 — founder decision 2026-07-08)
+    yearlyPriceCents: 25000,   // $250/seat/yr
     envMonthly: "STRIPE_PRICE_EMPIRE_SEAT_MONTHLY",
     envYearly: "STRIPE_PRICE_EMPIRE_SEAT_YEARLY",
   },

@@ -106,7 +106,7 @@ export function AISettings({ compact = false }: AISettingsProps) {
   const content = (
     <div className={`space-y-${compact ? "4" : "6"}`}>
       <div className="space-y-2">
-        <Label htmlFor="response-style">AI response style</Label>
+        <Label htmlFor="response-style">How much detail AI gives</Label>
         <Select value={responseStyle} onValueChange={(v) => setResponseStyle(v as typeof responseStyle)}>
           <SelectTrigger id="response-style" data-testid="select-ai-response-style">
             <SelectValue placeholder="Select response style" />
@@ -120,12 +120,12 @@ export function AISettings({ compact = false }: AISettingsProps) {
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Controls how verbose AI responses are
+          Short and to the point, or fuller explanations — your call.
         </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="default-agent">Default AI agent</Label>
+        <Label htmlFor="default-agent">Which assistant starts your chats</Label>
         <Select value={defaultAgent} onValueChange={setDefaultAgent}>
           <SelectTrigger id="default-agent" data-testid="select-ai-default-agent">
             <SelectValue placeholder="Select default agent" />
@@ -139,15 +139,15 @@ export function AISettings({ compact = false }: AISettingsProps) {
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Which agent to use by default for new conversations
+          New conversations open with this assistant — pick the topic you work on most.
         </p>
       </div>
 
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-0.5">
-          <Label htmlFor="auto-suggestions">Auto-suggestions</Label>
+          <Label htmlFor="auto-suggestions">Show tips without being asked</Label>
           <p className="text-xs text-muted-foreground">
-            Show AI suggestions proactively
+            AI offers suggestions as you work, instead of waiting for you to ask.
           </p>
         </div>
         <Switch
@@ -160,9 +160,9 @@ export function AISettings({ compact = false }: AISettingsProps) {
 
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-0.5">
-          <Label htmlFor="remember-context">Remember context</Label>
+          <Label htmlFor="remember-context">Let AI remember past chats</Label>
           <p className="text-xs text-muted-foreground">
-            AI remembers conversation context
+            AI can refer back to your earlier conversations instead of starting fresh every time.
           </p>
         </div>
         <Switch

@@ -155,16 +155,28 @@ export function GettingStartedChecklist() {
   const investorType = (organization?.investorType as "land" | "notes" | "both" | undefined) ?? "land";
   const personaItems = PERSONA_CHECKLISTS[investorType] ?? PERSONA_CHECKLISTS.land;
 
-  // Free tier has a hard campaigns limit of 0 (shared/billing/tier-limits.ts) —
-  // a free user literally cannot send a mailer, so the "Send your first ..." step
-  // is an un-completable dead-end that also pins the checklist below 100% forever.
-  // Drop it on any tier whose campaign allowance is 0; the upgrade prompt lives on
-  // the pricing surfaces, not in an activation step the customer can't finish.
+  // W2.1 (activation wedge): every tier can now reach the mailer step. The
+  // free tier gets a small lifetime allowance (FREE_TIER_LIFETIME_PIECES on
+  // the server queue route) so "send your first mailer" is completable
+  // before paying — the wedge IS the demo. The step used to be hidden when
+  // TIER_LIMITS[tier].campaigns === 0, which made the magic moment
+  // structurally unreachable for the tier that most needs to feel it. Free
+  // users see wedge-flavored copy; the server caps the pieces and points
+  // spent users at the plan comparison.
   const tier = (organization?.subscriptionTier as SubscriptionTier | undefined) ?? "free";
   const campaignsAllowed = TIER_LIMITS[tier]?.campaigns !== 0;
   const visibleItems = campaignsAllowed
     ? personaItems
-    : personaItems.filter((item) => item.id !== "campaign");
+    : personaItems.map((item) =>
+        item.id === "campaign"
+          ? {
+              ...item,
+              title: "Send your first letters — free",
+              description:
+                "Your first 5 pieces are on us. Pick a template, pick up to 5 sellers, watch responses land",
+            }
+          : item,
+      );
 
   const items = visibleItems.map((item) => ({
     ...item,

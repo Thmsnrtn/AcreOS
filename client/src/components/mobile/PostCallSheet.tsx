@@ -72,9 +72,11 @@ function clearPending() {
 type Outcome = "hot" | "warm" | "cold" | "no_answer" | "wrong_number";
 
 const OUTCOMES: Array<{ id: Outcome; label: string; tone: string }> = [
-  { id: "hot", label: "Hot", tone: "bg-rose-500/15 text-rose-700 dark:text-rose-400" },
-  { id: "warm", label: "Warm", tone: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
-  { id: "cold", label: "Cold", tone: "bg-sky-500/15 text-sky-700 dark:text-sky-400" },
+  // Deal temperature is activity intensity, not outcome sentiment — the
+  // design language mandates the acr-heat-* ramp here (design-language.md §1.1).
+  { id: "hot", label: "Hot", tone: "bg-acr-heat-hot-soft text-acr-heat-hot" },
+  { id: "warm", label: "Warm", tone: "bg-acr-heat-warm-soft text-acr-heat-warm" },
+  { id: "cold", label: "Cold", tone: "bg-acr-heat-cold-soft text-acr-heat-cold" },
   { id: "no_answer", label: "No answer", tone: "bg-muted text-foreground" },
   { id: "wrong_number", label: "Wrong number", tone: "bg-muted text-foreground" },
 ];

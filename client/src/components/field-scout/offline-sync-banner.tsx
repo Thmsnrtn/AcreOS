@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { relative } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -119,7 +120,7 @@ export function OfflineSyncBanner({
               className="h-6 px-2 text-micro text-acr-warn hover:text-acr-warn"
             >
               <RefreshCw className="w-3 h-3 mr-1" />
-              Retry
+              {Verbs.RETRY}
             </Button>
           ) : isOnline && queueCount > 0 && syncState !== "syncing" ? (
             <Button

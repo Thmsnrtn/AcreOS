@@ -267,7 +267,7 @@ export default function ProviderInspector() {
                   >
                     <Badge variant="default" className="font-mono">{r.provider}</Badge>
                     <span className="tabular-nums">{fmtCents(r.perEventCents)}/event</span>
-                    <span className="text-emerald-600 dark:text-emerald-400">
+                    <span className="text-acr-pos">
                       saves {fmtCents(r.savingsPerEventCents)} per event ({r.savingsPct}%)
                     </span>
                     <Link

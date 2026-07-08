@@ -28,6 +28,7 @@ import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Deal } from "@shared/schema";
+import { Verbs } from "@/lib/labels";
 
 interface CarryNoteDialogProps {
   deal: Pick<
@@ -217,7 +218,7 @@ export function CarryNoteDialog({ deal, open, onOpenChange }: CarryNoteDialogPro
             className="min-h-[44px]"
             data-testid="button-carry-cancel"
           >
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button
             onClick={() => carryMutation.mutate()}

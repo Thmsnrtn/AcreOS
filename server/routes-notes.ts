@@ -5,7 +5,7 @@
  * acquired notes plus a payments ledger and an amortization-schedule
  * compute endpoint. The full BPO + tape diligence workflow + Sophie agent
  * expansion ride a follow-up PR (see
- * docs/exhaustive-completion/note-investor-followups.md).
+ * docs/archive/exhaustive-completion/note-investor-followups.md).
  *
  * All endpoints are org-scoped via getOrCreateOrg and gated to
  * owner/admin (notes are a financial/asset entity — VAs and viewers don't

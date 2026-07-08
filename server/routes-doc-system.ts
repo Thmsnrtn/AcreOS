@@ -7,7 +7,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { deals, properties, leads, notes } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { format as formatDate } from "date-fns";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
@@ -112,6 +112,35 @@ async function resolveContextVariables(
     if (deal.closingDate) ctx['closing_date'] = formatDate(new Date(deal.closingDate), 'MMMM d, yyyy');
     ctx['deal_type'] = deal.type ?? '';
     ctx['deal_status'] = deal.status ?? '';
+
+    // W6.1 — Assignment Contract auto-fill. The system template's
+    // assignment_fee / original_contract_date merge vars were never
+    // resolved from context (operators re-typed them). The latest live
+    // assignment record on the deal is the source of truth; buyer_name
+    // falls back to the assignment's end buyer when the property carries
+    // no buyerId.
+    try {
+      const { contractAssignments } = await import("@shared/schema");
+      const [assignment] = await db
+        .select()
+        .from(contractAssignments)
+        .where(and(
+          eq(contractAssignments.organizationId, orgId),
+          eq(contractAssignments.dealId, deal.id),
+          sql`${contractAssignments.status} != 'cancelled'`,
+        ))
+        .orderBy(desc(contractAssignments.createdAt))
+        .limit(1);
+      if (assignment) {
+        ctx['assignment_fee'] = `$${(assignment.assignmentFeeCents / 100).toLocaleString()}`;
+        if (assignment.originalContractDate) {
+          ctx['original_contract_date'] = formatDate(new Date(assignment.originalContractDate), 'MMMM d, yyyy');
+        }
+        if (!ctx['buyer_name'] && assignment.endBuyerName) {
+          ctx['buyer_name'] = assignment.endBuyerName;
+        }
+      }
+    } catch { /* assignment table missing on fresh installs — vars stay manual */ }
   }
 
   // Standard date fields

@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { truncate, type FounderAsk } from "./ask-shared";
+import { Verbs } from "@/lib/labels";
 
 interface SupersedeAskDialogProps {
   ask: FounderAsk | null;
@@ -38,6 +39,7 @@ export function SupersedeAskDialog({
   const { toast } = useToast();
   const [reason, setReason] = useState("");
 
+  // allow-no-invalidation: onSuccess calls the parent's onSubmitted() prop, which refreshes the asks list
   const mutation = useMutation({
     mutationFn: async (input: { askId: number; reason: string }) => {
       const res = await apiRequest(
@@ -136,7 +138,7 @@ export function SupersedeAskDialog({
             data-testid="button-supersede-cancel"
             aria-label="Cancel supersede"
           >
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button
             variant="destructive"

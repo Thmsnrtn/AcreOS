@@ -461,6 +461,7 @@ export function PaxCopilotRail() {
   });
   const [sseObservations, setSseObservations] = useState<PaxObservation[]>([]);
 
+  // allow-no-invalidation: onSuccess calls refetchObs() — refetch-based, not key-based
   const dismissMutation = useMutation({
     mutationFn: async (id: number) => {
       await fetch(`/api/pax/observations/${id}/acknowledge`, { method: "POST", credentials: "include" });
@@ -1135,7 +1136,7 @@ export function PaxCopilotRail() {
           // edge-of-light hairline, and Track-1 `shadow-level-3` (the over-
           // content overlay grade — replaces the ad-hoc `shadow-2xl`; Track-1
           // because the rail is theme-neutral glass). `z-overlay` (the semantic
-          // over-content chrome tier == old z-40), never the raw scale.
+          // over-content chrome tier == old z-overlay), never the raw scale.
           // Visual-only: width, position, transition, and behavior unchanged.
           "fixed right-0 top-0 h-[100dvh] z-overlay flex flex-col",
           "border-l border-border/60 bg-surface-chrome backdrop-blur-lg",

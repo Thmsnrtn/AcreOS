@@ -199,10 +199,10 @@ export function AtrGate({ noteId, attestor, onActivated }: AtrGateProps) {
   });
 
   return (
-    <Card className="border-yellow-500/40" data-testid="atr-gate">
+    <Card className="border-acr-warn" data-testid="atr-gate">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <ShieldCheck className="h-5 w-5 text-yellow-600" aria-hidden="true" />
+          <ShieldCheck className="h-5 w-5 text-acr-warn" aria-hidden="true" />
           Ability-to-Repay determination required
         </CardTitle>
         <CardDescription>
@@ -397,8 +397,8 @@ export function AtrGate({ noteId, attestor, onActivated }: AtrGateProps) {
           </TabsContent>
 
           <TabsContent value="exemption" className="space-y-4 pt-4">
-            <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-50/30 p-3 text-xs">
-              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5" aria-hidden="true" />
+            <div className="flex items-start gap-2 rounded-md border border-acr-warn bg-acr-warn-soft p-3 text-xs">
+              <AlertTriangle className="h-4 w-4 text-acr-warn mt-0.5" aria-hidden="true" />
               <p>
                 Claim an exemption only if the loan is statutorily out of scope. Choosing
                 wrong does not insulate you from §1026.43 — the analysis is fact-driven.

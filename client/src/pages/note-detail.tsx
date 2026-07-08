@@ -9,7 +9,7 @@
  * Payment ledger + amortization-schedule rendering use the existing
  * /api/notes/:id/payments and /api/notes/:id/amortization endpoints.
  * Loss-mit case files, BPO order, and Pax default-risk score ride
- * follow-up PRs (see docs/exhaustive-completion/note-investor-followups.md).
+ * follow-up PRs (see docs/archive/exhaustive-completion/note-investor-followups.md).
  */
 
 import { useState } from "react";

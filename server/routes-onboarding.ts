@@ -137,7 +137,7 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
     }
 
     const { db } = await import("./storage");
-    const { leads, campaigns, deals, payments, properties, activationEvents } = await import("@shared/schema");
+    const { leads, campaigns, deals, payments, properties, activationEvents, mailShipments } = await import("@shared/schema");
     const { eq, sql, and, inArray } = await import("drizzle-orm");
 
     const [leadResult, importResult, campaignResult, dealResult, notePaymentResult, propertyLookupResult] = await Promise.all([
@@ -147,8 +147,17 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
       db.select({ count: sql<number>`count(*)` }).from(leads).where(
         sql`${leads.organizationId} = ${orgId} AND (${leads.source} = 'csv_import' OR ${leads.source} = 'import')`
       ).then(r => r[0]?.count > 0),
-      // hasCampaign: org has >= 1 campaign
-      db.select({ count: sql<number>`count(*)` }).from(campaigns).where(eq(campaigns.organizationId, orgId)).then(r => r[0]?.count > 0),
+      // hasCampaign: org has >= 1 campaign OR queued a mail shipment. The
+      // modern /outreach/mail/queue path (and the free-tier first send,
+      // W2.1) writes mail_shipments without a campaigns row — counting only
+      // campaigns left the "send your first mailer" step permanently
+      // incomplete for those orgs.
+      Promise.all([
+        db.select({ count: sql<number>`count(*)` }).from(campaigns).where(eq(campaigns.organizationId, orgId)).then(r => r[0]?.count > 0),
+        db.select({ count: sql<number>`count(*)` }).from(mailShipments).where(
+          sql`${mailShipments.organizationId} = ${orgId} AND ${mailShipments.status} != 'cancelled'`
+        ).then(r => r[0]?.count > 0),
+      ]).then(([byCampaign, byShipment]) => byCampaign || byShipment),
       // hasDeal: org has >= 1 deal
       db.select({ count: sql<number>`count(*)` }).from(deals).where(eq(deals.organizationId, orgId)).then(r => r[0]?.count > 0),
       // hasNotePayment: org has >= 1 payment recorded

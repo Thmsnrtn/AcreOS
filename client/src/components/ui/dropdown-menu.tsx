@@ -45,7 +45,7 @@ const DropdownMenuSubContent = React.forwardRef<
   <DropdownMenuPrimitive.SubContent
     ref={ref}
     className={cn(
-      "z-50 min-w-[8rem] overflow-hidden rounded-xl p-1 backdrop-blur-2xl backdrop-saturate-[190%] bg-[var(--glass-bg-light)] border border-[var(--glass-border)] text-popover-foreground shadow-[var(--shadow-3)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 origin-[--radix-dropdown-menu-content-transform-origin]",
+      "z-floating min-w-[8rem] overflow-hidden rounded-xl p-1 backdrop-blur-2xl backdrop-saturate-[190%] bg-[var(--glass-bg-light)] border border-[var(--glass-border)] text-popover-foreground shadow-[var(--shadow-3)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 origin-[--radix-dropdown-menu-content-transform-origin]",
       className
     )}
     {...props}
@@ -64,7 +64,7 @@ const DropdownMenuContent = React.forwardRef<
       sideOffset={sideOffset}
       className={cn(
         // Layout
-        "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] overflow-y-auto overflow-x-hidden p-1",
+        "z-floating max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] overflow-y-auto overflow-x-hidden p-1",
         // Tahoe Liquid Glass material
         "rounded-xl",
         "backdrop-blur-2xl backdrop-saturate-[190%]",

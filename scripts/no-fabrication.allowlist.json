@@ -8,18 +8,6 @@
       "note": "Idempotency/debit key suffix — entropy for uniqueness, not a fact."
     },
     {
-      "file": "server/routes-data-api.ts",
-      "line": 177,
-      "category": "id",
-      "note": "API key value generation — entropy for a secret token."
-    },
-    {
-      "file": "server/routes-subdivisions.ts",
-      "line": 513,
-      "category": "id",
-      "note": "accessToken suffix — entropy for a share-link token."
-    },
-    {
       "file": "server/routes-team-messaging.ts",
       "line": 569,
       "category": "id",
@@ -27,13 +15,13 @@
     },
     {
       "file": "server/routes-va-engine.ts",
-      "line": 1862,
+      "line": 1883,
       "category": "id",
       "note": "Escalation record id suffix — entropy for uniqueness."
     },
     {
       "file": "server/routes-va-engine.ts",
-      "line": 1942,
+      "line": 1963,
       "category": "id",
       "note": "Workflow record id suffix — entropy for uniqueness."
     },
@@ -63,13 +51,13 @@
     },
     {
       "file": "server/services/ceoReminders.ts",
-      "line": 111,
+      "line": 116,
       "category": "id",
       "note": "Reminder id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/ceoReminders.ts",
-      "line": 232,
+      "line": 237,
       "category": "id",
       "note": "Reminder id suffix — entropy for uniqueness."
     },
@@ -105,13 +93,13 @@
     },
     {
       "file": "server/services/emailService.ts",
-      "line": 174,
+      "line": 182,
       "category": "jitter",
       "note": "Exponential-backoff jitter — randomness avoids thundering herd, not a fact."
     },
     {
       "file": "server/services/emailService.ts",
-      "line": 341,
+      "line": 349,
       "category": "id",
       "note": "MIME multipart boundary string — entropy for uniqueness."
     },
@@ -177,7 +165,7 @@
     },
     {
       "file": "server/services/notificationDispatcher.ts",
-      "line": 81,
+      "line": 85,
       "category": "id",
       "note": "Notification id suffix — entropy for uniqueness."
     },
@@ -234,12 +222,6 @@
       "line": 130,
       "category": "id",
       "note": "Alert id suffix — entropy for uniqueness."
-    },
-    {
-      "file": "server/services/temporaryDelegation.ts",
-      "line": 41,
-      "category": "id",
-      "note": "Delegation id suffix — entropy for uniqueness."
     },
     {
       "file": "server/services/vaManagement.ts",

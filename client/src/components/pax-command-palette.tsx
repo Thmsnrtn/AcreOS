@@ -144,7 +144,7 @@ export function PaxSlashPicker({ query, onSelect, onClose }: InlinePickerProps) 
   return (
     <div
       ref={listRef}
-      className="absolute bottom-full left-0 right-0 mb-1 bg-background border border-border rounded-card shadow-lg z-50 overflow-hidden"
+      className="absolute bottom-full left-0 right-0 mb-1 bg-background border border-border rounded-card shadow-lg z-floating overflow-hidden"
     >
       {filtered.map((cmd, i) => {
         const Icon = cmd.icon;

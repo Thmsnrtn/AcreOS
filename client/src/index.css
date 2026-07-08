@@ -1309,8 +1309,10 @@
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-foreground/25;
+@media (hover: hover) {
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-foreground/25;
+  }
 }
 
 /* Apple-style Glass Panel Effect — Liquid Glass */

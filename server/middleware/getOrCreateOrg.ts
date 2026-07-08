@@ -10,6 +10,7 @@ import { Errors } from "../utils/errors";
 import { signupLimiter } from "./authPathLimits";
 import { computeReqIpBucket, recordSignalsNotEmitted } from "./botSignals";
 import { subscriptionPauseGate } from "./subscriptionPauseGate";
+import { dunningAccessGate } from "./dunningAccessGate";
 
 /**
  * Cookie name + options for the per-session "active organization" override.
@@ -345,7 +346,9 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // (there is no global /api org middleware — org is attached per-route).
   // The gate no-ops on reads, on the exempt prefix allow-list, and on
   // un-paused orgs; otherwise it 402s. It either calls next() or responds.
-  return subscriptionPauseGate(req, res, next);
+  // W4.4: the dunning read-only gate chains the same way — pause gate
+  // first, then dunning; both either respond or call through.
+  return subscriptionPauseGate(req, res, () => dunningAccessGate(req, res, next));
 }
 
 /**

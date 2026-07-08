@@ -37,7 +37,7 @@ router.post("/", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const { name, description, stateCode, counties } = req.body;
-    if (!name || !stateCode) return res.status(400).json({ error: "name and stateCode required" });
+    if (!name || !stateCode) return Errors.badRequest(res, "name and stateCode required");
 
     const [territory] = await db
       .insert(territories)
@@ -61,7 +61,7 @@ router.put("/:id", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
     const { name, description, stateCode, counties } = req.body;
     const updates: Record<string, any> = {};
@@ -76,7 +76,7 @@ router.put("/:id", async (req: Request, res: Response) => {
       .where(and(eq(territories.id, id), eq(territories.organizationId, org.id)))
       .returning();
 
-    if (!updated) return res.status(404).json({ error: "Territory not found" });
+    if (!updated) return Errors.notFound(res, "territory");
     res.json({ territory: updated });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -88,7 +88,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
 
     await db
       .delete(territories)
@@ -105,8 +105,8 @@ router.post("/:id/assign", async (req: Request, res: Response) => {
     const org = req.organization;
     const id = parseInt(req.params.id);
     const { userId } = req.body;
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-    if (!userId) return res.status(400).json({ error: "userId required" });
+    if (isNaN(id)) return Errors.badRequest(res, "Invalid ID");
+    if (!userId) return Errors.badRequest(res, "userId required");
 
     const [updated] = await db
       .update(territories)
@@ -114,7 +114,7 @@ router.post("/:id/assign", async (req: Request, res: Response) => {
       .where(and(eq(territories.id, id), eq(territories.organizationId, org.id)))
       .returning();
 
-    if (!updated) return res.status(404).json({ error: "Territory not found" });
+    if (!updated) return Errors.notFound(res, "territory");
     res.json({ territory: updated });
   } catch (err: any) {
     Errors.internal(res, err);

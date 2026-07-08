@@ -35,11 +35,11 @@ interface BriefCardProps {
 function toneClasses(tone?: BriefSection["tone"]): string {
   switch (tone) {
     case "positive":
-      return "border-emerald-500/30 bg-emerald-500/5";
+      return "border-acr-pos/30 bg-acr-pos/5";
     case "warning":
-      return "border-amber-500/30 bg-amber-500/5";
+      return "border-acr-warn/30 bg-acr-warn/5";
     case "danger":
-      return "border-rose-500/30 bg-rose-500/5";
+      return "border-acr-neg/30 bg-acr-neg/5";
     default:
       return "border-border bg-card";
   }
@@ -48,11 +48,11 @@ function toneClasses(tone?: BriefSection["tone"]): string {
 function toneHeadlineClasses(tone?: BriefSection["tone"]): string {
   switch (tone) {
     case "positive":
-      return "text-emerald-600 dark:text-emerald-400";
+      return "text-acr-pos";
     case "warning":
-      return "text-amber-700 dark:text-amber-400";
+      return "text-acr-warn";
     case "danger":
-      return "text-rose-600 dark:text-rose-400";
+      return "text-acr-neg";
     default:
       return "text-foreground";
   }

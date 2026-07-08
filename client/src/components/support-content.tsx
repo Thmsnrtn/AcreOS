@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { MessageSquare, Plus, Send, CheckCircle, User, Bot, Star, Loader2, ArrowLeft, Headphones, Lightbulb } from "lucide-react";
 import type { SupportCase, SupportMessage, FeatureRequest } from "@shared/schema";
+import { Verbs } from "@/lib/labels";
 
 type CaseWithMessages = {
   case: SupportCase;
@@ -383,7 +384,7 @@ export function SupportContent() {
             </form>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} data-testid="button-cancel-case">
-                Cancel
+                {Verbs.CANCEL}
               </Button>
               <Button
                 type="submit"
@@ -772,7 +773,7 @@ export function SupportContent() {
               </form>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsFeatureRequestOpen(false)} data-testid="button-cancel-feature-request">
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
                 <Button
                   type="submit"

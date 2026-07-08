@@ -74,6 +74,7 @@ import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { getDealNextAction, getDaysInStage, getDealUrgency, type DealNextAction } from "@/lib/deal-utils";
 import { DealDetailContent } from "@/components/deal-detail-content";
 import { SwipeableCard } from "@/components/mobile/SwipeableCard";
+import { Verbs } from "@/lib/labels";
 
 type DealWithProperty = Deal & { property?: Property };
 
@@ -713,7 +714,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
               </div>
               <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:gap-2 md:ml-auto">
                 <Button variant="outline" className="min-h-[44px] pointer-fine:md:min-h-8" onClick={handleBulkExport} data-testid="button-bulk-export-deals">
-                  <Download className="w-4 h-4 mr-1" aria-hidden="true" /> Export
+                  <Download className="w-4 h-4 mr-1" aria-hidden="true" /> {Verbs.EXPORT}
                 </Button>
                 <Select
                   value={bulkTargetStage}
@@ -738,7 +739,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                   Update stage
                 </Button>
                 <Button variant="destructive" className="min-h-[44px] pointer-fine:md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-deals">
-                  <Trash2 className="w-4 h-4 mr-1" aria-hidden="true" /> Delete
+                  <Trash2 className="w-4 h-4 mr-1" aria-hidden="true" /> {Verbs.DELETE}
                 </Button>
                 <Button variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedDealIds(new Set())} aria-label="Clear selection">
                   <X className="w-4 h-4" aria-hidden="true" />

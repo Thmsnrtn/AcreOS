@@ -4,6 +4,7 @@ import { creditService, usageMeteringService } from './credits';
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './fieldEncryption';
 import { logger } from "../utils/logger";
+import { resolvePlatformLobKey } from './mail/liveSendInterlock';
 
 interface RecipientAddress {
   line1: string;
@@ -45,6 +46,12 @@ interface SendResult {
   url: string;
   expectedDeliveryDate: Date;
   credentialSource?: 'organization' | 'platform' | 'simulation';
+  /**
+   * True when the send ran against Lob's TEST environment — rendered and
+   * validated, but NO physical mail was printed. Surfaced so callers/UI can
+   * never present a test send as real mail. See mail/liveSendInterlock.ts.
+   */
+  testMode: boolean;
 }
 
 interface VerifyAddressResult {
@@ -75,6 +82,8 @@ interface VerifyAddressResult {
 interface LobClientResult {
   client: InstanceType<typeof Lob>;
   source: 'organization' | 'platform';
+  /** True when the client is bound to Lob's test environment (no physical mail). */
+  isTestKey: boolean;
 }
 
 export async function getLobClient(orgId: number): Promise<LobClientResult> {
@@ -88,6 +97,7 @@ export async function getLobClient(orgId: number): Promise<LobClientResult> {
       return {
         client: new Lob({ apiKey: byokKey }),
         source: 'organization',
+        isTestKey: byokKey.startsWith('test_'),
       };
     }
   } catch (error) {
@@ -108,6 +118,7 @@ export async function getLobClient(orgId: number): Promise<LobClientResult> {
         return {
           client: new Lob({ apiKey: decrypted.apiKey }),
           source: 'organization',
+          isTestKey: decrypted.apiKey.startsWith('test_'),
         };
       }
     }
@@ -115,40 +126,22 @@ export async function getLobClient(orgId: number): Promise<LobClientResult> {
     logger.error(`[DirectMailService] Failed to get org Lob credentials for org ${orgId}`, error);
   }
   
-  const isProduction = process.env.NODE_ENV === 'production';
-  // Prefer the live key in production, but FALL BACK to the test key when no
-  // live key is set (e.g. staging, which runs NODE_ENV=production). Without the
-  // fallback, LOB_TEST_API_KEY was unreachable on any deployed env. Prod (live
-  // key set) is unchanged.
-  const apiKey = isProduction
-    ? (process.env.LOB_LIVE_API_KEY || process.env.LOB_TEST_API_KEY)
-    : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
-  
-  if (!apiKey) {
-    throw new Error('Lob API key not configured. Set LOB_LIVE_API_KEY or LOB_TEST_API_KEY environment variable.');
-  }
-  
-  logger.info(`[DirectMailService] Using platform Lob credentials for org ${orgId}`);
+  // Platform key under the live-send interlock — test env unless armed.
+  const { apiKey, isTestKey } = resolvePlatformLobKey();
+
+  logger.info(
+    `[DirectMailService] Using platform Lob credentials for org ${orgId} (lobEnv: ${isTestKey ? "test" : "live"})`,
+  );
   return {
     client: new Lob({ apiKey }),
     source: 'platform',
+    isTestKey,
   };
 }
 
 function getPlatformLobClient(): InstanceType<typeof Lob> {
-  const isProduction = process.env.NODE_ENV === 'production';
-  // Prefer the live key in production, but FALL BACK to the test key when no
-  // live key is set (e.g. staging, which runs NODE_ENV=production). Without the
-  // fallback, LOB_TEST_API_KEY was unreachable on any deployed env. Prod (live
-  // key set) is unchanged.
-  const apiKey = isProduction
-    ? (process.env.LOB_LIVE_API_KEY || process.env.LOB_TEST_API_KEY)
-    : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
-  
-  if (!apiKey) {
-    throw new Error('Lob API key not configured. Set LOB_LIVE_API_KEY or LOB_TEST_API_KEY environment variable.');
-  }
-  
+  // Platform key under the live-send interlock — test env unless armed.
+  const { apiKey } = resolvePlatformLobKey();
   return new Lob({ apiKey });
 }
 
@@ -274,11 +267,12 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
         url: `https://sim.acreos.io/lob/${rec.id}`,
         expectedDeliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
         credentialSource: "simulation",
+        testMode: true,
       } as SendResult;
     }
   }
 
-  const { client, source } = await getLobClient(organizationId);
+  const { client, source, isTestKey } = await getLobClient(organizationId);
   
   const skipCredits = options.skipCredits === true || source === 'organization';
   
@@ -317,6 +311,7 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
       url: (result as any).url || '',
       expectedDeliveryDate: parseExpectedDeliveryDate(result.expected_delivery_date),
       credentialSource: source,
+      testMode: isTestKey,
     };
   } catch (error: any) {
     logger.error('[DirectMailService] Postcard send failed', error);
@@ -347,11 +342,12 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
         url: `https://sim.acreos.io/lob/${rec.id}`,
         expectedDeliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
         credentialSource: "simulation",
+        testMode: true,
       } as SendResult;
     }
   }
 
-  const { client, source } = await getLobClient(organizationId);
+  const { client, source, isTestKey } = await getLobClient(organizationId);
   
   const skipCredits = options.skipCredits === true || source === 'organization';
   
@@ -395,6 +391,7 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
       url: (result as any).url || '',
       expectedDeliveryDate: parseExpectedDeliveryDate(result.expected_delivery_date),
       credentialSource: source,
+      testMode: isTestKey,
     };
   } catch (error: any) {
     logger.error('[DirectMailService] Letter send failed', error);

@@ -45,7 +45,7 @@ export function ThreadSidebar({
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-surface-sheer backdrop-blur-sm"
+          className="md:hidden fixed inset-0 z-overlay bg-surface-sheer backdrop-blur-sm"
           onClick={onMobileClose}
           aria-hidden="true"
         />
@@ -53,7 +53,7 @@ export function ThreadSidebar({
 
       <aside
         className={cn(
-          "flex flex-col bg-background border-r border-border z-50",
+          "flex flex-col bg-background border-r border-border z-floating",
           // Desktop layout — fixed width column inside the parent grid.
           "hidden md:flex md:static md:h-full",
           collapsedDesktop ? "md:w-12" : "md:w-64",

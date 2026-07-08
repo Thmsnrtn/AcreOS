@@ -26,6 +26,39 @@ export function indexNowKey(): string | null {
   return k && k.length >= 8 ? k : null;
 }
 
+/**
+ * Zero-config key resolution (free-distribution work, 2026-07-03). IndexNow
+ * keys are SELF-MINTED — there is no account, no signup; you invent a key and
+ * prove ownership by serving it at /indexnow-key.txt. So the accelerant was
+ * dormant purely for lack of a random string. Resolution order:
+ *   1. env INDEXNOW_KEY (explicit override),
+ *   2. the persisted platform connection (indexnow.key),
+ *   3. AUTO-MINT: generate 32 hex chars, persist via Platform Connections,
+ *      return it — from that moment the key file serves it and pings work.
+ * Fail-soft: any storage error → env-only behavior (dormant, logged).
+ */
+export async function resolveIndexNowKey(): Promise<string | null> {
+  const envKey = indexNowKey();
+  if (envKey) return envKey;
+  try {
+    const { resolveConnection, setConnectionField } = await import("../connections/platformConnections");
+    const existing = await resolveConnection("indexnow", "key");
+    if (existing.source === "db" && existing.value && existing.value.length >= 8) {
+      return existing.value;
+    }
+    const { randomBytes } = await import("node:crypto");
+    const minted = randomBytes(16).toString("hex");
+    await setConnectionField("indexnow", "key", minted, "system:auto-mint");
+    logger.info("[searchEngineSubmit] IndexNow key auto-minted — discovery pings are live with zero configuration");
+    return minted;
+  } catch (err) {
+    logger.warn(
+      `[searchEngineSubmit] IndexNow key resolution failed — staying dormant: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
 /** The public base URL (no trailing slash), or null if unconfigured. */
 export function publicBaseUrl(): string | null {
   const raw = (process.env.PUBLIC_APP_URL || process.env.APP_URL || "").trim();
@@ -88,7 +121,7 @@ export function buildIndexNowPayload(
  * Accepts absolute URLs or site-relative paths (e.g. "/field-notes/foo").
  */
 export async function submitToIndexNow(urls: string[]): Promise<{ submitted: number; reason: string }> {
-  const key = indexNowKey();
+  const key = await resolveIndexNowKey();
   const baseUrl = publicBaseUrl();
   if (!key) return { submitted: 0, reason: "no INDEXNOW_KEY (dormant)" };
   if (!baseUrl) return { submitted: 0, reason: "no PUBLIC_APP_URL" };

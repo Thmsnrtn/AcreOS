@@ -29,6 +29,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { SubdivisionPlanEditor } from "@/components/parcels/subdivision-plan-editor";
+import { Verbs } from "@/lib/labels";
 
 interface ChildLot {
   id: number;
@@ -300,7 +301,7 @@ export function SubdivisionTab({ parentParcelId }: { parentParcelId: number }) {
                     );
                   }}
                 >
-                  Create {draftLots.length} lot{draftLots.length === 1 ? "" : "s"}
+                  {Verbs.CREATE} {draftLots.length} lot{draftLots.length === 1 ? "" : "s"}
                 </Button>
               </div>
             </div>
@@ -642,7 +643,7 @@ function PermitChecklistsSection({ parentParcelId }: { parentParcelId: number })
             onClick={() => createChecklist.mutate(templateKey)}
           >
             <PlusCircle className="w-4 h-4 mr-1" aria-hidden="true" />
-            Create
+            {Verbs.CREATE}
           </Button>
         </div>
       </CardContent>

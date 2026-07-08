@@ -76,6 +76,7 @@ export default function CcrTemplatesPage() {
     },
   });
 
+  // allow-no-invalidation: rendered document displays from mutation.data — nothing cached changes
   const render = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/ccr-templates/${selectedId}/render`, {

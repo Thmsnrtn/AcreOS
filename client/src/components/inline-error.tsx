@@ -1,5 +1,6 @@
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Verbs } from "@/lib/labels";
 
 export function InlineError({ message, onRetry, testId }: { message: string; onRetry?: () => void; testId?: string }) {
   return (
@@ -10,7 +11,7 @@ export function InlineError({ message, onRetry, testId }: { message: string; onR
       </div>
       {onRetry && (
         <Button size="sm" variant="outline" onClick={onRetry} data-testid="button-inline-retry">
-          <RefreshCw className="w-4 h-4 mr-2" /> Retry
+          <RefreshCw className="w-4 h-4 mr-2" /> {Verbs.RETRY}
         </Button>
       )}
     </div>

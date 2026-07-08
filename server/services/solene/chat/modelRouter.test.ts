@@ -126,14 +126,15 @@ describe("estimateCost", () => {
       estimatedInputTokens: 1_000_000,
       estimatedOutputTokens: 0,
     });
-    // strategic input = $15 / M
-    expect(c1).toBeCloseTo(15, 4);
+    // strategic input = $5 / M (Opus 4.8 — corrected 2026-07-08 from the
+    // stale $15/$75 pre-4.6 Opus price the table used to carry)
+    expect(c1).toBeCloseTo(5, 4);
     const c2 = estimateCost({
       tier: "strategic",
       estimatedInputTokens: 0,
       estimatedOutputTokens: 1_000_000,
     });
-    expect(c2).toBeCloseTo(75, 4);
+    expect(c2).toBeCloseTo(25, 4);
   });
 
   it("applies cachedInputTokens at the discounted rate", () => {
@@ -147,7 +148,7 @@ describe("estimateCost", () => {
     expect(c).toBeCloseTo(0.3, 4);
   });
 
-  it("fast tier is roughly 10x cheaper than conversational for the same query", () => {
+  it("fast tier is meaningfully cheaper than conversational for the same query", () => {
     const fast = estimateCost({
       tier: "fast",
       estimatedInputTokens: 5000,
@@ -159,7 +160,9 @@ describe("estimateCost", () => {
       estimatedOutputTokens: 500,
     });
     expect(fast).toBeLessThan(conv);
-    expect(conv / fast).toBeGreaterThan(8);
+    // Haiku 4.5 is $1/$5 vs Sonnet's $3/$15 — a real 3x, not the 12x the
+    // old Haiku-3.5-era ($0.25/$1.25) row fabricated (corrected 2026-07-08).
+    expect(conv / fast).toBeCloseTo(3, 1);
   });
 });
 

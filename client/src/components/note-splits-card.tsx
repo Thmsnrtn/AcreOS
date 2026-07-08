@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 interface Split {
   id: string;
@@ -292,7 +293,7 @@ function AddSplitDialog({ open, onOpenChange, noteId, maxBps }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>Cancel</Button>
+          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>{Verbs.CANCEL}</Button>
           <Button
             onClick={() => submitMutation.mutate()}
             disabled={!investorName || !percentage || submitMutation.isPending}

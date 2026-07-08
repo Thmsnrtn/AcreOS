@@ -54,6 +54,7 @@ import {
 } from "@/lib/motion-tokens";
 import { TOUCH_TARGET_PT } from "@/lib/spacing";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useNewFounderUI } from "@/lib/featureFlags";
 import { useFounderChat, type ChatPageContext } from "@/hooks/use-founder-chat";
 import { useFounderChatThreads } from "@/hooks/use-founder-chat-threads";
 import { Composer } from "@/components/founder-chat/Composer";
@@ -87,6 +88,14 @@ export interface DockProps {
 export function Dock({ pageContext, prefillMessage }: DockProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState<boolean>(false);
+  // One chat brain per mobile surface: when the new founder UI is on,
+  // FounderMobileBottomNav already mounts the Solene FAB (bottom-right)
+  // on every door — the Atlas trigger bubble stacked a SECOND chat entry
+  // (bottom-left) on phones (mobile eyeball pass, 2026-07-08). Hide the
+  // idle trigger there; a prefillMessage still opens the dock
+  // programmatically, and desktop keeps the trigger.
+  const newFounderUI = useNewFounderUI();
+  const hideTrigger = isMobile && newFounderUI;
 
   // Respect prefers-reduced-motion: the trigger bubble + panel slide
   // both collapse to instant when the OS reports reduce.
@@ -211,14 +220,15 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
   // Bottom-right on desktop, bottom-left (above the FounderMobileBottomNav
   // which is h-16) on mobile.
   const triggerPositionClass = isMobile
-    ? "fixed left-4 bottom-20 z-40"
-    : "fixed right-4 bottom-4 z-40";
+    ? "fixed left-4 bottom-20 z-overlay"
+    : "fixed right-4 bottom-4 z-overlay";
 
   return (
     <>
-      {/* Trigger bubble — always rendered, hidden when dock is open
-          so we don't double up the surface. */}
-      {!open && (
+      {/* Trigger bubble — hidden when dock is open so we don't double up
+          the surface, and hidden on mobile under the new founder UI where
+          the Solene FAB is the one chat entry (see hideTrigger above). */}
+      {!open && !hideTrigger && (
         <motion.button
           type="button"
           onClick={() => setOpenPersisted(true)}
@@ -246,7 +256,7 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
             <span
               aria-label={`${badgeCount} new from Atlas`}
               data-testid="atlas-dock-badge"
-              className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-none"
+              className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-acr-neg text-white text-[10px] font-semibold leading-none"
             >
               {badgeCount > 9 ? "9+" : badgeCount}
             </span>
@@ -262,7 +272,7 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
             {isMobile && (
               <motion.div
                 key="dock-backdrop"
-                className="fixed inset-0 bg-surface-scrim z-40"
+                className="fixed inset-0 bg-surface-scrim z-overlay"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -278,8 +288,8 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
               data-testid="atlas-dock-panel"
               className={cn(
                 isMobile
-                  ? "fixed inset-x-0 bottom-0 z-50 h-[80vh] rounded-t-2xl"
-                  : "fixed right-0 top-0 bottom-0 z-50 w-[384px] border-l",
+                  ? "fixed inset-x-0 bottom-0 z-floating h-[80vh] rounded-t-2xl"
+                  : "fixed right-0 top-0 bottom-0 z-floating w-[384px] border-l",
                 "bg-background border-border flex flex-col shadow-2xl",
               )}
               initial={

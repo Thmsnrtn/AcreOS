@@ -153,7 +153,7 @@ function ToneBadge({ label, tone }: { label: string; tone: "neutral" | "ok" | "w
     tone === "ok"
       ? "bg-acr-pos-soft text-acr-pos"
       : tone === "warn"
-      ? "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+      ? "bg-acr-warn-soft text-acr-warn"
       : "bg-muted text-muted-foreground";
   return (
     <Badge variant="secondary" className={`text-[10px] border-transparent ${cls}`}>
@@ -198,7 +198,7 @@ export default function FounderPaxTracesPage() {
               {data.totals.total} total
             </Badge>
             {data.totals.errors > 0 && (
-              <Badge variant="secondary" className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 border-transparent tabular-nums">
+              <Badge variant="secondary" className="bg-acr-neg-soft text-acr-neg border-transparent tabular-nums">
                 <AlertTriangle className="w-3 h-3 mr-1" aria-hidden="true" />
                 {data.totals.errors} errors
               </Badge>
@@ -257,7 +257,7 @@ export default function FounderPaxTracesPage() {
                         <div
                           className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${
                             row.error
-                              ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200"
+                              ? "bg-acr-neg-soft text-acr-neg"
                               : "bg-acr-brand-soft text-acr-brand"
                           }`}
                           aria-hidden="true"
@@ -442,12 +442,12 @@ export default function FounderPaxTracesPage() {
                 </Card>
 
                 {selected.error && (
-                  <Card className="rounded-card border-red-200 dark:border-red-900">
+                  <Card className="rounded-card border-acr-neg/30">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-red-700 dark:text-red-200">Error</CardTitle>
+                      <CardTitle className="text-sm text-acr-neg">Error</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <pre className="text-[11px] whitespace-pre-wrap break-words bg-red-50 dark:bg-red-900/30 rounded p-3 overflow-x-auto">
+                      <pre className="text-[11px] whitespace-pre-wrap break-words bg-acr-neg-soft rounded p-3 overflow-x-auto">
                         {selected.error}
                       </pre>
                     </CardContent>

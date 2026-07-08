@@ -91,6 +91,7 @@ export function StripeConnectSettings() {
     retry: 1,
   });
 
+  // allow-no-invalidation: returns a Stripe Connect URL the browser navigates away to
   const connectMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/stripe/connect/link", {}, { idempotent: true });
@@ -446,6 +447,7 @@ export function SeatManagement() {
     queryKey: ["/api/organization/seats/pricing"],
   });
 
+  // allow-no-invalidation: redirects to Stripe checkout (window.location.href) — cache resets on return
   const purchaseSeatsMutation = useMutation({
     mutationFn: async ({ quantity, billingPeriod }: { quantity: number; billingPeriod: string }) => {
       const res = await apiRequest("POST", "/api/organization/seats/purchase", { quantity, billingPeriod }, { idempotent: true });

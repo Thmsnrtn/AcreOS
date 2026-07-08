@@ -14,11 +14,21 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
+import { createRateLimiter } from "./middleware/rateLimit";
 
 const router = Router();
 
+// 2026-07 security sweep: skip tracing hits a PAID upstream provider per
+// call. Cost was bounded by the credit debit but there was no per-request
+// throttle — a user with credits could hammer BatchData. Same posture as
+// the AI routes: request-rate limit BEFORE the spend gate. Keyed per org.
+const skipTraceLimiter = createRateLimiter(
+  { maxRequests: 30, windowMs: 60 * 1000 },
+  (req) => `skiptrace:${(req as AuthenticatedRequest).organizationId ?? "anon"}`,
+);
+
 // POST /api/skip-tracing/trace/:leadId — trace a single lead
-router.post("/trace/:leadId", async (req: AuthenticatedRequest, res: Response) => {
+router.post("/trace/:leadId", skipTraceLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const orgId = getOrganizationId(req);
     const leadId = parseInt(req.params.leadId);
@@ -95,7 +105,7 @@ router.post("/trace/:leadId", async (req: AuthenticatedRequest, res: Response) =
 });
 
 // POST /api/skip-tracing/batch — queue batch trace
-router.post("/batch", async (req: AuthenticatedRequest, res: Response) => {
+router.post("/batch", skipTraceLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const orgId = getOrganizationId(req);
     const { limit = 50 } = req.body;

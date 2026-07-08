@@ -238,7 +238,7 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
               })}
             </div>
             
-            <div aria-hidden="true" className="absolute top-0 bottom-0 w-0.5 bg-primary z-10"
+            <div aria-hidden="true" className="absolute top-0 bottom-0 w-0.5 bg-primary z-docked"
               style={{ left: `${getPositionForDate(today)}px` }}
             />
 

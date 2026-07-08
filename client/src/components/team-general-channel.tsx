@@ -196,6 +196,7 @@ export function ShareToTeamButton({ entityType, entityId, entityLabel }: ShareTo
 
   const generalChannel = conversations?.find(c => c.name === "General" && !c.isDirect);
 
+  // allow-no-invalidation: posts into the general channel from an entity page — conversation views refetch on open/focus
   const shareMutation = useMutation({
     mutationFn: async () => {
       if (!generalChannel) throw new Error("No general channel");

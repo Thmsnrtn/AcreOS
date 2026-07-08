@@ -21,10 +21,10 @@
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 
-const PROTOTYPE_DIR = "docs/exhaustive-completion/prototype-screenshots";
-const PRODUCTION_DIR = "docs/exhaustive-completion/production-screenshots";
-const CHECKS_DIR = "docs/exhaustive-completion/mechanical-checks";
-const OUT = "docs/exhaustive-completion/visual-comparisons";
+const PROTOTYPE_DIR = "docs/archive/exhaustive-completion/prototype-screenshots";
+const PRODUCTION_DIR = "docs/archive/exhaustive-completion/production-screenshots";
+const CHECKS_DIR = "docs/archive/exhaustive-completion/mechanical-checks";
+const OUT = "docs/archive/exhaustive-completion/visual-comparisons";
 
 // Surfaces with direct prototype-vs-production analogs (unauth)
 const UNAUTH_PAIRS = [
@@ -201,9 +201,9 @@ async function writeAuthRequired(s) {
   md += `1. Sign in to https://acreos.io\n`;
   md += `2. Navigate to \`${s.url}\` on desktop (1440px)\n`;
   md += `3. Compare to the prototype reference above\n`;
-  md += `4. Take screenshot → \`docs/exhaustive-completion/founder-screenshots/desktop/${s.slug}.png\`\n`;
-  md += `5. Repeat on mobile (375px) → \`docs/exhaustive-completion/founder-screenshots/mobile/${s.slug}.png\`\n`;
-  md += `6. Document findings in \`docs/exhaustive-completion/founder-notes.md\` per the template\n\n`;
+  md += `4. Take screenshot → \`docs/archive/exhaustive-completion/founder-screenshots/desktop/${s.slug}.png\`\n`;
+  md += `5. Repeat on mobile (375px) → \`docs/archive/exhaustive-completion/founder-screenshots/mobile/${s.slug}.png\`\n`;
+  md += `6. Document findings in \`docs/archive/exhaustive-completion/founder-notes.md\` per the template\n\n`;
   md += `## Final Classification\n\n`;
   md += `[x] AUTH-REQUIRED\n\n`;
   await writeFile(`${OUT}/${s.slug}-AUTH-REQUIRED.md`, md);
@@ -223,7 +223,7 @@ async function writeOnboardingNote() {
   md += `2. Trigger the wizard\n`;
   md += `3. Walk all 5 production steps on desktop + mobile\n`;
   md += `4. Compare each to the corresponding prototype step (note: production has fewer steps)\n`;
-  md += `5. Save each step screenshot → \`docs/exhaustive-completion/founder-screenshots/desktop/onboarding-step-N.png\`\n\n`;
+  md += `5. Save each step screenshot → \`docs/archive/exhaustive-completion/founder-screenshots/desktop/onboarding-step-N.png\`\n\n`;
   md += `## Final Classification\n\n[x] AUTH-REQUIRED\n`;
   await writeFile(`${OUT}/onboarding-AUTH-REQUIRED.md`, md);
 }
@@ -305,14 +305,14 @@ async function main() {
   master += `4. **Spot-check 3-5 CONFIDENT-PASS surfaces** — validate automation calibration. If a spot-check reveals issues, broaden the review.\n\n`;
   master += `**Estimated founder time:** 45-75 minutes (down from 90+ thanks to mechanical pre-pass).\n`;
 
-  await writeFile("docs/exhaustive-completion/MASTER-GAP-REPORT.md", master);
+  await writeFile("docs/archive/exhaustive-completion/MASTER-GAP-REPORT.md", master);
 
   console.log(`\n✓ ${total} surfaces processed`);
   console.log(`  - CONFIDENT-PASS: ${results.confidentPass.length}`);
   console.log(`  - CONFIDENT-FAIL: ${results.confidentFail.length}`);
   console.log(`  - NEEDS-HUMAN-REVIEW: ${results.needsReview.length}`);
   console.log(`  - AUTH-REQUIRED: ${results.authRequired.length}`);
-  console.log(`\nMaster report: docs/exhaustive-completion/MASTER-GAP-REPORT.md`);
+  console.log(`\nMaster report: docs/archive/exhaustive-completion/MASTER-GAP-REPORT.md`);
 }
 
 main().catch((e) => {

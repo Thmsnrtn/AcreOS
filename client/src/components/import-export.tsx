@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
+import { Verbs } from "@/lib/labels";
 import { 
   Upload, 
   Download, 
@@ -83,6 +84,7 @@ export function ImportExportManager() {
     },
   });
 
+  // allow-no-invalidation: parses the file and returns a preview — nothing imported yet
   const previewMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
@@ -145,6 +147,7 @@ export function ImportExportManager() {
     },
   });
 
+  // allow-no-invalidation: read-only export download — mutates nothing
   const exportMutation = useMutation({
     mutationFn: async () => {
       const params = new URLSearchParams();
@@ -180,6 +183,7 @@ export function ImportExportManager() {
     },
   });
 
+  // allow-no-invalidation: read-only backup download — mutates nothing
   const backupMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/export/backup", { credentials: "include" });
@@ -417,7 +421,7 @@ export function ImportExportManager() {
                     ) : (
                       <Upload className="w-4 h-4 mr-2" />
                     )}
-                    Import {preview.validRows} Valid Rows
+                    {Verbs.IMPORT} {preview.validRows} Valid Rows
                   </Button>
                 </div>
 
@@ -636,7 +640,7 @@ export function ImportExportManager() {
               ) : (
                 <FileDown className="w-4 h-4 mr-2" />
               )}
-              Export {selectedExportType.charAt(0).toUpperCase() + selectedExportType.slice(1)} to {exportFormat.toUpperCase()}
+              {Verbs.EXPORT} {selectedExportType.charAt(0).toUpperCase() + selectedExportType.slice(1)} to {exportFormat.toUpperCase()}
             </Button>
           </TabsContent>
 

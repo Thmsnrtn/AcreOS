@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
+import { Verbs } from "@/lib/labels";
 
 interface CommissionTier {
   minDeals: number;
@@ -131,7 +132,7 @@ function AgentCard({
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
             <div
-              className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold shrink-0"
+              className="w-10 h-10 rounded-full bg-acr-brand flex items-center justify-center text-acr-brand-ink text-sm font-bold shrink-0"
               aria-hidden="true"
             >
               {initials}
@@ -167,7 +168,7 @@ function AgentCard({
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Commission owed</dt>
-            <dd className="text-xl font-bold text-amber-600 tabular-nums">
+            <dd className="text-xl font-bold text-acr-warn tabular-nums">
               {moneyKpi(summary.ytdOwedCents)}
             </dd>
           </div>
@@ -176,8 +177,8 @@ function AgentCard({
             <dd
               className={`text-xl font-bold tabular-nums ${
                 summary.ytdOutstandingCents > 0
-                  ? "text-red-600"
-                  : "text-green-600"
+                  ? "text-acr-neg"
+                  : "text-acr-pos"
               }`}
             >
               {moneyKpi(summary.ytdOutstandingCents)}
@@ -283,7 +284,7 @@ function PaymentDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button type="submit" disabled={!canSubmit}>
               Record payment
@@ -390,7 +391,7 @@ export default function CommissionsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <Users className="w-8 h-8 text-blue-500" aria-hidden="true" />
+                <Users className="w-8 h-8 text-acr-accent" aria-hidden="true" />
                 <div>
                   <dd className="text-2xl font-bold tabular-nums">{safeSummaries.length}</dd>
                   <dt className="text-sm text-muted-foreground">Agents</dt>
@@ -401,7 +402,7 @@ export default function CommissionsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <TrendingUp className="w-8 h-8 text-green-500" aria-hidden="true" />
+                <TrendingUp className="w-8 h-8 text-acr-pos" aria-hidden="true" />
                 <div>
                   <dd className="text-2xl font-bold tabular-nums">{totalDeals}</dd>
                   <dt className="text-sm text-muted-foreground">Deals closed</dt>
@@ -412,7 +413,7 @@ export default function CommissionsPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <DollarSign className="w-8 h-8 text-amber-500" aria-hidden="true" />
+                <DollarSign className="w-8 h-8 text-acr-warn" aria-hidden="true" />
                 <div>
                   <dd className="text-2xl font-bold tabular-nums">{moneyKpi(totalOwed)}</dd>
                   <dt className="text-sm text-muted-foreground">Total commissions</dt>
@@ -425,7 +426,7 @@ export default function CommissionsPage() {
               <div className="flex items-center gap-3">
                 <AlertCircle
                   className={`w-8 h-8 ${
-                    totalOutstanding > 0 ? "text-red-500" : "text-green-500"
+                    totalOutstanding > 0 ? "text-acr-neg" : "text-acr-pos"
                   }`}
                   aria-hidden="true"
                 />

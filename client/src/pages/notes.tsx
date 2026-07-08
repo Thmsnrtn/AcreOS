@@ -4,7 +4,7 @@
  * Lists acquired notes for the org with status pills, a status filter, and
  * per-row payer / balance / next payment / status. Foundation surface —
  * the BPO + tape diligence + Sophie agent expansion ride a follow-up PR
- * (see docs/exhaustive-completion/note-investor-followups.md).
+ * (see docs/archive/exhaustive-completion/note-investor-followups.md).
  *
  * Loading state uses Skeleton matching the table shape (per UI patterns
  * in CLAUDE.md). Empty state uses the canonical EmptyState with a
@@ -34,6 +34,7 @@ import { NotesImportDialog } from "@/components/notes-import-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useOrganization } from "@/hooks/use-organization";
 import { getTerm, personaForInvestorType } from "@/lib/personaVocabulary";
+import { Verbs } from "@/lib/labels";
 
 // Shape returned by GET /api/notes (mirrors acquiredNotes minus the encrypted TIN).
 interface AcquiredNoteRow {
@@ -270,7 +271,7 @@ export default function NotesPage() {
             Couldn't load notes. Please try again.
           </p>
           <Button variant="outline" onClick={() => refetch()} data-testid="notes-retry-button">
-            Retry
+            {Verbs.RETRY}
           </Button>
         </Card>
       ) : notes.length === 0 ? (

@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 // ── Referral Settings ──────────────────────────────────────────────────────
 
@@ -127,7 +128,7 @@ export function ReferralSettings() {
                   aria-label="Copy referral link to clipboard"
                 >
                   <Link2 className="w-4 h-4 mr-1" aria-hidden="true" />
-                  Copy
+                  {Verbs.COPY}
                 </Button>
               </div>
             )}
@@ -195,6 +196,7 @@ export function PrivacyDataSettings() {
     queryFn: () => fetch("/api/privacy/status", { credentials: "include" }).then(r => r.json()),
   });
 
+  // allow-no-invalidation: read-only export download — mutates nothing
   const exportMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/privacy/export", {
@@ -221,6 +223,7 @@ export function PrivacyDataSettings() {
       }),
   });
 
+  // allow-no-invalidation: account anonymization signs the user out — the session (and cache) ends
   const deleteMutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", "/api/privacy/delete", { confirm: "DELETE MY DATA" }),
@@ -374,7 +377,7 @@ export function PrivacyDataSettings() {
                     className="min-h-11 pointer-fine:sm:min-h-9"
                     onClick={() => { setShowDeleteForm(false); setDeleteConfirmText(""); }}
                   >
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                 </div>
               </div>

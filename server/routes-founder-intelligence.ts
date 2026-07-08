@@ -3686,7 +3686,7 @@ router.get("/customer-health/:orgId", requireFounder, async (req: Request, res: 
 router.get("/delegations", requireFounder, async (req: Request, res: Response) => {
   try {
     const { getActiveDelegations } = await import("./services/temporaryDelegation");
-    res.json({ delegations: getActiveDelegations() });
+    res.json({ delegations: await getActiveDelegations() });
   } catch (err: any) {
     Errors.internal(res, err);
   }
@@ -3700,7 +3700,7 @@ router.post("/delegations", requireFounder, async (req: Request, res: Response) 
     }
 
     const { grantTemporaryAuthority } = await import("./services/temporaryDelegation");
-    const delegation = grantTemporaryAuthority({
+    const delegation = await grantTemporaryAuthority({
       agentCodename,
       actions,
       toLevel,
@@ -3717,7 +3717,11 @@ router.post("/delegations", requireFounder, async (req: Request, res: Response) 
 router.delete("/delegations/:id", requireFounder, async (req: Request, res: Response) => {
   try {
     const { revokeDelegation } = await import("./services/temporaryDelegation");
-    const success = revokeDelegation(req.params.id);
+    const delegationId = Number.parseInt(req.params.id, 10);
+    if (!Number.isFinite(delegationId)) {
+      return Errors.badRequest(res, "delegation id must be numeric");
+    }
+    const success = await revokeDelegation(delegationId);
     res.json({ success, message: success ? "Delegation revoked" : "Delegation not found" });
   } catch (err: any) {
     Errors.internal(res, err);
