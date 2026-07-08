@@ -178,10 +178,12 @@ Exit test: five hard CEO questions, every answer sourced.
       (external CI-side, already proven live 2026-07-07). Known tradeoff
       documented: domain_audit's 23h lease is the once-daily dedupe; a
       mid-run crash costs at most one day's audit.
-- [ ] Go/No-Go pack: one page — green/amber/red with reasons + the first
-      campaign recipe ($5/day, witnessed, mail-first wedge). (Next: after
-      PR #112 merges, fold drill verdicts + surface-sweep state into the
-      verdict page.)
+- [x] Go/No-Go pack written (2026-07-08):
+      `docs/company/go-no-go-2026-07.md` — verdict **AMBER-GO** (go for
+      the witnessed mail-first $5/day test the moment PR #112 merges; the
+      ambers are founder-input-gated or post-launch hardening, nothing
+      red). Includes the first-campaign recipe with drilled abort handles.
+      Re-verdict on merge + founder inputs.
 
 ## Founder inputs (non-blocking; slot in when provided)
 
