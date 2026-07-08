@@ -25,22 +25,22 @@ interface CacheRule {
 
 // Patterns match req.path — which, under app.use("/api", mw), is
 // relative to the mount prefix. So "/leads", not "/api/leads".
+//
+// NOTE: user-mutable CRUD lists (leads, properties, deals, notes, tasks,
+// campaigns, payments, activity) and /organization are deliberately ABSENT.
+// They carried max-age=30..60 until the WS1 interactive pass (2026-07-07)
+// proved the browser HTTP cache serves react-query's post-create refetch a
+// stale body: a customer creates a lead, gets the success toast, and the
+// list doesn't show it for up to a minute. stale-while-revalidate refreshes
+// the HTTP cache in the background, but react-query only ever sees the
+// stale response — mutable collections must be authoritative per-request.
 const RULES: CacheRule[] = [
-  // Short-TTL — data that might change per-request
-  { pattern: /^\/leads(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/properties(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/deals(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/notes(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/payments(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/tasks(\/|\?|$)/, maxAge: 30, swr: 60 },
-  { pattern: /^\/campaigns(\/|\?|$)/, maxAge: 30, swr: 60 },
+  // Short-TTL — read-mostly streams where brief staleness is harmless
   { pattern: /^\/alerts(\/|\?|$)/, maxAge: 15, swr: 30 },
   { pattern: /^\/notifications(\/|\?|$)/, maxAge: 15, swr: 30 },
   { pattern: /^\/dashboard\//, maxAge: 60, swr: 120 },
-  { pattern: /^\/activity(\/|\?|$)/, maxAge: 30, swr: 60 },
 
-  // Medium-TTL — org identity / feature flags don't change often
-  { pattern: /^\/organization(\/|\?|$)/, maxAge: 60, swr: 300 },
+  // Medium-TTL — feature flags / branding don't change often
   // NOTE: /auth/user deliberately NOT cached. Safari / iOS have historic
   // Vary: Cookie quirks that can serve a stale "signed out" 200 after
   // sign-in, trapping the user on the auth page with a spinner while

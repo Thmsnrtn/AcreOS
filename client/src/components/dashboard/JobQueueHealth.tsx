@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,7 @@ function formatMinutes(mins: number | null): string {
 }
 
 export function JobQueueHealth() {
+  const queryClient = useQueryClient();
   const { data, isLoading, refetch } = useQuery<JobHealthResponse>({
     queryKey: ["/api/founder/intelligence/job-health"],
     // 2026-05-26: dropped 60s polling — refresh on focus only. Founder
@@ -67,6 +68,11 @@ export function JobQueueHealth() {
   const restartMutation = useMutation({
     mutationFn: (jobName: string) =>
       apiRequest("POST", `/api/founder/intelligence/job-health/${jobName}/restart`, {}),
+    onSuccess: () => {
+      // The restarted job's status is exactly what this card displays —
+      // previously nothing refreshed, so a restart looked like a no-op.
+      queryClient.invalidateQueries({ queryKey: ["/api/founder/intelligence/job-health"] });
+    },
   });
 
   if (isLoading) {

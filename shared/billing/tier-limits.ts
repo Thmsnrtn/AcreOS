@@ -27,7 +27,7 @@ export type SubscriptionTier = "free" | "starter" | "pro" | "scale" | "enterpris
  * `event_type='ai_request'`, and ~15 downstream callers; only the WINDOW
  * (monthly) and the CAP (rebaselined) changed.
  */
-export type ResourceType = "leads" | "properties" | "notes" | "ai_requests";
+export type ResourceType = "leads" | "properties" | "notes" | "ai_requests" | "campaigns";
 
 export interface TierLimits {
   leads: number | null;
@@ -88,11 +88,24 @@ export interface TierLimits {
  * lots of headroom; only the COGS-inverting tail crosses them. Adjust here
  * (single source of truth) — every gate, banner, and test reads this.
  */
+// Margin math reconciled 2026-07-03 (roadmap audit): canonical prices are
+// $20/$49/$79 (tier-pricing.ts) — the previous annotations cited a $29
+// Starter and a $199 Scale that never shipped.
+// Re-bounded 2026-07-07 (cost audit): Scale's old shape (500 Opus turns +
+// Sonnet to 6,000) bounded worst-case platform-key COGS at ~$90 on a $79
+// plan — underwater at full utilization. paxModelTier.ts now runs a
+// two-stage downgrade (Opus→Sonnet at 200, →Haiku at 3,000), bounding
+// Scale at ≈ $4.50 + $38 + $12 ≈ $54 of $79 (~32% margin at absolute full
+// utilization). Starter/pro bounds with the Haiku tail past their soft
+// caps: starter ≈ $11.25 of $20 (56% of revenue — thin, watch it),
+// pro ≈ $15.50 of $49. Roadmap W4 also tracks that non-chat AI surfaces
+// bypass these thresholds entirely (they hit the per-org COGS ceilings in
+// aiCostCeiling.ts instead).
 export const AI_TURNS_BYOK_THRESHOLDS: Record<SubscriptionTier, number | null> = {
   free: null,       // evaluation tier — the 75/mo ai_requests cap governs; no BYOK lane
-  starter: 750,     // ~25 turns/day avg; max included COGS ≈ $11.25 vs $29/mo
-  pro: 1500,        // ~50 turns/day avg; max included COGS ≈ $22.50 vs $49/mo
-  scale: 6000,      // multi-seat teams; max included COGS ≈ $90 vs $199/mo + seats
+  starter: 750,     // ~25 turns/day avg
+  pro: 1500,        // ~50 turns/day avg
+  scale: 6000,      // multi-seat teams
   enterprise: null, // negotiated per-deal — no self-serve threshold
 };
 
@@ -140,10 +153,12 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     properties: 50,
     notes: 25,
     // Monthly cap. Was 500/DAY, which at ~$0.015/turn × 500 × 30 = $225/mo
-    // COGS vs ~$16.67/mo revenue (-980% margin). At 1,500/mo cap, max COGS
-    // is ~$22.50/mo against $29/mo revenue → positive contribution margin
-    // with headroom for the steady-state user who runs Pax a few dozen
-    // turns/day. See docs/internal/pricing/alternatives-2026-06-06.md.
+    // COGS vs $20/mo revenue (~-1000% margin). At the 1,500/mo cap the
+    // PLATFORM-key exposure is bounded earlier by the 750-turn BYOK
+    // threshold (~$11.25 COGS vs $20/mo revenue); 1,500 governs total turns
+    // across lanes. (Prices reconciled 2026-07-03 — this previously cited a
+    // $29 Starter that never shipped.) See
+    // docs/internal/pricing/alternatives-2026-06-06.md.
     ai_requests: 1500,
     campaigns: 5,
     sequences: 2,
@@ -160,8 +175,11 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     notes: 50,
     // Monthly cap. Pro is the workhorse tier; 12,000 turns/mo (~400/day)
     // supports a single operator running Pax across the full pipeline.
-    // Max COGS ~$180/mo against $41-$49/mo revenue is offset by BYOK
-    // bypass for power users and the credit-pool gate on expensive lanes.
+    // Canonical price is $49/mo (tier-pricing.ts, reconciled 2026-07-03).
+    // Worst-case platform-key COGS is bounded well before the 12,000 cap by
+    // the 2,500-turn BYOK threshold (~$37.50) plus the tier-proportional AI
+    // cost ceiling (aiCostCeiling.ts); past the threshold, turns ride the
+    // customer's own key at $0 COGS to us.
     ai_requests: 12000,
     campaigns: null,
     sequences: null,
@@ -184,7 +202,11 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     byokSupport: true,
     includedSeats: 10,
     maxSeats: 100,
-    seatPriceCents: 4000, // $40/seat
+    // $25/seat past the included 10 (was $40 — founder decision 2026-07-08:
+    // the marginal Scale seat cost DOUBLE the marginal Pro seat, taxing
+    // exactly the teams the tier is for. See
+    // docs/company/decision-memos/2026-07-08-founding-member-pricing.md).
+    seatPriceCents: 2500,
     creditPool: 8000,
     aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.scale,
   },

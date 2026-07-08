@@ -150,6 +150,7 @@ export default function LotPricingPage() {
     onError: (err: any) => toast({ title: "Save failed", description: err.message, variant: "destructive" }),
   });
 
+  // allow-no-invalidation: pricing preview renders from mutation.data — nothing persisted
   const preview = useMutation<PreviewResponse, Error>({
     mutationFn: async () => {
       const res = await fetch(`/api/parcels/${parcelId}/pricing-rules/preview`, {

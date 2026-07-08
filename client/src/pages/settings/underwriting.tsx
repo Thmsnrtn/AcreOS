@@ -200,6 +200,10 @@ export default function UnderwritingSettingsPage() {
               <Label htmlFor="uw-balloon" className="block">
                 Balloon
               </Label>
+              <p className="text-xs text-muted-foreground">
+                On: payments stay low and the remaining balance comes due in one
+                lump at the end of the term. Off: payments fully pay the note off.
+              </p>
               <div className="flex items-center gap-3 h-10">
                 <Switch
                   id="uw-balloon"

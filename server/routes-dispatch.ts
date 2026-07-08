@@ -23,6 +23,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import {
   cancelQueuedDispatch,
+  DEAD_LETTER_MARKER,
   enqueueDispatch,
   getDispatchById,
   listDispatches,
@@ -89,6 +90,12 @@ function shapeDispatchRow(
     resultSummary: q.resultSummary,
     resultFullPath: q.resultFullPath,
     enqueuedBy: q.enqueuedBy,
+    // Retry telemetry (step-away gap #3): how many runs actually started, when
+    // a retried row becomes claimable again, and whether it exhausted its
+    // retry budget (the dead-letter surface the Control door filters on).
+    attempts: q.attempts,
+    notBeforeAt: q.notBeforeAt,
+    deadLettered: q.status === "failed" && (q.resultSummary ?? "").startsWith(DEAD_LETTER_MARKER),
     result: r
       ? {
           success: r.success,

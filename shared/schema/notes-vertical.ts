@@ -111,7 +111,7 @@ export const acquiredNotes = pgTable(
     // S3 key of the assignment paperwork (allonge / assignment of mortgage /
     // assignment of beneficial interest depending on jurisdiction). The
     // e-sign template work for note assignments is tracked as a follow-up
-    // (see docs/exhaustive-completion/note-investor-followups.md).
+    // (see docs/archive/exhaustive-completion/note-investor-followups.md).
     assignmentDocS3Key: text("assignment_doc_s3_key"),
     // ── Compliance: hazard insurance ─────────────────────────────────────
     // Linnea: "When a borrower lets their hazard policy lapse, I have to

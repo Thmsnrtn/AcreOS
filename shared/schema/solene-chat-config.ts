@@ -18,8 +18,15 @@
 // ============================================================================
 
 export const CHAT_MODELS = {
-  /** Strategic / hard / final-answer-quality matters. */
-  STRATEGIC: process.env.SOLENE_CHAT_STRATEGIC_MODEL ?? "anthropic/claude-opus-4-7",
+  /**
+   * Strategic / hard / final-answer-quality matters.
+   * Pinned to the current best GA Opus (verified against the claude-api
+   * skill 2026-07-08: claude-opus-4-8, $5/$25 per 1M — same price as the
+   * stale 4.7 this previously pointed at). Keep in lockstep with
+   * server/services/models.ts ANTHROPIC_MODELS.OPUS (shared/ can't import
+   * server/, so the ID is duplicated by necessity).
+   */
+  STRATEGIC: process.env.SOLENE_CHAT_STRATEGIC_MODEL ?? "anthropic/claude-opus-4-8",
   /** Conversational / drafting / most things. */
   CONVERSATIONAL:
     process.env.SOLENE_CHAT_CONVERSATIONAL_MODEL ?? "anthropic/claude-sonnet-4-6",
@@ -54,9 +61,14 @@ export const CHAT_PRICING_PER_M_TOKENS: Record<
   ChatTier,
   { input: number; output: number; cachedInput: number }
 > = {
-  strategic: { input: 15, output: 75, cachedInput: 1.5 },
+  // Corrected 2026-07-08 against the claude-api skill catalog: strategic
+  // carried the OLD Opus price ($15/$75 vs the real $5/$25 — 3× over-
+  // attribution that tripped the $1/turn cap early), and fast carried
+  // Haiku-3.5-era pricing ($0.25/$1.25 vs Haiku 4.5's $1/$5 — 4× under-
+  // counting). conversational/code (Sonnet 4.6 $3/$15) were correct.
+  strategic: { input: 5, output: 25, cachedInput: 0.5 },
   conversational: { input: 3, output: 15, cachedInput: 0.3 },
-  fast: { input: 0.25, output: 1.25, cachedInput: 0.03 },
+  fast: { input: 1, output: 5, cachedInput: 0.1 },
   code: { input: 3, output: 15, cachedInput: 0.3 },
 };
 

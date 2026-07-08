@@ -9,8 +9,11 @@ export function useAgentTasks() {
       if (!res.ok) throw new Error("Failed to fetch agent tasks");
       return api.agentTasks.list.responses[200].parse(await res.json());
     },
-    // Poll every 5 seconds for status updates
-    refetchInterval: 5000,
+    // Perf audit 2026-07-04: was a 5s poll — the most aggressive customer
+    // path in the app, firing app-wide. 15s keeps agent-task status feeling
+    // live at a third of the load (background tabs stop entirely via the
+    // global refetchIntervalInBackground default).
+    refetchInterval: 15_000,
   });
 }
 

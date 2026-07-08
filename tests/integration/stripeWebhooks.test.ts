@@ -51,6 +51,59 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 
+// W1.8 — subscription state + audit rows now commit in one db transaction.
+// Record what the tx wrote so tests can assert on it.
+const txState = vi.hoisted(() => ({ updates: [] as any[], inserts: [] as any[] }));
+
+vi.mock("../../server/db", () => {
+  const chain: any = {};
+  chain.from = () => chain;
+  chain.where = () => chain;
+  chain.limit = () => Promise.resolve([]);
+  chain.then = (res: any, rej: any) => Promise.resolve([]).then(res, rej);
+  const dbStub = {
+    select: () => chain,
+    insert: () => ({
+      values: () => ({
+        onConflictDoNothing: () => ({ returning: () => Promise.resolve([{ id: 1 }]) }),
+      }),
+    }),
+    update: () => ({ set: () => ({ where: () => Promise.resolve([]) }) }),
+    delete: () => ({ where: () => Promise.resolve([]) }),
+    execute: () => Promise.resolve({ rows: [] }),
+  };
+  const tx = {
+    update: () => ({
+      set: (vals: any) => ({
+        where: () => {
+          txState.updates.push(vals);
+          const q: any = Promise.resolve([]);
+          q.returning = () =>
+            Promise.resolve([{ subscriptionTier: "pro", billingInterval: "monthly" }]);
+          return q;
+        },
+      }),
+    }),
+    insert: () => ({
+      values: (vals: any) => {
+        txState.inserts.push(vals);
+        return Promise.resolve([]);
+      },
+    }),
+  };
+  return {
+    db: dbStub,
+    pool: { query: async () => ({ rows: [] }), on: () => {} },
+    replicaPool: { query: async () => ({ rows: [] }), on: () => {} },
+    dbReadOnly: dbStub,
+    dbReplica: null,
+    dbReplicaUnsafe: dbStub,
+    DB_ROLES: { primary: "primary", replica: "replica_ro" },
+    assertReplicaRoleAtBoundary: async () => ({ reported: null, matches: true }),
+    withTransaction: async (fn: any) => fn(tx),
+  };
+});
+
 vi.mock("../../server/services/credits", () => ({
   creditService: {
     applyCreditPackPurchase: vi.fn(() => ({ amountCents: 5000 })),
@@ -422,6 +475,7 @@ describe("Stripe Webhook: customer.subscription.deleted (Tasks #86-87)", () => {
   });
 
   it("downgrades to free tier on subscription cancellation (Task #86)", async () => {
+    txState.updates.length = 0;
     (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue(MOCK_ORG);
 
     const sub = { id: "sub_del_1", customer: "cus_del_1" };
@@ -431,8 +485,8 @@ describe("Stripe Webhook: customer.subscription.deleted (Tasks #86-87)", () => {
 
     await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
 
-    expect(storageMock.updateOrganization).toHaveBeenCalledWith(
-      1,
+    // W1.8: the downgrade now lands via the atomic tx, not storage.
+    expect(txState.updates).toContainEqual(
       expect.objectContaining({
         subscriptionTier: "free",
         subscriptionStatus: "cancelled",
@@ -442,6 +496,7 @@ describe("Stripe Webhook: customer.subscription.deleted (Tasks #86-87)", () => {
   });
 
   it("logs cancellation subscription event (Task #87)", async () => {
+    txState.inserts.length = 0;
     (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue(MOCK_ORG);
 
     const sub = { id: "sub_del_2", customer: "cus_del_2" };
@@ -451,11 +506,19 @@ describe("Stripe Webhook: customer.subscription.deleted (Tasks #86-87)", () => {
 
     await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
 
-    expect(storageMock.logSubscriptionEvent).toHaveBeenCalledWith(
+    // W1.8: both audit rows are written inside the same tx as the downgrade.
+    expect(txState.inserts).toContainEqual(
       expect.objectContaining({
         organizationId: 1,
         eventType: "cancel",
         fromTier: "pro",
+      })
+    );
+    expect(txState.inserts).toContainEqual(
+      expect.objectContaining({
+        organizationId: 1,
+        eventType: "canceled",
+        tier: "pro",
       })
     );
   });
@@ -479,6 +542,8 @@ describe("Stripe Webhook: customer.subscription.updated (Tasks #88-90)", () => {
   });
 
   it("syncs new tier when product metadata contains tier (Task #88)", async () => {
+    txState.updates.length = 0;
+    txState.inserts.length = 0;
     (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue({
       ...MOCK_ORG,
       subscriptionTier: "starter",
@@ -499,16 +564,17 @@ describe("Stripe Webhook: customer.subscription.updated (Tasks #88-90)", () => {
 
     await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
 
-    expect(storageMock.updateOrganization).toHaveBeenCalledWith(
-      1,
+    // W1.8: state + audit rows land atomically via the tx.
+    expect(txState.updates).toContainEqual(
       expect.objectContaining({ subscriptionTier: "pro" })
     );
-    expect(storageMock.logSubscriptionEvent).toHaveBeenCalledWith(
+    expect(txState.inserts).toContainEqual(
       expect.objectContaining({ eventType: "change", fromTier: "starter", toTier: "pro" })
     );
   });
 
   it("updates status without tier when product has no tier metadata (Task #89)", async () => {
+    txState.updates.length = 0;
     (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue(MOCK_ORG);
     mockStripe.prices.retrieve.mockResolvedValue({
       product: { metadata: {} }, // no tier
@@ -526,8 +592,7 @@ describe("Stripe Webhook: customer.subscription.updated (Tasks #88-90)", () => {
 
     await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
 
-    expect(storageMock.updateOrganization).toHaveBeenCalledWith(
-      1,
+    expect(txState.updates).toContainEqual(
       expect.objectContaining({ subscriptionStatus: "past_due" })
     );
   });
@@ -815,6 +880,7 @@ describe("Stripe Webhook: idempotency (Task #92)", () => {
   });
 
   it("skips processing when event has already been handled (Task #92)", async () => {
+    txState.updates.length = 0;
     const { db } = await import("../../server/storage");
 
     // DEFECT-0006: idempotency was switched from select-then-insert (TOCTOU)
@@ -837,8 +903,9 @@ describe("Stripe Webhook: idempotency (Task #92)", () => {
     const { storage } = await import("../../server/storage");
     await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
 
-    // updateOrganization should NOT be called because the event was a duplicate
+    // No state should be written because the event was a duplicate
     expect(storage.updateOrganization).not.toHaveBeenCalled();
+    expect(txState.updates).toHaveLength(0);
   });
 
   it("acknowledges unknown event types without error", async () => {

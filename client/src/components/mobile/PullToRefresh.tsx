@@ -171,7 +171,7 @@ export function PullToRefresh({
         aria-live={pullState === "refreshing" ? "polite" : undefined}
         aria-label={pullState === "refreshing" ? "Refreshing…" : pullState === "ready" ? "Release to refresh" : pullState === "pulling" ? "Pull to refresh" : undefined}
         className={cn(
-          "absolute left-0 right-0 flex items-center justify-center transition-opacity duration-200 pointer-events-none z-10",
+          "absolute left-0 right-0 flex items-center justify-center transition-opacity duration-200 pointer-events-none z-docked",
           showIndicator ? "opacity-100" : "opacity-0"
         )}
         style={{

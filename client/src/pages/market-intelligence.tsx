@@ -80,6 +80,7 @@ export default function MarketIntelligencePage() {
     },
   });
 
+  // allow-no-invalidation: comparison renders from mutation.data — read-only analysis
   const compareMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/market-intelligence/compare", {

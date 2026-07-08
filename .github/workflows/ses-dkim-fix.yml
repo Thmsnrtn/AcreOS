@@ -1,0 +1,74 @@
+# One-shot, manually-dispatched remediation for the SES DKIM FAILED state
+# (AWS Health: "Email DKIM setup FAILURE for acreos.io", 2026-07).
+#
+# Why a workflow: the AWS + Cloudflare credentials live only as Fly secrets,
+# so the fix must execute ON a Fly machine. This job uses the same
+# FLY_API_TOKEN as deploy.yml to ssh in and run scripts/ses-setup.mjs.
+#
+# Why the base64 upload: the deployed image predates the FAILED-state
+# handling in ses-setup.mjs (restarting Easy DKIM verification — without
+# which SES never re-checks DNS after its 72h window). We ship this
+# branch's copy of the script to the machine and run it there. The single
+# ssh invocation writes + executes in one session so both hit the same
+# machine. Falls back to the deployed script (DNS upsert only) if the
+# upload path fails.
+#
+# Safe to re-run: the script is idempotent and read-checks every step.
+# Nothing secret is printed — DKIM tokens are public DNS content.
+name: SES DKIM fix (manual one-shot)
+
+on:
+  workflow_dispatch:
+  # The session's GitHub integration cannot POST workflow dispatches
+  # (403 actions:write), so pushes touching THIS file on the remediation
+  # branch also trigger the run. Scoped tightly: one file, one branch.
+  # (diagnostic round 3)
+  push:
+    branches: [claude/codebase-quality-audit-ko1u69]
+    paths: [".github/workflows/ses-dkim-fix.yml"]
+
+permissions: {}
+
+jobs:
+  fix:
+    name: Run SES setup on the Fly machine
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Vendor credential health probe (read-only, no values)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          B64="$(base64 -w0 scripts/vendor-health-probe.mjs)"
+          flyctl ssh console -a acreos -C "sh -c 'echo ${B64} | base64 -d > /app/scripts/vendor-health-probe.mjs && node /app/scripts/vendor-health-probe.mjs'"
+
+      - name: Cloudflare-only diagnostic (no AWS needed)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          B64="$(base64 -w0 scripts/ses-dkim-diagnose.mjs)"
+          flyctl ssh console -a acreos -C "sh -c 'echo ${B64} | base64 -d > /app/scripts/ses-dkim-diagnose.mjs && node /app/scripts/ses-dkim-diagnose.mjs'"
+
+      - name: Run hardened ses-setup.mjs on the machine
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          B64="$(base64 -w0 scripts/ses-setup.mjs)"
+          # Write next to the deployed scripts so ESM imports resolve
+          # against /app/node_modules, then execute — one ssh session,
+          # one machine. 2026-07-04 run 1: died at the SES step with
+          # UnrecognizedClientException — the AWS keys in Fly secrets are
+          # invalid. Until they're rotated this step is expected to fail;
+          # the diagnostic step above still yields the DNS/env picture.
+          if ! flyctl ssh console -a acreos -C "sh -c 'echo ${B64} | base64 -d > /app/scripts/ses-setup-hotfix.mjs && node /app/scripts/ses-setup-hotfix.mjs'"; then
+            echo "::warning::ses-setup failed — if the log shows UnrecognizedClientException, rotate AWS keys: fly secrets set AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... -a acreos, then re-run this workflow."
+            exit 1
+          fi

@@ -150,7 +150,7 @@ export function SettingsQuickFind({ onJump }: SettingsQuickFindProps) {
           ref={listRef}
           role="listbox"
           aria-label="Settings search results"
-          className="absolute z-30 mt-1 w-full bg-popover border border-border rounded-card shadow-lg overflow-hidden"
+          className="absolute z-sticky mt-1 w-full bg-popover border border-border rounded-card shadow-lg overflow-hidden"
         >
           {results.length === 0 ? (
             <li className="px-3 py-3 text-sm text-muted-foreground">

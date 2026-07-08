@@ -749,7 +749,7 @@ export default function FieldScout() {
   return (
     <div className="min-h-dvh bg-acr-bg-sunken text-white pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-50 bg-acr-bg-sunken border-b border-border px-4 py-3">
+      <div className="sticky top-0 z-floating bg-acr-bg-sunken border-b border-border px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {/* Compass rose mini */}
@@ -1551,10 +1551,10 @@ export default function FieldScout() {
         </div>
       )}
 
-      {/* Bottom floating action button — explicit z-50 so it stacks
-          predictably against the global FAB (which is also z-50; we
+      {/* Bottom floating action button — explicit z-floating so it stacks
+          predictably against the global FAB (which is also z-floating; we
           add /field-scout to its exclusion list in App.tsx). */}
-      <div className="fixed bottom-6 right-4 z-50 flex flex-col gap-2">
+      <div className="fixed bottom-6 right-4 z-floating flex flex-col gap-2">
         {isRecording ? (
           <button
             type="button"

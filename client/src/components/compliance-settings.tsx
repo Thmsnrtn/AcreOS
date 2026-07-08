@@ -61,7 +61,7 @@ export function ComplianceSettings() {
           Compliance & data governance
         </h2>
         <p className="text-muted-foreground text-sm">
-          Manage audit logs, TCPA compliance, and data retention policies.
+          The paper trail: who did what, who's agreed to be contacted, and how long records are kept.
         </p>
       </div>
 
@@ -86,7 +86,7 @@ export function ComplianceSettings() {
           data-testid="button-tab-tcpa"
         >
           <PhoneOff className="w-4 h-4 mr-2" aria-hidden="true" />
-          TCPA compliance
+          Texting & calling consent
         </Button>
         <Button
           type="button"
@@ -183,13 +183,13 @@ function AuditLogViewer() {
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="audit-filter-entity">Entity type</Label>
+            <Label htmlFor="audit-filter-entity">Record type</Label>
             <Select value={filters.entityType || "all"} onValueChange={(v) => setFilters(f => ({ ...f, entityType: v === "all" ? "" : v, offset: 0 }))}>
               <SelectTrigger id="audit-filter-entity" className="w-[180px]" data-testid="select-audit-entity">
-                <SelectValue placeholder="All entities" />
+                <SelectValue placeholder="All records" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All entities</SelectItem>
+                <SelectItem value="all">All records</SelectItem>
                 <SelectItem value="lead">Lead</SelectItem>
                 <SelectItem value="property">Property</SelectItem>
                 <SelectItem value="deal">Deal</SelectItem>
@@ -330,17 +330,17 @@ function TcpaCompliancePanel() {
                 <p className="text-2xl font-bold tabular-nums">{stats?.total || 0}</p>
                 <p className="text-sm text-muted-foreground">Total leads</p>
               </div>
-              <div className="p-4 rounded-card bg-green-100 dark:bg-green-900/30" data-testid="stat-with-consent">
-                <p className="text-2xl font-bold text-green-700 dark:text-green-400 tabular-nums">{stats?.withConsent || 0}</p>
-                <p className="text-sm text-green-600 dark:text-green-500">With consent</p>
+              <div className="p-4 rounded-card bg-acr-pos-soft" data-testid="stat-with-consent">
+                <p className="text-2xl font-bold text-acr-pos tabular-nums">{stats?.withConsent || 0}</p>
+                <p className="text-sm text-acr-pos">With consent</p>
               </div>
-              <div className="p-4 rounded-card bg-orange-100 dark:bg-orange-900/30" data-testid="stat-without-consent">
-                <p className="text-2xl font-bold text-orange-700 dark:text-orange-400 tabular-nums">{stats?.withoutConsent || 0}</p>
-                <p className="text-sm text-orange-600 dark:text-orange-500">Without consent</p>
+              <div className="p-4 rounded-card bg-acr-warn-soft" data-testid="stat-without-consent">
+                <p className="text-2xl font-bold text-acr-warn tabular-nums">{stats?.withoutConsent || 0}</p>
+                <p className="text-sm text-acr-warn">Without consent</p>
               </div>
-              <div className="p-4 rounded-card bg-red-100 dark:bg-red-900/30" data-testid="stat-opted-out">
-                <p className="text-2xl font-bold text-red-700 dark:text-red-400 tabular-nums">{stats?.optedOut || 0}</p>
-                <p className="text-sm text-red-600 dark:text-red-500">Opted out</p>
+              <div className="p-4 rounded-card bg-acr-neg-soft" data-testid="stat-opted-out">
+                <p className="text-2xl font-bold text-acr-neg tabular-nums">{stats?.optedOut || 0}</p>
+                <p className="text-sm text-acr-neg">Opted out</p>
               </div>
             </div>
           )}
@@ -359,7 +359,7 @@ function TcpaCompliancePanel() {
               className="w-full bg-muted rounded-full h-2"
             >
               <div
-                className="bg-green-500 h-2 rounded-full transition-all"
+                className="bg-acr-pos h-2 rounded-full transition-all"
                 style={{ width: `${consentRate}%` }}
               />
             </div>
@@ -398,7 +398,7 @@ function TcpaCompliancePanel() {
                       <TableCell>{lead.firstName} {lead.lastName}</TableCell>
                       <TableCell className="text-muted-foreground">{lead.phone || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
+                        <Badge variant="secondary" className="bg-acr-warn-soft text-acr-warn">
                           <XCircle className="w-3 h-3 mr-1" aria-hidden="true" />
                           No consent
                         </Badge>
@@ -413,7 +413,7 @@ function TcpaCompliancePanel() {
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-green-500" aria-hidden="true" />
+              <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-acr-pos" aria-hidden="true" />
               <p>All leads have TCPA consent</p>
             </div>
           )}
@@ -510,11 +510,13 @@ function RetentionPoliciesPanel() {
     });
   };
 
+  // C1b legibility: the switch permanently deletes data — the copy must say
+  // so, not "enable retention policy".
   const policyItems = [
-    { key: "leads" as const, label: "Dead leads", description: "Leads marked as dead/unresponsive" },
-    { key: "closedDeals" as const, label: "Closed deals", description: "Deals that have been closed" },
-    { key: "auditLogs" as const, label: "Audit logs", description: "Historical audit log entries" },
-    { key: "communications" as const, label: "Communications", description: "Email and SMS records" },
+    { key: "leads" as const, label: "Auto-delete dead leads", description: "When this is on, leads marked dead are permanently deleted once they're older than the days you set." },
+    { key: "closedDeals" as const, label: "Auto-delete closed deals", description: "When this is on, closed deals are permanently deleted once they're older than the days you set." },
+    { key: "auditLogs" as const, label: "Auto-delete old audit records", description: "When this is on, audit-trail entries are permanently deleted once they're older than the days you set." },
+    { key: "communications" as const, label: "Auto-delete old emails and texts", description: "When this is on, email and text records are permanently deleted once they're older than the days you set." },
   ];
 
   return (
@@ -526,7 +528,7 @@ function RetentionPoliciesPanel() {
             Retention policies
           </CardTitle>
           <CardDescription>
-            Configure automatic data retention periods for compliance.
+            Each switch below permanently deletes old records on a schedule — off means we keep everything.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -560,15 +562,15 @@ function RetentionPoliciesPanel() {
                         onChange={(e) => handleUpdateDays(item.key, parseInt(e.target.value) || 365)}
                         className="w-20 tabular-nums"
                         disabled={!policies?.[item.key]?.enabled}
-                        aria-label={`${item.label} retention days`}
+                        aria-label={`${item.label}: delete after how many days`}
                         data-testid={`input-retention-${item.key}`}
                       />
-                      <span className="text-sm text-muted-foreground">days</span>
+                      <span className="text-sm text-muted-foreground">days, then deleted</span>
                     </div>
                     <Switch
                       checked={policies?.[item.key]?.enabled || false}
                       onCheckedChange={(checked) => handleTogglePolicy(item.key, checked)}
-                      aria-label={`Enable ${item.label} retention policy`}
+                      aria-label={item.label}
                       data-testid={`switch-${item.key}`}
                     />
                   </div>
@@ -635,9 +637,9 @@ function RetentionPoliciesPanel() {
             </Button>
           </div>
 
-          <div role="note" className="mt-4 p-3 bg-orange-100 dark:bg-orange-900/30 rounded-card flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
-            <p className="text-sm text-orange-700 dark:text-orange-300">
+          <div role="note" className="mt-4 p-3 bg-acr-warn-soft rounded-card flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-acr-warn mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <p className="text-sm text-acr-warn">
               Data purging is permanent and cannot be reversed. Consider exporting data before purging.
             </p>
           </div>

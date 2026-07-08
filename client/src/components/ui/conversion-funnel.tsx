@@ -76,7 +76,7 @@ export function ConversionFunnel({
                     {stage.count > 0 ? fmtCount(stage.count) : ""}
                   </span>
                   {idx < stages.length - 1 && (
-                    <ChevronRight className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground z-10" aria-hidden="true" />
+                    <ChevronRight className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground z-docked" aria-hidden="true" />
                   )}
                 </div>
               </TooltipTrigger>

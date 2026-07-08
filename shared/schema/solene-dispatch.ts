@@ -91,6 +91,18 @@ export const soleneDispatchQueue = pgTable(
     // wins outright. Lets escalations, architecture reviews, and founder-mode
     // bypasses pin Opus without changing the role-default heuristic.
     model: text("model"),
+    // Step-away gap #3 — bounded retry for TRANSIENT failures only.
+    //   attempts      — incremented atomically at CLAIM time (not enqueue), so it
+    //                   counts runs actually started. A row that never got claimed
+    //                   stays at 0.
+    //   not_before_at — backoff gate. claimNextDispatch skips rows whose
+    //                   not_before_at is in the future; NULL = claimable now.
+    // Retry is SIDE-EFFECT-AWARE by contract: failDispatch only requeues when the
+    // caller proves the failure happened before any tool executed (transient=true).
+    // Everything else stays terminal — the original at-most-once stance for
+    // outward effects is preserved.
+    attempts: integer("attempts").notNull().default(0),
+    notBeforeAt: timestamp("not_before_at", { withTimezone: true }),
   },
   (t) => [
     // Fast worker pull: status + priority + queued_at
@@ -226,3 +238,8 @@ export const DISPATCH_MAX_COST_USD = 25;
 export const DISPATCH_DEFAULT_COST_USD = 5;
 export const DISPATCH_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 export const DISPATCH_MAX_TURNS = 50;
+
+// Step-away gap #3 — retry budget for TRANSIENT failures. Total runs, not
+// re-runs: a dispatch is claimed at most this many times before a transient
+// failure dead-letters it (status='failed' with the exhausted marker).
+export const DISPATCH_MAX_ATTEMPTS = 3;

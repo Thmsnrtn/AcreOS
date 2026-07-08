@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Verbs } from "@/lib/labels";
 import { 
   Upload, 
   FileText, 
@@ -348,7 +349,7 @@ export function TaxDelinquentImporter({ open, onOpenChange }: TaxDelinquentImpor
               </Button>
               <Button onClick={handleImport} className="min-h-11" data-testid="button-import-tax-delinquent">
                 <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
-                Import <span className="tabular-nums mx-1">{csvData.length}</span> leads
+                {Verbs.IMPORT} <span className="tabular-nums mx-1">{csvData.length}</span> leads
               </Button>
             </DialogFooter>
           </div>

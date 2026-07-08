@@ -42,11 +42,11 @@ export function ApprovalPrompt({ approval, onResolve }: ApprovalPromptProps) {
     <div
       role="alertdialog"
       aria-labelledby="approval-prompt-title"
-      className="mx-3 md:mx-4 my-3 rounded-lg border border-amber-500/40 bg-amber-50/40 dark:bg-amber-950/20 p-4"
+      className="mx-3 md:mx-4 my-3 rounded-lg border border-acr-warn bg-acr-warn-soft p-4"
       data-testid="approval-prompt"
     >
       <div className="flex items-start gap-3">
-        <Shield className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
+        <Shield className="h-5 w-5 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
         <div className="min-w-0 flex-1 space-y-2">
           <h3
             id="approval-prompt-title"

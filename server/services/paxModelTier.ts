@@ -14,8 +14,10 @@
  *   Free  → Haiku 4.5 (always; $0.80/M in)
  *   Pro   → Sonnet 4.6 default; downgrade to Haiku once the org has sent
  *           >= MONTHLY_SOFT_CAP_PRO Pax messages this calendar month
- *   Scale → Opus 4.7 default; downgrade to Sonnet once the org has sent
- *           >= MONTHLY_SOFT_CAP_SCALE Pax messages this calendar month
+ *   Scale → Opus default; downgrade to Sonnet at MONTHLY_SOFT_CAP_SCALE and
+ *           to Haiku at MONTHLY_HAIKU_FLOOR_SCALE messages this calendar
+ *           month (two-stage 2026-07-07 margin guard — Scale's worst-case
+ *           platform-key COGS previously exceeded its price)
  *
  * The Free daily cap (25 msg/day) is enforced elsewhere by the tier-limits
  * system — we don't re-enforce it here. The Pro/Scale soft caps are NOT
@@ -38,14 +40,16 @@ import { db } from "../db";
 import { aiCallLog } from "@shared/schema";
 import { organizations } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { MODELS } from "./models";
 
 // ── Model constants ──────────────────────────────────────────────────────────
-// OpenRouter prefixes match `MODEL_*` in server/services/aiRouter.ts so this
-// file stays consistent with the rest of the routing layer.
+// Resolved through models.ts — the single source of truth — so this router can
+// never drift from aiRouter again (it carried a stale Opus 4-7 pin until the
+// 2026-07-03 model-pin centralization).
 
-export const PAX_MODEL_HAIKU = "anthropic/claude-haiku-4-5-20251001";
-export const PAX_MODEL_SONNET = "anthropic/claude-sonnet-4-6";
-export const PAX_MODEL_OPUS = "anthropic/claude-opus-4-7";
+export const PAX_MODEL_HAIKU = MODELS.HAIKU;
+export const PAX_MODEL_SONNET = MODELS.SONNET;
+export const PAX_MODEL_OPUS = MODELS.OPUS;
 
 // ── Soft caps (monthly Pax message counts) ──────────────────────────────────
 // Free's HARD daily cap (25 msg/day) is enforced by shared/billing/tier-limits.ts
@@ -53,7 +57,20 @@ export const PAX_MODEL_OPUS = "anthropic/claude-opus-4-7";
 // (or is about to be denied by) that gate. We just always serve Haiku.
 
 export const MONTHLY_SOFT_CAP_PRO = 1000;
-export const MONTHLY_SOFT_CAP_SCALE = 500;
+// 2026-07-07 cost audit: was 500. At 500 Opus turns + 5,500 Sonnet turns the
+// Scale tier's worst-case platform-key AI COGS (~$90) exceeded its $79 price —
+// underwater at full utilization (tier-limits.ts margin notes). 200 keeps a
+// real Opus window for the heavy-reasoning turns while capping the expensive
+// exposure; the task-type floor router (server/ai/paxModelTier.ts) still
+// sends hard multi-parcel turns to the best model the ceiling allows.
+export const MONTHLY_SOFT_CAP_SCALE = 200;
+// Second-stage downgrade (same graceful-degradation pattern): past this many
+// Pax messages in a month, Scale serves Haiku until the 6,000-turn BYOK
+// threshold moves the org onto its own key. Bounds worst-case Scale AI COGS
+// at roughly $4.50 (Opus window) + ~$38 (Sonnet window) + ~$12 (Haiku tail)
+// ≈ $54 on a $79 plan — above water at absolute full utilization, where the
+// previous shape was not.
+export const MONTHLY_HAIKU_FLOOR_SCALE = 3000;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,7 +79,7 @@ export type PaxTier = "free" | "pro" | "scale";
 export interface PaxModelChoice {
   model: string;
   tier: PaxTier;
-  reason: "tier_default" | "monthly_soft_cap_downgrade" | "explicit_override";
+  reason: "tier_default" | "monthly_soft_cap_downgrade" | "monthly_haiku_floor_downgrade" | "explicit_override";
   isDowngraded: boolean;
   msgCountThisMonth: number;
 }
@@ -176,7 +193,16 @@ export async function pickPaxModelForOrg(
       };
     }
 
-    // tier === "scale"
+    // tier === "scale" — two-stage downgrade: Opus → Sonnet → Haiku.
+    if (msgCountThisMonth >= MONTHLY_HAIKU_FLOOR_SCALE) {
+      return {
+        model: PAX_MODEL_HAIKU,
+        tier,
+        reason: "monthly_haiku_floor_downgrade",
+        isDowngraded: true,
+        msgCountThisMonth,
+      };
+    }
     const overCap = msgCountThisMonth >= MONTHLY_SOFT_CAP_SCALE;
     return {
       model: overCap ? PAX_MODEL_SONNET : PAX_MODEL_OPUS,

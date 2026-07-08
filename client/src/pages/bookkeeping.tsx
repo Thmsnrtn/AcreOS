@@ -8,6 +8,7 @@ import { PageSkeleton } from "@/components/page-skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { Verbs } from "@/lib/labels";
 
 interface AnnualInterestReport {
   taxYear: number;
@@ -116,7 +117,7 @@ export default function BookkeepingPage() {
           }}
           data-testid="button-export-bookkeeping"
         >
-          <Download className="w-4 h-4 mr-2" aria-hidden="true" /> Export
+          <Download className="w-4 h-4 mr-2" aria-hidden="true" /> {Verbs.EXPORT}
         </Button>
       </div>
 

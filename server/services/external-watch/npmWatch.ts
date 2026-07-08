@@ -262,10 +262,13 @@ export function filterBySeverity(
 }
 
 // ============================================================================
-// runNpmAudit — child-process helper, not exported
+// runNpmAudit — child-process helper. Exported for the immune-response wire
+// (server/services/autopilot/immuneResponse.ts) so both consumers share one
+// audit invocation path. NOTE: --audit-level only affects the exit code, not
+// the JSON body — the output carries every severity either way.
 // ============================================================================
 
-async function runNpmAudit(cwd?: string): Promise<string> {
+export async function runNpmAudit(cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn("npm", ["audit", "--json", "--audit-level=high"], {
       cwd: cwd ?? process.cwd(),

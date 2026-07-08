@@ -144,9 +144,9 @@ function bucketLabel(b: string): string {
 function bucketTone(b: string): string {
   switch (b) {
     case "buy":
-      return "text-emerald-600";
+      return "text-acr-pos";
     case "caution":
-      return "text-amber-600";
+      return "text-acr-warn";
     case "no_buy":
       return "text-destructive";
     default:
@@ -171,11 +171,11 @@ function SummaryTile({
 }) {
   const toneClass =
     tone === "pos"
-      ? "text-emerald-600"
+      ? "text-acr-pos"
       : tone === "neg"
       ? "text-destructive"
       : tone === "warn"
-      ? "text-amber-600"
+      ? "text-acr-warn"
       : "";
   return (
     <Card>
@@ -338,7 +338,7 @@ export function PaidDataEvalContent() {
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden />
+                <CheckCircle2 className="h-4 w-4 text-acr-pos" aria-hidden />
                 Buy recommendation
               </CardTitle>
             </CardHeader>
@@ -396,7 +396,7 @@ export function PaidDataEvalContent() {
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {f.flipsParticipated > 0 ? (
-                          <span className="text-amber-600 font-medium">
+                          <span className="text-acr-warn font-medium">
                             {f.flipsParticipated}
                           </span>
                         ) : (
@@ -414,7 +414,7 @@ export function PaidDataEvalContent() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <ArrowRightLeft className="h-4 w-4 text-amber-600" aria-hidden />
+                <ArrowRightLeft className="h-4 w-4 text-acr-warn" aria-hidden />
                 Decision flips ({result.decisionFlipCount})
               </CardTitle>
               <CardDescription>

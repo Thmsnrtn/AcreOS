@@ -3,14 +3,15 @@ import crypto from "crypto";
 import { storage, db } from "./storage";
 import { withTransaction } from "./db";
 import { eq, and, gte, desc } from "drizzle-orm";
-import { notes, payments } from "@shared/schema";
+import { notes, payments, type BorrowerSession, type Lead } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { splitPaymentCents, computeAppliedLateFeeCents } from "./services/notePaymentMath";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
+import { getOrganization, type AuthenticatedRequest } from "./types/request";
 import {
   exchangeForBorrowerSession,
   verifyBorrowerSession,
@@ -24,10 +25,25 @@ import {
 // keying breaks borrowers on shared cellular NAT — same class of bug as
 // the /api/auth limiter fixed 2026-05-10. The accessToken is unauthenticated
 // but is a per-borrower secret, so using it as a key is a strict improvement.
-function borrowerPortalKey(req: any): string {
-  const token = req.params?.accessToken || req.body?.accessToken;
+function borrowerPortalKey(req: Request): string {
+  const token = req.params?.accessToken || (req.body as { accessToken?: unknown } | undefined)?.accessToken;
   if (token && typeof token === "string" && token.length > 8) return `tok:${token}`;
   return req.ip || req.socket?.remoteAddress || "unknown";
+}
+
+// Express request carrying the borrower-portal session attached by
+// validateBorrowerSession. Mirrors AuthenticatedRequest (server/types/request.ts)
+// for the unauthenticated-but-sessioned borrower surface.
+interface BorrowerSessionRequest extends Request {
+  borrowerSession?: BorrowerSession;
+}
+
+function requireBorrowerSession(req: Request): BorrowerSession {
+  const session = (req as BorrowerSessionRequest).borrowerSession;
+  if (!session) {
+    throw new Error("Borrower session not found on request — is validateBorrowerSession middleware applied?");
+  }
+  return session;
 }
 const portalPaymentRateLimiter = createRateLimiter(RATE_LIMIT_CONFIGS.public, borrowerPortalKey);
 // Deprecated sunsetting endpoint — raised from 2/min to a usable 10/min and
@@ -43,11 +59,13 @@ const deprecatedPaymentRateLimiter = createRateLimiter({ maxRequests: 10, window
 // gets explicit machine-readable notice. After the sunset date the
 // endpoint returns 410 Gone.
 //
-// 90-day window — today (2026-05-03) → 2026-08-01. Configurable via
-// BORROWER_PORTAL_SUNSET_DATE env var so ops can extend without a
-// code deploy if a customer migration runs long.
+// SECURITY (2026-07 audit): sunset pulled forward from 2026-08-01 to NOW.
+// These routes authenticate on the URL token alone (no session, no email),
+// and historical tokens were minted with Math.random() — predictable. With
+// zero external borrowers on the platform, there is no migration to wait
+// for; the env var can extend the window if a real integration surfaces.
 const BORROWER_PORTAL_SUNSET_DATE =
-  process.env.BORROWER_PORTAL_SUNSET_DATE || "2026-08-01";
+  process.env.BORROWER_PORTAL_SUNSET_DATE || "2026-07-04";
 
 // Successor URI advertised in the Link header per RFC 8594 §3.
 const BORROWER_PORTAL_SUCCESSOR = "/portal/v2";
@@ -73,12 +91,13 @@ function sunsetMiddleware(sunsetDateStr: string = BORROWER_PORTAL_SUNSET_DATE) {
         sunsetDate: sunsetDate.toISOString(),
         ip: req.ip || req.socket.remoteAddress,
       });
-      return res.status(410).json({
-        error: "endpoint_sunset",
-        message:
-          "This endpoint is no longer available. Please use the new portal at /portal/v2.",
-        sunsetDate: sunsetDate.toISOString(),
-      });
+      return sendError(
+        res,
+        410,
+        "endpoint_sunset",
+        "This endpoint is no longer available. Please use the new portal at /portal/v2.",
+        { sunsetDate: sunsetDate.toISOString() },
+      );
     }
 
     // RFC 8594 — Sunset header in IMF-fixdate format.
@@ -115,17 +134,17 @@ async function validateBorrowerSession(req: Request, res: Response, next: NextFu
   try {
     const sessionToken = req.cookies?.borrower_session || req.headers['x-borrower-session'] as string;
     if (!sessionToken) {
-      return res.status(401).json({ message: "Session required" });
+      return Errors.unauthorized(res);
     }
     const session = await storage.getBorrowerSession(sessionToken);
     if (!session) {
       res.clearCookie('borrower_session');
-      return res.status(401).json({ message: "Invalid or expired session" });
+      return Errors.unauthorized(res);
     }
     if (new Date(session.expiresAt) < new Date()) {
       await storage.deleteBorrowerSession(sessionToken);
       res.clearCookie('borrower_session');
-      return res.status(401).json({ message: "Session expired" });
+      return Errors.unauthorized(res);
     }
 
     // SEC: re-assert org pin. session.organizationId is set at create-time
@@ -148,16 +167,16 @@ async function validateBorrowerSession(req: Request, res: Response, next: NextFu
         });
         await storage.deleteBorrowerSession(sessionToken);
         res.clearCookie('borrower_session');
-        return res.status(401).json({ message: "Session no longer valid" });
+        return Errors.unauthorized(res);
       }
     }
 
     await storage.updateBorrowerSessionAccess(sessionToken);
-    (req as any).borrowerSession = session;
+    (req as BorrowerSessionRequest).borrowerSession = session;
     next();
   } catch (err) {
     logger.error("Borrower session validation error", err);
-    return res.status(500).json({ message: "Session validation failed" });
+    return Errors.internal(res, err);
   }
 }
 
@@ -172,7 +191,7 @@ export function registerBorrowerRoutes(app: Express): void {
       const { accessToken, email } = req.body;
       
       if (!accessToken || !email) {
-        return res.status(400).json({ message: "Access token and email are required" });
+        return Errors.badRequest(res, "Access token and email are required");
       }
       
       // Look up note by access token
@@ -181,18 +200,18 @@ export function registerBorrowerRoutes(app: Express): void {
       // Security: Use generic "not found" for all failure cases to avoid information leakage
       // Do NOT expose whether access token exists or email matches
       if (!note) {
-        return res.status(404).json({ message: "Loan not found or credentials invalid" });
+        return Errors.notFound(res, "loan");
       }
       
       // Verify borrower email - return same generic error if mismatch
       if (note.borrowerId) {
         const borrower = await storage.getLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== email.toLowerCase()) {
-          return res.status(404).json({ message: "Loan not found or credentials invalid" });
+          return Errors.notFound(res, "loan");
         }
       } else {
         // No borrower linked - cannot verify, treat as not found
-        return res.status(404).json({ message: "Loan not found or credentials invalid" });
+        return Errors.notFound(res, "loan");
       }
       
       // Create a session for the borrower
@@ -242,8 +261,8 @@ export function registerBorrowerRoutes(app: Express): void {
         borrower: borrower ? { firstName: borrower.firstName, lastName: borrower.lastName } : null,
         sessionToken, // Also return in response for clients that prefer header-based auth
       });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
   
@@ -322,7 +341,7 @@ export function registerBorrowerRoutes(app: Express): void {
   // Check borrower session status
   api.get("/api/borrower/session", validateBorrowerSession, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = requireBorrowerSession(req);
       
       // Get the note associated with the session
       const note = await storage.getNoteByAccessToken(session.noteId.toString());
@@ -330,7 +349,7 @@ export function registerBorrowerRoutes(app: Express): void {
         // Also try getting note by ID directly
         const noteById = await db.select().from(notes).where(eq(notes.id, session.noteId));
         if (noteById.length === 0) {
-          return res.status(404).json({ message: "Loan not found" });
+          return Errors.notFound(res, "loan");
         }
         
         const foundNote = noteById[0];
@@ -387,8 +406,8 @@ export function registerBorrowerRoutes(app: Express): void {
           expiresAt: session.expiresAt,
         },
       });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
   
@@ -403,27 +422,27 @@ export function registerBorrowerRoutes(app: Express): void {
       
       res.clearCookie('borrower_session', { path: '/' });
       res.json({ message: "Logged out successfully" });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
   
   // Session-based payment endpoint (preferred for security)
   api.post("/api/borrower/payment", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = requireBorrowerSession(req);
       const { amount } = req.body;
       
       // Get note by session's noteId
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
       if (noteResults.length === 0) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "loan");
       }
       const note = noteResults[0];
       
       const paymentAmount = amount ? Number(amount) : Number(note.monthlyPayment || 0);
       if (paymentAmount <= 0) {
-        return res.status(400).json({ message: "Invalid payment amount" });
+        return Errors.badRequest(res, "Invalid payment amount");
       }
       
       // Get Stripe client
@@ -472,9 +491,9 @@ export function registerBorrowerRoutes(app: Express): void {
       await storage.updateNote(note.id, { pendingCheckoutSessionId: stripeSession.id }, note.organizationId);
 
       res.json({ url: stripeSession.url, sessionId: stripeSession.id });
-    } catch (err: any) {
+    } catch (err) {
       logger.error("Session-based portal payment error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -497,17 +516,17 @@ export function registerBorrowerRoutes(app: Express): void {
       const { amount } = req.body;
       
       if (!accessToken) {
-        return res.status(400).json({ message: "Access token is required" });
+        return Errors.badRequest(res, "Access token is required");
       }
       
       const note = await storage.getNoteByAccessToken(accessToken);
       if (!note) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "loan");
       }
       
       const paymentAmount = amount ? Number(amount) : Number(note.monthlyPayment || 0);
       if (paymentAmount <= 0) {
-        return res.status(400).json({ message: "Invalid payment amount" });
+        return Errors.badRequest(res, "Invalid payment amount");
       }
       
       // Get Stripe client
@@ -556,9 +575,9 @@ export function registerBorrowerRoutes(app: Express): void {
       await storage.updateNote(note.id, { pendingCheckoutSessionId: session.id }, note.organizationId);
 
       res.json({ url: session.url, sessionId: session.id });
-    } catch (err: any) {
+    } catch (err) {
       logger.error("Portal payment error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
@@ -569,12 +588,12 @@ export function registerBorrowerRoutes(app: Express): void {
       const { sessionId } = req.body;
       
       if (!accessToken || !sessionId) {
-        return res.status(400).json({ message: "Access token and session ID are required" });
+        return Errors.badRequest(res, "Access token and session ID are required");
       }
       
       const note = await storage.getNoteByAccessToken(accessToken);
       if (!note) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "loan");
       }
       
       // Verify Stripe session
@@ -584,7 +603,7 @@ export function registerBorrowerRoutes(app: Express): void {
       const session = await stripe.checkout.sessions.retrieve(sessionId);
       
       if (session.payment_status !== 'paid') {
-        return res.status(400).json({ message: "Payment not completed" });
+        return Errors.badRequest(res, "Payment not completed");
       }
       
       // Check if payment already recorded for this session
@@ -677,9 +696,9 @@ export function registerBorrowerRoutes(app: Express): void {
         newBalance,
         lateFeeApplied: lateFeeAmount,
       });
-    } catch (err: any) {
+    } catch (err) {
       logger.error("Payment verification error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -688,12 +707,12 @@ export function registerBorrowerRoutes(app: Express): void {
   // accessToken in the URL → safer against log/referrer leakage.
   api.post("/api/borrower/verify-payment", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = requireBorrowerSession(req);
       const { sessionId } = req.body;
-      if (!sessionId) return res.status(400).json({ message: "Session ID is required" });
+      if (!sessionId) return Errors.badRequest(res, "Session ID is required");
 
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
-      if (noteResults.length === 0) return res.status(404).json({ message: "Loan not found" });
+      if (noteResults.length === 0) return Errors.notFound(res, "loan");
       const note = noteResults[0];
 
       const { getUncachableStripeClient } = await import("./stripeClient");
@@ -701,7 +720,7 @@ export function registerBorrowerRoutes(app: Express): void {
       const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
 
       if (stripeSession.payment_status !== "paid") {
-        return res.status(400).json({ message: "Payment not completed" });
+        return Errors.badRequest(res, "Payment not completed");
       }
 
       const paymentAmount = stripeSession.amount_total
@@ -847,9 +866,9 @@ export function registerBorrowerRoutes(app: Express): void {
       } catch { /* non-fatal */ }
 
       res.json({ success: true, payment, newBalance, lateFeeApplied: lateFeeAmount });
-    } catch (err: any) {
+    } catch (err) {
       logger.error("Payment verification error (session)", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -857,11 +876,11 @@ export function registerBorrowerRoutes(app: Express): void {
   // no need to repeat borrowerEmail on every request.
   api.post("/api/borrower/autopay", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = requireBorrowerSession(req);
       const { enabled } = req.body;
 
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
-      if (noteResults.length === 0) return res.status(404).json({ message: "Loan not found" });
+      if (noteResults.length === 0) return Errors.notFound(res, "loan");
       const note = noteResults[0];
 
       await storage.updateNote(
@@ -875,35 +894,37 @@ export function registerBorrowerRoutes(app: Express): void {
         autopayEnabled: enabled === true,
         nextPaymentDate: note.nextPaymentDate,
       });
-    } catch (err: any) {
+    } catch (err) {
       logger.error("Autopay toggle error (session)", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   // Toggle autopay for borrower portal
-  api.post("/api/portal/:accessToken/autopay", deprecatedPaymentRateLimiter, async (req, res) => {
+  // SECURITY (2026-07 audit): this route was missing the sunset gate its two
+  // siblings carry — the only token-only write path with no retirement date.
+  api.post("/api/portal/:accessToken/autopay", sunsetMiddleware(), deprecatedPaymentRateLimiter, async (req, res) => {
     try {
       const { accessToken } = req.params;
       const { enabled, email } = req.body;
       
       if (!accessToken) {
-        return res.status(400).json({ message: "Access token is required" });
+        return Errors.badRequest(res, "Access token is required");
       }
       
       const note = await storage.getNoteByAccessToken(accessToken);
       if (!note) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "loan");
       }
       
       // Verify borrower email for security
       if (note.borrowerId) {
         const borrower = await storage.getLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== email?.toLowerCase()) {
-          return res.status(403).json({ message: "Unauthorized" });
+          return Errors.forbidden(res, "We couldn't verify your access to this loan — check the email address on your payment reminder.");
         }
       } else {
-        return res.status(403).json({ message: "Unauthorized" });
+        return Errors.forbidden(res, "We couldn't verify your access to this loan — check the email address on your payment reminder.");
       }
       
       await storage.updateNote(note.id, {
@@ -915,35 +936,39 @@ export function registerBorrowerRoutes(app: Express): void {
         autopayEnabled: enabled === true,
         nextPaymentDate: note.nextPaymentDate,
       });
-    } catch (err: any) {
+    } catch (err) {
       logger.error("Autopay toggle error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
-  // Get payoff quote for borrower portal
-  api.get("/api/borrower/payoff-quote", async (req, res) => {
+  // Get payoff quote for borrower portal.
+  // SECURITY (2026-07 audit): this endpoint discloses borrower name, balance,
+  // and payoff totals authenticated only by token+email in the QUERY STRING —
+  // it was the sole borrower PII surface with NO rate limiter, making the
+  // weak factor brute-forceable. Same limiter as the other portal routes.
+  api.get("/api/borrower/payoff-quote", portalPaymentRateLimiter, async (req, res) => {
     try {
       const { accessToken, email } = req.query;
       
       if (!accessToken || !email) {
-        return res.status(400).json({ message: "Access token and email are required" });
+        return Errors.badRequest(res, "Access token and email are required");
       }
       
       const note = await storage.getNoteByAccessToken(accessToken as string);
       if (!note) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "loan");
       }
       
       // Verify borrower email
-      let borrower: any = null;
+      let borrower: Lead | undefined;
       if (note.borrowerId) {
         borrower = await storage.getLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== (email as string).toLowerCase()) {
-          return res.status(403).json({ message: "Unauthorized" });
+          return Errors.forbidden(res, "We couldn't verify your access to this loan — check the email address on your payment reminder.");
         }
       } else {
-        return res.status(403).json({ message: "Unauthorized" });
+        return Errors.forbidden(res, "We couldn't verify your access to this loan — check the email address on your payment reminder.");
       }
 
       // Calculate payoff amount
@@ -1017,9 +1042,9 @@ export function registerBorrowerRoutes(app: Express): void {
         quoteDate: new Date().toISOString(),
         daysValid: 30,
       });
-    } catch (err: any) {
+    } catch (err) {
       logger.error("Payoff quote error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
@@ -1174,9 +1199,9 @@ export function registerBorrowerRoutes(app: Express): void {
           },
         });
       }
-    } catch (err: any) {
+    } catch (err) {
       logger.error("Statement generation error", err);
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
   
@@ -1198,7 +1223,12 @@ export function registerBorrowerRoutes(app: Express): void {
   // newest-cycle first. The portal page calls this on mount.
   api.get("/api/borrower/periodic-statements", validateBorrowerSession, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = requireBorrowerSession(req);
+      // Sessions minted before migration 0081 carry no org pin — require a
+      // fresh /api/borrower/verify so the tenant re-assert below can hold.
+      if (session.organizationId == null) {
+        return Errors.unauthorized(res);
+      }
       const { periodicStatements } = await import("@shared/schema/reg-z");
       const { desc: descOp } = await import("drizzle-orm");
 
@@ -1226,7 +1256,7 @@ export function registerBorrowerRoutes(app: Express): void {
       res.json({ statements: rows });
     } catch (err) {
       logger.error("Failed to list periodic statements", err instanceof Error ? err : undefined);
-      res.status(500).json({ message: "Failed to load statements" });
+      Errors.internal(res, err);
     }
   });
 
@@ -1238,7 +1268,11 @@ export function registerBorrowerRoutes(app: Express): void {
     validateBorrowerSession,
     async (req, res) => {
       try {
-        const session = (req as any).borrowerSession;
+        const session = requireBorrowerSession(req);
+        // Same org-pin requirement as the list endpoint above.
+        if (session.organizationId == null) {
+          return Errors.unauthorized(res);
+        }
         const { periodicStatements } = await import("@shared/schema/reg-z");
         const { renderPeriodicStatementPdf } = await import(
           "./services/periodicStatements/pdf"
@@ -1257,7 +1291,7 @@ export function registerBorrowerRoutes(app: Express): void {
           .limit(1);
 
         if (rows.length === 0) {
-          return res.status(404).json({ message: "Statement not found" });
+          return Errors.notFound(res, "statement");
         }
 
         const statement = rows[0];
@@ -1300,7 +1334,7 @@ export function registerBorrowerRoutes(app: Express): void {
           "Failed to render periodic statement PDF",
           err instanceof Error ? err : undefined,
         );
-        res.status(500).json({ message: "Failed to render statement" });
+        Errors.internal(res, err);
       }
     },
   );
@@ -1312,23 +1346,23 @@ export function registerBorrowerRoutes(app: Express): void {
   // GET /api/borrower/messages — list message thread for the authenticated borrower
   api.get("/api/borrower/messages", validateBorrowerSession, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = requireBorrowerSession(req);
       const msgs = await storage.getBorrowerMessages(session.noteId);
       // Mark lender messages as read since borrower is viewing them
       await storage.markBorrowerMessagesRead(session.noteId, "lender");
       res.json(msgs);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 
   // POST /api/borrower/messages — borrower sends a message
   api.post("/api/borrower/messages", validateBorrowerSession, async (req, res) => {
     try {
-      const session = (req as any).borrowerSession;
+      const session = requireBorrowerSession(req);
       const { content } = req.body as { content: string };
       if (!content || !content.trim()) {
-        return res.status(400).json({ message: "Message content is required" });
+        return Errors.badRequest(res, "Message content is required");
       }
       // Sanitize content — strip HTML tags and limit length to prevent XSS
       const sanitized = content.trim()
@@ -1336,12 +1370,12 @@ export function registerBorrowerRoutes(app: Express): void {
         .replace(/[<>]/g, '')   // Remove any remaining angle brackets
         .slice(0, 5000);        // Cap message length
       if (!sanitized) {
-        return res.status(400).json({ message: "Message content is required" });
+        return Errors.badRequest(res, "Message content is required");
       }
       // Look up org for the note
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
       if (noteResults.length === 0) {
-        return res.status(404).json({ message: "Loan not found" });
+        return Errors.notFound(res, "loan");
       }
       const note = noteResults[0];
       const msg = await storage.createBorrowerMessage({
@@ -1352,28 +1386,28 @@ export function registerBorrowerRoutes(app: Express): void {
         readAt: null,
       });
       res.status(201).json(msg);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 
   // Generate borrower portal link
-  api.post("/api/notes/:id/portal-link", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/notes/:id/portal-link", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = req.organization;
+      const org = getOrganization(req);
       const noteId = Number(req.params.id);
       
       const note = await storage.getNote(org.id, noteId);
       if (!note) {
-        return res.status(404).json({ message: "Note not found" });
+        return Errors.notFound(res, "note");
       }
       
       // Use the access token for the portal URL
       const portalUrl = `${req.protocol}://${req.get('host')}/portal/${note.accessToken}`;
       
       res.json({ url: portalUrl });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 

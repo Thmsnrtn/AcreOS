@@ -59,6 +59,7 @@ import { ThinkingDots } from "@/components/founder-chat/ThinkingDots";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ContentBlock } from "@shared/schema/solene-conversations";
 import type { ChatTier } from "@shared/schema/solene-chat-config";
+import { Verbs } from "@/lib/labels";
 
 /**
  * Create a new Solene conversation. Returns the new id.
@@ -513,7 +514,7 @@ export default function SoleneChatPage() {
                   data-testid="solene-bootstrap-send-retry"
                 >
                   <RefreshCw className="h-3 w-3" aria-hidden="true" />
-                  Retry
+                  {Verbs.RETRY}
                 </Button>
               </div>
             ) : (
@@ -560,7 +561,7 @@ export default function SoleneChatPage() {
                 data-testid="solene-turn-retry-button"
               >
                 <RefreshCw className="h-3 w-3" aria-hidden="true" />
-                Retry
+                {Verbs.RETRY}
               </Button>
             </div>
           </div>

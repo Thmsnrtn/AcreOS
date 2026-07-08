@@ -12,6 +12,7 @@ import { requireAdminOrAbove } from "./utils/permissions";
 import { insertAbTestSchema, insertAbTestVariantSchema, Z_SCORES } from "@shared/schema";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { omitProtectedFields } from "./utils/updatePayload";
 
 export function registerIntegrationRoutes(app: Express): void {
   const api = app;
@@ -1376,7 +1377,7 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.notFound(res, "Custom field definition");
       }
 
-      const updated = await storage.updateCustomFieldDefinition(id, req.body);
+      const updated = await storage.updateCustomFieldDefinition(id, omitProtectedFields(req.body));
 
       try {
         const user = req.user as any;
@@ -1558,7 +1559,7 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.notFound(res, "Saved view");
       }
 
-      const updated = await storage.updateSavedView(id, req.body);
+      const updated = await storage.updateSavedView(id, omitProtectedFields(req.body));
 
       try {
         const user = req.user as any;

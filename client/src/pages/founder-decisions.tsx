@@ -38,6 +38,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { dollars, relative } from "@/lib/format";
 import { CopyButton } from "@/components/ui/copy-button";
+import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 
 // ───────────── Types ─────────────
 
@@ -127,7 +128,10 @@ function DecisionRowCard({
       className="border rounded-card p-4 hover:bg-muted/30 transition-colors"
       data-testid={`decision-row-${row.id}`}
     >
-      <div className="flex items-start justify-between gap-4">
+      {/* flex-wrap: at phone widths the nowrap timestamp column can't fit
+          beside the flex-1 title and was clipped by the card edge (mobile
+          eyeball pass, 2026-07-08) — wrapping drops it to its own line. */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <button
           onClick={() => setExpanded((v) => !v)}
           className="flex-1 text-left"
@@ -324,7 +328,7 @@ function PendingActionCard({
   const busy = inFlight === action.id;
   return (
     <div className="border rounded-card p-4 bg-card" data-testid={`pending-action-${action.id}`}>
-      <div className="flex items-start justify-between gap-3 mb-2">
+      <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="text-micro uppercase">
             {action.handName.replace(/_/g, " ")}
@@ -547,6 +551,8 @@ export default function FounderDecisionsPage() {
 
   return (
     <PageShell label="Autonomous decisions">
+      {/* F1 — ambient liveness on every door (experience-legibility.md) */}
+      <div className="mb-4"><FounderPulseStrip /></div>
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>

@@ -1,7 +1,7 @@
 /**
  * /founder/customers/health — composite customer-health view (F-D #4).
  *
- * Per docs/exhaustive-completion/founder-dashboard-extraction-queue.md
+ * Per docs/archive/exhaustive-completion/founder-dashboard-extraction-queue.md
  * Extraction #4: "Three related panels that always read together; single
  * dedicated route makes the customer-health story scannable."
  *

@@ -399,8 +399,26 @@ export default function AVMPage() {
       }
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: 'Valuation complete.', description: 'AVM estimate ready.' });
+    onSuccess: (data: any) => {
+      // W3.1 — refuse-not-fabricate: an honest "not enough data" is a valid
+      // outcome, and an AI estimate must announce itself as one.
+      const v = data?.valuation;
+      if (v?.status === 'insufficient_data') {
+        toast({
+          title: 'Not enough data to value this parcel honestly',
+          description:
+            (v.missing ?? []).join(' · ') ||
+            'No comparable sales and no trained model for this area yet. No credit was used.',
+        });
+      } else if (v?.classification === 'ai_estimate') {
+        toast({
+          title: 'AI estimate ready',
+          description:
+            'No local comparable sales — this number is an AI model’s educated guess, not a comps-based valuation. Treat it as a starting point.',
+        });
+      } else {
+        toast({ title: 'Valuation complete.', description: 'AVM estimate ready.' });
+      }
       queryClient.invalidateQueries({ queryKey: ['avm', 'history', selectedPropertyId] });
     },
     onError: (err: Error) => {
@@ -412,6 +430,7 @@ export default function AVMPage() {
     },
   });
 
+  // allow-no-invalidation: kicks off an async background batch — valuations land server-side over time
   const bulkMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch('/api/avm/bulk', {
@@ -465,7 +484,7 @@ export default function AVMPage() {
             Valuation model (<GlossaryTerm slug="AVM">AVM</GlossaryTerm>)
           </h1>
           <p className="text-muted-foreground mt-1">
-            Proprietary ML valuation model trained on land transactions — instant estimates with confidence intervals.
+            Values from comparable sales and trained models, with confidence intervals — and when there isn't enough data, it says so instead of guessing.
           </p>
         </div>
         <Button

@@ -56,7 +56,7 @@ export function PaxEntityPicker({ query, onSelect, onClose }: EntityPickerProps)
   if (results.length === 0) return null;
 
   return (
-    <div className="absolute bottom-full left-0 right-0 mb-1 bg-background border border-border rounded-card shadow-lg z-50 overflow-hidden">
+    <div className="absolute bottom-full left-0 right-0 mb-1 bg-background border border-border rounded-card shadow-lg z-floating overflow-hidden">
       <div className="px-3 py-1.5 border-b">
         <p className="text-micro text-muted-foreground font-medium uppercase tracking-wide">Mention an entity</p>
       </div>

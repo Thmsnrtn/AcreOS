@@ -521,7 +521,7 @@ function ProposalCard({
                 </Badge>
               )}
               {output.autoMergeEligible && (
-                <Badge variant="outline" className="text-xs text-green-600 dark:text-green-400">
+                <Badge variant="outline" className="text-xs text-acr-pos">
                   auto-merge eligible
                 </Badge>
               )}

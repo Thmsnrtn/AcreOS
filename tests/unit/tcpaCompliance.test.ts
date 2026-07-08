@@ -1,225 +1,192 @@
 /**
- * T261 — TCPA Compliance Tests
- * Tests consent validation, do-not-call checking, and time-of-day restrictions.
+ * TCPA compliance primitives (server/services/tcpaCompliance.ts).
+ *
+ * REWRITTEN 2026-07-07: the previous version of this file (T261) tested an
+ * INLINE REIMPLEMENTATION of consent logic defined inside the test itself —
+ * it never imported the real module, which is why tcpaCompliance.ts sat at
+ * 4% line coverage while a "TCPA test file" existed. These tests exercise
+ * the actual exports on the SMS/call path: quiet-hours math (8 AM–9 PM
+ * recipient-local, § 64.1200(c)(1)), area-code timezone inference,
+ * STOP/START keyword detection, and the consent matrix. A silent regression
+ * here is a lawsuit, not a bug ticket.
+ *
+ * Time-dependent checks use fake timers pinned to explicit UTC instants so
+ * the DST assertions mean what they say regardless of the runner's clock.
  */
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  checkTcpaConsentFromLead,
+  canSendViaChannel,
+  detectOptKeyword,
+  getZoneForPhone,
+  isWithinQuietHours,
+  isWithinQuietHoursForLead,
+  requiresTcpaConsent,
+} from "../../server/services/tcpaCompliance";
 
-import { describe, it, expect } from "vitest";
+afterEach(() => {
+  vi.useRealTimers();
+});
 
-// ─── Inline pure logic ────────────────────────────────────────────────────────
+const at = (iso: string) => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(iso));
+};
 
-interface TcpaConsent {
-  phoneNumber: string;
-  consentGivenAt?: Date;
-  consentType: "express_written" | "express_oral" | "implied" | "none";
-  optedOutAt?: Date;
-  channel: "sms" | "call" | "fax";
-}
-
-function hasValidConsent(consent: TcpaConsent, messageType: "marketing" | "transactional"): boolean {
-  if (consent.optedOutAt) return false;
-  if (messageType === "transactional") {
-    return consent.consentType !== "none";
-  }
-  // Marketing requires express written consent
-  return consent.consentType === "express_written";
-}
-
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length === 11 && digits.startsWith("1")) return `+1${digits.substring(1)}`;
-  if (digits.length === 10) return `+1${digits}`;
-  return phone;
-}
-
-function isAllowedCallHour(localHour: number, stateCode: string): boolean {
-  // TCPA: 8am-9pm local time; some states more restrictive
-  const strictStates = new Set(["CA", "FL", "MI", "TX"]);
-  const start = strictStates.has(stateCode.toUpperCase()) ? 9 : 8;
-  const end = 21; // 9pm
-  return localHour >= start && localHour < end;
-}
-
-function isOnDoNotCallList(phone: string, dncList: Set<string>): boolean {
-  return dncList.has(normalizePhone(phone));
-}
-
-function canContactLead(
-  phone: string,
-  consent: TcpaConsent,
-  localHour: number,
-  stateCode: string,
-  dncList: Set<string>,
-  messageType: "marketing" | "transactional"
-): { allowed: boolean; reason?: string } {
-  const normalized = normalizePhone(phone);
-
-  if (isOnDoNotCallList(normalized, dncList)) {
-    return { allowed: false, reason: "Number on Do Not Call list" };
-  }
-
-  if (!hasValidConsent(consent, messageType)) {
-    return { allowed: false, reason: `No valid ${messageType} consent` };
-  }
-
-  if (!isAllowedCallHour(localHour, stateCode)) {
-    return { allowed: false, reason: `Outside allowed hours for ${stateCode}` };
-  }
-
-  return { allowed: true };
-}
-
-function validateConsentRecord(consent: Partial<TcpaConsent>): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-  if (!consent.phoneNumber) errors.push("Phone number required");
-  if (!consent.consentType) errors.push("Consent type required");
-  if (!consent.channel) errors.push("Channel required");
-  if (consent.consentType === "express_written" && !consent.consentGivenAt) {
-    errors.push("Consent date required for express written consent");
-  }
-  return { valid: errors.length === 0, errors };
-}
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
-
-describe("hasValidConsent", () => {
-  it("allows transactional with any non-none consent", () => {
-    expect(hasValidConsent({ phoneNumber: "555-0100", consentType: "implied", channel: "sms" }, "transactional")).toBe(true);
-    expect(hasValidConsent({ phoneNumber: "555-0100", consentType: "express_oral", channel: "sms" }, "transactional")).toBe(true);
+describe("getZoneForPhone — area-code inference", () => {
+  it("maps area codes to IANA zones (formatted, bare, and 11-digit forms)", () => {
+    expect(getZoneForPhone("+1 (503) 555-0100")).toBe("America/Los_Angeles");
+    expect(getZoneForPhone("2125550100")).toBe("America/New_York");
+    expect(getZoneForPhone("13125550100")).toBe("America/Chicago");
   });
 
-  it("blocks transactional with no consent", () => {
-    expect(hasValidConsent({ phoneNumber: "555-0100", consentType: "none", channel: "sms" }, "transactional")).toBe(false);
+  it("handles the no-DST corrections (Phoenix, Guam, Puerto Rico)", () => {
+    expect(getZoneForPhone("4805550100")).toBe("America/Phoenix");
+    expect(getZoneForPhone("6715550100")).toBe("Pacific/Guam");
+    expect(getZoneForPhone("7875550100")).toBe("America/Puerto_Rico");
   });
 
-  it("blocks marketing without express written consent", () => {
-    expect(hasValidConsent({ phoneNumber: "555-0100", consentType: "implied", channel: "sms" }, "marketing")).toBe(false);
-    expect(hasValidConsent({ phoneNumber: "555-0100", consentType: "express_oral", channel: "sms" }, "marketing")).toBe(false);
-  });
-
-  it("allows marketing with express written consent", () => {
-    expect(hasValidConsent({ phoneNumber: "555-0100", consentType: "express_written", channel: "sms" }, "marketing")).toBe(true);
-  });
-
-  it("blocks all contact after opt-out", () => {
-    const consent: TcpaConsent = {
-      phoneNumber: "555-0100",
-      consentType: "express_written",
-      channel: "sms",
-      optedOutAt: new Date(),
-    };
-    expect(hasValidConsent(consent, "marketing")).toBe(false);
-    expect(hasValidConsent(consent, "transactional")).toBe(false);
+  it("defaults unknown area codes to America/New_York (pessimistic for quiet hours)", () => {
+    expect(getZoneForPhone("9995550100")).toBe("America/New_York");
+    expect(getZoneForPhone("")).toBe("America/New_York");
   });
 });
 
-describe("normalizePhone", () => {
-  it("normalizes 10-digit to E.164", () => {
-    expect(normalizePhone("2125551234")).toBe("+12125551234");
+describe("isWithinQuietHours — 8 AM–9 PM recipient-local", () => {
+  it("allows mid-morning and blocks pre-8AM across zones at one instant", () => {
+    // 15:00 UTC in January: NY = 10:00 EST (allowed), LA = 07:00 PST (blocked).
+    at("2026-01-15T15:00:00Z");
+    expect(isWithinQuietHours("2125550100").blocked).toBe(false);
+    const la = isWithinQuietHours("3105550100");
+    expect(la.blocked).toBe(true);
+    expect(la.zone).toBe("America/Los_Angeles");
+    expect(la.reason).toMatch(/quiet hours/i);
   });
 
-  it("normalizes 11-digit starting with 1", () => {
-    expect(normalizePhone("12125551234")).toBe("+12125551234");
+  it("blocks at and after 9 PM local (boundary is inclusive)", () => {
+    // 02:00 UTC = 21:00 EST the previous evening in New York.
+    at("2026-01-16T02:00:00Z");
+    expect(isWithinQuietHours("2125550100").blocked).toBe(true);
+    // 01:59 UTC = 20:59 EST — still allowed.
+    at("2026-01-16T01:59:00Z");
+    expect(isWithinQuietHours("2125550100").blocked).toBe(false);
   });
 
-  it("strips formatting characters", () => {
-    expect(normalizePhone("(212) 555-1234")).toBe("+12125551234");
-  });
-});
-
-describe("isAllowedCallHour", () => {
-  it("allows calls between 8am and 9pm for standard states", () => {
-    expect(isAllowedCallHour(8, "NY")).toBe(true);
-    expect(isAllowedCallHour(20, "NY")).toBe(true);
-    expect(isAllowedCallHour(21, "NY")).toBe(false);
+  it("is DST-correct: the same UTC clock time flips across the EST/EDT change", () => {
+    // 12:30 UTC is 07:30 EST in winter (blocked) but 08:30 EDT in summer (allowed).
+    at("2026-01-15T12:30:00Z");
+    expect(isWithinQuietHours("2125550100").blocked).toBe(true);
+    at("2026-07-15T12:30:00Z");
+    expect(isWithinQuietHours("2125550100").blocked).toBe(false);
   });
 
-  it("requires 9am start for strict states (CA, TX, etc)", () => {
-    expect(isAllowedCallHour(8, "CA")).toBe(false);
-    expect(isAllowedCallHour(9, "CA")).toBe(true);
-    expect(isAllowedCallHour(8, "TX")).toBe(false);
-    expect(isAllowedCallHour(9, "TX")).toBe(true);
+  it("honors Phoenix's no-DST rule against a DST-observing neighbor", () => {
+    // 14:30 UTC in July: Denver = 08:30 MDT (allowed); Phoenix = 07:30 MST (blocked).
+    at("2026-07-15T14:30:00Z");
+    expect(isWithinQuietHours("7195550100").blocked).toBe(false); // Denver
+    expect(isWithinQuietHours("4805550100").blocked).toBe(true); // Phoenix
   });
 
-  it("blocks calls before 8am for standard states", () => {
-    expect(isAllowedCallHour(7, "NY")).toBe(false);
-  });
-});
-
-describe("isOnDoNotCallList", () => {
-  const dncList = new Set(["+12125551234", "+15551234567"]);
-
-  it("returns true for number on DNC list", () => {
-    expect(isOnDoNotCallList("2125551234", dncList)).toBe(true);
+  it("prefers an explicit recipient zone over area-code inference", () => {
+    // 15:00 UTC January: the 480 area code says Phoenix 08:00 (allowed at
+    // exactly 8), but the lead's real zone is Los Angeles, 07:00 (blocked).
+    at("2026-01-15T15:00:00Z");
+    expect(isWithinQuietHours("4805550100").blocked).toBe(false);
+    const explicit = isWithinQuietHours("4805550100", "America/Los_Angeles");
+    expect(explicit.blocked).toBe(true);
+    expect(explicit.zone).toBe("America/Los_Angeles");
   });
 
-  it("returns false for number not on DNC list", () => {
-    expect(isOnDoNotCallList("3125551234", dncList)).toBe(false);
-  });
-
-  it("normalizes before checking", () => {
-    expect(isOnDoNotCallList("(212) 555-1234", dncList)).toBe(true);
-  });
-});
-
-describe("canContactLead", () => {
-  const goodConsent: TcpaConsent = {
-    phoneNumber: "+12125551234",
-    consentType: "express_written",
-    channel: "sms",
-    consentGivenAt: new Date(),
-  };
-  const emptyDnc = new Set<string>();
-
-  it("allows contact when all conditions met", () => {
-    const result = canContactLead("2125551234", goodConsent, 10, "NY", emptyDnc, "marketing");
-    expect(result.allowed).toBe(true);
-  });
-
-  it("blocks when on DNC list", () => {
-    const dnc = new Set(["+12125551234"]);
-    const result = canContactLead("2125551234", goodConsent, 10, "NY", dnc, "marketing");
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain("Do Not Call");
-  });
-
-  it("blocks outside allowed hours", () => {
-    const result = canContactLead("2125551234", goodConsent, 7, "NY", emptyDnc, "marketing");
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain("hours");
-  });
-
-  it("blocks without valid consent", () => {
-    const noConsent: TcpaConsent = { phoneNumber: "+12125551234", consentType: "none", channel: "sms" };
-    const result = canContactLead("2125551234", noConsent, 10, "NY", emptyDnc, "marketing");
-    expect(result.allowed).toBe(false);
+  it("falls back to America/New_York for an invalid IANA zone", () => {
+    at("2026-01-15T15:00:00Z"); // NY 10:00 — allowed
+    expect(isWithinQuietHours("2125550100", "Not/AZone").blocked).toBe(false);
   });
 });
 
-describe("validateConsentRecord", () => {
-  it("validates complete consent record", () => {
-    const consent = {
-      phoneNumber: "+12125551234",
-      consentType: "express_written" as const,
-      channel: "sms" as const,
-      consentGivenAt: new Date(),
-    };
-    expect(validateConsentRecord(consent).valid).toBe(true);
+describe("isWithinQuietHoursForLead", () => {
+  it("uses the lead's stored timezone when present, area code otherwise", () => {
+    at("2026-01-15T15:00:00Z");
+    // NY number, but the lead actually lives in LA (07:00 — blocked).
+    const withZone = isWithinQuietHoursForLead({
+      phone: "2125550100",
+      timezone: "America/Los_Angeles",
+    });
+    expect(withZone.blocked).toBe(true);
+    // No stored zone → NY inference (10:00 — allowed).
+    expect(isWithinQuietHoursForLead({ phone: "2125550100", timezone: null }).blocked).toBe(false);
+  });
+});
+
+describe("detectOptKeyword — CTIA STOP/START detection", () => {
+  it("detects every STOP-class keyword case-insensitively with punctuation noise", () => {
+    for (const raw of ["STOP", "stop", " Stop. ", "STOPALL", "Unsubscribe", "CANCEL", "end", "QUIT!", "optout", "Opt-Out"]) {
+      expect(detectOptKeyword(raw), raw).toBe("opt_out");
+    }
+    // Normalization strips spaces, so "stop all" reads as STOPALL — an
+    // opt-out. Better to over-honor a revocation than miss one.
+    expect(detectOptKeyword("stop all")).toBe("opt_out");
   });
 
-  it("requires consent date for express written", () => {
-    const consent = {
-      phoneNumber: "+12125551234",
-      consentType: "express_written" as const,
-      channel: "sms" as const,
-    };
-    const result = validateConsentRecord(consent);
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContain("Consent date required for express written consent");
+  it("detects START-class keywords", () => {
+    for (const raw of ["START", "yes", "UNSTOP", "optin", "Opt-In"]) {
+      expect(detectOptKeyword(raw), raw).toBe("opt_in");
+    }
   });
 
-  it("returns errors for missing required fields", () => {
-    const result = validateConsentRecord({});
-    expect(result.valid).toBe(false);
-    expect(result.errors.length).toBeGreaterThan(0);
+  it("returns null for ordinary replies — including ones containing keywords", () => {
+    expect(detectOptKeyword("Yes I want to sell the land, call me")).toBeNull();
+    expect(detectOptKeyword("Please stop by tomorrow")).toBeNull();
+    expect(detectOptKeyword("What's your offer?")).toBeNull();
+    expect(detectOptKeyword("")).toBeNull();
+  });
+});
+
+describe("checkTcpaConsentFromLead — the consent matrix", () => {
+  it("blocks every channel when doNotContact is set (even with recorded consent)", () => {
+    const result = checkTcpaConsentFromLead({ doNotContact: true, tcpaConsent: true });
+    expect(result.blocked).toBe(true);
+    expect(result.canEmail).toBe(false);
+    expect(result.canSms).toBe(false);
+    expect(result.canCall).toBe(false);
+    expect(result.canDirectMail).toBe(false);
+  });
+
+  it("without consent: only direct mail is allowed (TCPA covers calls/SMS, CAN-SPAM email)", () => {
+    const result = checkTcpaConsentFromLead({ doNotContact: false, tcpaConsent: false });
+    expect(result.blocked).toBe(false);
+    expect(result.canDirectMail).toBe(true);
+    expect(result.canSms).toBe(false);
+    expect(result.canCall).toBe(false);
+    expect(result.canEmail).toBe(false);
+  });
+
+  it("with consent and no DNC flag: all channels open", () => {
+    expect(checkTcpaConsentFromLead({ doNotContact: false, tcpaConsent: true })).toMatchObject({
+      canEmail: true,
+      canSms: true,
+      canCall: true,
+      canDirectMail: true,
+      blocked: false,
+    });
+  });
+});
+
+describe("canSendViaChannel / requiresTcpaConsent", () => {
+  const noConsent = { doNotContact: false, tcpaConsent: false };
+
+  it("mirrors the consent matrix per channel with a reason on refusal", () => {
+    expect(canSendViaChannel(noConsent, "direct_mail").allowed).toBe(true);
+    for (const channel of ["sms", "phone", "email"] as const) {
+      const result = canSendViaChannel(noConsent, channel);
+      expect(result.allowed, channel).toBe(false);
+      expect(result.reason, channel).toBeTruthy();
+    }
+  });
+
+  it("flags exactly the regulated channels as consent-requiring", () => {
+    expect(requiresTcpaConsent("sms")).toBe(true);
+    expect(requiresTcpaConsent("phone")).toBe(true);
+    expect(requiresTcpaConsent("email")).toBe(false);
+    expect(requiresTcpaConsent("direct_mail")).toBe(false);
   });
 });

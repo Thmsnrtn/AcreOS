@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  * Triggers POST /api/export/full and auto-downloads the JSON result.
  */
 export function DownloadDataSection() {
+  // allow-no-invalidation: read-only export — mutates nothing
   const exportMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/export/full", {

@@ -13,6 +13,7 @@ import { db } from "./db";
 import { properties } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 const router = Router();
 
@@ -104,11 +105,11 @@ router.post("/:id/vision-scan", isAuthenticated, getOrCreateOrg, async (req: Aut
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.id);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
     const { images } = req.body;
     if (!images || !Array.isArray(images) || images.length !== 4) {
-      return res.status(400).json({ error: "exactly 4 base64 images required" });
+      return Errors.badRequest(res, "Exactly 4 base64 images are required");
     }
 
     // Verify property belongs to org
@@ -118,7 +119,7 @@ router.post("/:id/vision-scan", isAuthenticated, getOrCreateOrg, async (req: Aut
       .where(and(eq(properties.id, propertyId), eq(properties.organizationId, org.id)))
       .limit(1);
 
-    if (!property) return res.status(404).json({ error: "property not found" });
+    if (!property) return Errors.notFound(res, "property");
 
     // Analyze all 4 images in parallel via Vision AI
     const analysisPromises = images.map(async (base64Image: string, i: number) => {
@@ -153,7 +154,7 @@ router.post("/:id/vision-scan", isAuthenticated, getOrCreateOrg, async (req: Aut
     res.json({ observations, analyzed: analyses.filter(Boolean).length });
   } catch (err) {
     logger.error("vision scan failed", err instanceof Error ? err : undefined);
-    res.status(500).json({ error: "vision scan failed" });
+    Errors.internal(res, err);
   }
 });
 
@@ -162,10 +163,10 @@ router.post("/:id/voice-memo", isAuthenticated, getOrCreateOrg, async (req: Auth
   try {
     const org = req.organization;
     const propertyId = parseInt(req.params.id);
-    if (isNaN(propertyId)) return res.status(400).json({ error: "invalid property ID" });
+    if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
 
     const { audio, direction } = req.body;
-    if (!audio) return res.status(400).json({ error: "audio data required" });
+    if (!audio) return Errors.badRequest(res, "Audio data is required");
 
     // Try Whisper transcription
     let transcript = "Transcription pending";
@@ -193,7 +194,7 @@ router.post("/:id/voice-memo", isAuthenticated, getOrCreateOrg, async (req: Auth
     res.json({ transcript, stored: false });
   } catch (err) {
     logger.error("voice memo failed", err instanceof Error ? err : undefined);
-    res.status(500).json({ error: "voice memo failed" });
+    Errors.internal(res, err);
   }
 });
 

@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 /**
  * @deprecated FeedbackButton no longer renders its own floating
@@ -201,7 +202,7 @@ function FeedbackDialogInner({
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button type="submit" disabled={submitting}>
               {submitting ? "Sending…" : "Send feedback"}

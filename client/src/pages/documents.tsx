@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import type { DocumentVersion } from "@shared/schema";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 const DOCUMENT_TYPES = [
   { value: "purchase_agreement", label: "Purchase Agreement" },
@@ -1153,7 +1154,7 @@ export default function DocumentsPage() {
           </ScrollArea>
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setIsGenerateOpen(false)}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button onClick={handleGenerateDocument} disabled={generateDocMutation.isPending} data-testid="button-generate-document">
               {generateDocMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
@@ -1276,7 +1277,7 @@ export default function DocumentsPage() {
                             ) : (
                               <RotateCcw className="w-3 h-3 mr-1" aria-hidden="true" />
                             )}
-                            Restore
+                            {Verbs.RESTORE}
                           </Button>
                         </CardContent>
                       </Card>
@@ -1420,7 +1421,7 @@ export default function DocumentsPage() {
           </ScrollArea>
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setIsCreatePackageOpen(false)} data-testid="button-cancel-create-package">
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               onClick={handleCreatePackage}
@@ -1551,7 +1552,7 @@ export default function DocumentsPage() {
               ) : (
                 <Trash2 className="w-3 h-3 mr-1" aria-hidden="true" />
               )}
-              Delete
+              {Verbs.DELETE}
             </Button>
             <div className="flex flex-col sm:flex-row gap-2">
               {selectedPackage?.status === "draft" && (selectedPackage.documents as any[] || []).length > 0 && (

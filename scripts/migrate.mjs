@@ -5255,6 +5255,147 @@ const STATEMENTS = [
   // (legacy + non-autopilot enqueues) are never deduped.
   `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "idempotency_key" text`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "solene_dispatch_queue_idempotency_key_uq" ON "solene_dispatch_queue" ("idempotency_key") WHERE "idempotency_key" IS NOT NULL`,
+  // Step-away gap #3 — bounded side-effect-aware retry. attempts increments at
+  // CLAIM time; not_before_at is the backoff gate claimNextDispatch respects.
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "attempts" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "not_before_at" timestamptz`,
+
+  // Step-away gap #4 — immune-system run reports (migration 0185). One
+  // append-only row per daily immune-response run; the board report + Control
+  // door read this instead of the plan evaporating at process exit.
+  `CREATE TABLE IF NOT EXISTS "autopilot_immune_reports" (
+     "id" serial PRIMARY KEY,
+     "ran_at" timestamptz NOT NULL DEFAULT now(),
+     "advisories_total" integer NOT NULL DEFAULT 0,
+     "by_severity" jsonb NOT NULL DEFAULT '{}',
+     "auto_count" integer NOT NULL DEFAULT 0,
+     "witnessed_count" integer NOT NULL DEFAULT 0,
+     "skip_count" integer NOT NULL DEFAULT 0,
+     "plan_items" jsonb NOT NULL DEFAULT '[]',
+     "line" text NOT NULL,
+     "auto_merge_earned" boolean NOT NULL DEFAULT false,
+     "self_patch_ran" boolean NOT NULL DEFAULT false,
+     "self_patch_reason" text,
+     "self_patch_pr_url" text,
+     "ask_created" boolean NOT NULL DEFAULT false
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_immune_reports_ran_idx" ON "autopilot_immune_reports" ("ran_at")`,
+
+  // Step-away gap #5 — persisted WitnessGrants (migration 0186). Founder-issued
+  // bounded/expiring/revocable delegation of the witnessed-send tap; the
+  // deny_money/deny_broadcast belts default TRUE (explicit opt-in only).
+  `CREATE TABLE IF NOT EXISTS "witness_grants" (
+     "id" serial PRIMARY KEY,
+     "grantor_id" text NOT NULL,
+     "grantee_id" text NOT NULL,
+     "domains" jsonb NOT NULL DEFAULT '[]',
+     "max_cost_usd" numeric(10,2) NOT NULL,
+     "max_actions" integer NOT NULL,
+     "expires_at" timestamptz NOT NULL,
+     "deny_money" boolean NOT NULL DEFAULT true,
+     "deny_broadcast" boolean NOT NULL DEFAULT true,
+     "used_count" integer NOT NULL DEFAULT 0,
+     "revoked" boolean NOT NULL DEFAULT false,
+     "revoked_at" timestamptz,
+     "revoke_reason" text,
+     "issued_at" timestamptz NOT NULL DEFAULT now(),
+     "note" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "witness_grants_grantee_idx" ON "witness_grants" ("grantee_id", "revoked", "expires_at")`,
+  `CREATE INDEX IF NOT EXISTS "witness_grants_issued_idx" ON "witness_grants" ("issued_at")`,
+
+  // Step-away gap #6 — persisted Stage-6 regression due-time (migration 0187).
+  // Replaces the in-process setTimeout (lost on redeploy, never armed in PR
+  // mode) with a due-time the evolution_regression_scan job fires durably.
+  `ALTER TABLE "evolution_history" ADD COLUMN IF NOT EXISTS "regression_check_due_at" timestamptz`,
+
+  // Self-patch master switch (migration 0188) — DB-backed like dispatch/
+  // publish/cognition; null → env SELF_PATCH_ENABLED fallback (OFF).
+  `ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "self_patch_enabled" boolean`,
+
+  // Platform Connections (migration 0189) — founder-entered credentials for
+  // the accounts the platform itself runs on; DB-first, env fallback.
+  `CREATE TABLE IF NOT EXISTS "platform_connections" (
+     "id" serial PRIMARY KEY,
+     "provider" text NOT NULL,
+     "field" text NOT NULL,
+     "secret_encrypted" bytea,
+     "value_plain" text,
+     "fingerprint" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_by" text,
+     "last_used_at" timestamptz,
+     "revoked_at" timestamptz
+   )`,
+  `CREATE INDEX IF NOT EXISTS "platform_connections_provider_idx" ON "platform_connections" ("provider", "field")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "platform_connections_active_uidx" ON "platform_connections" ("provider", "field") WHERE "revoked_at" IS NULL`,
+
+  // SMS response capture + quiet-hours truth (migration 0190, roadmap W1.4/5).
+  `CREATE TABLE IF NOT EXISTS "unattached_inbound_messages" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL,
+     "channel" text NOT NULL,
+     "from_address" text NOT NULL,
+     "to_address" text,
+     "body" text NOT NULL,
+     "external_id" text,
+     "received_at" timestamptz NOT NULL DEFAULT now(),
+     "resolution" text,
+     "resolved_lead_id" integer,
+     "resolved_at" timestamptz,
+     "resolved_by" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "unattached_inbound_org_idx" ON "unattached_inbound_messages" ("organization_id", "received_at")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "unattached_inbound_external_uq" ON "unattached_inbound_messages" ("external_id") WHERE "external_id" IS NOT NULL`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "timezone" text`,
+
+  // Data-API key hardening (migration 0191, roadmap W1.6) — SHA-256 at rest.
+  `ALTER TABLE "system_api_keys" ADD COLUMN IF NOT EXISTS "key_hash" text`,
+  `ALTER TABLE "system_api_keys" ADD COLUMN IF NOT EXISTS "key_last4" text`,
+  `CREATE INDEX IF NOT EXISTS "system_api_keys_key_hash_idx" ON "system_api_keys" ("key_hash")`,
+
+  // Hot-path indexes (migration 0194, 2026-07 platform sweep) — worst of the
+  // zero-index org-scoped tables (timelines, payments, AI cost aggregation).
+  `CREATE INDEX IF NOT EXISTS "activity_events_org_entity_idx" ON "activity_events" ("organization_id", "entity_type", "entity_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "lead_activities_lead_created_idx" ON "lead_activities" ("lead_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "lead_activities_org_idx" ON "lead_activities" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "payments_org_idx" ON "payments" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "payments_note_status_idx" ON "payments" ("note_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "ai_telemetry_events_org_created_idx" ON "ai_telemetry_events" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "notifications_org_created_idx" ON "notifications" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "tasks_org_status_idx" ON "tasks" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "inbox_messages_org_received_idx" ON "inbox_messages" ("organization_id", "received_at")`,
+  `CREATE INDEX IF NOT EXISTS "usage_events_org_created_idx" ON "usage_events" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "api_usage_logs_org_created_idx" ON "api_usage_logs" ("organization_id", "created_at")`,
+
+  // Contract assignments (migration 0193, roadmap W6.1) — the wholesaler's
+  // assignment-of-contract record: deal → end buyer → fee (cents) → doc.
+  `CREATE TABLE IF NOT EXISTS "contract_assignments" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL,
+     "deal_id" integer NOT NULL,
+     "end_buyer_profile_id" integer,
+     "end_buyer_name" text,
+     "assignment_fee_cents" bigint NOT NULL DEFAULT 0,
+     "original_contract_date" date,
+     "generated_document_id" integer,
+     "status" text NOT NULL DEFAULT 'draft',
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "contract_assignments_org_deal_idx" ON "contract_assignments" ("organization_id", "deal_id")`,
+  `CREATE INDEX IF NOT EXISTS "contract_assignments_status_idx" ON "contract_assignments" ("organization_id", "status")`,
+
+  // Weekly MRR snapshots (migration 0192, roadmap W4.5) — WoW growth was
+  // structurally 0 with no history; runway upside == base since launch.
+  `CREATE TABLE IF NOT EXISTS "mrr_snapshots" (
+     "id" serial PRIMARY KEY,
+     "captured_at" timestamp NOT NULL DEFAULT now(),
+     "mrr_cents" integer NOT NULL,
+     "paying_orgs" integer NOT NULL DEFAULT 0
+   )`,
+  `CREATE INDEX IF NOT EXISTS "mrr_snapshots_captured_idx" ON "mrr_snapshots" ("captured_at")`,
 
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
@@ -7435,6 +7576,77 @@ const STATEMENTS = [
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "growth_targets_state_county_idx" ON "growth_targets" ("state", "county_slug")`,
   `CREATE INDEX IF NOT EXISTS "growth_targets_status_score_idx" ON "growth_targets" ("status", "demand_score")`,
+
+  // DNC / litigator scrub results (migration 0195, mature-machine H0 §6.1) —
+  // the TCPA cold-outreach seam. Inert until DNC_SCRUB_PROVIDER is configured
+  // (pending founder vendor decision); see server/services/compliance/dncScrub.ts.
+  `CREATE TABLE IF NOT EXISTS "dnc_scrub_results" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "phone_last10" text NOT NULL,
+     "status" text NOT NULL,
+     "provider" text NOT NULL,
+     "list_source" text,
+     "reason" text,
+     "scrubbed_at" timestamp NOT NULL DEFAULT now(),
+     "expires_at" timestamp NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "dnc_scrub_results_org_phone_idx" ON "dnc_scrub_results" ("organization_id", "phone_last10", "scrubbed_at")`,
+
+  // Agent state persistence (migration 0196, module-state audit 2026-07-07) —
+  // temporary authority delegations + the autonomous-action rate throttle
+  // move from per-process Maps to Postgres so 2+ machines share one truth.
+  `CREATE TABLE IF NOT EXISTS "authority_delegations" (
+     "id" serial PRIMARY KEY,
+     "agent_codename" text NOT NULL,
+     "elevated_actions" jsonb NOT NULL DEFAULT '["*"]',
+     "from_level" integer NOT NULL DEFAULT 2,
+     "to_level" integer NOT NULL DEFAULT 0,
+     "reason" text NOT NULL,
+     "expires_at" timestamp NOT NULL,
+     "revoked_at" timestamp,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "authority_delegations_agent_expires_idx" ON "authority_delegations" ("agent_codename", "expires_at")`,
+  `CREATE TABLE IF NOT EXISTS "agent_execution_counts" (
+     "id" serial PRIMARY KEY,
+     "agent_key" text NOT NULL,
+     "bucket_start" timestamp NOT NULL,
+     "count" integer NOT NULL DEFAULT 0
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "agent_execution_counts_key_bucket_idx" ON "agent_execution_counts" ("agent_key", "bucket_start")`,
+
+  // Marketing spend ledger (migration 0197, 2026-07-07 cost audit) — the CAC
+  // numerator. Actuals only; budgets are never recorded here.
+  `CREATE TABLE IF NOT EXISTS "marketing_spend" (
+     "id" serial PRIMARY KEY,
+     "channel" text NOT NULL,
+     "amount_cents" integer NOT NULL,
+     "spent_at" timestamp NOT NULL,
+     "source" text NOT NULL DEFAULT 'manual',
+     "campaign_ref" text,
+     "note" text,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "marketing_spend_spent_at_idx" ON "marketing_spend" ("spent_at")`,
+  `CREATE INDEX IF NOT EXISTS "marketing_spend_channel_spent_at_idx" ON "marketing_spend" ("channel", "spent_at")`,
+
+  // Reactivation surveys (migration 0198, launch-week WS1) — the welcome-back
+  // page's survey POST finally has a real endpoint + durable store.
+  `CREATE TABLE IF NOT EXISTS "reactivation_surveys" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "user_id" text,
+     "return_reason" text NOT NULL,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "reactivation_surveys_org_created_idx" ON "reactivation_surveys" ("organization_id", "created_at")`,
+
+  // Outbox claim timestamp (migration 0199, launch-week WS5 worker-kill
+  // drill) — recovery of rows orphaned in status='running' needs the claim
+  // time; created_at is enqueue time and would mis-reap a claimed backlog.
+  `ALTER TABLE outbox ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP`,
+  `CREATE INDEX IF NOT EXISTS outbox_running_claimed_idx ON outbox (claimed_at) WHERE status = 'running'`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

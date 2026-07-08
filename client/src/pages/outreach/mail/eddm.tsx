@@ -587,7 +587,7 @@ export default function EddmTab() {
 
       {/* ── Bottom toolbar: selection summary + queue ──────────────────── */}
       <Card
-        className="mx-4 md:mx-6 mt-3 mb-4 sticky bottom-3 z-10 shadow-lg"
+        className="mx-4 md:mx-6 mt-3 mb-4 sticky bottom-3 z-docked shadow-lg"
         data-testid="eddm-summary-bar"
       >
         <CardContent className="p-3 flex flex-wrap items-center gap-3">

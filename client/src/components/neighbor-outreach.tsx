@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/animations";
@@ -32,6 +32,7 @@ export function NeighborOutreach({ propertyId, isOwned }: NeighborOutreachProps)
     queryKey: [`/api/properties/${propertyId}/neighbors`],
     enabled: showList,
   });
+  const queryClient = useQueryClient();
 
   const campaignMutation = useMutation({
     mutationFn: async (neighborApns: string[]) => {
@@ -49,6 +50,8 @@ export function NeighborOutreach({ propertyId, isOwned }: NeighborOutreachProps)
       return res.json();
     },
     onSuccess: () => {
+      // The new campaign must appear in the cached campaigns list.
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
       toast({ title: "Campaign created", description: "Mailer campaign targeting neighbors is ready." });
     },
     onError: () => {

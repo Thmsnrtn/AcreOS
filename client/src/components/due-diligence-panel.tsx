@@ -54,6 +54,7 @@ import {
   Info,
   HelpCircle,
 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface DueDiligencePanelProps {
   propertyId: number;
@@ -519,7 +520,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                   aria-label="Retry loading dossier"
                   data-testid="button-retry-dossier"
                 >
-                  Retry
+                  {Verbs.RETRY}
                 </Button>
               </div>
             )}

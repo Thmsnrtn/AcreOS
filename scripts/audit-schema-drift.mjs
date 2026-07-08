@@ -9,7 +9,7 @@
  * Usage:
  *   DATABASE_URL=<prod-url> node scripts/audit-schema-drift.mjs
  *
- * Output: docs/exhaustive-completion/SCHEMA-DRIFT-AUDIT.md
+ * Output: docs/archive/exhaustive-completion/SCHEMA-DRIFT-AUDIT.md
  *
  * 2026-05-04 (Workstream §3.0): catalog every missing item before
  * the migration sweep so the founder can see the full scope.
@@ -25,7 +25,7 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const SCHEMA_PATH = path.join(PROJECT_ROOT, "shared/schema.ts");
 const MIGRATIONS_DIR = path.join(PROJECT_ROOT, "migrations");
-const OUTPUT_PATH = path.join(PROJECT_ROOT, "docs/exhaustive-completion/SCHEMA-DRIFT-AUDIT.md");
+const OUTPUT_PATH = path.join(PROJECT_ROOT, "docs/archive/exhaustive-completion/SCHEMA-DRIFT-AUDIT.md");
 
 if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL not set — aborting");

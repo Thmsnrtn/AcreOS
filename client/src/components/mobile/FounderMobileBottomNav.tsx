@@ -117,7 +117,7 @@ export function FounderMobileBottomNav() {
     <>
       <nav
         aria-label="Founder mobile navigation"
-        className="fixed bottom-0 left-0 right-0 z-50 bg-surface-chrome backdrop-blur-lg border-t border-border"
+        className="fixed bottom-0 left-0 right-0 z-floating bg-surface-chrome backdrop-blur-lg border-t border-border"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
         data-testid="founder-mobile-bottom-nav"
       >
@@ -183,7 +183,7 @@ export function FounderMobileBottomNav() {
           href="/founder/solene-chat"
           aria-label="Chat with Solene"
           data-testid="fab-solene-chat"
-          className="fixed right-4 z-50 flex items-center justify-center h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="fixed right-4 z-floating flex items-center justify-center h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           style={{
             bottom: "calc(72px + env(safe-area-inset-bottom, 0px) + 16px)",
           }}

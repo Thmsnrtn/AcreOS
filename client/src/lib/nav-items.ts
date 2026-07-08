@@ -117,9 +117,10 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "investor-network", label: "Investor Network", icon: UserCheck, href: "/investor-network", description: "Verified investor directory and profiles" },
   // Additional Pages
   { id: "avm-bulk",             label: "Bulk AVM",            icon: TrendingUp,  href: "/avm-bulk",             description: "Bulk AI valuations via CSV upload" },
-  { id: "marketplace-analytics",label: "Marketplace Analytics", icon: BarChart2, href: "/marketplace-analytics",description: "Marketplace performance and metrics" },
+  // marketplace-analytics + va-dashboard entries removed 2026-07-07 (WS1):
+  // both pages were archived 2026-06-01 with no App.tsx route, so the
+  // command palette navigated straight to NotFound.
   // voice-analytics removed — AI Voice feature deprecated
-  { id: "va-dashboard",         label: "VA Dashboard",        icon: Users,       href: "/va-dashboard",         description: "Virtual assistant task management" },
   // Sovereign Protocol / agent-mesh / reseller / data-moat / fee-dashboard
   // entries removed from the customer-facing master list 2026-05-11. Those
   // surfaces are founder-only and now live exclusively under

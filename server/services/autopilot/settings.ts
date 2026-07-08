@@ -23,6 +23,8 @@ export interface EffectiveSettings {
   publishEnabled: boolean;
   /** Master switch for the autonomous daily Operator cadence (cognition layer). */
   cognitionEnabled: boolean;
+  /** Master switch for the immune system's motor half (gated self-patch PRs). */
+  selfPatchEnabled: boolean;
   /**
    * DB-backed monthly growth-budget cap (USD) an approved ramp wrote, or null
    * when none — in which case the env/charter default governs. The cap reader
@@ -45,6 +47,9 @@ function envPublish(): boolean {
 function envCognition(): boolean {
   return process.env.COGNITION_ENABLED === "true";
 }
+function envSelfPatch(): boolean {
+  return process.env.SELF_PATCH_ENABLED === "true";
+}
 
 /**
  * The hard, OUT-OF-REACH off-switch (kernel-elevation T0.3). SOLENE_PANIC_STOP is
@@ -63,9 +68,15 @@ const ALL_OFF = (): EffectiveSettings => ({
   dispatchEnabled: false,
   publishEnabled: false,
   cognitionEnabled: false,
+  selfPatchEnabled: false,
   growthBudgetOverrideUsd: null,
   source: { dispatch: "env", publish: "env" },
 });
+
+/** TEST-ONLY: drop the read cache so env changes take effect immediately. */
+export function __resetSettingsCacheForTest(): void {
+  cache = null;
+}
 
 /** Read the effective settings (DB row if present, else env). Never throws. */
 export async function getEffectiveSettings(now = Date.now()): Promise<EffectiveSettings> {
@@ -76,6 +87,7 @@ export async function getEffectiveSettings(now = Date.now()): Promise<EffectiveS
     dispatchEnabled: envDispatch(),
     publishEnabled: envPublish(),
     cognitionEnabled: envCognition(),
+    selfPatchEnabled: envSelfPatch(),
     growthBudgetOverrideUsd: null,
     source: { dispatch: "env", publish: "env" },
   };
@@ -86,6 +98,7 @@ export async function getEffectiveSettings(now = Date.now()): Promise<EffectiveS
         dispatchEnabled: row.dispatchEnabled ?? envDispatch(),
         publishEnabled: row.publishEnabled ?? envPublish(),
         cognitionEnabled: row.cognitionEnabled ?? envCognition(),
+        selfPatchEnabled: row.selfPatchEnabled ?? envSelfPatch(),
         growthBudgetOverrideUsd:
           row.growthBudgetOverrideUsd != null && Number.isFinite(row.growthBudgetOverrideUsd)
             ? row.growthBudgetOverrideUsd
@@ -109,10 +122,13 @@ export async function isPublishEnabled(): Promise<boolean> {
 export async function isCognitionEnabled(): Promise<boolean> {
   return (await getEffectiveSettings()).cognitionEnabled;
 }
+export async function isSelfPatchEnabled(): Promise<boolean> {
+  return (await getEffectiveSettings()).selfPatchEnabled;
+}
 
 /** Flip a master switch (founder action). Upserts the singleton + busts the cache. */
 export async function setAutopilotSetting(
-  key: "dispatchEnabled" | "publishEnabled" | "cognitionEnabled",
+  key: "dispatchEnabled" | "publishEnabled" | "cognitionEnabled" | "selfPatchEnabled",
   value: boolean,
   updatedBy?: string,
 ): Promise<EffectiveSettings> {
@@ -129,6 +145,11 @@ export async function setAutopilotSetting(
       .insert(autopilotSettings)
       .values({ id: 1, cognitionEnabled: value, updatedBy: updatedBy ?? null })
       .onConflictDoUpdate({ target: autopilotSettings.id, set: { cognitionEnabled: value, ...stamp } });
+  } else if (key === "selfPatchEnabled") {
+    await db
+      .insert(autopilotSettings)
+      .values({ id: 1, selfPatchEnabled: value, updatedBy: updatedBy ?? null })
+      .onConflictDoUpdate({ target: autopilotSettings.id, set: { selfPatchEnabled: value, ...stamp } });
   } else {
     await db
       .insert(autopilotSettings)

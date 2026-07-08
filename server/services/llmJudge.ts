@@ -30,14 +30,15 @@
  */
 
 import { routeAITask, TaskComplexity, AIProvider } from "./aiRouter";
+import { MODELS } from "./models";
 import { logger } from "../utils/logger";
 
-// ─── Model pins (OpenRouter namespace) ───────────────────────────────────────
+// ─── Model pins — resolved through models.ts (single source of truth) ───────
 
-/** Cheap screener — Haiku 4.5 ($1.00/$5.00 per 1M). */
-export const JUDGE_SCREEN_MODEL = "anthropic/claude-haiku-4-5";
-/** Strong adjudicator — Sonnet 4.6 ($3.00/$15.00 per 1M). */
-export const JUDGE_ADJUDICATE_MODEL = "anthropic/claude-sonnet-4-6";
+/** Cheap screener — Haiku ($1.00/$5.00 per 1M). */
+export const JUDGE_SCREEN_MODEL = MODELS.HAIKU;
+/** Strong adjudicator — Sonnet ($3.00/$15.00 per 1M). */
+export const JUDGE_ADJUDICATE_MODEL = MODELS.SONNET;
 
 // ─── Public types ────────────────────────────────────────────────────────────
 

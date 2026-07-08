@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { storage } from "./storage";
 import { z } from "zod";
+import { DEAL_STATUS_TRANSITIONS as SHARED_DEAL_TRANSITIONS } from "@shared/lifecycle/pipeline-status";
 import { insertDealSchema } from "@shared/schema";
 import type { DueDiligenceChecklistItem } from "@shared/schema";
 import { isAuthenticated } from "./auth";
@@ -9,7 +10,7 @@ import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
 import { db, withTransaction } from "./db";
-import { outcomeTelemetry, dueDiligenceItems, deals } from "@shared/schema";
+import { outcomeTelemetry, dueDiligenceItems, deals, contractAssignments, CONTRACT_ASSIGNMENT_STATUSES } from "@shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import {
   STAGE_BENCHMARK_DAYS,
@@ -154,6 +155,30 @@ export function registerDealRoutes(app: Express): void {
   // reduced ONE page of the paginated list (25 rows), so orgs with >25
   // deals saw wrong pipeline/closed/stalled numbers. Registered BEFORE
   // /api/deals/:id so the literal path wins over the :id matcher.
+  // GET /api/deals/coach — D4: surface the autopilot deal-coach (next-best
+  // actions over the pipeline) to the customer, inside the Deals door.
+  // Registered BEFORE /api/deals/:id — it previously sat at the tail of this
+  // file, so the :id matcher captured "coach" (parseInt → NaN) and every
+  // Deals-door load 500'd this widget (found by the wedge E2E, 2026-07-08).
+  app.get("/api/deals/coach", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    // The deal-coach is a secondary advisory widget inside the Deals door. It
+    // must NEVER 500 the request — a failure here would break the whole door.
+    // Degrade to an empty coach and log loudly so the underlying error stays
+    // observable (Errors.internal previously masked the door behind a 500).
+    try {
+      const { getDealCoachForOrg } = await import("./services/autopilot/dealActions");
+      const items = await getDealCoachForOrg(req.organization.id);
+      res.json({ items });
+    } catch (err: any) {
+      logger.error(
+        "[deals/coach] failed — degrading to empty coach so the Deals door still renders",
+        err instanceof Error ? err : new Error(String(err?.message ?? err)),
+        { metadata: { organizationId: req.organization?.id } },
+      );
+      res.json({ items: [], degraded: true });
+    }
+  });
+
   api.get("/api/deals/aggregates", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = getOrganizationId(req);
@@ -186,8 +211,11 @@ export function registerDealRoutes(app: Express): void {
           type: deals.type,
           count: sql<number>`count(*)::int`,
           // Same fallback chain the client used: offer amount, else accepted.
-          pipelineValue: sql<number>`coalesce(sum(coalesce(${deals.offerAmount}, ${deals.acceptedAmount}, 0)), 0)::float8`,
-          acceptedValue: sql<number>`coalesce(sum(coalesce(${deals.acceptedAmount}, 0)), 0)::float8`,
+          // W3.3: sum in integer CENTS (::bigint), never ::float8 — the old
+          // cast accumulated float error in the door-header KPIs. Dollars
+          // reappear only in foldDealAggregates' response edge.
+          pipelineValueCents: sql<number>`coalesce(sum(round(coalesce(${deals.offerAmount}, ${deals.acceptedAmount}, 0) * 100)), 0)::bigint`,
+          acceptedValueCents: sql<number>`coalesce(sum(round(coalesce(${deals.acceptedAmount}, 0) * 100)), 0)::bigint`,
           stalledCount: sql<number>`(count(*) filter (where ${daysInStage} >= ${benchmarkCase} * 2))::int`,
           // ceil() because client day-counts are integers compared against a
           // fractional 1.25x threshold. Includes stalled; folded out later.
@@ -201,6 +229,157 @@ export function registerDealRoutes(app: Express): void {
     } catch (error) {
       logger.error("Failed to compute deal aggregates", { organizationId: req.organizationId });
       return Errors.internal(res, error);
+    }
+  });
+
+  // W6.2 — the single-track view. Every slice page (leads, campaigns,
+  // deals, inbox) shows one fragment; this endpoint unions the activity
+  // events of the deal, its property, AND the seller lead (bridged via
+  // property.sellerId — deals carry no leadId) into one chronological
+  // lead → mail → response → offer → contract → close track.
+  api.get("/api/deals/:id/track", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const dealId = Number(req.params.id);
+      if (!Number.isFinite(dealId)) return Errors.badRequest(res, "Invalid deal id");
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) return Errors.notFound(res, "Deal");
+
+      const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
+      const events = await storage.getActivityEvents(org.id, "deal", dealId, eventTypes);
+
+      if (deal.propertyId) {
+        try {
+          const propertyEvents = await storage.getActivityEvents(org.id, "property", deal.propertyId, eventTypes);
+          events.push(...propertyEvents);
+          const property = await storage.getProperty(org.id, deal.propertyId);
+          if (property?.sellerId) {
+            const leadEvents = await storage.getActivityEvents(org.id, "lead", property.sellerId, eventTypes);
+            events.push(...leadEvents);
+          }
+        } catch {
+          // Partial track beats no track — the deal's own events still return.
+        }
+      }
+
+      const seen = new Set<number>();
+      const merged = events
+        .filter((e: any) => (seen.has(e.id) ? false : (seen.add(e.id), true)))
+        .sort((a: any, b: any) => {
+          const dateA = new Date(a.eventDate || a.createdAt).getTime();
+          const dateB = new Date(b.eventDate || b.createdAt).getTime();
+          return dateB - dateA;
+        });
+
+      res.json(merged);
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // ── W6.1 — contract assignments (the wholesaler's defining mechanic) ──────
+  // Record: original contract (this deal) → end buyer → fee → assignment doc.
+  // The e-sign pipeline already exists (Assignment Contract system template,
+  // /api/documents/generate, request-signature with the state-disclosure
+  // gate); these endpoints add the missing assignment RECORD so the fee is
+  // real data instead of the netProfit proxy.
+  const assignmentCreateSchema = z.object({
+    endBuyerProfileId: z.number().int().positive().optional(),
+    endBuyerName: z.string().max(200).optional(),
+    assignmentFeeCents: z.number().int().nonnegative(),
+    originalContractDate: z.string().optional(), // yyyy-mm-dd
+    notes: z.string().max(4000).optional(),
+  });
+
+  api.get("/api/deals/:id/assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const dealId = Number(req.params.id);
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) return Errors.notFound(res, "Deal");
+      const rows = await db
+        .select()
+        .from(contractAssignments)
+        .where(and(eq(contractAssignments.organizationId, org.id), eq(contractAssignments.dealId, dealId)));
+      res.json(rows);
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  api.post("/api/deals/:id/assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const dealId = Number(req.params.id);
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) return Errors.notFound(res, "Deal");
+
+      const parsed = assignmentCreateSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      if (!parsed.data.endBuyerProfileId && !parsed.data.endBuyerName) {
+        return Errors.badRequest(res, "Provide an end buyer (profile id or name)");
+      }
+
+      // Assignment-legality guard: surface the state rule with the record so
+      // the client can warn/block per wholesalerStateRules (license_required,
+      // advertising_restricted, double_close_only recommendations).
+      let stateRule: unknown = null;
+      try {
+        const property = deal.propertyId ? await storage.getProperty(org.id, deal.propertyId) : null;
+        if (property?.state) {
+          const { wholesalerStateRules } = await import("@shared/schema");
+          const [rule] = await db
+            .select()
+            .from(wholesalerStateRules)
+            .where(eq(wholesalerStateRules.state, property.state));
+          stateRule = rule ?? null;
+        }
+      } catch { /* rule lookup is advisory */ }
+
+      const [created] = await db
+        .insert(contractAssignments)
+        .values({
+          organizationId: org.id,
+          dealId,
+          endBuyerProfileId: parsed.data.endBuyerProfileId ?? null,
+          endBuyerName: parsed.data.endBuyerName ?? null,
+          assignmentFeeCents: parsed.data.assignmentFeeCents,
+          originalContractDate: parsed.data.originalContractDate ?? null,
+          notes: parsed.data.notes ?? null,
+          status: "draft",
+        })
+        .returning();
+
+      res.status(201).json({ assignment: created, stateRule });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  api.patch("/api/deals/:dealId/assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const id = Number(req.params.id);
+      const updateSchema = z.object({
+        status: z.enum(CONTRACT_ASSIGNMENT_STATUSES).optional(),
+        assignmentFeeCents: z.number().int().nonnegative().optional(),
+        generatedDocumentId: z.number().int().positive().optional(),
+        endBuyerProfileId: z.number().int().positive().nullable().optional(),
+        endBuyerName: z.string().max(200).nullable().optional(),
+        notes: z.string().max(4000).nullable().optional(),
+      });
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [updated] = await db
+        .update(contractAssignments)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(and(eq(contractAssignments.id, id), eq(contractAssignments.organizationId, org.id)))
+        .returning();
+      if (!updated) return Errors.notFound(res, "Assignment");
+      res.json(updated);
+    } catch (err) {
+      Errors.internal(res, err);
     }
   });
 
@@ -292,16 +471,11 @@ export function registerDealRoutes(app: Express): void {
     }
   });
 
-  // Valid deal status transitions — no skipping states (Task #210)
-  const DEAL_STATUS_TRANSITIONS: Record<string, string[]> = {
-    negotiating: ["offer_sent", "cancelled"],
-    offer_sent: ["countered", "accepted", "cancelled"],
-    countered: ["offer_sent", "accepted", "cancelled"],
-    accepted: ["in_escrow", "cancelled"],
-    in_escrow: ["closed", "cancelled"],
-    closed: [],
-    cancelled: [],
-  };
+  // Valid deal status transitions — no skipping states (Task #210).
+  // W3.4: the table now lives in shared/lifecycle/pipeline-status.ts so the
+  // bulk route and services validate against the SAME machine. String-keyed
+  // view because existing rows may carry legacy statuses.
+  const DEAL_STATUS_TRANSITIONS: Record<string, readonly string[]> = SHARED_DEAL_TRANSITIONS;
 
   api.put("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -2078,27 +2252,6 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.json(handoffs);
     } catch (err: any) {
       Errors.internal(res, err instanceof Error ? err : new Error(err.message));
-    }
-  });
-
-  // GET /api/deals/coach — D4: surface the autopilot deal-coach (next-best
-  // actions over the pipeline) to the customer, inside the Deals door.
-  app.get("/api/deals/coach", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    // The deal-coach is a secondary advisory widget inside the Deals door. It
-    // must NEVER 500 the request — a failure here would break the whole door.
-    // Degrade to an empty coach and log loudly so the underlying error stays
-    // observable (Errors.internal previously masked the door behind a 500).
-    try {
-      const { getDealCoachForOrg } = await import("./services/autopilot/dealActions");
-      const items = await getDealCoachForOrg(req.organization.id);
-      res.json({ items });
-    } catch (err: any) {
-      logger.error(
-        "[deals/coach] failed — degrading to empty coach so the Deals door still renders",
-        err instanceof Error ? err : new Error(String(err?.message ?? err)),
-        { metadata: { organizationId: req.organization?.id } },
-      );
-      res.json({ items: [], degraded: true });
     }
   });
 

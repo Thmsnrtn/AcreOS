@@ -62,6 +62,7 @@ import {
   TrendingUp,
   FileSignature,
   ClipboardCheck,
+  Scissors,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
@@ -125,6 +126,9 @@ const SECONDARY_CHOICES: { value: BusinessType; label: string; description: stri
   { value: "commercial", label: "Commercial", icon: Landmark, description: "Office, retail, industrial, and mixed-use investments." },
   { value: "creative_finance", label: "Creative Finance", icon: Lightbulb, description: "Subject-to, seller financing, wraps, and lease options." },
   { value: "developer", label: "Developer / Entitlements", icon: Warehouse, description: "Land development, entitlements, and new construction." },
+  // W2.5: the Subdivision module (sidebar, businessTypeOnly:["subdivider"])
+  // was orphaned — gated on a businessType no onboarding path could set.
+  { value: "subdivider", label: "Subdivider", icon: Scissors, description: "Buy acreage, split it into parcels, and sell the pieces." },
   { value: "tax_lien_deed", label: "Tax Lien / Tax Deed", icon: Receipt, description: "Purchase tax liens and tax deeds at county auctions." },
   { value: "mobile_home", label: "Mobile Home / MHP", icon: Truck, description: "Mobile home parks and manufactured housing investments." },
   { value: "agent_investor", label: "Agent-Investor", icon: Users, description: "Licensed agent who also invests — manage clients and your own deals." },
@@ -313,6 +317,7 @@ export default function OnboardingV2() {
     },
   });
 
+  // allow-no-invalidation: provisions templates before any app queries exist in the cache — /today fetches fresh after navigate
   const provisionMutation = useMutation({
     mutationFn: async (bt: BusinessType) => {
       const res = await apiRequest("POST", "/api/onboarding/provision", {
@@ -332,6 +337,11 @@ export default function OnboardingV2() {
     mutationFn: async ({ persona, businessType: bt }: { persona: Persona; businessType: BusinessType }) => {
       const res = await apiRequest("PUT", "/api/me/persona", { persona, businessType: bt });
       return res.json();
+    },
+    onSuccess: () => {
+      // Persona gates nav content — the cached user must not go stale
+      // across the SPA navigate() into /today.
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
   });
 
@@ -409,10 +419,17 @@ export default function OnboardingV2() {
       if (!res.ok) throw new Error("Failed to record step");
       return res.json();
     },
+    onSuccess: () => {
+      // Step progress is read by the onboarding status query — keep the
+      // wizard's progress indicators live as steps record.
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
+    },
   });
 
   const completeMutation = useMutation({
-    mutationFn: async () => {
+    // W2.2: the finish screen drives toward the first OFFER, so completion
+    // can land on the Map (offer flow) as well as Today.
+    mutationFn: async (_destination?: "/today" | "/maps") => {
       const res = await apiRequest("POST", "/api/onboarding/complete", {
         formData: { businessType, workspaceName },
         path: "fast",
@@ -420,11 +437,11 @@ export default function OnboardingV2() {
       if (!res.ok) throw new Error("Failed to complete onboarding");
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, destination) => {
       queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/me/needs-onboarding"] });
-      navigate("/today");
+      navigate(destination ?? "/today");
     },
     onError: (error) => {
       toast({
@@ -534,7 +551,13 @@ export default function OnboardingV2() {
 
   // ── Final: complete + navigate ───────────────────────────────────────────
   const handleGoToToday = async () => {
-    await completeMutation.mutateAsync();
+    await completeMutation.mutateAsync("/today");
+  };
+  // W2.2 — the activation target is the first OFFER, not the sample-data
+  // load. The Map's parcel → blind-offer → hand-to-Pax flow is the fastest
+  // first win, so the finish screen's primary action lands there.
+  const handleMakeFirstOffer = async () => {
+    await completeMutation.mutateAsync("/maps");
   };
 
   // ── Motion: step transition ──────────────────────────────────────────────
@@ -1116,16 +1139,17 @@ export default function OnboardingV2() {
               >
                 {sampleDataLoaded || csvImportDone ? (
                   <>
-                    Pax has loaded{" "}
-                    {sampleDataLoaded ? "50 sample leads" : "your leads"} so you
-                    can feel how Today works — Decision Queue, Morning Brief, and
-                    Cash Strip are all live. You'll wipe them when you're ready
-                    for real data.
+                    {sampleDataLoaded ? "50 sample leads are" : "Your leads are"}{" "}
+                    loaded and Today is live. Now the real win: open a parcel on
+                    the Map, get a recommended blind offer, and hand it to Pax to
+                    draft — your first offer can be out the door in minutes.
                   </>
                 ) : (
                   <>
-                    Pax is ready. Head to Today — you can import leads or load
-                    sample data any time from the checklist.
+                    Pax is ready. The fastest first win: open a parcel on the
+                    Map and make your first blind offer — Pax drafts it, you
+                    approve it. Data import waits on the checklist whenever you
+                    need it.
                   </>
                 )}
               </motion.p>
@@ -1134,9 +1158,9 @@ export default function OnboardingV2() {
             <footer className="ob2-footer">
               <Button
                 className="ob2-btn-primary w-full"
-                onClick={handleGoToToday}
+                onClick={handleMakeFirstOffer}
                 disabled={isPendingComplete}
-                data-testid="button-go-to-today"
+                data-testid="button-make-first-offer"
               >
                 {isPendingComplete ? (
                   <>
@@ -1144,11 +1168,20 @@ export default function OnboardingV2() {
                       className="w-4 h-4 mr-2 animate-spin"
                       aria-hidden="true"
                     />
-                    Opening Today…
+                    Opening…
                   </>
                 ) : (
-                  "Go to Today →"
+                  "Make your first offer →"
                 )}
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full mt-2"
+                onClick={handleGoToToday}
+                disabled={isPendingComplete}
+                data-testid="button-go-to-today"
+              >
+                Go to Today instead
               </Button>
             </footer>
           </motion.main>

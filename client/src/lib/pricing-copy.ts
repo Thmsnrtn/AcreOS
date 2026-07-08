@@ -103,6 +103,7 @@ export const PRICING_TIER_COPY: PricingTierCopy[] = [
       seatLine("free"),
       `${fmtLimit(TIER_LIMITS.free.leads)} leads / ${fmtLimit(TIER_LIMITS.free.properties)} properties / ${fmtLimit(TIER_LIMITS.free.notes)} notes`,
       `Pax assistant (${fmtLimit(TIER_LIMITS.free.ai_requests)} messages / mo)`,
+      "Your first 5 letters mailed free",
       "Lead inbox with Pax drafts",
       "6 free data sources",
     ],

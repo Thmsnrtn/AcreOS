@@ -70,7 +70,11 @@ export default function TaxDelinquentPage() {
 
   const contactMutation = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/tax-delinquent/${id}/contact`),
-    onSuccess: () => toast({ title: "Lead added to outreach sequence." }),
+    onSuccess: () => {
+      // The lead's contacted/outreach state shows in this list — refresh it.
+      qc.invalidateQueries({ queryKey: ["/api/tax-delinquent"] });
+      toast({ title: "Lead added to outreach sequence." });
+    },
     onError: () =>
       toast({
         title: "Couldn't add lead to outreach",

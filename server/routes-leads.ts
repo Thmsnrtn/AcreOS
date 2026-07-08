@@ -3,7 +3,8 @@ import { getOrganization, getUserId, type AuthenticatedRequest } from "./types/r
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray, or } from "drizzle-orm";
-import { insertLeadSchema, leads } from "@shared/schema";
+import { insertLeadSchema, leads, properties, deals } from "@shared/schema";
+import { LEAD_STATUSES, isLeadStatus, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
@@ -157,35 +158,23 @@ export function registerLeadRoutes(app: Express): void {
         ? { ...(sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : {}), ...(trimmedQ ? { q: trimmedQ } : {}) }
         : undefined;
 
-    // If stage filter is present, we must compute scores on all leads before filtering (no SQL-level stage)
+    // W5.3: stage filtering + pagination now run in SQL (the score formula
+    // is mirrored in leadRepo.computedScoreSql). The old path loaded the
+    // ENTIRE org's leads into memory and scored them in JS on every
+    // request — O(org size) per page view.
     if (stage && ["hot", "warm", "cold", "dead"].includes(stage)) {
-      // getLeads only takes assignedTo — pass that subset of filters here.
-      const allLeads = await storage.getLeads(org.id, filters?.assignedTo !== undefined ? { assignedTo: filters.assignedTo } : undefined);
-      const leadsWithScores = allLeads.map(lead => {
+      const result = await storage.getLeadsByComputedStage(
+        org.id,
+        stage as "hot" | "warm" | "cold" | "dead",
+        { page, pageSize },
+        filters,
+      );
+      const data = result.data.map(lead => {
         const { score, factors } = leadNurturerService.calculateLeadScore(lead);
         const computedStage = leadNurturerService.segmentLead(score);
         return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
       });
-      let filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);
-      if (trimmedQ) {
-        const ql = trimmedQ.toLowerCase();
-        const phoneDigits = trimmedQ.replace(/\D/g, "");
-        filteredLeads = filteredLeads.filter((l) => {
-          const haystack = [l.firstName, l.lastName, l.email, l.address, l.city, l.state, l.zip]
-            .filter(Boolean).join(" ").toLowerCase();
-          if (haystack.includes(ql)) return true;
-          if (phoneDigits.length >= 3) {
-            const pn = (l.phoneNormalized || (l.phone || "").replace(/\D/g, ""));
-            if (pn.includes(phoneDigits)) return true;
-          }
-          return false;
-        });
-      }
-      const total = filteredLeads.length;
-      const totalPages = Math.max(1, Math.ceil(total / pageSize));
-      const start = (page - 1) * pageSize;
-      const data = filteredLeads.slice(start, start + pageSize);
-      return res.json({ data, total, page, pageSize, totalPages });
+      return res.json({ data, total: result.total, page, pageSize, totalPages: result.totalPages });
     }
 
     // Server-side pagination with SQL LIMIT/OFFSET
@@ -228,9 +217,19 @@ export function registerLeadRoutes(app: Express): void {
       }
     }
 
-    const allLeads = await storage.getLeads(org.id, sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined);
+    // W5.3: cursor pagination + stage filter now run in SQL — the old path
+    // loaded EVERY lead in the org into memory on every scroll tick.
+    const stageFilter = stage && ["hot", "warm", "cold", "dead"].includes(stage)
+      ? (stage as "hot" | "warm" | "cold" | "dead")
+      : undefined;
+    const cursorId = cursor ? Number(cursor) : undefined;
+    const result = await storage.getLeadsCursor(
+      org.id,
+      { limit, cursor: Number.isFinite(cursorId) ? cursorId : undefined, stage: stageFilter },
+      sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined,
+    );
 
-    const leadsWithScores = allLeads.map(lead => {
+    const paginatedLeads = result.data.map(lead => {
       const { score, factors } = leadNurturerService.calculateLeadScore(lead);
       const computedStage = leadNurturerService.segmentLead(score);
       return {
@@ -241,25 +240,8 @@ export function registerLeadRoutes(app: Express): void {
       };
     });
 
-    let filteredLeads = leadsWithScores;
-    if (stage && ["hot", "warm", "cold", "dead"].includes(stage)) {
-      filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);
-    }
-    
-    // Sort by ID for consistent cursor pagination
-    filteredLeads.sort((a, b) => b.id - a.id);
-    
-    const total = filteredLeads.length;
-    let startIndex = 0;
-    
-    if (cursor) {
-      const cursorId = Number(cursor);
-      startIndex = filteredLeads.findIndex(l => l.id < cursorId);
-      if (startIndex === -1) startIndex = filteredLeads.length;
-    }
-    
-    const paginatedLeads = filteredLeads.slice(startIndex, startIndex + limit);
-    const hasMore = startIndex + limit < total;
+    const total = result.total;
+    const hasMore = result.hasMore;
     const nextCursor = hasMore ? String(paginatedLeads[paginatedLeads.length - 1]?.id) : null;
     
     res.json({
@@ -668,6 +650,17 @@ export function registerLeadRoutes(app: Express): void {
 
       const validated = updateLeadSchema.parse(req.body);
 
+      // W3.4 — lead status is a real vocabulary with validated transitions
+      // (shared/lifecycle/pipeline-status). Funnel metrics key off these
+      // strings; a typo here used to silently vanish a lead from every
+      // conversion query.
+      if (validated.status && validated.status !== existingLead.status) {
+        const transitionError = validateLeadTransition(existingLead.status, validated.status);
+        if (transitionError) {
+          return Errors.badRequest(res, transitionError);
+        }
+      }
+
       // Lens 48 — `assignedTo` from body must point at a member of the
       // requesting org. Without this check a customer admin could assign
       // a lead to a user in a different tenant (creating dangling
@@ -880,6 +873,30 @@ export function registerLeadRoutes(app: Express): void {
       }
       const { ids, updates } = parsed.data;
 
+      // W3.4 — a bulk status write must be a valid status value AND a legal
+      // transition for every targeted lead (same machine as the single-lead
+      // PUT; this route used to accept any string).
+      if (typeof (updates as Record<string, unknown>).status === "string") {
+        const nextStatus = (updates as Record<string, string>).status;
+        if (!isLeadStatus(nextStatus)) {
+          return Errors.badRequest(
+            res,
+            `"${nextStatus}" is not a valid lead status (expected one of: ${LEAD_STATUSES.join(", ")})`,
+          );
+        }
+        const targeted = await storage.getLeadsByIds(org.id, ids);
+        const blocked = targeted
+          .map((l) => ({ id: l.id, error: validateLeadTransition(l.status, nextStatus) }))
+          .filter((b): b is { id: number; error: string } => b.error !== null);
+        if (blocked.length > 0) {
+          return Errors.badRequest(
+            res,
+            `${blocked.length} lead(s) cannot move to "${nextStatus}": ${blocked[0].error}`,
+            { blocked },
+          );
+        }
+      }
+
       const updatedCount = await storage.bulkUpdateLeads(org.id, ids, updates);
       
       const user = req.user as any;
@@ -1047,12 +1064,28 @@ export function registerLeadRoutes(app: Express): void {
     // Also fetch related deal stage changes and campaign touches for a richer timeline
     if (includeDealChanges) {
       try {
-        const dealEvents = await storage.getActivityEvents(org.id, "deal", leadId, undefined);
-        // Merge deal events that reference this lead, avoiding duplicates
+        // W6.2 bug fix: this used to query deal events with entityId=leadId —
+        // deal events are keyed by DEAL id, so the merge silently returned
+        // nothing since it shipped. The real bridge is lead → properties
+        // (sellerId) → deals (propertyId).
+        const sellerProps = await db
+          .select({ id: properties.id })
+          .from(properties)
+          .where(and(eq(properties.organizationId, org.id), eq(properties.sellerId, leadId)));
+        const dealRows = sellerProps.length > 0
+          ? await db
+              .select({ id: deals.id })
+              .from(deals)
+              .where(and(eq(deals.organizationId, org.id), inArray(deals.propertyId, sellerProps.map((p) => p.id))))
+          : [];
         const existingIds = new Set(events.map((e: any) => e.id));
-        for (const de of dealEvents) {
-          if (!existingIds.has((de as any).id)) {
-            events.push(de);
+        for (const d of dealRows) {
+          const dealEvents = await storage.getActivityEvents(org.id, "deal", d.id, undefined);
+          for (const de of dealEvents) {
+            if (!existingIds.has((de as any).id)) {
+              existingIds.add((de as any).id);
+              events.push(de);
+            }
           }
         }
         // Sort merged list by date descending

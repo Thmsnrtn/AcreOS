@@ -97,6 +97,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
   const [isNegotiationOpen, setIsNegotiationOpen] = useState(false);
   const [pendingTemplateId, setPendingTemplateId] = useState<number | null>(null);
 
+  // allow-no-invalidation: generated script lands in component-local state (setNegotiationScript)
   const negotiationMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("POST", "/api/ai/negotiation/script", {
@@ -117,6 +118,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
     },
   });
   
+  // allow-no-invalidation: recommendation lands in the pricing popover's local state
   const pricingMutation = useMutation({
     mutationFn: async () => {
       if (!deal.propertyId) throw new Error("No property associated with this deal");
@@ -756,7 +758,15 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
             </TabsContent>
 
             <TabsContent value="timeline" className="space-y-6">
-              <ActivityTimeline entityType="deal" entityId={deal.id} />
+              {/* W6.2 — the single track: /track unions events across the
+                  deal, its property, and the seller lead, so this timeline
+                  reads lead → mail → response → offer → contract → close
+                  instead of only the deal's own slice. */}
+              <ActivityTimeline
+                entityType="deal"
+                entityId={deal.id}
+                endpointOverride={`/api/deals/${deal.id}/track`}
+              />
             </TabsContent>
 
             <TabsContent value="checklist" className="space-y-6">

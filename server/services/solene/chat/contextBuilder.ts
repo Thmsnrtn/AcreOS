@@ -20,6 +20,8 @@ import { getMemoryFile, listMemoryFiles } from "../memoryFileStore";
 import { retrieveRelevantMemories } from "../learningLoop";
 import { CHAT_CONTEXT_TOKEN_BUDGET, type ChatTier } from "@shared/schema/solene-chat-config";
 import { logger } from "../../../utils/logger";
+import { buildStrategyBlocks } from "./strategyDocs";
+import { gatherLiveState, renderLiveStateBlock } from "./liveState";
 
 // ============================================================================
 // Public types
@@ -29,6 +31,8 @@ export type ContextBlockSource =
   | "constitution"
   | "charter"
   | "team_brief"
+  | "live_state"
+  | "strategy_doc"
   | "feedback_memory"
   | "recent_decisions"
   | "retrieval";
@@ -91,7 +95,9 @@ const SLUG_TO_SOURCE: Record<string, ContextBlockSource> = {
 const SOURCE_PRIORITY: Record<ContextBlockSource, number> = {
   constitution: 100,
   charter: 95,
+  live_state: 90,
   team_brief: 80,
+  strategy_doc: 70,
   feedback_memory: 60,
   recent_decisions: 50,
   retrieval: 40,
@@ -246,6 +252,49 @@ export async function buildChatContext(
     });
   }
 
+  // ── 2.5 Live state — dynamic, NOT cache-eligible (changes every turn) ─────
+  // The same live numbers the founder cockpit uses (pulse, envelope, trust
+  // ledger, open asks, runway). Honest nulls: gatherLiveState degrades
+  // per-source; the renderer states absent data as explicit "unknown".
+  try {
+    const liveState = await gatherLiveState();
+    const content = renderLiveStateBlock(liveState);
+    blocks.push({
+      source: "live_state",
+      label: "live-state",
+      content,
+      tokens: estimateTokens(content),
+      priority: SOURCE_PRIORITY.live_state,
+      isStatic: false,
+    });
+  } catch (err) {
+    logger.warn("[soleneChat] contextBuilder.live_state_failed", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // ── 2.6 Strategy layer — repo docs, selected by relevance to the question ─
+  // Constitution / mature-machine / roadmap / deletion ledger / cost audit /
+  // launch week, each section labelled [SOURCE: docs/company/…] so answers
+  // can cite exactly where a claim came from.
+  try {
+    const strategyBlocks = await buildStrategyBlocks(input.userMessage);
+    for (const sb of strategyBlocks) {
+      blocks.push({
+        source: "strategy_doc",
+        label: sb.label,
+        content: sb.content,
+        tokens: estimateTokens(sb.content),
+        priority: SOURCE_PRIORITY.strategy_doc,
+        isStatic: false,
+      });
+    }
+  } catch (err) {
+    logger.warn("[soleneChat] contextBuilder.strategy_docs_failed", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   // ── 3. Retrieval — dynamic, NOT cache-eligible (varies per query) ─────────
   try {
     const retrieval = await retrieveRelevantMemories({
@@ -289,7 +338,7 @@ export async function buildChatContext(
   });
   const dynamicSuffix = renderBlocks(dynamicBlocks, {
     leading: dynamicBlocks.length > 0
-      ? `\n## Memories surfaced for THIS query\n`
+      ? `\n## Context assembled for THIS query (live state, strategy sources, memories)\n`
       : "",
   });
 
@@ -301,13 +350,18 @@ export async function buildChatContext(
   };
 }
 
-const SOLENE_ROLE_PREAMBLE = `You are Solene, the AcreOS Chief of Staff. You speak from the team_solene.md brief loaded below, you uphold the constitution + charter loaded below, and you act inside the COO authority + credential-discipline + verify-before-dispatch operating discipline. You have a set of tools available — use them when they shorten the path to a correct answer.
+export const SOLENE_ROLE_PREAMBLE = `You are Solene, the AcreOS Chief of Staff. You speak from the team_solene.md brief loaded below, you uphold the constitution + charter loaded below, and you act inside the COO authority + credential-discipline + verify-before-dispatch operating discipline. You have a set of tools available — use them when they shorten the path to a correct answer.
 
 When you act:
 - Be specific; cite file paths and code locations when available
 - Surface uncertainty honestly; do not bluff
 - Never reveal credential values; describe them by length/hash/prefix only
 - Prefer the smallest correct action over the cleverest one
+
+GROUNDING AND HONESTY (non-negotiable):
+- Every number and factual claim in your answer must come from a loaded block or a tool result, and you must cite its bracketed [SOURCE: ...] label (e.g. [SOURCE: live-state], [SOURCE: docs/company/roadmap-2026-07.md]).
+- The LIVE STATE block is the only source of live operational numbers (MRR, spend, envelope, runway, trust ledger, open asks, last-24h activity). If a value there is marked unknown or absent, answer "no data yet" — NEVER estimate, extrapolate, or fabricate a number.
+- If the answer is not covered by any loaded source or tool result, say you don't know and name where the answer would live (which document, dashboard, or tool).
 
 `;
 

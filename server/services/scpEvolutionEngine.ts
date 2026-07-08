@@ -519,18 +519,50 @@ export async function runEvolution(
   const changedFiles: string[] = [];
   const goldenCases = readGoldenSuite(agent);
 
+  // Step-away gap #6 — the LLM-judge stack (scpLLMJudges) existed with zero
+  // callers, so evolution only ever passed the cheap heuristic gates. When the
+  // founder arms SCP_LLM_JUDGES_ENABLED (and an API key is present), every
+  // delta must ALSO clear the judge gauntlet: constitution (triple-Sonnet
+  // minority veto) → safety (triple-Sonnet) → golden-suite regression
+  // (cascaded Haiku→Sonnet). validateDeltaWithJudges fails CLOSED on any
+  // judge error. Off (the default) keeps today's heuristic-only behavior.
+  const judgesArmed =
+    process.env.SCP_LLM_JUDGES_ENABLED === "true" &&
+    typeof process.env.ANTHROPIC_API_KEY === "string" &&
+    process.env.ANTHROPIC_API_KEY.length > 0;
+
   for (const delta of deltas) {
     // Build validation context
     const currentFileLines = getConfigLineCount(agent, delta.file);
     const originalContentLength = 100; // Approximate Day 1 stub length
     const currentContentLength = getConfigContentLength(agent, delta.file);
 
-    const validationResult = validateDelta(delta, {
-      goldenCases,
-      currentFileLines,
-      originalContentLength,
-      currentContentLength,
-    });
+    let validationResult: ReturnType<typeof validateDelta>;
+    if (judgesArmed) {
+      const { validateDeltaWithJudges } = await import("./scpLLMJudges");
+      const judged = await validateDeltaWithJudges(delta, {
+        goldenCases,
+        currentFileLines,
+        originalContentLength,
+        currentContentLength,
+      });
+      validationResult = {
+        passed: judged.passed,
+        rejected_by: judged.rejected_by,
+        gates: [...judged.pattern_gates, ...judged.judge_gates].map((g) => ({
+          gate: g.gate,
+          passed: g.passed,
+          reason: g.reason,
+        })),
+      };
+    } else {
+      validationResult = validateDelta(delta, {
+        goldenCases,
+        currentFileLines,
+        originalContentLength,
+        currentContentLength,
+      });
+    }
 
     if (validationResult.passed) {
       applyDelta(delta);
@@ -645,35 +677,47 @@ export async function runEvolution(
 // ─── Batch Evolution (for overnight processing) ────────────────────────────
 
 /**
- * Run evolution for all agents based on their recent activity.
- * Called by the overnight briefing generation job.
+ * Batch pass over all agents. HONEST SCOPE: per-delta evolution requires a
+ * real interaction record (transcript + corrections + outcome) which a batch
+ * context does not have — so this pass runs the maintenance half only
+ * (config consolidation for agents whose session count makes it due) and
+ * reports exactly what it did. Callers: the founder-triggered
+ * POST /api/scp/v2/evolution/run. `agents_evolved` stays 0 until an
+ * interaction-capture seam feeds real sessions into runEvolution.
  */
 export async function runBatchEvolution(): Promise<{
   results: EvolutionResult[];
   agents_evolved: number;
   agents_skipped: number;
+  agents_consolidated: number;
+  note: string;
 }> {
   const results: EvolutionResult[] = [];
-  let evolved = 0;
+  const evolved = 0;
   let skipped = 0;
+  let consolidated = 0;
 
   for (const agent of AGENT_CODENAMES) {
     try {
       const metrics = getAgentMetrics(agent);
       const totalSessions = metrics?.total_sessions ?? 0;
 
-      // For batch evolution, only run for agents with recent activity
-      // This is a lightweight check — the full cadence check happens inside runEvolution
       if (totalSessions === 0) {
         skipped++;
         continue;
       }
 
-      // Check if consolidation is due (every 10 sessions)
-      if (totalSessions > 0 && totalSessions % 10 === 0) {
+      // Consolidation is due every 10 sessions.
+      if (totalSessions % 10 === 0) {
+        let didConsolidate = false;
         const configFiles = listAgentConfigFiles(agent);
         for (const file of configFiles) {
-          consolidateConfig(agent, file);
+          const r = consolidateConfig(agent, file);
+          if (r.consolidated) didConsolidate = true;
+        }
+        if (didConsolidate) {
+          consolidated++;
+          continue;
         }
       }
 
@@ -684,7 +728,14 @@ export async function runBatchEvolution(): Promise<{
     }
   }
 
-  return { results, agents_evolved: evolved, agents_skipped: skipped };
+  return {
+    results,
+    agents_evolved: evolved,
+    agents_skipped: skipped,
+    agents_consolidated: consolidated,
+    note:
+      "Batch pass runs consolidation only — per-delta evolution needs a real interaction record, which arrives via runEvolution when sessions are captured.",
+  };
 }
 
 // ─── Exported Service ──────────────────────────────────────────────────────

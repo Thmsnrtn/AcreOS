@@ -15,6 +15,8 @@
  * absence for a zero.
  */
 
+import { logger } from "../../utils/logger";
+
 // ── Raw inputs (what the gatherer reads from real sources) ────────────────────
 
 export interface ContextPackRaw {
@@ -107,6 +109,29 @@ export interface ContextPack {
   thesis: string;
   /** A prompt-ready, human-readable eagle-eye briefing — what the Operator reasons over. */
   briefing: string;
+  /**
+   * Senses that failed to read during gathering and fell back to their
+   * labelled-absent defaults. Non-empty ⇒ the corresponding numbers in this
+   * pack are UNKNOWN, not zero — the briefing carries a matching warning
+   * block so the Operator never grounds a plan on a blind sense.
+   */
+  degradedSenses: string[];
+}
+
+/**
+ * Prompt block appended to the briefing when senses failed to read.
+ * Pure + exported for tests. Empty input ⇒ empty string (no noise).
+ */
+export function partialTelemetryBlock(degraded: string[]): string {
+  if (degraded.length === 0) return "";
+  return [
+    "",
+    "## PARTIAL TELEMETRY — senses dark",
+    `Failed to read: ${degraded.join(", ")}.`,
+    "The corresponding figures above are UNKNOWN (defaulted), not real zeros.",
+    "Do NOT ground plans, forecasts, or spending decisions on them; prefer",
+    "stabilizing/diagnostic moves and say so in your reasoning.",
+  ].join("\n");
 }
 
 function pct(numer: number, denom: number): number {
@@ -212,6 +237,7 @@ export function assembleContextPack(raw: ContextPackRaw): ContextPack {
     recall: raw.recall,
     thesis: raw.thesis ?? "No strategy memory yet.",
     briefing,
+    degradedSenses: [],
   };
 }
 
@@ -223,6 +249,9 @@ export function assembleContextPack(raw: ContextPackRaw): ContextPack {
  * reason over — the eagle-eye view the decision-path LLM has never had.
  */
 export async function gatherContextPack(): Promise<ContextPack> {
+  // Senses that failed to read this gather — surfaced on the pack + briefing
+  // so "honest zeros" can never masquerade as real signal downstream.
+  const degraded: string[] = [];
   const raw: ContextPackRaw = {
     mrrUsd: 0, mrrPriorUsd: null, trials: 0, trialsEndingSoon: 0,
     supportBacklog: 0, supportFirstResponseHours: null, churnSignals: 0,
@@ -241,7 +270,7 @@ export async function gatherContextPack(): Promise<ContextPack> {
     raw.uptimePct = typeof p.uptimePct === "number" ? p.uptimePct : null;
     raw.complianceOpen = p.complianceOpenCount;
     raw.envelopeStatus = p.envelopeStatus;
-  } catch { /* honest defaults */ }
+  } catch { degraded.push("pulse-vitals"); }
 
   // Deliverability + churn (the outward senses decide.ts uses).
   try {
@@ -250,7 +279,7 @@ export async function gatherContextPack(): Promise<ContextPack> {
     raw.emailComplaints = s.emailComplaints;
     raw.churnSignals = s.churnSignals;
     raw.trialsEndingSoon = s.trialsEnding;
-  } catch { /* none known */ }
+  } catch { degraded.push("outward-senses"); }
 
   // The books.
   try {
@@ -259,13 +288,13 @@ export async function gatherContextPack(): Promise<ContextPack> {
     raw.baseCapUsd = getEnsembleMonthlyCapUsd();
     raw.effectiveCapUsd = await getEffectiveMonthlyCapUsd();
     raw.mtdSpendUsd = await getMonthToDateSpendForType("agent_dispatch");
-  } catch { /* defaults */ }
+  } catch { degraded.push("capital-books"); }
 
   // Attribution (lower bound) + trust ledger + open asks + calibration.
   try {
     const { getConversionSummary } = await import("./attribution");
     raw.attributedSignups = (await getConversionSummary()).totalSignups;
-  } catch { /* 0 */ }
+  } catch { degraded.push("attribution"); }
   try {
     const { getTrustLedger } = await import("./domainAutonomy");
     const ledger = await getTrustLedger();
@@ -274,7 +303,7 @@ export async function gatherContextPack(): Promise<ContextPack> {
       level: d.level,
       qualityLine: `${d.cleanCycleCount}/${d.threshold} clean cycles to next rung`,
     }));
-  } catch { /* none */ }
+  } catch { degraded.push("trust-ledger"); }
   try {
     const { listOpenAsks } = await import("../solene/founderCollab");
     const asks = await listOpenAsks();
@@ -283,16 +312,34 @@ export async function gatherContextPack(): Promise<ContextPack> {
       summary: a.questionSummary,
       ageHours: a.askedAt ? Math.max(0, Math.round((now - new Date(a.askedAt).getTime()) / 3_600_000)) : 0,
     }));
-  } catch { /* none */ }
+  } catch { degraded.push("open-asks"); }
   try {
     const { getCalibrationPairs } = await import("./experienceLog");
     const { calibrationReport } = await import("./forecast");
     const r = calibrationReport(await getCalibrationPairs());
     raw.calibrationGrade = r.grade;
     raw.calibrationN = r.n;
-  } catch { /* learning */ }
+  } catch { degraded.push("calibration"); }
 
   const pack = assembleContextPack(raw);
+  pack.degradedSenses = degraded;
+  pack.briefing += partialTelemetryBlock(degraded);
+  if (degraded.length > 0) {
+    logger.warn("[cognitionContext] context pack gathered with dark senses", {
+      metadata: { degraded },
+    });
+  }
+
+  // Blind-sense watchdog (step-away #2 residue): record this gather's dark
+  // list; page the founder when the SAME sense stays dark across consecutive
+  // gathers. Fire-and-forget — the watchdog must never block or break a tick.
+  void import("./senseWatchdog")
+    .then(({ recordGatherAndCheck }) => recordGatherAndCheck(degraded))
+    .catch((err) => {
+      logger.warn(
+        `[cognitionContext] sense watchdog failed (tick unaffected): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
 
   // THE BET: append the causal theory of the business so the Operator reasons
   // over a falsifiable MODEL (levers → causal edges → outcomes), not just a

@@ -128,6 +128,34 @@ describe("autopilot narration engine — the Voice", () => {
     expect(declining.vitalSign.mrrWowPct).toBe(-2);
   });
 
+  it("wedge/error-rate/version pass through exactly; absent ⇒ null, never zero-faked", () => {
+    const blank = buildFounderBrief(base());
+    expect(blank.vitalSign.wedge).toBeNull();
+    expect(blank.vitalSign.errorRatePct).toBeNull();
+    expect(blank.vitalSign.prodVersion).toBeNull();
+    const withWedge = buildFounderBrief(
+      base({
+        wedge: { outreachSent7d: 42, replies7d: 6, offers7d: 2 },
+        errorRatePct: 0.3,
+        prodVersion: "abcd1234",
+      }),
+    );
+    expect(withWedge.vitalSign.wedge).toEqual({ outreachSent7d: 42, replies7d: 6, offers7d: 2 });
+    expect(withWedge.vitalSign.errorRatePct).toBe(0.3);
+    expect(withWedge.vitalSign.prodVersion).toBe("abcd1234");
+  });
+
+  it("HONESTY: an unreadable pulse yields 'unknown' budget + null uptime — never a guessed green or 99.9%", () => {
+    const b = buildFounderBrief(
+      base({ pulse: { ...base().pulse, envelopeStatus: "unknown", uptimePct: null } }),
+    );
+    expect(b.vitalSign.envelopeStatus).toBe("unknown");
+    expect(b.vitalSign.uptimePct).toBeNull();
+    // The narrative admits it can't read the ledger instead of claiming budget health.
+    expect(b.theWord).toMatch(/can't read the spend ledger/i);
+    expect(b.theWord).not.toMatch(/within budget/i);
+  });
+
   it("partOfDayFromHour maps ET hours to the right greeting word", () => {
     expect(partOfDayFromHour(8)).toBe("morning");
     expect(partOfDayFromHour(14)).toBe("afternoon");

@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import type { NoteAcquisitionStage } from "@/pages/notes-pipeline";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface ChecklistItem {
   done?: boolean;
@@ -448,6 +449,7 @@ function PromoteDialog({ open, onOpenChange, acquisition, onPromoted }: {
   const [acquisitionDate, setAcquisitionDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [originalLender, setOriginalLender] = useState(acquisition.sourcedFrom ?? "");
 
+  // allow-no-invalidation: onSuccess hands off via onPromoted(noteId) — the parent navigates and refreshes
   const promoteMutation = useMutation({
     mutationFn: async () => {
       const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "";
@@ -522,7 +524,7 @@ function PromoteDialog({ open, onOpenChange, acquisition, onPromoted }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button
             onClick={() => promoteMutation.mutate()}
             disabled={!noteNumber || !originalPrincipal || !acquisitionPrice || !currentBalance || !termMonths || !originationDate || !maturityDate || !acquisitionDate || promoteMutation.isPending}

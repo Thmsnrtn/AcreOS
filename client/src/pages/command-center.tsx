@@ -86,6 +86,7 @@ import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 import { ReadAloudButton } from "@/components/ReadAloudButton";
 import { useAuth } from "@/hooks/use-auth";
+import { Verbs } from "@/lib/labels";
 
 interface Agent {
   name: string;
@@ -684,7 +685,7 @@ function TeamTabContent() {
                             onClick={() => setTaskDialogOpen(false)}
                             data-testid="button-cancel-va-task"
                           >
-                            Cancel
+                            {Verbs.CANCEL}
                           </Button>
                           <Button
                             onClick={() => {
@@ -1211,12 +1212,15 @@ function AIOperationsTabContent() {
       toast({ title: "Due diligence started", description: "Analysis is now running in the background." });
       setDueDiligenceDialogOpen(false);
       setPropertyIdInput("");
+      // A new dossier row now exists — same invalidation as useRequestAIDossier.
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/due-diligence"] });
     },
     onError: () => {
       toast({ title: "Couldn't start due diligence", description: "No analysis was queued. Try again or check the system status.", variant: "destructive" });
     },
   });
 
+  // allow-no-invalidation: recommendation is surfaced in the success toast — no cached query reads it
   const getPricingMutation = useMutation({
     mutationFn: async (propertyId: number) => {
       const res = await apiRequest("POST", "/api/ai/pricing/acquisition", { propertyId });
@@ -1249,6 +1253,7 @@ function AIOperationsTabContent() {
     },
   });
 
+  // allow-no-invalidation: GET verification — reads compliance rules, mutates nothing
   const checkComplianceMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("GET", "/api/ai/compliance/rules");
@@ -1632,6 +1637,7 @@ export default function CommandCenterPage() {
     },
   });
 
+  // allow-no-invalidation: pure NLP classification — result drives local chat flow only
   const classifyIntentMutation = useMutation({
     mutationFn: async (message: string) => {
       const res = await apiRequest("POST", "/api/assistant/classify-intent", { message });
@@ -1772,7 +1778,10 @@ export default function CommandCenterPage() {
         body: JSON.stringify({
           message,
           conversationId,
-          agentRole: "assistant",
+          // "executive" is the canonical Pax profile key. The old value
+          // "assistant" isn't in agentProfiles, so every send 422'd before
+          // reaching the model (WS1 interactive pass, 2026-07-07).
+          agentRole: "executive",
           images: imageContents.length > 0 ? imageContents : undefined,
           files: fileAttachments.length > 0 ? fileAttachments : undefined,
         }),
@@ -1855,6 +1864,8 @@ export default function CommandCenterPage() {
         clientLogger.info("Pax stream aborted by user");
       } else {
         clientLogger.error("Streaming error:", error);
+        // Make the promise true: put the draft back in the composer.
+        setInput(message);
         toast({ title: "Couldn't send message", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" });
       }
     } finally {
@@ -1969,13 +1980,13 @@ export default function CommandCenterPage() {
             <Dialog>
               <DialogTrigger asChild>
                 {/* shrink-0 so the flex-1 tab list never compresses the gear
-                    out of its own box, and relative z-10 so the gear paints
+                    out of its own box, and relative z-docked so the gear paints
                     above the tab list — on a founder session (5 tabs) the
                     full-width TabsList bled over the gear and its subtree
                     intercepted the tap (Customer Surface Monitor J1, the
                     third overlay-interception of this step after the FAB +
                     cookie banner). */}
-                <Button variant="ghost" size="icon" aria-label="AI settings" data-testid="button-ai-settings" className="shrink-0 relative z-10">
+                <Button variant="ghost" size="icon" aria-label="AI settings" data-testid="button-ai-settings" className="shrink-0 relative z-docked">
                   <Settings className="w-4 h-4" />
                 </Button>
               </DialogTrigger>

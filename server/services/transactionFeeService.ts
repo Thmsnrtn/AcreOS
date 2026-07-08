@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { sumCents } from "@shared/finance/cents";
 import {
   transactionFeeSettlements,
   feePayoutSchedules,
@@ -296,21 +297,23 @@ export class TransactionFeeService {
       .from(transactionFeeSettlements)
       .where(eq(transactionFeeSettlements.organizationId, orgId));
 
-    const totalCollected = settlements
-      .filter(s => ["held", "released"].includes(s.status))
-      .reduce((sum, s) => sum + parseFloat(s.feeAmount), 0);
+    // W3.3 money rule (2026-07 sweep): fee totals accumulate in integer
+    // cents — the old float reduce drifted across settlement counts.
+    const totalCollected = sumCents(
+      settlements.filter(s => ["held", "released"].includes(s.status)).map(s => s.feeAmount),
+    ) / 100;
 
-    const pending = settlements
-      .filter(s => s.status === "pending")
-      .reduce((sum, s) => sum + parseFloat(s.feeAmount), 0);
+    const pending = sumCents(
+      settlements.filter(s => s.status === "pending").map(s => s.feeAmount),
+    ) / 100;
 
-    const heldInEscrow = settlements
-      .filter(s => s.status === "held")
-      .reduce((sum, s) => sum + parseFloat(s.feeAmount), 0);
+    const heldInEscrow = sumCents(
+      settlements.filter(s => s.status === "held").map(s => s.feeAmount),
+    ) / 100;
 
-    const released = settlements
-      .filter(s => s.status === "released")
-      .reduce((sum, s) => sum + parseFloat(s.feeAmount), 0);
+    const released = sumCents(
+      settlements.filter(s => s.status === "released").map(s => s.feeAmount),
+    ) / 100;
 
     const avgFeeRate = settlements.length > 0
       ? settlements

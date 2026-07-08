@@ -475,7 +475,7 @@ describe("checkVerifyBeforeDispatchFailure", () => {
       decisionFixture({
         decisionType: "dispatch",
         responseText:
-          "Dispatching extraction #1 from docs/exhaustive-completion/founder-dashboard-extraction-queue.md.",
+          "Dispatching extraction #1 from docs/archive/exhaustive-completion/founder-dashboard-extraction-queue.md.",
         rationale: "Queue says it's next.",
       }),
     );
@@ -488,7 +488,7 @@ describe("checkVerifyBeforeDispatchFailure", () => {
       decisionFixture({
         decisionType: "dispatch",
         responseText:
-          "Dispatching extraction from docs/exhaustive-completion/queue.md.",
+          "Dispatching extraction from docs/archive/exhaustive-completion/queue.md.",
         rationale: "Grepped repo first; verified the file does not yet exist.",
       }),
     );

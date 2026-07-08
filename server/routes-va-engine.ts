@@ -10,6 +10,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { omitProtectedFields } from "./utils/updatePayload";
 
 export async function registerVAEngineRoutes(app: Express): Promise<void> {
   const api = app;
@@ -66,7 +67,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Marketing list");
       }
-      const list = await storage.updateMarketingList(org.id, id, req.body);
+      const list = await storage.updateMarketingList(org.id, id, omitProtectedFields(req.body));
       res.json(list);
     } catch (error: any) {
       logger.error("Update marketing list error", error);
@@ -160,7 +161,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Offer batch");
       }
-      const batch = await storage.updateOfferBatch(org.id, id, req.body);
+      const batch = await storage.updateOfferBatch(org.id, id, omitProtectedFields(req.body));
       res.json(batch);
     } catch (error: any) {
       logger.error("Update offer batch error", error);
@@ -290,7 +291,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Offer");
       }
-      const offer = await storage.updateOffer(org.id, id, req.body);
+      const offer = await storage.updateOffer(org.id, id, omitProtectedFields(req.body));
       res.json(offer);
     } catch (error: any) {
       logger.error("Update offer error", error);
@@ -449,7 +450,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Ad posting");
       }
-      const posting = await storage.updateAdPosting(org.id, id, req.body);
+      const posting = await storage.updateAdPosting(org.id, id, omitProtectedFields(req.body));
       res.json(posting);
     } catch (error: any) {
       logger.error("Update ad posting error", error);
@@ -543,7 +544,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Buyer prequalification");
       }
-      const prequal = await storage.updateBuyerPrequalification(org.id, id, req.body);
+      const prequal = await storage.updateBuyerPrequalification(org.id, id, omitProtectedFields(req.body));
       res.json(prequal);
     } catch (error: any) {
       logger.error("Update buyer prequalification error", error);
@@ -620,7 +621,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Collection sequence");
       }
-      const sequence = await storage.updateCollectionSequence(org.id, id, req.body);
+      const sequence = await storage.updateCollectionSequence(org.id, id, omitProtectedFields(req.body));
       res.json(sequence);
     } catch (error: any) {
       logger.error("Update collection sequence error", error);
@@ -712,7 +713,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Collection enrollment");
       }
-      const enrollment = await storage.updateCollectionEnrollment(org.id, id, req.body);
+      const enrollment = await storage.updateCollectionEnrollment(org.id, id, omitProtectedFields(req.body));
       res.json(enrollment);
     } catch (error: any) {
       logger.error("Update collection enrollment error", error);
@@ -786,7 +787,18 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "County research");
       }
-      const research = await storage.updateCountyResearch(id, req.body);
+      // SECURITY (2026-07 audit): county_research is GLOBAL reference data
+      // shared across every tenant (no organizationId column), and this
+      // handler previously piped raw req.body into the update — any
+      // authenticated user in any org could overwrite the assessor/GIS
+      // contacts every other tenant relies on, on any column. Validate the
+      // payload; global writes stay possible (community-maintained data)
+      // but only through the schema's known fields.
+      const parsed = insertCountyResearchSchema.partial().safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.issues);
+      }
+      const research = await storage.updateCountyResearch(id, parsed.data);
       res.json(research);
     } catch (error: any) {
       logger.error("Update county research error", error);
@@ -858,7 +870,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Buyer reservation");
       }
-      const reservation = await storage.updateBuyerReservation(org.id, id, req.body);
+      const reservation = await storage.updateBuyerReservation(org.id, id, omitProtectedFields(req.body));
       res.json(reservation);
     } catch (error: any) {
       logger.error("Update buyer reservation error", error);
@@ -945,7 +957,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Escrow checklist");
       }
-      const checklist = await storage.updateEscrowChecklist(org.id, id, req.body);
+      const checklist = await storage.updateEscrowChecklist(org.id, id, omitProtectedFields(req.body));
       res.json(checklist);
     } catch (error: any) {
       logger.error("Update escrow checklist error", error);
@@ -1032,7 +1044,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Closing packet");
       }
-      const packet = await storage.updateClosingPacket(org.id, id, req.body);
+      const packet = await storage.updateClosingPacket(org.id, id, omitProtectedFields(req.body));
       res.json(packet);
     } catch (error: any) {
       logger.error("Update closing packet error", error);
@@ -1130,7 +1142,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Autopay enrollment");
       }
-      const enrollment = await storage.updateAutopayEnrollment(org.id, id, req.body);
+      const enrollment = await storage.updateAutopayEnrollment(org.id, id, omitProtectedFields(req.body));
       res.json(enrollment);
     } catch (error: any) {
       logger.error("Update autopay enrollment error", error);
@@ -1217,7 +1229,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Payoff quote");
       }
-      const quote = await storage.updatePayoffQuote(org.id, id, req.body);
+      const quote = await storage.updatePayoffQuote(org.id, id, omitProtectedFields(req.body));
       res.json(quote);
     } catch (error: any) {
       logger.error("Update payoff quote error", error);
@@ -1352,7 +1364,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Delinquency escalation");
       }
-      const escalation = await storage.updateDelinquencyEscalation(org.id, id, req.body);
+      const escalation = await storage.updateDelinquencyEscalation(org.id, id, omitProtectedFields(req.body));
       res.json(escalation);
     } catch (error: any) {
       logger.error("Update delinquency escalation error", error);
@@ -1435,7 +1447,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "DD assignment");
       }
-      const assignment = await storage.updateDDAssignment(org.id, id, req.body);
+      const assignment = await storage.updateDDAssignment(org.id, id, omitProtectedFields(req.body));
       res.json(assignment);
     } catch (error: any) {
       logger.error("Update DD assignment error", error);
@@ -1522,7 +1534,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "SWOT report");
       }
-      const report = await storage.updateSwotReport(org.id, id, req.body);
+      const report = await storage.updateSwotReport(org.id, id, omitProtectedFields(req.body));
       res.json(report);
     } catch (error: any) {
       logger.error("Update SWOT report error", error);
@@ -1594,7 +1606,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       if (!existing) {
         return Errors.notFound(res, "Go/No-Go memo");
       }
-      const memo = await storage.updateGoNogoMemo(org.id, id, req.body);
+      const memo = await storage.updateGoNogoMemo(org.id, id, omitProtectedFields(req.body));
       res.json(memo);
     } catch (error: any) {
       logger.error("Update Go/No-Go memo error", error);
@@ -1833,12 +1845,21 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         updatedAt: new Date().toISOString(),
       };
 
-      await storage.updateOrganization(org.id, {
-        settings: {
-          ...(orgRecord as any)?.settings,
-          va_tasks: tasks,
-        },
-      } as any);
+      // 2026-07 audit: atomic jsonb_set on the va_tasks key only — the old
+      // whole-object spread clobbered concurrently-written sibling settings
+      // keys (mailMode, aiSettings, …) with this handler's stale copy.
+      {
+        const { db } = await import("./db");
+        const { organizations } = await import("@shared/schema");
+        const { sql: sqlTag, eq: eqOp } = await import("drizzle-orm");
+        await db
+          .update(organizations)
+          .set({
+            settings: sqlTag`jsonb_set(COALESCE(${organizations.settings}, '{}'), '{va_tasks}', ${JSON.stringify(tasks)}::jsonb)` as any,
+            updatedAt: new Date(),
+          })
+          .where(eqOp(organizations.id, org.id));
+      }
 
       res.json({ success: true, task: tasks[taskIndex] });
     } catch (error: any) {

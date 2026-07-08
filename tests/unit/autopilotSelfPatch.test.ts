@@ -20,7 +20,13 @@ function makeGit(over: Partial<GitOps> = {}): GitOps {
 }
 
 describe("selfPatch — the gated immune-system motor (D1)", () => {
-  beforeEach(() => { process.env.SELF_PATCH_ENABLED = "true"; });
+  beforeEach(async () => {
+    process.env.SELF_PATCH_ENABLED = "true";
+    // The switch now reads through the DB-backed settings layer (env
+    // fallback), which caches for 5s — bust it so each test's env applies.
+    const { __resetSettingsCacheForTest } = await import("../../server/services/autopilot/settings");
+    __resetSettingsCacheForTest();
+  });
   afterEach(() => { delete process.env.SELF_PATCH_ENABLED; });
 
   it("does NOTHING when the env switch is off (hard gate)", async () => {

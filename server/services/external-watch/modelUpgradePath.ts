@@ -34,6 +34,7 @@
  */
 
 import { and, eq, isNull } from "drizzle-orm";
+import { ANTHROPIC_MODELS } from "../models";
 import { db } from "../../db";
 import {
   externalWatchEvents,
@@ -54,10 +55,12 @@ import { logger } from "../../utils/logger";
 /**
  * The model the dispatch runner is configured to use. Mirrors the env
  * lookup in dispatchRunner.ts so the classifier doesn't need to import
- * that module (would create a runtime cycle).
+ * that module (would create a runtime cycle). The fallback previously said
+ * "claude-opus-4-7" while dispatchRunner actually defaults to SONNET —
+ * corrected 2026-07-08 to the same source of truth.
  */
 export function getCurrentDispatchModel(): string {
-  return process.env.SOLENE_DISPATCH_MODEL ?? "claude-opus-4-7";
+  return process.env.SOLENE_DISPATCH_MODEL ?? ANTHROPIC_MODELS.SONNET;
 }
 
 // ============================================================================

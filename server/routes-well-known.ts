@@ -80,8 +80,8 @@ export function registerWellKnownRoutes(app: Express): void {
   // the INDEXNOW_KEY secret (safe-by-absence: 404 until the key is set). The key
   // file must contain exactly the key. See services/autopilot/searchEngineSubmit.ts.
   app.get("/indexnow-key.txt", async (_req: Request, res: Response) => {
-    const { indexNowKey } = await import("./services/autopilot/searchEngineSubmit");
-    const key = indexNowKey();
+    const { resolveIndexNowKey } = await import("./services/autopilot/searchEngineSubmit");
+    const key = await resolveIndexNowKey();
     if (!key) {
       res.status(404).type("text/plain").send("Not found\n");
       return;

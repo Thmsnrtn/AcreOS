@@ -143,6 +143,7 @@ export default function FounderComplianceOpsPage() {
   });
 
   // ── Disclosure-Timing ───────────────────────────────────────────
+  // allow-no-invalidation: ops trigger — run results are toast-reported; no cached query shows them
   const runDisclosure = useMutation({
     mutationFn: async () => {
       const r = await fetch("/api/founder/compliance/disclosure-timing/run", {
@@ -165,6 +166,7 @@ export default function FounderComplianceOpsPage() {
   });
 
   // ── Reconciliation ──────────────────────────────────────────────
+  // allow-no-invalidation: ops trigger — run results are toast-reported; no cached query shows them
   const runReconciliation = useMutation({
     mutationFn: async () => {
       const r = await fetch("/api/founder/compliance/reconciliation/run", {

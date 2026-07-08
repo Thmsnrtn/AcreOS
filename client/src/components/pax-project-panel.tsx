@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Paperclip, Trash2, Loader2, FolderOpen, Plus, CheckCircle2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Verbs } from "@/lib/labels";
 
 interface PaxProject {
   id: number;
@@ -182,7 +183,7 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
                   onClick={() => { if (newProjectName.trim()) createMutation.mutate(newProjectName.trim()); }}
                   disabled={!newProjectName.trim() || createMutation.isPending}
                 >
-                  Create
+                  {Verbs.CREATE}
                 </Button>
               </div>
             )}

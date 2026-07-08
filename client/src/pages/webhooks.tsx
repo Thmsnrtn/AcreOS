@@ -101,6 +101,7 @@ export default function WebhooksPage() {
       }),
   });
 
+  // allow-no-invalidation: sends a test event to the customer's endpoint — nothing cached changes
   const testMutation = useMutation({
     mutationFn: (url: string) =>
       apiRequest("POST", "/api/webhooks/test", { url }),

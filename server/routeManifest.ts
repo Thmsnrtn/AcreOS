@@ -91,6 +91,9 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-certification.ts", mountPath: "/api/certification", kind: "router", export: "default" },
   { file: "routes-closing.ts", mountPath: null, kind: "register", export: "registerClosingRoutes" },
   { file: "routes-cmo.ts", mountPath: null, kind: "register", export: "registerCmoRoutes" },
+  // Platform Connections — native connect-an-account infra (encrypted
+  // founder-entered credentials, DB-first/env-fallback, OAuth prewire).
+  { file: "routes-connections.ts", mountPath: null, kind: "register", export: "registerConnectionsRoutes" },
   { file: "routes-cohort-analysis.ts", mountPath: "/api/analytics/cohorts", kind: "router", export: "default" },
   { file: "routes-cohort-ltv.ts", mountPath: null, kind: "register", export: "registerCohortLtvRoutes" },
   { file: "routes-cohort-retention.ts", mountPath: null, kind: "register", export: "registerCohortRetentionRoutes" },
@@ -269,6 +272,8 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-rosy-river.ts", mountPath: null, kind: "register", export: "registerRosyRiverRoutes" },
   { file: "routes-scp-v2.ts", mountPath: null, kind: "register", export: "registerSCPv2Routes" },
   { file: "routes-seller-intent.ts", mountPath: "/api/seller-intent", kind: "router", export: "default" },
+  // Free-distribution: per-route server-rendered <head> for public pages.
+  { file: "routes-seo-head.ts", mountPath: null, kind: "register", export: "registerSeoHeadRoutes" },
   { file: "routes-sendgrid-events.ts", mountPath: null, kind: "register", export: "registerSendGridEventRoutes" },
   { file: "routes-ses-events.ts", mountPath: null, kind: "register", export: "registerSesEventRoutes" },
   { file: "routes-servicer.ts", mountPath: null, kind: "register", export: "registerServicerRoutes" },

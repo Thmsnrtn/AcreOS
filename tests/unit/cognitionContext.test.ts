@@ -93,3 +93,29 @@ describe("assembleContextPack — the eagle-eye briefing", () => {
     expect(sparse.thesis).toBe("No strategy memory yet.");
   });
 });
+
+// ── Partial-telemetry honesty (2026-07-03) ──────────────────────────────────
+// gatherContextPack tracks senses that failed to read; the briefing must
+// carry a loud UNKNOWN-not-zero warning so the Operator never grounds a
+// plan on a blind sense. partialTelemetryBlock is the pure prompt block.
+import { partialTelemetryBlock } from "../../server/services/autopilot/cognitionContext";
+
+describe("partialTelemetryBlock — dark senses are loud, absent senses are silent", () => {
+  it("returns empty string when nothing degraded (no prompt noise)", () => {
+    expect(partialTelemetryBlock([])).toBe("");
+  });
+
+  it("names every dark sense and instructs UNKNOWN-not-zero", () => {
+    const block = partialTelemetryBlock(["pulse-vitals", "capital-books"]);
+    expect(block).toContain("PARTIAL TELEMETRY");
+    expect(block).toContain("pulse-vitals");
+    expect(block).toContain("capital-books");
+    expect(block).toMatch(/UNKNOWN/);
+    expect(block).toMatch(/Do NOT ground plans/);
+  });
+
+  it("assembleContextPack seeds degradedSenses as empty (gatherer owns it)", () => {
+    const p = assembleContextPack(base);
+    expect(p.degradedSenses).toEqual([]);
+  });
+});

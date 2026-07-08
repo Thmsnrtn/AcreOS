@@ -311,7 +311,10 @@ class DunningService {
       }
 
       const amountDue = `$${(amountCents / 100).toFixed(2)}`;
-      const updatePaymentUrl = `${APP_URL}/settings?tab=billing`;
+      // W-sweep 2026-07-04: settings tabs are HASH-routed — ?tab=billing was
+      // silently ignored and dumped a failing payer on the Account tab. The
+      // #billing hash also auto-opens the plan/payment panel.
+      const updatePaymentUrl = `${APP_URL}/settings#billing`;
       const templates = dunningEmailTemplates(org, amountDue, updatePaymentUrl);
       const template = templates[templateType as keyof typeof templates];
       if (!template) {
@@ -386,7 +389,7 @@ class DunningService {
       const amountDue = `$${(amountCents / 100).toFixed(2)}`;
       const message =
         `Hi ${org.name}, AcreOS — your card was declined for ${amountDue}. ` +
-        `Update at acreos.io/settings/billing to keep service running.`;
+        `Update at acreos.io/settings#billing to keep service running.`;
 
       const { smsService } = await import("./smsService");
       const result = await smsService.sendSMS({ to: phone, message });
@@ -545,8 +548,19 @@ class DunningService {
           //               flapping sequence can't spam the customer.
           const notification = this.getScheduledNotification(daysSinceFailure);
           if (notification) {
-            const recentEvents = await storage.getDunningEvents(org.id, "pending");
-            const latestEvent = recentEvents[0];
+            // Roadmap W1.1 (2026-07 audit): the reminder ladder was DEAD for
+            // exactly the recoverable accounts. handlePaymentFailure() parks
+            // events at "scheduled_retry" whenever Stripe set a next retry
+            // (the normal case), but this selector only fetched "pending" —
+            // so latestEvent was undefined and the day-3/7/14 reminder →
+            // warning → final-notice emails never sent. Select the latest
+            // OPEN event (pending OR scheduled_retry), mirroring
+            // getActiveCases' definition of open.
+            const allEvents = await storage.getDunningEvents(org.id);
+            const openEvents = allEvents.filter(
+              (e) => e.status === "pending" || e.status === "scheduled_retry",
+            );
+            const latestEvent = openEvents[0];
 
             if (latestEvent) {
               const sentNotifications = latestEvent.notificationsSent || [];

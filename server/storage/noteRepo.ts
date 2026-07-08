@@ -3,6 +3,7 @@
 // helpers live in storage.ts (calculateAmortizationSchedule /
 // calculateMonthlyPayment) — they're imported here.
 
+import { randomBytes } from "crypto";
 import { and, desc, eq, count, sum } from "drizzle-orm";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { db, withTransaction } from "../db";
@@ -126,8 +127,11 @@ export const noteRepo = {
     // Calculate maturity date
     const maturityDate = addMonths(new Date(noteData.startDate), noteData.termMonths);
 
-    // Generate access token for borrower portal
-    const accessToken = noteData.accessToken || `note_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    // Generate access token for borrower portal. SECURITY (2026-07 audit):
+    // this token is the borrower portal's primary authenticator (loan PII,
+    // balances, payments) — it MUST be CSPRNG. The old Date.now() +
+    // Math.random() form was predictable/enumerable.
+    const accessToken = noteData.accessToken || `note_${randomBytes(32).toString("hex")}`;
 
     // updatedAt has a DB default but drizzle's $inferInsert types it as
     // required; set it explicitly (equivalent to the default) so the value

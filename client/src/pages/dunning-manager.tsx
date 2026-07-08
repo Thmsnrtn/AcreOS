@@ -12,6 +12,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { AlertTriangle, CreditCard, Mail, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { Verbs } from "@/lib/labels";
 
 interface DunningCase {
   id: number;
@@ -215,7 +216,7 @@ export default function DunningManagerPage() {
                           disabled={retryMutation.isPending}
                           aria-label={`Retry payment for ${c.orgName}`}
                         >
-                          <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> Retry
+                          <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> {Verbs.RETRY}
                         </Button>
                       )}
                       {c.status !== "resolved" && c.status !== "cancelled" && (
@@ -226,7 +227,7 @@ export default function DunningManagerPage() {
                           onClick={() => setPendingCancel(c)}
                           aria-label={`Cancel dunning case for ${c.orgName}`}
                         >
-                          Cancel
+                          {Verbs.CANCEL}
                         </Button>
                       )}
                     </div>

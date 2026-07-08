@@ -68,11 +68,11 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORY_TONE: Record<string, string> = {
-  auth: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  members: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-  billing: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  data: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  security: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+  auth: "bg-primary/10 text-primary",
+  members: "bg-acr-brand-soft text-acr-brand",
+  billing: "bg-acr-warn-soft text-acr-warn",
+  data: "bg-acr-pos-soft text-acr-pos",
+  security: "bg-acr-neg-soft text-acr-neg",
 };
 
 function humanizeAction(action: string): string {

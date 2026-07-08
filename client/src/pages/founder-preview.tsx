@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Eye, X, CheckCircle2, AlertCircle, Clock } from "lucide-react";
 import { relative, usd } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface PreviewRow {
   id: number;
@@ -236,7 +237,7 @@ function PendingPreviewRow({
             aria-label={`Cancel ${row.agentCodename} action: ${row.actionSummary}`}
           >
             <X className="h-4 w-4 mr-1" aria-hidden="true" />
-            Cancel
+            {Verbs.CANCEL}
           </Button>
         </div>
       </div>

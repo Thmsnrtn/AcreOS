@@ -1,7 +1,7 @@
 /**
  * /founder/keys — System API keys (extracted from founder-dashboard.tsx).
  *
- * Per docs/exhaustive-completion/founder-dashboard-extraction-queue.md
+ * Per docs/archive/exhaustive-completion/founder-dashboard-extraction-queue.md
  * Extraction #1. Pure move; no behavior change. Preserves the existing
  * /api/admin/system-api-keys query key + mutation paths.
  *
@@ -45,6 +45,7 @@ export default function FounderKeysPage() {
   const [editProvider, setEditProvider] = useState<string | null>(null);
   const [newKey, setNewKey] = useState("");
 
+  // allow-no-invalidation: onSuccess calls refetch() — refetch-based, not key-based
   const updateMutation = useMutation({
     mutationFn: async ({ provider, apiKey }: { provider: string; apiKey: string }) =>
       apiRequest("PUT", `/api/admin/system-api-keys/${provider}`, { apiKey }),

@@ -66,12 +66,12 @@ export const URGENCY_TONE: Record<
 // Distinct color hint per agent role — uses Tailwind tokens, no hard-coded
 // hex. The Badge tone is unified ('outline'); we apply a className tint.
 export const AGENT_ROLE_CLASS: Record<string, string> = {
-  iris: "border-blue-500/40 text-blue-600 dark:text-blue-300",
-  soren: "border-purple-500/40 text-purple-600 dark:text-purple-300",
-  beatrice: "border-emerald-500/40 text-emerald-600 dark:text-emerald-300",
-  krieger: "border-amber-500/40 text-amber-600 dark:text-amber-300",
-  "general-purpose": "border-slate-500/40 text-slate-600 dark:text-slate-300",
-  solene: "border-pink-500/40 text-pink-600 dark:text-pink-300",
+  iris: "border-acr-accent/40 text-acr-accent",
+  soren: "border-acr-chart-c/40 text-acr-chart-c",
+  beatrice: "border-acr-pos/40 text-acr-pos",
+  krieger: "border-acr-warn/40 text-acr-warn",
+  "general-purpose": "border-acr-ink-3/40 text-acr-ink-3",
+  solene: "border-acr-chart-d/40 text-acr-chart-d",
 };
 
 export function agentClass(role: string): string {

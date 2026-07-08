@@ -301,7 +301,7 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
                 <CheckCircle2 className="inline w-4 h-4 text-acr-pos mr-1" />
                 {fileName} · {rows.length.toLocaleString()} rows
                 {apnDupesInFile > 0 && (
-                  <span className="ml-2 text-amber-600 dark:text-amber-400">
+                  <span className="ml-2 text-acr-warn">
                     {apnDupesInFile} duplicate APN
                     {apnDupesInFile === 1 ? "" : "s"} within file will be skipped
                   </span>
@@ -345,9 +345,9 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
             </div>
 
             {warnings.length > 0 && (
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <div className="rounded-md border border-acr-warn bg-acr-warn-soft p-3 text-sm">
                 <div className="flex gap-2 items-start">
-                  <AlertCircle className="w-4 h-4 mt-0.5 text-amber-600 dark:text-amber-400" />
+                  <AlertCircle className="w-4 h-4 mt-0.5 text-acr-warn" />
                   <ul className="space-y-1">
                     {warnings.map((w, i) => (
                       <li key={i}>{w}</li>
@@ -379,7 +379,7 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
                           {r.firstName || r.lastName
                             ? `${r.firstName ?? ""} ${r.lastName ?? ""}`.trim()
                             : r.ownerName || (
-                                <span className="text-rose-600 dark:text-rose-400">
+                                <span className="text-acr-neg">
                                   (missing)
                                 </span>
                               )}
@@ -476,7 +476,7 @@ function Stat({
     tone === "pos"
       ? "bg-acr-pos-soft text-acr-pos"
       : tone === "neg"
-        ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
+        ? "bg-acr-neg-soft text-acr-neg"
         : "bg-muted text-foreground";
   return (
     <div className={`rounded-md p-3 ${toneClass}`}>

@@ -40,6 +40,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Verbs } from "@/lib/labels";
 
 interface DnsRecord {
   type: string;
@@ -236,7 +237,7 @@ export function EmailDomainsSettings() {
               </form>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
                 <Button
                   type="submit"

@@ -52,18 +52,11 @@ const DEFAULT_SCOPE = join(REPO_ROOT, "client", "src");
 // gate a rule with `@media (hover: hover)`, then decrement/delete the entry
 // in the same commit. NEW entries require Iris-CTO sign-off.
 // ----------------------------------------------------------------------------
-const BASELINE = new Map([
-  // index.css L1164 ::-webkit-scrollbar-thumb:hover — scrollbar chrome only
-  // renders on pointer devices, so the iOS double-tap bug can't bite; still
-  // gate it when the file is next touched. (The other 17 :hover rules in
-  // index.css are already inside @media (hover: hover) blocks.)
-  ["client/src/index.css", 1],
-  // onboarding.css: legacy onboarding-surface hovers (buttons/pills/cards),
-  // pre-house-pattern. Gate with @media (hover: hover) when touched.
-  ["client/src/components/onboarding/onboarding.css", 9],
-  // onboarding-v2.css: same vintage as onboarding.css; gate when touched.
-  ["client/src/pages/styles/onboarding-v2.css", 7],
-]);
+// Baseline emptied 2026-07-02: the final 17 ungated :hover rules (index.css
+// scrollbar chrome + both onboarding stylesheets) were wrapped in
+// @media (hover: hover). Every CSS file must now be fully gated — any new
+// ungated :hover fails this lint outright.
+const BASELINE = new Map([]);
 
 const args = process.argv.slice(2);
 const MEASURE_ONLY = args.includes("--measure");

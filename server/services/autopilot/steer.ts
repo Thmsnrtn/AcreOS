@@ -16,6 +16,9 @@ import type { AutopilotDomain } from "./policyGate";
 export type SteerIntent =
   | { kind: "pause_domain"; domain: AutopilotDomain }
   | { kind: "trust_domain"; domain: AutopilotDomain }
+  | { kind: "pause_all" }
+  | { kind: "resume_all" }
+  | { kind: "spend" }
   | { kind: "set_standing_order"; body: string }
   | { kind: "set_intent"; body: string }
   | { kind: "status"; domain?: AutopilotDomain }
@@ -42,10 +45,22 @@ export function parseSteerCommand(raw: string): SteerIntent {
   if (!t) return { kind: "unknown", text };
 
   const domain = findDomain(t);
+  // "the autopilot" / "everything" / bare verb → whole-company scope.
+  const wholeCompany =
+    /\b(autopilot|everything|the company|all domains|all of it)\b/.test(t) ||
+    /^(pause|stop|halt|freeze|resume|unpause)[.!]?$/.test(t);
 
   // Pause / hold a domain (safety-first verbs).
-  if (/\b(pause|stop|halt|hold|freeze)\b/.test(t) && domain && !/standing order|rule/.test(t)) {
-    return { kind: "pause_domain", domain };
+  if (/\b(pause|stop|halt|hold|freeze)\b/.test(t) && !/standing order|rule/.test(t)) {
+    if (domain) return { kind: "pause_domain", domain };
+    if (wholeCompany) return { kind: "pause_all" };
+  }
+  // Resume — re-grant after a pause. With a domain it advances that domain
+  // one trust level (same governed path as "trust"); whole-company resume
+  // re-grants every domain to drafting (proposals still need approval).
+  if (/\b(resume|unpause|un-pause|restart)\b/.test(t)) {
+    if (domain) return { kind: "trust_domain", domain };
+    if (wholeCompany) return { kind: "resume_all" };
   }
   // Trust / let a domain act more.
   if (/\b(trust|let|allow|enable|unleash)\b/.test(t) && domain) {
@@ -54,6 +69,13 @@ export function parseSteerCommand(raw: string): SteerIntent {
   // Why / explain — read the reasoning trace.
   if (/\bwhy\b|\bexplain\b|\breasoning\b/.test(t)) {
     return { kind: "why" };
+  }
+  // Spend / burn / runway — answer from the real capital ledger.
+  if (
+    /\b(spend|spent|spending|burn(?:ed|ing)? ?rate?|burn|costs?|runway|envelope)\b/.test(t) &&
+    !/^(never|always|do ?n'?t|do not)\b/.test(t)
+  ) {
+    return { kind: "spend" };
   }
   // Status / how's it going.
   if (/\bstatus\b|how('?s| is| are)\b|how are we\b|what('?s| is) (the|your) plan\b|what are you (working|doing)\b/.test(t)) {
@@ -85,6 +107,10 @@ export interface SteerDeps {
   createStandingOrder: (input: { kind: "intent" | "standing_order"; body: string; createdBy?: string }) => Promise<unknown>;
   status: (domain?: AutopilotDomain) => Promise<string>;
   why: () => Promise<string>;
+  /** All governed domains — used by the whole-company pause/resume verbs. */
+  listDomains: () => readonly AutopilotDomain[];
+  /** Spend answer from the REAL capital ledger (weekly spend + envelope). */
+  spend: () => Promise<string>;
 }
 
 const LEVEL_LABEL: Record<string, string> = {
@@ -128,6 +154,28 @@ export async function handleSteer(intent: SteerIntent, deps: SteerDeps, founderI
           reply: `Understood — I'll steer toward that: "${intent.body}".`,
           action: { kind: intent.kind, detail: intent.body },
         };
+      case "pause_all": {
+        const domains = deps.listDomains();
+        for (const d of domains) {
+          await deps.setDomainLevel(d, "observe", "paused by founder (chat, whole company)");
+        }
+        return {
+          reply: `Done — the autopilot is paused. Every domain (${domains.join(", ")}) is back to observing and won't act until you resume or trust it again.`,
+          action: { kind: intent.kind, detail: `${domains.join(",")} → observe` },
+        };
+      }
+      case "resume_all": {
+        const domains = deps.listDomains();
+        for (const d of domains) {
+          await deps.setDomainLevel(d, "draft", "resumed by founder (chat, whole company)");
+        }
+        return {
+          reply: `Done — the autopilot is back on. Every domain (${domains.join(", ")}) is drafting for your approval; say "trust <domain>" to grant more.`,
+          action: { kind: intent.kind, detail: `${domains.join(",")} → draft` },
+        };
+      }
+      case "spend":
+        return { reply: await deps.spend() };
       case "status":
         return { reply: await deps.status(intent.domain) };
       case "why":
@@ -135,7 +183,7 @@ export async function handleSteer(intent: SteerIntent, deps: SteerDeps, founderI
       case "unknown":
         return {
           reply:
-            "I can set an intent or a standing order, pause or trust a domain, or tell you status + why. Try \"pause growth\", \"focus on Texas\", \"never email twice a week\", or \"why did you do that?\".",
+            "I can set an intent or a standing order, pause/resume the autopilot or a domain, report spend, or tell you status + why. Try \"pause growth\", \"resume the autopilot\", \"what did we spend this week?\", \"focus on Texas\", \"never email twice a week\", or \"why did you do that?\".",
         };
     }
   } catch {

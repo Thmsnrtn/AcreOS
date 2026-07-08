@@ -69,12 +69,20 @@ export function formatOrgMailingAddress(
  *   2. The sending organization's own mailing address (taxAddress).
  *   3. null — caller MUST omit the address line entirely (never a placeholder).
  */
-async function resolveCanSpamAddress(orgId?: number): Promise<string | null> {
-  if (CAN_SPAM_MAILING_ADDRESS) return CAN_SPAM_MAILING_ADDRESS;
+async function resolveCanSpamAddress(orgId?: number): Promise<{ address: string; brandName: string } | null> {
+  if (CAN_SPAM_MAILING_ADDRESS) return { address: CAN_SPAM_MAILING_ADDRESS, brandName: 'AcreOS' };
   if (!orgId) return null;
   try {
     const org = await storage.getOrganization(orgId);
-    return formatOrgMailingAddress(org?.taxAddress);
+    const address = formatOrgMailingAddress(org?.taxAddress);
+    if (!address) return null;
+    // 2026-07 audit: when the address comes from the SENDING ORG's own
+    // records, the footer must be branded with THAT org's name — the old
+    // "AcreOS · {customer address}" form printed a customer's address as if
+    // it were AcreOS's postal address (misleading and, for platform
+    // lifecycle mail to that very customer, their own address labeled as
+    // ours).
+    return { address, brandName: org?.name?.trim() || 'AcreOS' };
   } catch (error) {
     logger.error('[EmailService] Failed to resolve org mailing address for CAN-SPAM footer', error, {
       source: 'email-config',
@@ -549,8 +557,8 @@ export class EmailService {
           // CAN-SPAM §5: render a real postal address when we have one, and
           // NEVER ship a literal placeholder. If no address is resolvable we
           // render only the brand name on that line.
-          const postalAddress = await resolveCanSpamAddress(options.organizationId);
-          const brandLine = postalAddress ? `AcreOS &middot; ${postalAddress}` : 'AcreOS';
+          const resolved = await resolveCanSpamAddress(options.organizationId);
+          const brandLine = resolved ? `${resolved.brandName} &middot; ${resolved.address}` : 'AcreOS';
           htmlBody = `${htmlBody}
 <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;">
   <p>You are receiving this email because you are a contact in our CRM system.</p>

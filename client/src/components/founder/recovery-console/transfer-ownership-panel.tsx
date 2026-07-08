@@ -60,6 +60,7 @@ export function TransferOwnershipPanel({ onAction }: { onAction: () => void }) {
     e.target.value = "";
   };
 
+  // allow-no-invalidation: onSuccess calls the parent's onAction() prop, which refreshes the console
   const mutation = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = {

@@ -312,11 +312,21 @@ async function processDomainAudits() {
     // Andrei (domain "ai") — Pax quality-drift detectors: hallucination-flag-rate
     // spike (load-bearing), eval-pass-rate regression, cost-per-interaction creep.
     const { aiQualityDetectors } = await import('../services/andrei/aiQualityAudit');
+    // Tess (reliability) — SES platform identity watchdog: DKIM / MAIL FROM /
+    // verified-for-sending status straight from SES, so a failing identity
+    // pages here instead of only via an AWS Health email in a human inbox.
+    const { platformEmailIdentityDetector } = await import('../services/audit/detectors/platformEmailIdentityDetector');
+    // Tess (reliability) — credential LIVENESS: re-authenticates every
+    // configured vendor key against a free endpoint daily. Born 2026-07-04:
+    // four keys were dead while presence checks said "live".
+    const { credentialLivenessDetector } = await import('../services/audit/detectors/credentialLivenessDetector');
 
     const result = await runDomainAudits([
       ...financeDetectors,
       observationRateDetector,
       ...aiQualityDetectors,
+      platformEmailIdentityDetector,
+      credentialLivenessDetector,
     ]);
     // Auto-age open findings whose condition stopped firing >7d ago.
     const staled = await staleFindings(7);
@@ -332,7 +342,13 @@ async function processDomainAudits() {
 
 function startDomainAuditJob() {
   const ONE_DAY = 24 * 60 * 60 * 1000;
-  const TTL_SECONDS = 23 * 60 * 60; // Lock TTL slightly less than interval
+  // Lock TTL slightly less than the interval — withJobLock never releases on
+  // completion, so this TTL IS the once-daily fleet-wide dedupe. Known
+  // tradeoff (WS5 drill, 2026-07-08): a holder that crashes mid-run blocks
+  // re-running until expiry, costing at most one day's audit — acceptable
+  // for a daily observability job; do NOT shorten without adding a
+  // completion-release, or multi-instance boots would re-run the audit daily.
+  const TTL_SECONDS = 23 * 60 * 60;
 
   log('Starting domain-audit background job (daily)', 'domain-audit');
 
@@ -704,6 +720,38 @@ function startCustomerConcentrationJob() {
 }
 
 // ============================================================================
+// Launch-Week WS4 — Gate-Watcher (the self-birthing roadmap). Daily 09:00 UTC.
+// Evaluates every machine-encoded roadmap gate (mature-machine §4 autonomy
+// switch schedule + phase triggers: Phase-1 runbook at $200 MRR held 30d,
+// Sentry rung at $500, Telnyx eval at $3k, switch eligibility at 25 paying).
+// A ripened gate raises a one-tap founder Decision via founderCollab, or
+// auto-executes ONLY where the studio revenue-trigger dial already says
+// autoApprove. Hard-stops never auto-execute. Every evaluation is logged and
+// persisted to the Story surface; dedup state lives in founder_settings, so a
+// duplicate tick (second machine acquiring the lock later in the hour) is a
+// no-op.
+// ============================================================================
+function startGateWatcherJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering gate watcher job (daily 09:00 UTC)', 'gate-watcher');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 9) {
+      import('../services/autopilot/gateWatcher').then(({ runGateWatch }) => {
+        withJobLock('gate_watcher_daily', TTL_SECONDS, async () => {
+          await runGateWatch();
+        }).catch(err => {
+          log(`Gate watcher run failed: ${err}`, 'gate-watcher');
+        });
+      }).catch(err => log(`Gate watcher import failed: ${err}`, 'gate-watcher'));
+    }
+  }, ONE_HOUR);
+}
+
+// ============================================================================
 // Wave 10: Self-Tuning Cost Optimizer — daily, self-rescheduling
 // Analyses last 30 days of AI usage + MRR + Fly estimate, generates
 // recommendations, auto-applies safe changes (prompt-cache, log-volume),
@@ -923,6 +971,15 @@ function startFounderWeeklyDigestJob() {
           log(`Cost optimiser weekly digest failed: ${err}`, 'cost-optimizer-digest');
         });
       }).catch(err => log(`Cost optimiser digest import failed: ${err}`, 'cost-optimizer-digest'));
+
+      // W4.5 — weekly MRR snapshot in the same Monday window, so WoW growth
+      // and the runway upside scenario compute from history instead of
+      // defaulting to zero. Separate lock; failure never blocks the digests.
+      import('../services/finance/runwayModel').then(({ captureMrrSnapshot }) => {
+        withJobLock('mrr_snapshot_weekly', TTL_SECONDS, captureMrrSnapshot).catch(err => {
+          log(`MRR snapshot failed: ${err}`, 'mrr-snapshot');
+        });
+      }).catch(err => log(`MRR snapshot import failed: ${err}`, 'mrr-snapshot'));
     }
   }, ONE_HOUR);
 }
@@ -1048,8 +1105,14 @@ function startAutonomousDecisionExecutorJob() {
     });
   }, 2 * 60 * 1000);
 
-  // Then every 30 minutes
-  trackInterval(() => {
+  // Then every 30 minutes. Idle pacing (2026-07-07 cost audit): below the
+  // paying-customer threshold only 1 in N slots does real work — the
+  // executor's inbox barely changes on an idle platform, and this job was
+  // the historical #1 LLM burn source. Full cadence resumes automatically
+  // as soon as paying customers exist.
+  trackInterval(async () => {
+    const { shouldRunAtPace } = await import("./idlePace");
+    if (!(await shouldRunAtPace('autonomous_decision_executor', THIRTY_MINUTES))) return;
     withJobLock('autonomous_decision_executor', TTL_SECONDS, runDecisionExecutorTickBounded).catch(err => {
       log(`Autonomous decision executor run failed: ${err}`, 'decision-executor');
     });
@@ -2772,6 +2835,54 @@ function startAgentClaimsExpiryJob() {
   }, FIVE_MINUTES);
 }
 
+function startEvolutionRegressionScanJob() {
+  const TEN_MINUTES = 10 * 60 * 1000;
+  const TTL_SECONDS = 9 * 60;
+  log(
+    'Registering evolution regression scan (every 10 minutes; durable Stage-6)',
+    'evolution-regression',
+  );
+
+  trackInterval(() => {
+    withJobLock('evolution_regression_scan', TTL_SECONDS, async () => {
+      const { scanDueRegressionChecks } = await import('../services/evolutionPipeline');
+      const r = await scanDueRegressionChecks();
+      if (r.checked > 0 || r.mergesDetected > 0) {
+        log(
+          `[evolution-regression] checks run=${r.checked} merged PRs armed=${r.mergesDetected}`,
+          'evolution-regression',
+        );
+      }
+    }).catch((err) => {
+      log(`[evolution-regression] scan failed: ${err}`, 'evolution-regression');
+    });
+  }, TEN_MINUTES);
+}
+
+function startAutoWitnessSweepJob() {
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  const TTL_SECONDS = 4 * 60 + 30;
+  log(
+    'Registering auto-witness sweep (every 5 minutes; no-op with zero grants)',
+    'auto-witness',
+  );
+
+  trackInterval(() => {
+    withJobLock('autopilot_auto_witness_sweep', TTL_SECONDS, async () => {
+      const { runAutoWitnessSweep } = await import('../services/autopilot/autoWitness');
+      const r = await runAutoWitnessSweep();
+      if (r.witnessed > 0) {
+        log(
+          `[auto-witness] delegated ${r.witnessed}/${r.considered} frozen action(s) under founder-issued grants`,
+          'auto-witness',
+        );
+      }
+    }).catch((err) => {
+      log(`[auto-witness] sweep failed: ${err}`, 'auto-witness');
+    });
+  }, FIVE_MINUTES);
+}
+
 function startSoleneTeamStateRegeneratorJob() {
   // The regenerator script writes to ./docs/internal/ and depends on the
   // git working tree being present. On Fly machines neither is true:
@@ -3494,6 +3605,18 @@ function startNpmWatchJob() {
           `[npm-watch] daily run: scanned=${r.advisoriesScanned} matched=${r.advisoriesMatched} persisted=${r.advisoriesPersisted} dupes=${r.advisoriesSkippedDuplicate}${r.auditError ? ` err=${r.auditError}` : ''}`,
           'npm-watch',
         );
+        // Step-away gap #4 — the immune-response wire. The watch above only
+        // RECORDS advisories; this runs the plan→act chain (gated repair plan,
+        // self-patch PR when earned + enabled, deduped founder ask for the
+        // witnessed class, honesty-ledger report row). Never throws.
+        const { runImmuneResponse } = await import(
+          '../services/autopilot/immuneResponse'
+        );
+        const immune = await runImmuneResponse();
+        log(
+          `[npm-watch] immune response: ${immune.line} selfPatch=${immune.selfPatch.ran ? immune.selfPatch.prUrl ?? 'PR' : immune.selfPatch.reason} ask=${immune.askCreated}`,
+          'npm-watch',
+        );
       }).catch((err) => {
         log(`[npm-watch] daily run failed: ${err}`, 'npm-watch');
       });
@@ -4043,6 +4166,11 @@ export async function runScheduledJobs(): Promise<void> {
   // Customer Concentration (daily 13:00 UTC) — MRR concentration alerts
   startCustomerConcentrationJob();
 
+  // Launch-Week WS4 — Gate-Watcher (daily 09:00 UTC): condition-gated
+  // roadmap items detect their own moment and become one-tap founder
+  // Decisions (or auto-execute where the studio dial says autoApprove).
+  startGateWatcherJob();
+
   // §1026.41 periodic statements — monthly (1st of month, 09:00 UTC).
   // Generates one statement per active loan per org per cycle.
   // Idempotent via (loan_id, cycle_start) unique index.
@@ -4270,6 +4398,19 @@ export async function runScheduledJobs(): Promise<void> {
   // a crashed dispatch or forgotten releaseClaim() can't leave a stale row
   // blocking future commits via the pre-commit hook.
   startAgentClaimsExpiryJob();
+
+  // Step-away gap #5 — auto-witness sweep (every 5m). Taps frozen witnessed-
+  // send actions covered by a live founder-issued WitnessGrant, through the
+  // SAME approvePendingHand path a founder tap uses. With zero grants issued
+  // this is a pure no-op; the founder issues/revokes grants on the Control
+  // door. Money/broadcast classes require explicit opt-in per grant.
+  startAutoWitnessSweepJob();
+
+  // Step-away gap #6 — durable Stage-6 regression scan (every 10m). Fires the
+  // 30-min post-deploy evolution regression check from a persisted due-time
+  // (the old in-process setTimeout died on redeploy and never armed in PR
+  // mode), and detects founder-merged evolution PRs to arm their checks.
+  startEvolutionRegressionScanJob();
 
   // Solene — team-state map regenerator (every 15m). Refreshes the
   // auto-generated section of docs/internal/solene-team-state.md so the
@@ -5243,7 +5384,7 @@ export async function runScheduledJobs(): Promise<void> {
   // Compares the live Stripe account against shared/billing/tier-pricing.ts.
   // Surfaces missing tiers, price drift, and orphan acreos_product
   // entries as /founder/now inbox items. See
-  // docs/exhaustive-completion/pillar-t-self-healing-ops.md.
+  // docs/archive/exhaustive-completion/pillar-t-self-healing-ops.md.
   import("../services/stripeDriftDetector").then(({ runStripeDriftJob }) => {
     import("./scheduler").then(({ scheduleSelfRescheduling }) => {
       log("Stripe drift detector registered (self-rescheduling, 24h)", "ops");
@@ -5320,7 +5461,7 @@ export async function runScheduledJobs(): Promise<void> {
   });
 
   // ─── Pillar U — monthly pillar review ────────────────────────────────
-  // Reads docs/exhaustive-completion/pillar-*.md, scores each on
+  // Reads docs/archive/exhaustive-completion/pillar-*.md, scores each on
   // shipped-artifact recency, writes pillar-review-{YYYY-MM-DD}.md,
   // surfaces stale/dead pillars as /founder/now inbox items.
   import("../services/pillarReviewer").then(({ runPillarReviewJob }) => {

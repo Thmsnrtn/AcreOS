@@ -169,7 +169,7 @@ export function Composer({ onSubmit, disabled, placeholder, initialText }: Compo
             initial={popoverInitial}
             animate={popoverAnimate}
             exit={popoverExit}
-            className="absolute bottom-full left-0 right-0 mb-1 mx-2 sm:mx-3 z-20"
+            className="absolute bottom-full left-0 right-0 mb-1 mx-2 sm:mx-3 z-dropdown"
             role="listbox"
             aria-label="Slash commands"
             data-testid="slash-popover"

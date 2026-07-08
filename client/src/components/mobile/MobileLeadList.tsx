@@ -53,10 +53,10 @@ interface MobileLead {
 function StatusPill({ status }: { status?: string | null }) {
   const s = (status ?? "new").toLowerCase();
   const tone =
-    s === "dead" ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
-    : s === "closed" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+    s === "dead" ? "bg-acr-neg-soft text-acr-neg"
+    : s === "closed" ? "bg-acr-pos-soft text-acr-pos"
     : s === "accepted" || s === "under_contract" || s === "qualified"
-      ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+      ? "bg-acr-warn-soft text-acr-warn"
       : s === "responded" || s === "negotiating" || s === "interested" || s === "contacted"
         ? "bg-primary/15 text-primary"
         : "bg-muted text-foreground";
@@ -133,9 +133,9 @@ function MobileLeadRow({
                 className={cn(
                   "text-micro mt-1 inline-block px-1.5 py-0.5 rounded",
                   d >= 21
-                    ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
+                    ? "bg-acr-neg-soft text-acr-neg"
                     : d >= 7
-                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                      ? "bg-acr-warn-soft text-acr-warn"
                       : "bg-muted text-muted-foreground",
                 )}
               >

@@ -78,6 +78,7 @@ export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrad
     enabled: open,
   });
 
+  // allow-no-invalidation: redirects to the Stripe portal (window.location.href) — cache resets on return
   const cancelMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/subscription/cancel", {
