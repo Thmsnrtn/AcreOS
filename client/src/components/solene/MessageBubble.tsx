@@ -22,6 +22,12 @@ import { ToolResultBlock } from "./ToolResultBlock";
 
 interface MessageBubbleProps {
   message: UiMessage;
+  /**
+   * F3b: when MessageList extracts a turn's tool activity into the
+   * "Show the work" disclosure, the bubble skips its inline ToolUseBlock
+   * rendering so the same call never renders twice.
+   */
+  hideToolBlocks?: boolean;
 }
 
 function getTextFromBlocks(blocks: ContentBlock[]): string {
@@ -77,7 +83,7 @@ function MarkdownText({ text }: { text: string }) {
   );
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, hideToolBlocks }: MessageBubbleProps) {
   if (message.role === "system") {
     const text = getTextFromBlocks(message.content);
     return (
@@ -134,11 +140,15 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
         {text ? <MarkdownText text={text} /> : null}
 
-        {toolUseBlocks.map((block, i) => (
-          <ToolUseBlock key={`${block.id}-${i}`} block={block} />
-        ))}
+        {hideToolBlocks
+          ? null
+          : toolUseBlocks.map((block, i) => (
+              <ToolUseBlock key={`${block.id}-${i}`} block={block} />
+            ))}
 
-        {message.isStreaming && !text && toolUseBlocks.length === 0 ? (
+        {message.isStreaming &&
+        !text &&
+        (hideToolBlocks || toolUseBlocks.length === 0) ? (
           <div
             className="flex items-center gap-2 text-xs text-muted-foreground"
             aria-label="Solene is responding"

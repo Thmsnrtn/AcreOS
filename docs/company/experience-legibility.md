@@ -91,14 +91,20 @@ that leaks a system term is a review defect.
       $32,500 to Emmy Replywell — draft"). Honest empty: "Nothing in
       the last 7 days — that number is a true zero." Verified
       end-to-end in-browser (tap → rows → toggle off).
-      REMAINING (F3b): receipt chips on Solene chat replies +
-      show-the-work drawer (chat + Story). Implementation note for the
-      next session: chat turns currently record NO created-artifact
-      refs — the server chat pipeline must attach {type, id} refs when
-      a turn's tool-calls create a decision/ask/dispatch, then the
-      client renders them as chips linking to Decisions/Story. The
-      drawer streams the turn's tool-call log (the data exists in the
-      chat traces).
+      DONE (F3b chat, 2026-07-09): receipt chips on Solene chat replies
+      + show-the-work disclosure. No server pipeline change needed —
+      chips derive client-side from the persisted tool_use/tool_result
+      pairs (`chatWork.ts`, pure + unit-tested): successful
+      record_decision → "Decision #214" → /founder/decisions;
+      dispatch → "Dispatch queued" → /founder/dispatches; frozen
+      witnessed-send → "Waiting for your approval" → /founder/decisions.
+      Failures/refusals never chip. Tool activity collapses behind
+      "Show the work (N steps)" (aria-wired); the raw tool-output
+      carrier rows no longer render as fake user bubbles. Verified
+      end-to-end in-browser (fixture conversation → chip → Decisions).
+      REMAINING (F3c, small): the same show-the-work treatment on the
+      Story door's run log — Story already lists runs; add the per-run
+      step drawer.
 
 Acceptance: no number without a tappable source; no control without a
 consequence sentence; a stalled loop is visible on every surface within
