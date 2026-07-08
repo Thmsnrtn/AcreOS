@@ -66,10 +66,19 @@ that leaks a system term is a review defect.
       ago · next ~20m · N actions (24h)", amber "Nothing has run since
       3h ago — cycles are usually every 30m" (2 missed cadences), muted
       "The brain hasn't run a cycle yet". Tap → Controls. Polls 60s.
-- [ ] **F2 — Controls rewrite** (`/founder/autopilot/control`):
-      consequence-language relabel of every dial, dollar/time units,
-      current-effect + last-fired line per control, three presets, and a
-      "what changed" confirmation on save.
+- [ ] **F2 — Controls rewrite** (`/founder/autopilot/control`): PARTIAL
+      (2026-07-08). SHIPPED: the three postures — Cautious / Standard /
+      Hands-off — as one-tap stances with live current-posture detection,
+      a plain-language "This will change:" diff before applying, and
+      sequential application through the existing per-control endpoints
+      (same audit trail; partial failures surface honestly). Hands-off
+      deliberately caps at "Acts — safety-checked"; full independence
+      stays per-domain earned trust. Verified end-to-end in-browser
+      (Cautious detected → confirm diff listed switch + 5 domains →
+      Standard applied + detected). Note: most dials were ALREADY in
+      consequence language (this door was rewritten before the cluster).
+      REMAINING: per-control "last fired" lines (needs receipts data —
+      lands with F3).
 - [ ] **F3 — Receipts**: expandable evidence on The Letter's claims and
       vital signs; receipt chips on Solene chat replies that created
       decisions/dispatches; optional show-the-work drawer (chat + Story)
