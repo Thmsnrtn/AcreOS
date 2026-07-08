@@ -224,6 +224,17 @@ Exit test: five hard CEO questions, every answer sourced.
 
 ## Status log
 
+- 2026-07-08 ~12:10Z — **Founder granted STANDING merge authorization**
+  ("I would like you to automatically be merging"): PRs from launch-week
+  work merge automatically once deploy-gating checks are green (CI, Test,
+  E2E Mobile, Customer Surface Monitor, Migrate Mirror, Schema
+  validation). The Security Gate is not deploy-gating — if red for the
+  same cause as main it doesn't block, but its findings-table output must
+  be read and the named CVEs fixed. Hard-stops (pricing/legal/>$500/
+  customer-data deletion) remain never-automated. The daily routine was
+  recreated with this policy (trig_01LEsuNEJdtUhYTjQfkST7vv). GitHub
+  native auto-merge is OFF at the repo level; founder can enable it in
+  Settings → General → Pull Requests if preferred.
 - 2026-07-08 ~02:15Z — **PR #112 merged (founder-authorized) and DEPLOYED
   as `603522f6`**, verified live on acreos.io (`/api/version`). All five
   workstreams' code is in production. Go/no-go verdict recorded in
