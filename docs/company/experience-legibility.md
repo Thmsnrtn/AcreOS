@@ -117,17 +117,27 @@ to tailor their experience.
       with helper, api-keys scopes get plain permissions with the token
       as monospace hint + 401s confirm rewritten, underwriting Balloon
       switch gains an on/off consequence line.
-      REMAINING (C1b): components rendered inside the tabs but living
-      outside settings/ (compliance-settings.tsx TCPA controls,
-      NotificationPreferences, AISettings, ProviderSettings) need the
-      same sweep; the intent-based tab REGROUP (4 buckets) needs a
-      deep-link migration plan (LEGACY_TO_CANONICAL) — deliberate,
-      not rushed.
-- [ ] **C2 — Pulse + receipts where automation acts for customers**:
-      campaign surfaces show "12 letters queued — see each one" with
-      per-send rows (much exists in campaign detail; make it the claim's
-      inline receipt, not a separate page); the same honest "nothing has
-      run yet" states everywhere.
+      C1b DONE (2026-07-08 eve): audited the tab-embedded components.
+      notification-preferences + provider-settings-cards PASS;
+      FIXED: compliance-settings ("TCPA compliance" tab → "Texting &
+      calling consent"; retention switches now SAY they permanently
+      auto-delete records — the old "Enable retention policy" hid data
+      loss; "Entity type" → "Record type") and ai-settings (all four
+      controls rewritten to consequence language). NOTED for follow-up:
+      notification EVENT copy comes from the server schema
+      (/api/notifications/preferences/schema) — sweep it server-side;
+      provider-settings.tsx is read-only but jargon-heavy (vendor/model
+      names, $/M tokens) if it stays customer-facing. The intent-based
+      tab REGROUP (4 buckets) still needs a deep-link migration plan —
+      deliberate, not rushed.
+- [x] **C2 — Campaign receipts** (2026-07-08 eve): the campaign
+      analytics view gains an "Every send" card — each piece the
+      campaign sent, newest first, from a new org-scoped
+      GET /api/campaigns/:id/delivery-events reading the SAME table as
+      the aggregate counts ("2d ago · Letter to Emmy Replywell — sent").
+      Honest empty: "No sends yet. When this campaign sends its first
+      piece, every one will be listed here." Runtime-verified against
+      the fixture campaign + 404 on foreign/missing campaign.
 - [ ] **C3 — Discipline check**: everything stays behind the five doors
       + Settings; no new top-level surfaces. The legibility pass removes
       confusion by rewording and regrouping, never by adding rooms.
