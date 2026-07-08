@@ -280,8 +280,12 @@ export const outbox = pgTable("outbox", {
   id: serial("id").primaryKey(),
   eventType: text("event_type").notNull(),
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
-  status: text("status").notNull().default("pending"), // pending | sent | failed
+  status: text("status").notNull().default("pending"), // pending | retry | running | sent | failed
   attempts: integer("attempts").notNull().default(0),
+  /** When the worker claimed the row (status → running). Drives the orphan
+   *  reaper — created_at is enqueue time and can't distinguish a stale
+   *  claim from a backlog claimed after downtime. Migration 0199. */
+  claimedAt: timestamp("claimed_at"),
   lastErrorAt: timestamp("last_error_at"),
   lastErrorMessage: text("last_error_message"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

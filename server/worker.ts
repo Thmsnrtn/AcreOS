@@ -352,7 +352,7 @@ async function claimBatch(): Promise<Array<{
     attempts: number;
   }>(sql`
     UPDATE outbox
-    SET status = 'running', attempts = attempts + 1
+    SET status = 'running', attempts = attempts + 1, claimed_at = now()
     WHERE id IN (
       SELECT id FROM outbox
       WHERE status IN ('pending', 'retry')
@@ -371,6 +371,50 @@ async function claimBatch(): Promise<Array<{
     payload: r.payload ?? {},
     attempts: r.attempts ?? 0,
   }));
+}
+
+// ── Orphan reaper ────────────────────────────────────────────────────────────
+// A worker killed mid-batch (OOM, deploy, kill -9) leaves its claimed rows in
+// status='running' forever: claimBatch only takes pending/retry, and before
+// this reaper existed NOTHING recovered them — the WS5 worker-kill drill
+// (2026-07-08) orphaned 196/200 rows permanently. Policy mirrors the dispatch
+// reaper's honesty split:
+//   • OUTWARD event types (emails, platform broadcasts) → 'failed', never
+//     requeued: the send may have partially fired, and at-most-once beats a
+//     double-send. Surfaced via the normal failed-row telemetry.
+//   • Internal compute types → requeued to 'retry' (bounded by MAX_ATTEMPTS,
+//     already incremented at claim time) or 'failed' once attempts exhaust.
+// claimed_at (migration 0199) is the staleness signal — created_at is enqueue
+// time and would mis-reap a backlog claimed right after downtime.
+const OUTWARD_EVENT_TYPES = new Set(["lifecycle_email", "cmo.broadcast"]);
+const REAP_RUNNING_TTL_MS = parseInt(process.env.WORKER_REAP_RUNNING_TTL_MS ?? String(30 * 60_000), 10);
+
+async function reapOrphanedOutbox(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - REAP_RUNNING_TTL_MS);
+    const res = await db.execute<{ id: number; event_type: string; new_status: string }>(sql`
+      UPDATE outbox
+      SET status = CASE
+            WHEN event_type IN (${sql.join([...OUTWARD_EVENT_TYPES].map((t) => sql`${t}`), sql`, `)}) THEN 'failed'
+            WHEN attempts >= ${MAX_ATTEMPTS} THEN 'failed'
+            ELSE 'retry'
+          END,
+          last_error_at = now(),
+          last_error_message = 'reaped: orphaned running row past ' || ${Math.round(REAP_RUNNING_TTL_MS / 60_000)} || 'min TTL (likely a worker crash mid-batch)'
+      WHERE status = 'running'
+        AND (claimed_at IS NULL OR claimed_at < ${cutoff})
+      RETURNING id, event_type, status AS new_status
+    `);
+    const list: any[] = (res as any)?.rows ?? [];
+    if (list.length > 0) {
+      const requeued = list.filter((r) => r.new_status === "retry").length;
+      logger.warn(
+        `[worker] reaped ${list.length} orphaned running outbox row(s): ${requeued} requeued, ${list.length - requeued} failed (at-most-once / attempts exhausted)`,
+      );
+    }
+  } catch (err) {
+    logger.warn("[worker] outbox orphan reap failed", err instanceof Error ? err : undefined);
+  }
 }
 
 async function markSent(id: number, _result: unknown): Promise<void> {
@@ -549,10 +593,19 @@ async function writeHeartbeat(): Promise<void> {
   }
 }
 
+let lastReapAt = 0;
+const REAP_INTERVAL_MS = 10 * 60_000;
+
 async function pollOnce(): Promise<void> {
   // Pulse first, every loop — independent of whether there is work to do, so a
   // quiet-but-alive worker still proves liveness to the external probe.
   await writeHeartbeat();
+  // Recover rows a crashed predecessor left in 'running' — immediately on the
+  // first poll after boot (the restart-after-crash case), then every 10 min.
+  if (Date.now() - lastReapAt > REAP_INTERVAL_MS) {
+    lastReapAt = Date.now();
+    await reapOrphanedOutbox();
+  }
   // Append-only liveness sample (throttled to ~1/min internally) — the history
   // gaps in this feed the real uptime % sense. Best-effort; never blocks work.
   try {

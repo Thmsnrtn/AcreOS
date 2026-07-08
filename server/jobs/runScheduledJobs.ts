@@ -342,7 +342,13 @@ async function processDomainAudits() {
 
 function startDomainAuditJob() {
   const ONE_DAY = 24 * 60 * 60 * 1000;
-  const TTL_SECONDS = 23 * 60 * 60; // Lock TTL slightly less than interval
+  // Lock TTL slightly less than the interval — withJobLock never releases on
+  // completion, so this TTL IS the once-daily fleet-wide dedupe. Known
+  // tradeoff (WS5 drill, 2026-07-08): a holder that crashes mid-run blocks
+  // re-running until expiry, costing at most one day's audit — acceptable
+  // for a daily observability job; do NOT shorten without adding a
+  // completion-release, or multi-instance boots would re-run the audit daily.
+  const TTL_SECONDS = 23 * 60 * 60;
 
   log('Starting domain-audit background job (daily)', 'domain-audit');
 

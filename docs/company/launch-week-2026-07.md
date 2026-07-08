@@ -138,13 +138,50 @@ Exit test: five hard CEO questions, every answer sourced.
 
 ## WS5 — Launch drills + go/no-go
 
-- [ ] Drill: kill worker mid-job → outbox/lease recovery verified.
-- [ ] Drill: Stripe webhook replay → idempotency verified.
-- [ ] Drill: dunning ladder end-to-end against a test org.
-- [ ] Drill: panic stop flips + is honored by all loops.
-- [ ] Alert-spine check: every alarm class reaches the founder's phone.
+- [x] Drill: worker-kill (2026-07-08, prod build, kill -9 mid-200-row
+      batch). Lease expiry + mutual exclusion PASS; completed rows never
+      double-processed. FOUND + FIXED two real recovery bugs: (1) lease-
+      contention threw instead of skipping (drizzle wraps the pg 23505 code
+      in err.cause — the graceful "lease held by another machine" path was
+      dead code; every contended tick became a job failure + DLQ row);
+      (2) rows orphaned in status='running' were lost FOREVER (196/200 in
+      the drill) — no reaper existed. Added claimed_at (migration 0199 +
+      mirror) and an orphan reaper in the worker (boot + every 10 min):
+      outward event types (lifecycle_email, cmo.broadcast) fail honestly
+      (at-most-once, no double-send), compute types requeue bounded by
+      MAX_ATTEMPTS.
+- [x] Drill: Stripe webhook replay (2026-07-08). PASS — signed synthetic
+      invoice.payment_failed delivered twice: second delivery a proven
+      no-op (claimEvent ON CONFLICT guard; counts unchanged, "Skipping
+      duplicate event" logged).
+- [x] Drill: dunning ladder end-to-end (2026-07-08). PASS — real
+      webhook-created event driven through every rung with day-rewinds:
+      grace_period → reminder(d2) → warning(d6) → restricted(d8) →
+      final_notice(d13) → suspended+auto-downgrade(d15) → cancelled(d22)
+      → recovery/auto_recovered. W1.1 scheduled_retry contract held live.
+- [x] Drill: panic stop (2026-07-08). PASS — POST flipped all switches +
+      quarantined all 5 domains in one call; critical ntfy page fired
+      (prio 5, siren); queued dispatch sat untouched for 2.5+ min while
+      flipped; resume within 11s of unflip. Flag-binding inventory:
+      worker dispatch consumer, brain ACT + cognition branches, operator,
+      rootCause, publishArtifact, marketingChannels + SOLENE_PANIC_STOP
+      env hard-floor (hands registry, autoWitness, stepAwayReadiness).
+      FIXED: the route's log mangled the reason ("[object Object]").
+- [x] Alert-spine check (2026-07-08): 24 real pages captured on a local
+      ntfy listener. VERIFIED: panic stop, job deadman, error-rate spike
+      (+1h dedupe), AI budget breach, SLO fast-burn (SEV-1 auto-opened),
+      dunning revenue-at-risk rows, Stripe webhook failure P0, vendor
+      credential death. FIXED the one gap: the dispatch kill-cap tripped
+      silently — now raises a once-per-month warning through the alert
+      spine ("a brake, not a mute"). BLOCKED-BY-ENV (not gaps): email leg
+      (no AWS creds locally), VAPID push (no keys), deploy watchdog
+      (external CI-side, already proven live 2026-07-07). Known tradeoff
+      documented: domain_audit's 23h lease is the once-daily dedupe; a
+      mid-run crash costs at most one day's audit.
 - [ ] Go/No-Go pack: one page — green/amber/red with reasons + the first
-      campaign recipe ($5/day, witnessed, mail-first wedge).
+      campaign recipe ($5/day, witnessed, mail-first wedge). (Next: after
+      PR #112 merges, fold drill verdicts + surface-sweep state into the
+      verdict page.)
 
 ## Founder inputs (non-blocking; slot in when provided)
 

@@ -79,7 +79,9 @@ export function registerAutopilotRoutes(app: Express): void {
         const reason = ((req.body ?? {}) as { reason?: string }).reason?.trim() || "founder-initiated panic stop";
         const { panicStop } = await import("./services/autopilot/panicStop");
         const result = await panicStop({ reason, by: getUserId(req) });
-        logger.error("[autopilot] founder tripped PANIC STOP via API", { reason });
+        // logger.error's 2nd arg is the Error — passing {reason} there logged
+        // "[object Object]" and lost the reason (WS5 drill, 2026-07-08).
+        logger.error("[autopilot] founder tripped PANIC STOP via API", undefined, { metadata: { reason } });
         return res.json({ ok: true, ...result });
       } catch (err) {
         return Errors.internal(res, err);
