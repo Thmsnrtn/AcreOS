@@ -1439,10 +1439,10 @@ export default function Settings() {
                 <div>
                   <h2 className="text-section-h2 flex items-center gap-2">
                     <Link2 className="w-5 h-5" />
-                    Bring Your Own Keys (BYOK)
+                    Use your own provider accounts
                   </h2>
                   <p className="text-muted-foreground text-sm">
-                    Connect your own API keys to external services for unlimited usage and complete control.
+                    Plug in your own Twilio, SendGrid, or Lob account so texts, emails, and mail bill to you directly instead of drawing from AcreOS credits.
                   </p>
                   {/* Trust microcopy at the moment of key entry. BYOK
                       adoption is gated on the user believing we won't
@@ -1550,8 +1550,8 @@ export default function Settings() {
                     Tax identity (W-9)
                   </CardTitle>
                   <CardDescription>
-                    Manage your W-9 tax identity and TIN for 1099 reporting. Required
-                    for borrowers and any seller you pay {">"} $600 in a tax year.
+                    Add your business's tax details (EIN or SSN) so AcreOS can issue
+                    the 1099 forms you owe anyone you pay more than $600 in a year.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

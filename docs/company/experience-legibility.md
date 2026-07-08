@@ -101,13 +101,28 @@ one deadman window.
 Same standard for customers: no user should ever be confused about how
 to tailor their experience.
 
-- [ ] **C1 — Settings legibility pass** (`/settings`): every setting
-      gets a plain-language label + one-line consequence subtitle;
-      regroup by intent ("How you're contacted", "What runs
-      automatically", "Your plan & billing", "Your data"), not by
-      subsystem; kill jargon (e.g. TCPA consent handling reads "Only
-      contact people who said yes — required by law for texts/calls").
-      Persona vocabulary continues to apply behind the doors.
+- [ ] **C1 — Settings legibility pass** (`/settings`): PARTIAL
+      (2026-07-08). A full audit (agent sweep, predict-test on every
+      control across 7 tabs + 12 modules) found the surface largely
+      ALREADY passes — pax-controls, accessibility, billing-sections,
+      account-sections, underwriting vocabulary are house-standard.
+      FIXED the failures: integrations.tsx (raw enum checkbox labels →
+      "A deal closes / A big lead comes in / An offer is waiting for
+      your approval"; "Webhook URL" → "Paste the link from Slack or
+      Teams" with a how-to line; jargon subtitle rewritten; connected-
+      channels rows humanized), tax-identity 422-code leak → plain
+      consequence, BYOK section header + channel help lines lead with
+      what each channel does, validate switch explains its test call,
+      lead-assignment rule types → "Take turns / By location / Random"
+      with helper, api-keys scopes get plain permissions with the token
+      as monospace hint + 401s confirm rewritten, underwriting Balloon
+      switch gains an on/off consequence line.
+      REMAINING (C1b): components rendered inside the tabs but living
+      outside settings/ (compliance-settings.tsx TCPA controls,
+      NotificationPreferences, AISettings, ProviderSettings) need the
+      same sweep; the intent-based tab REGROUP (4 buckets) needs a
+      deep-link migration plan (LEGACY_TO_CANONICAL) — deliberate,
+      not rushed.
 - [ ] **C2 — Pulse + receipts where automation acts for customers**:
       campaign surfaces show "12 letters queued — see each one" with
       per-send rows (much exists in campaign detail; make it the claim's
