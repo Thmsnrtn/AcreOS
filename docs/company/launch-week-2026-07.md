@@ -26,9 +26,18 @@ makes an offer, and pays — zero errors, mobile and desktop.
       /transparency JSON shadowing the page), the feature-flag fail-open,
       2 dead command-palette entries, 21 orphan routes (ledgered), dead
       buttons/copy. Interactive-flow + persona-variant passes still to do.
-- [ ] Same sweep for signup → onboarding-v2 → first value.
-- [ ] Billing surfaces: upgrade, seats, credits purchase, cancel, dunning
-      banners.
+- [x] Signup → onboarding-v2 → first value (2026-07-07, interactive
+      pass): full 3-step walk with real clicks — persona intro →
+      workspace → sample-data choice → "workspace ready" → lands on
+      /maps; every /api/onboarding/* call 200. PASS. (The CREDENTIALED
+      Clerk signup leg stays below, gated on founder test creds.)
+- [ ] Billing surfaces: PARTIAL (2026-07-08). Done: upgrade surface
+      verified honest without Stripe keys (error card + retry, no crash),
+      plans grid moved into the Billing tab (fix wave 2), dunning ladder
+      + banners exercised end-to-end at service level (WS5 drill), a
+      self-activating billing-upgrade E2E ships with the wedge extensions.
+      Remaining: credits purchase + cancel flows driven for real — needs
+      Stripe TEST keys in CI (founder input, arriving).
 - [x] Triage ledger written into this section + fix wave 1 (2026-07-07):
       FIX-NOW shipped — seo-head env injection, transparency route split,
       FROZEN_ROUTES code-enforced deny-list, white-label config 200,
@@ -56,7 +65,24 @@ makes an offer, and pays — zero errors, mobile and desktop.
       "executive", server normalizes the alias) + failed drafts actually
       restored to the composer; (6) plans/upgrade grid moved into the
       Billing tab where every server upgradeUrl deep-links.
-- [ ] Wedge E2E extended: email reply leg + billing upgrade journey.
+- [x] Wedge E2E extended (2026-07-08): email-reply leg proves the REAL
+      inbound webhook end to end (HMAC verified for real; unsigned +
+      mis-signed asserted 401) → lead_emails + inbox_messages rows,
+      lead→responded, activity, thread API, Inbox door API + unread
+      counts, /leads/:id surface. Billing-upgrade journey always asserts
+      the billing tab + pricing grid + available-plans error recovery,
+      and self-activates the real Stripe flow when STRIPE_SECRET_KEY
+      lands. Both green locally on pixel-5; run in CI e2e-mobile.
+      BONUS FIX the leg exposed: inbound lead emails were INVISIBLE in
+      the Inbox door (processInboundEmail wrote lead_emails only; the
+      Inbox email tab reads inbox_messages — zero writers). Now writes
+      the inbox_messages projection too; go/no-go recipe's "replies land
+      in Inbox" promise is true for email as well as SMS.
+      Noted, not fixed: (a) /settings#billing auto-opens the
+      Compare-plans dialog over the grid (product-look choice);
+      (b) processInboundEmail doesn't check `from` matches the lead's
+      email — acceptable: routing is per-lead-HMAC-gated, and real
+      sellers reply from unpredictable addresses.
 - [ ] Credentialed desktop signup E2E in CI (needs founder: Clerk test
       creds as GitHub Actions secrets).
 
@@ -81,8 +107,12 @@ Rule: every number is real or explicitly "no data yet." Mobile-first.
       spend, envelope+runway were already real. CAC stays on
       /founder/money unit-economics (its correct deep-panel home);
       switch states live behind the Controls door.
-- [ ] Mobile pass on the cockpit (inventory verified responsive
-      primitives; needs an on-device eyeball pass).
+- [x] Mobile pass on the cockpit (2026-07-08): all four founder doors
+      screenshotted on a Pixel-5 viewport against the production build
+      with seeded data and delivered to the founder. Pulse renders the
+      honest tiles (Uptime/Errors "no data yet", REAL wedge counts from
+      seed data), Controls shows the full switch/trust/connections stack
+      cleanly, Decisions + Story render non-blank. No layout defects.
 
 ## WS3 — The Brain (Solene as chief of staff)
 
@@ -191,6 +221,57 @@ Exit test: five hard CEO questions, every answer sourced.
 - [ ] DEPLOY_BOT_TOKEN + SENTRY_AUTH_TOKEN → GitHub Actions secrets
 - [ ] DNC scrub vendor pick (seam ready; mail-first launch not blocked)
 - [ ] Meta ad account for the $5/day witnessed live test
+
+## Status log
+
+- 2026-07-08 ~14:30Z — **iPad touch-target defects fixed (real product
+  bugs the E2E merge-gate caught)**: on ipad-mini (768px = md → desktop
+  sidebar on a touch device) the sidebar's door links measured 20px tall
+  (anchor inside the 44px row), child links 34px, Pax bell 28×28, and
+  the toast dismiss was 24×24 AND opacity-0 (hover-revealed — invisible
+  on touch). Fixed: anchors get full-height tap areas (py-3/-my-3, zero
+  layout change), children + bell + toast dismiss use the established
+  pointer-coarse: variant (44px + always-visible dismiss on touch;
+  desktop density unchanged). NOTE the honest part: these violations
+  were pre-existing — the contract spec deliberately measures before
+  hydration (its own comment says a settle-wait exposed them "on every
+  route"), and the new specs' timing/data shifted the race. The product
+  is now compliant post-hydration so the race no longer decides.
+  Also: compare-plans dialog doesn't close on Escape at 768px (close
+  button works) — spec dismisses via the button; product quirk noted
+  for the C1 settings-legibility pass. Verified: 0 violations at
+  768×1024 (was 13); mobile-feel + billing specs green on pixel-5;
+  full suite 7981/7981.
+- 2026-07-08 ~12:45Z — **Security workflow GREEN on the PR #113 branch**
+  (head `375cbdf`) — first green since 2026-07-07. The findings-table
+  step named the real culprit on its first run: CVE-2026-48702
+  (sigstore/rekor v1.5.0, HIGH) vendored in the gh binary — a gh module
+  dep, NOT the Go stdlib, which is why the 1.26.5 toolchain bump alone
+  didn't clear it. Fixed by GH_VERSION → v2.96.0 (`b6fa9ff`). Same run
+  surfaced the separate CodeQL PR check flagging 1 new HIGH in the new
+  billing spec (URL substring/unanchored-regex match on the Stripe
+  checkout redirect) — fixed with hostname-exact assertions. PR #113
+  merges automatically once deploy-gating checks are green (standing
+  authorization below).
+- 2026-07-08 ~12:10Z — **Founder granted STANDING merge authorization**
+  ("I would like you to automatically be merging"): PRs from launch-week
+  work merge automatically once deploy-gating checks are green (CI, Test,
+  E2E Mobile, Customer Surface Monitor, Migrate Mirror, Schema
+  validation). The Security Gate is not deploy-gating — if red for the
+  same cause as main it doesn't block, but its findings-table output must
+  be read and the named CVEs fixed. Hard-stops (pricing/legal/>$500/
+  customer-data deletion) remain never-automated. The daily routine was
+  recreated with this policy (trig_01LEsuNEJdtUhYTjQfkST7vv). GitHub
+  native auto-merge is OFF at the repo level; founder can enable it in
+  Settings → General → Pull Requests if preferred.
+- 2026-07-08 ~02:15Z — **PR #112 merged (founder-authorized) and DEPLOYED
+  as `603522f6`**, verified live on acreos.io (`/api/version`). All five
+  workstreams' code is in production. Go/no-go verdict recorded in
+  `docs/company/go-no-go-2026-07.md`: **AMBER-GO, conditions met** — the
+  witnessed mail-first $5/day campaign is cleared. Post-deploy
+  verification found one regression (public transparency JSON auth-gated
+  by the /api catch-all) — fixed, prod-build-verified, shipping in PR
+  #113.
 
 *Maintenance: check items off in place with date + SHA. When all
 workstreams are green (or amber with founder-accepted reasons), record the

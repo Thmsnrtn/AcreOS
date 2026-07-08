@@ -155,6 +155,30 @@ export function registerDealRoutes(app: Express): void {
   // reduced ONE page of the paginated list (25 rows), so orgs with >25
   // deals saw wrong pipeline/closed/stalled numbers. Registered BEFORE
   // /api/deals/:id so the literal path wins over the :id matcher.
+  // GET /api/deals/coach — D4: surface the autopilot deal-coach (next-best
+  // actions over the pipeline) to the customer, inside the Deals door.
+  // Registered BEFORE /api/deals/:id — it previously sat at the tail of this
+  // file, so the :id matcher captured "coach" (parseInt → NaN) and every
+  // Deals-door load 500'd this widget (found by the wedge E2E, 2026-07-08).
+  app.get("/api/deals/coach", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    // The deal-coach is a secondary advisory widget inside the Deals door. It
+    // must NEVER 500 the request — a failure here would break the whole door.
+    // Degrade to an empty coach and log loudly so the underlying error stays
+    // observable (Errors.internal previously masked the door behind a 500).
+    try {
+      const { getDealCoachForOrg } = await import("./services/autopilot/dealActions");
+      const items = await getDealCoachForOrg(req.organization.id);
+      res.json({ items });
+    } catch (err: any) {
+      logger.error(
+        "[deals/coach] failed — degrading to empty coach so the Deals door still renders",
+        err instanceof Error ? err : new Error(String(err?.message ?? err)),
+        { metadata: { organizationId: req.organization?.id } },
+      );
+      res.json({ items: [], degraded: true });
+    }
+  });
+
   api.get("/api/deals/aggregates", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
     try {
       const orgId = getOrganizationId(req);
@@ -2228,27 +2252,6 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.json(handoffs);
     } catch (err: any) {
       Errors.internal(res, err instanceof Error ? err : new Error(err.message));
-    }
-  });
-
-  // GET /api/deals/coach — D4: surface the autopilot deal-coach (next-best
-  // actions over the pipeline) to the customer, inside the Deals door.
-  app.get("/api/deals/coach", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    // The deal-coach is a secondary advisory widget inside the Deals door. It
-    // must NEVER 500 the request — a failure here would break the whole door.
-    // Degrade to an empty coach and log loudly so the underlying error stays
-    // observable (Errors.internal previously masked the door behind a 500).
-    try {
-      const { getDealCoachForOrg } = await import("./services/autopilot/dealActions");
-      const items = await getDealCoachForOrg(req.organization.id);
-      res.json({ items });
-    } catch (err: any) {
-      logger.error(
-        "[deals/coach] failed — degrading to empty coach so the Deals door still renders",
-        err instanceof Error ? err : new Error(String(err?.message ?? err)),
-        { metadata: { organizationId: req.organization?.id } },
-      );
-      res.json({ items: [], degraded: true });
     }
   });
 

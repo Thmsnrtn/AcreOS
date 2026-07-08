@@ -232,6 +232,11 @@ for land). Wholesale = thinnest — no assignment-contract mechanic.**
   witnessGrant.ts.
 - Strategic ladder: marketplace build starts at ~25 customers; public API
   productization at ~50 (Wave 1's Data-API hardening is its precondition).
+- Experience legibility (founder-queued 2026-07-08): pulse strip,
+  receipts, plain-language controls on the founder doors + customer
+  settings — design + work clusters in
+  `docs/company/experience-legibility.md`; first cluster (F1) starts
+  after launch-week remainders clear.
 
 ---
 
