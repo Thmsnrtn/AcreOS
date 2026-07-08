@@ -30,11 +30,15 @@ import {
   DollarSign,
   AlertTriangle,
   Undo2,
+  Send,
+  Check,
+  X,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { dollars, relative } from "@/lib/format";
 import { CopyButton } from "@/components/ui/copy-button";
+import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 
 // ───────────── Types ─────────────
 
@@ -124,7 +128,10 @@ function DecisionRowCard({
       className="border rounded-card p-4 hover:bg-muted/30 transition-colors"
       data-testid={`decision-row-${row.id}`}
     >
-      <div className="flex items-start justify-between gap-4">
+      {/* flex-wrap: at phone widths the nowrap timestamp column can't fit
+          beside the flex-1 title and was clipped by the card edge (mobile
+          eyeball pass, 2026-07-08) — wrapping drops it to its own line. */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <button
           onClick={() => setExpanded((v) => !v)}
           className="flex-1 text-left"
@@ -263,6 +270,190 @@ function DecisionRowCard({
   );
 }
 
+// ───────────── Witnessed-send queue (the execution seam) ─────────────
+//
+// The autopilot drafts customer-facing / money / broadcast actions but NEVER
+// sends them — every such hand is frozen into autopilot_pending_actions and
+// executes ONLY on a founder tap here (witnessed-send). This is the load-
+// bearing trust surface: without it, drafted sends are stranded forever. The
+// backend (routes-autopilot.ts) already exposes list/approve/reject; this is
+// the missing UI.
+
+interface PendingAction {
+  id: number;
+  handName: string;
+  domain: string | null;
+  summary: string | null;
+  args: Record<string, unknown>;
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+/** Pull the human-readable body out of a frozen hand's args so the founder
+ * reads EXACTLY what will send before approving. Falls back to a JSON view. */
+function renderArgs(args: Record<string, unknown>): { fields: { label: string; value: string }[] } {
+  const out: { label: string; value: string }[] = [];
+  const push = (label: string, v: unknown) => {
+    if (v == null || v === "") return;
+    out.push({ label, value: typeof v === "string" ? v : JSON.stringify(v) });
+  };
+  push("To", args.to ?? (typeof args.lead_id === "number" ? `lead #${args.lead_id}` : undefined));
+  push("Subject", args.subject);
+  // The actual message body, under whichever key the hand uses.
+  push("Body", args.html ?? args.message ?? args.body ?? args.text);
+  push("Amount", typeof args.amount_cents === "number" ? `$${(args.amount_cents / 100).toFixed(2)}` : undefined);
+  push("Charge", args.charge_id);
+  push("Action", args.action);
+  push("Platform", args.platform);
+  // Any remaining keys, so nothing is hidden from the founder.
+  const shown = new Set(["to", "lead_id", "subject", "html", "message", "body", "text", "amount_cents", "charge_id", "action", "platform"]);
+  for (const [k, v] of Object.entries(args)) {
+    if (!shown.has(k)) push(k, v);
+  }
+  return { fields: out };
+}
+
+function PendingActionCard({
+  action,
+  onApprove,
+  onReject,
+  inFlight,
+}: {
+  action: PendingAction;
+  onApprove: (id: number) => void;
+  onReject: (id: number) => void;
+  inFlight: number | null;
+}) {
+  const { fields } = renderArgs(action.args ?? {});
+  const busy = inFlight === action.id;
+  return (
+    <div className="border rounded-card p-4 bg-card" data-testid={`pending-action-${action.id}`}>
+      <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline" className="text-micro uppercase">
+            {action.handName.replace(/_/g, " ")}
+          </Badge>
+          {action.domain && (
+            <Badge variant="outline" className="text-micro">
+              {action.domain}
+            </Badge>
+          )}
+        </div>
+        <div className="text-xs font-mono text-muted-foreground whitespace-nowrap flex items-center gap-1">
+          <Clock className="w-3 h-3" />
+          {relative(action.createdAt)}
+        </div>
+      </div>
+      {action.summary && <p className="text-sm font-medium mb-2">{action.summary}</p>}
+      <div className="space-y-1.5 mb-3">
+        {fields.map((f) => (
+          <div key={f.label} className="text-xs">
+            <span className="text-muted-foreground">{f.label}: </span>
+            <span className="whitespace-pre-wrap break-words">{f.value}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-destructive border-destructive/30 hover:bg-destructive/10"
+          disabled={busy}
+          onClick={() => onReject(action.id)}
+          aria-label={`Reject ${action.handName}`}
+          data-testid={`button-reject-${action.id}`}
+        >
+          <X className="w-3.5 h-3.5 mr-1" />
+          Reject
+        </Button>
+        <Button
+          size="sm"
+          disabled={busy}
+          onClick={() => onApprove(action.id)}
+          aria-label={`Approve and send ${action.handName}`}
+          data-testid={`button-approve-${action.id}`}
+        >
+          <Check className="w-3.5 h-3.5 mr-1" />
+          {busy ? "Sending…" : "Approve & send"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function WitnessedSendQueue() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [inFlight, setInFlight] = useState<number | null>(null);
+
+  const { data, isLoading } = useQuery<{ actions: PendingAction[] }>({
+    queryKey: ["/api/founder/autopilot/pending-actions"],
+    queryFn: async () => {
+      const res = await fetch("/api/founder/autopilot/pending-actions", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load pending actions");
+      return res.json();
+    },
+    refetchInterval: 30_000,
+  });
+
+  const decide = useMutation({
+    mutationFn: async ({ id, decision }: { id: number; decision: "approve" | "reject" }) => {
+      setInFlight(id);
+      return apiRequest("POST", `/api/founder/autopilot/pending-actions/${id}/${decision}`, {});
+    },
+    onSuccess: (_res, vars) => {
+      toast({
+        title: vars.decision === "approve" ? "Approved & sent" : "Rejected",
+        description:
+          vars.decision === "approve"
+            ? "The autopilot executed this on your witnessed tap."
+            : "The autopilot won't send this.",
+      });
+      qc.invalidateQueries({ queryKey: ["/api/founder/autopilot/pending-actions"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Couldn't complete", description: err.message, variant: "destructive" });
+    },
+    onSettled: () => setInFlight(null),
+  });
+
+  const actions = data?.actions ?? [];
+
+  // When empty + loaded, render nothing (keep the page focused on the audit
+  // trail). The queue only appears when the autopilot is waiting on the founder.
+  if (!isLoading && actions.length === 0) return null;
+
+  return (
+    <Card className="border-acr-warn/40">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Send className="w-4 h-4 text-acr-warn" />
+          Waiting on you to send ({actions.length})
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          The autopilot drafted these but won't send anything until you approve. Read each one — Approve
+          fires the real send; Reject discards it.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {isLoading ? (
+          Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-28" />)
+        ) : (
+          actions.map((a) => (
+            <PendingActionCard
+              key={a.id}
+              action={a}
+              onApprove={(id) => decide.mutate({ id, decision: "approve" })}
+              onReject={(id) => decide.mutate({ id, decision: "reject" })}
+              inFlight={inFlight}
+            />
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ───────────── Page ─────────────
 
 const BUCKET_META: Record<
@@ -360,6 +551,8 @@ export default function FounderDecisionsPage() {
 
   return (
     <PageShell label="Autonomous decisions">
+      {/* F1 — ambient liveness on every door (experience-legibility.md) */}
+      <div className="mb-4"><FounderPulseStrip /></div>
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
@@ -385,6 +578,11 @@ export default function FounderDecisionsPage() {
           <option value={90}>Last 90 days</option>
         </select>
       </div>
+
+      {/* Witnessed-send queue — the autopilot's drafted actions awaiting your
+          tap. Renders only when something is waiting; it's the load-bearing
+          execution seam, so it sits above the audit trail. */}
+      <WitnessedSendQueue />
 
       {/* Summary strip */}
       {isLoading ? (

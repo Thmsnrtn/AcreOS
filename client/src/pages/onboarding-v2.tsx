@@ -62,6 +62,7 @@ import {
   TrendingUp,
   FileSignature,
   ClipboardCheck,
+  Scissors,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
@@ -74,6 +75,7 @@ import {
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { clientLogger } from "@/lib/clientLogger";
 import type { Persona } from "@shared/models/auth";
+import { derivePersona, type BusinessType, type NoteRole } from "@shared/models/persona-mapping";
 import "./styles/onboarding-v2.css";
 
 // ---------------------------------------------------------------------------
@@ -83,22 +85,9 @@ import "./styles/onboarding-v2.css";
 // Settings after onboarding completes — we don't avalanche the first screen.
 // ---------------------------------------------------------------------------
 
-type BusinessType =
-  | "land_flipper"
-  | "note_investor"
-  | "hybrid"
-  | "residential_wholesaler"
-  | "fix_and_flip"
-  | "buy_and_hold"
-  | "commercial"
-  | "short_term_rental"
-  | "creative_finance"
-  | "developer"
-  | "subdivider"
-  | "tax_lien_deed"
-  | "multifamily"
-  | "mobile_home"
-  | "agent_investor";
+// BusinessType / NoteRole / persona derivation now come from the shared
+// source of truth (@shared/models/persona-mapping) — see import above. The UI
+// choice arrays below stay local (they carry labels + icons).
 
 const CORE_CHOICES = [
   {
@@ -137,6 +126,9 @@ const SECONDARY_CHOICES: { value: BusinessType; label: string; description: stri
   { value: "commercial", label: "Commercial", icon: Landmark, description: "Office, retail, industrial, and mixed-use investments." },
   { value: "creative_finance", label: "Creative Finance", icon: Lightbulb, description: "Subject-to, seller financing, wraps, and lease options." },
   { value: "developer", label: "Developer / Entitlements", icon: Warehouse, description: "Land development, entitlements, and new construction." },
+  // W2.5: the Subdivision module (sidebar, businessTypeOnly:["subdivider"])
+  // was orphaned — gated on a businessType no onboarding path could set.
+  { value: "subdivider", label: "Subdivider", icon: Scissors, description: "Buy acreage, split it into parcels, and sell the pieces." },
   { value: "tax_lien_deed", label: "Tax Lien / Tax Deed", icon: Receipt, description: "Purchase tax liens and tax deeds at county auctions." },
   { value: "mobile_home", label: "Mobile Home / MHP", icon: Truck, description: "Mobile home parks and manufactured housing investments." },
   { value: "agent_investor", label: "Agent-Investor", icon: Users, description: "Licensed agent who also invests — manage clients and your own deals." },
@@ -144,57 +136,20 @@ const SECONDARY_CHOICES: { value: BusinessType; label: string; description: stri
 
 const SECONDARY_BUSINESS_TYPES = new Set<BusinessType>(SECONDARY_CHOICES.map((c) => c.value));
 
-// Persona map — mirrors OnboardingWizard.tsx BUSINESS_TYPE_TO_PERSONA.
-// Server /onboarding/complete derives the same map as a safety net.
-const BUSINESS_TYPE_TO_PERSONA: Record<BusinessType, Persona> = {
-  note_investor: "note_investor",
-  residential_wholesaler: "wholesaler",
-  fix_and_flip: "fix_flipper",
-  buy_and_hold: "landlord",
-  short_term_rental: "landlord",
-  multifamily: "landlord",
-  mobile_home: "landlord",
-  subdivider: "subdivider",
-  developer: "subdivider",
-  tax_lien_deed: "tax_delinquent",
-  land_flipper: "land_investor",
-  hybrid: "land_investor",
-  commercial: "land_investor",
-  creative_finance: "land_investor",
-  agent_investor: "land_investor",
-};
-
-// ---------------------------------------------------------------------------
-// Note role fork — the "Note Investor" businessType covers THREE distinct
-// jobs, and each maps to its own persona (which drives every persona-gated
-// surface). Without this fork, every note person was set to "note_investor"
-// and the originator + servicer surfaces — their actual jobs — were inert.
-// Only surfaced when businessType === "note_investor"; persisted via the
-// existing PUT /api/me/persona (same endpoint Settings › Persona uses).
-// ---------------------------------------------------------------------------
-
-type NoteRole = "invest" | "originate" | "service";
-
-const NOTE_ROLE_TO_PERSONA: Record<NoteRole, Persona> = {
-  invest: "note_investor",
-  originate: "note_originator",
-  service: "note_servicer",
-};
-
+// The "Note Investor" businessType covers THREE distinct jobs, each its own
+// persona (drives every persona-gated surface). Surfaced only when
+// businessType === "note_investor"; persisted via PUT /api/me/persona. The
+// role→persona mapping + derivation live in @shared/models/persona-mapping;
+// only the UI choice array (labels + icons) is local.
 const NOTE_ROLE_CHOICES: { value: NoteRole; label: string; description: string; icon: typeof Map }[] = [
   { value: "invest", label: "I buy notes", description: "Acquire existing notes for yield.", icon: TrendingUp },
   { value: "originate", label: "I create notes", description: "Seller-finance sales into new paper.", icon: FileSignature },
   { value: "service", label: "I service notes", description: "Collect & service notes for others.", icon: ClipboardCheck },
 ];
 
-/**
- * Resolve the canonical persona from the business type and (for note
- * investors) the chosen note role. Mirrors the server safety-net so a
- * dropped PUT still lands the right persona.
- */
+/** Canonical persona from businessType (+ note role). Shared with the server. */
 function resolvePersona(bt: BusinessType, noteRole: NoteRole): Persona {
-  if (bt === "note_investor") return NOTE_ROLE_TO_PERSONA[noteRole];
-  return BUSINESS_TYPE_TO_PERSONA[bt] ?? "land_investor";
+  return derivePersona(bt, undefined, noteRole);
 }
 
 // ---------------------------------------------------------------------------
@@ -362,6 +317,7 @@ export default function OnboardingV2() {
     },
   });
 
+  // allow-no-invalidation: provisions templates before any app queries exist in the cache — /today fetches fresh after navigate
   const provisionMutation = useMutation({
     mutationFn: async (bt: BusinessType) => {
       const res = await apiRequest("POST", "/api/onboarding/provision", {
@@ -373,13 +329,19 @@ export default function OnboardingV2() {
   });
 
   const personaMutation = useMutation({
-    // Accepts the already-resolved persona so the note-role fork
-    // (invest/originate/service) lands the right one. The server
-    // /onboarding/complete still derives a businessType-based default as a
-    // safety net if this PUT is dropped.
-    mutationFn: async (persona: Persona) => {
-      const res = await apiRequest("PUT", "/api/me/persona", { persona });
+    // Sends BOTH the resolved persona (note-role fork already applied) and the
+    // EXACT businessType. Passing businessType makes the server write the same
+    // specific value the parallel complete-step writes (no race / no coarsening)
+    // and derive the correct investorType (incl. "both" for hybrid). The server
+    // /onboarding/complete still derives all three as a safety net if dropped.
+    mutationFn: async ({ persona, businessType: bt }: { persona: Persona; businessType: BusinessType }) => {
+      const res = await apiRequest("PUT", "/api/me/persona", { persona, businessType: bt });
       return res.json();
+    },
+    onSuccess: () => {
+      // Persona gates nav content — the cached user must not go stale
+      // across the SPA navigate() into /today.
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
   });
 
@@ -457,10 +419,17 @@ export default function OnboardingV2() {
       if (!res.ok) throw new Error("Failed to record step");
       return res.json();
     },
+    onSuccess: () => {
+      // Step progress is read by the onboarding status query — keep the
+      // wizard's progress indicators live as steps record.
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
+    },
   });
 
   const completeMutation = useMutation({
-    mutationFn: async () => {
+    // W2.2: the finish screen drives toward the first OFFER, so completion
+    // can land on the Map (offer flow) as well as Today.
+    mutationFn: async (_destination?: "/today" | "/maps") => {
       const res = await apiRequest("POST", "/api/onboarding/complete", {
         formData: { businessType, workspaceName },
         path: "fast",
@@ -468,11 +437,11 @@ export default function OnboardingV2() {
       if (!res.ok) throw new Error("Failed to complete onboarding");
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, destination) => {
       queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/me/needs-onboarding"] });
-      navigate("/today");
+      navigate(destination ?? "/today");
     },
     onError: (error) => {
       toast({
@@ -533,7 +502,7 @@ export default function OnboardingV2() {
       // servicers land on their own persona, not the generic note_investor.
       await Promise.allSettled([
         provisionMutation.mutateAsync(businessType),
-        personaMutation.mutateAsync(resolvedPersona),
+        personaMutation.mutateAsync({ persona: resolvedPersona, businessType }),
         completeStepMutation.mutateAsync({
           stepId: 0,
           data: {
@@ -582,7 +551,13 @@ export default function OnboardingV2() {
 
   // ── Final: complete + navigate ───────────────────────────────────────────
   const handleGoToToday = async () => {
-    await completeMutation.mutateAsync();
+    await completeMutation.mutateAsync("/today");
+  };
+  // W2.2 — the activation target is the first OFFER, not the sample-data
+  // load. The Map's parcel → blind-offer → hand-to-Pax flow is the fastest
+  // first win, so the finish screen's primary action lands there.
+  const handleMakeFirstOffer = async () => {
+    await completeMutation.mutateAsync("/maps");
   };
 
   // ── Motion: step transition ──────────────────────────────────────────────
@@ -1164,16 +1139,17 @@ export default function OnboardingV2() {
               >
                 {sampleDataLoaded || csvImportDone ? (
                   <>
-                    Pax has loaded{" "}
-                    {sampleDataLoaded ? "50 sample leads" : "your leads"} so you
-                    can feel how Today works — Decision Queue, Morning Brief, and
-                    Cash Strip are all live. You'll wipe them when you're ready
-                    for real data.
+                    {sampleDataLoaded ? "50 sample leads are" : "Your leads are"}{" "}
+                    loaded and Today is live. Now the real win: open a parcel on
+                    the Map, get a recommended blind offer, and hand it to Pax to
+                    draft — your first offer can be out the door in minutes.
                   </>
                 ) : (
                   <>
-                    Pax is ready. Head to Today — you can import leads or load
-                    sample data any time from the checklist.
+                    Pax is ready. The fastest first win: open a parcel on the
+                    Map and make your first blind offer — Pax drafts it, you
+                    approve it. Data import waits on the checklist whenever you
+                    need it.
                   </>
                 )}
               </motion.p>
@@ -1182,9 +1158,9 @@ export default function OnboardingV2() {
             <footer className="ob2-footer">
               <Button
                 className="ob2-btn-primary w-full"
-                onClick={handleGoToToday}
+                onClick={handleMakeFirstOffer}
                 disabled={isPendingComplete}
-                data-testid="button-go-to-today"
+                data-testid="button-make-first-offer"
               >
                 {isPendingComplete ? (
                   <>
@@ -1192,11 +1168,20 @@ export default function OnboardingV2() {
                       className="w-4 h-4 mr-2 animate-spin"
                       aria-hidden="true"
                     />
-                    Opening Today…
+                    Opening…
                   </>
                 ) : (
-                  "Go to Today →"
+                  "Make your first offer →"
                 )}
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full mt-2"
+                onClick={handleGoToToday}
+                disabled={isPendingComplete}
+                data-testid="button-go-to-today"
+              >
+                Go to Today instead
               </Button>
             </footer>
           </motion.main>

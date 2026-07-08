@@ -212,7 +212,7 @@ export default function BorrowerPortal() {
 function PortalLoadingSkeleton() {
   return (
     <div className="min-h-[100dvh] bg-gradient-to-br from-acr-portal-from to-acr-portal-to">
-      <header className="border-b bg-surface-veil backdrop-blur sticky top-0 z-50">
+      <header className="border-b bg-surface-veil backdrop-blur sticky top-0 z-floating">
         <div className="max-w-5xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3">
             <Building className="w-5 h-5 sm:w-6 sm:h-6 text-primary" aria-hidden="true" />
@@ -838,7 +838,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
 
   return (
     <div className="min-h-[100dvh] bg-gradient-to-br from-acr-portal-from to-acr-portal-to">
-      <header className="border-b bg-surface-veil backdrop-blur sticky top-0 z-50">
+      <header className="border-b bg-surface-veil backdrop-blur sticky top-0 z-floating">
         <div className="max-w-5xl mx-auto px-4 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3">
             <Building className="w-5 h-5 sm:w-6 sm:h-6 text-primary" aria-hidden="true" />
@@ -1209,7 +1209,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                   aria-label="Payment history"
                 >
                   <Table>
-                    <TableHeader className="sticky top-0 bg-card z-10">
+                    <TableHeader className="sticky top-0 bg-card z-docked">
                       <TableRow>
                         <TableHead className="text-xs sm:text-sm">Date</TableHead>
                         <TableHead className="text-right text-xs sm:text-sm">Amount</TableHead>
@@ -1432,7 +1432,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                   aria-label="Payment schedule"
                 >
                   <Table>
-                    <TableHeader className="sticky top-0 bg-card z-10">
+                    <TableHeader className="sticky top-0 bg-card z-docked">
                       <TableRow>
                         <TableHead scope="col" className="text-xs sm:text-sm">#</TableHead>
                         <TableHead scope="col" className="text-xs sm:text-sm">Due date</TableHead>

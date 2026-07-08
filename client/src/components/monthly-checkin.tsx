@@ -47,6 +47,7 @@ export function MonthlyCheckin() {
     refetchInterval: 5 * 60 * 1000,
   });
 
+  // allow-no-invalidation: ops trigger — the run report renders from mutation.data
   const maintenanceMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/founder/run-maintenance");

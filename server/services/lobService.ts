@@ -1,5 +1,6 @@
 import Lob from 'lob';
 import { logger } from "../utils/logger";
+import { isLiveSendArmed } from "./mail/liveSendInterlock";
 
 export type LobErrorType = 
   | 'address_invalid'
@@ -130,13 +131,23 @@ export class LobService {
   }
   
   private getClient(mode: 'test' | 'live'): InstanceType<typeof Lob> {
+    // Roadmap W1.7 (2026-07 audit): this was the ONE mail path that ignored
+    // the live-send interlock — sendLetter defaults to 'live' and handed out
+    // the live client unconditionally, contradicting the platform guarantee
+    // that no code path can arm itself. The interlock now gates here too:
+    // while disarmed, a 'live' request DEGRADES to the test client (the same
+    // posture as directMail.effectiveMode) rather than printing real mail.
+    if (mode === 'live' && !isLiveSendArmed()) {
+      logger.warn('[LobService] live send requested while interlock DISARMED — degrading to test mode');
+      mode = 'test';
+    }
     if (mode === 'test') {
       if (!this.testLob) {
-        throw new Error('Lob test mode not configured - LOB_TEST_API_KEY required');
+        throw new Error('Lob test mode not configured - LOB_TEST_API_KEY required (live sends stay locked until the interlock arms)');
       }
       return this.testLob;
     }
-    
+
     if (!this.liveLob) {
       throw new Error('Lob live mode not configured - LOB_LIVE_API_KEY required');
     }

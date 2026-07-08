@@ -123,6 +123,23 @@ jobs:
           no-cache: true
           pull: true
 
+      # OBSERVABILITY (2026-07-08): print the human-readable findings table
+      # BEFORE the gating sarif step. The sarif path never prints what it
+      # found, so every gate failure sent someone spelunking the code-scanning
+      # UI to learn WHICH CVE tripped it (the gate has now fired twice in one
+      # month on Go-toolchain CVEs alone). Non-gating: exit-code 0 here; the
+      # sarif step below remains the enforcement.
+      - name: Print Trivy findings table (non-gating, for the job log)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "acreos:scan-${{ github.sha }}"
+          format: "table"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          skip-setup-trivy: false
+
       - name: Run Trivy vulnerability scanner (image)
         uses: aquasecurity/trivy-action@master
         with:

@@ -46,6 +46,7 @@ export default function SkipTracingPage() {
       }),
   });
 
+  // allow-no-invalidation: queues an async trace batch — results land server-side over time
   const batchTraceMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/skip-tracing/batch"),
     onSuccess: () => {

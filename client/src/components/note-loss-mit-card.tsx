@@ -38,6 +38,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 type LossMitStatus =
   | "open"
@@ -321,7 +322,7 @@ function OpenCaseDialog({ open, onOpenChange, noteId }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button onClick={() => submit.mutate()} disabled={submit.isPending}>
             {submit.isPending ? "Opening…" : "Open case"}
           </Button>
@@ -406,7 +407,7 @@ function LogActionDialog({ open, onOpenChange, caseId, noteId }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button onClick={() => submit.mutate()} disabled={submit.isPending}>
             {submit.isPending ? "Logging…" : "Log action"}
           </Button>
@@ -466,7 +467,7 @@ function CloseCaseButton({ caseId, noteId }: { caseId: string; noteId: string })
             </Select>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>{Verbs.CANCEL}</Button>
             <Button onClick={() => submit.mutate()} disabled={submit.isPending}>
               {submit.isPending ? "Closing…" : "Close"}
             </Button>

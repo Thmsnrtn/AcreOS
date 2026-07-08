@@ -42,6 +42,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 type Status =
   | "planned"
@@ -518,7 +519,7 @@ function CreateDealDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button onClick={() => submit.mutate()} disabled={!aSeller || !aPrice || submit.isPending}>
             {submit.isPending ? "Creating…" : "Create"}
           </Button>

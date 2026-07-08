@@ -627,8 +627,8 @@ export function ConversationTray() {
       )}
 
       {isOpen && (
-        <section role="dialog" aria-label="Team messages" className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-slot-tray w-[360px] h-[500px] bg-background border rounded-card shadow-xl flex flex-col overflow-hidden safe-area-bottom">
-          <div className="absolute top-2 right-2 z-10">
+        <section role="dialog" aria-label="Team messages" className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-slot-tray w-[calc(100vw-2rem)] max-w-[360px] h-[500px] bg-background border rounded-card shadow-xl flex flex-col overflow-hidden safe-area-bottom">
+          <div className="absolute top-2 right-2 z-docked">
             <Button
               type="button"
               size="icon"

@@ -44,6 +44,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { Button } from "@/components/ui/button";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
@@ -315,6 +316,18 @@ export default function FounderBuildPage() {
   const inFlight: DispatchRow[] = [...inProgress, ...queued].slice(0, 5);
   const inFlightLoading =
     queuedQuery.isLoading || inProgressQuery.isLoading;
+  // The in-flight list is the page's primary surface. If either dispatch
+  // fetch fails outright (network), surface an error + retry rather than an
+  // empty list that reads as "nothing running".
+  const inFlightError = inProgressQuery.isError || queuedQuery.isError;
+  const inFlightErrorObj =
+    inProgressQuery.error instanceof Error
+      ? inProgressQuery.error
+      : queuedQuery.error instanceof Error
+      ? queuedQuery.error
+      : null;
+  const inFlightRefetching =
+    inProgressQuery.isRefetching || queuedQuery.isRefetching;
 
   const topAsks = openAsks.slice(0, 5);
 
@@ -402,6 +415,19 @@ export default function FounderBuildPage() {
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-12 w-full" />
               </div>
+            ) : inFlightError ? (
+              <QueryErrorState
+                error={inFlightErrorObj}
+                onRetry={() => {
+                  inProgressQuery.refetch();
+                  queuedQuery.refetch();
+                }}
+                isRetrying={inFlightRefetching}
+                compact
+                title="Couldn't load dispatches"
+                description="We hit a snag loading what's in flight. Your data is safe — try again."
+                testId="founder-build-query-error"
+              />
             ) : inFlight.length === 0 ? (
               <EmptyState
                 icon={Workflow}

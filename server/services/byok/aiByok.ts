@@ -23,6 +23,7 @@
 
 import OpenAI from "openai";
 import { inArray, and, eq, isNull } from "drizzle-orm";
+import { ANTHROPIC_MODELS } from "../models";
 import { db } from "../../db";
 import { byokCredentials, type ByokChannel } from "@shared/schema";
 import { getByokCredential } from "./key-vault";
@@ -89,7 +90,7 @@ export function mapModelForByokChannel(channel: AiByokChannel, model: string): s
       if (model.startsWith("anthropic/")) return model.slice("anthropic/".length);
       if (model.includes("claude")) return model;
       // Non-Claude selection on an Anthropic-only key → bare Sonnet default.
-      return "claude-sonnet-4-6";
+      return ANTHROPIC_MODELS.SONNET;
     }
     case "openai": {
       if (model.startsWith("openai/")) return model.slice("openai/".length);

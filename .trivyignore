@@ -1,0 +1,24 @@
+# Trivy ignore file — read by aquasecurity/trivy-action (image + fs scans) by
+# default. Every entry here is a SECURITY FINDING WE HAVE ASSESSED AND ACCEPTED,
+# with a written justification + a re-review trigger. This is NOT a place to
+# silence real exposure — a permanently-red Security Gate trains everyone to
+# ignore it, so we keep the gate GREEN and document each exception here instead.
+# Review this file whenever the base image / npm is bumped.
+
+# ── CVE-2026-12151 — undici DoS via unbounded WebSocket-frame memory growth ──
+# Affected: undici 6.26.0 BUNDLED INSIDE THE npm CLI
+#   (/usr/local/lib/node_modules/npm/node_modules/undici) shipped in
+#   node:22.23.1-slim. Fixed in undici 6.27.0 / 7.28.0 / 8.5.0.
+# Assessment — EXPOSURE NIL:
+#   • This is npm's OWN vendored undici, NOT our application's. Our app's undici
+#     is pinned to ^7.28.0 (patched) via package.json `overrides`.
+#   • npm is never invoked at RUNTIME — the production image runs the prebuilt
+#     `node dist/index.cjs`; npm is used only at build time. The DoS requires an
+#     attacker-controlled WebSocket peer talking to undici, which npm's CLI does
+#     not expose in our build or runtime.
+#   • The latest Node 22 LTS (22.23.1) still bundles this npm/undici, and npm
+#     vendors undici transitively (no clean version-pin fix); upgrading global
+#     npm in the image is unverifiable pre-build and churns the toolchain.
+# Re-review trigger: drop this line once a node:22-slim ships an npm whose
+# bundled undici is >= 6.27.0 (then the bump alone clears it).
+CVE-2026-12151

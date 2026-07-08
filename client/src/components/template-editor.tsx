@@ -33,6 +33,7 @@ import {
   Plus, Trash2, Loader2, Save, X, Eye, Variable, 
   FileText, ChevronDown, GripVertical, Settings2
 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 const DOCUMENT_TYPES = [
   { value: "promissory_note", label: "Promissory Note" },
@@ -227,6 +228,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
     },
   );
 
+  // allow-no-invalidation: preview renders from editor-local state (setPreviewContent)
   const previewMutation = useMutation({
     mutationFn: async (templateId: number) => {
       return apiRequest("POST", `/api/document-templates/${templateId}/preview`, {});
@@ -734,7 +736,7 @@ Sincerely,
                   data-testid="button-cancel"
                 >
                   <X className="w-4 h-4 mr-2" />
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
               )}
               <Button 

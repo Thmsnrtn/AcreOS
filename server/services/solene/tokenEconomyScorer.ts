@@ -59,16 +59,18 @@ import { getMonthlyEnvelopeStatus } from "./capitalTracker";
 import { logger } from "../../utils/logger";
 
 // ----------------------------------------------------------------------------
-// Pricing — Opus 4.7 per-1M-token cost. Reads from env (mirrors the pattern
-// used in dispatchRunner.ts) so Beatrice's regwatch can update without a
-// redeploy when Anthropic adjusts pricing.
+// Pricing — per-1M-token cost of the dispatch default model (Sonnet, $3/$15;
+// see dispatchRunner). Reads from env so Beatrice's regwatch can update
+// without a redeploy. The old defaults claimed "Opus 4.7" at $15/$75 — that
+// was the pre-4.6 Opus price AND not even the dispatch default model; every
+// economy score was computed against a 5× inflated cost (2026-07-08).
 // ----------------------------------------------------------------------------
 
 const PRICE_INPUT_PER_M = Number(
-  process.env.SOLENE_DISPATCH_PRICE_INPUT_PER_M ?? "15",
+  process.env.SOLENE_DISPATCH_PRICE_INPUT_PER_M ?? "3",
 );
 const PRICE_OUTPUT_PER_M = Number(
-  process.env.SOLENE_DISPATCH_PRICE_OUTPUT_PER_M ?? "75",
+  process.env.SOLENE_DISPATCH_PRICE_OUTPUT_PER_M ?? "15",
 );
 
 const PROMPT_SUMMARY_MAX = 500;

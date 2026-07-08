@@ -37,6 +37,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 interface Acquisition {
   id: string;
@@ -328,7 +329,7 @@ function NewAcquisitionDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>Cancel</Button>
+          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>{Verbs.CANCEL}</Button>
           <Button onClick={() => createMutation.mutate()} disabled={!payerName.trim() || createMutation.isPending}>
             {createMutation.isPending ? "Creating…" : "Create"}
           </Button>

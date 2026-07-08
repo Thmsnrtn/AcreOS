@@ -6,7 +6,7 @@ import {
   negotiationStrategies,
   properties 
 } from '../../shared/schema';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import OpenAI from "openai";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
@@ -382,11 +382,10 @@ Respond in JSON format.`;
     }
   ): Promise<string> {
     try {
-      // TODO(tsc): negotiation_strategies has no organizationId/config/
-      // performance columns. Performance is tracked via discrete columns
-      // (timesUsed, successRate, avgDiscount, avgDaysToClose). The config blob
-      // and org scoping have no schema home; only mappable fields are stored.
+      // The config blob (psychologicalTactics etc.) still has no schema home;
+      // only the mappable fields + org scope are persisted.
       const [strategy] = await db.insert(negotiationStrategies).values({
+        organizationId: Number(organizationId),
         name,
         description,
         strategyType: config.incrementStrategy,
@@ -417,11 +416,10 @@ Respond in JSON format.`;
     daysToClose: number
   ): Promise<void> {
     try {
-      // TODO(tsc): negotiation_outcomes has no organizationId/askingPrice/
-      // discountAmount/discountPercentage/daysToClose/metadata columns. Mapped
-      // to real columns: initialOffer (asking), negotiationDiscount (%),
-      // totalDays. discountAmount/metadata/org scoping have no schema home.
+      // discountAmount/metadata still have no schema home; mapped fields +
+      // org scope are persisted. discount % is clamped to a sane non-negative.
       await db.insert(negotiationOutcomes).values({
+        organizationId: Number(organizationId),
         threadId: Number(threadId),
         outcome,
         finalPrice: finalPrice === null ? null : String(finalPrice),
@@ -430,10 +428,15 @@ Respond in JSON format.`;
         totalDays: daysToClose,
       });
 
-      // negotiation_threads has no strategyId column — strategy linkage is not
-      // persisted, so per-thread performance updates are skipped here.
-      // TODO(tsc): add strategyId to negotiation_threads to re-enable.
-      void organizationId;
+      // Roll up performance for the strategy that drove this thread (if linked).
+      const [thread] = await db
+        .select({ strategyId: negotiationThreads.strategyId })
+        .from(negotiationThreads)
+        .where(eq(negotiationThreads.id, Number(threadId)))
+        .limit(1);
+      if (thread?.strategyId != null) {
+        await this.updateStrategyPerformance(organizationId, String(thread.strategyId));
+      }
     } catch (error) {
       logger.error('Failed to record outcome', error);
       throw error;
@@ -448,19 +451,26 @@ Respond in JSON format.`;
     strategyId: string
   ): Promise<void> {
     try {
-      // TODO(tsc): negotiation_threads has no strategyId column, so threads
-      // cannot be scoped to a single strategy. Until that linkage exists, this
-      // computes performance across all of the org's threads/outcomes and
-      // writes the discrete perf columns on the strategy row.
-      void organizationId;
-      const threads = await db.query.negotiationThreads.findMany({});
+      // Scope to THIS org's threads driven by THIS strategy — never compute
+      // across tenants (the prior unscoped read pulled every org's threads,
+      // letting one tenant's negotiation performance influence another's).
+      const orgId = Number(organizationId);
+      const sid = Number(strategyId);
+      const threads = await db.query.negotiationThreads.findMany({
+        where: and(
+          eq(negotiationThreads.organizationId, orgId),
+          eq(negotiationThreads.strategyId, sid),
+        ),
+      });
 
       const threadIds = threads.map(t => t.id);
 
-      // Get outcomes for these threads. negotiation_outcomes has no
-      // organizationId; scope by threadId set instead.
+      // Outcomes for these threads, also org-scoped as a defense in depth.
       const outcomes = threadIds.length === 0 ? [] : await db.query.negotiationOutcomes.findMany({
-        where: sql`${negotiationOutcomes.threadId} IN ${threadIds}`,
+        where: and(
+          eq(negotiationOutcomes.organizationId, orgId),
+          inArray(negotiationOutcomes.threadId, threadIds),
+        ),
       });
 
       const successfulOutcomes = outcomes.filter(o => o.outcome === 'accepted');
@@ -473,6 +483,7 @@ Respond in JSON format.`;
         ? successfulOutcomes.reduce((sum, o) => sum + Number(o.totalDays ?? 0), 0) / successfulOutcomes.length
         : 0;
 
+      // Update only if the strategy belongs to this org (no cross-tenant write).
       await db.update(negotiationStrategies)
         .set({
           timesUsed: threads.length,
@@ -480,7 +491,10 @@ Respond in JSON format.`;
           avgDiscount: String(avgDiscount),
           avgDaysToClose: String(avgDaysToClose),
         })
-        .where(eq(negotiationStrategies.id, Number(strategyId)));
+        .where(and(
+          eq(negotiationStrategies.id, sid),
+          eq(negotiationStrategies.organizationId, orgId),
+        ));
     } catch (error) {
       logger.error('Failed to update strategy performance', error);
     }
@@ -494,11 +508,11 @@ Respond in JSON format.`;
     sellerProfile: SellerProfile
   ): Promise<any | null> {
     try {
-      // TODO(tsc): negotiation_strategies has no organizationId column, so
-      // strategies cannot be scoped per org here. performance is stored as
-      // discrete columns; order by successRate and gate on timesUsed.
-      void organizationId;
+      // Only THIS org's strategies — never rank against another tenant's
+      // performance. Strategies are ordered by successRate; timesUsed gates
+      // below.
       const strategies = await db.query.negotiationStrategies.findMany({
+        where: eq(negotiationStrategies.organizationId, Number(organizationId)),
         orderBy: [desc(negotiationStrategies.successRate)],
       });
 

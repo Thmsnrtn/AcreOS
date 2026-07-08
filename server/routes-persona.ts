@@ -17,6 +17,13 @@ import { z } from "zod";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { organizations } from "@shared/schema";
+import {
+  BUSINESS_TYPES,
+  BUSINESS_TYPE_TO_PERSONA,
+  BUSINESS_TYPE_TO_INVESTOR_TYPE,
+  PERSONA_TO_BUSINESS_TYPE,
+  type BusinessType,
+} from "@shared/models/persona-mapping";
 import type { AuthenticatedRequest } from "./types/request";
 import { getUserId, getOrganizationId } from "./types/request";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -30,35 +37,14 @@ const router = Router();
 // read the ORG's coarse fields (organizations.investorType +
 // onboardingData.businessType), set during onboarding. Changing the persona
 // without reconciling those left the two divergent — Tom set "Land Investor"
-// but the sidebar still detected "Fix & Flip" (2026-06-12). On every persona
-// change we reconcile the org to a representative businessType + investorType
-// so the whole app follows one source of truth. Mirrors (the inverse of)
-// BUSINESS_TYPE_TO_PERSONA in client OnboardingWizard.tsx.
-const PERSONA_TO_BUSINESS_TYPE: Record<string, string> = {
-  land_investor: "land_flipper",
-  note_investor: "note_investor",
-  note_originator: "note_investor",
-  note_servicer: "note_investor",
-  tax_delinquent: "tax_lien_deed",
-  wholesaler: "residential_wholesaler",
-  subdivider: "subdivider",
-  fix_flipper: "fix_and_flip",
-  landlord: "buy_and_hold",
-};
-
-function personaToInvestorType(persona: string): "land" | "notes" {
-  return persona === "note_investor" ||
-    persona === "note_originator" ||
-    persona === "note_servicer"
-    ? "notes"
-    : "land";
-}
-
-// Must stay in lockstep with the Persona union in shared/models/auth.ts and
-// the client PERSONAS list (client/src/lib/personaVocabulary.ts). note_originator
-// and note_servicer (Pillar K) were added to the union + client radio but
-// omitted here, so selecting either 422'd on save — the "changing investor
-// type throws an error" bug (Tom, 2026-06-12). Keep all nine in sync.
+// but the sidebar still detected "Fix & Flip" (2026-06-12). The persona ↔
+// businessType ↔ investorType mapping now lives in one shared module.
+//
+// `businessType` is OPTIONAL on the body: onboarding passes the user's EXACT
+// 15-value selection so this write agrees with the parallel complete-step
+// write (no race, no coarsening, correct "both" investorType). Settings sends
+// only `persona`, and we reconcile the org with a representative businessType
+// ONLY when the current one collapses to a different persona (non-clobbering).
 const personaSchema = z.object({
   persona: z.enum([
     "land_investor",
@@ -71,6 +57,7 @@ const personaSchema = z.object({
     "fix_flipper",
     "landlord",
   ]),
+  businessType: z.enum(BUSINESS_TYPES as unknown as [BusinessType, ...BusinessType[]]).optional(),
 });
 
 router.get("/", async (req: AuthenticatedRequest, res: Response) => {
@@ -95,15 +82,15 @@ router.put("/", getOrCreateOrg, async (req: AuthenticatedRequest, res: Response)
       return Errors.validationFailed(res, parsed.error.issues);
     }
     const persona = parsed.data.persona;
+    const explicitBusinessType = parsed.data.businessType;
     await db
       .update(users)
       .set({ persona, updatedAt: new Date() })
       .where(eq(users.id, userId));
 
     // Reconcile the org's coarse type so the sidebar/detection follows the
-    // user's explicit persona choice. Best-effort: a sync miss must not fail
-    // the persona change itself (the primary, user-initiated action), so we
-    // log and continue rather than 500.
+    // user's choice. Best-effort: a sync miss must not fail the persona change
+    // itself (the primary, user-initiated action), so we log and continue.
     try {
       const orgId = getOrganizationId(req);
       const [org] = await db
@@ -111,13 +98,30 @@ router.put("/", getOrCreateOrg, async (req: AuthenticatedRequest, res: Response)
         .from(organizations)
         .where(eq(organizations.id, orgId))
         .limit(1);
-      const businessType = PERSONA_TO_BUSINESS_TYPE[persona] ?? "land_flipper";
+      const currentBusinessType = (org?.onboardingData as { businessType?: BusinessType } | null)?.businessType;
+
+      // Choose the businessType + investorType to write:
+      //  - onboarding passes the EXACT 15-value selection → write it verbatim
+      //    (matches the parallel complete-step write; yields correct "both").
+      //  - settings sends only the persona → keep the existing specific
+      //    businessType if it already collapses to this persona (non-clobber);
+      //    otherwise fall back to the representative one.
+      let nextBusinessType: BusinessType;
+      if (explicitBusinessType) {
+        nextBusinessType = explicitBusinessType;
+      } else if (currentBusinessType && BUSINESS_TYPE_TO_PERSONA[currentBusinessType] === persona) {
+        nextBusinessType = currentBusinessType;
+      } else {
+        nextBusinessType = PERSONA_TO_BUSINESS_TYPE[persona];
+      }
+      const nextInvestorType = BUSINESS_TYPE_TO_INVESTOR_TYPE[nextBusinessType];
+
       await db
         .update(organizations)
         .set({
-          investorType: personaToInvestorType(persona),
+          investorType: nextInvestorType,
           // Merge — never clobber the rest of the onboarding JSON.
-          onboardingData: { ...(org?.onboardingData ?? {}), businessType: businessType as never },
+          onboardingData: { ...(org?.onboardingData ?? {}), businessType: nextBusinessType },
         })
         .where(eq(organizations.id, orgId));
     } catch (syncErr) {
@@ -128,7 +132,7 @@ router.put("/", getOrCreateOrg, async (req: AuthenticatedRequest, res: Response)
       });
     }
 
-    logger.info("Persona updated", { userId, persona });
+    logger.info("Persona updated", { userId, persona, businessType: explicitBusinessType ?? "(derived)" });
     res.json({ persona });
   } catch (error) {
     Errors.internal(res, error);

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 interface Props {
   noteId: string;
@@ -114,7 +115,7 @@ export function NoteTinEditor({ noteId, currentTinType }: Props) {
       </div>
       <div className="flex items-center gap-2 justify-end pt-1">
         <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => { setEditing(false); setTin(""); }}>
-          <X className="w-3 h-3 mr-1" aria-hidden="true" /> Cancel
+          <X className="w-3 h-3 mr-1" aria-hidden="true" /> {Verbs.CANCEL}
         </Button>
         <Button
           size="sm"

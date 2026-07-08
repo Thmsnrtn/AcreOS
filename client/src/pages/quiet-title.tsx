@@ -54,10 +54,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 type Status =
   | "open"
@@ -267,7 +269,7 @@ function QuietTitleIndex() {
 function QuietTitleDetail({ caseId }: { caseId: string }) {
   useDocumentTitle("Quiet-title case — AcreOS");
 
-  const { data, isLoading } = useQuery<DetailResponse>({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<DetailResponse>({
     queryKey: ["/api/quiet-title/cases", caseId],
     queryFn: async () => {
       const res = await fetch(`/api/quiet-title/cases/${caseId}`, { credentials: "include" });
@@ -281,6 +283,23 @@ function QuietTitleDetail({ caseId }: { caseId: string }) {
       <PageShell>
         <Skeleton className="h-12 w-72 mb-4" />
         <Skeleton className="h-64" />
+      </PageShell>
+    );
+  }
+  if (isError) {
+    return (
+      <PageShell>
+        <Link href="/quiet-title">
+          <Button variant="ghost" size="sm" className="mb-3 -ml-2">
+            <ArrowLeft className="w-4 h-4 mr-1.5" aria-hidden="true" /> Back
+          </Button>
+        </Link>
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          isRetrying={isFetching}
+          testId="quiet-title-detail-error"
+        />
       </PageShell>
     );
   }
@@ -507,7 +526,7 @@ function OpenCaseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button onClick={() => submit.mutate()} disabled={!certificateId || !deedDate || submit.isPending}>
             {submit.isPending ? "Opening…" : "Open case"}
           </Button>

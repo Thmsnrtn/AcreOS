@@ -88,7 +88,8 @@ export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_OPERATOR_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_OPERATOR_YEARLY"),
     displayName: "Pro",
-    // $20/seat after the first.
+    // $20/seat past the INCLUDED 2 (tier-limits.ts includedSeats — the
+    // previous "after the first" note here had drifted from that source).
     priceMonthlyPerSeatCents: 2000,
     stripePriceIdSeatMonthly: envPriceId("STRIPE_PRICE_OPERATOR_SEAT_MONTHLY"),
     stripePriceIdSeatYearly: envPriceId("STRIPE_PRICE_OPERATOR_SEAT_YEARLY"),
@@ -100,10 +101,11 @@ export const TIER_PRICES_CENTS: Record<Tier, TierPricing> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_EMPIRE_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_EMPIRE_YEARLY"),
     displayName: "Scale",
-    // $40/seat after the first — matches the pricing-page promise
-    // ($40 was already advertised on /pricing for the Scale tier's
-    // "Team seats" row; this aligns the canonical price source).
-    priceMonthlyPerSeatCents: 4000,
+    // $25/seat past the INCLUDED 10 (tier-limits.ts includedSeats).
+    // Was $40 — founder decision 2026-07-08: the marginal Scale seat must
+    // not cost more than the marginal Pro seat ($20); see
+    // docs/company/decision-memos/2026-07-08-founding-member-pricing.md.
+    priceMonthlyPerSeatCents: 2500,
     stripePriceIdSeatMonthly: envPriceId("STRIPE_PRICE_EMPIRE_SEAT_MONTHLY"),
     stripePriceIdSeatYearly: envPriceId("STRIPE_PRICE_EMPIRE_SEAT_YEARLY"),
     maxSeats: null,
@@ -290,6 +292,27 @@ export function stripePriceIdFor(tier: Tier, interval: BillingInterval): string 
 /** True when a tier+interval has a configured Stripe price ID and can be checked out. */
 export function isTierPurchasable(tier: Tier, interval: BillingInterval): boolean {
   return Boolean(stripePriceIdFor(tier, interval));
+}
+
+/**
+ * Reverse map: which tier does a Stripe price ID belong to? (Roadmap W1.2,
+ * 2026-07 audit.) The subscription webhook resolved tier ONLY from
+ * `product.metadata.tier`; when that metadata was missing or misconfigured a
+ * PAYING customer stayed on free entitlements and MRR undercounted them.
+ * This gives the webhook a deterministic fallback derived from the same
+ * STRIPE_PRICE_* env vars checkout uses — the price the customer actually
+ * paid can never disagree with the tier it maps to.
+ */
+export function tierForStripePriceId(priceId: string | null | undefined): Tier | null {
+  if (!priceId) return null;
+  const tiers: Tier[] = ["starter", "pro", "scale"];
+  const intervals: BillingInterval[] = ["monthly", "yearly"];
+  for (const tier of tiers) {
+    for (const interval of intervals) {
+      if (stripePriceIdFor(tier, interval) === priceId) return tier;
+    }
+  }
+  return null;
 }
 
 /**

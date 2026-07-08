@@ -17,10 +17,20 @@ const retentionRules = [
   { table: "job_health_logs", column: "created_at", retainDays: 30, label: "Job health logs" },
   { table: "agent_events", column: "created_at", retainDays: 60, label: "Agent events" },
   { table: "activity_log", column: "created_at", retainDays: 90, label: "Activity logs" },
+  // 2026-07 audit: activity_events (the polymorphic customer timeline) is a
+  // DIFFERENT table from activity_log and was growing forever — the deal/
+  // lead timelines only render recent history, so a generous 2-year window
+  // keeps every visible timeline intact while bounding growth.
+  { table: "activity_events", column: "created_at", retainDays: 730, label: "Activity events (timeline)" },
   { table: "ai_telemetry_events", column: "created_at", retainDays: 30, label: "AI telemetry" },
   { table: "usage_events", column: "created_at", retainDays: 90, label: "Usage events" },
   { table: "notification_history", column: "created_at", retainDays: 60, label: "Notification history" },
   { table: "revenue_protection_interventions", column: "created_at", retainDays: 180, label: "Revenue interventions" },
+  // 2026-07 audit: two more forever-growth tables. Realtime heartbeat/event
+  // rows are operational exhaust (30d); raw API telemetry samples feed the
+  // monthly rollup job, so 120d comfortably covers re-rollup needs.
+  { table: "realtime_event_log", column: "created_at", retainDays: 30, label: "Realtime event log" },
+  { table: "api_telemetry_samples", column: "created_at", retainDays: 120, label: "API telemetry samples" },
 ];
 
 export async function runDataRetention(): Promise<{ purged: number; auditReport: AuditRetentionReport }> {
@@ -35,7 +45,13 @@ export async function runDataRetention(): Promise<{ purged: number; auditReport:
         `DELETE FROM ${rule.table} WHERE ${rule.column} < '${cutoff.toISOString()}' RETURNING id`
       ));
 
-      const count = Array.isArray(result) ? result.length : 0;
+      // node-postgres returns a result OBJECT ({ rows, rowCount }), not a
+      // bare array — the old Array.isArray check made every purge log 0.
+      const count = Array.isArray(result)
+        ? result.length
+        : ((result as { rowCount?: number; rows?: unknown[] }).rowCount
+            ?? (result as { rows?: unknown[] }).rows?.length
+            ?? 0);
       if (count > 0) {
         logger.info(`[data-retention] Purged ${count} rows from ${rule.label} (>${rule.retainDays}d old)`);
         totalPurged += count;

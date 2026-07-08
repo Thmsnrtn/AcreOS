@@ -1,0 +1,55 @@
+name: uptime-probe
+
+# Gold-standard outside-in uptime measurement. Every ~5 minutes this pings prod
+# from GitHub's infrastructure (genuinely external to Fly) and, when prod is up,
+# records an external uptime sample. Gaps between recorded samples = real
+# web-tier downtime, which feeds the founder pulse's uptime sense.
+#
+# DORMANT until two repo secrets are set:
+#   UPTIME_PROBE_URL    — prod base URL, e.g. https://app.acreos.com  (no trailing slash)
+#   UPTIME_PROBE_TOKEN  — same value set on the server as the UPTIME_PROBE_TOKEN env/secret
+# Until both exist the job runs but no-ops cleanly (so it's safe to ship off).
+#
+# Note: GitHub's scheduled crons are best-effort and can be delayed under load;
+# the worker's internal 1/min heartbeat sense remains the high-resolution
+# fallback. This layer adds true external reachability.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uptime-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Probe prod and record an external uptime sample
+        env:
+          URL: ${{ secrets.UPTIME_PROBE_URL }}
+          TOKEN: ${{ secrets.UPTIME_PROBE_TOKEN }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$TOKEN" ]; then
+            echo "UPTIME_PROBE_URL / UPTIME_PROBE_TOKEN not set — probe dormant. Skipping."
+            exit 0
+          fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$URL/api/healthz" || echo "000")
+          echo "healthz status: $code"
+          if [ "$code" = "200" ]; then
+            ingest=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
+              -X POST "$URL/api/health/uptime-probe" \
+              -H "x-probe-token: $TOKEN" -H "content-type: application/json" -d '{}' || echo "000")
+            echo "ingest status: $ingest"
+            if [ "$ingest" != "200" ]; then
+              echo "::warning::prod was up but the sample ingest returned $ingest"
+            fi
+          else
+            echo "prod /api/healthz returned $code — recording nothing (this gap = downtime)."
+          fi

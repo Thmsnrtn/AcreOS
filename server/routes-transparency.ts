@@ -131,8 +131,13 @@ export function registerTransparencyRoutes(app: Express): void {
   // (published_at) index, ordered newest-first. When no row has been
   // published yet, we return `status: "no_report_yet"` (HTTP 200) — the UI
   // renders an honest EmptyState rather than treating it as an error.
+  // Moved to /api/transparency (WS1 sweep, 2026-07-07): the bare
+  // "/transparency" path SHADOWED the SPA page route — a browser visit to
+  // acreos.io/transparency showed this raw JSON instead of the page linked
+  // from the footer and Settings. API JSON lives under /api per house
+  // convention; the SPA shell now wins the bare path again.
   app.get(
-    "/transparency",
+    "/api/transparency",
     costClass("low"),
     async (_req: Request, res: Response) => {
       try {
@@ -169,7 +174,7 @@ export function registerTransparencyRoutes(app: Express): void {
   // Schema-shape stub — useful for the UI's type codegen and for a regulator
   // who wants the declared contract without waiting for a published period.
   app.get(
-    "/transparency/schema",
+    "/api/transparency/schema",
     costClass("free"),
     (_req: Request, res: Response) => {
       try {

@@ -72,6 +72,11 @@ export interface AbResults {
 }
 
 // ─── In-memory test registry (should persist to DB in production) ─────────────
+// MODULE-STATE PIN (audit 2026-07-07): outcomes recorded per-process — on 2+
+// machines significance/conversion stats compute on a fraction of the data
+// (variant ASSIGNMENT is deterministic and stays correct). Fix before trusting
+// results: persist tests + outcomes, aggregate in SQL — tracked in
+// docs/company/deletion-ledger.md "Module-state residue".
 
 const activeTests = new Map<string, AbTest>();
 const outcomes: AbOutcome[] = [];

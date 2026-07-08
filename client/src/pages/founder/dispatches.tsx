@@ -17,6 +17,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { Link, useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatRelative } from "@/lib/format";
 import {
@@ -37,6 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { Verbs } from "@/lib/labels";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -82,6 +84,11 @@ interface DispatchRow {
   // but the field IS in the underlying query row. The client treats
   // it as optional — once the server starts exposing it, the UI lights up.
   reviewStatus?: ReviewStatus;
+  // Retry telemetry (step-away gap #3). Optional so the page tolerates a
+  // server that predates the retry columns.
+  attempts?: number;
+  notBeforeAt?: string | null;
+  deadLettered?: boolean;
   result: DispatchResult | null;
 }
 
@@ -180,7 +187,16 @@ export default function FounderDispatchesPage() {
     },
   });
 
-  const dispatches = data?.dispatches ?? [];
+  const allDispatches = data?.dispatches ?? [];
+
+  // Optional per-agent filter (?agent=<codename>) — the Team door's cards link
+  // here so the founder can drill from a roster card straight into that agent's
+  // dispatch history. agentRole on a dispatch IS the canonical codename.
+  const search = useSearch();
+  const agentFilter = new URLSearchParams(search).get("agent");
+  const dispatches = agentFilter
+    ? allDispatches.filter((d) => d.agentRole === agentFilter)
+    : allDispatches;
 
   const counts = useMemo(() => {
     let queued = 0;
@@ -231,6 +247,23 @@ export default function FounderDispatchesPage() {
             seconds. Queued rows can be cancelled; in-progress rows are
             mid-call and cannot be safely interrupted.
           </p>
+          {agentFilter && (
+            <div className="mt-2 flex items-center gap-2" data-testid="dispatches-agent-filter">
+              <Badge variant="secondary" className="capitalize">
+                {agentFilter}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                showing {dispatches.length} of {allDispatches.length} dispatches
+              </span>
+              <Link
+                href="/founder/dispatches"
+                className="text-xs text-primary underline-offset-2 hover:underline"
+                data-testid="dispatches-clear-filter"
+              >
+                Clear filter
+              </Link>
+            </div>
+          )}
         </div>
         <Button
           size="sm"
@@ -270,7 +303,7 @@ export default function FounderDispatchesPage() {
               onClick={() => refetch()}
               aria-label="Retry loading dispatches"
             >
-              Retry
+              {Verbs.RETRY}
             </Button>
           </CardContent>
         </Card>
@@ -382,6 +415,15 @@ export default function FounderDispatchesPage() {
                           </td>
                           <td className="px-3 py-2 text-muted-foreground">
                             {formatRelative(d.queuedAt)}
+                            {d.status === "queued" &&
+                              (d.attempts ?? 0) > 0 &&
+                              d.notBeforeAt &&
+                              new Date(d.notBeforeAt).getTime() > Date.now() && (
+                                <span className="block text-micro">
+                                  retry {(d.attempts ?? 0) + 1} · waits until{" "}
+                                  {formatRelative(d.notBeforeAt)}
+                                </span>
+                              )}
                           </td>
                           <td className="px-3 py-2 text-muted-foreground">
                             {formatRelative(d.startedAt)}
@@ -403,7 +445,7 @@ export default function FounderDispatchesPage() {
                                   className="w-3 h-3 mr-1"
                                   aria-hidden="true"
                                 />
-                                Cancel
+                                {Verbs.CANCEL}
                               </Button>
                             ) : (
                               <span className="text-muted-foreground italic">
@@ -523,9 +565,16 @@ function TerminalRow({ dispatch: d }: { dispatch: DispatchRow }) {
         </td>
         <td className="px-3 py-2 font-mono align-top">#{d.id}</td>
         <td className="px-3 py-2 align-top">
-          <Badge variant={STATUS_TONE[d.status]} className="text-micro">
-            {d.status}
-          </Badge>
+          <div className="flex flex-col gap-1 items-start">
+            <Badge variant={STATUS_TONE[d.status]} className="text-micro">
+              {d.status}
+            </Badge>
+            {d.deadLettered && (
+              <Badge variant="destructive" className="text-micro">
+                dead-letter · {d.attempts ?? "?"} runs
+              </Badge>
+            )}
+          </div>
         </td>
         <td className="px-3 py-2 font-mono align-top">{d.agentRole}</td>
         <td

@@ -7,7 +7,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { deals, properties, leads, notes } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { format as formatDate } from "date-fns";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
@@ -112,6 +112,35 @@ async function resolveContextVariables(
     if (deal.closingDate) ctx['closing_date'] = formatDate(new Date(deal.closingDate), 'MMMM d, yyyy');
     ctx['deal_type'] = deal.type ?? '';
     ctx['deal_status'] = deal.status ?? '';
+
+    // W6.1 — Assignment Contract auto-fill. The system template's
+    // assignment_fee / original_contract_date merge vars were never
+    // resolved from context (operators re-typed them). The latest live
+    // assignment record on the deal is the source of truth; buyer_name
+    // falls back to the assignment's end buyer when the property carries
+    // no buyerId.
+    try {
+      const { contractAssignments } = await import("@shared/schema");
+      const [assignment] = await db
+        .select()
+        .from(contractAssignments)
+        .where(and(
+          eq(contractAssignments.organizationId, orgId),
+          eq(contractAssignments.dealId, deal.id),
+          sql`${contractAssignments.status} != 'cancelled'`,
+        ))
+        .orderBy(desc(contractAssignments.createdAt))
+        .limit(1);
+      if (assignment) {
+        ctx['assignment_fee'] = `$${(assignment.assignmentFeeCents / 100).toLocaleString()}`;
+        if (assignment.originalContractDate) {
+          ctx['original_contract_date'] = formatDate(new Date(assignment.originalContractDate), 'MMMM d, yyyy');
+        }
+        if (!ctx['buyer_name'] && assignment.endBuyerName) {
+          ctx['buyer_name'] = assignment.endBuyerName;
+        }
+      }
+    } catch { /* assignment table missing on fresh installs — vars stay manual */ }
   }
 
   // Standard date fields
@@ -1060,6 +1089,40 @@ export function registerDocSystemRoutes(app: Express): void {
       });
     } catch (error) {
       logger.error("Completion certificate error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
+    }
+  });
+
+  // GET /api/generated-documents/:id/sealed-pdf — the sealed signed artifact.
+  // Composites the agreement + every signature image + full audit trail +
+  // a live content-hash integrity attestation into one portable, court-
+  // presentable PDF. The bytes' SHA-256 is returned in X-Document-Sha256 so
+  // a downloader can record a fingerprint of the exact artifact served. This
+  // is the human-readable face of the evidentiary stack (per-signature hash +
+  // DB immutability trigger + completion certificate); it adds no new state.
+  api.get("/api/generated-documents/:id/sealed-pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const documentId = parseInt(req.params.id);
+      if (isNaN(documentId)) {
+        return Errors.badRequest(res, "Invalid document ID");
+      }
+
+      const document = await storage.getGeneratedDocument(org.id, documentId);
+      if (!document) {
+        return Errors.notFound(res, "Document");
+      }
+
+      const { generateSealedDocumentPdf } = await import("./services/esign/sealedDocumentPdf");
+      const sealed = await generateSealedDocumentPdf({ organizationId: org.id, documentId });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="signed-document-${documentId}.pdf"`);
+      res.setHeader("X-Document-Sha256", sealed.sha256);
+      res.setHeader("X-Document-Integrity-Verified", String(sealed.allHashesMatch));
+      return res.send(sealed.pdf);
+    } catch (error) {
+      logger.error("Sealed PDF error", error instanceof Error ? error : undefined);
       Errors.internal(res, error);
     }
   });

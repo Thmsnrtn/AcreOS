@@ -92,9 +92,9 @@ function fmtMoney(v: string | number | null | undefined): string {
 function StatusPill({ status }: { status?: string | null }) {
   const s = (status ?? "prospect").toLowerCase();
   const tone =
-    s === "sold" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+    s === "sold" ? "bg-acr-pos-soft text-acr-pos"
     : s === "owned" || s === "listed" ? "bg-primary/15 text-primary"
-    : s === "under_contract" ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+    : s === "under_contract" ? "bg-acr-warn-soft text-acr-warn"
     : "bg-muted text-foreground";
   return (
     <Badge variant="secondary" className={`uppercase tracking-wide text-micro ${tone}`}>
@@ -204,7 +204,7 @@ export function MobilePropertyDetail({ propertyId }: Props) {
   return (
     <div className="min-h-[100dvh] bg-background pb-24" data-testid="mobile-property-detail">
       <header
-        className="sticky top-0 z-20 bg-surface-chrome backdrop-blur-md border-b border-border px-2 py-2 flex items-center"
+        className="sticky top-0 z-dropdown bg-surface-chrome backdrop-blur-md border-b border-border px-2 py-2 flex items-center"
         style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)" }}
       >
         <button
@@ -328,7 +328,7 @@ export function MobilePropertyDetail({ propertyId }: Props) {
                   ["electric", "water", "sewer", "gas"] as const
                 ).map((u) =>
                   data.utilities?.[u] ? (
-                    <Badge key={u} variant="secondary" className="text-caption bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+                    <Badge key={u} variant="secondary" className="text-caption bg-acr-pos-soft text-acr-pos">
                       <CheckCircle2 className="h-3 w-3 mr-0.5" />
                       {u}
                     </Badge>

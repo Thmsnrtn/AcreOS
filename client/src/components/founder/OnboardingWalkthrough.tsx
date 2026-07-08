@@ -101,7 +101,7 @@ export default function OnboardingWalkthrough() {
   const isLast = step === STEPS.length - 1;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-floating flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <motion.div
         role="dialog"
         aria-modal="true"

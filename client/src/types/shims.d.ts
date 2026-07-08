@@ -6,10 +6,6 @@ declare module "@/components/activity-feed" {
   export const ActivityFeed: any;
 }
 
-declare module "@/components/onboarding/OnboardingProgress" {
-  export const OnboardingProgress: any;
-}
-
 declare module "@/components/ab-tests-content" {
   export const AbTestsContent: any;
 }

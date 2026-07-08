@@ -69,3 +69,11 @@ The customer-facing nav is exactly five doors, identical for every persona and o
 **Today · Map · Deals · Finance · Pax** — plus **Inbox** and **Settings**, reachable from the top bar.
 
 Persona changes only the CONTENT behind each door (persona-gated sections, vocabulary, Finance tabs, the `businessTypeOnly` verticals), never the doors themselves. Any new customer surface must live behind one of these doors as a child/section/tab — never as a new top-level nav entry. The desktop sidebar (`NAV_MODULES` in `client/src/components/layout-sidebar.tsx`), the mobile bottom nav (`MOBILE_DOORS`), and `DEFAULT_SIDEBAR_ITEMS` in `client/src/lib/nav-items.ts` must all reflect this model. Founder-only and `businessTypeOnly` modules are the only exceptions, and they remain gated.
+
+## Founder navigation — four fixed doors
+
+The founder surface follows the SAME discipline as the customer side — the more the autopilot operates the business, the FEWER doors the founder needs. The canonical model (`FOUNDER_DOORS` in `client/src/lib/founder-doors.ts`) is exactly four primary doors plus one deliberate admin namespace:
+
+**The Letter (`/founder/autopilot`) · Decisions (`/founder/decisions`) · Controls (`/founder/autopilot/control`) · Story (`/founder/autopilot/story`)** — plus the `/founder/admin/*` instrument namespace for deep panels (telemetry, costs, ETL, prompts, ML snapshots) visited deliberately.
+
+The historical `/founder/*` set grew to ~88 routes (≥10 overlapping overviews) precisely because this rule didn't exist. Any new founder surface must live behind one of the four doors as a child/section/tab — never a new top-level overview route. The `founderFourDoors.test.ts` ratchet bounds the total `/founder/*` route count: it may only SHRINK as consolidation proceeds. When you consolidate, lower `FOUNDER_ROUTE_BASELINE` to the new count.

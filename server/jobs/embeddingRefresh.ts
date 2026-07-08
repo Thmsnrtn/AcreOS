@@ -227,6 +227,12 @@ export function startEmbeddingRefreshJob(
     intervalMs,
     initialDelayMs: 90_000, // wait for the rest of the boot to settle
     run: async () => {
+      // Idle pacing (2026-07-07 cost audit): a ~6-minute sweep is sized for
+      // 100k active patterns; on an idle platform deal_patterns barely
+      // changes, so only 1 in N slots does real work. Full cadence resumes
+      // automatically once paying customers exist.
+      const { shouldRunAtPace } = await import("./idlePace");
+      if (!(await shouldRunAtPace("embedding_refresh", intervalMs))) return 0;
       const refreshed = await refreshStaleEmbeddings(100, 7);
       return refreshed;
     },

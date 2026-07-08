@@ -79,7 +79,6 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@acreos/solene": path.resolve(import.meta.dirname, "packages", "solene", "src", "index.ts"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
       "@content": path.resolve(import.meta.dirname, "content"),
     },
   },

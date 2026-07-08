@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { format, addMonths } from "date-fns";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
@@ -59,7 +60,7 @@ const MONTH_LABELS = Array.from({ length: 12 }, (_, i) =>
 
 export default function ForecastingPage() {
   useDocumentTitle("Cash flow forecasting");
-  const { data: resp, isLoading } = useQuery<{ summary: PortfolioSummary }>({
+  const { data: resp, isLoading, isError, error, refetch, isRefetching } = useQuery<{ summary: PortfolioSummary }>({
     queryKey: ["/api/cash-flow/portfolio/summary"],
     queryFn: () => fetch("/api/cash-flow/portfolio/summary").then((r) => r.json()),
   });
@@ -103,6 +104,16 @@ export default function ForecastingPage() {
     <PageShell label="Forecasting">
       {isLoading ? (
         <PageSkeleton variant="table" statCards={4} announceText="Loading forecast data" />
+      ) : isError ? (
+        <QueryErrorState
+          error={error instanceof Error ? error : null}
+          onRetry={() => refetch()}
+          isRetrying={isRefetching}
+          compact
+          title="Couldn't load your forecast"
+          description="We hit a snag loading your cash-flow forecast. Your data is safe — try again."
+          testId="forecasting-query-error"
+        />
       ) : !summary ? (
         <EmptyState
           icon={Target}

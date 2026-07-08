@@ -353,7 +353,7 @@ function JurisdictionTable({ est, title }: { est: JurisdictionEstimate; title: s
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h4 className="font-semibold text-sm">{title} · {est.taxYear}</h4>
         {est.provisional && (
-          <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400">
+          <Badge variant="outline" className="border-acr-warn/40 text-acr-warn">
             Provisional {est.rulesYearUsed} figures
           </Badge>
         )}
@@ -467,9 +467,9 @@ function DraftReturnPanel({ taxYear }: { taxYear: number }) {
       </CardHeader>
       <CardContent className="space-y-5">
         {/* Honesty banner — always visible */}
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+        <div className="rounded-lg border border-acr-warn/40 bg-acr-warn/5 p-3 text-sm">
           <p className="font-semibold flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" aria-hidden />
+            <ShieldCheck className="w-4 h-4 text-acr-warn" aria-hidden />
             Estimate — review &amp; verify before filing
           </p>
           <p className="text-muted-foreground mt-1 text-xs">
@@ -493,7 +493,7 @@ function DraftReturnPanel({ taxYear }: { taxYear: number }) {
                 {generate.isPending ? "Generating…" : "Generate & save draft"}
               </Button>
               {draft.provisional && (
-                <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400">
+                <Badge variant="outline" className="border-acr-warn/40 text-acr-warn">
                   Uses provisional (not-yet-final) figures
                 </Badge>
               )}
@@ -525,7 +525,7 @@ function DraftReturnPanel({ taxYear }: { taxYear: number }) {
                   <div>
                     <p className="font-medium text-sm">
                       Version {r.version}
-                      {r.provisional && <span className="text-amber-600 dark:text-amber-400"> · provisional</span>}
+                      {r.provisional && <span className="text-acr-warn"> · provisional</span>}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {FILING_LABELS[r.filingStatus] ?? r.filingStatus} · {r.state} · {fmtDate(r.createdAt)} · <span className="capitalize">{r.status}</span>
@@ -714,9 +714,9 @@ function IncomeSection({ income, taxYear }: { income: IncomeSource[]; taxYear: n
 // quarter paid.
 
 const QUARTER_STATUS_STYLES: Record<QuarterStatus, { label: string; cls: string }> = {
-  paid: { label: "Paid", cls: "border-emerald-500/40 text-emerald-600 dark:text-emerald-400" },
-  overdue: { label: "Overdue", cls: "border-red-500/40 text-red-600 dark:text-red-400" },
-  due_soon: { label: "Due soon", cls: "border-amber-500/40 text-amber-600 dark:text-amber-400" },
+  paid: { label: "Paid", cls: "border-acr-pos/40 text-acr-pos" },
+  overdue: { label: "Overdue", cls: "border-acr-neg/40 text-acr-neg" },
+  due_soon: { label: "Due soon", cls: "border-acr-warn/40 text-acr-warn" },
   upcoming: { label: "Upcoming", cls: "border-border/60 text-muted-foreground" },
 };
 
@@ -753,11 +753,11 @@ function JurisdictionRadarCard({
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h4 className="font-semibold text-sm">{title}</h4>
         {radar.active ? (
-          <Badge variant="outline" className="border-amber-500/40 text-amber-600 dark:text-amber-400">
+          <Badge variant="outline" className="border-acr-warn/40 text-acr-warn">
             {fmtUsd(radar.remainingDue)} remaining
           </Badge>
         ) : (
-          <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
+          <Badge variant="outline" className="border-acr-pos/40 text-acr-pos">
             <ShieldCheck className="w-3 h-3 mr-1" aria-hidden /> Covered
           </Badge>
         )}
@@ -851,8 +851,8 @@ function EstimatedTaxRadarPanel({ taxYear }: { taxYear: number }) {
         ) : (
           <>
             {!data.radar.active && (
-              <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
-                <ShieldCheck className="w-4 h-4 mt-0.5 text-emerald-600 dark:text-emerald-400" aria-hidden />
+              <div className="flex items-start gap-2 rounded-lg border border-acr-pos/30 bg-acr-pos/5 p-3 text-sm">
+                <ShieldCheck className="w-4 h-4 mt-0.5 text-acr-pos" aria-hidden />
                 <span>
                   No estimated tax due — your withholding covers you. The radar lights up the moment a draw
                   or side income changes that.
@@ -912,7 +912,7 @@ function VaultSection({ documents }: { documents: VaultDocument[] }) {
           <FolderLock className="w-4 h-4" aria-hidden /> Document vault
         </CardTitle>
         <CardDescription className="flex items-center gap-1.5">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" aria-hidden />
+          <ShieldCheck className="w-3.5 h-3.5 text-acr-pos" aria-hidden />
           Every file is encrypted at rest (AES-256-GCM). Founder-only.
         </CardDescription>
       </CardHeader>

@@ -105,6 +105,7 @@ export default function NotesTaxReadinessPage() {
     },
   });
 
+  // allow-no-invalidation: batch results render from mutation.data — no cached query reads them
   const batchMutation = useMutation({
     mutationFn: async () => {
       const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "";
@@ -372,6 +373,7 @@ function InvestorStatementsSection({ taxYear }: { taxYear: number }) {
     },
   });
 
+  // allow-no-invalidation: generated statements render from mutation.data — no cached query reads them
   const generateMutation = useMutation({
     mutationFn: async () => {
       const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "";

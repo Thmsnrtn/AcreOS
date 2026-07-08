@@ -35,6 +35,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { WorkspacePreset } from "@shared/schema";
+import { Verbs } from "@/lib/labels";
 
 const presetIcons: Record<string, typeof LayoutGrid> = {
   morning: Sun,
@@ -231,7 +232,7 @@ export function WorkspaceManager() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button 
               onClick={handleSaveCurrentLayout} 

@@ -51,6 +51,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
     queryKey: ['/api/skip-traces/lead', lead.id],
   });
 
+  // allow-no-invalidation: starts an async trace; the polling query (setIsPolling) picks up results
   const runSkipTrace = useMutation({
     mutationFn: async () => {
       const res = await apiRequest('POST', '/api/skip-traces', { leadId: lead.id });
@@ -157,7 +158,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                       <span className="font-medium">{phone.number}</span>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-xs">{phone.type}</Badge>
-                        {phone.verified && <CheckCircle className="w-3 h-3 text-emerald-500" />}
+                        {phone.verified && <CheckCircle className="w-3 h-3 text-acr-pos" />}
                       </div>
                     </div>
                   ))}
@@ -174,7 +175,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                   {skipTrace.results.emails.map((email, idx) => (
                     <div key={idx} className="flex items-center justify-between text-sm" data-testid={`skip-trace-email-${idx}`}>
                       <span className="font-medium">{email.email}</span>
-                      {email.verified && <CheckCircle className="w-3 h-3 text-emerald-500" />}
+                      {email.verified && <CheckCircle className="w-3 h-3 text-acr-pos" />}
                     </div>
                   ))}
                 </div>
@@ -192,7 +193,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                       <p className="font-medium">{addr.address}</p>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Badge variant="outline" className="text-xs">{addr.type}</Badge>
-                        {addr.current && <Badge className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">Current</Badge>}
+                        {addr.current && <Badge className="text-xs bg-acr-pos-soft text-acr-pos">Current</Badge>}
                       </div>
                     </div>
                   ))}

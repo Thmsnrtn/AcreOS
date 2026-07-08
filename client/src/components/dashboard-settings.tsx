@@ -223,7 +223,7 @@ export function DashboardSettings({ settings, onSettingsChange }: DashboardSetti
           </Button>
           <div className="flex gap-2">
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} data-testid="button-cancel-settings">
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               type="button"

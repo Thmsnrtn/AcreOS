@@ -29,6 +29,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 type InsuranceStatus = "verified" | "expiring_soon" | "lapsed" | "force_placed";
 
@@ -153,7 +154,7 @@ export function NoteComplianceCard(props: ComplianceProps) {
               </div>
               {!editingInsurance && (
                 <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditingInsurance(true)}>
-                  Edit
+                  {Verbs.EDIT}
                 </Button>
               )}
             </div>
@@ -201,8 +202,8 @@ export function NoteComplianceCard(props: ComplianceProps) {
                   <Input id="ins-expires" type="date" className="h-8 text-xs" value={insExpiresAt} onChange={(e) => setInsExpiresAt(e.target.value)} />
                 </div>
                 <div className="flex justify-end gap-2 pt-1">
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingInsurance(false)}>Cancel</Button>
-                  <Button size="sm" className="h-7 text-xs" onClick={saveInsurance} disabled={patchMutation.isPending}>Save</Button>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingInsurance(false)}>{Verbs.CANCEL}</Button>
+                  <Button size="sm" className="h-7 text-xs" onClick={saveInsurance} disabled={patchMutation.isPending}>{Verbs.SAVE}</Button>
                 </div>
               </div>
             )}
@@ -217,7 +218,7 @@ export function NoteComplianceCard(props: ComplianceProps) {
               </div>
               {!editingTax && (
                 <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditingTax(true)}>
-                  Edit
+                  {Verbs.EDIT}
                 </Button>
               )}
             </div>
@@ -273,8 +274,8 @@ export function NoteComplianceCard(props: ComplianceProps) {
                   </>
                 )}
                 <div className="flex justify-end gap-2 pt-1">
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingTax(false)}>Cancel</Button>
-                  <Button size="sm" className="h-7 text-xs" onClick={saveTax} disabled={patchMutation.isPending}>Save</Button>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingTax(false)}>{Verbs.CANCEL}</Button>
+                  <Button size="sm" className="h-7 text-xs" onClick={saveTax} disabled={patchMutation.isPending}>{Verbs.SAVE}</Button>
                 </div>
               </div>
             )}

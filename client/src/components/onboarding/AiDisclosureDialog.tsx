@@ -43,6 +43,7 @@ interface AiDisclosureDialogProps {
 }
 
 export function AiDisclosureDialog({ open, onAccepted }: AiDisclosureDialogProps) {
+  // allow-no-invalidation: onSuccess calls the parent's onAccepted() — the dialog closes and gating re-derives
   const acceptMutation = useMutation({
     mutationFn: async () => {
       const resp = await apiRequest("POST", "/api/me/ai-disclosure/accept", {

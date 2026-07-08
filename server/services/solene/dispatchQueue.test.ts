@@ -12,6 +12,9 @@
  *    (SKIP LOCKED guarantee — simulated via the mock's pull semantics)
  *  - completeDispatch writes both queue row + result row in a transaction
  *  - failDispatch with status='cancelled' writes the cancelled marker
+ *  - failDispatch transient=true requeues with backoff, bounded by
+ *    DISPATCH_MAX_ATTEMPTS, then dead-letters; non-transient stays terminal
+ *  - claimNextDispatch honors the not_before_at backoff gate
  *
  * We mock `db` to keep this test unit-scope (no Postgres required).
  */
@@ -43,6 +46,9 @@ interface QueueRow {
   result_summary: string | null;
   result_full_path: string | null;
   enqueued_by: string | null;
+  idempotency_key: string | null;
+  attempts: number;
+  not_before_at: Date | null;
 }
 
 interface ResultRow {
@@ -95,10 +101,26 @@ vi.mock("../../db", () => {
               result_summary: null,
               result_full_path: null,
               enqueued_by: row.enqueuedBy ?? null,
+              idempotency_key: row.idempotencyKey ?? null,
+              attempts: 0,
+              not_before_at: null,
             };
-            QUEUE.push(r);
             return {
-              returning: (_cols: unknown) => Promise.resolve([{ id: r.id }]),
+              // Non-keyed path: unconditional insert (push at returning time).
+              returning: (_cols: unknown) => {
+                QUEUE.push(r);
+                return Promise.resolve([{ id: r.id }]);
+              },
+              // Exactly-once path: insert ON CONFLICT (idempotency_key) DO NOTHING.
+              onConflictDoNothing: (_t: unknown) => ({
+                returning: (_cols: unknown) => {
+                  if (r.idempotency_key != null && QUEUE.some((q) => q.idempotency_key === r.idempotency_key)) {
+                    return Promise.resolve([]); // conflict — no second row
+                  }
+                  QUEUE.push(r);
+                  return Promise.resolve([{ id: r.id }]);
+                },
+              }),
             };
           }
           return Promise.resolve();
@@ -119,6 +141,7 @@ vi.mock("../../db", () => {
               if (patch.completedAt !== undefined) row.completed_at = patch.completedAt;
               if (patch.resultSummary !== undefined) row.result_summary = patch.resultSummary;
               if (patch.resultFullPath !== undefined) row.result_full_path = patch.resultFullPath;
+              if (patch.notBeforeAt !== undefined) row.not_before_at = patch.notBeforeAt;
             }
             return Promise.resolve();
           },
@@ -128,10 +151,13 @@ vi.mock("../../db", () => {
         from: (_t: unknown) => ({
           where: (clause: any) => ({
             limit: (_n: number) => {
-              const id = (clause as any)?.__id;
-              const row = QUEUE.find((q) => q.id === id);
+              // The mocked eq() sets __id to the compared VALUE — a numeric id
+              // for claim/update lookups, or the effect-key string for
+              // enqueueDispatch's exactly-once by-key fetch. Match either.
+              const v = (clause as any)?.__id;
+              const row = QUEUE.find((q) => q.id === v) ?? QUEUE.find((q) => q.idempotency_key === v);
               if (!row) return Promise.resolve([]);
-              return Promise.resolve([{ id: row.id, status: row.status }]);
+              return Promise.resolve([{ id: row.id, status: row.status, attempts: row.attempts }]);
             },
           }),
         }),
@@ -159,9 +185,11 @@ vi.mock("../../db", () => {
         prior.then(() => resolve(r));
       });
       try {
-        // Pull highest priority then earliest queued.
+        // Pull highest priority then earliest queued, honoring the
+        // not_before_at backoff gate (retry rows wait out their delay).
+        const now = Date.now();
         const pickable = QUEUE
-          .filter((q) => q.status === "queued")
+          .filter((q) => q.status === "queued" && (q.not_before_at === null || q.not_before_at.getTime() <= now))
           .sort((a, b) => {
             const pa = Number(a.priority);
             const pb = Number(b.priority);
@@ -172,6 +200,7 @@ vi.mock("../../db", () => {
           claimed = pickable[0];
           claimed.status = "in_progress";
           claimed.started_at = new Date();
+          claimed.attempts += 1;
         }
       } finally {
         release();
@@ -191,6 +220,16 @@ vi.mock("drizzle-orm", async () => {
     ...actual,
     eq: (_col: any, val: any) => ({ __id: val }),
   };
+});
+
+// These tests exercise queue mechanics, not the ensemble cost cap. The cap
+// reads agent_dispatch MTD spend, which this file's DB mock doesn't model — and
+// the cap now (correctly) fails CLOSED on an unreadable spend (re-audit it.3),
+// so leaving it real would throw here. No-op the cap; keep the real error
+// classes for the dedicated ensembleMonthlyCap.test.ts.
+vi.mock("./capitalTracker", async () => {
+  const actual = await vi.importActual<typeof import("./capitalTracker")>("./capitalTracker");
+  return { ...actual, assertWithinEnsembleCap: vi.fn().mockResolvedValue(undefined) };
 });
 
 beforeEach(() => {
@@ -416,5 +455,195 @@ describe("dispatchQueue.completeDispatch / failDispatch", () => {
     const resultRow = RESULTS.find((r) => r.dispatch_id === id);
     expect(resultRow?.success).toBe(false);
     expect(resultRow?.error_message).toMatch(/kill switch/);
+  });
+});
+
+describe("isOrphanedDispatch (pure) — Frontier #12 reaper predicate", () => {
+  const NOW = 1_700_000_000_000;
+  const ago = (ms: number) => new Date(NOW - ms);
+
+  it("an in_progress dispatch past timeout + margin IS orphaned", async () => {
+    const { isOrphanedDispatch } = await import("./dispatchQueue");
+    const d = { status: "in_progress", startedAt: ago(20 * 60_000), timeoutMs: 10 * 60_000 };
+    expect(isOrphanedDispatch(d, NOW)).toBe(true); // 20m > 10m + 5m margin
+  });
+
+  it("an in_progress dispatch still WITHIN timeout + margin is NOT orphaned", async () => {
+    const { isOrphanedDispatch } = await import("./dispatchQueue");
+    const d = { status: "in_progress", startedAt: ago(12 * 60_000), timeoutMs: 10 * 60_000 };
+    expect(isOrphanedDispatch(d, NOW)).toBe(false); // 12m < 10m + 5m margin
+  });
+
+  it("never reaps a non-in_progress row, however stale", async () => {
+    const { isOrphanedDispatch } = await import("./dispatchQueue");
+    const old = { startedAt: ago(99 * 60_000), timeoutMs: 1 };
+    expect(isOrphanedDispatch({ ...old, status: "queued" }, NOW)).toBe(false);
+    expect(isOrphanedDispatch({ ...old, status: "completed" }, NOW)).toBe(false);
+    expect(isOrphanedDispatch({ ...old, status: "failed" }, NOW)).toBe(false);
+    expect(isOrphanedDispatch({ ...old, status: "cancelled" }, NOW)).toBe(false);
+  });
+
+  it("never reaps an in_progress row with no startedAt (claim not yet stamped)", async () => {
+    const { isOrphanedDispatch } = await import("./dispatchQueue");
+    expect(isOrphanedDispatch({ status: "in_progress", startedAt: null, timeoutMs: 1 }, NOW)).toBe(false);
+  });
+
+  it("the margin is honored exactly at the boundary", async () => {
+    const { isOrphanedDispatch } = await import("./dispatchQueue");
+    const at = (ms: number) => ({ status: "in_progress", startedAt: ago(ms), timeoutMs: 10 * 60_000 });
+    expect(isOrphanedDispatch(at(15 * 60_000), NOW)).toBe(false); // exactly timeout+margin → not yet
+    expect(isOrphanedDispatch(at(15 * 60_000 + 1), NOW)).toBe(true); // 1ms past → orphaned
+  });
+});
+
+describe("computeEffectKey (pure) — exactly-once seal (panel #2)", () => {
+  it("is deterministic — same effect + same window → identical key", async () => {
+    const { computeEffectKey } = await import("./dispatchQueue");
+    const a = computeEffectKey({ domain: "growth", moveKind: "grow_owned_channels", playId: "county-guide", targetId: "42", nowMs: 1_700_000_000_000 });
+    const b = computeEffectKey({ domain: "growth", moveKind: "grow_owned_channels", playId: "county-guide", targetId: "42", nowMs: 1_700_000_000_000 });
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("a concurrent tick within the same window dedups (same key); the next window differs", async () => {
+    const { computeEffectKey, DEFAULT_EFFECT_WINDOW_MS } = await import("./dispatchQueue");
+    const base = { domain: "growth", moveKind: "grow_owned_channels", playId: "p", targetId: "t" };
+    const t0 = 1_700_000_000_000 - (1_700_000_000_000 % DEFAULT_EFFECT_WINDOW_MS); // window-aligned
+    // two ticks inside the same window → same key (the double-fire dedups)
+    expect(computeEffectKey({ ...base, nowMs: t0 + 1000 })).toBe(computeEffectKey({ ...base, nowMs: t0 + DEFAULT_EFFECT_WINDOW_MS - 1 }));
+    // a tick in the NEXT window → different key (a legitimate later run proceeds)
+    expect(computeEffectKey({ ...base, nowMs: t0 + 1000 })).not.toBe(computeEffectKey({ ...base, nowMs: t0 + DEFAULT_EFFECT_WINDOW_MS + 1000 }));
+  });
+
+  it("distinct targets / plays / domains / moves never collide", async () => {
+    const { computeEffectKey } = await import("./dispatchQueue");
+    const k = (o: any) => computeEffectKey({ domain: "growth", moveKind: "m", playId: "p", targetId: "t", nowMs: 1_700_000_000_000, ...o });
+    const base = k({});
+    expect(k({ targetId: "other" })).not.toBe(base);
+    expect(k({ playId: "other" })).not.toBe(base);
+    expect(k({ domain: "support" })).not.toBe(base);
+    expect(k({ moveKind: "other" })).not.toBe(base);
+  });
+});
+
+describe("failDispatch — bounded side-effect-aware retry (step-away gap #3)", () => {
+  async function enqueueAndClaim() {
+    const { enqueueDispatch, claimNextDispatch } = await import("./dispatchQueue");
+    const id = await enqueueDispatch({
+      sourceType: "auto_dispatch",
+      sourceId: "retry-case",
+      agentRole: "iris",
+      promptText: "task",
+    });
+    await claimNextDispatch();
+    return id;
+  }
+
+  it("retryBackoffMs is exponential in minutes: 2m, 4m, 8m", async () => {
+    const { retryBackoffMs } = await import("./dispatchQueue");
+    expect(retryBackoffMs(1)).toBe(2 * 60_000);
+    expect(retryBackoffMs(2)).toBe(4 * 60_000);
+    expect(retryBackoffMs(3)).toBe(8 * 60_000);
+    // Degenerate inputs clamp to attempt 1 — never a zero/negative delay.
+    expect(retryBackoffMs(0)).toBe(2 * 60_000);
+    expect(retryBackoffMs(-5)).toBe(2 * 60_000);
+  });
+
+  it("transient failure requeues with a future not_before_at and keeps the per-attempt audit row", async () => {
+    const { failDispatch } = await import("./dispatchQueue");
+    const id = await enqueueAndClaim(); // attempts=1
+    const before = Date.now();
+    const out = await failDispatch(id, { errorMessage: "ECONNRESET from api.anthropic.com" }, { transient: true });
+    expect(out.requeued).toBe(true);
+    expect(out.attempts).toBe(1);
+    const row = QUEUE.find((q) => q.id === id)!;
+    expect(row.status).toBe("queued");
+    expect(row.started_at).toBeNull();
+    expect(row.completed_at).toBeNull();
+    expect(row.not_before_at).toBeInstanceOf(Date);
+    // attempts=1 → 2-minute backoff
+    expect(row.not_before_at!.getTime()).toBeGreaterThanOrEqual(before + 2 * 60_000 - 50);
+    // The attempt still left its audit trail.
+    const resultRow = RESULTS.find((r) => r.dispatch_id === id);
+    expect(resultRow?.success).toBe(false);
+    expect(resultRow?.error_message).toMatch(/ECONNRESET/);
+  });
+
+  it("a requeued row is NOT claimable while its backoff is in the future", async () => {
+    const { failDispatch, claimNextDispatch } = await import("./dispatchQueue");
+    const id = await enqueueAndClaim();
+    await failDispatch(id, { errorMessage: "blip" }, { transient: true });
+    // Backoff is 2 minutes out — the worker pull must skip it.
+    expect(await claimNextDispatch()).toBeNull();
+    // Simulate the backoff elapsing.
+    const row = QUEUE.find((q) => q.id === id)!;
+    row.not_before_at = new Date(Date.now() - 1000);
+    const reclaimed = await claimNextDispatch();
+    expect(reclaimed?.id).toBe(id);
+    expect(reclaimed?.attempts).toBe(2);
+  });
+
+  it("dead-letters after DISPATCH_MAX_ATTEMPTS total runs", async () => {
+    const { failDispatch, claimNextDispatch } = await import("./dispatchQueue");
+    const { DISPATCH_MAX_ATTEMPTS } = await import("@shared/schema/solene-dispatch");
+    const { DEAD_LETTER_MARKER } = await import("./dispatchQueue");
+    const id = await enqueueAndClaim(); // run 1
+    for (let run = 1; run < DISPATCH_MAX_ATTEMPTS; run++) {
+      const out = await failDispatch(id, { errorMessage: `blip ${run}` }, { transient: true });
+      expect(out.requeued).toBe(true);
+      // Elapse the backoff and re-claim for the next run.
+      QUEUE.find((q) => q.id === id)!.not_before_at = new Date(Date.now() - 1000);
+      const claimed = await claimNextDispatch();
+      expect(claimed?.id).toBe(id);
+    }
+    // Final run fails transient too — but the budget is spent.
+    const out = await failDispatch(id, { errorMessage: "blip final" }, { transient: true });
+    expect(out.requeued).toBe(false);
+    expect(out.attempts).toBe(DISPATCH_MAX_ATTEMPTS);
+    const row = QUEUE.find((q) => q.id === id)!;
+    expect(row.status).toBe("failed");
+    expect(row.result_summary).toContain(DEAD_LETTER_MARKER);
+  });
+
+  it("non-transient failure stays terminal on the first attempt (at-most-once default)", async () => {
+    const { failDispatch } = await import("./dispatchQueue");
+    const id = await enqueueAndClaim();
+    const out = await failDispatch(id, { errorMessage: "tool ran then died" });
+    expect(out.requeued).toBe(false);
+    const row = QUEUE.find((q) => q.id === id)!;
+    expect(row.status).toBe("failed");
+    expect(row.result_summary).not.toContain("[dead-letter]");
+  });
+
+  it("a cancellation is never retried, even when marked transient", async () => {
+    const { failDispatch } = await import("./dispatchQueue");
+    const id = await enqueueAndClaim();
+    const out = await failDispatch(
+      id,
+      { errorMessage: "founder kill switch" },
+      { status: "cancelled", transient: true },
+    );
+    expect(out.requeued).toBe(false);
+    expect(QUEUE.find((q) => q.id === id)!.status).toBe("cancelled");
+  });
+});
+
+describe("enqueueDispatch — exactly-once on idempotencyKey", () => {
+  it("a second enqueue with the SAME key returns the first id and inserts NO second row", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    const before = QUEUE.length;
+    const opts = { sourceType: "auto_dispatch" as const, sourceId: "x", agentRole: "soren" as const, promptText: "go", idempotencyKey: "eff-key-abc" };
+    const id1 = await enqueueDispatch(opts);
+    const id2 = await enqueueDispatch(opts); // concurrent tick / retry
+    expect(id2).toBe(id1);
+    expect(QUEUE.length).toBe(before + 1); // exactly one row, not two
+  });
+
+  it("an UNKEYED enqueue is unaffected — always inserts", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    const before = QUEUE.length;
+    await enqueueDispatch({ sourceType: "auto_dispatch", sourceId: "y", agentRole: "soren", promptText: "go" });
+    await enqueueDispatch({ sourceType: "auto_dispatch", sourceId: "y", agentRole: "soren", promptText: "go" });
+    expect(QUEUE.length).toBe(before + 2);
   });
 });

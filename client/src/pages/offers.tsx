@@ -30,6 +30,7 @@ import {
   Loader2, Calendar, DollarSign, Clock, Filter, Check, X, ClipboardCheck
 } from "lucide-react";
 import { format } from "date-fns";
+import { Verbs } from "@/lib/labels";
 
 // Status → semantic --acr-* tone (Tier 1 pattern). Re-skins across all
 // five themes; replaces raw blue/indigo/purple/amber/emerald/red hardcodes.
@@ -402,7 +403,7 @@ export default function OffersPage() {
                       aria-label={`Delete ${selectedOffers.length} selected offer${selectedOffers.length === 1 ? "" : "s"}`}
                     >
                       <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
-                      Delete
+                      {Verbs.DELETE}
                     </Button>
                   </div>
                 )}
@@ -895,7 +896,7 @@ export default function OffersPage() {
                       </div>
                       <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setIsTemplateDialogOpen(false)}>
-                          Cancel
+                          {Verbs.CANCEL}
                         </Button>
                         <Button
                           type="submit"
@@ -968,7 +969,7 @@ export default function OffersPage() {
                             aria-label={`Edit ${template.name} template`}
                           >
                             <Edit className="w-4 h-4 mr-1" aria-hidden="true" />
-                            Edit
+                            {Verbs.EDIT}
                           </Button>
                           <Button
                             variant="ghost"

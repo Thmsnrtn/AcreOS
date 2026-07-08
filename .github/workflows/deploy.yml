@@ -3,6 +3,13 @@ name: Deploy to Fly.io
 on:
   push:
     branches: [main]
+  # Manual re-kick (2026-07-07): a Fly release-command VM failed to start
+  # ("deadline_exceeded: machine still starting" — transient platform
+  # failure, run 28885355298) and there was NO way to re-run the deploy
+  # short of pushing a new commit to main. workflow_dispatch gives the
+  # founder a one-click retry from the Actions tab; the full pre-deploy
+  # gate still runs.
+  workflow_dispatch:
 
 concurrency:
   group: production-deploy
@@ -132,7 +139,32 @@ jobs:
 
       - name: Deploy to Fly.io
         id: fly_deploy
-        run: flyctl deploy --remote-only --wait-timeout 300 --build-arg GIT_SHA=${{ github.sha }}
+        # wait-timeout 600 (not 300): the Fly release_command machine (node
+        # scripts/migrate.mjs) intermittently takes >5min just to change state
+        # under provisioning pressure — a recurring "timeout reached waiting for
+        # machine's state to change" abort even with MIGRATION_COUNT=0. Doubling
+        # the headroom absorbs the flake; migrate.mjs itself is idempotent + fast.
+        #
+        # 2026-07-07: the 600s headroom was exceeded TWICE in one afternoon
+        # (runs 28885355298, 28890427978) — the release VM sat in
+        # created/starting for 10 minutes with Fly's status page showing no
+        # incident, so more headroom alone doesn't absorb this class of flake.
+        # Retry the whole deploy up to 3 attempts with backoff instead. Safe by
+        # construction: a failed release command aborts BEFORE any machine
+        # rolls, and migrate.mjs is idempotent; the remote builder caches, so
+        # retries skip straight back to the release step.
+        run: |
+          set +e
+          code=1
+          for attempt in 1 2 3; do
+            echo "── flyctl deploy attempt ${attempt}/3 ──"
+            flyctl deploy --remote-only --wait-timeout 600 --build-arg GIT_SHA=${{ github.sha }}
+            code=$?
+            if [ "$code" -eq 0 ]; then exit 0; fi
+            echo "::warning::flyctl deploy attempt ${attempt}/3 failed (exit ${code})"
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 120)); fi
+          done
+          exit "$code"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -197,7 +229,7 @@ jobs:
               echo "::error title=Auto-rollback FAILED::Could not resolve a previous release image. Roll back manually in the Fly.io dashboard NOW."
               exit 1
             fi
-            flyctl deploy --image "$PREV_IMAGE" --wait-timeout 300
+            flyctl deploy --image "$PREV_IMAGE" --wait-timeout 600
           fi
           echo "Rollback submitted. Verifying old release health..."
           sleep 15
@@ -333,3 +365,42 @@ jobs:
           fi
           # Verify by presence/length only — NEVER print the secret value.
           echo "DEPLOY_ALERT_WEBHOOK is set (length ${#DEPLOY_ALERT_WEBHOOK}). Alert spine wired. ✓"
+
+  # ── Gate-failure alarm (2026-07-03, stale-release incident) ────────────────
+  # The deploy job's own failure-alert step never fires when the TEST gate
+  # fails, because `needs: test` means deploy never starts. That is exactly
+  # what happened on 2026-06-29: the pre-deploy tsc gate failed, no page went
+  # out at CAUSE time, and the founder learned about it from eleven hourly
+  # stale-release symptom pages instead of one failure page with the reason.
+  # This job pages ONCE, immediately, when the gate refuses a main push.
+  notify-gate-failure:
+    name: Page founder on pre-deploy gate failure
+    needs: test
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post gate-failure alert
+        env:
+          DEPLOY_ALERT_WEBHOOK: ${{ secrets.DEPLOY_ALERT_WEBHOOK }}
+        run: |
+          MSG="🚨 AcreOS deploy BLOCKED at the pre-deploy gate for ${GITHUB_SHA:0:7} — main will NOT ship until this is fixed. https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          echo "$MSG"
+          if [ -z "$DEPLOY_ALERT_WEBHOOK" ]; then
+            echo "::error title=DEPLOY_ALERT_WEBHOOK secret is NOT set::Gate failed and no alert could be sent."
+            exit 1
+          fi
+          if echo "$DEPLOY_ALERT_WEBHOOK" | grep -qi "ntfy"; then
+            curl --fail --silent --show-error --max-time 15 \
+              -H "Title: AcreOS deploy gate FAILED" \
+              -H "Priority: high" \
+              -H "Tags: warning" \
+              -d "$MSG" \
+              "$DEPLOY_ALERT_WEBHOOK" \
+              || echo "Alert webhook POST failed — investigate."
+          else
+            curl --fail --silent --show-error --max-time 15 \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg t "$MSG" '{text:$t, message:$t, content:$t}')" \
+              "$DEPLOY_ALERT_WEBHOOK" \
+              || echo "Alert webhook POST failed — investigate."
+          fi

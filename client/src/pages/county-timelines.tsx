@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 interface Timeline {
@@ -45,7 +46,7 @@ export default function CountyTimelinesPage() {
   useDocumentTitle("County subdivision timelines — AcreOS");
   const [filter, setFilter] = useState("");
 
-  const { data, isLoading } = useQuery<{ timelines: Timeline[] }>({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<{ timelines: Timeline[] }>({
     queryKey: ["/api/county-timelines"],
     queryFn: async () => {
       const res = await fetch("/api/county-timelines", { credentials: "include" });
@@ -91,6 +92,16 @@ export default function CountyTimelinesPage() {
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-32" />
+          ) : isError ? (
+            <QueryErrorState
+              error={error instanceof Error ? error : null}
+              onRetry={() => refetch()}
+              isRetrying={isRefetching}
+              compact
+              title="Couldn't load county timelines"
+              description="We hit a snag loading subdivision lead-time data. Your data is safe — try again."
+              testId="county-timelines-query-error"
+            />
           ) : (
             <table className="w-full text-sm">
               <thead>

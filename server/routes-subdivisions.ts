@@ -23,6 +23,7 @@
  */
 
 import type { Express, Response } from "express";
+import { randomBytes } from "crypto";
 import { z } from "zod";
 import { and, eq, isNull, sql, asc } from "drizzle-orm";
 import { db } from "./db";
@@ -510,7 +511,8 @@ export function registerSubdivisionRoutes(app: Express): void {
                     status: "pending",
                     paymentMethod: sf.paymentMethod ?? null,
                     notes: sf.notes ?? `Originated from child lot ${updated.childLotNumber ?? updated.apn} — pending ATR determination or exemption code`,
-                    accessToken: `note_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+                    // SECURITY (2026-07 audit): borrower-portal authenticator — CSPRNG only.
+                    accessToken: `note_${randomBytes(32).toString("hex")}`,
                   }).returning({ id: notes.id });
 
                   createdNoteId = newNote.id;

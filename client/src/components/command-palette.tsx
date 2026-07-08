@@ -522,6 +522,7 @@ export function CommandPalette() {
   // discoverable from the palette so first-time founders find it.
   const { mode: personaMode, setMode: setPersonaMode } = usePersonaMode();
 
+  // allow-no-invalidation: AI answer lands in palette-local state (setAiResponse)
   const aiMutation = useMutation({
     mutationFn: async (question: string) => {
       const res = await apiRequest("POST", "/api/realtime/ask", { message: question });
@@ -1326,7 +1327,7 @@ export function CommandPalette() {
                             <span>View system health</span>
                           </CommandItem>
                           <CommandItem
-                            onSelect={() => handleSelect("/founder/ai-costs")}
+                            onSelect={() => handleSelect("/founder/admin/costs?tab=ai-spend")}
                             data-testid="command-item-credits"
                             className="cursor-pointer"
                           >

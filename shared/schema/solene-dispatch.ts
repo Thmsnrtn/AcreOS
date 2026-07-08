@@ -39,7 +39,9 @@ import {
   timestamp,
   jsonb,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ============================================
 // SOLENE_DISPATCH_QUEUE
@@ -63,6 +65,13 @@ export const soleneDispatchQueue = pgTable(
     resultFullPath: text("result_full_path"),
     // Optional: who/what enqueued this (e.g. opportunity id, founder user id)
     enqueuedBy: text("enqueued_by"),
+    // Exactly-once seal (panel #2). A deterministic effect-key the caller may
+    // supply so the SAME intended outward effect, enqueued twice (a concurrent
+    // tick after the loop's lock TTL lapsed, a retry), inserts ONCE. NULL =
+    // unconstrained (legacy + non-autopilot enqueues are unaffected). The
+    // autopilot act path fills it from domain+move+play+target+time-window so a
+    // double-fire dedups while legitimately-distinct effects each run.
+    idempotencyKey: text("idempotency_key"),
     // L2.8 — multi-agent code review
     // When a code-producing dispatch completes, completeDispatch() auto-enqueues
     // a sibling review-dispatch (agentRole='code-reviewer'). The columns below
@@ -82,6 +91,18 @@ export const soleneDispatchQueue = pgTable(
     // wins outright. Lets escalations, architecture reviews, and founder-mode
     // bypasses pin Opus without changing the role-default heuristic.
     model: text("model"),
+    // Step-away gap #3 — bounded retry for TRANSIENT failures only.
+    //   attempts      — incremented atomically at CLAIM time (not enqueue), so it
+    //                   counts runs actually started. A row that never got claimed
+    //                   stays at 0.
+    //   not_before_at — backoff gate. claimNextDispatch skips rows whose
+    //                   not_before_at is in the future; NULL = claimable now.
+    // Retry is SIDE-EFFECT-AWARE by contract: failDispatch only requeues when the
+    // caller proves the failure happened before any tool executed (transient=true).
+    // Everything else stays terminal — the original at-most-once stance for
+    // outward effects is preserved.
+    attempts: integer("attempts").notNull().default(0),
+    notBeforeAt: timestamp("not_before_at", { withTimezone: true }),
   },
   (t) => [
     // Fast worker pull: status + priority + queued_at
@@ -95,6 +116,11 @@ export const soleneDispatchQueue = pgTable(
       t.reviewStatus,
       t.completedAt,
     ),
+    // Exactly-once: a PARTIAL unique index so only keyed rows are constrained
+    // (NULL keys — every legacy/non-autopilot enqueue — are never deduped).
+    uniqueIndex("solene_dispatch_queue_idempotency_key_uq")
+      .on(t.idempotencyKey)
+      .where(sql`idempotency_key IS NOT NULL`),
   ],
 );
 
@@ -212,3 +238,8 @@ export const DISPATCH_MAX_COST_USD = 25;
 export const DISPATCH_DEFAULT_COST_USD = 5;
 export const DISPATCH_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 export const DISPATCH_MAX_TURNS = 50;
+
+// Step-away gap #3 — retry budget for TRANSIENT failures. Total runs, not
+// re-runs: a dispatch is claimed at most this many times before a transient
+// failure dead-letters it (status='failed' with the exhausted marker).
+export const DISPATCH_MAX_ATTEMPTS = 3;

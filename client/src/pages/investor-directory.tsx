@@ -29,6 +29,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface InvestorProfile {
   id: number;
@@ -448,7 +449,7 @@ export default function InvestorDirectoryPage() {
               </fieldset>
             </div>
             <DialogFooter className="mt-4">
-              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>{Verbs.CANCEL}</Button>
               <Button type="submit" disabled={!profileForm.displayName || saveMutation.isPending}>
                 {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" /> : null}
                 Save profile
@@ -491,7 +492,7 @@ export default function InvestorDirectoryPage() {
               </div>
             </div>
             <DialogFooter className="mt-4">
-              <Button type="button" variant="outline" onClick={() => setVerifyOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => setVerifyOpen(false)}>{Verbs.CANCEL}</Button>
               <Button
                 type="submit"
                 disabled={selfAttestation.length < 50 || verifyMutation.isPending}

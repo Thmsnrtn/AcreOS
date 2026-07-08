@@ -5,7 +5,7 @@
  * endpoint AND the unified /api/founder/intelligence/todo can read from a
  * single source of truth.
  *
- * Per docs/exhaustive-completion/founder-dashboard-extraction-queue.md
+ * Per docs/archive/exhaustive-completion/founder-dashboard-extraction-queue.md
  * Extraction #3: "ActionQueuePanel inside founder-dashboard.tsx solves the
  * same problem with a different data source. Both should converge on
  * /founder/todo; ActionQueuePanel goes away."

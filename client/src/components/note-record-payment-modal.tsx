@@ -35,6 +35,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { AcquiredNote, NotePaymentType } from "@/pages/note-detail";
+import { Verbs } from "@/lib/labels";
 
 interface Props {
   open: boolean;
@@ -520,7 +521,7 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>Cancel</Button>
+          <Button variant="outline" onClick={handleClose}>{Verbs.CANCEL}</Button>
           <Button
             onClick={() => submitMutation.mutate()}
             disabled={

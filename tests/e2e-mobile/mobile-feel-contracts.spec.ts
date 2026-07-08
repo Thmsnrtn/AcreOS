@@ -421,7 +421,15 @@ test.describe("Krieger C1: no-blank-dialog", () => {
       ]);
 
       await page.goto(route, { waitUntil: "domcontentloaded" });
-      await page.waitForLoadState("networkidle").catch(() => {});
+      // BOUNDED settle: networkidle NEVER fires on pages with a live or
+      // reconnecting connection (the Pax door's global WebSocket retries
+      // with backoff when the AI service is absent in CI), and the
+      // @playwright/test default navigation timeout is 0 = unlimited — so
+      // an unbounded wait here ate the entire 200s test budget on
+      // [iphone-14] /ai (run 28950430806) and the .catch below never got
+      // to do its intended best-effort job. Bound it: idle if quick,
+      // proceed regardless.
+      await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
 
       const triggers = page.locator(DIALOG_TRIGGER_SELECTORS.join(", "));
       const triggerCount = await triggers.count();
@@ -495,7 +503,10 @@ test.describe("Krieger C2: no-blank-route", () => {
       ]);
 
       await page.goto(route, { waitUntil: "domcontentloaded" });
-      await page.waitForLoadState("networkidle").catch(() => {});
+      // Bounded settle — same reason as C1 above: unbounded networkidle
+      // never resolves on routes with a reconnecting WebSocket and starves
+      // the whole test budget.
+      await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
 
       const bodyTextLen = await page.evaluate(
         () => (document.body?.innerText || "").trim().length,

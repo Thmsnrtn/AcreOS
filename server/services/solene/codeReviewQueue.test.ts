@@ -235,6 +235,15 @@ vi.mock("drizzle-orm", async () => {
   };
 });
 
+// enqueueReviewDispatch → enqueueDispatch → ensemble cap. This file's DB mock
+// doesn't model agent_dispatch MTD spend, and the cap now fails CLOSED on an
+// unreadable spend (re-audit it.3), so no-op it — these tests are about the
+// review queue, not the cost cap.
+vi.mock("./capitalTracker", async () => {
+  const actual = await vi.importActual<typeof import("./capitalTracker")>("./capitalTracker");
+  return { ...actual, assertWithinEnsembleCap: vi.fn().mockResolvedValue(undefined) };
+});
+
 // --- Helpers --------------------------------------------------------------
 
 async function seedOriginalDispatch(args: {

@@ -105,6 +105,16 @@ async function backfillTouchIdentity(
           isNull(marketingTouch.userId),
         ),
       );
+
+    // Founder Autopilot attribution: if this visitor's witnessed touch chain
+    // references a published autopilot artifact, record the signup conversion.
+    // Best-effort + dedup'd; founder-dashboard only, never the learning loop.
+    try {
+      const { attributeSignup } = await import("./services/autopilot/attribution");
+      void attributeSignup(anonymousId, organizationId);
+    } catch {
+      /* attribution must never break signup */
+    }
   } catch (error) {
     logger.warn("[acquisition-utm] marketing_touch backfill failed", {
       error: error instanceof Error ? error.message : String(error),

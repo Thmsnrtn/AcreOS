@@ -148,6 +148,21 @@ interface ValuationRequest {
 }
 
 interface ValuationResult {
+  /**
+   * W3.1 (refuse-not-fabricate): "ok" means a value was actually modeled
+   * from data (comps, trained model, or a labeled AI estimate).
+   * "insufficient_data" is an HONEST refusal — no comps, no trained model,
+   * no AI path — with `missing` naming exactly what's absent. The old
+   * behavior (flat $1,000/acre branded as a proprietary model) fabricated
+   * a number an investor might have bid real money on.
+   */
+  status: "ok" | "insufficient_data";
+  /**
+   * What actually produced the number, for honest labeling downstream:
+   * comps_model (comps + adjustments), trained_model (GBM), ai_estimate
+   * (LLM guess — must render as an AI estimate, never as a modeled value).
+   */
+  classification: "comps_model" | "trained_model" | "ai_estimate" | "insufficient_data";
   estimatedValue: number;
   pricePerAcre: number;
   confidenceInterval: {
@@ -156,6 +171,8 @@ interface ValuationResult {
   };
   confidence: number; // 0-100
   methodology: string;
+  /** Present on insufficient_data — what would unlock a real valuation. */
+  missing?: string[];
   comparables: {
     propertyId: string;
     salePrice: number;
@@ -354,6 +371,8 @@ class AcreOSValuationModel {
       } catch { /* non-fatal */ }
 
       return {
+        status: "ok",
+        classification: "comps_model",
         estimatedValue: Math.round(finalValue),
         pricePerAcre: Math.round(pricePerAcre),
         confidenceInterval: {
@@ -361,7 +380,7 @@ class AcreOSValuationModel {
           high: Math.round(confidenceInterval.high),
         },
         confidence,
-        methodology: 'AcreOS Proprietary Valuation Model v1.0 (Hybrid ML + Comps)',
+        methodology: 'AcreOS Valuation Model v1.1 (comparable sales + market adjustments)',
         comparables,
         marketAdjustments: adjustments,
       };
@@ -382,7 +401,11 @@ class AcreOSValuationModel {
     const { county, state } = request.location;
     const { zoning, roadAccess, floodZone } = request.characteristics;
 
-    let pricePerAcreEstimate = 1000; // fallback baseline
+    // W3.1: no fabricated baseline. Either a trained model or a clearly
+    // labeled AI estimate produces a number, or we refuse honestly. The old
+    // `= 1000` seed meant every parcel in America "was worth" $1,000/acre
+    // the moment both real paths failed — branded as a proprietary model.
+    let pricePerAcreEstimate: number | null = null;
     let estimateSource = 'baseline';
     let gbmConfidence = 0;
 
@@ -436,13 +459,37 @@ Base your estimate on typical rural land market conditions in ${county} County, 
           estimateSource = 'ai_market_estimate';
         }
       } catch {
-        // If AI call fails, fall back to static regional baseline
-        estimateSource = 'regional_baseline';
+        // AI call failed — nothing left that can honestly produce a value.
       }
     }
 
+    // ── Honest refusal (W3.1) ──────────────────────────────────────────────
+    // No comps (we're only here because comparables.length === 0), the GBM
+    // isn't trained, and the AI path didn't produce a value. Refuse with
+    // exactly what's missing instead of inventing a number.
+    if (pricePerAcreEstimate === null) {
+      logger.info('[avm] refusing valuation — insufficient data', {
+        metadata: { county, state, acres: request.acres },
+      });
+      return {
+        status: "insufficient_data",
+        classification: "insufficient_data",
+        estimatedValue: 0,
+        pricePerAcre: 0,
+        confidenceInterval: { low: 0, high: 0 },
+        confidence: 0,
+        methodology: 'No valuation — not enough data to produce one honestly',
+        missing: [
+          `Comparable land sales in ${county} County, ${state} (last 24 months)`,
+          'A trained regional valuation model for this area',
+        ],
+        comparables: [],
+        marketAdjustments: [],
+      };
+    }
+
     const estimatedValue = Math.round(pricePerAcreEstimate * request.acres);
-    const confidence = gbmConfidence || 45; // GBM provides dynamic confidence; AI/baseline = 45
+    const confidence = gbmConfidence || 45; // GBM provides dynamic confidence; AI estimate = 45
     const confidenceInterval = {
       low: Math.round(estimatedValue * 0.6),
       high: Math.round(estimatedValue * 1.5),
@@ -495,12 +542,19 @@ Base your estimate on typical rural land market conditions in ${county} County, 
       });
     } catch { /* non-fatal */ }
 
+    // W3.1(b): the LLM rung must never masquerade as a modeled value — it
+    // is an AI's educated guess and is labeled as exactly that.
+    const isAiEstimate = estimateSource === 'ai_market_estimate';
     return {
+      status: "ok",
+      classification: isAiEstimate ? "ai_estimate" : "trained_model",
       estimatedValue,
       pricePerAcre: Math.round(pricePerAcreEstimate),
       confidenceInterval,
       confidence,
-      methodology: `AcreOS Market Estimate (no local comparables — ${estimateSource.replace(/_/g, ' ')})`,
+      methodology: isAiEstimate
+        ? 'AI estimate (no local comparables) — an educated guess by a language model, not a comps-based value'
+        : 'AcreOS trained model estimate (no local comparables)',
       comparables: [],
       marketAdjustments: [],
     };
@@ -529,7 +583,13 @@ Base your estimate on typical rural land market conditions in ${county} County, 
           eq(transactionTraining.state, location.state),
           gte(transactionTraining.saleDate, cutoffDate),
           // Filter by similar acreage (50% to 200% of target)
-          between(transactionTraining.sizeAcres, String(acres * 0.5), String(acres * 2.0))
+          between(transactionTraining.sizeAcres, String(acres * 0.5), String(acres * 2.0)),
+          // W3.2 comps discipline: assessor last-sale rows flagged as
+          // outliers or low-quality are not comps. (Ingest marks nominal-
+          // price transfers — the classic non-arm's-length signature — as
+          // outliers; see countyAssessorIngest.)
+          eq(transactionTraining.isOutlier, false),
+          sql`${transactionTraining.dataQuality} != 'low'`
         ),
         orderBy: [desc(transactionTraining.saleDate)],
         limit: 100, // Get broader set for filtering

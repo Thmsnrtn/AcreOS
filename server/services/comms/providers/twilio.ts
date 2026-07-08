@@ -129,12 +129,16 @@ class TwilioProvider implements CommsProvider {
 
     const creds = await resolveCredentials(opts.organizationId);
     if (!creds) {
-      // Match historical behaviour: log + return a mock SID so callers
-      // can keep flowing in unconfigured local environments.
-      logger.info(
-        `[twilio] Not configured — would send to ${opts.to}: ${opts.body.substring(0, 50)}...`,
+      // FAIL VISIBLY (product-truth audit): with no credentials and NOT in
+      // simulation mode, an SMS genuinely cannot be sent. Previously this
+      // returned a fake `mock-<ts>` SID + success, so an unconfigured prod
+      // silently "succeeded" (callers saw success:true; the ledger only
+      // skipped a mock- prefix). Throw — exactly like initiateCall below — so
+      // the caller's catch surfaces a real failure. A deliberate dry-run still
+      // goes through the simulation-mode path above (a recorded, honest sim).
+      throw new Error(
+        "twilio.sendSms: credentials unavailable (set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER, or enable simulation mode)",
       );
-      return { sid: `mock-${Date.now()}`, costCents: 0 };
     }
 
     const url = `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}/Messages.json`;

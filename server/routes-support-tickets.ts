@@ -100,8 +100,23 @@ export function registerSupportTicketRoutes(app: Express): void {
       }
       
       const messages = await getTicketMessages(ticketId);
-      
-      res.json({ ticket, messages });
+
+      // SLA metrics (wire-for-real: measurementLoops.computeSla). First-reply =
+      // the first agent message; resolution = resolvedAt. Best-effort.
+      let sla = null;
+      try {
+        const { computeSla } = await import("./services/autopilot/measurementLoops");
+        const firstAgentMsg = (messages as Array<{ role?: string; createdAt?: Date | string | null }>)
+          .find((m) => m.role === "agent");
+        sla = computeSla({
+          createdAt: ticket.createdAt ?? new Date(),
+          firstReplyAt: firstAgentMsg?.createdAt ? new Date(firstAgentMsg.createdAt) : null,
+          resolvedAt: ticket.resolvedAt ?? null,
+          now: new Date(),
+        });
+      } catch { /* SLA is best-effort metadata */ }
+
+      res.json({ ticket, messages, sla });
     } catch (error: any) {
       logger.error("[support] Error fetching ticket", error);
       Errors.internal(res, error);

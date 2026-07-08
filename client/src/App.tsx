@@ -193,7 +193,9 @@ const DocumentIntelligencePage = React.lazy(() => import("@/pages/document-intel
 
 // Operations
 const MapsPage = React.lazy(() => import("@/pages/maps"));
-const CommandCenterPage = React.lazy(() => import("@/pages/command-center"));
+// CommandCenterPage binding removed (client perf audit 2026-07-04): the
+// /command-center route is a Redirect to /ai#chat and pax.tsx owns the only
+// live lazy import of pages/command-center.tsx.
 // ConsciousOrganizationPage refit 2026-06-11 (Census W3-1) — moved to
 // @/pages/founder/scenarios, served at /founder/scenarios (lazy import below).
 // AnticipatoryEnterprisePage retired 2026-06-11 (Census W3-1) — page deleted;
@@ -301,13 +303,9 @@ const FounderTelemetryPage = React.lazy(() => import("@/pages/founder/telemetry"
 // GET /api/founder/audit-findings (owned by the substrate agent).
 const FounderCommandPage = React.lazy(() => import("@/pages/founder/command"));
 // FounderIntegrationsPage archived 2026-06-01 — no sidebar entry.
-const FounderCostPage = React.lazy(() => import("@/pages/founder/cost"));
+// Costs & economics consolidated into one /founder/admin/costs hub (Phase 2).
+const FounderAdminCostsPage = React.lazy(() => import("@/pages/founder/admin/costs"));
 const FounderLifeCockpitPage = React.lazy(() => import("@/pages/founder/life-cockpit"));
-const FounderAiCostsPage = React.lazy(() => import("@/pages/founder/ai-costs"));
-const FounderObservabilityCostPage = React.lazy(() => import("@/pages/founder/observability-cost"));
-const FounderCostOptimizerPage = React.lazy(() => import("@/pages/founder/cost-optimizer"));
-const FounderUnitEconomicsPage = React.lazy(() => import("@/pages/founder/unit-economics"));
-const FounderPaidDataEvalPage = React.lazy(() => import("@/pages/founder/paid-data-eval"));
 // FounderDsarPage archived 2026-06-01 — no sidebar entry.
 // FounderLegalHoldsPage archived 2026-06-01 — no sidebar entry.
 // FounderSubProcessorsPage archived 2026-06-01 — no sidebar entry.
@@ -340,11 +338,17 @@ const FounderPaxCalibrationPage = React.lazy(() => import("@/pages/founder/pax-c
 const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"));
 // Solene's daily one-line + Autonomy Horizon + capital + phase — the
 // pull-first CEO surface at /founder. Replaces the FounderChat shell
-// which was previously served at /founder (now remains at /founder/chat).
+// that was previously served at /founder (page since deleted).
 // Phase 4 of the Solene migration — new 5-door founder UI. /founder/today
 // is the founder landing page; /founder now always renders it (the legacy
 // Pulse page at founder/index.tsx is retired).
-const FounderTodayPage = React.lazy(() => import("@/pages/founder/today"));
+const FounderHomePage = React.lazy(() => import("@/pages/founder/home"));
+// "Your Voice" — set durable intents + standing orders the autopilot honors.
+const FounderVoicePage = React.lazy(() => import("@/pages/founder/voice"));
+// "The Story" — the glass-box timeline of every action + its full reasoning.
+const FounderAutopilotStoryPage = React.lazy(() => import("@/pages/founder/autopilot-story"));
+// The Control Center — master switches + per-domain trust + everything in one.
+const FounderAutopilotControlPage = React.lazy(() => import("@/pages/founder/autopilot-control"));
 // Categorized index of every founder deep-dive — the visible affordance
 // into the ~70 secondary /founder/* surfaces beyond the 5 primary doors.
 const FounderAllToolsPage = React.lazy(() => import("@/pages/founder/all-tools"));
@@ -354,10 +358,9 @@ const FounderTeamPage = React.lazy(() => import("@/pages/founder/team"));
 const FounderMoneyPage = React.lazy(() => import("@/pages/founder/money"));
 const FounderBuildPage = React.lazy(() => import("@/pages/founder/build"));
 // FounderNowPage removed (Lens 4) — /founder/now now redirects to
-// /founder/bridge. The page file lives on disk pending extraction sweep.
-// /founder is the Atlas chat shell; /founder/bridge is the fused
-// canonical home (chat + telemetry).
-const FounderChatPage = React.lazy(() => import("@/pages/founder/chat"));
+// /founder/bridge. FounderChatPage (pages/founder/chat.tsx) deleted in the
+// WS2 sweep (2026-07-07): no route ever mounted it and solene-chat is the
+// live founder chat face.
 // Phase 3 — iOS-Claude-UX chat surface that consumes the Phase 2 backend
 // at /api/founder/solene-chat/*. This is the face Tom interacts with when
 // he flips the in-app Solene flag on.
@@ -470,7 +473,7 @@ const FounderTrendsPage = React.lazy(() => import("@/pages/founder-trends"));
 const FounderOnboardingPage = React.lazy(() => import("@/pages/founder-onboarding"));
 const FounderExpansionPage = React.lazy(() => import("@/pages/founder-expansion"));
 const FounderExperimentsPage = React.lazy(() => import("@/pages/founder-experiments"));
-const FounderProvidersPage = React.lazy(() => import("@/pages/founder-providers"));
+// FounderProvidersPage folded into the /founder/admin/costs hub (Providers tab).
 const ForgotPasswordPage = React.lazy(() => import("@/pages/forgot-password"));
 const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
 // Onboarding consolidation (2026-05-11): `/onboarding-v2` is the canonical
@@ -618,11 +621,17 @@ export { PersonaRoute };
 
 
 function HomeRoute() {
-  const { user, isLoading } = useAuth();
+  const { user, isFounder, isLoading } = useAuth();
   if (isLoading) {
     return <PageLoader />;
   }
-  return user ? <Redirect to="/today" /> : <LandingPage />;
+  // A founder lands in their own cockpit (/founder), not the customer hub. They
+  // can still navigate to /today anytime; this just makes the default door the
+  // one a CEO actually wants on login. Everyone else lands on /today.
+  if (user) {
+    return <Redirect to={isFounder ? "/founder" : "/today"} />;
+  }
+  return <LandingPage />;
 }
 
 // Onboarding consolidation (Lens 5, 2026-05-27). Fresh signups land on
@@ -1153,14 +1162,31 @@ function Router() {
           reachable from /founder/all-tools + the command palette. Every
           variant home (/founder-dashboard, /founder/now, /founder/cockpit,
           /founder/dashboard) continues to redirect to /founder/bridge. */}
+      {/* D6 — the single fused founder home (board report + pulse strip + chat +
+          hub). The old /founder (Pulse) and /founder/autopilot (Letter) overview
+          surfaces are fused here; both now redirect to it. */}
       <Route path="/founder">
-        {() => <FounderProtectedRoute component={FounderTodayPage} />}
+        {() => <FounderProtectedRoute component={FounderHomePage} />}
       </Route>
-      {/* Phase 4 — new 5-door founder Today landing page. Direct URL
-          always resolves regardless of the feature flag; the flag only
-          controls whether /founder defaults here. */}
       <Route path="/founder/today">
-        {() => <FounderProtectedRoute component={FounderTodayPage} />}
+        {() => <Redirect to="/founder" />}
+      </Route>
+      {/* The Letter is now the fused home; the path redirects for old bookmarks.
+          The /founder/autopilot/{voice,story,control} sub-surfaces stay. */}
+      <Route path="/founder/autopilot">
+        {() => <Redirect to="/founder" />}
+      </Route>
+      {/* "Your Voice" — durable intents + standing orders the autopilot honors. */}
+      <Route path="/founder/autopilot/voice">
+        {() => <FounderProtectedRoute component={FounderVoicePage} />}
+      </Route>
+      {/* "The Story" — glass-box timeline of every autopilot action + its why. */}
+      <Route path="/founder/autopilot/story">
+        {() => <FounderProtectedRoute component={FounderAutopilotStoryPage} />}
+      </Route>
+      {/* The Control Center — master switches + per-domain trust + status. */}
+      <Route path="/founder/autopilot/control">
+        {() => <FounderProtectedRoute component={FounderAutopilotControlPage} />}
       </Route>
       {/* Categorized index of every founder deep-dive — reachable from the
           "All tools" entry in the founder sidebar. Keeps all ~70 secondary
@@ -1202,8 +1228,8 @@ function Router() {
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
       </Route>
       <Route path="/founder/financials">
-        {/* 2026-06-01 cut — FounderFinancialsPage archived; no sidebar entry. */}
-        {() => <Redirect to="/founder/cost" />}
+        {/* 2026-06-01 cut — FounderFinancialsPage archived; redirect to the costs hub. */}
+        {() => <Redirect to="/founder/admin/costs" />}
       </Route>
       <Route path="/founder/compliance-ops">
         {() => <FounderProtectedRoute component={FounderComplianceOpsPage} />}
@@ -1263,29 +1289,15 @@ function Router() {
         {/* 2026-06-01 cut — FounderIntegrationsPage archived; redirect to bridge. */}
         {() => <Redirect to="/founder/bridge" />}
       </Route>
-      {/* Consolidated cost screen — AI spend + infra + vendor lines. */}
-      <Route path="/founder/cost">
-        {() => <FounderProtectedRoute component={FounderCostPage} />}
+      {/* Costs & economics — unified hub (Phase 2 consolidation): cost, AI spend,
+          optimizer, unit economics, observability cost, providers, and the
+          paid-data trial eval, all as tabs under the /founder/admin namespace. */}
+      <Route path="/founder/admin/costs">
+        {() => <FounderProtectedRoute component={FounderAdminCostsPage} />}
       </Route>
       {/* Founder Life-Cockpit — personal taxes, income, deadlines, encrypted vault. */}
       <Route path="/founder/life-cockpit">
         {() => <FounderProtectedRoute component={FounderLifeCockpitPage} />}
-      </Route>
-      <Route path="/founder/ai-costs">
-        {() => <FounderProtectedRoute component={FounderAiCostsPage} />}
-      </Route>
-      <Route path="/founder/observability-cost">
-        {() => <FounderProtectedRoute component={FounderObservabilityCostPage} />}
-      </Route>
-      <Route path="/founder/cost-optimizer">
-        {() => <FounderProtectedRoute component={FounderCostOptimizerPage} />}
-      </Route>
-      <Route path="/founder/unit-economics">
-        {() => <FounderProtectedRoute component={FounderUnitEconomicsPage} />}
-      </Route>
-      {/* Paid-data eval — would a Regrid/Zamplo/PropGrid trial flip decisions? */}
-      <Route path="/founder/paid-data-eval">
-        {() => <FounderProtectedRoute component={FounderPaidDataEvalPage} />}
       </Route>
       <Route path="/founder/dsar">
         {/* 2026-06-01 cut — FounderDsarPage archived; redirect to bridge. */}
@@ -1484,9 +1496,6 @@ function Router() {
       </Route>
       <Route path="/founder/experiments">
         {() => <FounderProtectedRoute component={FounderExperimentsPage} />}
-      </Route>
-      <Route path="/founder/providers">
-        {() => <FounderProtectedRoute component={FounderProvidersPage} />}
       </Route>
       {/* /founder/todo — legacy "what needs you" feed, now folded into the
           Today door (active asks + decisions waiting). Redirects there; the
@@ -2090,9 +2099,13 @@ function AppContent() {
       {user && <Suspense fallback={null}><BetaActivationDetector /></Suspense>}
       {/* Hide the global PaxCopilotRail on /ai because that page has
           its own main-area chat UI ("AcreOS Assistant"). r3 Gabriel
-          caught the dual-chat-UI confusion (UX-R3-001). Elsewhere
-          the rail remains the primary conversational entry point. */}
-      {user && !location.startsWith("/ai") && (
+          caught the dual-chat-UI confusion (UX-R3-001). Also hidden on
+          /founder/*: the founder's conversational surface is Atlas
+          (the /founder shell + AtlasDock on subpages) — mounting the
+          customer copilot there stacked TWO chat FABs on every founder
+          door (mobile eyeball pass, 2026-07-08). Elsewhere the rail
+          remains the primary conversational entry point. */}
+      {user && !location.startsWith("/ai") && !location.startsWith("/founder") && (
         <Suspense fallback={null}>
           <PaxCopilotRail />
         </Suspense>

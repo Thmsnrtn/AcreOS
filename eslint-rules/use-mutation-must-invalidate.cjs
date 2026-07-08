@@ -115,7 +115,19 @@ function callbackContainsInvalidation(callbackNode) {
 
 function hasOptOutComment(node, context) {
   const sourceCode = context.getSourceCode();
-  const comments = sourceCode.getCommentsBefore(node);
+  // Check the CallExpression AND its enclosing statement. The documented
+  // placement ("line immediately above the useMutation call") puts the
+  // comment before `return useMutation({…})` / `const m = useMutation({…})`,
+  // where ESLint attaches it to the ReturnStatement / VariableDeclaration —
+  // getCommentsBefore(call) alone never saw it there.
+  let stmt = node;
+  while (stmt.parent && !/Statement$|Declaration$/.test(stmt.type)) {
+    stmt = stmt.parent;
+  }
+  const comments = [
+    ...sourceCode.getCommentsBefore(node),
+    ...(stmt !== node ? sourceCode.getCommentsBefore(stmt) : []),
+  ];
   for (const c of comments) {
     if (/allow-no-invalidation\s*:/.test(c.value)) return true;
   }

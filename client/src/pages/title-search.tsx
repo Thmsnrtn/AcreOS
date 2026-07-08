@@ -63,6 +63,7 @@ export default function TitleSearchPage() {
   const parcelInputId = useId();
   const addressInputId = useId();
 
+  // allow-no-invalidation: search result lands in page-local state (setResult)
   const searchMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/title-search/search", { parcelId, address }),
     onSuccess: async (res) => {

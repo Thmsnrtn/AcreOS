@@ -23,6 +23,7 @@ import { storage } from "./storage";
 import {
   cancellationSurveys,
   organizations,
+  reactivationSurveys,
   subscriptionHistory,
 } from "@shared/schema";
 import { and, desc, eq } from "drizzle-orm";
@@ -105,6 +106,40 @@ function changelogSinceCancellation(sinceDate: Date | null): {
 }
 
 export function registerSubscriptionRoutes(app: Express): void {
+  /**
+   * POST /api/subscription/reactivation-survey
+   *
+   * The welcome-back page has always POSTed the "what brought you back"
+   * reason here — to an endpoint that didn't exist (the client swallows
+   * the failure, so the growth signal silently 404'd; WS1 sweep,
+   * 2026-07-07). Persists to reactivation_surveys. Best-effort semantics
+   * preserved: validation failures 400, but nothing here should ever block
+   * the resubscribe flow (the client doesn't await success).
+   */
+  app.post(
+    "/api/subscription/reactivation-survey",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req, res) => {
+      try {
+        const authReq = req as AuthenticatedRequest;
+        const returnReason =
+          typeof req.body?.returnReason === "string" ? req.body.returnReason.trim() : "";
+        if (!returnReason || returnReason.length > 200) {
+          return Errors.badRequest(res, "returnReason (string ≤200 chars) is required");
+        }
+        await db.insert(reactivationSurveys).values({
+          organizationId: authReq.organization.id,
+          userId: (authReq.user as any)?.id ? String((authReq.user as any).id) : null,
+          returnReason,
+        });
+        return res.json({ ok: true });
+      } catch (err) {
+        return Errors.internal(res, err as Error);
+      }
+    },
+  );
+
   /**
    * GET /api/subscription/reactivation-context
    *

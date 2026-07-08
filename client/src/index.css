@@ -282,7 +282,7 @@
   --secondary:                   38 31% 83%;
   --secondary-foreground:        28 33% 9%;
   --muted:                       38 31% 83%;
-  --muted-foreground:            34 21% 40%;
+  --muted-foreground:            34 21% 34%;
   --accent:                      36 61% 45%;
   --accent-foreground:           41 51% 92%;
   --destructive:                 11 73% 32%;
@@ -368,7 +368,7 @@
   --secondary:                   33 28% 13%;
   --secondary-foreground:        39 50% 84%;
   --muted:                       33 28% 13%;
-  --muted-foreground:            41 19% 46%;
+  --muted-foreground:            41 19% 51%;
   --accent:                      40 64% 57%;
   --accent-foreground:           31 22% 6%;
   --destructive:                 11 60% 47%;
@@ -467,7 +467,7 @@
   --secondary:                   43 56.4% 89.2%;
   --secondary-foreground:        31 67.4% 8.4%;
   --muted:                       43 56.4% 89.2%;
-  --muted-foreground:            39 27.1% 44.1%;
+  --muted-foreground:            39 27.1% 37.1%;
   --accent:                      186 25.5% 40%;
   --accent-foreground:           43 100% 97.3%;
   --destructive:                 11 75.5% 40%;
@@ -550,7 +550,7 @@
   --secondary:                   25 32.4% 13.3%;
   --secondary-foreground:        38 73.1% 89.8%;
   --muted:                       25 32.4% 13.3%;
-  --muted-foreground:            37 18.7% 47.3%;
+  --muted-foreground:            37 18.7% 51.3%;
   --accent:                      184 28% 60.8%;
   --accent-foreground:           26 67.7% 6.1%;
   --destructive:                 13 80.3% 66.1%;
@@ -634,7 +634,7 @@
   --secondary:                   44 23.4% 90.8%;
   --secondary-foreground:        60 9.1% 4.3%;
   --muted:                       44 23.4% 90.8%;
-  --muted-foreground:            60 4% 43.7%;
+  --muted-foreground:            60 4% 38.7%;
   --accent:                      60 9.1% 4.3%;
   --accent-foreground:           50 42.9% 97.3%;
   --destructive:                 3 74.6% 35.5%;
@@ -718,7 +718,7 @@
   --secondary:                   60 4.5% 13.1%;
   --secondary-foreground:        46 33.3% 92.4%;
   --muted:                       60 4.5% 13.1%;
-  --muted-foreground:            46 5.4% 46.9%;
+  --muted-foreground:            46 5.4% 53.9%;
   --accent:                      46 33.3% 92.4%;
   --accent-foreground:           60 5.9% 6.7%;
   --destructive:                 5 78.3% 58.4%;
@@ -802,7 +802,7 @@
   --secondary:                   60 8.3% 95.3%;
   --secondary-foreground:        0 0% 3.9%;
   --muted:                       60 8.3% 95.3%;
-  --muted-foreground:            0 0% 46.7%;
+  --muted-foreground:            0 0% 42.7%;
   --accent:                      0 0% 3.9%;
   --accent-foreground:           0 0% 100%;
   --destructive:                 5 69.2% 40.8%;
@@ -885,7 +885,7 @@
   --secondary:                   0 0% 10.2%;
   --secondary-foreground:        0 0% 95.7%;
   --muted:                       0 0% 10.2%;
-  --muted-foreground:            0 0% 47.8%;
+  --muted-foreground:            0 0% 51.8%;
   --accent:                      0 0% 95.7%;
   --accent-foreground:           0 33.3% 2.9%;
   --destructive:                 5 100% 61%;
@@ -970,7 +970,7 @@
   --secondary:                   69 30.2% 91.6%;
   --secondary-foreground:        109 33.3% 9.4%;
   --muted:                       69 30.2% 91.6%;
-  --muted-foreground:            87 8.2% 47.8%;
+  --muted-foreground:            87 8.2% 39.8%;
   --accent:                      37 69.3% 50.2%;
   --accent-foreground:           60 53.8% 97.5%;
   --destructive:                 14 60% 49%;
@@ -1053,7 +1053,7 @@
   --secondary:                   90 21.1% 14.9%;
   --secondary-foreground:        73 40.9% 91.4%;
   --muted:                       90 21.1% 14.9%;
-  --muted-foreground:            79 9.9% 49.6%;
+  --muted-foreground:            79 9.9% 54.6%;
   --accent:                      41 85.8% 64.1%;
   --accent-foreground:           92 44.8% 5.7%;
   --destructive:                 16 76.7% 64.7%;
@@ -1137,7 +1137,7 @@
   --secondary:                   216 31.3% 93.7%;
   --secondary-foreground:        220 48.8% 8.4%;
   --muted:                       216 31.3% 93.7%;
-  --muted-foreground:            219 14.5% 50%;
+  --muted-foreground:            219 14.5% 43%;
   --accent:                      184 84.4% 27.6%;
   --accent-foreground:           0 0% 100%;
   --destructive:                 350 69.6% 42.5%;
@@ -1220,7 +1220,7 @@
   --secondary:                   215 29.7% 14.5%;
   --secondary-foreground:        217 56.3% 93.7%;
   --muted:                       215 29.7% 14.5%;
-  --muted-foreground:            217 11.9% 52.4%;
+  --muted-foreground:            217 11.9% 56.4%;
   --accent:                      184 55.8% 54.7%;
   --accent-foreground:           218 63.2% 7.5%;
   --destructive:                 350 84.9% 63.5%;
@@ -1309,8 +1309,10 @@
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-foreground/25;
+@media (hover: hover) {
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-foreground/25;
+  }
 }
 
 /* Apple-style Glass Panel Effect — Liquid Glass */
@@ -1812,36 +1814,22 @@ body[data-offline-banner="true"] [data-page-topbar] {
    a second tap to navigate/activate. `manipulation` keeps pan + pinch-zoom but
    drops the double-tap-zoom + its ~300ms delay, so links/buttons fire on the
    first tap.
-   This list MUST cover everything the user can tap — the earlier
-   role-only scoping missed the bulk of the app's navigable surfaces, which are
-   clickable DIVs/cards/rows (onClick handlers, no ARIA role). Those are caught
-   here by `.cursor-pointer` (the clickable affordance, 106+ files) and
-   `[tabindex]` (focusable interactives), plus the remaining interactive roles.
-   The map canvas keeps its own double-tap-zoom: it sets touch-action inline and
-   carries no `.cursor-pointer`/role from this list, so it is not matched. */
-a,
-button,
-[role="button"],
-[role="link"],
-[role="tab"],
-[role="menuitem"],
-[role="menuitemcheckbox"],
-[role="menuitemradio"],
-[role="option"],
-[role="switch"],
-[role="checkbox"],
-[role="radio"],
-[role="treeitem"],
-[role="gridcell"],
-.cursor-pointer,
-[tabindex],
-label,
-summary,
-select,
-input[type="submit"],
-input[type="button"],
-input[type="checkbox"],
-input[type="radio"] {
+
+   PERMANENT, NON-LEAKY FIX (do not revert to a selector list). This was fixed
+   ~7 times via curated selector lists (a, button, [role], .cursor-pointer,
+   [tabindex]…) and kept returning, because the app has 477+ files with onClick
+   and any clickable <div> that lacks .cursor-pointer / a role / tabindex
+   re-arms double-tap-zoom — pure whack-a-mole. The universal rule below covers
+   EVERY element forever at specificity 0, so the double-tap can never sneak
+   back in via a new clickable element.
+
+   `manipulation` preserves panning + pinch-zoom (so accessibility zoom still
+   works), and only drops the double-tap-zoom gesture. Surfaces that genuinely
+   need a different touch-action — the map canvas (its own double-tap-zoom), the
+   Vaul drawer / dnd-kit draggables (touch-action: none for drag) — set their
+   own value inline or via a utility class, which beats this universal selector
+   on specificity and wins. */
+* {
   touch-action: manipulation;
 }
 

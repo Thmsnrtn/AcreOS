@@ -10,6 +10,7 @@
  */
 
 import { db } from "../db";
+import { centsFromDecimal } from "@shared/finance/cents";
 import { notes, taxEscrowPayments, payments, properties, leads } from "@shared/schema";
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 import { addDays, addMonths, isAfter, isBefore, differenceInDays, format } from "date-fns";
@@ -189,12 +190,16 @@ export async function creditMonthlyTaxEscrow(noteId: number, orgId: number): Pro
 
   if (!note || !note.taxEscrowEnabled) return;
 
-  const monthly = parseFloat(note.monthlyTaxEscrow || "0");
-  const current = parseFloat(note.taxEscrowBalance || "0");
+  // W3.3 money rule (2026-07 sweep): escrow is customer money — the
+  // read-modify-write runs in INTEGER CENTS and stores an exact 2-decimal
+  // string. The old float add drifted the stored balance over months of
+  // credits.
+  const monthlyCents = centsFromDecimal(note.monthlyTaxEscrow);
+  const currentCents = centsFromDecimal(note.taxEscrowBalance);
 
   await db
     .update(notes)
-    .set({ taxEscrowBalance: String(current + monthly) })
+    .set({ taxEscrowBalance: ((currentCents + monthlyCents) / 100).toFixed(2) })
     .where(eq(notes.id, noteId));
 }
 
@@ -226,11 +231,18 @@ export async function recordTaxPaymentFromEscrow(
 
   if (!note) throw new Error("Note not found");
 
-  const currentBalance = parseFloat(note.taxEscrowBalance || "0");
-  const escrowUsed = Math.min(currentBalance, input.amountPaid);
-  const shortfall = Math.max(0, input.amountPaid - currentBalance);
-  const excessRefunded = Math.max(0, currentBalance - input.amountPaid);
-  const newBalance = currentBalance - escrowUsed;
+  // W3.3 money rule: all splits computed in integer cents, converted back
+  // to exact 2-decimal dollars only at the write/return edge.
+  const currentBalanceCents = centsFromDecimal(note.taxEscrowBalance);
+  const amountPaidCents = centsFromDecimal(input.amountPaid);
+  const escrowUsedCents = Math.min(currentBalanceCents, amountPaidCents);
+  const shortfallCents = Math.max(0, amountPaidCents - currentBalanceCents);
+  const excessRefundedCents = Math.max(0, currentBalanceCents - amountPaidCents);
+  const newBalanceCents = currentBalanceCents - escrowUsedCents;
+  const escrowUsed = escrowUsedCents / 100;
+  const shortfall = shortfallCents / 100;
+  const excessRefunded = excessRefundedCents / 100;
+  const newBalance = newBalanceCents / 100;
 
   // Record the payment
   await db.insert(taxEscrowPayments).values({
@@ -255,7 +267,7 @@ export async function recordTaxPaymentFromEscrow(
   await db
     .update(notes)
     .set({
-      taxEscrowBalance: String(newBalance),
+      taxEscrowBalance: (newBalanceCents / 100).toFixed(2),
       lastTaxPaymentDate: input.paymentDate,
       taxPaymentYear: input.taxYear,
     })

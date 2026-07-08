@@ -32,6 +32,10 @@ const DEFAULT_TOPIC = "acreos-solene-urgent-norton-9k4m7q3z";
 
 const NTFY_TIMEOUT_MS = 5000;
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export interface SendPageInput {
   severity: SolenePageSeverity;
   subject: string;
@@ -44,10 +48,17 @@ export interface SendPageResult {
   deliveryDetail: string | null;
 }
 
-/** Resolve the ntfy topic from env (or fall back to the default). */
-export function pageTopic(): string {
+/**
+ * Resolve the ntfy topic. In production an UNSET env returns null — the
+ * built-in default topic string ships in the public repo, so pushing real
+ * operational pages (incidents, MRR alerts, panic stops) to it would leak
+ * founder telemetry to anyone who subscribes, while looking "delivered".
+ * Dev/test keep the default so local paging is testable out of the box.
+ */
+export function pageTopic(): string | null {
   const t = process.env.SOLENE_PAGE_TOPIC;
   if (typeof t === "string" && t.length > 0) return t;
+  if (process.env.NODE_ENV === "production") return null;
   return DEFAULT_TOPIC;
 }
 
@@ -58,7 +69,15 @@ export function pageTopic(): string {
  */
 export async function sendSolenePage(input: SendPageInput): Promise<SendPageResult> {
   const { severity, subject, body } = input;
-  const topic = pageTopic();
+  // Topic resolution: a founder-connected value (Platform Connections, no
+  // redeploy) wins; otherwise the env/production semantics of pageTopic().
+  // Fail-soft — a broken connections layer never blocks a page.
+  let topic = pageTopic();
+  try {
+    const { resolveConnection } = await import("../connections/platformConnections");
+    const connected = await resolveConnection("paging", "topic");
+    if (connected.source === "db" && connected.value) topic = connected.value;
+  } catch { /* env semantics stand */ }
 
   const priority = severity === "critical" ? "5" : "4";
   const tags = severity === "critical" ? "warning,siren" : "warning";
@@ -66,15 +85,16 @@ export async function sendSolenePage(input: SendPageInput): Promise<SendPageResu
   let deliveryStatus: SolenePageDeliveryStatus = "skipped";
   let deliveryDetail: string | null = null;
 
-  if (!process.env.SOLENE_PAGE_TOPIC && process.env.NODE_ENV === "production") {
-    // In prod, fall back to default topic but still log so we can see if
-    // Tom forgot to set the env. Not a fatal failure — the default is
-    // deliberately a real (opaque) topic; the env var is the rotation knob.
-    logger.warn(
-      "[solenePager] SOLENE_PAGE_TOPIC not set; using built-in default topic",
+  if (topic === null) {
+    // Production with no SOLENE_PAGE_TOPIC: refuse to push to the public
+    // repo-visible default (telemetry leak + nobody is subscribed). The
+    // event row below still persists so the Control surface shows the
+    // page; the error log is the loud signal that paging is unconfigured.
+    logger.error(
+      "[solenePager] SOLENE_PAGE_TOPIC not set in production — page NOT pushed (persisted only). Set the env to restore founder notifications.",
     );
-  }
-
+    deliveryDetail = "SOLENE_PAGE_TOPIC unset in production — push refused";
+  } else {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), NTFY_TIMEOUT_MS);
@@ -110,6 +130,51 @@ export async function sendSolenePage(input: SendPageInput): Promise<SendPageResu
       "[solenePager] ntfy push threw",
       err instanceof Error ? err : undefined,
     );
+  }
+  }
+
+  // Second channel (step-away hardening): when the push did NOT reach the
+  // founder — ntfy failed, or production refused the unset topic — fall back
+  // to email via FOUNDER_EMAIL. One transport outage must never silence a
+  // critical page. The email reaching the founder counts as delivery; the
+  // detail records the full path honestly. Best-effort: an email failure
+  // never throws past here.
+  if (deliveryStatus !== "delivered") {
+    let founderEmail = process.env.FOUNDER_EMAIL?.trim() || null;
+    try {
+      const { resolveConnection } = await import("../connections/platformConnections");
+      const connected = await resolveConnection("paging", "founder_email");
+      if (connected.source === "db" && connected.value) founderEmail = connected.value;
+    } catch { /* env stands */ }
+    if (founderEmail) {
+      try {
+        const { emailService } = await import("../emailService");
+        const result = await emailService.sendEmail({
+          to: founderEmail,
+          from: process.env.SOLENE_PAGE_FROM ?? "alerts@acreos.io",
+          fromName: "Solene (AcreOS autopilot)",
+          subject: `[Solene ${severity.toUpperCase()}] ${subject}`,
+          html: `<p><strong>${escapeHtml(subject)}</strong></p><pre style="font-family:monospace;white-space:pre-wrap">${escapeHtml(body)}</pre><p style="color:#666;font-size:12px">Sent by email because the push channel ${
+            topic === null ? "is unconfigured (SOLENE_PAGE_TOPIC unset)" : "failed"
+          }.</p>`,
+        });
+        if (result.success) {
+          deliveryDetail = `${deliveryDetail ?? "push not delivered"}; email fallback delivered to FOUNDER_EMAIL`;
+          deliveryStatus = "delivered";
+        } else {
+          deliveryDetail = `${deliveryDetail ?? "push not delivered"}; email fallback ALSO failed: ${(result.error ?? "unknown").slice(0, 150)}`;
+          logger.error(
+            "[solenePager] BOTH page channels failed — founder is unreachable for this page",
+          );
+        }
+      } catch (err) {
+        deliveryDetail = `${deliveryDetail ?? "push not delivered"}; email fallback threw: ${err instanceof Error ? err.message.slice(0, 150) : String(err).slice(0, 150)}`;
+        logger.error(
+          "[solenePager] BOTH page channels failed — founder is unreachable for this page",
+          err instanceof Error ? err : undefined,
+        );
+      }
+    }
   }
 
   // Persist regardless of delivery outcome.

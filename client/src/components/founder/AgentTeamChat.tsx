@@ -163,6 +163,7 @@ export function AgentTeamChat() {
     }
   }, [messages]);
 
+  // allow-no-invalidation: chat messages append to component-local message state via onMutate/onSuccess
   const sendMessage = useMutation({
     mutationFn: async (text: string) => {
       const agent = selectedAgent || detectAgent(text);

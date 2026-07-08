@@ -69,6 +69,7 @@ export function SessionsPanel({
       queryKey: ["/api/admin/users", user.id, "sessions"],
     });
 
+  // allow-no-invalidation: onSuccess calls the local refresh() helper (invalidateQueries wrapper above)
   const revokeOne = useMutation({
     mutationFn: async (sid: string) => {
       const res = await apiRequest(
@@ -93,6 +94,7 @@ export function SessionsPanel({
     },
   });
 
+  // allow-no-invalidation: onSuccess calls the local refresh() helper (invalidateQueries wrapper above)
   const revokeAllOthers = useMutation({
     mutationFn: async () => {
       const res = await apiRequest(

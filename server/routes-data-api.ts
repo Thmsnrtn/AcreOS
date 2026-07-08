@@ -9,36 +9,38 @@ import {
   transactionTraining,
   marketplaceTransactions,
 } from "@shared/schema";
+import { isAuthenticated, requireFounder } from "./auth";
+import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 
 const router = Router();
 
+// Founder-session middleware for the ADMIN subset (roadmap W1.6). This router
+// mounts WITHOUT session middleware (partner calls carry only x-api-key), so
+// `req.organization` was always undefined here — the founder key-management
+// endpoints failed closed (safe but unreachable) and /stats + /coverage were
+// wide open. The admin routes now mount the session chain explicitly.
+const founderOnly = [isAuthenticated, getOrCreateOrg, requireFounder] as const;
+
 // ── API Key Authentication Middleware ──────────────────────────────────────────
+// Hash-at-rest verification via services/dataApiKeys (W1.6): the presented
+// key is hashed and looked up — no stored plaintext participates. Legacy
+// plaintext rows verify once and upgrade themselves.
 async function requireApiKey(req: Request, res: Response, next: any) {
   const apiKey = req.headers["x-api-key"] as string;
-  const org = req.organization;
-
-  // Allow admin session auth as fallback
-  if (org?.isFounder) return next();
 
   if (!apiKey) {
     return Errors.unauthorized(res);
   }
 
   try {
-    const [key] = await db.select().from(systemApiKeys)
-      .where(and(
-        eq(systemApiKeys.apiKey, apiKey),
-        eq(systemApiKeys.isActive, true)
-      ))
-      .limit(1);
-
+    const { verifyApiKey } = await import("./services/dataApiKeys");
+    const key = await verifyApiKey(apiKey);
     if (!key) {
       return Errors.unauthorized(res);
     }
-
     (req as any).apiKeyId = key.id;
     (req as any).apiKeyProvider = key.provider;
     next();
@@ -146,15 +148,14 @@ router.get("/demand/:state", requireApiKey, async (req: Request, res: Response) 
   }
 });
 
-// ── API Key Management (Admin only) ────────────────────────────────────────────
-router.get("/keys", async (req: Request, res: Response) => {
-  const org = req.organization;
-  if (!org?.isFounder) return Errors.forbidden(res, "Admin access required");
+// ── API Key Management (founder only — session chain mounted per-route) ───────
+router.get("/keys", ...founderOnly, async (req: Request, res: Response) => {
   try {
     const keys = await db.select({
       id: systemApiKeys.id,
       provider: systemApiKeys.provider,
       displayName: systemApiKeys.displayName,
+      keyLast4: systemApiKeys.keyLast4,
       isActive: systemApiKeys.isActive,
       lastValidatedAt: systemApiKeys.lastValidatedAt,
       createdAt: systemApiKeys.createdAt,
@@ -167,32 +168,40 @@ router.get("/keys", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/keys", async (req: Request, res: Response) => {
-  const org = req.organization;
-  if (!org?.isFounder) return Errors.forbidden(res, "Admin access required");
+router.post("/keys", ...founderOnly, async (req: Request, res: Response) => {
   try {
     const { name, provider } = req.body;
     if (!name) return Errors.badRequest(res, "Name is required");
 
-    const apiKeyValue = `ak_${Buffer.from(Math.random().toString()).toString("base64").substring(0, 32)}`;
+    // W1.6: CSPRNG key, hash-at-rest. The plaintext exists exactly once —
+    // in this response.
+    const { generateApiKey } = await import("./services/dataApiKeys");
+    const generated = generateApiKey();
     const [key] = await db.insert(systemApiKeys).values({
       provider: provider || `partner_${Date.now()}`,
       displayName: name,
-      apiKey: apiKeyValue,
+      apiKey: null,
+      keyHash: generated.hash,
+      keyLast4: generated.last4,
       isActive: true,
       validationStatus: "active",
-    }).returning();
+    }).returning({
+      id: systemApiKeys.id,
+      provider: systemApiKeys.provider,
+      displayName: systemApiKeys.displayName,
+      keyLast4: systemApiKeys.keyLast4,
+      isActive: systemApiKeys.isActive,
+      createdAt: systemApiKeys.createdAt,
+    });
 
-    res.json({ key: { ...key, apiKey: apiKeyValue }, message: "Save this key — it won't be shown again." });
+    res.json({ key: { ...key, apiKey: generated.plaintext }, message: "Save this key — it won't be shown again." });
   } catch (err: any) {
     logger.error("Create API key error", err);
     Errors.internal(res, err);
   }
 });
 
-router.delete("/keys/:id", async (req: Request, res: Response) => {
-  const org = req.organization;
-  if (!org?.isFounder) return Errors.forbidden(res, "Admin access required");
+router.delete("/keys/:id", ...founderOnly, async (req: Request, res: Response) => {
   try {
     await db.update(systemApiKeys)
       .set({ isActive: false, updatedAt: new Date() })
@@ -205,9 +214,7 @@ router.delete("/keys/:id", async (req: Request, res: Response) => {
 });
 
 // ── API Key Usage Stats ───────────────────────────────────────────────────────
-router.get("/usage/:keyId", async (req: Request, res: Response) => {
-  const org = req.organization;
-  if (!org?.isFounder) return Errors.forbidden(res, "Admin access required");
+router.get("/usage/:keyId", ...founderOnly, async (req: Request, res: Response) => {
   try {
     const keyId = parseInt(req.params.keyId);
     const [key] = await db.select().from(systemApiKeys).where(eq(systemApiKeys.id, keyId)).limit(1);
@@ -242,8 +249,8 @@ router.get("/usage/:keyId", async (req: Request, res: Response) => {
   }
 });
 
-// ── Data API Stats (Admin) ─────────────────────────────────────────────────────
-router.get("/stats", async (req: Request, res: Response) => {
+// ── Data API Stats (founder only — was UNAUTHENTICATED before W1.6) ───────────
+router.get("/stats", ...founderOnly, async (req: Request, res: Response) => {
   try {
     const [txCount] = await db.select({ count: sql<number>`COUNT(*)` }).from(transactionTraining);
     const [stateCount] = await db.select({ count: sql<number>`COUNT(DISTINCT state)` }).from(transactionTraining);
@@ -265,8 +272,8 @@ router.get("/stats", async (req: Request, res: Response) => {
   }
 });
 
-// ── Coverage Report ────────────────────────────────────────────────────────────
-router.get("/coverage", async (req: Request, res: Response) => {
+// ── Coverage Report (founder only — was UNAUTHENTICATED before W1.6) ──────────
+router.get("/coverage", ...founderOnly, async (req: Request, res: Response) => {
   try {
     const stateCoverage = await db.select({
       state: transactionTraining.state,

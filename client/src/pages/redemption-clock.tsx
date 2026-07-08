@@ -54,6 +54,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { queryClient } from "@/lib/queryClient";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface Certificate {
   id: string;
@@ -246,11 +247,11 @@ export default function RedemptionClockPage() {
           {certs.map((c) => {
             const tone =
               c.daysRemaining < 0
-                ? "border-rose-500/60"
+                ? "border-acr-neg"
                 : c.daysRemaining <= 7
-                  ? "border-rose-400/60"
+                  ? "border-acr-neg"
                   : c.daysRemaining <= 30
-                    ? "border-amber-400/60"
+                    ? "border-acr-warn"
                     : "";
             return (
               <Card
@@ -280,11 +281,11 @@ export default function RedemptionClockPage() {
                     <div
                       className={`text-2xl font-semibold tabular-nums ${
                         c.daysRemaining < 0
-                          ? "text-rose-600 dark:text-rose-400"
+                          ? "text-acr-neg"
                           : c.daysRemaining <= 7
-                            ? "text-rose-600 dark:text-rose-400"
+                            ? "text-acr-neg"
                             : c.daysRemaining <= 30
-                              ? "text-amber-600 dark:text-amber-400"
+                              ? "text-acr-warn"
                               : ""
                       }`}
                     >
@@ -306,7 +307,7 @@ export default function RedemptionClockPage() {
                     <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Rate
                     </div>
-                    <div className={`font-mono tabular-nums ${c.preliminary ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                    <div className={`font-mono tabular-nums ${c.preliminary ? "text-acr-warn" : ""}`}>
                       {fmtPct(c.appliedRateBps)}{c.preliminary && "*"}
                       {c.preliminary && <span className="sr-only"> (preliminary rate — verify with the county clerk)</span>}
                     </div>
@@ -321,7 +322,7 @@ export default function RedemptionClockPage() {
                     <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Interest
                     </div>
-                    <div className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
+                    <div className="font-mono tabular-nums text-acr-pos">
                       +{fmtUsd(c.currentInterestCents)}
                     </div>
                   </div>
@@ -567,7 +568,7 @@ function CreateCertificateDialog({ open, onOpenChange }: { open: boolean; onOpen
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>Cancel</Button>
+          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>{Verbs.CANCEL}</Button>
           <Button
             onClick={() => submit.mutate()}
             disabled={!state || !county || !apn || !saleDate || !purchase || submit.isPending}

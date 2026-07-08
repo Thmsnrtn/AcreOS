@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 // ── Types ────────────────────────────────────────────────────────────────
 interface MailRouting {
@@ -505,7 +506,7 @@ function useRoutingSection<T extends object>({
             ) : (
               <Save className="w-3.5 h-3.5" aria-hidden="true" />
             )}
-            Save {suffix}
+            {Verbs.SAVE} {suffix}
           </Button>
         </div>
       </CardContent>

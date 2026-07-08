@@ -17,6 +17,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, gte, sql, and, lt } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { MODELS } from "./models";
 
 // ---------------------------------------------------------------------------
 // OpenRouter client (Claude Opus for deep analysis, DeepSeek for cheap tasks)
@@ -32,8 +33,8 @@ const openrouterClient = new OpenAI({
   },
 });
 
-const ASSESSMENT_MODEL = "anthropic/claude-opus-4-6";
-const CHEAP_MODEL = "deepseek/deepseek-chat";
+const ASSESSMENT_MODEL = MODELS.OPUS;
+const CHEAP_MODEL = MODELS.DEEPSEEK_CHAT;
 
 // System org ID used for platform-wide agent tasks that are not tied to a
 // specific customer organisation. org 1 is the founder / system org.

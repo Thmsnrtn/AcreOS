@@ -80,6 +80,16 @@ interface ScoringFactors {
 // same weights / 300–850 scale / grade thresholds as the in-app score. One
 // methodology, two coverage levels — never two scales.
 
+/**
+ * Published methodology version (mature-machine H3: "published, versioned
+ * methodology"). Rev this whenever the weights, scale mapping, or grade
+ * thresholds change — the public explainer (client/src/pages/landing/
+ * LandCreditScore.tsx via copy.ts) states the same version by hand; keep
+ * them in sync. Persisted with every public partial score so an old report
+ * is auditable against the methodology that produced it.
+ */
+export const LCS_METHODOLOGY_VERSION = "v1";
+
 /** Canonical dimension weights (must sum to 100). */
 export const LCS_DIMENSION_WEIGHTS = {
   location: 25,

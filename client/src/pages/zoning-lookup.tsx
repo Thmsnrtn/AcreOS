@@ -39,6 +39,7 @@ export default function ZoningLookupPage() {
   const addressId = useId();
   const parcelInputId = useId();
 
+  // allow-no-invalidation: lookup result lands in page-local state (setResult)
   const lookupMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/zoning/lookup", { address, parcelId }),
     onSuccess: async (res) => {

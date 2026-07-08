@@ -40,6 +40,7 @@ export function FreezeAutopayPanel({ onAction }: { onAction: () => void }) {
   const [untilDate, setUntilDate] = useState("");
   const [confirm, setConfirm] = useState(false);
 
+  // allow-no-invalidation: onSuccess calls the parent's onAction() prop, which refreshes the console
   const mutation = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = { reason };

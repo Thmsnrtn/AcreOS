@@ -36,7 +36,7 @@ interface ProviderSummary {
   totalLookups: number;
 }
 
-export default function FounderProvidersPage() {
+export function ProvidersContent() {
   useDocumentTitle("Data providers");
   const { data, isLoading, isError, refetch } = useQuery<ProviderSummary>({
     queryKey: ["/api/founder/intelligence/providers"],
@@ -44,7 +44,7 @@ export default function FounderProvidersPage() {
   });
 
   return (
-    <PageShell label="Data Providers">
+    <>
       <div className="space-y-6 max-w-5xl mx-auto">
         <PageHeader
           title="Data providers"
@@ -172,6 +172,14 @@ export default function FounderProvidersPage() {
           </>
         )}
       </div>
+    </>
+  );
+}
+
+export default function FounderProvidersPage() {
+  return (
+    <PageShell label="Data Providers">
+      <ProvidersContent />
     </PageShell>
   );
 }

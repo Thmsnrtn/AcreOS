@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organization";
+import { TIER_LIMITS, type SubscriptionTier } from "@shared/billing/tier-limits";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -153,7 +154,31 @@ export function GettingStartedChecklist() {
 
   const investorType = (organization?.investorType as "land" | "notes" | "both" | undefined) ?? "land";
   const personaItems = PERSONA_CHECKLISTS[investorType] ?? PERSONA_CHECKLISTS.land;
-  const items = personaItems.map((item) => ({
+
+  // W2.1 (activation wedge): every tier can now reach the mailer step. The
+  // free tier gets a small lifetime allowance (FREE_TIER_LIFETIME_PIECES on
+  // the server queue route) so "send your first mailer" is completable
+  // before paying — the wedge IS the demo. The step used to be hidden when
+  // TIER_LIMITS[tier].campaigns === 0, which made the magic moment
+  // structurally unreachable for the tier that most needs to feel it. Free
+  // users see wedge-flavored copy; the server caps the pieces and points
+  // spent users at the plan comparison.
+  const tier = (organization?.subscriptionTier as SubscriptionTier | undefined) ?? "free";
+  const campaignsAllowed = TIER_LIMITS[tier]?.campaigns !== 0;
+  const visibleItems = campaignsAllowed
+    ? personaItems
+    : personaItems.map((item) =>
+        item.id === "campaign"
+          ? {
+              ...item,
+              title: "Send your first letters — free",
+              description:
+                "Your first 5 pieces are on us. Pick a template, pick up to 5 sellers, watch responses land",
+            }
+          : item,
+      );
+
+  const items = visibleItems.map((item) => ({
     ...item,
     isComplete: checklistStatus ? checklistStatus[STATUS_KEYS[item.id]] : false,
   }));

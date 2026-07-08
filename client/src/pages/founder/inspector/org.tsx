@@ -55,6 +55,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -497,6 +498,7 @@ function OverridesPanel({ orgId, data }: { orgId: number; data: OrgCostResponse 
         q.queryKey[0].startsWith(`/api/founder/inspector/org/${orgId}/cost`),
     });
 
+  // allow-no-invalidation: onSuccess calls the local invalidate() helper (predicate-based invalidateQueries above)
   const pauseMutation = useMutation({
     mutationFn: async (vars: { channel: string; reason: string; resume?: boolean }) => {
       const r = await apiRequest("POST", `/api/founder/inspector/org/${orgId}/pause-channel`, vars);
@@ -510,6 +512,7 @@ function OverridesPanel({ orgId, data }: { orgId: number; data: OrgCostResponse 
       toast({ title: "Override failed", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
   });
 
+  // allow-no-invalidation: onSuccess calls the local invalidate() helper (predicate-based invalidateQueries above)
   const throttleMutation = useMutation({
     mutationFn: async (vars: { channel: string; dailyCap: number; reason: string }) => {
       const r = await apiRequest("POST", `/api/founder/inspector/org/${orgId}/throttle`, vars);
@@ -602,7 +605,7 @@ function PauseLobDialog({
               setReason("");
             }}
           >
-            Confirm
+            {Verbs.CONFIRM}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -664,7 +667,7 @@ function ThrottleDialog({
               setReason("");
             }}
           >
-            Save
+            {Verbs.SAVE}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -680,6 +683,7 @@ function DraftEmailDialog({ orgId, orgName }: { orgId: number; orgName: string }
   );
   const [draft, setDraft] = useState<{ mailto: string | null } | null>(null);
   const { toast } = useToast();
+  // allow-no-invalidation: drafts a mailto link rendered from local state — no cached reads change
   const mutation = useMutation({
     mutationFn: async () => {
       const r = await apiRequest("POST", `/api/founder/inspector/org/${orgId}/draft-email`, {
@@ -774,7 +778,7 @@ function Metric({
             (tone === "negative"
               ? "text-destructive"
               : tone === "positive"
-                ? "text-emerald-600 dark:text-emerald-400"
+                ? "text-acr-pos"
                 : "")
           }
         >

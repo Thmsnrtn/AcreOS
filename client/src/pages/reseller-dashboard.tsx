@@ -113,6 +113,7 @@ function CreateTenantDialog({ onSuccess }: { onSuccess: () => void }) {
   const adminEmailId = useId();
   const notesId = useId();
 
+  // allow-no-invalidation: the parent's onSuccess prop invalidates /api/white-label/tenants (see dialog usage)
   const createMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/white-label/tenants", {
@@ -497,6 +498,7 @@ const FONT_OPTIONS = [
 
 function WhiteLabelPanel() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [branding, setBranding] = useState({
     brandName: "My Brand",
     logoUrl: "",
@@ -521,7 +523,12 @@ function WhiteLabelPanel() {
       if (!res.ok) throw new Error((await res.json()).error ?? "Save failed");
       return res.json();
     },
-    onSuccess: () => toast({ title: "Branding saved", description: "Your white-label settings have been updated." }),
+    onSuccess: () => {
+      // useBrandName reads /api/white-label/config — the saved branding
+      // must reach the live chrome without a reload.
+      queryClient.invalidateQueries({ queryKey: ["/api/white-label/config"] });
+      toast({ title: "Branding saved", description: "Your white-label settings have been updated." });
+    },
     onError: (e: any) =>
       toast({ title: "Couldn't save branding", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });

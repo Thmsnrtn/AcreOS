@@ -23,6 +23,7 @@ import { ConfidenceSparkline } from "@/components/today/ConfidenceSparkline";
 import { SwipeableCard } from "@/components/mobile/SwipeableCard";
 import { lightImpact } from "@/lib/haptics";
 import { staggerContainer, staggerItem } from "@/lib/animations";
+import { Verbs } from "@/lib/labels";
 import {
   Sparkles,
   Zap,
@@ -368,7 +369,7 @@ export function DecisionQueue({
               data-testid="button-restore-snoozed-decisions"
             >
               <RotateCcw className="w-3 h-3" aria-hidden="true" />
-              Restore {snoozedCount}
+              {Verbs.RESTORE} {snoozedCount}
             </Button>
           )}
           <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">

@@ -34,7 +34,7 @@ export function VirtualTable<T>({
   return (
     <div className={`relative overflow-auto ${className}`} ref={parentRef} style={{ height: "600px" }}>
       {renderHeader && (
-        <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="sticky top-0 z-docked bg-background border-b">
           {renderHeader()}
         </div>
       )}

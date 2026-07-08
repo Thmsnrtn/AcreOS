@@ -19,6 +19,7 @@ import {
   real,
   check,
   primaryKey,
+  serial,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { organizations, properties, buyerProfiles } from "../schema";
@@ -289,3 +290,49 @@ export type InsertBuyerBlast = typeof buyerBlasts.$inferInsert;
 export type BuyerBlastRecipient = typeof buyerBlastRecipients.$inferSelect;
 export type InsertBuyerBlastRecipient = typeof buyerBlastRecipients.$inferInsert;
 
+
+// ============================================================================
+// CONTRACT ASSIGNMENTS — the wholesaler's defining mechanic (roadmap W6.1)
+// ----------------------------------------------------------------------------
+// The vertical had state rules, EMD, double-close, and buyer blasts — but no
+// record of the actual assignment: original contract → end buyer → fee →
+// signed assignment doc. The wholesaler dashboard was forced to proxy
+// assignment revenue with analysisResults.netProfit. This table is the real
+// thing; fee is INTEGER CENTS per the W3.3 money rule.
+// ============================================================================
+
+export const CONTRACT_ASSIGNMENT_STATUSES = [
+  "draft",              // assignment record created, no document yet
+  "doc_generated",      // assignment contract generated from the template
+  "sent_for_signature", // signing links issued to assignor/assignee
+  "signed",             // fully executed
+  "cancelled",
+] as const;
+export type ContractAssignmentStatus = typeof CONTRACT_ASSIGNMENT_STATUSES[number];
+
+export const contractAssignments = pgTable(
+  "contract_assignments",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    dealId: integer("deal_id").notNull(), // deals.id (FK enforced in migration; deals lives in ../schema)
+    // End buyer: a buyer profile when one exists, else free-text name.
+    endBuyerProfileId: integer("end_buyer_profile_id").references(() => buyerProfiles.id, { onDelete: "set null" }),
+    endBuyerName: text("end_buyer_name"),
+    assignmentFeeCents: bigint("assignment_fee_cents", { mode: "number" }).notNull().default(0),
+    originalContractDate: date("original_contract_date"),
+    // generated_documents.id once the assignment contract is generated.
+    generatedDocumentId: integer("generated_document_id"),
+    status: text("status").$type<ContractAssignmentStatus>().notNull().default("draft"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("contract_assignments_org_deal_idx").on(table.organizationId, table.dealId),
+    index("contract_assignments_status_idx").on(table.organizationId, table.status),
+  ],
+);
+
+export type ContractAssignment = typeof contractAssignments.$inferSelect;
+export type InsertContractAssignment = typeof contractAssignments.$inferInsert;

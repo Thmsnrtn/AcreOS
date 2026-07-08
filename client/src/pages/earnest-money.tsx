@@ -42,6 +42,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 type Status =
   | "pending"
@@ -514,7 +515,7 @@ function RecordEmdDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>Cancel</Button>
+          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>{Verbs.CANCEL}</Button>
           <Button onClick={() => submit.mutate()} disabled={!amount || !depositedAt || submit.isPending}>
             {submit.isPending ? "Recording…" : "Record EMD"}
           </Button>

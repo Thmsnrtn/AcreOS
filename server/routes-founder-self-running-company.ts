@@ -12,17 +12,23 @@
  */
 
 import { type Express, type Response } from "express";
+import { isAuthenticated, requireFounder } from "./auth";
 import { reactiveOrchestrationService } from "./services/reactiveOrchestrationV14";
 import { feedbackLoopService } from "./services/feedbackLoopV14";
 import { confidenceCascadeService } from "./services/confidenceCascadeV14";
 import { founderIntentService } from "./services/founderIntentV14";
 import { autonomyScoreService } from "./services/autonomyScoreV14";
-import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 
 export function registerFounderV14Routes(app: Express) {
+  // Defense-in-depth (2026-07 security sweep): these routes were protected
+  // ONLY by the app.use('/api/founder/v14', …) gate registered earlier in
+  // routes.ts — a future reordering would have made every endpoint here
+  // fully public. The file now self-gates regardless of mount order.
+  app.use("/api/founder/v14", isAuthenticated, requireFounder);
+
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 1. REACTIVE ORCHESTRATION — Event-driven agent chain execution

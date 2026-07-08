@@ -55,6 +55,26 @@ export function registerMorningPulseRoutes(app: Express): void {
     },
   );
 
+  // ── GET the founder brief (the daily "letter") ─────────────────────────
+  // The Narration Engine composes the pulse + open asks + the brain's plan +
+  // the Trust Ledger into the calm, editorial brief the founder surface reads.
+  app.get(
+    "/api/founder/solene/brief",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { composeFounderBrief } = await import(
+          "./services/autopilot/narrate"
+        );
+        const brief = await composeFounderBrief();
+        return res.json({ brief });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── POST force re-compute ──────────────────────────────────────────────
   app.post(
     "/api/founder/solene/morning-pulse/refresh",

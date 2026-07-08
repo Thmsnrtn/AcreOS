@@ -1578,7 +1578,7 @@ export async function executeTool(
           marketValue: property.marketValue ? Number(property.marketValue) : undefined,
         };
 
-        const result = await generateOfferSuggestions(propertyData);
+        const result = await generateOfferSuggestions(propertyData, { organizationId: org.id });
         if (result.success && result.suggestions) {
           for (const suggestion of result.suggestions) {
             const offerValidation = validateAtlasOutput(AtlasOutputType.OFFER_AMOUNT, {

@@ -120,7 +120,11 @@ export interface AcceptancePredictionResponse {
 }
 
 export async function generateOfferSuggestions(
-  property: PropertyData
+  property: PropertyData,
+  // W4.1: callers pass the org so the router can apply the per-org cost
+  // ceiling + quota and the trace attributes spend to a tenant. Without it
+  // this surface billed platform COGS anonymously.
+  opts?: { organizationId?: number }
 ): Promise<GenerateOfferResponse> {
   try {
     if (!property.latitude || !property.longitude) {
@@ -230,10 +234,10 @@ Provide exactly 3 offer strategies as JSON with this structure:
       messages: [{ role: "user", content: prompt }],
       responseFormat: "json",
       maxTokens: 1500,
-    });
+    }, { orgId: opts?.organizationId });
     const content = aiResponse.content;
     void logAgentTrace({
-      organizationId: null,
+      organizationId: opts?.organizationId ?? null,
       agentCodename: "atlas",
       purpose: "offer_suggestions",
       decisionId: property.id ?? null,

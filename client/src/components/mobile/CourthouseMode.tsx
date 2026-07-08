@@ -153,7 +153,7 @@ export function CourthouseMode({ listings, onAdvance }: CourthouseModeProps) {
   if (actionable.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-20 px-6">
-        <div className="rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 p-4 mb-4">
+        <div className="rounded-full bg-acr-pos-soft text-acr-pos p-4 mb-4">
           <Check className="h-8 w-8" />
         </div>
         <h2 className="text-base font-semibold mb-1">Auction complete</h2>
@@ -167,7 +167,7 @@ export function CourthouseMode({ listings, onAdvance }: CourthouseModeProps) {
   if (index >= actionable.length) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-20 px-6">
-        <div className="rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 p-4 mb-4">
+        <div className="rounded-full bg-acr-pos-soft text-acr-pos p-4 mb-4">
           <Check className="h-8 w-8" />
         </div>
         <h2 className="text-base font-semibold mb-1">Worksheet cleared</h2>
@@ -193,7 +193,7 @@ export function CourthouseMode({ listings, onAdvance }: CourthouseModeProps) {
         <span
           className={cn(
             "flex items-center gap-1.5",
-            online ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
+            online ? "text-acr-pos" : "text-acr-warn",
           )}
         >
           {online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
@@ -343,8 +343,8 @@ function ActionButton({
       className={cn(
         "min-h-[88px] rounded-2xl flex flex-col items-center justify-center gap-1.5 font-semibold text-base active:scale-95 transition-transform",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        tone === "positive" && "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25",
-        tone === "negative" && "bg-rose-500/15 text-rose-700 dark:text-rose-400 hover:bg-rose-500/25",
+        tone === "positive" && "bg-acr-pos-soft text-acr-pos",
+        tone === "negative" && "bg-acr-neg-soft text-acr-neg",
         tone === "muted" && "bg-muted text-foreground hover:bg-muted/80",
       )}
     >

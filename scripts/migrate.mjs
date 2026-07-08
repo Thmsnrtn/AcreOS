@@ -4511,8 +4511,14 @@ const STATEMENTS = [
      "leaves_at" timestamptz NOT NULL,
      "sent_at" timestamptz,
      "cancelled_at" timestamptz,
-     "cancellation_reason" text
+     "cancellation_reason" text,
+     "debit_event_key" text,
+     "debited_cents" integer
    )`,
+  // The flusher worker refunds the exact enqueue debit on send failure (the
+  // never-charge-without-send guarantee); additive, nullable for legacy rows.
+  `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "debit_event_key" text`,
+  `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "debited_cents" integer`,
   `CREATE INDEX IF NOT EXISTS "mail_shipments_org_status_idx" ON "mail_shipments" ("organization_id", "status")`,
   `CREATE INDEX IF NOT EXISTS "mail_shipments_leaves_at_idx" ON "mail_shipments" ("leaves_at")`,
 
@@ -5243,6 +5249,153 @@ const STATEMENTS = [
   // 2026-06-05 cost audit (batch 5) — optional per-dispatch model override.
   // NULL means "pick by role + sourceType" (dispatchRunner.selectModelForDispatch).
   `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "model" text`,
+  // Exactly-once seal (panel #2): a deterministic effect-key so the SAME
+  // intended outward effect enqueued twice (concurrent tick / retry) inserts
+  // once. PARTIAL unique index → only keyed rows are constrained; NULL keys
+  // (legacy + non-autopilot enqueues) are never deduped.
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "idempotency_key" text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "solene_dispatch_queue_idempotency_key_uq" ON "solene_dispatch_queue" ("idempotency_key") WHERE "idempotency_key" IS NOT NULL`,
+  // Step-away gap #3 — bounded side-effect-aware retry. attempts increments at
+  // CLAIM time; not_before_at is the backoff gate claimNextDispatch respects.
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "attempts" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "not_before_at" timestamptz`,
+
+  // Step-away gap #4 — immune-system run reports (migration 0185). One
+  // append-only row per daily immune-response run; the board report + Control
+  // door read this instead of the plan evaporating at process exit.
+  `CREATE TABLE IF NOT EXISTS "autopilot_immune_reports" (
+     "id" serial PRIMARY KEY,
+     "ran_at" timestamptz NOT NULL DEFAULT now(),
+     "advisories_total" integer NOT NULL DEFAULT 0,
+     "by_severity" jsonb NOT NULL DEFAULT '{}',
+     "auto_count" integer NOT NULL DEFAULT 0,
+     "witnessed_count" integer NOT NULL DEFAULT 0,
+     "skip_count" integer NOT NULL DEFAULT 0,
+     "plan_items" jsonb NOT NULL DEFAULT '[]',
+     "line" text NOT NULL,
+     "auto_merge_earned" boolean NOT NULL DEFAULT false,
+     "self_patch_ran" boolean NOT NULL DEFAULT false,
+     "self_patch_reason" text,
+     "self_patch_pr_url" text,
+     "ask_created" boolean NOT NULL DEFAULT false
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_immune_reports_ran_idx" ON "autopilot_immune_reports" ("ran_at")`,
+
+  // Step-away gap #5 — persisted WitnessGrants (migration 0186). Founder-issued
+  // bounded/expiring/revocable delegation of the witnessed-send tap; the
+  // deny_money/deny_broadcast belts default TRUE (explicit opt-in only).
+  `CREATE TABLE IF NOT EXISTS "witness_grants" (
+     "id" serial PRIMARY KEY,
+     "grantor_id" text NOT NULL,
+     "grantee_id" text NOT NULL,
+     "domains" jsonb NOT NULL DEFAULT '[]',
+     "max_cost_usd" numeric(10,2) NOT NULL,
+     "max_actions" integer NOT NULL,
+     "expires_at" timestamptz NOT NULL,
+     "deny_money" boolean NOT NULL DEFAULT true,
+     "deny_broadcast" boolean NOT NULL DEFAULT true,
+     "used_count" integer NOT NULL DEFAULT 0,
+     "revoked" boolean NOT NULL DEFAULT false,
+     "revoked_at" timestamptz,
+     "revoke_reason" text,
+     "issued_at" timestamptz NOT NULL DEFAULT now(),
+     "note" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "witness_grants_grantee_idx" ON "witness_grants" ("grantee_id", "revoked", "expires_at")`,
+  `CREATE INDEX IF NOT EXISTS "witness_grants_issued_idx" ON "witness_grants" ("issued_at")`,
+
+  // Step-away gap #6 — persisted Stage-6 regression due-time (migration 0187).
+  // Replaces the in-process setTimeout (lost on redeploy, never armed in PR
+  // mode) with a due-time the evolution_regression_scan job fires durably.
+  `ALTER TABLE "evolution_history" ADD COLUMN IF NOT EXISTS "regression_check_due_at" timestamptz`,
+
+  // Self-patch master switch (migration 0188) — DB-backed like dispatch/
+  // publish/cognition; null → env SELF_PATCH_ENABLED fallback (OFF).
+  `ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "self_patch_enabled" boolean`,
+
+  // Platform Connections (migration 0189) — founder-entered credentials for
+  // the accounts the platform itself runs on; DB-first, env fallback.
+  `CREATE TABLE IF NOT EXISTS "platform_connections" (
+     "id" serial PRIMARY KEY,
+     "provider" text NOT NULL,
+     "field" text NOT NULL,
+     "secret_encrypted" bytea,
+     "value_plain" text,
+     "fingerprint" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_by" text,
+     "last_used_at" timestamptz,
+     "revoked_at" timestamptz
+   )`,
+  `CREATE INDEX IF NOT EXISTS "platform_connections_provider_idx" ON "platform_connections" ("provider", "field")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "platform_connections_active_uidx" ON "platform_connections" ("provider", "field") WHERE "revoked_at" IS NULL`,
+
+  // SMS response capture + quiet-hours truth (migration 0190, roadmap W1.4/5).
+  `CREATE TABLE IF NOT EXISTS "unattached_inbound_messages" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL,
+     "channel" text NOT NULL,
+     "from_address" text NOT NULL,
+     "to_address" text,
+     "body" text NOT NULL,
+     "external_id" text,
+     "received_at" timestamptz NOT NULL DEFAULT now(),
+     "resolution" text,
+     "resolved_lead_id" integer,
+     "resolved_at" timestamptz,
+     "resolved_by" text
+   )`,
+  `CREATE INDEX IF NOT EXISTS "unattached_inbound_org_idx" ON "unattached_inbound_messages" ("organization_id", "received_at")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "unattached_inbound_external_uq" ON "unattached_inbound_messages" ("external_id") WHERE "external_id" IS NOT NULL`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "timezone" text`,
+
+  // Data-API key hardening (migration 0191, roadmap W1.6) — SHA-256 at rest.
+  `ALTER TABLE "system_api_keys" ADD COLUMN IF NOT EXISTS "key_hash" text`,
+  `ALTER TABLE "system_api_keys" ADD COLUMN IF NOT EXISTS "key_last4" text`,
+  `CREATE INDEX IF NOT EXISTS "system_api_keys_key_hash_idx" ON "system_api_keys" ("key_hash")`,
+
+  // Hot-path indexes (migration 0194, 2026-07 platform sweep) — worst of the
+  // zero-index org-scoped tables (timelines, payments, AI cost aggregation).
+  `CREATE INDEX IF NOT EXISTS "activity_events_org_entity_idx" ON "activity_events" ("organization_id", "entity_type", "entity_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "lead_activities_lead_created_idx" ON "lead_activities" ("lead_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "lead_activities_org_idx" ON "lead_activities" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "payments_org_idx" ON "payments" ("organization_id")`,
+  `CREATE INDEX IF NOT EXISTS "payments_note_status_idx" ON "payments" ("note_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "ai_telemetry_events_org_created_idx" ON "ai_telemetry_events" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "notifications_org_created_idx" ON "notifications" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "tasks_org_status_idx" ON "tasks" ("organization_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "inbox_messages_org_received_idx" ON "inbox_messages" ("organization_id", "received_at")`,
+  `CREATE INDEX IF NOT EXISTS "usage_events_org_created_idx" ON "usage_events" ("organization_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "api_usage_logs_org_created_idx" ON "api_usage_logs" ("organization_id", "created_at")`,
+
+  // Contract assignments (migration 0193, roadmap W6.1) — the wholesaler's
+  // assignment-of-contract record: deal → end buyer → fee (cents) → doc.
+  `CREATE TABLE IF NOT EXISTS "contract_assignments" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL,
+     "deal_id" integer NOT NULL,
+     "end_buyer_profile_id" integer,
+     "end_buyer_name" text,
+     "assignment_fee_cents" bigint NOT NULL DEFAULT 0,
+     "original_contract_date" date,
+     "generated_document_id" integer,
+     "status" text NOT NULL DEFAULT 'draft',
+     "notes" text,
+     "created_at" timestamptz NOT NULL DEFAULT now(),
+     "updated_at" timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "contract_assignments_org_deal_idx" ON "contract_assignments" ("organization_id", "deal_id")`,
+  `CREATE INDEX IF NOT EXISTS "contract_assignments_status_idx" ON "contract_assignments" ("organization_id", "status")`,
+
+  // Weekly MRR snapshots (migration 0192, roadmap W4.5) — WoW growth was
+  // structurally 0 with no history; runway upside == base since launch.
+  `CREATE TABLE IF NOT EXISTS "mrr_snapshots" (
+     "id" serial PRIMARY KEY,
+     "captured_at" timestamp NOT NULL DEFAULT now(),
+     "mrr_cents" integer NOT NULL,
+     "paying_orgs" integer NOT NULL DEFAULT 0
+   )`,
+  `CREATE INDEX IF NOT EXISTS "mrr_snapshots_captured_idx" ON "mrr_snapshots" ("captured_at")`,
 
   `CREATE TABLE IF NOT EXISTS "solene_dispatch_results" (
      "id" serial PRIMARY KEY,
@@ -6911,6 +7064,47 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "pax_sends_org_action_idx"
      ON "pax_sends" ("organization_id", "pending_action_id")`,
 
+  // proof_receipts — persisted, hash-chained ProofReceipt log (Foundry move #3
+  // persistence). Append-only; receipt_hash is the per-row seal, prev_receipt_hash
+  // links each row to the previous in the same scope chain. organization_id is
+  // nullable (null = platform scope, AcreOS operating itself).
+  `CREATE TABLE IF NOT EXISTS "proof_receipts" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer,
+     "scope" text NOT NULL,
+     "action_kind" text NOT NULL,
+     "payload_hash" text NOT NULL,
+     "accountable_human_id" text NOT NULL,
+     "constitution_version" text NOT NULL,
+     "constitution_version_hash" text NOT NULL,
+     "gate_results" jsonb,
+     "eval_score" double precision,
+     "cost_usd" double precision,
+     "autonomy_level" text,
+     "situation_hash" text,
+     "receipt_version" integer NOT NULL DEFAULT 1,
+     "prediction" jsonb,
+     "inputs_hash" text,
+     "cause_allocation" jsonb,
+     "disclosure" text NOT NULL,
+     "issued_at" text NOT NULL,
+     "prev_receipt_hash" text,
+     "receipt_hash" text NOT NULL,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  // Frontier #4 — additive columns for the prediction-sealed receipt. Existing
+  // rows keep receipt_version=1 (legacy body shape) so their hash still verifies.
+  `ALTER TABLE "proof_receipts" ADD COLUMN IF NOT EXISTS "receipt_version" integer NOT NULL DEFAULT 1`,
+  `ALTER TABLE "proof_receipts" ADD COLUMN IF NOT EXISTS "prediction" jsonb`,
+  `ALTER TABLE "proof_receipts" ADD COLUMN IF NOT EXISTS "inputs_hash" text`,
+  `ALTER TABLE "proof_receipts" ADD COLUMN IF NOT EXISTS "cause_allocation" jsonb`,
+  `CREATE INDEX IF NOT EXISTS "proof_receipts_scope_id_idx"
+     ON "proof_receipts" ("scope", "id")`,
+  `CREATE INDEX IF NOT EXISTS "proof_receipts_org_issued_idx"
+     ON "proof_receipts" ("organization_id", "issued_at")`,
+  `CREATE INDEX IF NOT EXISTS "proof_receipts_hash_idx"
+     ON "proof_receipts" ("receipt_hash")`,
+
   // ── 0153 — Tier 1E (elevation blueprint) — backup restore-verification ──
   //    ledger. Mirrors migrations/0153_backup_verified.sql.
   // A backup that has never been restored is a hope, not a backup. The weekly
@@ -7123,6 +7317,336 @@ const STATEMENTS = [
      ON "ledger_dead_letters" ("organization_id", "status")`,
   `CREATE INDEX IF NOT EXISTS "ledger_dead_letters_status_created_idx"
      ON "ledger_dead_letters" ("status", "created_at")`,
+
+  // 0163 — negotiation tenant-isolation. Org-scope strategies + outcomes and
+  // link threads → strategy so per-strategy performance never bleeds across
+  // tenants (the orchestrator previously ranked strategies over ALL orgs).
+  // Additive + idempotent; pre-existing rows keep NULL org_id and are simply
+  // never surfaced by the now org-scoped reads.
+  `ALTER TABLE "negotiation_strategies" ADD COLUMN IF NOT EXISTS "organization_id" integer`,
+  `ALTER TABLE "negotiation_outcomes" ADD COLUMN IF NOT EXISTS "organization_id" integer`,
+  `ALTER TABLE "negotiation_threads" ADD COLUMN IF NOT EXISTS "strategy_id" integer`,
+  `CREATE INDEX IF NOT EXISTS "negotiation_strategies_org_idx"
+     ON "negotiation_strategies" ("organization_id", "success_rate")`,
+  `CREATE INDEX IF NOT EXISTS "negotiation_outcomes_org_idx"
+     ON "negotiation_outcomes" ("organization_id", "created_at")`,
+
+  // 0164 — persist call outcome + intent on the call row (previously the
+  // /outcome endpoint could only write to agent_events, and /summary returned
+  // null outcome/intent). Additive + idempotent.
+  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "outcome" text`,
+  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "outcome_notes" text`,
+  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "intent" text`,
+  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "updated_at" timestamp`,
+
+  // 0165 — ensure organizations.last_active_at exists. The column was in the
+  // Drizzle schema + read by founder-intelligence, but never in migrate.mjs (so
+  // prod may have lacked it) and never WRITTEN. The activity heartbeat in
+  // getOrCreateOrg now stamps it. Additive + idempotent.
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "last_active_at" timestamp`,
+
+  // 0166 — leads parcel/enrichment columns. Unblocks county-scoped lead
+  // queries (instant-deal-hunt, tax-researcher counts) and parcel enrichment.
+  // Additive + idempotent.
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "county" text`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "property_address" text`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "tax_delinquent" boolean`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "estimated_value" numeric`,
+  `ALTER TABLE "leads" ADD COLUMN IF NOT EXISTS "acreage" numeric`,
+
+  // 0167 — Founder Autopilot: per-domain earned-autonomy (the Trust Ledger).
+  // Global (one row per founder-ops domain). Additive + idempotent.
+  `CREATE TABLE IF NOT EXISTS "domain_autonomy_levels" (
+     "id" serial PRIMARY KEY,
+     "domain" text NOT NULL UNIQUE,
+     "level" text NOT NULL DEFAULT 'observe',
+     "clean_cycle_count" integer NOT NULL DEFAULT 0,
+     "last_promoted_at" timestamp,
+     "last_demoted_at" timestamp,
+     "last_demotion_reason" text,
+     "updated_at" timestamp DEFAULT now()
+   )`,
+
+  // 0168 — Founder Autopilot: standing orders + intents ("Your Voice").
+  // Durable natural-language policy the founder issues; the autopilot honors
+  // active orders in every outward action. Global (founder-level). Additive.
+  `CREATE TABLE IF NOT EXISTS "autopilot_standing_orders" (
+     "id" serial PRIMARY KEY,
+     "kind" text NOT NULL DEFAULT 'standing_order',
+     "body" text NOT NULL,
+     "active" boolean NOT NULL DEFAULT true,
+     "created_by" text,
+     "created_at" timestamp DEFAULT now(),
+     "updated_at" timestamp DEFAULT now()
+   )`,
+
+  // 0169 — Founder Autopilot: the Experience Log (learning-loop procedural
+  // memory). One row per action; real signals accrete. Global. Additive.
+  `CREATE TABLE IF NOT EXISTS "autopilot_experiences" (
+     "id" serial PRIMARY KEY,
+     "move_kind" text NOT NULL,
+     "domain" text NOT NULL,
+     "play_id" text,
+     "outcome" text NOT NULL,
+     "dispatch_id" integer,
+     "ask_id" integer,
+     "dispatch_success" boolean,
+     "eval_score" numeric,
+     "founder_verdict" text,
+     "resolution" text,
+     "satisfaction" integer,
+     "cost_usd" numeric,
+     "created_at" timestamp DEFAULT now(),
+     "resolved_at" timestamp
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_experiences_play_idx" ON "autopilot_experiences" ("play_id")`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_experiences_dispatch_idx" ON "autopilot_experiences" ("dispatch_id")`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_experiences_ask_idx" ON "autopilot_experiences" ("ask_id")`,
+
+  // 0170 — Founder Autopilot: policy-induction proposals. Global. Additive.
+  `CREATE TABLE IF NOT EXISTS "autopilot_policy_proposals" (
+     "id" serial PRIMARY KEY,
+     "kind" text NOT NULL,
+     "play_id" text NOT NULL,
+     "domain" text NOT NULL,
+     "reason" text NOT NULL,
+     "status" text NOT NULL DEFAULT 'open',
+     "ask_id" integer,
+     "created_at" timestamp DEFAULT now(),
+     "resolved_at" timestamp
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_policy_proposals_play_kind_idx" ON "autopilot_policy_proposals" ("play_id", "kind")`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_policy_proposals_ask_idx" ON "autopilot_policy_proposals" ("ask_id")`,
+
+  // 0171 — append-only uptime samples (real uptime % via heartbeat gaps).
+  // Global. Additive.
+  `CREATE TABLE IF NOT EXISTS "uptime_samples" (
+     "id" serial PRIMARY KEY,
+     "at" timestamp NOT NULL DEFAULT now(),
+     "source" text NOT NULL DEFAULT 'worker'
+   )`,
+  `CREATE INDEX IF NOT EXISTS "uptime_samples_at_idx" ON "uptime_samples" ("at")`,
+
+  // 0172 — calibrated foresight: record the predicted success probability so the
+  // system can measure its own calibration. Additive.
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "predicted_success" numeric`,
+
+  // 0173 — glass-box: persist the full reasoning trace per action. Additive.
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "reasoning_trace" jsonb`,
+
+  // kernel-elevation T0.1 — real downstream CONSEQUENCE signals + the target_ref
+  // join key a webhook uses to credit them. Additive; null until observed.
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "delivery_bounced" boolean`,
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "payment_recovered" boolean`,
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "target_ref" text`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_experiences_target_ref_idx" ON "autopilot_experiences" ("target_ref")`,
+
+  // kernel-elevation T3 (#11) — accountable scope on the learning ledger
+  // (ruinous to retrofit onto populated data; defaulted 'platform' today).
+  `ALTER TABLE "autopilot_experiences" ADD COLUMN IF NOT EXISTS "scope" text DEFAULT 'platform'`,
+
+  // kernel-elevation T1.3 (#10) — per-cycle world-model confidence snapshots so
+  // the self-sharpening trajectory is observable, not discarded each tick.
+  `CREATE TABLE IF NOT EXISTS "autopilot_worldmodel_snapshots" (
+     "id" serial PRIMARY KEY,
+     "captured_at" timestamp DEFAULT now(),
+     "model_version" integer NOT NULL,
+     "edges" jsonb NOT NULL,
+     "measured_edge_count" integer NOT NULL,
+     "edge_count" integer NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_worldmodel_snapshots_at_idx" ON "autopilot_worldmodel_snapshots" ("captured_at")`,
+
+  // 0174 — autopilot runtime settings (DB-backed master switches). Singleton.
+  `CREATE TABLE IF NOT EXISTS "autopilot_settings" (
+     "id" integer PRIMARY KEY DEFAULT 1,
+     "dispatch_enabled" boolean,
+     "publish_enabled" boolean,
+     "updated_at" timestamp DEFAULT now(),
+     "updated_by" text
+   )`,
+
+  // 0175 — published marketing artifacts (the attribution anchor). Additive.
+  `CREATE TABLE IF NOT EXISTS "marketing_artifacts" (
+     "id" serial PRIMARY KEY,
+     "dispatch_id" integer,
+     "play_id" text,
+     "slug" text NOT NULL,
+     "surface" text NOT NULL DEFAULT 'field_note',
+     "county" text,
+     "state" text,
+     "published_at" timestamp,
+     "unpublished_at" timestamp,
+     "view_count" integer NOT NULL DEFAULT 0,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "marketing_artifacts_slug_idx" ON "marketing_artifacts" ("slug")`,
+  `CREATE INDEX IF NOT EXISTS "marketing_artifacts_dispatch_idx" ON "marketing_artifacts" ("dispatch_id")`,
+
+  // 0176 — autopilot attribution ledger (signup → artifact, off the touch chain).
+  `CREATE TABLE IF NOT EXISTS "autopilot_conversions" (
+     "id" serial PRIMARY KEY,
+     "artifact_id" integer,
+     "play_id" text,
+     "anon_id" text,
+     "organization_id" integer,
+     "event" text NOT NULL,
+     "attributed_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_conversions_artifact_idx" ON "autopilot_conversions" ("artifact_id")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "autopilot_conversions_dedup_uq" ON "autopilot_conversions" ("artifact_id", "anon_id", "event")`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_conversions_org_event_idx" ON "autopilot_conversions" ("organization_id", "event")`,
+
+  // 0177 — autopilot outward perception bus (Hands roadmap P0.2). Append-only
+  // senses derived from the outside world (deliverability, revenue, churn,
+  // inbound opt-outs). Best-effort writes; reads aggregate latest-per-kind.
+  `CREATE TABLE IF NOT EXISTS "autopilot_senses" (
+     "id" serial PRIMARY KEY,
+     "kind" text NOT NULL,
+     "value" double precision NOT NULL DEFAULT 0,
+     "detail" jsonb,
+     "observed_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_senses_kind_observed_idx" ON "autopilot_senses" ("kind", "observed_at")`,
+
+  // 0178 — autopilot objectives (Hands roadmap P5). Structured goals the brain
+  // plans toward; `current` refreshed from real senses. Additive + idempotent.
+  `CREATE TABLE IF NOT EXISTS "autopilot_objectives" (
+     "id" serial PRIMARY KEY,
+     "key" text NOT NULL,
+     "label" text NOT NULL,
+     "target" double precision NOT NULL,
+     "current" double precision NOT NULL DEFAULT 0,
+     "unit" text NOT NULL DEFAULT 'count',
+     "owning_domain" text,
+     "deadline" timestamp,
+     "active" boolean NOT NULL DEFAULT true,
+     "created_by" text,
+     "created_at" timestamp DEFAULT now(),
+     "updated_at" timestamp DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "autopilot_objectives_key_uq" ON "autopilot_objectives" ("key")`,
+
+  // 0179 — autopilot execution seam (Elite Vision H1). Founder-scoped pending
+  // actions (the witnessed-send surface for autopilot hands) + the append-only
+  // autopilot_sends audit. Additive + idempotent.
+  `CREATE TABLE IF NOT EXISTS "autopilot_pending_actions" (
+     "id" serial PRIMARY KEY,
+     "hand_name" text NOT NULL,
+     "args" jsonb NOT NULL,
+     "content_hash" text NOT NULL,
+     "domain" text,
+     "summary" text,
+     "source_dispatch_id" integer,
+     "status" text NOT NULL DEFAULT 'pending',
+     "expires_at" timestamp,
+     "approved_by" text,
+     "executed_at" timestamp,
+     "result_summary" jsonb,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_pending_actions_status_idx" ON "autopilot_pending_actions" ("status", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "autopilot_pending_actions_dedup_idx" ON "autopilot_pending_actions" ("hand_name", "content_hash", "status")`,
+  `CREATE TABLE IF NOT EXISTS "autopilot_sends" (
+     "id" serial PRIMARY KEY,
+     "pending_action_id" integer,
+     "hand_name" text NOT NULL,
+     "domain" text,
+     "approved_by" text,
+     "content_hash" text,
+     "sent_at" timestamp DEFAULT now()
+   )`,
+  // 0180 — autopilot budget ramp (the zero-capital compounding wire).
+  'ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "growth_budget_override_usd" double precision',
+  // 0182 — cognition master switch (autonomous daily Operator cadence).
+  'ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "cognition_enabled" boolean',
+  'ALTER TABLE "autopilot_policy_proposals" ADD COLUMN IF NOT EXISTS "target_value_usd" double precision',
+  // 0181 — growth targets (county-targeted owned-content selection).
+  `CREATE TABLE IF NOT EXISTS "growth_targets" (
+     "id" serial PRIMARY KEY,
+     "state" text NOT NULL,
+     "county_slug" text NOT NULL,
+     "county_label" text NOT NULL,
+     "source" text NOT NULL DEFAULT 'seed',
+     "demand_score" double precision NOT NULL DEFAULT 0,
+     "status" text NOT NULL DEFAULT 'pending',
+     "dispatched_at" timestamp,
+     "last_dispatch_id" integer,
+     "created_at" timestamp DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "growth_targets_state_county_idx" ON "growth_targets" ("state", "county_slug")`,
+  `CREATE INDEX IF NOT EXISTS "growth_targets_status_score_idx" ON "growth_targets" ("status", "demand_score")`,
+
+  // DNC / litigator scrub results (migration 0195, mature-machine H0 §6.1) —
+  // the TCPA cold-outreach seam. Inert until DNC_SCRUB_PROVIDER is configured
+  // (pending founder vendor decision); see server/services/compliance/dncScrub.ts.
+  `CREATE TABLE IF NOT EXISTS "dnc_scrub_results" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "phone_last10" text NOT NULL,
+     "status" text NOT NULL,
+     "provider" text NOT NULL,
+     "list_source" text,
+     "reason" text,
+     "scrubbed_at" timestamp NOT NULL DEFAULT now(),
+     "expires_at" timestamp NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS "dnc_scrub_results_org_phone_idx" ON "dnc_scrub_results" ("organization_id", "phone_last10", "scrubbed_at")`,
+
+  // Agent state persistence (migration 0196, module-state audit 2026-07-07) —
+  // temporary authority delegations + the autonomous-action rate throttle
+  // move from per-process Maps to Postgres so 2+ machines share one truth.
+  `CREATE TABLE IF NOT EXISTS "authority_delegations" (
+     "id" serial PRIMARY KEY,
+     "agent_codename" text NOT NULL,
+     "elevated_actions" jsonb NOT NULL DEFAULT '["*"]',
+     "from_level" integer NOT NULL DEFAULT 2,
+     "to_level" integer NOT NULL DEFAULT 0,
+     "reason" text NOT NULL,
+     "expires_at" timestamp NOT NULL,
+     "revoked_at" timestamp,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "authority_delegations_agent_expires_idx" ON "authority_delegations" ("agent_codename", "expires_at")`,
+  `CREATE TABLE IF NOT EXISTS "agent_execution_counts" (
+     "id" serial PRIMARY KEY,
+     "agent_key" text NOT NULL,
+     "bucket_start" timestamp NOT NULL,
+     "count" integer NOT NULL DEFAULT 0
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "agent_execution_counts_key_bucket_idx" ON "agent_execution_counts" ("agent_key", "bucket_start")`,
+
+  // Marketing spend ledger (migration 0197, 2026-07-07 cost audit) — the CAC
+  // numerator. Actuals only; budgets are never recorded here.
+  `CREATE TABLE IF NOT EXISTS "marketing_spend" (
+     "id" serial PRIMARY KEY,
+     "channel" text NOT NULL,
+     "amount_cents" integer NOT NULL,
+     "spent_at" timestamp NOT NULL,
+     "source" text NOT NULL DEFAULT 'manual',
+     "campaign_ref" text,
+     "note" text,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "marketing_spend_spent_at_idx" ON "marketing_spend" ("spent_at")`,
+  `CREATE INDEX IF NOT EXISTS "marketing_spend_channel_spent_at_idx" ON "marketing_spend" ("channel", "spent_at")`,
+
+  // Reactivation surveys (migration 0198, launch-week WS1) — the welcome-back
+  // page's survey POST finally has a real endpoint + durable store.
+  `CREATE TABLE IF NOT EXISTS "reactivation_surveys" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "user_id" text,
+     "return_reason" text NOT NULL,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS "reactivation_surveys_org_created_idx" ON "reactivation_surveys" ("organization_id", "created_at")`,
+
+  // Outbox claim timestamp (migration 0199, launch-week WS5 worker-kill
+  // drill) — recovery of rows orphaned in status='running' needs the claim
+  // time; created_at is enqueue time and would mis-reap a claimed backlog.
+  `ALTER TABLE outbox ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP`,
+  `CREATE INDEX IF NOT EXISTS outbox_running_claimed_idx ON outbox (claimed_at) WHERE status = 'running'`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

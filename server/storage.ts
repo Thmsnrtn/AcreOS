@@ -298,7 +298,7 @@ export interface IStorage {
   getLeadActivities(leadId: number, limit?: number): Promise<LeadActivity[]>;
   updateLeadScore(leadId: number, score: number, scoreFactors: Lead["scoreFactors"]): Promise<Lead>;
   
-  // Paginated Leads
+  // Paginated Leads (W5.3 SQL-scored stage/cursor variants live on LeadRepo)
   getLeadsPaginated(orgId: number, options: PaginationOptions, filters?: { assignedTo?: number | null; q?: string }): Promise<PaginatedResult<Lead>>;
 
   // Properties
@@ -5968,13 +5968,13 @@ Notary Public</p>
         });
         return true;
       } catch (err: any) {
-        // 23505 = unique-constraint violation. Someone inserted between our
-        // UPDATE and INSERT — they own the lock now.
-        if (err?.code === "23505") return false;
+        // 23505 = unique violation → they own the lock. drizzle wraps the pg
+        // error, so the code may live on err.cause (WS5 drill, 2026-07-08).
+        if (err?.code === "23505" || err?.cause?.code === "23505") return false;
         throw err;
       }
     } catch (error: any) {
-      if (error.code === "23505") return false;
+      if (error?.code === "23505" || error?.cause?.code === "23505") return false;
       throw error;
     }
   }

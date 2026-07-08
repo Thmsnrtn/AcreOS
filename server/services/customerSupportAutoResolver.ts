@@ -34,6 +34,32 @@ function getConfidenceThreshold(): number {
   return CONFIDENCE_THRESHOLDS[mode] ?? 70;
 }
 
+/**
+ * The effective auto-resolve confidence cut (0-100). Wire-for-real: instead of a
+ * static env threshold, this consults the LEARNED threshold — calibrated on the
+ * resolver's own real reopen/CSAT outcomes (learnedGates). Until enough labeled
+ * tickets accrue, learnThreshold returns the env floor we pass as its default,
+ * so this EXACTLY equals the env threshold cold-start (true no-op — preserves
+ * the SOPHIE_CONFIDENCE_MODE posture + lockstep with the primary resolver).
+ * Once data accrues, the cut self-calibrates: tighter if confident resolutions
+ * were getting reopened. Never below the env floor, so learning can only ADD
+ * caution, never remove it. Fail-soft: the static env threshold on any error.
+ */
+async function getLearnedOrDefaultThreshold(): Promise<number> {
+  const envFloor = getConfidenceThreshold();
+  try {
+    const { currentSupportAutoResolveThreshold } = await import("./autopilot/learnedGates");
+    // Pass the env floor as the cold-start default so an unlearned cut == env.
+    const learned = await currentSupportAutoResolveThreshold(envFloor / 100);
+    const learnedPct = Math.round(learned.threshold * 100);
+    // Learning can only tighten (raise) the cut, never loosen below the
+    // configured env posture — conservative by construction.
+    return Math.max(envFloor, learnedPct);
+  } catch {
+    return envFloor;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SOPHIE GENIUS MODE — Opus second opinion for borderline support tickets
 //
@@ -154,7 +180,7 @@ export const customerSupportAutoResolver = {
     });
     if (!ticket) return { autoResolved: false };
 
-    const threshold = getConfidenceThreshold();
+    const threshold = await getLearnedOrDefaultThreshold();
     const confidence = opts?.confidenceScore ?? 0;
     const isBilling = (opts?.category ?? ticket.category ?? "") === "billing";
     const effectiveThreshold = isBilling ? 90 : threshold;
@@ -177,6 +203,22 @@ export const customerSupportAutoResolver = {
         .where(eq(supportTickets.id, ticketId));
 
       logger.info(`[AutoResolver] Ticket #${ticketId} auto-resolved by Sophie (confidence: ${confidence}%)`);
+
+      // KB auto-draft (wire-for-real: measurementLoops). A clean, confident AI
+      // resolution seeds a DRAFT KB article for founder review. Best-effort.
+      try {
+        const { draftKbFromResolvedTicket } = await import("./autopilot/measurementLoops");
+        await draftKbFromResolvedTicket({
+          ticketId,
+          question: ticket.subject ?? `Ticket #${ticketId}`,
+          resolution: opts.draftResponse,
+          confidence: confidence / 100,
+          category: opts?.category ?? ticket.category ?? null,
+        });
+      } catch (kbErr) {
+        logger.warn(`[AutoResolver] KB draft failed for #${ticketId}`, kbErr instanceof Error ? kbErr : undefined);
+      }
+
       return { autoResolved: true };
     }
 

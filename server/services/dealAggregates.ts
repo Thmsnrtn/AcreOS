@@ -36,10 +36,14 @@ export interface DealAggregateRow {
   type: string;
   /** Deals in this (status, type) group. */
   count: number;
-  /** SUM(COALESCE(offer_amount, accepted_amount, 0)) for the group. */
-  pipelineValue: number;
-  /** SUM(COALESCE(accepted_amount, 0)) for the group. */
-  acceptedValue: number;
+  /**
+   * SUM(ROUND(COALESCE(offer_amount, accepted_amount, 0) * 100)) — INTEGER
+   * CENTS (W3.3). Postgres returns ::bigint as a string; folding coerces.
+   * The old ::float8 dollar sum accumulated float error across groups.
+   */
+  pipelineValueCents: number | string;
+  /** SUM(ROUND(COALESCE(accepted_amount, 0) * 100)) — integer cents. */
+  acceptedValueCents: number | string;
   /** Deals whose days-in-stage >= benchmark * 2. */
   stalledCount: number;
   /** Deals whose days-in-stage >= ceil(benchmark * 1.25) — includes stalled. */
@@ -87,12 +91,16 @@ export function foldDealAggregates(rows: DealAggregateRow[]): DealAggregatesResp
     stalledCount: 0,
     warningCount: 0,
   };
-  const stageMap = new Map<string, { count: number; value: number }>();
+  // W3.3: money accumulates in INTEGER CENTS; dollars appear only at the
+  // response edge below. The response contract stays dollars.
+  let pipelineTotalCents = 0;
+  let closedValueCents = 0;
+  const stageMap = new Map<string, { count: number; valueCents: number }>();
 
   for (const row of rows) {
     const count = Number(row.count) || 0;
-    const pipelineValue = Number(row.pipelineValue) || 0;
-    const acceptedValue = Number(row.acceptedValue) || 0;
+    const pipelineCents = Math.round(Number(row.pipelineValueCents)) || 0;
+    const acceptedCents = Math.round(Number(row.acceptedValueCents)) || 0;
     const stalled = Number(row.stalledCount) || 0;
     const warnAtLeast = Number(row.warnAtLeastCount) || 0;
 
@@ -102,22 +110,25 @@ export function foldDealAggregates(rows: DealAggregateRow[]): DealAggregatesResp
       if (row.type === "disposition") totals.dispositions += count;
     }
     if (ACTIVE(row.status)) {
-      totals.totalPipelineValue += pipelineValue;
+      pipelineTotalCents += pipelineCents;
       totals.stalledCount += stalled;
       // warnAtLeast counts stalled deals too (2x >= ceil(1.25x) for all
       // positive benchmarks), so the strictly-warning band is the difference.
       totals.warningCount += Math.max(0, warnAtLeast - stalled);
     }
-    if (row.status === "closed") totals.closedValue += acceptedValue;
+    if (row.status === "closed") closedValueCents += acceptedCents;
 
-    const stage = stageMap.get(row.status) ?? { count: 0, value: 0 };
+    const stage = stageMap.get(row.status) ?? { count: 0, valueCents: 0 };
     stage.count += count;
-    stage.value += pipelineValue;
+    stage.valueCents += pipelineCents;
     stageMap.set(row.status, stage);
   }
 
+  totals.totalPipelineValue = pipelineTotalCents / 100;
+  totals.closedValue = closedValueCents / 100;
+
   return {
     totals,
-    stages: Array.from(stageMap, ([status, s]) => ({ status, count: s.count, value: s.value })),
+    stages: Array.from(stageMap, ([status, s]) => ({ status, count: s.count, value: s.valueCents / 100 })),
   };
 }

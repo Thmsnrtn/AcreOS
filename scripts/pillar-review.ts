@@ -2,7 +2,7 @@
 /**
  * Pillar U — quarterly pillar review.
  *
- * Walks docs/exhaustive-completion/pillar-*.md, scores each pillar on
+ * Walks docs/archive/exhaustive-completion/pillar-*.md, scores each pillar on
  * whether the shipped surface area is being used, and writes a report.
  *
  * Scoring signals:
@@ -12,7 +12,7 @@
  *     agentEvents touches (requires DB; skipped when DB_URL missing)
  *
  * Output:
- *   docs/exhaustive-completion/pillar-review-{YYYY-MM-DD}.md
+ *   docs/archive/exhaustive-completion/pillar-review-{YYYY-MM-DD}.md
  *
  * Usage (manual):
  *   npx tsx scripts/pillar-review.ts
@@ -30,7 +30,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..");
-const DOCS_DIR = path.join(REPO_ROOT, "docs/exhaustive-completion");
+const DOCS_DIR = path.join(REPO_ROOT, "docs/archive/exhaustive-completion");
 
 interface PillarReport {
   pillar: string;

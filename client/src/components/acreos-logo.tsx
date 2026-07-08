@@ -30,12 +30,12 @@ export function AcreosLogo({
   return (
     <span
       className={cn("inline-flex items-center gap-2 align-middle", className)}
+      role="img"
       aria-label="AcreOS"
     >
       {showMark && (
         <svg
-          role="img"
-          aria-hidden={showWord ? "true" : undefined}
+          aria-hidden="true"
           viewBox="0 0 32 32"
           width={size}
           height={size}

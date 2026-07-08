@@ -393,9 +393,10 @@ export async function tcpaGateForSms(
   if (!consent.canSms) {
     return { allowed: false, reason: consent.reason };
   }
-  // Prefer the lead's explicit IANA zone over area-code inference.
+  // Prefer the lead's explicit IANA zone over area-code inference — the
+  // leads.timezone column landed with roadmap W1.5 (migration 0190).
   const lead = await storage.getLead(organizationId, leadId).catch(() => null);
-  const recipientZone = (lead as any)?.timezone as string | null | undefined;
+  const recipientZone = lead?.timezone ?? null;
   const quietHours = isWithinQuietHours(phoneNumber, recipientZone ?? null);
   if (quietHours.blocked) {
     return { allowed: false, reason: quietHours.reason };
