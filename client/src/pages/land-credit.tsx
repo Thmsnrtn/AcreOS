@@ -25,6 +25,10 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { chartColor } from "@/lib/chartPalette";
+import { CHART_POS, CHART_WARN, CHART_NEG } from "@/lib/chart-colors";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
+import { EmptyState } from "@/components/empty-state";
 import {
   Shield,
   TrendingUp,
@@ -38,6 +42,7 @@ import {
   BarChart2,
   Target,
 } from 'lucide-react';
+import { formatDate } from "@/lib/format";
 
 const reassurance = "Your selection is unchanged — try again.";
 
@@ -79,7 +84,7 @@ const DIMENSION_LABELS: Record<string, string> = {
 
 function ScoreGauge({ score }: { score: number }) {
   const pct = ((score - 300) / 550) * 100;
-  const color = score >= 740 ? '#10b981' : score >= 670 ? '#22c55e' : score >= 580 ? '#f59e0b' : score >= 500 ? '#f97316' : '#ef4444';
+  const color = score >= 670 ? CHART_POS : score >= 500 ? CHART_WARN : CHART_NEG;
   const tier = scoreTier(score);
 
   return (
@@ -172,7 +177,7 @@ export default function LandCreditPage() {
   const propertyId = useId();
   const strategyId = useId();
 
-  const { data: featureImportanceData } = useQuery({
+  const { data: featureImportanceData, isLoading: featuresLoading, error: featuresError, refetch: refetchFeatures } = useQuery({
     queryKey: ['land-credit', 'feature-importance'],
     queryFn: async () => {
       const res = await fetch('/api/land-credit/feature-importance', { credentials: 'include' });
@@ -181,7 +186,7 @@ export default function LandCreditPage() {
     },
   });
 
-  const { data: historyData, isLoading: historyLoading } = useQuery({
+  const { data: historyData, isLoading: historyLoading, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['land-credit', 'history', selectedPropertyId],
     queryFn: async () => {
       const res = await fetch(`/api/land-credit/property/${selectedPropertyId}`, {
@@ -193,7 +198,7 @@ export default function LandCreditPage() {
     enabled: !!selectedPropertyId,
   });
 
-  const { data: portfolioData, isLoading: portfolioLoading } = useQuery({
+  const { data: portfolioData, isLoading: portfolioLoading, error: portfolioError, refetch: refetchPortfolio } = useQuery({
     queryKey: ['land-credit', 'portfolio'],
     queryFn: async () => {
       const res = await fetch('/api/land-credit/portfolio', { credentials: 'include' });
@@ -389,7 +394,38 @@ export default function LandCreditPage() {
           </div>
 
           {historyLoading && (
-            <div className="text-center py-12 text-muted-foreground" role="status" aria-label="Loading score history">Loading score history…</div>
+            <div role="status" aria-busy="true">
+              <span className="sr-only">Loading score history…</span>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <Skeleton announce={false} className="h-64 lg:col-span-1" />
+                <Skeleton announce={false} className="h-64 lg:col-span-2" />
+                <Skeleton announce={false} className="h-40" />
+                <Skeleton announce={false} className="h-40 lg:col-span-2" />
+              </div>
+            </div>
+          )}
+
+          {historyError && !!selectedPropertyId && (
+            <QueryErrorState
+              error={historyError as Error}
+              onRetry={() => refetchHistory()}
+              testId="land-credit-history-error"
+            />
+          )}
+
+          {selectedPropertyId && !historyLoading && !historyError && !latestScore && (
+            <EmptyState
+              icon={Shield}
+              headline="No score for this property yet"
+              subtitle="Calculate this parcel's AcreOS Credit Score to evaluate it across location, physical, legal, financial, environmental, and market dimensions."
+              cta={{
+                label: scoreMutation.isPending ? "Calculating…" : "Calculate score",
+                onClick: () => scoreMutation.mutate(selectedPropertyId),
+                "data-testid": "land-credit-empty-score-cta",
+              }}
+              actionIcon={RefreshCw}
+              testId="land-credit-empty-score"
+            />
           )}
 
           {latestScore && (
@@ -418,7 +454,7 @@ export default function LandCreditPage() {
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Last updated <time dateTime={latestScore.calculatedAt || latestScore.createdAt}>{new Date(latestScore.calculatedAt || latestScore.createdAt).toLocaleDateString()}</time>
+                    Last updated <time dateTime={latestScore.calculatedAt || latestScore.createdAt}>{formatDate(latestScore.calculatedAt || latestScore.createdAt)}</time>
                   </p>
                 </CardContent>
               </Card>
@@ -592,7 +628,22 @@ export default function LandCreditPage() {
         {/* ── PORTFOLIO OVERVIEW ── */}
         <TabsContent value="portfolio" className="space-y-6">
           {portfolioLoading && (
-            <div className="text-center py-12 text-muted-foreground" role="status" aria-label="Loading portfolio distribution">Loading portfolio distribution…</div>
+            <div role="status" aria-busy="true">
+              <span className="sr-only">Loading portfolio distribution…</span>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Skeleton announce={false} className="h-40" />
+                <Skeleton announce={false} className="h-40 md:col-span-2" />
+                <Skeleton announce={false} className="h-24 md:col-span-3" />
+              </div>
+            </div>
+          )}
+
+          {portfolioError && (
+            <QueryErrorState
+              error={portfolioError as Error}
+              onRetry={() => refetchPortfolio()}
+              testId="land-credit-portfolio-error"
+            />
           )}
 
           {distribution && (
@@ -661,16 +712,19 @@ export default function LandCreditPage() {
             </div>
           )}
 
-          {!distribution && !portfolioLoading && (
-            <div className="text-center py-20 text-muted-foreground">
-              <Layers className="w-12 h-12 mx-auto mb-4 opacity-30" aria-hidden="true" />
-              <p className="text-lg font-medium">No portfolio data yet</p>
-              <p className="text-sm mt-1">Score your properties to see portfolio-level insights</p>
-              <Button className="mt-4" onClick={() => bulkMutation.mutate()} disabled={bulkMutation.isPending}>
-                <RefreshCw className={`w-4 h-4 mr-2 ${bulkMutation.isPending ? 'animate-spin' : ''}`} aria-hidden="true" />
-                Score all properties
-              </Button>
-            </div>
+          {!distribution && !portfolioLoading && !portfolioError && (
+            <EmptyState
+              icon={Layers}
+              headline="No portfolio data yet"
+              subtitle="Score your properties to see portfolio-level insights across every parcel you hold."
+              cta={{
+                label: bulkMutation.isPending ? "Scoring…" : "Score all properties",
+                onClick: () => bulkMutation.mutate(),
+                "data-testid": "land-credit-portfolio-empty-cta",
+              }}
+              actionIcon={RefreshCw}
+              testId="land-credit-portfolio-empty"
+            />
           )}
         </TabsContent>
 
@@ -687,6 +741,32 @@ export default function LandCreditPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {featuresLoading && (
+                <div role="status" aria-busy="true" className="space-y-4">
+                  <span className="sr-only">Loading scoring factor weights…</span>
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="space-y-1">
+                      <div className="flex justify-between">
+                        <Skeleton announce={false} className="h-4 w-24" />
+                        <Skeleton announce={false} className="h-4 w-16" />
+                      </div>
+                      <Skeleton announce={false} className="h-3 w-full" />
+                      <Skeleton announce={false} className="h-3 w-3/4" />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {featuresError && !featuresLoading && (
+                <QueryErrorState
+                  error={featuresError as Error}
+                  onRetry={() => refetchFeatures()}
+                  compact
+                  testId="land-credit-features-error"
+                />
+              )}
+
+              {!featuresLoading && !featuresError && (
               <ul className="space-y-4 list-none p-0 m-0" aria-label="Scoring factors and their weights">
                 {(featureImportance.length > 0 ? featureImportance : [
                   { factor: 'Location', weight: 25, description: 'Market strength, population growth, economic health, accessibility' },
@@ -714,6 +794,7 @@ export default function LandCreditPage() {
                   </li>
                 ))}
               </ul>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

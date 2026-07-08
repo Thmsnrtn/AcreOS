@@ -10,7 +10,8 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Flame, Thermometer, Wind, Snowflake, Loader2, TrendingUp, DollarSign, Clock } from "lucide-react";
 
 interface SellerIntentPrediction {
@@ -124,7 +125,7 @@ function IntentCard({ prediction }: { prediction: SellerIntentPrediction }) {
           </div>
         )}
 
-        <p className="text-xs text-muted-foreground tabular-nums">{new Date(prediction.createdAt).toLocaleDateString()}</p>
+        <p className="text-xs text-muted-foreground tabular-nums">{formatDate(prediction.createdAt)}</p>
       </CardContent>
     </Card>
   );
@@ -269,8 +270,20 @@ export default function SellerIntentPage() {
       </Card>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading seller intent data…
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" role="status" aria-live="polite">
+          <span className="sr-only">Loading seller intent data…</span>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="pt-6 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Skeleton announce={false} className="h-5 w-24" />
+                  <Skeleton announce={false} className="h-5 w-14" />
+                </div>
+                <Skeleton announce={false} className="h-4 w-full" />
+                <Skeleton announce={false} className="h-4 w-2/3" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       ) : hotPredictions.length > 0 ? (
         <section aria-labelledby="high-priority-heading">

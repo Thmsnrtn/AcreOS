@@ -16,6 +16,7 @@
  */
 
 import { db } from "../db";
+import { centsFromDecimal } from "@shared/finance/cents";
 import { notes, payments, leads } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -269,11 +270,14 @@ export async function runMonthlyActumPaymentBatch(orgId: number): Promise<BatchP
       continue;
     }
 
-    const monthlyAmt = parseFloat(note.monthlyPayment || "0");
-    const serviceFeeAmt = parseFloat(note.serviceFee || "0");
-    const taxEscrowAmt = note.taxEscrowEnabled ? parseFloat(note.monthlyTaxEscrow || "0") : 0;
-    const totalAmount = monthlyAmt + serviceFeeAmt + taxEscrowAmt;
-    const amountCents = Math.round(totalAmount * 100);
+    // W3.3 money rule: this is an ACH CHARGE — each component rounds at the
+    // cents boundary independently, then sums exactly. The old float
+    // addition could round the TOTAL differently than the parts (a
+    // one-cent mismatch on a real bank debit).
+    const amountCents =
+      centsFromDecimal(note.monthlyPayment) +
+      centsFromDecimal(note.serviceFee) +
+      (note.taxEscrowEnabled ? centsFromDecimal(note.monthlyTaxEscrow) : 0);
     const description = `Land Contract Payment — Note #${note.id}`;
 
     // Try primary account first

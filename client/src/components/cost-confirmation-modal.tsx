@@ -2,10 +2,12 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Loader2, CreditCard, Plus } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AlertTriangle, CreditCard, Plus } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { CreditPurchaseModal } from "@/components/credit-purchase-modal";
 import { usd } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface CostConfirmationProps {
   open: boolean;
@@ -68,9 +70,16 @@ export function CostConfirmationModal({
 
           <div className="space-y-4 py-4">
             {isEstimating ? (
-              <div role="status" aria-live="polite" aria-busy="true" className="flex items-center justify-center py-4">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+              <div role="status" aria-live="polite" aria-busy="true" className="space-y-3 py-2">
                 <span className="sr-only">Estimating cost…</span>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <Skeleton announce={false} className="h-4 w-28" />
+                  <Skeleton announce={false} className="h-5 w-16" />
+                </div>
+                <div className="flex justify-between items-center py-2">
+                  <Skeleton announce={false} className="h-4 w-32" />
+                  <Skeleton announce={false} className="h-5 w-16" />
+                </div>
               </div>
             ) : (
               <>
@@ -127,14 +136,14 @@ export function CostConfirmationModal({
               onClick={() => onOpenChange(false)}
               data-testid="button-cancel-action"
             >
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               onClick={handleConfirm}
               disabled={isEstimating || hasInsufficientCredits}
               data-testid="button-confirm-action"
             >
-              Confirm
+              {Verbs.CONFIRM}
             </Button>
           </DialogFooter>
         </DialogContent>

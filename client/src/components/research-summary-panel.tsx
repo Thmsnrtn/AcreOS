@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   CheckCircle2,
@@ -307,12 +308,18 @@ export function ResearchSummaryPanel({ property }: ResearchSummaryPanelProps) {
           </div>
           {compsLoading ? (
             <div
-              className="flex items-center gap-2 text-muted-foreground text-sm"
+              className="grid grid-cols-2 gap-3"
               role="status"
+              aria-busy="true"
               aria-live="polite"
             >
-              <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
-              Loading comps…
+              <span className="sr-only">Loading comps…</span>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-1">
+                  <Skeleton announce={false} className="h-3 w-16" />
+                  <Skeleton announce={false} className="h-4 w-20" />
+                </div>
+              ))}
             </div>
           ) : compsData ? (
             <div className="grid grid-cols-2 gap-3 text-sm">

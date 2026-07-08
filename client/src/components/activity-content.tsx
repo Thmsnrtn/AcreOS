@@ -12,9 +12,10 @@ import {
   DollarSign,
   FileText,
   Clock,
-  Loader2,
   ChevronRight
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import { relative } from "@/lib/format";
 import { Link } from "wouter";
 import type { ActivityLogEntry } from "@shared/schema";
@@ -104,8 +105,18 @@ export function ActivityContent() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            <div role="status" aria-busy="true" aria-live="polite" className="space-y-1">
+              <span className="sr-only">Loading recent activity</span>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex items-start gap-4 p-3">
+                  <Skeleton announce={false} className="h-8 w-8 rounded-card shrink-0" />
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <Skeleton announce={false} className="h-4 w-1/3 max-w-48" />
+                    <Skeleton announce={false} className="h-3 w-2/3 max-w-72" />
+                    <Skeleton announce={false} className="h-3 w-24" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : activities && activities.length > 0 ? (
             <div className="space-y-1">
@@ -169,11 +180,14 @@ export function ActivityContent() {
               )}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Activity className="w-12 h-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No activity yet</h3>
-              <p className="text-muted-foreground">Activity will appear here as you use the platform</p>
-            </div>
+            <EmptyState
+              icon={Activity}
+              headline="No activity yet"
+              subtitle="Activity will appear here as you use the platform"
+              // TODO(cta): activity log is system-generated — no direct user action creates entries
+              cta={{ label: "", _noOp: true }}
+              testId="empty-state-activity"
+            />
           )}
         </CardContent>
       </Card>

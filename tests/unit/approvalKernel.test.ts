@@ -109,15 +109,22 @@ vi.mock("../../server/db", async () => {
             ...vals,
             id: mem.nextId++,
           };
-          mem.tables[name].push(row);
+          // Lazily create tables the kernel writes as side-effects (e.g. the
+          // Tier-2C first_value_reached row in activation_events) so a
+          // fire-and-forget insert can never become an unhandled rejection.
+          (mem.tables[name] ??= []).push(row);
           return [{ ...row }];
         };
-        // Support both `await db.insert(t).values(v)` and `…​.returning()`.
+        // Support `await db.insert(t).values(v)`, `….returning()`, and
+        // `….onConflictDoNothing(…)` (used by recordActivationEvent).
         let inserted: any[] | null = null;
         const run = () => (inserted ??= insertOne());
         return Object.assign(
           Promise.resolve().then(run),
-          { returning: async () => run() },
+          {
+            returning: async () => run(),
+            onConflictDoNothing: async () => run(),
+          },
         );
       },
     }),
@@ -175,6 +182,7 @@ const sends = () => mem.tables.pax_sends;
 beforeEach(() => {
   mem.tables.pending_actions = [];
   mem.tables.pax_sends = [];
+  mem.tables.activation_events = [];
   mem.nextId = 1;
 });
 

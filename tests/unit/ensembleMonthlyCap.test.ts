@@ -43,6 +43,7 @@ import {
   assertWithinEnsembleCap,
   getEnsembleMonthlyCapUsd,
   EnsembleCapExceededError,
+  EnsembleCapReadFailedError,
 } from "../../server/services/solene/capitalTracker";
 
 /** Make the MTD query resolve to a given agent_dispatch USD sum. */
@@ -102,13 +103,17 @@ describe("ensemble monthly cap — pre-dispatch enforcement", () => {
     expect(mockWhere).not.toHaveBeenCalled();
   });
 
-  it("fails OPEN on a DB error (allows + logs loudly rather than halting the whole ensemble)", async () => {
-    // Enforce-when-known: a transient spend-read error must not throw — halting
-    // every dispatch on a DB blip is worse than a bounded overspend until the
-    // read recovers (enforcement resumes on the next successful read). The error
-    // is logged loudly; the dispatch proceeds.
+  it("fails CLOSED on a DB error (re-audit it.2: refuse rather than risk an unbounded overspend)", async () => {
+    // The ensemble dispatch is the largest cash lever. A refused dispatch is
+    // fully recoverable (the row stays queued / re-enqueues); an overspend is
+    // not. So an unreadable MTD spend → throw, not proceed. (The DISPLAY path,
+    // getEnsembleCapStatus, still fails soft via readFailed so the dashboard
+    // never crashes — only the GATE fails closed.) The founder can still force a
+    // dispatch via founderOverride if the DB is degraded.
     mockWhere.mockRejectedValue(new Error("connection reset"));
-    await expect(assertWithinEnsembleCap()).resolves.toBeUndefined();
+    await expect(assertWithinEnsembleCap()).rejects.toBeInstanceOf(
+      EnsembleCapReadFailedError,
+    );
   });
 
   it("respects a higher env cap (more headroom before tripping)", async () => {

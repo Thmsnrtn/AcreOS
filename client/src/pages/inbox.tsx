@@ -1,12 +1,14 @@
 import DOMPurify from "isomorphic-dompurify";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import "./today.css";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest, fetchJsonArray } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { InboxMessage, Lead, Conversation, Message } from "@shared/schema";
 import { format, isToday, isThisWeek } from "date-fns";
@@ -20,8 +22,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
-import { EmptyState } from "@/components/empty-state";
-import { ClearedEmpty, EmptyFilter } from "@/components/empty-states";
+import { EmptyState, ClearedEmpty, EmptyFilter } from "@/components/empty-state";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { ContentReveal } from "@/components/ContentReveal";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,6 +44,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Link } from "wouter";
+import { Verbs } from "@/lib/labels";
 
 type ChannelFilter = "all" | "email" | "sms";
 type StatusFilter = "all" | "unread" | "starred" | "archived";
@@ -227,7 +229,7 @@ function EmailMessageRow({
             starMutation.mutate({ id: message.id, isStarred: !!message.isStarred });
           }}
           disabled={starMutation.isPending}
-          className={`min-h-11 min-w-11 sm:h-7 sm:w-7 sm:min-h-0 sm:min-w-0 ${message.isStarred ? "text-[color:var(--acr-warn)]" : "text-[color:var(--acr-ink-3)]"}`}
+          className={`min-h-11 min-w-11 pointer-fine:sm:h-7 pointer-fine:sm:w-7 pointer-fine:sm:min-h-0 pointer-fine:sm:min-w-0 ${message.isStarred ? "text-[color:var(--acr-warn)]" : "text-[color:var(--acr-ink-3)]"}`}
           aria-label={message.isStarred ? `Unstar email from ${senderLabel}` : `Star email from ${senderLabel}`}
         >
           <Star className={`h-4 w-4 sm:h-3.5 sm:w-3.5 ${message.isStarred ? "fill-current" : ""}`} aria-hidden="true" />
@@ -242,7 +244,7 @@ function EmailMessageRow({
               archiveMutation.mutate({ id: message.id });
             }}
             disabled={archiveMutation.isPending}
-            className="min-h-11 min-w-11 sm:h-7 sm:w-7 sm:min-h-0 sm:min-w-0 text-[color:var(--acr-ink-3)]"
+            className="min-h-11 min-w-11 pointer-fine:sm:h-7 pointer-fine:sm:w-7 pointer-fine:sm:min-h-0 pointer-fine:sm:min-w-0 text-[color:var(--acr-ink-3)]"
             aria-label={`Archive email from ${senderLabel}`}
           >
             <Archive className="h-4 w-4 sm:h-3.5 sm:w-3.5" aria-hidden="true" />
@@ -330,6 +332,7 @@ function EmailMessageDetail({
   const [paxAttribution, setPaxAttribution] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
 
+  // allow-no-invalidation: AI draft lands in the reply textarea's local state
   const draftReplyMutation = useMutation({
     mutationFn: async (priorDraft?: string) => {
       const res = await apiRequest("POST", "/api/ai/draft-reply", {
@@ -415,6 +418,7 @@ function EmailMessageDetail({
     onSuccess: () => onBack(),
   });
 
+  // allow-no-invalidation: outbound reply — the inbound message list is unchanged by sending
   const sendReplyMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/send-email", {
@@ -503,7 +507,7 @@ function EmailMessageDetail({
             ) : (
               <Archive className="h-4 w-4 mr-1" aria-hidden="true" />
             )}
-            Archive
+            {Verbs.ARCHIVE}
           </Button>
 
           <Button
@@ -661,7 +665,7 @@ function EmailMessageDetail({
                     }}
                     data-testid="button-cancel-reply"
                   >
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                   <Button
                     onClick={() => sendReplyMutation.mutate()}
@@ -986,6 +990,13 @@ export default function InboxPage() {
   const unreadCount = unreadCountData?.count ?? 0;
   const isLoading = isLoadingEmail || isLoadingSms;
 
+  // W2-6: the inbox page itself is height-locked (`main` is h-[100dvh]) —
+  // the message LIST scrolls inside a Radix ScrollArea. The ref sits on the
+  // stable list-column wrapper (the ScrollArea remounts across empty/error/
+  // filter states); the hook resolves the viewport beneath it at read time.
+  const listColumnRef = useRef<HTMLDivElement>(null);
+  useScrollRestoration(!isLoading, { containerRef: listColumnRef });
+
   // Surface a recoverable error only when a query that actually feeds the
   // current channel view fails — so an SMS-only failure doesn't blank the
   // Email tab, and vice versa.
@@ -1180,7 +1191,11 @@ export default function InboxPage() {
     >
       <Sidebar />
 
-      <main className={`flex-1 pt-16 md:pt-0 flex flex-col h-[100dvh] pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0 transition-all duration-200 ${isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"}`}>
+      {/* id="main-content" — the skip-link landmark PageShell normally owns.
+          The inbox keeps its custom full-height frame but must not lose the
+          landmark (W2.4 shell consistency). */}
+      <main id="main-content" className={`flex-1 pt-16 md:pt-0 flex flex-col h-[100dvh] pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0 transition-all duration-200 ${isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"}`}>
+        <ErrorBoundary>
         <div className="flex items-center justify-between gap-4 p-4 border-b flex-wrap">
           {/* Inbox hero header — canonical text-hero (32px/600) via acr-cc-greeting.
               No inline fontSize override: the token governs. */}
@@ -1228,7 +1243,7 @@ export default function InboxPage() {
           <TabsList className="w-full justify-start rounded-none border-none h-12 p-0 bg-transparent" aria-label="Channel">
             <TabsTrigger
               value="all"
-              className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+              className="min-h-11 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
               data-testid="tab-channel-all"
             >
               <MessageSquare className="h-4 w-4 mr-1" aria-hidden="true" />
@@ -1236,7 +1251,7 @@ export default function InboxPage() {
             </TabsTrigger>
             <TabsTrigger
               value="email"
-              className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+              className="min-h-11 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
               data-testid="tab-channel-email"
             >
               <Mail className="h-4 w-4 mr-1" aria-hidden="true" />
@@ -1244,7 +1259,7 @@ export default function InboxPage() {
             </TabsTrigger>
             <TabsTrigger
               value="sms"
-              className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+              className="min-h-11 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
               data-testid="tab-channel-sms"
             >
               <Phone className="h-4 w-4 mr-1" aria-hidden="true" />
@@ -1255,17 +1270,17 @@ export default function InboxPage() {
 
         {channelFilter !== "sms" && (
           <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="border-b">
-            <TabsList className="w-full justify-start rounded-none border-none h-10 p-0 bg-transparent" aria-label="Status">
+            <TabsList className="w-full justify-start rounded-none border-none h-12 p-0 bg-transparent" aria-label="Status">
               <TabsTrigger
                 value="all"
-                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                className="min-h-11 min-w-11 px-3 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
                 data-testid="tab-status-all"
               >
                 All
               </TabsTrigger>
               <TabsTrigger
                 value="unread"
-                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                className="min-h-11 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
                 data-testid="tab-status-unread"
               >
                 Unread
@@ -1277,14 +1292,14 @@ export default function InboxPage() {
               </TabsTrigger>
               <TabsTrigger
                 value="starred"
-                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                className="min-h-11 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
                 data-testid="tab-status-starred"
               >
                 Starred
               </TabsTrigger>
               <TabsTrigger
                 value="archived"
-                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                className="min-h-11 text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
                 data-testid="tab-status-archived"
               >
                 Archived
@@ -1294,7 +1309,7 @@ export default function InboxPage() {
         )}
 
         <div className="flex-1 flex overflow-hidden">
-          <div className={`${selectedItem ? "hidden md:block" : ""} w-full md:w-96 border-r overflow-hidden flex flex-col`}>
+          <div ref={listColumnRef} className={`${selectedItem ? "hidden md:block" : ""} w-full md:w-96 border-r overflow-hidden flex flex-col`}>
             <ContentReveal
               ready={!isLoading}
               skeleton={<ListSkeleton count={5} />}
@@ -1458,6 +1473,7 @@ export default function InboxPage() {
             )}
           </div>
         </div>
+        </ErrorBoundary>
       </main>
     </div>
   );

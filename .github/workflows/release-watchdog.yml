@@ -98,14 +98,24 @@ jobs:
             echo "::error title=DEPLOY_ALERT_WEBHOOK secret is NOT set::The release watchdog detected a problem ($STATUS) and could NOT alert anyone — the alert path is unwired. 🔑 Founder: gh secret set DEPLOY_ALERT_WEBHOOK --body \"https://ntfy.sh/<private-topic>\" (or a Slack/Discord incoming-webhook URL)."
             exit 1
           fi
-          curl --fail --silent --show-error --max-time 15 \
-            -H "Content-Type: application/json" \
-            -H "Title: AcreOS release watchdog" \
-            -H "Priority: high" \
-            -H "Tags: warning" \
-            -d "$(jq -n --arg t "$MSG" '{text:$t, message:$t}')" \
-            "$DEPLOY_ALERT_WEBHOOK" \
-            || echo "Watchdog webhook POST failed — investigate."
+          # ntfy renders the raw body as the message — send PLAIN TEXT so the
+          # phone shows clean copy, not literal {"text":...}. JSON fallback for
+          # Slack/Discord webhooks.
+          if echo "$DEPLOY_ALERT_WEBHOOK" | grep -qi "ntfy"; then
+            curl --fail --silent --show-error --max-time 15 \
+              -H "Title: AcreOS release watchdog" \
+              -H "Priority: high" \
+              -H "Tags: warning" \
+              -d "$MSG" \
+              "$DEPLOY_ALERT_WEBHOOK" \
+              || echo "Watchdog webhook POST failed — investigate."
+          else
+            curl --fail --silent --show-error --max-time 15 \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg t "$MSG" '{text:$t, message:$t, content:$t}')" \
+              "$DEPLOY_ALERT_WEBHOOK" \
+              || echo "Watchdog webhook POST failed — investigate."
+          fi
 
       # Tier 1E — alert-spine configuration gate, evaluated on EVERY hourly
       # run (even when the release matches). The blueprint's rule: workflows

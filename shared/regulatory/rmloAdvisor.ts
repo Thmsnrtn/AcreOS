@@ -19,7 +19,7 @@
  * channel. Operators verify the exact cap for their transaction.
  *
  * Sources / footnotes for each state cap are in
- * `docs/exhaustive-completion/pillar-k-note-investors-25-personas.md`
+ * `docs/archive/exhaustive-completion/pillar-k-note-investors-25-personas.md`
  * under "Regulatory reference table."
  */
 

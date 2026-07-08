@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { Search, MapPin, Loader2, CheckCircle2, Database, Trees, Droplets, Zap } from "lucide-react";
 
 interface PropertyEnrichmentResult {
@@ -62,6 +62,7 @@ export default function PropertyEnrichmentPage() {
       }),
   });
 
+  // allow-no-invalidation: queues an async enrichment batch — results land server-side over time
   const batchMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/properties/bulk-enrich"),
     onSuccess: () => toast({ title: "Bulk enrichment queued.", description: "Properties will update as each lookup completes." }),
@@ -213,7 +214,7 @@ export default function PropertyEnrichmentPage() {
                     {ef.countyAppraisedValue && <div className="flex justify-between text-xs"><dt className="text-muted-foreground">Appraised value</dt><dd className="tabular-nums">{usd(ef.countyAppraisedValue)}</dd></div>}
                     {ef.annualTaxes && <div className="flex justify-between text-xs"><dt className="text-muted-foreground">Annual taxes</dt><dd className="tabular-nums">{usd(ef.annualTaxes)}</dd></div>}
                     {ef.lastSalePrice && <div className="flex justify-between text-xs"><dt className="text-muted-foreground">Last sale</dt><dd className="tabular-nums">{usd(ef.lastSalePrice)}</dd></div>}
-                    {ef.lastSaleDate && <div className="flex justify-between text-xs"><dt className="text-muted-foreground">Sale date</dt><dd className="tabular-nums">{new Date(ef.lastSaleDate).toLocaleDateString()}</dd></div>}
+                    {ef.lastSaleDate && <div className="flex justify-between text-xs"><dt className="text-muted-foreground">Sale date</dt><dd className="tabular-nums">{formatDate(ef.lastSaleDate)}</dd></div>}
                   </dl>
                 </CardContent>
               </Card>

@@ -50,7 +50,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useTerm } from "@/hooks/use-persona";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import {
   ArrowLeft,
   MapPin,
@@ -435,7 +435,7 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
                 <DetailRow label="Sold price" value={formatUsd(property.soldPrice)} />
                 <DetailRow
                   label="Purchase date"
-                  value={property.purchaseDate ? new Date(property.purchaseDate).toLocaleDateString() : "—"}
+                  value={formatDate(property.purchaseDate)}
                 />
               </CardContent>
             </Card>
@@ -741,7 +741,7 @@ function LandStatusVerificationCard({ property }: { property: Property }) {
       {/*
         Phase A ships manual verification. Phase B will auto-resolve from
         the BIA Land Area Representations shapefile overlay; tracked in
-        docs/exhaustive-completion/founder-dashboard-extraction-queue.md.
+        docs/archive/exhaustive-completion/founder-dashboard-extraction-queue.md.
         Removed customer-facing "TODO" footer 2026-05-26 — internal-only
         note now lives here as a code comment.
       */}

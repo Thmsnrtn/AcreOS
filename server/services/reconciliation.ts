@@ -15,7 +15,7 @@
 
 import { db } from "../db";
 import { reconciliationRules, reconciliationRuns } from "@shared/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
 export interface ReconciliationResult {
@@ -91,11 +91,19 @@ export async function runReconciliation(): Promise<ReconciliationResult[]> {
     // critical (pages, throttled) and any divergence lands as a finding +
     // the same system_alerts row /admin/alerts always showed. Tolerated if
     // the spine itself fails.
+    //
+    // Tier 2B: divergence on the financial_ledger rule (Stripe-truth vs the
+    // money spine) is ALWAYS critical — any beyond-tolerance mismatch on the
+    // system of record pages the founder via 1D, regardless of dollar size.
     if (status === "divergent" && differenceDollars != null) {
       try {
         const { raiseAlert } = await import("./alertSpine");
         await raiseAlert({
-          severity: Math.abs(differenceDollars) > 100 ? "critical" : "warning",
+          severity:
+            rule.aggregationKey === LEDGER_AGGREGATION_KEY ||
+            Math.abs(differenceDollars) > 100
+              ? "critical"
+              : "warning",
           source: "reconciliation",
           title: `Reconciliation divergence: ${rule.sourceSystem} ${rule.aggregationKey}`,
           detail:
@@ -139,6 +147,56 @@ export async function runReconciliation(): Promise<ReconciliationResult[]> {
 }
 
 /**
+ * Tier 2B — the money-spine rule's aggregation key. Stripe MTD-paid invoice
+ * total vs the sum of category='revenue' rows in financial_ledger (the five
+ * bucket-split rows of every postRevenue sum to the gross amount_paid, so the
+ * two totals must match to the cent when every webhook posting landed). Any
+ * beyond-tolerance divergence on this rule is CRITICAL — it means money
+ * Stripe collected never reached the system of record (or vice versa).
+ */
+export const LEDGER_AGGREGATION_KEY = "mtd_paid_ledger";
+
+/** First moment of the current UTC month — both totals window on this. */
+function utcMonthStart(): Date {
+  const start = new Date();
+  start.setUTCDate(1);
+  start.setUTCHours(0, 0, 0, 0);
+  return start;
+}
+
+/**
+ * Stripe MTD paid-invoice total in dollars, paginated (the old single
+ * `limit: 100` call silently under-counted past 100 invoices/month, which
+ * would have FALSE-PAGED a divergence). Null when no credential.
+ */
+async function fetchStripeMtdPaidTotal(): Promise<number | null> {
+  if (!process.env.STRIPE_SECRET_KEY) return null;
+  try {
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const createdGte = Math.floor(utcMonthStart().getTime() / 1000);
+    let totalCents = 0;
+    let startingAfter: string | undefined;
+    // Hard cap of 50 pages (5,000 invoices/month) as a runaway guard.
+    for (let page = 0; page < 50; page++) {
+      const invoices = await stripe.invoices.list({
+        status: "paid",
+        created: { gte: createdGte },
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+      totalCents += invoices.data.reduce((s, i) => s + (i.amount_paid ?? 0), 0);
+      if (!invoices.has_more || invoices.data.length === 0) break;
+      startingAfter = invoices.data[invoices.data.length - 1].id;
+    }
+    return totalCents / 100;
+  } catch (err) {
+    logger.warn("[reconciliation] Stripe fetch failed", err instanceof Error ? err : undefined);
+    return null;
+  }
+}
+
+/**
  * v0 fetcher dispatch. Each source-system / entity_type / aggregation_key
  * combination needs a real implementation to produce a number. This is
  * the registry — extend as new rules are added.
@@ -148,26 +206,13 @@ async function fetchSourceTotal(
   entityType: string,
   aggregationKey: string,
 ): Promise<number | null> {
-  // Stripe MTD invoice total — placeholder; wire via Stripe SDK
-  // when STRIPE_SECRET_KEY is available.
-  if (sourceSystem === "stripe" && entityType === "invoice" && aggregationKey === "mtd_paid") {
-    if (!process.env.STRIPE_SECRET_KEY) return null;
-    try {
-      const Stripe = (await import("stripe")).default;
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-      const start = new Date();
-      start.setUTCDate(1);
-      start.setUTCHours(0, 0, 0, 0);
-      const invoices = await stripe.invoices.list({
-        status: "paid",
-        created: { gte: Math.floor(start.getTime() / 1000) },
-        limit: 100,
-      });
-      return invoices.data.reduce((s, i) => s + (i.amount_paid ?? 0), 0) / 100;
-    } catch (err) {
-      logger.warn("[reconciliation] Stripe fetch failed", err instanceof Error ? err : undefined);
-      return null;
-    }
+  // Both Stripe rules share the same source-of-truth total: MTD paid invoices.
+  if (
+    sourceSystem === "stripe" &&
+    entityType === "invoice" &&
+    (aggregationKey === "mtd_paid" || aggregationKey === LEDGER_AGGREGATION_KEY)
+  ) {
+    return fetchStripeMtdPaidTotal();
   }
   return null;
 }
@@ -191,23 +236,58 @@ async function fetchAcreosTotal(
       .where(eq(revenueRecognitionPeriods.periodKey, period));
     return Number(row?.sum ?? 0) / 100;
   }
+  // Tier 2B — Stripe MTD paid vs financial_ledger revenue rows (the money
+  // spine). postRevenue's five bucket splits all carry category='revenue'
+  // and sum to the gross amount_paid, so SUM(amount_cents) over the month
+  // equals Stripe's MTD-paid total when every posting landed.
+  if (
+    sourceSystem === "stripe" &&
+    entityType === "invoice" &&
+    aggregationKey === LEDGER_AGGREGATION_KEY
+  ) {
+    const { financialLedger } = await import("@shared/schema");
+    const [row] = await db
+      .select({
+        sum: sql<string>`COALESCE(SUM(${financialLedger.amountCents}), 0)`,
+      })
+      .from(financialLedger)
+      .where(
+        and(
+          eq(financialLedger.category, "revenue"),
+          gte(financialLedger.postedAt, utcMonthStart()),
+        ),
+      );
+    return Number(row?.sum ?? 0) / 100;
+  }
   return null;
 }
 
 /**
- * Convenience for seed: ensure a default Stripe MTD reconciliation rule
- * exists. Call once at boot if you want auto-provisioned rules.
+ * Ensure the default reconciliation rules exist. Called by the daily
+ * reconciliation cron before each run (Tier 2B activation — previously this
+ * was never invoked anywhere, so the rules table stayed empty in prod and the
+ * cron was a registered no-op).
  */
 export async function ensureDefaultRules(): Promise<void> {
   await db
     .insert(reconciliationRules)
-    .values({
-      sourceSystem: "stripe",
-      entityType: "invoice",
-      aggregationKey: "mtd_paid",
-      toleranceDollars: "1.00" as any,
-      enabled: true,
-    })
+    .values([
+      {
+        sourceSystem: "stripe",
+        entityType: "invoice",
+        aggregationKey: "mtd_paid",
+        toleranceDollars: "1.00" as any,
+        enabled: true,
+      },
+      // Tier 2B — Stripe-truth vs financial_ledger (system of record).
+      {
+        sourceSystem: "stripe",
+        entityType: "invoice",
+        aggregationKey: LEDGER_AGGREGATION_KEY,
+        toleranceDollars: "1.00" as any,
+        enabled: true,
+      },
+    ])
     .onConflictDoNothing({
       target: [
         reconciliationRules.sourceSystem,

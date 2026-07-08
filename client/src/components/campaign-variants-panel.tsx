@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { TestTube, Trophy, Sparkles, AlertTriangle, CheckCircle, Plus, Loader2 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface CampaignVariant {
   id: number;
@@ -238,7 +239,7 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" className="min-h-11" onClick={() => setIsAddDialogOpen(false)}>
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                   <Button
                     type="submit"
@@ -396,7 +397,7 @@ export function CampaignVariantsPanel({ campaign }: CampaignVariantsPanelProps) 
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-9 sm:h-7 text-xs min-h-9 sm:min-h-7"
+                          className="h-9 pointer-fine:sm:h-7 text-xs min-h-9 pointer-fine:sm:min-h-7"
                           disabled={declareWinnerMutation.isPending || !hasEnoughData}
                           onClick={() => declareWinnerMutation.mutate(variant.id)}
                           data-testid={`button-declare-winner-${variant.id}`}

@@ -10,11 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   TrendingUp, TrendingDown, DollarSign, Target, BarChart3, CheckCircle, Loader2
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 interface PriceRecommendation {
   id: number;
@@ -195,7 +197,7 @@ function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
                 {recordOutcome.isPending ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : "Save"}
               </Button>
               <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowOutcome(false)}>
-                Cancel
+                {Verbs.CANCEL}
               </Button>
             </div>
           </form>
@@ -211,7 +213,7 @@ function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
           </Button>
         )}
 
-        <p className="text-xs text-muted-foreground tabular-nums">{new Date(rec.createdAt).toLocaleDateString()}</p>
+        <p className="text-xs text-muted-foreground tabular-nums">{formatDate(rec.createdAt)}</p>
       </CardContent>
     </Card>
   );
@@ -473,8 +475,18 @@ export default function PriceOptimizerPage() {
         <div>
           <h2 className="text-lg font-semibold mb-3">Recommendations for Property #<span className="tabular-nums">{propertyId}</span></h2>
           {recsLoading ? (
-            <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
-              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading…
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" role="status" aria-live="polite">
+              <span className="sr-only">Loading price recommendations…</span>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Card key={i}>
+                  <CardContent className="pt-6 space-y-3">
+                    <Skeleton announce={false} className="h-5 w-28" />
+                    <Skeleton announce={false} className="h-8 w-24" />
+                    <Skeleton announce={false} className="h-4 w-full" />
+                    <Skeleton announce={false} className="h-4 w-2/3" />
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           ) : recommendations?.recommendations.length === 0 ? (
             <p className="text-muted-foreground text-sm">No recommendations yet. Generate one above.</p>

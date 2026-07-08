@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, bigint, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, check, customType, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, bigint, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, doublePrecision, check, customType, primaryKey } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -102,7 +102,7 @@ export const organizations = pgTable("organizations", {
   onboardingCompleted: boolean("onboarding_completed").default(false),
   onboardingStep: integer("onboarding_step").default(0),
   onboardingData: jsonb("onboarding_data").$type<{
-    businessType?: "land_flipper" | "note_investor" | "hybrid" | "residential_wholesaler" | "fix_and_flip" | "buy_and_hold" | "commercial" | "short_term_rental" | "creative_finance" | "developer" | "tax_lien_deed" | "multifamily" | "mobile_home" | "agent_investor";
+    businessType?: "land_flipper" | "note_investor" | "hybrid" | "residential_wholesaler" | "fix_and_flip" | "buy_and_hold" | "commercial" | "short_term_rental" | "creative_finance" | "developer" | "subdivider" | "tax_lien_deed" | "multifamily" | "mobile_home" | "agent_investor";
     dataImported?: boolean;
     stripeConnected?: boolean;
     campaignCreated?: boolean;
@@ -177,6 +177,9 @@ export const organizations = pgTable("organizations", {
   churnRiskScore: integer("churn_risk_score").notNull().default(0),
   churnRiskUpdatedAt: timestamp("churn_risk_updated_at"),
   churnRescueSentAt: timestamp("churn_rescue_sent_at"),
+  // Real last-activity timestamp (stamped by the getOrCreateOrg heartbeat,
+  // throttled ~15 min). Powers churn/health signals; null = no activity yet.
+  lastActiveAt: timestamp("last_active_at"),
   // Milestone tracking for self-promotion nudges
   milestonesReached: jsonb("milestones_reached").$type<string[]>().default([]),
   referralNudgeSentAt: timestamp("referral_nudge_sent_at"),
@@ -230,7 +233,7 @@ export const organizations = pgTable("organizations", {
   // Max number of action-required items the /founder/now inbox will
   // surface per day. Agents may write more to decisions_inbox_items;
   // overflow gets `deferred_until: tomorrow` rather than appearing.
-  // 5 is a deliberate cap — see docs/exhaustive-completion/pillar-s-
+  // 5 is a deliberate cap — see docs/archive/exhaustive-completion/pillar-s-
   // one-inbox.md for the rationale.
   founderDailyAttentionCap: integer("founder_daily_attention_cap").notNull().default(5),
   // ─── Underwriting defaults (Hank fix) ──────────────────────────────
@@ -846,7 +849,16 @@ export const leads = pgTable("leads", {
   // unique index — multiple orgs may legitimately import the same
   // parcel as a lead).
   apn: text("apn"),
-  
+
+  // Parcel / property enrichment fields (populated from parcel-of-record data —
+  // county GIS or Regrid via the provider registry, or tax-delinquent imports).
+  // estimatedValue is a derived ESTIMATE, never a quoted comp.
+  county: text("county"),
+  propertyAddress: text("property_address"),
+  taxDelinquent: boolean("tax_delinquent"),
+  estimatedValue: numeric("estimated_value"),
+  acreage: numeric("acreage"),
+
   // Campaign attribution tracking
   sourceTrackingCode: text("source_tracking_code"), // Links to campaign.trackingCode
   sourceCampaignId: integer("source_campaign_id"), // Links to the campaign that generated this lead
@@ -877,6 +889,11 @@ export const leads = pgTable("leads", {
   optOutDate: timestamp("opt_out_date"),
   optOutReason: text("opt_out_reason"),
   doNotContact: boolean("do_not_contact").default(false),
+  // Roadmap W1.5 (2026-07): IANA timezone for TCPA quiet-hours (8am–9pm
+  // RECIPIENT-local). Area-code inference is unreliable post-number-porting;
+  // this column is the honest source — populated from the mailing address
+  // (enrichment follow-up) or set manually. Null → area-code fallback.
+  timezone: text("timezone"),
   
   // Soft delete support for safe bulk operations with recovery
   deletedAt: timestamp("deleted_at"), // null = active, timestamp = soft deleted
@@ -2556,6 +2573,50 @@ export const paxSends = pgTable("pax_sends", {
 ]);
 export type PaxSend = typeof paxSends.$inferSelect;
 
+// proof_receipts — the persisted, hash-chained ProofReceipt log (Foundry move
+// #3 persistence). Every witnessed governed action seals one row: what + for
+// whom (scope) + who approved + under which constitution + the Art.50
+// disclosure. `receipt_hash` is the per-row integrity seal; `prev_receipt_hash`
+// links each row to the previous one in the same scope chain (tamper-evident
+// ordering). Append-only by contract (no UPDATE path), mirroring pax_sends.
+export const proofReceipts = pgTable("proof_receipts", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id"), // null = platform scope (AcreOS itself)
+  scope: text("scope").notNull(), // "platform" | "org:N"
+  actionKind: text("action_kind").notNull(),
+  payloadHash: text("payload_hash").notNull(),
+  accountableHumanId: text("accountable_human_id").notNull(),
+  constitutionVersion: text("constitution_version").notNull(),
+  constitutionVersionHash: text("constitution_version_hash").notNull(),
+  gateResults: jsonb("gate_results"),
+  evalScore: doublePrecision("eval_score"),
+  costUsd: doublePrecision("cost_usd"),
+  autonomyLevel: text("autonomy_level"),
+  situationHash: text("situation_hash"),
+  // Frontier #4 — receipt schema version (1 = legacy, 2 = prediction-sealed).
+  // Stored so rowToReceipt reconstructs the exact body shape the hash sealed.
+  receiptVersion: integer("receipt_version").notNull().default(1),
+  // Frontier #4 — the brain's sealed forecast at issuance (SealedPrediction);
+  // null when the brain abstained. Sealed into receiptHash on v2 receipts.
+  prediction: jsonb("prediction"),
+  // Frontier #4 — the replay anchor: sha256 of the full decision inputs.
+  inputsHash: text("inputs_hash"),
+  // Frontier #4 — what the realized outcome delta is attributed to (CauseAllocation).
+  causeAllocation: jsonb("cause_allocation"),
+  disclosure: text("disclosure").notNull(),
+  // ISO string (not a timestamp) so the sealed receiptHash round-trips
+  // byte-for-byte — a timestamp's tz/precision drift would break verification.
+  issuedAt: text("issued_at").notNull(),
+  prevReceiptHash: text("prev_receipt_hash"),
+  receiptHash: text("receipt_hash").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("proof_receipts_scope_id_idx").on(t.scope, t.id),
+  index("proof_receipts_org_issued_idx").on(t.organizationId, t.issuedAt),
+  index("proof_receipts_hash_idx").on(t.receiptHash),
+]);
+export type ProofReceiptRow = typeof proofReceipts.$inferSelect;
+
 // 2026-06-10 (Tier 1E, elevation blueprint): backup restore-verification
 // ledger. A backup that has never been restored is a hope, not a backup. The
 // weekly backup_restore_verify job (server/jobs/backupRestoreVerify.ts)
@@ -3394,8 +3455,13 @@ export const insertLeadSchema = createInsertSchema(leads).omit({
   // F-D23: drizzle-zod treats text columns as bare z.string() — invalid
   // emails like "not-an-email" sailed through to the DB. Tighten to email
   // format (still optional since the column is nullable for callers who
-  // only have a phone or just a parcel-owner name).
-  email: z.string().email().optional().nullable(),
+  // only have a phone or just a parcel-owner name). An untouched form field
+  // arrives as "" — that's an absent email, not an invalid one (WS1,
+  // 2026-07-07): coerce to null instead of 422ing the whole lead.
+  email: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+    z.string().email().optional().nullable(),
+  ),
 });
 export const insertLeadActivitySchema = createInsertSchema(leadActivities).omit({
   id: true, createdAt: true,
@@ -5757,6 +5823,28 @@ export const ACTIVATION_EVENTS = [
   "first_pax_question_asked",
   "first_mailer_sent",
   "first_payment_recorded",
+  // Tier 2C (2026-06-10) — server-side funnel truth. These two were
+  // previously CLIENT-emitted PostHog events (settings.tsx fired
+  // trial_to_paid off the ?subscription=success redirect; use-onboarding
+  // fired first_value_reached off onboarding completion), which made the
+  // revenue + activation funnel steps spoofable, ad-blockable, and
+  // detached from what actually happened. Now:
+  //   trial_to_paid       — emitted by the Stripe webhook
+  //                         (processSubscriptionCheckoutCompleted), the
+  //                         same place first_payment_processed is recorded.
+  //   first_value_reached — emitted by the approval kernel at the org's
+  //                         first WITNESSED send (the append-only pax_sends
+  //                         insert), not at "clicked through onboarding".
+  // Both are first-occurrence-idempotent via the (org, eventName) unique
+  // index like every other activation event.
+  "trial_to_paid",
+  "first_value_reached",
+  // TTFM North-Star companion (2026-07-03) — the magic moment: a SELLER
+  // answered. Mail out the door is our effort; this is the market talking
+  // back, and it's the event that decides whether a trial becomes a
+  // believer. Fired at the two inbound seams (reply-email webhook, inbound
+  // SMS webhook) with eventValue.channel = "email" | "sms".
+  "first_seller_response",
 ] as const;
 export type ActivationEvent =
   | typeof ACTIVATION_EVENTS[number]
@@ -6200,6 +6288,139 @@ export type InsertCountyDiscoveryQueue = z.infer<typeof insertCountyDiscoveryQue
 export type CountyDiscoveryQueue = typeof countyDiscoveryQueue.$inferSelect;
 
 // ============================================
+// PUBLIC PARCEL REPORTS (Tier 3A — /p/:state/:county/:apn permalinks)
+// ============================================
+//
+// Saved, shareable public parcel reports (migration 0156, elevation blueprint
+// 3A). Each row IS the cache for one permalink: free/government-data parcel
+// facts + the honest PARTIAL Land Credit Score computed from those facts only.
+// No org linkage by design — these are pre-signup acquisition surfaces.
+//
+// Honesty + licensing contract:
+//  - facts carry only free-tier sources (the generation path is hard-capped to
+//    maxTier:"free" through resolveParcel; paid/byok providers are structurally
+//    unreachable — see server/services/publicParcelReport.ts).
+//  - County-assessor attributes (owner, tax, assessed value) are persisted ONLY
+//    when the county's county_gis_endpoints row says redistributable in
+//    ('yes','attribution') (Beatrice rule: un-reviewed counties are
+//    live-passthrough only — a saved public page is redistribution).
+//  - lcs locked dimensions carry score:null, never an invented value.
+
+/** One free-data fact category as rendered on the public report. */
+export interface PublicReportFactCategory {
+  category: string; // flood_zone | soil | elevation | wetlands
+  available: boolean;
+  data: unknown; // raw free-source payload (zone, soilType, elevationFeet, …)
+  source: string | null; // e.g. "FEMA NFHL" — named even when empty
+  sourceAsOf: string | null;
+  classification: "authoritative" | "estimate" | "modeled" | "unknown";
+  fromCache: boolean;
+}
+
+export interface PublicReportFacts {
+  parcel: {
+    apn: string;
+    state: string;
+    county: string;
+    acres: number | null;
+    centroid: { lat: number; lng: number } | null;
+    /**
+     * included            — county attributes persisted (license allows)
+     * not-redistributable — county record exists; terms not yet reviewed →
+     *                       attributes intentionally omitted from the page
+     * unavailable         — no free county source matched this APN
+     */
+    countyAttributes: "included" | "not-redistributable" | "unavailable";
+    /** Required attribution string when countyAttributes === "included". */
+    attribution: string | null;
+    /** Present only when countyAttributes === "included". */
+    assessorData?: Record<string, unknown> | null;
+  };
+  categories: PublicReportFactCategory[];
+}
+
+export type PublicLcsDimensionKey =
+  | "location"
+  | "physical"
+  | "legal"
+  | "financial"
+  | "environmental"
+  | "market";
+
+export interface PublicLcsDimension {
+  key: PublicLcsDimensionKey;
+  label: string;
+  weight: number; // canonical LCS weight (sums to 100 across all six)
+  status: "scored" | "locked";
+  /** 0–100 when scored; ALWAYS null when locked (honesty invariant). */
+  score: number | null;
+  /** Sub-factors actually informed by free government data. */
+  coverage: string[];
+  /** Sub-factors that need full-AcreOS data — named, never guessed. */
+  missing: string[];
+  /** Government sources backing the scored sub-factors. */
+  sources: string[];
+}
+
+export interface PublicLcs {
+  kind: "partial";
+  basis: "government-data-only";
+  scoredDimensions: number;
+  totalDimensions: number;
+  /**
+   * Share of total LCS dimension weight covered by the scored dimensions,
+   * 0–100 rounded (sum of scored-dimension weights ÷ total weight × 100).
+   * Quantifies HOW partial the partial score is — a 2-of-6 score that covers
+   * 30% of scoring weight is honestly different from one that covers 70%.
+   */
+  weightCoveredPct: number;
+  /** 300–850 over scored dimensions only (weights renormalized); null when nothing scored. */
+  partialScore: number | null;
+  partialGrade: string | null;
+  dimensions: PublicLcsDimension[];
+  modelVersion: string;
+  computedAt: string;
+}
+
+export const publicParcelReports = pgTable("public_parcel_reports", {
+  id: serial("id").primaryKey(),
+
+  // Permalink identity: /p/:state/:county/:apn → (state, county_slug, apn_key).
+  state: text("state").notNull(), // 2-letter, uppercased
+  countySlug: text("county_slug").notNull(), // lowercased, hyphenated, no " county"
+  countyLabel: text("county_label").notNull(), // display form, e.g. "Travis"
+  apn: text("apn").notNull(), // display form as entered/normalized
+  apnKey: text("apn_key").notNull(), // comparison key: uppercase alphanumerics only
+
+  facts: jsonb("facts").$type<PublicReportFacts>().notNull(),
+  lcs: jsonb("lcs").$type<PublicLcs>().notNull(),
+
+  // Centroid duplicated out of facts for cheap geo queries / refresh.
+  latitude: real("latitude"),
+  longitude: real("longitude"),
+
+  // Server-side truth for report consumption (client analytics is supplemental).
+  viewCount: integer("view_count").notNull().default(0),
+  lastViewedAt: timestamp("last_viewed_at", { withTimezone: true }),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  refreshedAt: timestamp("refreshed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("public_parcel_reports_identity_uq").on(table.state, table.countySlug, table.apnKey),
+  // Daily generation-cap counts + sitemap ordering.
+  index("public_parcel_reports_created_idx").on(table.createdAt),
+  index("public_parcel_reports_refreshed_idx").on(table.refreshedAt),
+]);
+
+export const insertPublicParcelReportSchema = createInsertSchema(publicParcelReports).omit({
+  id: true,
+  createdAt: true,
+  refreshedAt: true,
+});
+export type InsertPublicParcelReport = z.infer<typeof insertPublicParcelReportSchema>;
+export type PublicParcelReport = typeof publicParcelReports.$inferSelect;
+
+// ============================================
 // COUNTY COVERAGE REQUEST (customer-facing "request this county" CTA)
 // ============================================
 //
@@ -6429,6 +6650,80 @@ export const insertParcelAlertSchema = createInsertSchema(parcelAlerts).omit({
 });
 export type InsertParcelAlert = z.infer<typeof insertParcelAlertSchema>;
 export type ParcelAlert = typeof parcelAlerts.$inferSelect;
+
+// ============================================
+// COUNTY MARKET ROLLUPS (Tier 3F — cross-org data co-op)
+// --------------------------------------------
+// Privacy-preserving county-level market aggregates computed monthly from
+// cross-org observations (parcel_observations density, deals/offer_letters
+// pricing, land_credit_scores grades) by the `county_market_rollup` worker
+// job (server/services/dataCoop/countyRollupJob.ts).
+//
+// Privacy model — generalized from marketNetworkContributor:
+//   - NO organization column AT ALL (structural org-null: a rollup row cannot
+//     link back to a tenant because the linkage does not exist in the schema).
+//   - cohort_size records the k backing the row; rows below k=5 are NEVER
+//     materialized — computeCountyRollup() returns null below the floor, so
+//     the gate lives in the aggregation, not the read path.
+//   - every price sample is value-bucketed (nearest $500/acre) BEFORE
+//     aggregation so no exact deal is recoverable from a percentile.
+// Migration 0157. Mirrors scripts/migrate.mjs STATEMENTS.
+// ============================================
+export const countyMarketRollups = pgTable("county_market_rollups", {
+  id: serial("id").primaryKey(),
+  state: text("state").notNull(), // 2-letter state code, uppercased
+  county: text("county").notNull(),
+  period: text("period").notNull(), // calendar month, "YYYY-MM"
+  // CountyRollupMetrics (server/services/dataCoop/privacyRollup.ts) — each
+  // sub-metric is independently k-gated and null when its own cohort is thin.
+  metrics: jsonb("metrics").$type<Record<string, unknown>>().notNull(),
+  // Distinct contributing parcels (cross-org APNs observed in the county) —
+  // the k that allowed this row to exist. Always >= 5 by construction.
+  cohortSize: integer("cohort_size").notNull(),
+  computedAt: timestamp("computed_at").notNull().defaultNow(),
+}, (table) => [
+  // One row per (state, county, period); the monthly job upserts.
+  uniqueIndex("county_market_rollups_state_county_period_uk").on(
+    table.state, table.county, table.period,
+  ),
+  // Map-door browse path: all counties for a state, newest period first.
+  index("county_market_rollups_state_period_idx").on(table.state, table.period),
+]);
+
+export type CountyMarketRollup = typeof countyMarketRollups.$inferSelect;
+
+// Run ledger for the rollup job — the deadman roster proves the job RAN;
+// this proves it PRODUCED. Two consecutive zero-rollup runs raise an
+// alert-spine warning (the co-op silently producing nothing is the
+// "wired but dark" failure mode).
+export const countyRollupRuns = pgTable("county_rollup_runs", {
+  id: serial("id").primaryKey(),
+  period: text("period").notNull(), // the (most recent) period recomputed
+  rollupsWritten: integer("rollups_written").notNull().default(0),
+  countiesScanned: integer("counties_scanned").notNull().default(0),
+  ranAt: timestamp("ran_at").notNull().defaultNow(),
+}, (table) => [
+  index("county_rollup_runs_ran_at_idx").on(table.ranAt),
+]);
+
+export type CountyRollupRun = typeof countyRollupRuns.$inferSelect;
+
+// Quarterly public market report DRAFTS (Tier 3F foundation). Generated
+// server-side from county_market_rollups; founder-reviewable at
+// /api/founder/market-reports. NEVER auto-published — witnessed-publish is a
+// follow-up; status stays 'draft' until a founder-approval path exists.
+export const marketReportDrafts = pgTable("market_report_drafts", {
+  id: serial("id").primaryKey(),
+  quarter: text("quarter").notNull(), // "YYYY-Q#"
+  status: text("status").notNull().default("draft"), // draft (publish path not built yet)
+  report: jsonb("report").$type<Record<string, unknown>>().notNull(), // structured JSON artifact
+  markdown: text("markdown").notNull(), // rendered markdown artifact
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("market_report_drafts_quarter_uk").on(table.quarter),
+]);
+
+export type MarketReportDraft = typeof marketReportDrafts.$inferSelect;
 
 // ============================================
 // LAND INTELLIGENCE REPORTS (Iyari #2 — persist the report; seed the corpus)
@@ -8275,6 +8570,55 @@ export type SubscriptionHistoryRow = typeof subscriptionHistory.$inferSelect;
 // alert_triggered/alert_severity carry the policy result so the surface
 // can render historical bands without re-applying thresholds.
 
+// ============================================
+// MRR SNAPSHOTS (roadmap W4.5, 2026-07)
+// ============================================
+// Weekly point-in-time MRR so week-over-week growth is computed from
+// HISTORY instead of defaulting to zero (which made the runway "upside"
+// scenario identical to base since launch). Written by the
+// mrr_snapshot_weekly job; read by runwayModel + founder bridge.
+
+export const mrrSnapshots = pgTable("mrr_snapshots", {
+  id: serial("id").primaryKey(),
+  capturedAt: timestamp("captured_at").defaultNow().notNull(),
+  mrrCents: integer("mrr_cents").notNull(),
+  payingOrgs: integer("paying_orgs").notNull().default(0),
+});
+
+// ── 0197 — Marketing spend ledger (the CAC numerator) ───────────────────────
+// Until this table existed the unit-economics dashboard honestly reported
+// cacAvailable:false and the budget ramp computed CAC from AI-dispatch spend
+// alone — real ad dollars had no ledger anywhere (2026-07-07 cost audit).
+// One row per spend entry. PLATFORM-GLOBAL (no organization_id): this is
+// AcreOS's own acquisition spend, not tenant data. Sources: 'manual'
+// (founder-entered), 'ad_provider' (a future Meta/Google spend-sync), or
+// 'autopilot'. Amounts are ACTUALS — never record budgets/commitments here;
+// a budget is not spend (no-fabrication).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0197_marketing_spend.sql.
+export const marketingSpend = pgTable("marketing_spend", {
+  id: serial("id").primaryKey(),
+  // "meta" | "google" | "content" | "referral" | "sponsorship" | "other"
+  channel: text("channel").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  // The date the spend occurred (provider-reported date for synced rows).
+  spentAt: timestamp("spent_at").notNull(),
+  // "manual" | "ad_provider" | "autopilot"
+  source: text("source").notNull().default("manual"),
+  // Provider-side campaign id / name, when known.
+  campaignRef: text("campaign_ref"),
+  note: text("note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  bySpentAt: index("marketing_spend_spent_at_idx").on(table.spentAt),
+  byChannelSpentAt: index("marketing_spend_channel_spent_at_idx").on(
+    table.channel,
+    table.spentAt,
+  ),
+}));
+
+export type MarketingSpendEntry = typeof marketingSpend.$inferSelect;
+
 export const customerConcentration = pgTable("customer_concentration", {
   id: serial("id").primaryKey(),
   computedAt: timestamp("computed_at").defaultNow().notNull(),
@@ -8439,6 +8783,25 @@ export type DeferredRevenueRow = typeof deferredRevenue.$inferSelect;
 // CANCELLATION SURVEYS & REFUND REQUESTS
 // ============================================
 
+// ── 0198 — Reactivation surveys (win-back "what brought you back") ──────────
+// Written by POST /api/subscription/reactivation-survey (welcome-back page).
+// Best-effort growth signal — the client swallows failures — but the store
+// itself is durable (the 90-day activity_log retention would erase it).
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0198_reactivation_surveys.sql.
+export const reactivationSurveys = pgTable("reactivation_surveys", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  userId: text("user_id"),
+  // e.g. "missed_features" | "new_deals" | "pricing" | "other" — free string,
+  // the client owns the vocabulary.
+  returnReason: text("return_reason").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  byOrgCreated: index("reactivation_surveys_org_created_idx").on(table.organizationId, table.createdAt),
+}));
+
+export type ReactivationSurvey = typeof reactivationSurveys.$inferSelect;
+
 export const cancellationSurveys = pgTable("cancellation_surveys", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
@@ -8570,7 +8933,7 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   // Pillar K (note-investor) lifecycle events. Existing templates
   // referenced note.balloon_approaching + note.ltv_alert but the union
   // didn't declare them; new note-lifecycle templates below add the
-  // remaining four. See docs/exhaustive-completion/pillar-k-note-
+  // remaining four. See docs/archive/exhaustive-completion/pillar-k-note-
   // investors-25-personas.md for the persona insights driving these.
   "note.balloon_approaching",
   "note.ltv_alert",
@@ -11940,7 +12303,10 @@ export const negotiationThreads = pgTable("negotiation_threads", {
   leadId: integer("lead_id").references(() => leads.id).notNull(),
   propertyId: integer("property_id").references(() => properties.id),
   dealId: integer("deal_id"),
-  
+  // Which strategy is driving this thread — enables per-strategy performance
+  // rollups scoped to a single strategy (not all of an org's threads).
+  strategyId: integer("strategy_id").references(() => negotiationStrategies.id),
+
   status: text("status").notNull().default("active"), // active, stalled, closed_won, closed_lost, archived
   
   // Current state
@@ -12029,8 +12395,13 @@ export type NegotiationMove = typeof negotiationMoves.$inferSelect;
 // Negotiation Outcomes - Learning data for AI improvement
 export const negotiationOutcomes = pgTable("negotiation_outcomes", {
   id: serial("id").primaryKey(),
+  // Tenant scope. Nullable for rows written before org-scoping landed; new
+  // rows always carry it, and org-scoped reads filter on it (NULL rows are
+  // never surfaced cross-org). Added 2026-06-15 with the negotiation
+  // tenant-isolation fix.
+  organizationId: integer("organization_id").references(() => organizations.id),
   threadId: integer("thread_id").references(() => negotiationThreads.id).notNull(),
-  
+
   outcome: text("outcome").notNull(), // deal_closed, seller_walked, buyer_walked, stalled
   
   // Final terms
@@ -12051,6 +12422,7 @@ export const negotiationOutcomes = pgTable("negotiation_outcomes", {
   
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
+  index("negotiation_outcomes_org_idx").on(table.organizationId, table.createdAt),
   index("negotiation_outcomes_outcome_idx").on(table.outcome),
 ]);
 
@@ -12061,7 +12433,11 @@ export type NegotiationOutcome = typeof negotiationOutcomes.$inferSelect;
 // Negotiation Strategies - A/B test variants
 export const negotiationStrategies = pgTable("negotiation_strategies", {
   id: serial("id").primaryKey(),
-  
+  // Tenant scope — see negotiationOutcomes. Nullable for pre-existing rows;
+  // org-scoped reads (getBestStrategy / updateStrategyPerformance) filter on it
+  // so one tenant's strategy performance can never influence another's.
+  organizationId: integer("organization_id").references(() => organizations.id),
+
   name: text("name").notNull(),
   description: text("description"),
   
@@ -12082,11 +12458,135 @@ export const negotiationStrategies = pgTable("negotiation_strategies", {
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("negotiation_strategies_org_idx").on(table.organizationId, table.successRate),
+]);
 
 export const insertNegotiationStrategySchema = createInsertSchema(negotiationStrategies).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertNegotiationStrategy = z.infer<typeof insertNegotiationStrategySchema>;
 export type NegotiationStrategy = typeof negotiationStrategies.$inferSelect;
+
+// ============================================================================
+// FOUNDER AUTOPILOT — per-domain earned-autonomy (the Trust Ledger)
+// ============================================================================
+// One row per founder-ops domain (growth/support/deploy/ops/finance). Tracks
+// the domain's autonomy level + clean-cycle progress toward promotion. Global
+// (not org-scoped) — this is AcreOS-the-company governing its OWN operations.
+export const domainAutonomyLevels = pgTable("domain_autonomy_levels", {
+  id: serial("id").primaryKey(),
+  domain: text("domain").notNull().unique(), // growth | support | deploy | ops | finance
+  level: text("level").notNull().default("observe"), // observe | draft | execute_gated | autonomous_gated
+  cleanCycleCount: integer("clean_cycle_count").notNull().default(0),
+  lastPromotedAt: timestamp("last_promoted_at"),
+  lastDemotedAt: timestamp("last_demoted_at"),
+  lastDemotionReason: text("last_demotion_reason"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Founder Autopilot — standing orders + intents ("Your Voice"). Durable
+// natural-language policy the founder issues; the autopilot honors active
+// orders in every outward action. Global (founder-level).
+export const autopilotStandingOrders = pgTable("autopilot_standing_orders", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull().default("standing_order"), // standing_order | intent
+  body: text("body").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type AutopilotStandingOrder = typeof autopilotStandingOrders.$inferSelect;
+
+// Founder Autopilot — the Experience Log (procedural memory for the learning
+// loop). One row per autopilot action; real signals accrete as they land (each
+// field null until its signal genuinely arrives — never fabricated). Global.
+export const autopilotExperiences = pgTable("autopilot_experiences", {
+  id: serial("id").primaryKey(),
+  moveKind: text("move_kind").notNull(),
+  domain: text("domain").notNull(),
+  playId: text("play_id"), // null for moves without a play (e.g. optimize)
+  outcome: text("outcome").notNull(), // acted | escalated | suppressed
+  dispatchId: integer("dispatch_id"),
+  askId: integer("ask_id"),
+  // Real signals — null until they land.
+  dispatchSuccess: boolean("dispatch_success"),
+  evalScore: numeric("eval_score"),
+  founderVerdict: text("founder_verdict"), // approved | declined
+  resolution: text("resolution"), // resolved | reopened
+  satisfaction: integer("satisfaction"), // 1-5
+  // Real downstream CONSEQUENCE signals (kernel-elevation T0.1) — set by a
+  // webhook when a witnessed action's effect lands in the world, matched to this
+  // row via target_ref. Null until/unless a concrete consequence is observed.
+  deliveryBounced: boolean("delivery_bounced"), // an outward send hard-bounced/complained
+  paymentRecovered: boolean("payment_recovered"), // a dunning action → the invoice then paid
+  // The concrete business object this action targeted (e.g. "invoice:in_123",
+  // "email:x@y.com"), set at witnessed execution when a hand knows its target —
+  // the join key a downstream webhook uses to credit the consequence. Null when
+  // no clean 1:1 target exists (→ honest abstention; no consequence attributed).
+  targetRef: text("target_ref"),
+  // Accountable scope (kernel-elevation T3 / #11) — "platform" (AcreOS operating
+  // itself) today; an "org:N" once the kernel runs foreign tenants. Recorded NOW
+  // (defaulted 'platform') because it's ruinous to retrofit onto a populated
+  // learning ledger — you can't backfill which tenant a historical row belonged
+  // to. Reads stay platform-wide until a second tenant exists; the column is the
+  // cheap insurance that the cross-tenant split is a pure migration later.
+  scope: text("scope").default("platform"),
+  costUsd: numeric("cost_usd"),
+  // Calibrated foresight: the success probability the system PREDICTED for this
+  // action at act-time. Compared against the realized outcome to measure the
+  // system's own calibration (Brier score). Null when no forecast was made.
+  predictedSuccess: numeric("predicted_success"),
+  // Glass-box: the full reasoning trace (senses → options → forecast → gate →
+  // outcome + a plain-language narrative). Lets the founder reconstruct WHY.
+  reasoningTrace: jsonb("reasoning_trace"),
+  createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (t) => ({
+  playIdx: index("autopilot_experiences_play_idx").on(t.playId),
+  dispatchIdx: index("autopilot_experiences_dispatch_idx").on(t.dispatchId),
+  askIdx: index("autopilot_experiences_ask_idx").on(t.askId),
+  targetRefIdx: index("autopilot_experiences_target_ref_idx").on(t.targetRef),
+}));
+export type AutopilotExperience = typeof autopilotExperiences.$inferSelect;
+
+// autopilot_worldmodel_snapshots (kernel-elevation T1.3 / #10) — per-cycle
+// snapshot of the causal world-model's edge confidences, so the model's
+// confidence TRAJECTORY (the heart of THE BET) is observable + diffable, not an
+// in-memory value discarded each tick. "self-improving" becomes a fact you can
+// chart, with each edge badged measured (refined from real consequence) vs prior.
+export const autopilotWorldmodelSnapshots = pgTable("autopilot_worldmodel_snapshots", {
+  id: serial("id").primaryKey(),
+  capturedAt: timestamp("captured_at").defaultNow(),
+  modelVersion: integer("model_version").notNull(),
+  edges: jsonb("edges").notNull(), // [{ from, to, confidence, measured }]
+  measuredEdgeCount: integer("measured_edge_count").notNull(),
+  edgeCount: integer("edge_count").notNull(),
+}, (t) => [
+  index("autopilot_worldmodel_snapshots_at_idx").on(t.capturedAt),
+]);
+export type AutopilotWorldmodelSnapshot = typeof autopilotWorldmodelSnapshots.$inferSelect;
+
+// Founder Autopilot — policy-induction proposals. When the system spots a
+// durable pattern (a play it keeps declining, or one it keeps approving) it
+// proposes codifying it. One row per (kind, play) — proposed at most once,
+// respecting the founder's answer. Global.
+export const autopilotPolicyProposals = pgTable("autopilot_policy_proposals", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull(), // stop_play | trust_play | ramp_budget
+  playId: text("play_id").notNull(),
+  domain: text("domain").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status").notNull().default("open"), // open | approved | declined
+  askId: integer("ask_id"),
+  // ramp_budget only: the proposed new monthly cap (USD) applied on approval.
+  targetValueUsd: doublePrecision("target_value_usd"),
+  createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (t) => ({
+  playKindIdx: index("autopilot_policy_proposals_play_kind_idx").on(t.playId, t.kind),
+  askIdx: index("autopilot_policy_proposals_ask_idx").on(t.askId),
+}));
+export type AutopilotPolicyProposal = typeof autopilotPolicyProposals.$inferSelect;
 
 // ============================================================================
 // MARKETPLACE + FINANCIAL INTEL + CAPITAL MARKETS + VOICE/VISUAL + ACADEMY +
@@ -12128,6 +12628,12 @@ export * from "./schema/reserve-floor-checks";
 // extracted to ./schema/compliance.ts
 // ============================================================================
 export * from "./schema/compliance";
+
+// ============================================================================
+// TIER 2D — bounded, audited calibration-threshold adjustments for the Pax
+// support auto-resolve grader. Lives in ./schema/calibration-threshold-adjustments.ts
+// ============================================================================
+export * from "./schema/calibration-threshold-adjustments";
 
 // ============================================================================
 // REG-Z §1026.41 + §1026.36(c) — periodic statements, payment
@@ -12362,6 +12868,197 @@ export const insertWorkerHeartbeatSchema = createInsertSchema(workerHeartbeat).o
 export type InsertWorkerHeartbeat = z.infer<typeof insertWorkerHeartbeatSchema>;
 export type WorkerHeartbeat = typeof workerHeartbeat.$inferSelect;
 
+// Uptime samples — append-only liveness pulse (the HISTORY the single-row
+// worker_heartbeat can't keep). The worker writes one row ~per minute as it
+// polls; GAPS between consecutive samples are provable downtime (the worker
+// wasn't running to write them). The real uptime % is derived from these gaps,
+// replacing the old hard-stubbed constant. `source` distinguishes the internal
+// worker pulse from an optional external probe. Pruned to ~31 days. Global.
+export const uptimeSamples = pgTable("uptime_samples", {
+  id: serial("id").primaryKey(),
+  at: timestamp("at").notNull().defaultNow(),
+  source: text("source").notNull().default("worker"), // worker | external
+}, (t) => ({
+  atIdx: index("uptime_samples_at_idx").on(t.at),
+}));
+export type UptimeSample = typeof uptimeSamples.$inferSelect;
+
+// Founder Autopilot — runtime settings (the master switches, DB-backed so the
+// founder flips them from the Control Center instead of a Fly secret). Singleton
+// row (id=1). The runtime reads these with env as the fallback default, so the
+// system stays safe-off until a real row says otherwise. Global.
+export const autopilotSettings = pgTable("autopilot_settings", {
+  id: integer("id").primaryKey().default(1),
+  dispatchEnabled: boolean("dispatch_enabled"), // null → fall back to env
+  publishEnabled: boolean("publish_enabled"), // null → fall back to env
+  // DB-backed monthly growth-budget cap an approved ramp writes. null → the
+  // env/charter default governs. Clamped to a hard ceiling at read-time.
+  growthBudgetOverrideUsd: doublePrecision("growth_budget_override_usd"),
+  // Master switch for the autonomous daily Operator cadence. null → env fallback (OFF).
+  cognitionEnabled: boolean("cognition_enabled"),
+  // Master switch for the immune system's motor half (gated self-patch PRs).
+  // null → env SELF_PATCH_ENABLED fallback (OFF). Flipping it is a Control
+  // Center tap, not a Fly secret + redeploy.
+  selfPatchEnabled: boolean("self_patch_enabled"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: text("updated_by"),
+});
+export type AutopilotSettings = typeof autopilotSettings.$inferSelect;
+
+// Growth targets — the queue of WHICH county to write the next owned-content
+// guide for. Seeded from the founder's buy-box counties at ignition, later
+// demand-ranked from real parcel-check volume. The daily grow loop drains the
+// highest-priority pending target. Global (one shared SEO surface). Migration 0181.
+export const growthTargets = pgTable("growth_targets", {
+  id: serial("id").primaryKey(),
+  state: text("state").notNull(),
+  countySlug: text("county_slug").notNull(),
+  countyLabel: text("county_label").notNull(),
+  source: text("source").notNull().default("seed"), // seed | demand
+  demandScore: doublePrecision("demand_score").notNull().default(0),
+  status: text("status").notNull().default("pending"), // pending | dispatched
+  dispatchedAt: timestamp("dispatched_at"),
+  lastDispatchId: integer("last_dispatch_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  stateCountyIdx: uniqueIndex("growth_targets_state_county_idx").on(t.state, t.countySlug),
+  statusScoreIdx: index("growth_targets_status_score_idx").on(t.status, t.demandScore),
+}));
+export type GrowthTarget = typeof growthTargets.$inferSelect;
+
+// Founder Autopilot — published marketing artifacts. The stable id every
+// attribution keys against (replaces the in-memory content-brief map). One row
+// per artifact the autopilot publishes to a public owned surface. Global.
+export const marketingArtifacts = pgTable("marketing_artifacts", {
+  id: serial("id").primaryKey(),
+  dispatchId: integer("dispatch_id"),
+  playId: text("play_id"),
+  slug: text("slug").notNull(),
+  surface: text("surface").notNull().default("field_note"),
+  county: text("county"),
+  state: text("state"),
+  publishedAt: timestamp("published_at"),
+  unpublishedAt: timestamp("unpublished_at"),
+  viewCount: integer("view_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  slugIdx: index("marketing_artifacts_slug_idx").on(t.slug),
+  dispatchIdx: index("marketing_artifacts_dispatch_idx").on(t.dispatchId),
+}));
+export type MarketingArtifact = typeof marketingArtifacts.$inferSelect;
+
+// Founder Autopilot — the attribution ledger. A signup attributed (off the
+// witnessed marketing_touch chain, never the racy UTM user blob) to a published
+// artifact. A LOWER BOUND — absence of a row is absent evidence, never a
+// "failure" vote. Founder-dashboard only; never fed to the learning loop in T0.
+export const autopilotConversions = pgTable("autopilot_conversions", {
+  id: serial("id").primaryKey(),
+  artifactId: integer("artifact_id"),
+  playId: text("play_id"),
+  anonId: text("anon_id"),
+  organizationId: integer("organization_id"),
+  event: text("event").notNull(), // view | signup | first_value | paid
+  attributedAt: timestamp("attributed_at").defaultNow(),
+}, (t) => ({
+  artifactIdx: index("autopilot_conversions_artifact_idx").on(t.artifactId),
+  dedupIdx: uniqueIndex("autopilot_conversions_dedup_uq").on(t.artifactId, t.anonId, t.event),
+  orgIdx: index("autopilot_conversions_org_event_idx").on(t.organizationId, t.event),
+}));
+export type AutopilotConversion = typeof autopilotConversions.$inferSelect;
+
+// ── Autopilot outward perception bus (Hands roadmap P0.2) ───────────────────
+// Append-only ledger of senses derived from the OUTSIDE world — the webhooks
+// that already land (SendGrid deliverability, Stripe revenue/churn, inbound
+// SMS opt-outs) become rows here so the brain (decide.ts) can perceive the
+// market it acts on, not just AcreOS's own DB. Each row is one observation:
+//   • kind  — the sense channel, e.g. "email_complaint" | "revenue_delta" |
+//             "dunning_pressure" | "sms_opt_out" | "churn_signal".
+//   • value — a numeric magnitude (count, cents, rate) for that observation.
+//   • detail— optional structured context (never PII-bearing credential values).
+// Reads aggregate the latest rows per kind within a window (perception.ts);
+// writes are best-effort and MUST never break the webhook that emits them.
+export const autopilotSenses = pgTable("autopilot_senses", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull(),
+  value: doublePrecision("value").notNull().default(0),
+  detail: jsonb("detail"),
+  observedAt: timestamp("observed_at").defaultNow(),
+}, (t) => ({
+  kindObservedIdx: index("autopilot_senses_kind_observed_idx").on(t.kind, t.observedAt),
+}));
+export type AutopilotSense = typeof autopilotSenses.$inferSelect;
+
+// ── Autopilot objectives (Hands roadmap P5) ─────────────────────────────────
+// Structured goals the brain plans toward — the difference between "do sensible
+// things" and "move THESE numbers." The founder declares targets in Your Voice;
+// the planner weights moves by expected objective movement; the daily letter
+// reports progress. `current` is refreshed from real senses (never invented).
+//   • key     — stable machine id, e.g. "activated_orgs" | "trial_to_paid_rate".
+//   • unit    — count | cents | rate | minutes (how to render + compare).
+//   • owningDomain — which autopilot domain is accountable for moving it.
+export const autopilotObjectives = pgTable("autopilot_objectives", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull(),
+  label: text("label").notNull(),
+  target: doublePrecision("target").notNull(),
+  current: doublePrecision("current").notNull().default(0),
+  unit: text("unit").notNull().default("count"),
+  owningDomain: text("owning_domain"),
+  deadline: timestamp("deadline"),
+  active: boolean("active").notNull().default(true),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  keyIdx: uniqueIndex("autopilot_objectives_key_uq").on(t.key),
+}));
+export type AutopilotObjective = typeof autopilotObjectives.$inferSelect;
+
+// ── Autopilot founder-scoped pending actions (Elite Vision H1 — execution seam) ─
+// The witnessed-send surface for AUTOPILOT actions. When a dispatched agent
+// drafts a customer-facing action (send_email, apply_refund, …) and calls the
+// hand, the executor FREEZES it here instead of sending — bound to the hand name
+// + frozen args + a sha256 content hash + a 24h expiry. The founder approves it
+// in /decisions; approval re-verifies the hash and fires executeHandWitnessed
+// exactly once (idempotent claim). This is the founder-scoped analogue of the
+// org-scoped approvalKernel/pending_actions — same safety contract, different
+// approver (the founder/platform, not a customer org).
+export const autopilotPendingActions = pgTable("autopilot_pending_actions", {
+  id: serial("id").primaryKey(),
+  handName: text("hand_name").notNull(),
+  args: jsonb("args").notNull(),
+  contentHash: text("content_hash").notNull(),
+  domain: text("domain"),
+  /** Human-readable one-liner of what approval will do (for the /decisions card). */
+  summary: text("summary"),
+  /** The dispatch that drafted this, for the glass-box trace. */
+  sourceDispatchId: integer("source_dispatch_id"),
+  status: text("status").notNull().default("pending"), // pending | approved | rejected | executed | expired
+  expiresAt: timestamp("expires_at"),
+  approvedBy: text("approved_by"),
+  executedAt: timestamp("executed_at"),
+  resultSummary: jsonb("result_summary"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  statusIdx: index("autopilot_pending_actions_status_idx").on(t.status, t.createdAt),
+  dedupIdx: index("autopilot_pending_actions_dedup_idx").on(t.handName, t.contentHash, t.status),
+}));
+export type AutopilotPendingAction = typeof autopilotPendingActions.$inferSelect;
+
+// ── Autopilot witnessed-send audit (Elite Vision H1) ────────────────────────
+// Append-only record of every autopilot action the founder approved + that
+// executed. INSERT-only by contract (no UPDATE path), mirroring pax_sends.
+export const autopilotSends = pgTable("autopilot_sends", {
+  id: serial("id").primaryKey(),
+  pendingActionId: integer("pending_action_id"),
+  handName: text("hand_name").notNull(),
+  domain: text("domain"),
+  approvedBy: text("approved_by"),
+  contentHash: text("content_hash"),
+  sentAt: timestamp("sent_at").defaultNow(),
+});
+export type AutopilotSend = typeof autopilotSends.$inferSelect;
+
 // ── Today decision-queue resolution state (Maren CPO #2) ────────────────────
 // The /today Decision Queue is DERIVED — its items are computed each request
 // from leads / deals / observations / tasks (server/routes-today.ts). There is
@@ -12542,6 +13239,122 @@ export const insertSanctionsListEntrySchema = createInsertSchema(sanctionsListEn
 export type SanctionsListEntry = typeof sanctionsListEntries.$inferSelect;
 export type InsertSanctionsListEntry = z.infer<typeof insertSanctionsListEntrySchema>;
 
+// ── 0195 — DNC / litigator scrub results (TCPA cold-outreach seam) ──────────
+// Cached outcome of scrubbing a PHONE NUMBER against a Do-Not-Call registry
+// and/or a known-TCPA-litigator list via a pluggable vendor adapter
+// (server/services/compliance/dncScrub.ts). The vendor decision is a pending
+// founder call (roadmap-2026-07 "Founder decisions" #1); until a vendor is
+// configured the seam is INERT (gate allows, `scrubbed:false`) and this table
+// simply stays empty. Once configured:
+//   • `litigator`  — always blocks outbound SMS/calls, even with consent.
+//   • `dnc_listed` — blocks unless the lead carries express TCPA consent
+//                    (express consent lawfully overrides registry listing).
+//   • scrub ERROR on a lead-matched marketing send — FAIL CLOSED (block);
+//     on unmatched/transactional traffic — fail open (billing must flow).
+// Rows expire (`expiresAt`) because DNC lists demand periodic re-scrub
+// (the federal SAN convention is every 31 days).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0195_dnc_scrub_results.sql.
+export const dncScrubResults = pgTable("dnc_scrub_results", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  // Normalized digits of the scrubbed number (last 10, US-centric — matches
+  // the lead-matching convention in smsService.tcpaGateForRecipient).
+  phoneLast10: text("phone_last10").notNull(),
+  // "clean" | "dnc_listed" | "litigator". Transient scrub ERRORS are never
+  // cached — they must re-run, not poison the cache.
+  status: text("status").notNull(),
+  // Which vendor adapter produced the result ("fixture" | vendor name).
+  provider: text("provider").notNull(),
+  // Vendor's list identifier (e.g. "federal-dnc", "litigator-v3"), if given.
+  listSource: text("list_source"),
+  // Vendor's stated reason/detail for a listing, if given.
+  reason: text("reason"),
+  scrubbedAt: timestamp("scrubbed_at").notNull().defaultNow(),
+  // Scrub validity window — re-scrub after this (default 30 days).
+  expiresAt: timestamp("expires_at").notNull(),
+}, (table) => ({
+  // Lead with organization_id (Tahoe shard-readiness — leading-org composite).
+  // Gate lookup path: latest un-expired scrub for (org, phone).
+  byOrgPhone: index("dnc_scrub_results_org_phone_idx").on(
+    table.organizationId,
+    table.phoneLast10,
+    table.scrubbedAt,
+  ),
+}));
+
+export const insertDncScrubResultSchema = createInsertSchema(dncScrubResults).omit({
+  id: true,
+  scrubbedAt: true,
+});
+export type DncScrubResult = typeof dncScrubResults.$inferSelect;
+export type InsertDncScrubResult = z.infer<typeof insertDncScrubResultSchema>;
+
+// ── 0196 — Authority delegations (temporary authority elevations) ───────────
+// "Let Sophie handle all support without asking me until Friday." Previously a
+// module-level Map — on 2+ Fly machines a grant made on the app machine was
+// INVISIBLE to the authority gate running on the worker (where autonomous
+// execution actually happens) and vanished on every deploy. DB-backed so the
+// gate reads the same truth everywhere (module-state audit, 2026-07-07).
+//
+// GLOBAL / founder-level table — delegations elevate PLATFORM agents
+// (companyAgents), not org data, so there is intentionally no organization_id
+// (exempt from the org-leading-index gate like sanctions_list_entries).
+// Active = revoked_at IS NULL AND expires_at > now().
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0196_agent_state_persistence.sql.
+export const authorityDelegations = pgTable("authority_delegations", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  // Actions elevated by this delegation; ["*"] means all actions.
+  elevatedActions: jsonb("elevated_actions").$type<string[]>().notNull().default(["*"]),
+  fromLevel: integer("from_level").notNull().default(2),
+  // Elevated authority level (0 = full autonomy).
+  toLevel: integer("to_level").notNull().default(0),
+  reason: text("reason").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  // Gate lookup path: active delegations for an agent.
+  byAgentExpires: index("authority_delegations_agent_expires_idx").on(
+    table.agentCodename,
+    table.expiresAt,
+  ),
+}));
+
+export type AuthorityDelegation = typeof authorityDelegations.$inferSelect;
+
+// ── 0196 — Agent execution counts (autonomous-action rate throttle) ─────────
+// Hourly action counters backing executionEngine's safety throttle
+// (100/hr global, 30/hr/agent). Previously a module-level Map — each machine
+// kept its own counter, so the effective cap was N× the configured cap and
+// the throttle silently didn't throttle. Single-statement upsert
+// (INSERT … ON CONFLICT … count+1 RETURNING) keeps it race-free across
+// machines (module-state audit, 2026-07-07).
+//
+// GLOBAL table — the throttle caps PLATFORM agents, not org traffic; no
+// organization_id by design. Rows are garbage-collected opportunistically
+// (buckets older than 2h).
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0196_agent_state_persistence.sql.
+export const agentExecutionCounts = pgTable("agent_execution_counts", {
+  id: serial("id").primaryKey(),
+  // "__global__" or the agent codename.
+  agentKey: text("agent_key").notNull(),
+  bucketStart: timestamp("bucket_start").notNull(),
+  count: integer("count").notNull().default(0),
+}, (table) => ({
+  byKeyBucket: uniqueIndex("agent_execution_counts_key_bucket_idx").on(
+    table.agentKey,
+    table.bucketStart,
+  ),
+}));
+
+export type AgentExecutionCount = typeof agentExecutionCounts.$inferSelect;
+
 // Revenue Protection Interventions — automated churn/dunning outreach log
 export const revenueProtectionInterventions = pgTable("revenue_protection_interventions", {
   id: serial("id").primaryKey(),
@@ -12638,15 +13451,48 @@ export const providerLookupLog = pgTable("provider_lookup_log", {
   // decision be data-driven: where are free misses concentrated?
   state: text("state"),
   county: text("county"),
+  // Cache telemetry (migration 0152, Tier 2A) — cache hits used to early-return
+  // before any telemetry write, making the hit rate (and the dollars the cache
+  // saves) invisible. cacheLane names which of the four cache lanes served the
+  // hit: "provider_cache" | "provider_cache_stale" | "parcel_snapshots" |
+  // "cached_lookups". avoidedCostCents is the provider cost the hit avoided —
+  // only when the original cost is actually KNOWN (0 otherwise; never invented).
+  cacheLane: text("cache_lane"),
+  avoidedCostCents: integer("avoided_cost_cents").default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("provider_lookup_provider_idx").on(table.providerName, table.createdAt),
   index("provider_lookup_category_idx").on(table.category, table.createdAt),
   index("provider_lookup_created_idx").on(table.createdAt),
   index("provider_lookup_county_idx").on(table.state, table.county, table.category),
+  index("provider_lookup_cache_lane_idx").on(table.cacheLane, table.createdAt),
 ]);
 
 export type ProviderLookupLog = typeof providerLookupLog.$inferSelect;
+
+// Model calibration log (migration 0152, Tier 2A) — persisted snapshots of
+// learned model weights. The LCS calibrator (server/services/lcsCalibrator.ts)
+// kept its EMA-adjusted per-org dimension weights in in-memory Maps, so every
+// deploy erased everything the calibration loop had learned. Each adjusted
+// calibration run appends one row here; the latest row per (org, model) is the
+// live weight set loaded on first use after a deploy. Append-only by
+// convention — history doubles as the calibration audit trail.
+export const modelCalibrationLog = pgTable("model_calibration_log", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  modelName: text("model_name").notNull().default("lcs_calibrator"),
+  weights: jsonb("weights").$type<Record<string, number>>().notNull(),
+  correlations: jsonb("correlations").$type<Record<string, number>>(),
+  sampleSize: integer("sample_size").notNull().default(0),
+  adjusted: boolean("adjusted").notNull().default(false),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("model_calibration_log_org_idx").on(table.organizationId, table.modelName, table.createdAt),
+]);
+
+export type ModelCalibrationLog = typeof modelCalibrationLog.$inferSelect;
+export type InsertModelCalibrationLog = typeof modelCalibrationLog.$inferInsert;
 
 // ── Per-source synthetic-probe health (Tess SRE item 2, migration 0122) ──────
 // The free data sources ARE the product, but a 200 OK from a MapServer root
@@ -13279,6 +14125,12 @@ export const evolutionHistory = pgTable("evolution_history", {
   // Founder reviews + merges in GitHub. Null until the PR is opened.
   prNumber: integer("pr_number"),
   prUrl: text("pr_url"),
+  // Step-away gap #6 — persisted Stage-6 due-time. The old in-process
+  // setTimeout was lost on redeploy and never armed in PR mode; the
+  // evolution_regression_scan job now fires stage6RegressionCheck for any
+  // deployed row whose due-time has passed. NULL = no check owed (either
+  // already run — the scanner claims by nulling it — or not deployed yet).
+  regressionCheckDueAt: timestamp("regression_check_due_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -13581,15 +14433,12 @@ export const personalBests = pgTable("personal_bests", {
   dealId: integer("deal_id").references(() => deals.id),
 });
 
-// Model calibration log — ML transparency
-export const modelCalibrationLog = pgTable("model_calibration_log", {
-  id: serial("id").primaryKey(),
-  modelType: text("model_type").notNull(), // lcs, radar, intent
-  recordsAnalyzed: integer("records_analyzed").notNull(),
-  correlation: numeric("correlation"),
-  adjustments: jsonb("adjustments").$type<Array<{ dimension: string; oldWeight: number; newWeight: number }>>(),
-  calibratedAt: timestamp("calibrated_at").defaultNow(),
-});
+// Model calibration log: the previous dead definition that lived here
+// (model_type/records_analyzed/correlation/adjustments — flagged "never
+// queried" by the 0013 index audit and never created by migrate.mjs) was
+// removed 2026-06-10 (Tier 2A). The live modelCalibrationLog table — the LCS
+// calibrator's durable weight store — is defined earlier in this file and
+// created by migration 0152.
 
 // Lead emails — inbound/outbound email thread per lead
 export const leadEmails = pgTable("lead_emails", {
@@ -17171,6 +18020,28 @@ export type InsertIntegrationStatus = z.infer<typeof insertIntegrationStatusSche
 // ACCOUNTING + OPS — extracted to ./schema/accounting-ops.ts
 // ============================================================================
 export * from "./schema/accounting-ops";
+
+// ============================================================================
+// FOUNDER AUTOPILOT — immune-system run reports (./schema/autopilot-immune.ts)
+// ============================================================================
+export * from "./schema/autopilot-immune";
+
+// ============================================================================
+// FOUNDER AUTOPILOT — persisted WitnessGrants (./schema/autopilot-witness-grants.ts)
+// ============================================================================
+export * from "./schema/autopilot-witness-grants";
+
+// ============================================================================
+// PLATFORM CONNECTIONS — founder-entered platform credentials
+// (./schema/platform-connections.ts)
+// ============================================================================
+export * from "./schema/platform-connections";
+
+// ============================================================================
+// UNATTACHED INBOUND REPLIES — SMS from numbers matching no lead
+// (./schema/unattached-inbound.ts)
+// ============================================================================
+export * from "./schema/unattached-inbound";
 
 
 // ============================================================================

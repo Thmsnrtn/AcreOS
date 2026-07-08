@@ -45,7 +45,7 @@ import {
 // Foundation for AcreOS's monthly-close pipeline. This PR ships the schema
 // + seed only — recognition worker, trial-balance generator, GL-PDF, and
 // IIF/QBO export are scheduled for Lavender Week 10 (see
-// docs/exhaustive-completion/lavender-week10-todo.md).
+// docs/archive/exhaustive-completion/lavender-week10-todo.md).
 //
 //   * `chartOfAccounts`        — per-org tree of accounts. Customer-defined
 //                                accountNumber so orgs can mirror their CPA
@@ -280,8 +280,12 @@ export const outbox = pgTable("outbox", {
   id: serial("id").primaryKey(),
   eventType: text("event_type").notNull(),
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
-  status: text("status").notNull().default("pending"), // pending | sent | failed
+  status: text("status").notNull().default("pending"), // pending | retry | running | sent | failed
   attempts: integer("attempts").notNull().default(0),
+  /** When the worker claimed the row (status → running). Drives the orphan
+   *  reaper — created_at is enqueue time and can't distinguish a stale
+   *  claim from a backlog claimed after downtime. Migration 0199. */
+  claimedAt: timestamp("claimed_at"),
   lastErrorAt: timestamp("last_error_at"),
   lastErrorMessage: text("last_error_message"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

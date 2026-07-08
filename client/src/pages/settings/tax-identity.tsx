@@ -277,7 +277,7 @@ export default function TaxIdentitySettingsPage() {
           <CardDescription className="pt-2">
             {captured
               ? `Stored EIN ends in ${data?.taxIdLast4}. To rotate, enter a new value below.`
-              : "Until this is captured, every 1099-INT generation request will return 422 PAYER_EIN_MISSING."}
+              : "Until you add this, AcreOS can't create any 1099-INT forms for your borrowers or lenders."}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -317,8 +317,9 @@ export default function TaxIdentitySettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Tax ID type</Label>
+              <Label id="tax-id-type-label">Tax ID type</Label>
               <RadioGroup
+                aria-labelledby="tax-id-type-label"
                 value={taxIdType}
                 onValueChange={(v) => {
                   setTaxIdType(v as TaxIdType);
@@ -374,6 +375,7 @@ export default function TaxIdentitySettingsPage() {
               />
               <p
                 id="tax-id-hint"
+                aria-live="polite"
                 className={`text-xs ${formError ? "text-destructive" : "text-muted-foreground"}`}
               >
                 {formError ?? taxIdFormatHint(taxIdType)}

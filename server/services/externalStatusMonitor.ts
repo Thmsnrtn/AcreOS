@@ -17,7 +17,9 @@ const SERVICE_ENDPOINTS: Record<string, { url: string; name: string; type: "api"
   openai: { url: "https://api.openai.com/v1/models", name: "OpenAI", type: "api" },
   twilio: { url: "https://api.twilio.com/2010-04-01", name: "Twilio", type: "api" },
   lob: { url: "https://api.lob.com/v1/addresses", name: "Lob", type: "api" },
-  regrid: { url: "https://app.regrid.com/api/v2/parcels", name: "Regrid", type: "api" }
+  // A valid selector sub-path; bare /parcels 404s. Unauthenticated this returns
+  // 401 (reachable→operational), not 404 (falsely degraded).
+  regrid: { url: "https://app.regrid.com/api/v2/parcels/address?query=test&limit=1", name: "Regrid", type: "api" }
 };
 
 export const externalStatusMonitor = {

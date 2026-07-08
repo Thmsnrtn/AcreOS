@@ -40,13 +40,10 @@ import {
   // and FOUNDER_NAV_DEEP_DIVES below. Keep with the main lucide import block
   // so dead-import linters don't strip them when only the founder consts
   // reference them.
-  Sun,
   Heart,
-  Hammer,
   Cog,
   FileCode,
   History,
-  Crown,
   Lightbulb,
   CheckCircle2,
   Rocket,
@@ -62,7 +59,10 @@ import {
   Sliders,
   Scale,
   LayoutGrid,
+  Newspaper,
+  ScrollText,
 } from "lucide-react";
+import { FOUNDER_DOORS, type FounderDoor } from "@/lib/founder-doors";
 
 export interface MasterNavItem {
   id: string;
@@ -94,7 +94,7 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "campaigns",     label: "Campaigns",       icon: Mail,        href: "/campaigns",      description: "Email, SMS, and direct mail" },
   { id: "tasks",         label: "Tasks",           icon: ListTodo,    href: "/tasks",          description: "Your action items" },
   { id: "inbox",         label: "Inbox",           icon: Inbox,       href: "/inbox",          description: "Messages and communications" },
-  { id: "finance",       label: "Note Ledger",     icon: Banknote,    href: "/finance",        description: "Seller-financed notes and loans (also the Notes tab under Finance)" },
+  { id: "finance",       label: "Note Register",   icon: Banknote,    href: "/finance",        description: "Seller-financed notes and loans (also the Notes tab under Finance)" },
   { id: "portfolio",     label: "Portfolio",       icon: PieChart,    href: "/portfolio",      description: "Investment portfolio overview" },
   { id: "analytics",     label: "Analytics",       icon: BarChart3,   href: "/analytics",      description: "Insights and reporting" },
   { id: "automation",    label: "Automation",      icon: Zap,         href: "/automation",     description: "Automated rules and triggers" },
@@ -117,9 +117,10 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "investor-network", label: "Investor Network", icon: UserCheck, href: "/investor-network", description: "Verified investor directory and profiles" },
   // Additional Pages
   { id: "avm-bulk",             label: "Bulk AVM",            icon: TrendingUp,  href: "/avm-bulk",             description: "Bulk AI valuations via CSV upload" },
-  { id: "marketplace-analytics",label: "Marketplace Analytics", icon: BarChart2, href: "/marketplace-analytics",description: "Marketplace performance and metrics" },
+  // marketplace-analytics + va-dashboard entries removed 2026-07-07 (WS1):
+  // both pages were archived 2026-06-01 with no App.tsx route, so the
+  // command palette navigated straight to NotFound.
   // voice-analytics removed — AI Voice feature deprecated
-  { id: "va-dashboard",         label: "VA Dashboard",        icon: Users,       href: "/va-dashboard",         description: "Virtual assistant task management" },
   // Sovereign Protocol / agent-mesh / reseller / data-moat / fee-dashboard
   // entries removed from the customer-facing master list 2026-05-11. Those
   // surfaces are founder-only and now live exclusively under
@@ -180,43 +181,24 @@ export interface FounderNavDeepDive {
 }
 
 /** The 5 doors Tom approved for the new founder surface. Always visible. */
-export const FOUNDER_NAV_NEW_5_DOORS: FounderNavDoor[] = [
-  {
-    label: "Today",
-    icon: Sun,
-    href: "/founder/today",
-    description:
-      "Morning pulse + active asks + decisions waiting + start a conversation with Solene.",
-  },
-  {
-    label: "Team",
-    icon: Users,
-    href: "/founder/team",
-    description:
-      "12-member roster: who's active, who's dormant, what each is working on.",
-  },
-  {
-    label: "Customers",
-    icon: Heart,
-    href: "/founder/customers",
-    description:
-      "Funnel + lifecycle + Pax interactions (mostly Phase 0 placeholder).",
-  },
-  {
-    label: "Money",
-    icon: DollarSign,
-    href: "/founder/money",
-    description:
-      "Runway + envelope + recent capital events (mostly Phase 0 placeholder).",
-  },
-  {
-    label: "Build",
-    icon: Hammer,
-    href: "/founder/build",
-    description:
-      "Live dispatch queue + agent asks + recent commits + audit-finding summary.",
-  },
-];
+// The founder's primary nav — DERIVED from the canonical FOUNDER_DOORS (Letter ·
+// Decisions · Controls · Story) so the desktop sidebar, the command palette, and
+// the mobile bottom nav all render the same four doors the doctrine defines. The
+// name keeps "5" for import-stability (historical); the content is the four
+// doors plus the All-tools drawer shortcut rendered separately. Icons +
+// richer descriptions live here; the door identity lives in founder-doors.ts.
+const DOOR_ICON: Record<FounderDoor["id"], FounderNavDoor["icon"]> = {
+  letter: Newspaper,
+  decisions: ListChecks,
+  controls: Sliders,
+  story: ScrollText,
+};
+export const FOUNDER_NAV_NEW_5_DOORS: FounderNavDoor[] = FOUNDER_DOORS.map((d) => ({
+  label: d.label,
+  icon: DOOR_ICON[d.id],
+  href: d.href,
+  description: d.purpose,
+}));
 
 /** Settings shortcut — rendered as a separate icon row below the 5 doors. */
 export const FOUNDER_NAV_SETTINGS_SHORTCUT: FounderNavDoor = {
@@ -249,12 +231,8 @@ export const FOUNDER_NAV_ALL_TOOLS_SHORTCUT: FounderNavDoor = {
 export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   // ── Engineering ─────────────────────────────────────────────────────
   { label: "API telemetry", icon: Activity, href: "/founder/telemetry", category: "engineering" },
-  { label: "AI costs", icon: DollarSign, href: "/founder/ai-costs", category: "engineering" },
-  { label: "Sentry cost", icon: Eye, href: "/founder/observability-cost", category: "engineering" },
-  { label: "Cost optimizer", icon: TrendingUp, href: "/founder/cost-optimizer", category: "engineering" },
-  { label: "Providers", icon: Database, href: "/founder/providers", category: "engineering" },
   { label: "Job health", icon: Activity, href: "/job-health", category: "engineering" },
-  { label: "Event log", icon: FileCode, href: "/event-log", category: "engineering" },
+  { label: "Event log", icon: FileCode, href: "/founder/event-log", category: "engineering" },
 
   // ── AI / Agents ─────────────────────────────────────────────────────
   { label: "Pax traces", icon: FileCode, href: "/founder/pax-traces", category: "ai" },
@@ -265,9 +243,8 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "Agent asks", icon: HelpCircle, href: "/founder/asks", category: "ai" },
   { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", category: "ai" },
   { label: "Prompt history", icon: History, href: "/founder/prompt-history", category: "ai" },
-  { label: "Memory browser", icon: Database, href: "/memory-browser", category: "ai" },
+  { label: "Memory browser", icon: Database, href: "/founder/memory", category: "ai" },
   { label: "Agent performance", icon: Activity, href: "/agent-performance", category: "ai" },
-  { label: "Agent collaboration", icon: Bot, href: "/agent-collaboration", category: "ai" },
 
   // ── Customers ───────────────────────────────────────────────────────
   { label: "Customer health", icon: Heart, href: "/founder/customers/health", category: "customers" },
@@ -280,8 +257,7 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "AI appeals", icon: Scale, href: "/founder/appeals", category: "customers" },
 
   // ── Money ───────────────────────────────────────────────────────────
-  { label: "Cost", icon: DollarSign, href: "/founder/cost", category: "money" },
-  { label: "Unit economics", icon: Receipt, href: "/founder/unit-economics", category: "money" },
+  { label: "Costs & economics", icon: DollarSign, href: "/founder/admin/costs", category: "money" },
   { label: "Life-Cockpit", icon: Heart, href: "/founder/life-cockpit", category: "money" },
 
   // ── Strategy ────────────────────────────────────────────────────────
@@ -289,6 +265,8 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   // primary doors (Team/Customers/Money/Build) are NOT listed here — they
   // already live in FOUNDER_NAV_NEW_5_DOORS. This catalog is the SECONDARY
   // surface: everything reachable beyond the 5 doors.
+  { label: "Your company (autopilot)", icon: Sparkles, href: "/founder/autopilot", category: "strategy" },
+  { label: "Autopilot controls", icon: Sparkles, href: "/founder/autopilot/control", category: "strategy" },
   { label: "Command cockpit", icon: BarChart2, href: "/founder/command", category: "strategy" },
   { label: "Bridge", icon: CheckCircle2, href: "/founder/bridge", category: "strategy" },
   { label: "Steering", icon: TrendingUp, href: "/founder/steering", category: "strategy" },
@@ -313,11 +291,12 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "Trust graduation", icon: Shield, href: "/founder/trust-graduation", category: "ops" },
 
   // ── Experimental ────────────────────────────────────────────────────
-  { label: "Sovereign dashboard", icon: Crown, href: "/sovereign", category: "experimental" },
-  { label: "Sovereign v13", icon: Sparkles, href: "/founder/v13", category: "experimental" },
-  { label: "Board of directors", icon: Shield, href: "/board-of-directors", category: "experimental" },
-  { label: "Conscious organization", icon: Brain, href: "/conscious-organization", category: "experimental" },
-  { label: "Anticipatory enterprise", icon: TrendingUp, href: "/anticipatory-enterprise", category: "experimental" },
+  // Census W3-1 (2026-06-11): sovereign-dashboard, sovereign-v13,
+  // anticipatory-enterprise, and agent-collaboration retired. Board of
+  // directors → /founder/governance, conscious organization →
+  // /founder/scenarios (refit surfaces).
+  { label: "Governance", icon: Shield, href: "/founder/governance", category: "experimental" },
+  { label: "Scenarios", icon: Brain, href: "/founder/scenarios", category: "experimental" },
   { label: "Data moat", icon: Database, href: "/data-moat", category: "experimental" },
   { label: "Reseller program", icon: Store, href: "/reseller", category: "experimental" },
   { label: "Executive dashboard", icon: BarChart3, href: "/executive-dashboard", category: "experimental" },

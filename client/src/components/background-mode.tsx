@@ -90,8 +90,8 @@ export function BackgroundMode({
   return (
     <div
       className={cn(
-        "fixed bottom-24 right-6 z-[9999]",
-        "bg-background/95 backdrop-blur-md",
+        "fixed bottom-24 right-6 z-spotlight",
+        "bg-surface-chrome backdrop-blur-md",
         "border border-border rounded-xl shadow-lg",
         "p-3 min-w-[200px] max-w-[280px]"
       )}
@@ -144,8 +144,8 @@ export function BackgroundTaskNotification({
   return (
     <div
       className={cn(
-        "fixed bottom-24 right-6 z-[9999]",
-        "bg-background/95 backdrop-blur-md",
+        "fixed bottom-24 right-6 z-spotlight",
+        "bg-surface-chrome backdrop-blur-md",
         "border border-border rounded-xl shadow-lg",
         "p-3 min-w-[200px] max-w-[280px]",
         "animate-in slide-in-from-right-4 fade-in duration-200"

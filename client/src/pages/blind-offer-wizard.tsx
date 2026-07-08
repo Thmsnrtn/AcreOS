@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,9 +11,14 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { parseSnapshotPrefill, type SnapshotPrefill } from "@shared/blindOfferPrefill";
+import { findStateWarning } from "@/lib/upl-gating";
+import { StateUplBanner } from "@/components/upl-gating-banner";
 import {
   ChevronRight, ChevronLeft, MapPin, BarChart2, Calculator, FileText,
   DollarSign, TrendingUp, AlertTriangle, CheckCircle, Star,
@@ -50,6 +55,13 @@ interface Comp {
   totalPrice: number;
   source: string;
   notes?: string;
+}
+
+interface SellerProfile {
+  isTaxDelinquent: boolean;
+  isOutOfState: boolean;
+  isInherited: boolean;
+  yearsOwned: number;
 }
 
 interface OfferReport {
@@ -145,156 +157,35 @@ const US_STATES = [
 
 // ─── Carla Mendoza fix (2026-05-27): UPL / assignment-disclosure warnings ────
 //
-// The blind-offer wizard's letter-generator was emitting "I am a private
-// investor … I would like to make you a firm offer" with no awareness of
-// the broker-licensing or equitable-interest doctrines that govern
-// whether an unlicensed wholesaler can legally do that. Stuffing the
-// warning into the FINAL step (after the customer has invested time) is
-// behavioral-economics malpractice — we put the warning at STEP 1, the
-// moment the state field is filled, so the customer is making an
-// informed call about whether to even continue.
-//
-// Sourcing for each entry: the citations are paralegal-level (cite-
-// check before you quote in pleadings) and refer to the broker-licensing
-// + assignment-disclosure regime AS OF the rule-data date stamp the user
-// can see on /wholesaler-state-rules.
-//
-// "license_required": you cannot lawfully assign the contract for a fee
-//   in this state without a real-estate broker license.
-// "advertising_restricted": you cannot advertise property you don't own
-//   without disclosing that you hold an equitable interest only.
-// "equitable_interest": California-specific — the equitable-interest
-//   doctrine means an unrecorded contract is not necessarily a defense
-//   to UPL if the wholesaler's intent was to never close.
-// "recording": some states (e.g. NC, FL) require the assignment itself
-//   to be recorded for the assignee to claim against the property.
-
-interface StateUplWarning {
-  states: string[];
-  severity: "block" | "warn";
-  kind: "license_required" | "advertising_restricted" | "equitable_interest" | "recording" | "disclosure";
-  headline: string;
-  body: string;
-  citation: string;
-}
-
-const STATE_UPL_WARNINGS: StateUplWarning[] = [
-  {
-    states: ["OK"],
-    severity: "block",
-    kind: "license_required",
-    headline: "Oklahoma: assigning a real-estate contract for a fee is the unauthorized practice of real estate without a broker license.",
-    body: "Generating an assignment-for-fee here without a license can trigger a class-A misdemeanor and disgorgement of any assignment fee. Use the double-close flow instead, or partner with a licensed broker.",
-    citation: "59 O.S. § 858-301 (broker license required to negotiate the purchase or sale of real estate for compensation).",
-  },
-  {
-    states: ["IL"],
-    severity: "block",
-    kind: "license_required",
-    headline: "Illinois: the Wholesale Disclosure Act + Real Estate License Act treat for-fee assignment without a license as a licensable activity.",
-    body: "Illinois HB 1063 (2019) and the 2023 wholesaler-specific amendment treat soliciting purchase contracts and assigning them for a fee as activity requiring a broker license. Equitable-interest argument is narrowly construed.",
-    citation: "225 ILCS 454/1-10 (broker definition); Public Act 103-0099 (wholesaler disclosure).",
-  },
-  {
-    states: ["SC"],
-    severity: "block",
-    kind: "license_required",
-    headline: "South Carolina: cannot wholesale more than one deal per year without a broker license.",
-    body: "South Carolina caps unlicensed assignment-for-fee activity at one transaction per 12 months per person. Multiple deals = brokerage activity = license required.",
-    citation: "S.C. Code § 40-57-30(D)(8) (one-transaction-per-year exemption).",
-  },
-  {
-    states: ["PA"],
-    severity: "block",
-    kind: "license_required",
-    headline: "Pennsylvania: assignment-for-fee is broker activity under the RE License Act.",
-    body: "Pennsylvania prosecutes unlicensed wholesaling aggressively. The 2024 wholesaler amendments require disclosure of intent to assign in the marketing material itself.",
-    citation: "63 P.S. § 455.201 et seq.; 49 Pa. Code § 35.201.",
-  },
-  {
-    states: ["CA"],
-    severity: "warn",
-    kind: "equitable_interest",
-    headline: "California: the equitable-interest doctrine is narrowly construed; AB 968 (2024) and DRE advisories treat 'never intended to close' as evidence of unlicensed brokerage.",
-    body: "If you market the property before closing, you must disclose that you hold only an equitable interest (an executed purchase contract), not title. Failure to disclose can void the assignment and expose you to a § 10130 enforcement action.",
-    citation: "Cal. Bus. & Prof. Code § 10130; AB 968 (2024); DRE Bulletin 2023-04.",
-  },
-  {
-    states: ["NC"],
-    severity: "warn",
-    kind: "disclosure",
-    headline: "North Carolina: NCREC's 2022 guidance requires disclosure of wholesaler intent in writing to the seller.",
-    body: "NCREC Real Estate Bulletin Vol. 53 No. 2 (Oct 2022): wholesalers who market property they do not own to a third party must (a) disclose to the original seller that they intend to assign the contract, and (b) disclose to the end buyer that they are not the owner of record.",
-    citation: "NCREC Bulletin Vol. 53 No. 2 (Oct 2022); N.C.G.S. § 93A-2.",
-  },
-  {
-    states: ["TX"],
-    severity: "warn",
-    kind: "disclosure",
-    headline: "Texas: HB 2730 (2017) requires written disclosure to the seller that you intend to assign the contract, BEFORE the contract is signed.",
-    body: "TREC has prosecuted wholesalers who 'forgot' the assignment disclosure. The disclosure must be in writing and made before the contract is executed — not after.",
-    citation: "Tex. Occ. Code § 1101.0045 (equitable-interest disclosure).",
-  },
-  {
-    states: ["FL"],
-    severity: "warn",
-    kind: "advertising_restricted",
-    headline: "Florida: § 475.42 makes it unlawful to advertise property you do not own without disclosing your equitable interest.",
-    body: "DBPR has issued cease-and-desist orders to wholesalers who post properties on Zillow/Craigslist before closing. Marketing language must disclose 'equitable interest only — assignment of contract.'",
-    citation: "Fla. Stat. § 475.42(1)(b); DBPR FREC Final Orders 2021-2024.",
-  },
-];
-
-function findStateWarning(state: string | undefined): StateUplWarning | null {
-  if (!state) return null;
-  return STATE_UPL_WARNINGS.find((w) => w.states.includes(state.toUpperCase())) ?? null;
-}
-
-function StateUplBanner({ state }: { state: string }) {
-  const warning = findStateWarning(state);
-  if (!warning) return null;
-  const isBlock = warning.severity === "block";
-  return (
-    <div
-      role="alert"
-      aria-live="assertive"
-      className={`rounded-xl border p-4 ${
-        isBlock
-          ? "border-acr-neg/40 bg-acr-neg-soft dark:bg-acr-neg-soft/10"
-          : "border-acr-warn/40 bg-acr-warn-soft dark:bg-acr-warn-soft/10"
-      }`}
-    >
-      <div className="flex gap-3">
-        <AlertTriangle
-          className={`w-5 h-5 mt-0.5 flex-shrink-0 ${isBlock ? "text-acr-neg" : "text-acr-warn"}`}
-          aria-hidden="true"
-        />
-        <div className="text-sm">
-          <p className={`font-bold mb-1 ${isBlock ? "text-acr-neg" : "text-acr-warn"}`}>
-            {isBlock ? "STOP — license required in this state" : "Disclosure required before mailing"}
-          </p>
-          <p className={`mb-2 ${isBlock ? "text-acr-neg" : "text-acr-warn"}`}>
-            {warning.headline}
-          </p>
-          <p className={`mb-2 text-xs ${isBlock ? "text-acr-neg/80" : "text-acr-warn/80"}`}>
-            {warning.body}
-          </p>
-          <p className={`text-xs italic ${isBlock ? "text-acr-neg/70" : "text-acr-warn/70"}`}>
-            Citation: {warning.citation}
-          </p>
-          <p className="text-xs text-muted-foreground mt-2">
-            Not legal advice. Confirm with state counsel before relying on
-            this. See <a href={`/wholesaler-state-rules/${state}`} className="underline">/wholesaler-state-rules/{state}</a> for the full entry.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
+// The blind-offer wizard's letter-generator emits "I am a private investor … I
+// would like to make you a firm offer" — language the broker-licensing and
+// equitable-interest doctrines govern. The STATE_UPL_WARNINGS table, the
+// findStateWarning lookup, and the StateUplBanner now live in the shared
+// modules below so the IDENTICAL gate rides the inline blind-offer composer on
+// the Map door too (T3-3B). The warning surfaces at STEP 1 (the moment the
+// state is filled) — block-severity states disable Continue — instead of being
+// stuffed into the final step after the operator has invested time.
+//   - data + helpers: client/src/lib/upl-gating.ts (findStateWarning, above)
+//   - banner UI:      client/src/components/upl-gating-banner.tsx (StateUplBanner)
 
 // ─── Step Components ──────────────────────────────────────────────────────────
+//
+// Every step takes real typed props (T3 W1-7 — the `any`-typed step props are
+// gone). The wizard owns state; steps are presentational + callbacks.
 
-function StepCounty({ state, setState, county, setCounty, acres, setAcres, sellerProfile, setSellerProfile, onNext }: any) {
+interface StepCountyProps {
+  state: string;
+  setState: (v: string) => void;
+  county: string;
+  setCounty: (v: string) => void;
+  acres: number;
+  setAcres: (v: number) => void;
+  sellerProfile: SellerProfile;
+  setSellerProfile: React.Dispatch<React.SetStateAction<SellerProfile>>;
+  onNext: () => void;
+}
+
+function StepCounty({ state, setState, county, setCounty, acres, setAcres, sellerProfile, setSellerProfile, onNext }: StepCountyProps) {
   const warning = findStateWarning(state);
   const isBlocked = warning?.severity === "block";
   const canProceed = state && county && acres > 0 && !isBlocked;
@@ -339,20 +230,20 @@ function StepCounty({ state, setState, county, setCounty, acres, setAcres, selle
       <fieldset className="border-0 p-0 m-0">
         <legend className="font-semibold text-sm mb-3">Seller profile (optional — improves offer tier recommendation)</legend>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
+          {([
             { key: "isTaxDelinquent", label: "Tax-delinquent owner" },
             { key: "isOutOfState", label: "Out-of-state owner" },
             { key: "isInherited", label: "Inherited property" },
-          ].map(({ key, label }) => {
+          ] as const).map(({ key, label }) => {
             const cbId = `seller-${key}`;
             const checked = !!sellerProfile[key];
             return (
-              <label key={key} htmlFor={cbId} className={`flex items-center gap-2 p-3 rounded-card border cursor-pointer transition-colors ${checked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"}`}>
+              <label key={key} htmlFor={cbId} className={`flex items-center gap-2 p-3 min-h-11 rounded-card border cursor-pointer transition-colors ${checked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40 active:bg-muted/50"}`}>
                 <input
                   id={cbId}
                   type="checkbox"
                   checked={checked}
-                  onChange={e => setSellerProfile((p: any) => ({ ...p, [key]: e.target.checked }))}
+                  onChange={e => setSellerProfile((p) => ({ ...p, [key]: e.target.checked }))}
                   className="sr-only"
                 />
                 <span aria-hidden="true" className={`w-4 h-4 rounded border flex items-center justify-center ${checked ? "bg-primary border-primary" : "border-input"}`}>
@@ -370,7 +261,7 @@ function StepCounty({ state, setState, county, setCounty, acres, setAcres, selle
               inputMode="numeric"
               className="mt-1 tabular-nums"
               value={sellerProfile.yearsOwned || ""}
-              onChange={e => setSellerProfile((p: any) => ({ ...p, yearsOwned: parseInt(e.target.value) || 0 }))}
+              onChange={e => setSellerProfile((p) => ({ ...p, yearsOwned: parseInt(e.target.value) || 0 }))}
               placeholder="Years"
             />
           </div>
@@ -401,7 +292,17 @@ function StepCounty({ state, setState, county, setCounty, acres, setAcres, selle
   );
 }
 
-function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: any) {
+interface StepCompsProps {
+  state: string;
+  county: string;
+  acres: number;
+  comps: Comp[];
+  setComps: React.Dispatch<React.SetStateAction<Comp[]>>;
+  onNext: () => void;
+  onBack: () => void;
+}
+
+function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: StepCompsProps) {
   const [newComp, setNewComp] = useState({ pricePerAcre: "", acres: "", source: "county_records", notes: "" });
   const [autoLoadState, setAutoLoadState] = useState<"idle" | "loading" | "loaded" | "empty" | "error">("idle");
   const [autoLoadMeta, setAutoLoadMeta] = useState<{ count: number; source: string; fallback: string | null } | null>(null);
@@ -495,7 +396,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: an
               <p className="font-semibold text-acr-pos">Loaded {autoLoadMeta.count} comps from {county} County</p>
               <p className="text-muted-foreground">Source: ATTOM Data recent sales (last 18 months, ±50% acreage). Add or remove any below.</p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => autoLoadComps(true)} aria-label="Refresh comps from county">
+            <Button variant="ghost" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => autoLoadComps(true)} aria-label="Refresh comps from county">
               <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> Refresh
             </Button>
           </>
@@ -507,8 +408,8 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: an
               <p className="font-semibold text-acr-warn">No recent comps auto-pulled for {county} County</p>
               <p className="text-muted-foreground">{autoLoadMeta?.fallback || "Add comps manually below — assessor records, LandWatch, or eBay sold listings."}</p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => autoLoadComps(true)} aria-label="Retry comp auto-pull">
-              <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> Retry
+            <Button variant="ghost" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => autoLoadComps(true)} aria-label="Retry comp auto-pull">
+              <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> {Verbs.RETRY}
             </Button>
           </>
         )}
@@ -519,8 +420,8 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: an
               <p className="font-semibold text-acr-warn">Comps couldn't load — paste manually</p>
               <p className="text-muted-foreground">Network or ATTOM hiccup. The manual form below works as the fallback.</p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => autoLoadComps(true)} aria-label="Retry comp auto-pull">
-              <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> Retry
+            <Button variant="ghost" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => autoLoadComps(true)} aria-label="Retry comp auto-pull">
+              <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> {Verbs.RETRY}
             </Button>
           </>
         )}
@@ -531,7 +432,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: an
               <p className="font-semibold">Pull comps automatically</p>
               <p className="text-muted-foreground">Recent land sales for {county || "this county"}, {state || "your state"} — ATTOM Data.</p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => autoLoadComps(true)} disabled={!state || !county}>
+            <Button variant="outline" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => autoLoadComps(true)} disabled={!state || !county}>
               <Sparkles className="w-3 h-3 mr-1" aria-hidden="true" /> Auto-load
             </Button>
           </>
@@ -611,7 +512,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: an
                   <button
                     type="button"
                     onClick={() => removeComp(comps.indexOf(comp))}
-                    className="text-muted-foreground hover:text-destructive text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive rounded px-1"
+                    className="text-muted-foreground hover:text-destructive active:text-destructive text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive rounded px-2 py-2 -my-2 min-h-11 pointer-fine:sm:min-h-0"
                     aria-label={`Remove ${fmt(comp.pricePerAcre)} per acre comp from ${sourceLabel}`}
                   >
                     Remove
@@ -639,24 +540,76 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: an
   );
 }
 
-function StepCalculate({ report, isLoading, onNext, onBack }: any) {
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4" role="status" aria-live="polite">
-        <Loader2 className="w-12 h-12 animate-spin text-primary" aria-hidden="true" />
-        <p className="font-semibold">Calculating your offer…</p>
-        <p className="text-sm text-muted-foreground">Pulling USDA land values, analyzing comps, running offer formula.</p>
+interface StepCalculateProps {
+  report: OfferReport | null;
+  isLoading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onNext: () => void;
+  onBack: () => void;
+}
+
+/** Report-shaped skeleton: mirrors the USDA context strip + three offer-tier
+ *  cards so the user sees the offer taking shape while the formula runs. */
+function CalculateSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true">
+      <div role="status" aria-live="polite" className="flex items-center gap-2">
+        <Loader2 className="w-4 h-4 animate-spin text-primary" aria-hidden="true" />
+        <div>
+          <p className="font-semibold text-sm">Calculating your offer…</p>
+          <p className="text-xs text-muted-foreground">Pulling USDA land values, analyzing comps, running the offer formula.</p>
+        </div>
       </div>
-    );
+      <Card>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex flex-col items-center gap-2">
+                <Skeleton className="h-3 w-20" announce={false} />
+                <Skeleton className="h-6 w-24" announce={false} />
+                <Skeleton className="h-3 w-16" announce={false} />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="rounded-xl border p-4 space-y-3">
+            <Skeleton className="h-4 w-32" announce={false} />
+            <Skeleton className="h-8 w-24" announce={false} />
+            <Skeleton className="h-3 w-28" announce={false} />
+            <Skeleton className="h-3 w-full" announce={false} />
+          </div>
+        ))}
+      </div>
+      <Skeleton className="h-20 w-full rounded-xl" announce={false} />
+    </div>
+  );
+}
+
+function StepCalculate({ report, isLoading, error, onRetry, onNext, onBack }: StepCalculateProps) {
+  if (isLoading) {
+    return <CalculateSkeleton />;
   }
 
   if (!report) {
     return (
-      <div className="text-center py-20" role="alert">
-        <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-3" aria-hidden="true" />
-        <p className="font-semibold">Couldn't generate offer report</p>
-        <p className="text-sm text-muted-foreground mt-1">Your inputs are preserved. Try again or adjust comps and re-run.</p>
-        <Button variant="outline" onClick={onBack} className="mt-4">Go back</Button>
+      <div className="space-y-4">
+        <QueryErrorState
+          error={error ? new Error(error) : null}
+          onRetry={onRetry}
+          isRetrying={isLoading}
+          title="Couldn't generate the offer report"
+          description="Your county, acreage, and comps are all preserved. Most retries succeed — or go back and refine the comp set."
+          testId="blind-offer-calculate-error"
+        />
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={onBack} className="min-h-11 pointer-fine:sm:min-h-9">
+            <ChevronLeft className="w-4 h-4 mr-1" aria-hidden="true" /> Back to comp research
+          </Button>
+        </div>
       </div>
     );
   }
@@ -755,8 +708,30 @@ function StepCalculate({ report, isLoading, onNext, onBack }: any) {
   );
 }
 
-function StepExit({ report, onNext, onBack }: any) {
-  if (!report) return null;
+interface StepExitProps {
+  report: OfferReport | null;
+  onNext: () => void;
+  onBack: () => void;
+  onGoToComps: () => void;
+}
+
+function StepExit({ report, onNext, onBack, onGoToComps }: StepExitProps) {
+  if (!report) {
+    return (
+      <EmptyState
+        icon={Calculator}
+        headline="No offer report yet"
+        subtitle="Exit strategies are built from your calculated offer. Run the comp research and offer calculation first — your county and acreage are saved."
+        cta={{
+          label: "Go to comp research",
+          onClick: onGoToComps,
+          "data-testid": "blind-offer-exit-no-report",
+        }}
+        actionIcon={null}
+        testId="blind-offer-exit-empty"
+      />
+    );
+  }
   const { cashFlipScenario: cf, ownerFinanceScenario: of_ } = report;
 
   return (
@@ -856,10 +831,31 @@ function StepExit({ report, onNext, onBack }: any) {
   );
 }
 
-function StepLetter({ report, onBack }: any) {
+interface StepLetterProps {
+  report: OfferReport | null;
+  onBack: () => void;
+  onGoToComps: () => void;
+}
+
+function StepLetter({ report, onBack, onGoToComps }: StepLetterProps) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  if (!report) return null;
+  if (!report) {
+    return (
+      <EmptyState
+        icon={FileText}
+        headline="No offer letter yet"
+        subtitle="The letter is generated from your calculated offer. Run the comp research and offer calculation first — your inputs are saved."
+        cta={{
+          label: "Go to comp research",
+          onClick: onGoToComps,
+          "data-testid": "blind-offer-letter-no-report",
+        }}
+        actionIcon={null}
+        testId="blind-offer-letter-empty"
+      />
+    );
+  }
   const lv = report.letterVariables;
   const warning = findStateWarning(report.state);
 
@@ -918,6 +914,17 @@ Private Real Estate Investor`;
     }
   }
 
+  function downloadLetter() {
+    const blob = new Blob([letterText], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `blind-offer-${report!.county.toLowerCase().replace(/\s+/g, "-")}-${report!.state.toLowerCase()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "Letter downloaded", description: "Edit the bracketed fields before mailing." });
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -962,10 +969,10 @@ Private Real Estate Investor`;
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm">Offer letter template</CardTitle>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={copyLetter} aria-label="Copy offer letter to clipboard">
-                <Copy className="w-3 h-3 mr-1" aria-hidden="true" /> Copy
+              <Button variant="outline" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={copyLetter} aria-label="Copy offer letter to clipboard">
+                <Copy className="w-3 h-3 mr-1" aria-hidden="true" /> {Verbs.COPY}
               </Button>
-              <Button variant="outline" size="sm" aria-label="Download offer letter">
+              <Button variant="outline" size="sm" className="min-h-11 pointer-fine:sm:min-h-9" onClick={downloadLetter} aria-label="Download offer letter as a text file">
                 <Download className="w-3 h-3 mr-1" aria-hidden="true" /> Download
               </Button>
             </div>
@@ -1031,7 +1038,7 @@ export default function BlindOfferWizardPage() {
   const [county, setCounty] = useState(prefill.county ?? "");
   const [acres, setAcres] = useState(prefill.acres ?? 0);
   const [comps, setComps] = useState<Comp[]>([]);
-  const [sellerProfile, setSellerProfile] = useState({
+  const [sellerProfile, setSellerProfile] = useState<SellerProfile>({
     isTaxDelinquent: false,
     isOutOfState: false,
     isInherited: false,
@@ -1039,11 +1046,13 @@ export default function BlindOfferWizardPage() {
   });
   const [report, setReport] = useState<OfferReport | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [calcError, setCalcError] = useState<string | null>(null);
 
   const stepIndex = STEPS.findIndex(s => s.id === currentStep);
 
   async function calculateOffer() {
     setIsCalculating(true);
+    setCalcError(null);
     try {
       const resp = await apiRequest("POST", "/api/data-intel/blind-offer", {
         state,
@@ -1060,8 +1069,9 @@ export default function BlindOfferWizardPage() {
       });
       const data = await resp.json();
       setReport(data);
-    } catch {
+    } catch (err) {
       setReport(null);
+      setCalcError(err instanceof Error ? err.message : "Network error while calculating the offer");
       toast({
         variant: "destructive",
         title: "Couldn't calculate the offer",
@@ -1121,7 +1131,7 @@ export default function BlindOfferWizardPage() {
                   disabled={!isPast && !isActive}
                   aria-current={isActive ? "step" : undefined}
                   aria-label={`Step ${i + 1} of ${STEPS.length}: ${step.label}${isActive ? " (current)" : isPast ? " (completed)" : " (locked)"}`}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-card text-sm font-medium transition-colors ${isActive ? "bg-primary text-primary-foreground" : isPast ? "bg-muted text-foreground cursor-pointer hover:bg-muted/70" : "bg-muted/40 text-muted-foreground cursor-default"}`}
+                  className={`flex items-center gap-2 px-3 py-2 min-h-11 rounded-card text-sm font-medium transition-colors ${isActive ? "bg-primary text-primary-foreground" : isPast ? "bg-muted text-foreground cursor-pointer hover:bg-muted/70 active:bg-muted/60" : "bg-muted/40 text-muted-foreground cursor-default"}`}
                 >
                   <Icon className="w-4 h-4" aria-hidden="true" />
                   <span className="hidden md:block">{step.label}</span>
@@ -1165,6 +1175,8 @@ export default function BlindOfferWizardPage() {
           <StepCalculate
             report={report}
             isLoading={isCalculating}
+            error={calcError}
+            onRetry={calculateOffer}
             onNext={() => setCurrentStep("exit")}
             onBack={() => setCurrentStep("comps")}
           />
@@ -1174,12 +1186,14 @@ export default function BlindOfferWizardPage() {
             report={report}
             onNext={() => setCurrentStep("letter")}
             onBack={() => setCurrentStep("calculate")}
+            onGoToComps={() => setCurrentStep("comps")}
           />
         )}
         {currentStep === "letter" && (
           <StepLetter
             report={report}
             onBack={() => setCurrentStep("exit")}
+            onGoToComps={() => setCurrentStep("comps")}
           />
         )}
       </div>

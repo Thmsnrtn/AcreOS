@@ -21,6 +21,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { CanonicalSurfacesBanner } from "@/components/founder/CanonicalSurfacesBanner";
 import { useToast } from "@/hooks/use-toast";
 import { ShieldCheck, ShieldAlert, Lock, Unlock, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 type Tier = "manual" | "notify_only" | "silent" | "suspended";
 type Override = "force_silent" | "freeze_manual" | null;
@@ -146,7 +147,7 @@ export default function FounderTrustGraduationPage() {
                         <span>{row.consecutiveRetracted} consecutive ✗</span>
                         <span>{row.totalAccepted} lifetime ✓</span>
                         <span>{row.totalRetracted} lifetime ✗</span>
-                        <span>last changed {new Date(row.tierChangedAt).toLocaleDateString()}</span>
+                        <span>last changed {formatDate(row.tierChangedAt)}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">

@@ -8,9 +8,12 @@ import { checkUsageLimit } from "./services/usageLimits";
 import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importProperties, exportPropertiesToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
+import { recordParcelObservations } from "./services/data-cache/observation-log";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
+import { listPropertiesContract } from "@shared/contracts";
+import { validateResponse } from "./utils/contractResponse";
 import { compsGuard } from "./middleware/expensiveEndpointGuard";
 
 // Partial update schema for PUT endpoints.
@@ -132,13 +135,21 @@ export function registerPropertyRoutes(app: Express): void {
 
     const result = await storage.getPropertiesPaginated(org.id, { page, pageSize, sortBy, sortOrder });
 
-    res.json({
-      data: result.data,
-      total: result.total,
-      page: result.page,
-      pageSize: result.pageSize,
-      totalPages: result.totalPages,
-    });
+    // T3-3E Phase 3 — contract response validation. dev/test throws on drift,
+    // prod warns + sends unchanged. Same envelope shape as before.
+    res.json(
+      validateResponse(
+        listPropertiesContract.responseSchema,
+        {
+          data: result.data,
+          total: result.total,
+          page: result.page,
+          pageSize: result.pageSize,
+          totalPages: result.totalPages,
+        },
+        "GET /api/properties",
+      ),
+    );
   });
   
   // STR-023: GET /api/properties/by-location — registered BEFORE /:id so
@@ -380,6 +391,29 @@ export function registerPropertyRoutes(app: Express): void {
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
+
+      // Tier 2A (elevation blueprint 2026-06-10): a customer correcting parcel
+      // facts is itself a sighting — record the EDITED fields as observations
+      // (source customer_edit, org-scoped) so corrections join the
+      // longitudinal series instead of vanishing into the mutable row.
+      // Fire-and-forget; never blocks the response. Only fields the customer
+      // actually sent are recorded (recordParcelObservations skips empties).
+      if (property.apn && property.state && property.county) {
+        void recordParcelObservations({
+          apn: property.apn,
+          state: String(property.state).toUpperCase(),
+          county: property.county,
+          source: "customer_edit",
+          organizationId: org.id,
+          facts: {
+            assessed_value: validated.assessedValue ?? undefined,
+            market_value: validated.marketValue ?? undefined,
+            acres: validated.sizeAcres ?? undefined,
+            zoning: validated.zoning ?? undefined,
+            road_access: validated.roadAccess ?? undefined,
+          },
+        });
+      }
 
       // Auto-enrich when coordinates are newly set or changed
       const coordChanged =

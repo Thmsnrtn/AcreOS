@@ -1,11 +1,12 @@
 import { PageShell } from "@/components/page-shell";
 import { useTerm } from "@/hooks/use-persona";
-import { usd, plural } from "@/lib/format";
+import { usd, plural, formatDate, formatDateTime } from "@/lib/format";
 import { clientLogger } from "@/lib/clientLogger";
 import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useProperties, usePropertiesPaginated, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
+import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { queryClient } from "@/lib/queryClient";
 import { telemetry } from "@/lib/telemetry";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -15,7 +16,8 @@ import { useFetchPropertyParcel, useFetchAllParcels } from "@/hooks/use-parcels"
 import { useState, useMemo, useEffect } from "react";
 import { useOrganization } from "@/hooks/use-organization";
 import { useSearch, useLocation } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPropertySchema, type Property } from "@shared/schema";
@@ -114,7 +116,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { DealCalculator } from "@/components/deal-calculator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-states";
+import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -135,6 +137,7 @@ import { ResearchSummaryPanel } from "@/components/research-summary-panel";
 import { DataProvenanceTag } from "@/components/data-provenance-tag";
 import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 // `embedded` — mounted inside the /pipeline door's Properties tab
 // (pipeline.tsx), which already renders the app shell. See
@@ -171,6 +174,13 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
   const [viewMode, setViewMode] = useState<"list" | "map">(() => {
     try { return (localStorage.getItem("properties-view-mode") as "list" | "map") || "list"; } catch { return "list"; }
   });
+
+  // W2-6: remember the inventory list's window-scroll offset per route.
+  // Only meaningful in list mode — in map mode the rows don't exist, so a
+  // restore would clamp against the short map layout; gating `ready` on
+  // viewMode means a map-mode mount simply skips restoration. Disabled when
+  // embedded in /pipeline (several list pages share one route's scroll).
+  useScrollRestoration(!isLoading && viewMode === "list", { enabled: !embedded });
   const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new" || addFromLocation);
   const [deletingProperty, setDeletingProperty] = useState<Property | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -485,7 +495,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
               <div className="flex items-center rounded-card border overflow-hidden" role="group" aria-label="View mode">
                 <button
                   onClick={() => { setViewMode("list"); try { localStorage.setItem("properties-view-mode", "list"); } catch {} }}
-                  className={`min-h-[44px] md:min-h-9 px-3 text-sm font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                  className={`min-h-[44px] pointer-fine:md:min-h-9 px-3 text-sm font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
                   aria-pressed={viewMode === "list"}
                   data-testid="button-view-list"
                 >
@@ -493,7 +503,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 </button>
                 <button
                   onClick={() => { setViewMode("map"); try { localStorage.setItem("properties-view-mode", "map"); } catch {} }}
-                  className={`min-h-[44px] md:min-h-9 px-3 text-sm font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === "map" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                  className={`min-h-[44px] pointer-fine:md:min-h-9 px-3 text-sm font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${viewMode === "map" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
                   aria-pressed={viewMode === "map"}
                   data-testid="button-view-map"
                 >
@@ -504,7 +514,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 variant="outline" 
                 onClick={handleExport} 
                 disabled={isExporting}
-                className="min-h-[44px] md:min-h-9"
+                className="min-h-[44px] pointer-fine:md:min-h-9"
                 data-testid="button-export-properties"
               >
                 {isExporting ? <Loader2 className="w-4 h-4 md:mr-2 animate-spin" /> : <Download className="w-4 h-4 md:mr-2" />}
@@ -513,7 +523,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
               <Button 
                 variant="outline" 
                 onClick={() => setIsImportOpen(true)}
-                className="min-h-[44px] md:min-h-9"
+                className="min-h-[44px] pointer-fine:md:min-h-9"
                 data-testid="button-import-properties"
               >
                 <Upload className="w-4 h-4 md:mr-2" />
@@ -523,7 +533,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 variant="outline" 
                 onClick={() => fetchAllParcels()}
                 disabled={isFetchingAllParcels}
-                className="min-h-[44px] md:min-h-9"
+                className="min-h-[44px] pointer-fine:md:min-h-9"
                 data-testid="button-fetch-all-parcels"
               >
                 {isFetchingAllParcels ? <Loader2 className="w-4 h-4 md:mr-2 animate-spin" /> : <MapIcon className="w-4 h-4 md:mr-2" />}
@@ -531,7 +541,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
               </Button>
               <ResponsiveModal open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <ResponsiveModalTrigger asChild>
-                  <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px] md:min-h-9" data-testid="button-add-property">
+                  <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px] pointer-fine:md:min-h-9" data-testid="button-add-property">
                     <Plus className="w-4 h-4 mr-2" /> Add {propertyLabel}
                   </Button>
                 </ResponsiveModalTrigger>
@@ -566,13 +576,13 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 </Button>
               </div>
               <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:gap-2 md:ml-auto">
-                <Button variant="outline" className="min-h-[44px] md:min-h-8" onClick={handleBulkExportProperties} data-testid="button-bulk-export-properties">
-                  <Download className="w-4 h-4 mr-1" /> Export
+                <Button variant="outline" className="min-h-[44px] pointer-fine:md:min-h-8" onClick={handleBulkExportProperties} data-testid="button-bulk-export-properties">
+                  <Download className="w-4 h-4 mr-1" /> {Verbs.EXPORT}
                 </Button>
                 {selectedPropertyIds.size >= 2 && (
                   <Button
                     variant="outline"
-                    className="min-h-[44px] md:min-h-8"
+                    className="min-h-[44px] pointer-fine:md:min-h-8"
                     onClick={() => {
                       const ids = Array.from(selectedPropertyIds).slice(0, 4);
                       navigate(`/properties/compare?ids=${ids.join(",")}`);
@@ -583,7 +593,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                   </Button>
                 )}
                 <Select onValueChange={handleBulkStatusChange} disabled={isBulkUpdating}>
-                  <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[150px]" data-testid="select-bulk-status-properties">
+                  <SelectTrigger className="min-h-[44px] pointer-fine:md:min-h-8 w-full md:w-[150px]" aria-label="Change status for selected properties" data-testid="select-bulk-status-properties">
                     <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Status"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -595,10 +605,10 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                     <SelectItem value="listed">Listed</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="destructive" className="min-h-[44px] md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-properties">
-                  <Trash2 className="w-4 h-4 mr-1" /> Delete
+                <Button variant="destructive" className="min-h-[44px] pointer-fine:md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-properties">
+                  <Trash2 className="w-4 h-4 mr-1" /> {Verbs.DELETE}
                 </Button>
-                <Button aria-label="Checkbox" variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties">
+                <Button aria-label="Clear selection" variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties">
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -613,6 +623,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                     checked={filteredProperties.length > 0 && selectedPropertyIds.size === filteredProperties.length}
                     onCheckedChange={(checked) => handleSelectAll(checked === true)}
                     className="h-5 w-5 md:h-4 md:w-4"
+                    aria-label="Select all properties"
                     data-testid="checkbox-select-all-properties"
                   />
                   <span className="text-sm text-muted-foreground">Select All</span>
@@ -643,7 +654,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 onReset={resetGisFilters}
               />
               <Select value={distressFilter} onValueChange={setDistressFilter}>
-                <SelectTrigger className="h-8 w-[160px]" data-testid="select-distress-filter">
+                <SelectTrigger className="h-8 w-[160px]" aria-label="Filter by distress score" data-testid="select-distress-filter">
                   <SelectValue placeholder="Distress Score" />
                 </SelectTrigger>
                 <SelectContent>
@@ -709,10 +720,11 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {paginatedProperties.map((property) => (
                 <div key={property.id} className="relative">
-                  <div className="absolute top-3 left-3 z-10">
+                  <div className="absolute top-3 left-3 z-docked">
                     <Checkbox
                       checked={selectedPropertyIds.has(property.id)}
                       onCheckedChange={(checked) => handleSelectProperty(property.id, checked === true)}
+                      aria-label={`Select property ${property.county}, ${property.state}`}
                       data-testid={`checkbox-property-${property.id}`}
                       className="bg-background/80"
                     />
@@ -916,7 +928,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
             {!importResult ? (
               <>
                 <Button variant="outline" onClick={resetImportDialog}>
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
                 <Button
                   onClick={handleImport}
@@ -1013,7 +1025,7 @@ function PropertyCard({ property, onDelete }: {
               <MapPin className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" aria-hidden="true" />
               <Button
                 variant="outline"
-                className="min-h-[44px] sm:min-h-8"
+                className="min-h-[44px] pointer-fine:sm:min-h-8"
                 onClick={(e) => {
                   e.stopPropagation();
                   fetchParcel(property.id);
@@ -1030,17 +1042,17 @@ function PropertyCard({ property, onDelete }: {
             </div>
           </div>
         )}
-        <div className="absolute top-2 right-2 flex gap-1 z-10 items-center">
+        <div className="absolute top-2 right-2 flex gap-1 z-docked items-center">
           <LandCreditBadge propertyId={property.id} size="sm" />
           <Badge variant={property.status === 'available' ? 'default' : 'secondary'} className="capitalize shadow-sm text-xs">
             {property.status.replace(/_/g, ' ')}
           </Badge>
         </div>
-        <div className="absolute top-2 left-2 flex gap-1 z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-2 left-2 flex gap-1 z-docked opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <Button
             variant="destructive"
             size="icon"
-            className="h-11 w-11 sm:h-7 sm:w-7"
+            className="h-11 w-11 pointer-fine:sm:h-7 pointer-fine:sm:w-7"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
@@ -1053,7 +1065,7 @@ function PropertyCard({ property, onDelete }: {
           <Button
             variant="secondary"
             size="icon"
-            className="h-11 w-11 sm:h-7 sm:w-7"
+            className="h-11 w-11 pointer-fine:sm:h-7 pointer-fine:sm:w-7"
             onClick={handleDownloadDeed}
             disabled={isDownloading}
             aria-label="Download deed"
@@ -1067,7 +1079,7 @@ function PropertyCard({ property, onDelete }: {
             <Button
               variant="secondary"
               size="icon"
-              className="h-11 w-11 sm:h-7 sm:w-7"
+              className="h-11 w-11 pointer-fine:sm:h-7 pointer-fine:sm:w-7"
               onClick={(e) => {
                 e.stopPropagation();
                 fetchParcel(property.id);
@@ -1150,7 +1162,7 @@ function PropertyCard({ property, onDelete }: {
           <Button
             variant="outline"
             onClick={() => setIsDetailOpen(true)}
-            className="flex-1 min-h-[44px] sm:min-h-8"
+            className="flex-1 min-h-[44px] pointer-fine:sm:min-h-8"
             data-testid={`button-view-details-${property.id}`}
           >
             <ClipboardCheck className="w-4 h-4 sm:w-3.5 sm:h-3.5 mr-1.5" aria-hidden="true" />
@@ -1159,7 +1171,7 @@ function PropertyCard({ property, onDelete }: {
           <Button
             variant="outline"
             size="icon"
-            className="min-h-[44px] min-w-[44px] sm:min-h-8 sm:min-w-8"
+            className="min-h-[44px] min-w-[44px] pointer-fine:sm:min-h-8 pointer-fine:sm:min-w-8"
             onClick={() => setIsCalculatorOpen(true)}
             aria-label="Open calculator"
             data-testid={`button-calculator-${property.id}`}
@@ -1293,7 +1305,7 @@ function PropertyForm({
           <div className="border rounded-md">
             <button
               type="button"
-              className="w-full min-h-[44px] md:min-h-9 flex items-center justify-between px-3 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+              className="w-full min-h-[44px] pointer-fine:md:min-h-9 flex items-center justify-between px-3 text-sm text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
               onClick={() => setShowLandDetails((v) => !v)}
               aria-expanded={showLandDetails}
               aria-controls="land-details-panel"
@@ -1416,7 +1428,7 @@ function PropertyForm({
         />
 
         <div className="pt-2">
-          <Button type="submit" className="w-full min-h-[44px] md:min-h-9" disabled={isPending} data-testid="button-submit-property">
+          <Button type="submit" className="w-full min-h-[44px] pointer-fine:md:min-h-9" disabled={isPending} data-testid="button-submit-property">
             {isPending ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
@@ -1461,11 +1473,6 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
 
   const utilities = currentProperty.utilities as { electric?: boolean; water?: boolean; sewer?: boolean; gas?: boolean } | null;
   const parcelData = currentProperty.parcelData as { regridId?: string; owner?: string; ownerAddress?: string; taxAmount?: string; lastUpdated?: string } | null;
-
-  const formatDate = (date: Date | string | null | undefined) => {
-    if (!date) return "N/A";
-    return new Date(date).toLocaleDateString();
-  };
 
   const formatCurrency = (value: string | number | null | undefined) => {
     if (value === null || value === undefined || value === "") return "—";
@@ -1532,41 +1539,46 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
     return { score, factors, signal, signalLabel, pricePerAcre };
   }, [currentProperty]);
 
-  // Verdict decision mutation (Pursue = due_diligence, Pass = rejected)
-  const verdictMutation = useMutation({
-    mutationFn: async (decision: "pursue" | "pass") => {
-      const newStatus = decision === "pursue" ? "due_diligence" : "rejected";
-      const existingDD = (currentProperty.dueDiligenceData as any) || {};
-      const res = await apiRequest("PATCH", `/api/properties/${currentProperty.id}`, {
-        status: newStatus,
-        dueDiligenceData: {
-          ...existingDD,
-          verdictDecision: decision,
-          verdictDecisionAt: new Date().toISOString(),
-          verdictScore: verdictData.score,
-        },
-      });
-      if (!res.ok) throw new Error("Failed to update property decision");
-      return res.json();
-    },
-    onSuccess: (_data, decision) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/properties", currentProperty.id] });
-      toast({
-        title: decision === "pursue" ? "Moved to Due Diligence" : "Marked as Passed",
-        description: decision === "pursue"
-          ? "This property is now in Due Diligence. Continue verifying title, taxes, and hazards."
-          : "You can still reopen this record — nothing is deleted.",
-      });
-    },
-    onError: (_err, decision) => {
-      toast({
-        title: "Couldn't save your decision",
-        description: `The ${decision === "pursue" ? "Pursue" : "Pass"} action didn't go through. Try again — your existing data is unchanged.`,
-        variant: "destructive",
-      });
+  // Verdict decision mutation (Pursue = due_diligence, Pass = rejected).
+  // Optimistic: the Pursue/Pass buttons collapse into the decision badge
+  // instantly — the ["/api/properties"] prefix walk patches every cached
+  // list AND the single-entity detail cache (["/api/properties", id])
+  // in place, with snapshot + rollback on server reject. Deliberately no
+  // detailKey here: the list-key prefix already matches the detail entry,
+  // and passing both would snapshot the already-patched value.
+  const buildVerdictPatch = (decision: "pursue" | "pass") => ({
+    status: decision === "pursue" ? "due_diligence" : "rejected",
+    dueDiligenceData: {
+      ...((currentProperty.dueDiligenceData as any) || {}),
+      verdictDecision: decision,
+      verdictDecisionAt: new Date().toISOString(),
+      verdictScore: verdictData.score,
     },
   });
+  const verdictMutation = useOptimisticUpdate<{ decision: "pursue" | "pass" }, Property>(
+    {
+      mutationFn: async ({ decision }) => {
+        const res = await apiRequest("PATCH", `/api/properties/${currentProperty.id}`, buildVerdictPatch(decision));
+        if (!res.ok) throw new Error("Failed to update property decision");
+        return res.json();
+      },
+      listKeys: [["/api/properties"]],
+      getId: () => currentProperty.id,
+      buildPatch: ({ decision }) => buildVerdictPatch(decision),
+      extraInvalidateKeys: [["/api/properties", currentProperty.id]],
+      successToast: false,
+    },
+    {
+      onSuccess: (_data, { decision }) => {
+        toast({
+          title: decision === "pursue" ? "Moved to Due Diligence" : "Marked as Passed",
+          description: decision === "pursue"
+            ? "This property is now in Due Diligence. Continue verifying title, taxes, and hazards."
+            : "You can still reopen this record — nothing is deleted.",
+        });
+      },
+    },
+  );
 
   const signalColors: Record<string, { bg: string; text: string; border: string; dot: string }> = {
     green: { bg: "bg-acr-pos-soft dark:bg-acr-pos-soft/30", text: "text-acr-pos dark:text-acr-pos", border: "border-acr-pos-soft dark:border-acr-pos-soft", dot: "bg-acr-pos" },
@@ -1593,7 +1605,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   (Jupyter, PostgreSQL, etc). Copy-JSON keeps zero infra cost. */}
               <Button
                 variant="outline"
-                className="min-h-[44px] sm:min-h-8 w-full sm:w-auto"
+                className="min-h-[44px] pointer-fine:sm:min-h-8 w-full sm:w-auto"
                 onClick={() => {
                   const json = JSON.stringify(currentProperty, null, 2);
                   navigator.clipboard?.writeText(json).then(
@@ -1609,7 +1621,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
               </Button>
               <Button
                 variant="default"
-                className="min-h-[44px] sm:min-h-8 w-full sm:w-auto"
+                className="min-h-[44px] pointer-fine:sm:min-h-8 w-full sm:w-auto"
                 onClick={() => setIsAnalysisChatOpen(true)}
                 data-testid="button-analyze-with-ai"
               >
@@ -1715,7 +1727,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       size="sm"
                       variant="default"
                       className="min-h-[36px]"
-                      onClick={() => verdictMutation.mutate("pursue")}
+                      onClick={() => verdictMutation.mutate({ decision: "pursue" })}
                       disabled={verdictMutation.isPending}
                       aria-label="Pursue this property"
                       data-testid="verdict-pursue-button"
@@ -1731,7 +1743,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       size="sm"
                       variant="outline"
                       className="min-h-[36px]"
-                      onClick={() => verdictMutation.mutate("pass")}
+                      onClick={() => verdictMutation.mutate({ decision: "pass" })}
                       disabled={verdictMutation.isPending}
                       aria-label="Pass on this property"
                       data-testid="verdict-pass-button"
@@ -2582,7 +2594,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
           </h3>
           {lastEnrichedAt && (
             <p className="text-xs text-muted-foreground" data-testid="text-last-enriched">
-              Last updated: {new Date(lastEnrichedAt).toLocaleDateString()} at {new Date(lastEnrichedAt).toLocaleTimeString()}
+              Last updated: {formatDateTime(lastEnrichedAt)}
             </p>
           )}
         </div>

@@ -302,43 +302,48 @@ async function logAgentAction(ctx: ExecutionContext, eventType: string, payload:
 }
 
 // ─── Rate Limiter ────────────────────────────────────────────────────────────
+// DB-backed (module-state audit 2026-07-07): the per-process Map made the
+// effective cap N× on N machines — a safety throttle that didn't throttle.
+// Hourly buckets in agent_execution_counts, incremented with a single
+// race-free upsert. FAIL CLOSED: an unverifiable count refuses the action
+// (stabilize > act — the throttle exists to bound autonomous behavior).
 
-const executionCounts: Map<string, { count: number; resetAt: number }> = new Map();
 const MAX_ACTIONS_PER_HOUR = 100;
 const MAX_ACTIONS_PER_AGENT_PER_HOUR = 30;
 
-function checkRateLimit(agentCodename: string): { allowed: boolean; reason?: string } {
-  const now = Date.now();
-  const hourMs = 60 * 60 * 1000;
+async function bumpExecutionCount(agentKey: string, bucketStart: Date): Promise<number> {
+  const result = await db.execute(sql`
+    INSERT INTO agent_execution_counts (agent_key, bucket_start, count)
+    VALUES (${agentKey}, ${bucketStart}, 1)
+    ON CONFLICT (agent_key, bucket_start)
+    DO UPDATE SET count = agent_execution_counts.count + 1
+    RETURNING count
+  `);
+  const rows = (result as unknown as { rows: Array<{ count: number }> }).rows;
+  return Number(rows?.[0]?.count ?? 0);
+}
 
-  // Global rate limit
-  const globalKey = "__global__";
-  const globalEntry = executionCounts.get(globalKey);
-  if (globalEntry && now < globalEntry.resetAt) {
-    if (globalEntry.count >= MAX_ACTIONS_PER_HOUR) {
+async function checkRateLimit(agentCodename: string): Promise<{ allowed: boolean; reason?: string }> {
+  const hourMs = 60 * 60 * 1000;
+  const bucketStart = new Date(Math.floor(Date.now() / hourMs) * hourMs);
+  try {
+    const globalCount = await bumpExecutionCount("__global__", bucketStart);
+    if (globalCount > MAX_ACTIONS_PER_HOUR) {
       return { allowed: false, reason: `Global rate limit exceeded (${MAX_ACTIONS_PER_HOUR}/hr)` };
     }
-  } else {
-    executionCounts.set(globalKey, { count: 0, resetAt: now + hourMs });
-  }
-
-  // Per-agent rate limit
-  const agentEntry = executionCounts.get(agentCodename);
-  if (agentEntry && now < agentEntry.resetAt) {
-    if (agentEntry.count >= MAX_ACTIONS_PER_AGENT_PER_HOUR) {
+    const agentCount = await bumpExecutionCount(agentCodename, bucketStart);
+    if (agentCount > MAX_ACTIONS_PER_AGENT_PER_HOUR) {
       return { allowed: false, reason: `Agent ${agentCodename} rate limit exceeded (${MAX_ACTIONS_PER_AGENT_PER_HOUR}/hr)` };
     }
-  } else {
-    executionCounts.set(agentCodename, { count: 0, resetAt: now + hourMs });
+    // Opportunistic GC — stale buckets are useless after their hour passes.
+    await db.execute(sql`
+      DELETE FROM agent_execution_counts
+      WHERE bucket_start < ${new Date(bucketStart.getTime() - 2 * hourMs)}
+    `);
+    return { allowed: true };
+  } catch {
+    return { allowed: false, reason: "rate-limit state unverifiable — refusing action (fail closed)" };
   }
-
-  // Increment counters
-  const g = executionCounts.get(globalKey)!;
-  g.count++;
-  const a = executionCounts.get(agentCodename)!;
-  a.count++;
-
-  return { allowed: true };
 }
 
 // ─── Safety Gate Pre-Execution Validation ────────────────────────────────────
@@ -348,7 +353,7 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
   const suggestedAlternatives: string[] = [];
 
   // Rate limit check
-  const rateCheck = checkRateLimit(ctx.agentCodename);
+  const rateCheck = await checkRateLimit(ctx.agentCodename);
   if (!rateCheck.allowed) {
     violations.push(rateCheck.reason!);
     suggestedAlternatives.push("Wait for rate limit reset, or reduce action frequency");

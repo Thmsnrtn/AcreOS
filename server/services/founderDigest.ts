@@ -238,7 +238,12 @@ export const founderDigestService = {
   },
 };
 
-export async function startFounderDigestJob(withJobLock: Function): Promise<void> {
+// Typed against the real helper, not `Function` — the bare type let a 2-arg
+// call slip through arity checking in revenueProtection.ts (fn landed in
+// ttlSeconds → Invalid Date → the job failed every run). Same hole, closed.
+export async function startFounderDigestJob(
+  withJobLock: typeof import("../utils/jobRuntime").withJobLock,
+): Promise<void> {
   const ONE_HOUR_MS = 60 * 60 * 1000;
   const SEND_UTC_HOUR = 14; // 8 AM CST = 14 UTC
 

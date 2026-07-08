@@ -10,6 +10,7 @@ import {
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
+import { omitProtectedFields } from "./utils/updatePayload";
 import { logger } from "./utils/logger";
 import { usageMeteringService, creditService } from "./services/credits";
 import { exportLeadsToCSV, exportPropertiesToCSV, exportDealsToCSV, exportNotesToCSV, type ExportFilters } from "./services/importExport";
@@ -288,7 +289,7 @@ export function registerCommunicationRoutes(app: Express): void {
       if (!existing || existing.organizationId !== org.id) {
         return Errors.notFound(res, "Mail identity");
       }
-      const identity = await storage.updateMailSenderIdentity(id, req.body);
+      const identity = await storage.updateMailSenderIdentity(id, omitProtectedFields(req.body));
 
       try {
         const user = req.user as any;
@@ -514,7 +515,7 @@ export function registerCommunicationRoutes(app: Express): void {
       if (!existing || existing.organizationId !== org.id) {
         return Errors.notFound(res, "Mailing order");
       }
-      const order = await storage.updateMailingOrder(id, req.body);
+      const order = await storage.updateMailingOrder(id, omitProtectedFields(req.body));
 
       try {
         const user = req.user as any;
@@ -1003,7 +1004,7 @@ export function registerCommunicationRoutes(app: Express): void {
       if (!existing) {
         return Errors.notFound(res, "Workflow");
       }
-      const workflow = await storage.updateWorkflow(id, req.body);
+      const workflow = await storage.updateWorkflow(id, omitProtectedFields(req.body));
 
       try {
         const user = req.user as any;

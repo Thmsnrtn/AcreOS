@@ -41,6 +41,8 @@ import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 type Status =
   | "planned"
@@ -98,13 +100,6 @@ function fmtUsd(cents: number | null | undefined): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(Math.round(cents / 100));
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 export default function DoubleClosePage() {
@@ -166,7 +161,51 @@ function DoubleCloseIndex() {
         />
       ) : (
         <Card>
-          <div className="overflow-x-auto">
+          {/* Mobile: stacked deal cards — the 7-column table side-scrolls at
+              phone widths. md+ renders the full table below. */}
+          <ul className="md:hidden divide-y divide-border/40" data-testid="list-double-close-mobile">
+            {deals.map((d) => {
+              const net = d.bcSidePurchasePriceCents != null
+                ? d.bcSidePurchasePriceCents - d.aSidePurchasePriceCents - (d.transactionalFunderFeeCents ?? 0)
+                : null;
+              return (
+                <li key={d.id}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/double-close/${d.id}`)}
+                    className="w-full text-left px-4 py-3 hover-elevate active:bg-muted/30"
+                    data-testid={`card-double-close-${d.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm truncate">
+                          {d.aSellerName} → {d.bcBuyerName ?? "—"}
+                        </div>
+                        <div className="text-xs text-muted-foreground font-mono tabular-nums mt-0.5">
+                          A-B {fmtUsd(d.aSidePurchasePriceCents)} · B-C {fmtUsd(d.bcSidePurchasePriceCents)}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className={`font-mono font-semibold tabular-nums ${net !== null && net < 0 ? "text-acr-neg" : net !== null ? "text-acr-pos" : ""}`}>
+                          {fmtUsd(net)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">net</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 mt-2 text-xs">
+                      <span className="text-muted-foreground font-mono tabular-nums">
+                        Funder fee {fmtUsd(d.transactionalFunderFeeCents)}
+                      </span>
+                      <span>{STATUS_LABELS[d.status]}</span>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Desktop: full table. Hidden on mobile. */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted-foreground bg-muted/30">
@@ -285,8 +324,8 @@ function DoubleCloseDetail({ dealId }: { dealId: string }) {
           primary={fmtUsd(deal.aSidePurchasePriceCents)}
           rows={[
             ["Seller", deal.aSellerName],
-            ["Contract date", fmtDate(deal.aSideContractDate)],
-            ["Closing date", fmtDate(deal.aSideClosingDate)],
+            ["Contract date", formatDate(deal.aSideContractDate)],
+            ["Closing date", formatDate(deal.aSideClosingDate)],
             ["Title company", deal.aSideTitleCompany ?? "—"],
           ]}
         />
@@ -295,8 +334,8 @@ function DoubleCloseDetail({ dealId }: { dealId: string }) {
           primary={fmtUsd(deal.bcSidePurchasePriceCents)}
           rows={[
             ["Buyer", deal.bcBuyerName ?? "—"],
-            ["Contract date", fmtDate(deal.bcSideContractDate)],
-            ["Closing date", fmtDate(deal.bcSideClosingDate)],
+            ["Contract date", formatDate(deal.bcSideContractDate)],
+            ["Closing date", formatDate(deal.bcSideClosingDate)],
             ["Title company", deal.bcSideTitleCompany ?? "—"],
           ]}
         />
@@ -480,7 +519,7 @@ function CreateDealDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button onClick={() => submit.mutate()} disabled={!aSeller || !aPrice || submit.isPending}>
             {submit.isPending ? "Creating…" : "Create"}
           </Button>

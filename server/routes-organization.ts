@@ -9,6 +9,7 @@ import { requireAdminOrAbove, requireOwner } from "./utils/permissions";
 import { requireScope } from "./middleware/roleScope";
 import { checkUsageLimit } from "./services/usageLimits";
 import { onboardingService, type BusinessType } from "./services/onboarding";
+import { BUSINESS_TYPES } from "@shared/models/persona-mapping";
 import { SUBSCRIPTION_TIERS } from "@shared/schema";
 import { activityLogger } from "./services/activityLogger";
 import { getAllUsageLimits, TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
@@ -45,9 +46,36 @@ import {
   type TaxIdType,
 } from "@shared/taxIdentity";
 
+// Customer-safe slice of the organizations.settings jsonb blob. The Settings
+// page sends the whole current blob back with one key changed, so this schema
+// (default zod semantics: unknown keys are STRIPPED, not rejected) drops
+// anything privileged that got echoed back — e.g. simulationMode, which lives
+// in the same blob but must never be customer-writable. The PATCH handler then
+// MERGES the parsed slice over the stored blob so privileged keys survive
+// from the DB, never from the client.
+const orgSettingsPatchSchema = z.object({
+  timezone: z.string().max(64).optional(),
+  currency: z.string().max(8).optional(),
+  defaultInterestRate: z.number().optional(),
+  defaultTermMonths: z.number().int().optional(),
+  companyAddress: z.string().max(500).optional(),
+  companyPhone: z.string().max(50).optional(),
+  companyEmail: z.string().max(255).optional(),
+  onboardingCompleted: z.boolean().optional(),
+  showTips: z.boolean().optional(),
+  checklistDismissed: z.boolean().optional(),
+  notificationsConfigured: z.boolean().optional(),
+  mailMode: z.enum(["test", "live"]).optional(),
+  retentionPolicies: z.record(z.string(), z.unknown()).optional(),
+  aiSettings: z.record(z.string(), z.unknown()).optional(),
+});
+
 // Zod schema for safe organization updates via PATCH /api/organization.
 // Sensitive fields (subscriptionTier, isFounder, stripeCustomerId, creditBalance, etc.)
 // are deliberately excluded — they must be updated through dedicated endpoints.
+// `settings` was missing entirely until the WS1 interactive pass (2026-07-07):
+// the .strict() schema 422'd every Settings-page save ("Unrecognized key:
+// settings") and the UI reverted silently.
 const updateOrganizationSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   onboardingCompleted: z.boolean().optional(),
@@ -56,6 +84,7 @@ const updateOrganizationSchema = z.object({
   autoTopUpEnabled: z.boolean().optional(),
   autoTopUpThresholdCents: z.number().int().min(0).optional(),
   autoTopUpAmountCents: z.number().int().min(0).optional(),
+  settings: orgSettingsPatchSchema.optional(),
   // Note Investor vertical (Phase 5 §5). Captured during onboarding step 0;
   // also editable later from Settings for orgs that pivot. Constrained to
   // the three canonical values so the sidebar / persona registry can read
@@ -422,7 +451,12 @@ export function registerOrganizationRoutes(app: Express): void {
     if (!parsed.success) {
       return Errors.validationFailed(res, parsed.error.issues);
     }
-    const updates = parsed.data;
+    const updates: typeof parsed.data = { ...parsed.data };
+    if (updates.settings) {
+      // Merge the whitelisted slice over the stored blob — privileged keys
+      // (simulationMode etc.) are preserved from the DB, never client-set.
+      updates.settings = { ...((org.settings as Record<string, unknown>) ?? {}), ...updates.settings };
+    }
     const updated = await storage.updateOrganization(org.id, updates);
 
     try {
@@ -954,14 +988,13 @@ export function registerOrganizationRoutes(app: Express): void {
     }
   });
   
+  // Validate against the canonical 15-value businessType list (shared source of
+  // truth). The old inline enum had drifted — it listed "vacation_rental"
+  // (never a client value) and omitted "subdivider" + "agent_investor", so a
+  // user picking those secondary verticals got a silent 422 from provision
+  // (swallowed by the onboarding Promise.allSettled) and never got templates.
   const provisionSchema = z.object({
-    businessType: z.enum([
-      "land_flipper", "note_investor", "hybrid",
-      "residential_wholesaler", "fix_and_flip", "buy_and_hold",
-      "commercial", "short_term_rental", "creative_finance",
-      "developer", "tax_lien_deed", "multifamily",
-      "mobile_home", "vacation_rental",
-    ]),
+    businessType: z.enum(BUSINESS_TYPES as unknown as [string, ...string[]]),
   });
 
   api.post("/api/onboarding/provision", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -2291,6 +2324,17 @@ export function registerOrganizationRoutes(app: Express): void {
         });
       } catch (notifyErr) {
         logger.warn("NPS detractor founder notification failed", { metadata: { detail: String(notifyErr) } });
+      }
+
+      // Autopilot follow-up (wire-for-real: measurementLoops.npsActionFor +
+      // lifecyclePlaybook). A detractor score queues a GATED, witnessed-send
+      // win-back draft. Best-effort — never blocks the customer submit.
+      try {
+        const { enqueueNpsFollowup } = await import("./services/autopilot/measurementLoops");
+        const r = await enqueueNpsFollowup({ score, organizationId: orgId, userId, feedback: feedback ?? null });
+        if (r.enqueued) logger.info("NPS follow-up dispatch enqueued", { orgId, score, playId: r.playId, dispatchId: r.dispatchId });
+      } catch (followErr) {
+        logger.warn("NPS follow-up enqueue failed", { metadata: { detail: String(followErr) } });
       }
 
       logger.info("NPS response submitted", { orgId, userId, score, trigger });

@@ -23,6 +23,8 @@ import { OverlayLegend } from "@/components/maps/OverlayLegend";
 import { getMapEngine, STYLE_URLS, isMapEngineConfigured, type MapStyleName } from "@/lib/map-engine";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 // Rosy River B1 Phase 2 — engine-aware map renderer.
 //
@@ -369,7 +371,7 @@ function ElevationProfileOverlay({
   const areaPath = `${pathData} L ${W} ${H} L 0 ${H} Z`;
 
   return (
-    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 bg-background/97 backdrop-blur-md rounded-xl shadow-2xl border border-border/60 p-3 w-80">
+    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-docked bg-background/97 backdrop-blur-md rounded-xl shadow-2xl border border-border/60 p-3 w-80">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
           <Mountain className="h-3.5 w-3.5 text-acr-warn" />
@@ -442,7 +444,7 @@ function ElevationProfileOverlay({
 function CompassRose({ bearing }: { bearing: number }) {
   return (
     <div
-      className="absolute bottom-12 right-3 z-10 pointer-events-none select-none"
+      className="absolute bottom-12 right-3 z-docked pointer-events-none select-none"
       data-testid="compass-rose"
       title={`Bearing: ${Math.round(bearing)}°`}
     >
@@ -533,7 +535,7 @@ function SunControlPanel({
 
   return (
     <div
-      className="absolute bottom-28 right-3 z-20 bg-background/97 backdrop-blur-md rounded-xl shadow-2xl border border-border/60 p-3 w-60"
+      className="absolute bottom-28 right-3 z-dropdown bg-background/97 backdrop-blur-md rounded-xl shadow-2xl border border-border/60 p-3 w-60"
       data-testid="sun-control-panel"
     >
       <div className="flex items-center justify-between mb-2.5">
@@ -563,7 +565,7 @@ function SunControlPanel({
             }}
           />
         )}
-        <span className="text-white text-xs font-bold drop-shadow-md z-10">
+        <span className="text-white text-xs font-bold drop-shadow-md z-docked">
           {formatSolarTime(sunHour)}
         </span>
       </div>
@@ -780,6 +782,14 @@ const STATUS_COLORS: Record<string, string> = {
   available: "#22c55e",
   default: "#22c55e",
 };
+
+// Measurement-tool marker color. Mapbox/MapLibre's built-in `Marker({ color })`
+// rasterizes this into an inline SVG at construction and does NOT resolve CSS
+// custom properties, so a `var(--…)` reference cannot be used here. This literal
+// mirrors the theme brand/accent (`--acr-brand`); the marker is a transient
+// measurement pin on the map canvas (not themed chrome), so a fixed brand-blue
+// reads correctly in both light and dark map styles.
+const MEASUREMENT_MARKER_COLOR = "#3b82f6";
 
 interface NearbyParcelData {
   apn: string;
@@ -1329,7 +1339,7 @@ export function PropertyMap({
         aria-label={`${OVERLAY_SOURCE_LABELS[sourceId]} failed to load. Retry.`}
       >
         <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-        Retry
+        {Verbs.RETRY}
       </button>
     );
   }, [layerStatus, retryLayer]);
@@ -1563,11 +1573,11 @@ export function PropertyMap({
         .setHTML(`
           <div style="min-width: 180px; font-family: system-ui;">
             <div style="font-weight: 600; margin-bottom: 4px;">${comp.address || comp.apn || "Comp Property"}</div>
-            ${comp.salePrice ? `<div style="color: #22c55e; font-weight: 500;">$${comp.salePrice.toLocaleString()}</div>` : ""}
-            ${comp.saleDate ? `<div style="font-size: 12px; color: #6b7280;">Sold: ${new Date(comp.saleDate).toLocaleDateString()}</div>` : ""}
-            ${comp.acres ? `<div style="font-size: 12px; color: #6b7280;">Size: ${comp.acres.toFixed(2)} acres</div>` : ""}
-            <div style="font-size: 12px; color: #6b7280;">$/Acre: ${pricePerAcre}</div>
-            ${comp.distance ? `<div style="font-size: 12px; color: #6b7280;">Distance: ${comp.distance.toFixed(2)} mi</div>` : ""}
+            ${comp.salePrice ? `<div style="color: var(--acr-pos); font-weight: 500;">$${comp.salePrice.toLocaleString()}</div>` : ""}
+            ${comp.saleDate ? `<div style="font-size: 12px; color: var(--acr-ink-3);">Sold: ${formatDate(comp.saleDate)}</div>` : ""}
+            ${comp.acres ? `<div style="font-size: 12px; color: var(--acr-ink-3);">Size: ${comp.acres.toFixed(2)} acres</div>` : ""}
+            <div style="font-size: 12px; color: var(--acr-ink-3);">$/Acre: ${pricePerAcre}</div>
+            ${comp.distance ? `<div style="font-size: 12px; color: var(--acr-ink-3);">Distance: ${comp.distance.toFixed(2)} mi</div>` : ""}
           </div>
         `);
       
@@ -2056,7 +2066,7 @@ export function PropertyMap({
       const { lng, lat } = e.lngLat;
       
       const marker = new gl.Marker({
-        color: "#3b82f6",
+        color: MEASUREMENT_MARKER_COLOR,
         scale: 0.7
       })
         .setLngLat([lng, lat])
@@ -2374,7 +2384,7 @@ export function PropertyMap({
             onClick={() => window.location.reload()}
           >
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            Retry
+            {Verbs.RETRY}
           </Button>
           {import.meta.env.DEV && (
             <p className="text-micro mt-3 opacity-70">
@@ -2410,7 +2420,7 @@ export function PropertyMap({
     <div 
       className={cn(
         "relative rounded-md overflow-hidden",
-        isFullscreen && "fixed inset-0 z-50 rounded-none"
+        isFullscreen && "fixed inset-0 z-floating rounded-none"
       )}
       style={isFullscreen ? undefined : { height, width: "100%" }}
       data-testid="property-map-container"
@@ -2424,8 +2434,8 @@ export function PropertyMap({
 
       {showControls && (
         <>
-          <div className="absolute top-3 left-3 flex flex-col gap-2 z-10">
-            <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+          <div className="absolute top-3 left-3 flex flex-col gap-2 z-docked">
+            <div className="flex gap-1 bg-surface-veil backdrop-blur-sm rounded-md p-1 shadow-lg">
               <Button
                 size="icon"
                 variant={currentStyle === "satellite" ? "default" : "ghost"}
@@ -2458,7 +2468,7 @@ export function PropertyMap({
               </Button>
             </div>
 
-            <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+            <div className="flex gap-1 bg-surface-veil backdrop-blur-sm rounded-md p-1 shadow-lg">
               <Button
                 size="icon"
                 variant={is3DExtrudeMode ? "default" : "ghost"}
@@ -2501,7 +2511,7 @@ export function PropertyMap({
               </Button>
             </div>
 
-            <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+            <div className="flex gap-1 bg-surface-veil backdrop-blur-sm rounded-md p-1 shadow-lg">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -2567,7 +2577,7 @@ export function PropertyMap({
             </div>
 
             {selectedPropertyId && (
-              <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+              <div className="flex gap-1 bg-surface-veil backdrop-blur-sm rounded-md p-1 shadow-lg">
                 <Button
                   size="icon"
                   variant={showNearbyParcels ? "default" : "ghost"}
@@ -2595,9 +2605,9 @@ export function PropertyMap({
           </div>
 
           {showNearbyParcels && nearbyParcels.length > 0 && (
-            <div className="absolute top-3 right-14 z-10 w-64">
+            <div className="absolute top-3 right-14 z-docked w-64">
               <Collapsible open={nearbyPanelOpen} onOpenChange={setNearbyPanelOpen}>
-                <div className="bg-background/90 backdrop-blur-sm rounded-md shadow-lg">
+                <div className="bg-surface-haze backdrop-blur-sm rounded-md shadow-lg">
                   <CollapsibleTrigger asChild>
                     <Button
                       variant="ghost"
@@ -2685,9 +2695,9 @@ export function PropertyMap({
           )}
 
           {showComps && comps.length > 0 && (
-            <div className="absolute bottom-3 right-3 z-10 w-72">
+            <div className="absolute bottom-3 right-3 z-docked w-72">
               <Collapsible open={compsPanelOpen} onOpenChange={setCompsPanelOpen}>
-                <div className="bg-background/90 backdrop-blur-sm rounded-md shadow-lg">
+                <div className="bg-surface-haze backdrop-blur-sm rounded-md shadow-lg">
                   <CollapsibleTrigger asChild>
                     <Button
                       variant="ghost"
@@ -2735,7 +2745,7 @@ export function PropertyMap({
                                 <div className="text-acr-pos font-semibold">${comp.salePrice.toLocaleString()}</div>
                               )}
                               <div className="text-muted-foreground flex flex-wrap gap-2">
-                                {comp.saleDate && <span>{new Date(comp.saleDate).toLocaleDateString()}</span>}
+                                {comp.saleDate && <span>{formatDate(comp.saleDate)}</span>}
                                 {comp.acres && <span>{comp.acres.toFixed(2)} ac</span>}
                                 {comp.pricePerAcre && <span>${comp.pricePerAcre.toLocaleString()}/ac</span>}
                               </div>
@@ -2773,12 +2783,12 @@ export function PropertyMap({
 
           {/* Overlay legend — only for layers that successfully loaded. Floats
               above the layer-panel toggle, bottom-left. */}
-          <div className="absolute bottom-16 left-3 z-10 max-w-[calc(100%-1.5rem)] space-y-1.5">
+          <div className="absolute bottom-16 left-3 z-docked max-w-[calc(100%-1.5rem)] space-y-1.5">
             {/* Approximate-extent honesty caption — explains the dashed outline so
                 an inferred footprint is never mistaken for a surveyed boundary. */}
             {hasApproximateBoundary && layerState.propertyHeatmap && (
               <div
-                className="flex items-center gap-2 bg-background/90 backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg"
+                className="flex items-center gap-2 bg-surface-haze backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg"
                 data-testid="legend-approximate-extent"
               >
                 <svg
@@ -2810,9 +2820,9 @@ export function PropertyMap({
             />
           </div>
 
-          <div className="absolute bottom-3 left-3 z-10">
+          <div className="absolute bottom-3 left-3 z-docked">
             <Collapsible open={isLayerPanelOpen} onOpenChange={setIsLayerPanelOpen}>
-              <div className="bg-background/90 backdrop-blur-sm rounded-md shadow-lg overflow-visible">
+              <div className="bg-surface-haze backdrop-blur-sm rounded-md shadow-lg overflow-visible">
                 <CollapsibleTrigger asChild>
                   <Button
                     variant="ghost"
@@ -3117,7 +3127,7 @@ export function PropertyMap({
           size="icon"
           variant="outline"
           onClick={toggleFullscreen}
-          className="absolute top-3 right-3 z-10 bg-background/80 backdrop-blur-sm"
+          className="absolute top-3 right-3 z-docked bg-surface-veil backdrop-blur-sm"
           aria-label="Exit fullscreen"
           data-testid="button-exit-fullscreen"
         >
@@ -3127,7 +3137,7 @@ export function PropertyMap({
 
       {measurementMode !== "none" && (
         <div 
-          className="absolute top-3 left-1/2 transform -translate-x-1/2 z-10 bg-background/90 backdrop-blur-sm rounded-md shadow-lg p-3 min-w-[200px]"
+          className="absolute top-3 left-1/2 transform -translate-x-1/2 z-docked bg-surface-haze backdrop-blur-sm rounded-md shadow-lg p-3 min-w-[200px]"
           data-testid="measurement-overlay"
         >
           <div className="flex items-center justify-between gap-3 mb-2">
@@ -3520,7 +3530,7 @@ export function SinglePropertyMap({
           inferred footprint is never mistaken for a surveyed boundary. */}
       {isApproximate && (
         <div
-          className="absolute bottom-2 left-2 z-10 flex items-center gap-2 bg-background/90 backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg pointer-events-none"
+          className="absolute bottom-2 left-2 z-docked flex items-center gap-2 bg-surface-haze backdrop-blur-sm rounded-md px-2.5 py-1.5 shadow-lg pointer-events-none"
           data-testid="legend-approximate-extent"
         >
           <svg width="20" height="6" viewBox="0 0 20 6" className="shrink-0 text-muted-foreground" aria-hidden="true">

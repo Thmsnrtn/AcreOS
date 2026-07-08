@@ -79,6 +79,18 @@ vi.mock("./failureModeLibrary", () => ({
   ) => loadFailureModePreambleForMock(role, plannedFiles),
 }));
 
+// Tier 2D — learning-loop RAG wire-in. Stub the retriever (DB + embeddings)
+// but keep the REAL buildRetrievedMemoriesPromptBlock so the test proves the
+// genuine render path puts retrieved lessons into the prompt.
+const retrieveRelevantMemoriesMock = vi.fn();
+vi.mock("./learningLoop", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./learningLoop")>();
+  return {
+    ...actual,
+    retrieveRelevantMemories: (q: unknown) => retrieveRelevantMemoriesMock(q),
+  };
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 // Test fixtures
 // ─────────────────────────────────────────────────────────────────────────
@@ -124,6 +136,12 @@ beforeEach(async () => {
   loadFailureModePreambleForMock.mockResolvedValue(
     "_No failure modes on file. Operate per CLAUDE.md engineering standards._",
   );
+  retrieveRelevantMemoriesMock.mockReset();
+  retrieveRelevantMemoriesMock.mockResolvedValue({
+    retrievalEventId: -1,
+    retrieved: [],
+    latencyMs: 1,
+  });
   // Reset module cache so the env-driven TEAM_STATE_PATH constant is
   // recomputed for each test (the module reads it at top level).
   vi.resetModules();
@@ -353,6 +371,9 @@ describe("buildSystemPrompt", () => {
     const failureIdx = prompt.indexOf(
       "# Failure-mode library — patterns to avoid",
     );
+    const lessonsIdx = prompt.indexOf(
+      "# Relevant past lessons (learning-loop RAG)",
+    );
     const modeIdx = prompt.indexOf("# Solene autonomous-dispatch mode");
     const hardRulesIdx = prompt.indexOf("## Hard rules");
     const briefIdx = prompt.indexOf("## Your role brief");
@@ -360,7 +381,8 @@ describe("buildSystemPrompt", () => {
     expect(claimsIdx).toBeGreaterThan(teamIdx);
     expect(identityIdx).toBeGreaterThan(claimsIdx);
     expect(failureIdx).toBeGreaterThan(identityIdx);
-    expect(modeIdx).toBeGreaterThan(failureIdx);
+    expect(lessonsIdx).toBeGreaterThan(failureIdx);
+    expect(modeIdx).toBeGreaterThan(lessonsIdx);
     expect(hardRulesIdx).toBeGreaterThan(modeIdx);
     expect(briefIdx).toBeGreaterThan(hardRulesIdx);
 
@@ -445,5 +467,102 @@ describe("buildSystemPrompt", () => {
     );
     expect(prompt).toContain("# Solene autonomous-dispatch mode");
     expect(prompt).toContain("general-purpose brief");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Tier 2D — learning-loop RAG wire-in regression
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("buildSystemPrompt — learning-loop RAG wire-in (Tier 2D)", () => {
+  it("retrieved lessons reach the prompt via the real render path", async () => {
+    retrieveRelevantMemoriesMock.mockResolvedValueOnce({
+      retrievalEventId: 17,
+      retrieved: [
+        {
+          sourceRef: "feedback-credential-value-handling",
+          contentSnippet:
+            "RAG_LESSON_SNIPPET_A — credential values must never appear in tool output.",
+          similarityScore: 0.8421,
+        },
+        {
+          sourceRef: "feedback-rate-limit-ip-keying",
+          contentSnippet:
+            "RAG_LESSON_SNIPPET_B — never key rate limiters purely by IP.",
+          similarityScore: 0.7611,
+        },
+      ],
+      latencyMs: 12,
+    });
+    const mod = await import("./dispatchRunner");
+    const prompt = await mod.buildSystemPrompt(
+      "IRIS — harden the auth rate limiter.",
+      "iris",
+      123,
+      2.5,
+      900_000,
+    );
+
+    // The retriever must be consulted with the dispatch's brief + role + id.
+    expect(retrieveRelevantMemoriesMock).toHaveBeenCalledTimes(1);
+    expect(retrieveRelevantMemoriesMock).toHaveBeenCalledWith({
+      queryText: "IRIS — harden the auth rate limiter.",
+      queryingAgentRole: "iris",
+      queryDispatchId: 123,
+    });
+
+    // The real buildRetrievedMemoriesPromptBlock output must be in the prompt.
+    expect(prompt).toContain("# Relevant past lessons (learning-loop RAG)");
+    expect(prompt).toContain("## Relevant past corrections (n=2)");
+    expect(prompt).toContain(
+      "### feedback-credential-value-handling — similarity 0.8421",
+    );
+    expect(prompt).toContain("RAG_LESSON_SNIPPET_A");
+    expect(prompt).toContain(
+      "### feedback-rate-limit-ip-keying — similarity 0.7611",
+    );
+    expect(prompt).toContain("RAG_LESSON_SNIPPET_B");
+
+    // Lessons land in the STATIC prefix (cached) — between failure modes
+    // and the dispatch-mode preamble.
+    const parts = await mod.buildSystemPromptParts(
+      "IRIS — harden the auth rate limiter.",
+      "iris",
+      123,
+      2.5,
+      900_000,
+    );
+    expect(parts.staticPrefix).toContain(
+      "# Relevant past lessons (learning-loop RAG)",
+    );
+  });
+
+  it("renders the explicit no-lessons fallback when retrieval is empty", async () => {
+    retrieveRelevantMemoriesMock.mockResolvedValueOnce({
+      retrievalEventId: -1,
+      retrieved: [],
+      latencyMs: 3,
+    });
+    const mod = await import("./dispatchRunner");
+    const prompt = await mod.buildSystemPrompt("soren brief", "soren", 1, 1, 60_000);
+    expect(prompt).toContain("# Relevant past lessons (learning-loop RAG)");
+    expect(prompt).toContain(
+      "_No relevant past corrections retrieved for this task._",
+    );
+  });
+
+  it("degrades to the fallback when the retriever rejects — never blocks dispatch", async () => {
+    retrieveRelevantMemoriesMock.mockRejectedValueOnce(
+      new Error("pgvector unavailable"),
+    );
+    const mod = await import("./dispatchRunner");
+    const prompt = await mod.buildSystemPrompt("soren brief", "soren", 1, 1, 60_000);
+    expect(prompt).toContain("# Relevant past lessons (learning-loop RAG)");
+    expect(prompt).toContain(
+      "_No relevant past corrections retrieved for this task._",
+    );
+    // The rest of the prompt still assembles.
+    expect(prompt).toContain("# Solene autonomous-dispatch mode");
+    expect(prompt).toContain("soren brief");
   });
 });

@@ -81,11 +81,12 @@ import {
   Square,
 } from "lucide-react";
 import { AISettings } from "@/components/ai-settings";
-import { relative, usd } from "@/lib/format";
+import { relative, usd, formatDate } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 import { ReadAloudButton } from "@/components/ReadAloudButton";
 import { useAuth } from "@/hooks/use-auth";
+import { Verbs } from "@/lib/labels";
 
 interface Agent {
   name: string;
@@ -684,7 +685,7 @@ function TeamTabContent() {
                             onClick={() => setTaskDialogOpen(false)}
                             data-testid="button-cancel-va-task"
                           >
-                            Cancel
+                            {Verbs.CANCEL}
                           </Button>
                           <Button
                             onClick={() => {
@@ -1211,12 +1212,15 @@ function AIOperationsTabContent() {
       toast({ title: "Due diligence started", description: "Analysis is now running in the background." });
       setDueDiligenceDialogOpen(false);
       setPropertyIdInput("");
+      // A new dossier row now exists — same invalidation as useRequestAIDossier.
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/due-diligence"] });
     },
     onError: () => {
       toast({ title: "Couldn't start due diligence", description: "No analysis was queued. Try again or check the system status.", variant: "destructive" });
     },
   });
 
+  // allow-no-invalidation: recommendation is surfaced in the success toast — no cached query reads it
   const getPricingMutation = useMutation({
     mutationFn: async (propertyId: number) => {
       const res = await apiRequest("POST", "/api/ai/pricing/acquisition", { propertyId });
@@ -1249,6 +1253,7 @@ function AIOperationsTabContent() {
     },
   });
 
+  // allow-no-invalidation: GET verification — reads compliance rules, mutates nothing
   const checkComplianceMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("GET", "/api/ai/compliance/rules");
@@ -1632,6 +1637,7 @@ export default function CommandCenterPage() {
     },
   });
 
+  // allow-no-invalidation: pure NLP classification — result drives local chat flow only
   const classifyIntentMutation = useMutation({
     mutationFn: async (message: string) => {
       const res = await apiRequest("POST", "/api/assistant/classify-intent", { message });
@@ -1772,7 +1778,10 @@ export default function CommandCenterPage() {
         body: JSON.stringify({
           message,
           conversationId,
-          agentRole: "assistant",
+          // "executive" is the canonical Pax profile key. The old value
+          // "assistant" isn't in agentProfiles, so every send 422'd before
+          // reaching the model (WS1 interactive pass, 2026-07-07).
+          agentRole: "executive",
           images: imageContents.length > 0 ? imageContents : undefined,
           files: fileAttachments.length > 0 ? fileAttachments : undefined,
         }),
@@ -1855,6 +1864,8 @@ export default function CommandCenterPage() {
         clientLogger.info("Pax stream aborted by user");
       } else {
         clientLogger.error("Streaming error:", error);
+        // Make the promise true: put the draft back in the composer.
+        setInput(message);
         toast({ title: "Couldn't send message", description: "Your draft is preserved. Try again or check the system status.", variant: "destructive" });
       }
     } finally {
@@ -1968,7 +1979,14 @@ export default function CommandCenterPage() {
             </Tabs>
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="AI settings" data-testid="button-ai-settings">
+                {/* shrink-0 so the flex-1 tab list never compresses the gear
+                    out of its own box, and relative z-docked so the gear paints
+                    above the tab list — on a founder session (5 tabs) the
+                    full-width TabsList bled over the gear and its subtree
+                    intercepted the tap (Customer Surface Monitor J1, the
+                    third overlay-interception of this step after the FAB +
+                    cookie banner). */}
+                <Button variant="ghost" size="icon" aria-label="AI settings" data-testid="button-ai-settings" className="shrink-0 relative z-docked">
                   <Settings className="w-4 h-4" />
                 </Button>
               </DialogTrigger>
@@ -2024,8 +2042,14 @@ export default function CommandCenterPage() {
                   <ScrollArea className="flex-1">
                     <div className="p-2 space-y-1" data-testid="list-conversations">
                       {conversationsLoading ? (
-                        <div className="flex items-center justify-center py-8" role="status" aria-label="Loading conversations">
-                          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
+                        <div className="space-y-1 py-1" role="status" aria-busy="true" aria-live="polite">
+                          <span className="sr-only">Loading conversations</span>
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <div key={i} className="p-2 space-y-1.5">
+                              <Skeleton announce={false} className="h-4 w-3/4" />
+                              <Skeleton announce={false} className="h-3 w-1/2" />
+                            </div>
+                          ))}
                         </div>
                       ) : conversations.length === 0 ? (
                         <div className="text-center py-8 text-sm text-muted-foreground">
@@ -2047,7 +2071,7 @@ export default function CommandCenterPage() {
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">{conv.title}</p>
                               <p className="text-xs text-muted-foreground">
-                                {new Date(conv.createdAt).toLocaleDateString()}
+                                {formatDate(conv.createdAt)}
                               </p>
                             </div>
                             <Button
@@ -2076,7 +2100,10 @@ export default function CommandCenterPage() {
                         <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
                           <Sparkles className="w-10 h-10 text-primary" />
                         </div>
-                        <h3 className="text-xl font-semibold mb-2" data-testid="text-assistant-welcome">Pax</h3>
+                        {/* Bold Tahoe re-skin (Wave R, §3.2): the welcome H1
+                            renders in the Fraunces `heading-section` grade
+                            rather than a raw `text-xl font-bold`. testid kept. */}
+                        <h3 className="heading-section mb-2" data-testid="text-assistant-welcome">Pax</h3>
                         <p className="text-sm text-acr-ink-2 max-w-md mb-4">
                           Ask about your pipeline, a specific deal, or anything across your portfolio.
                         </p>
@@ -2139,8 +2166,12 @@ export default function CommandCenterPage() {
                         )}
                       </div>
                     ) : messagesLoading ? (
-                      <div className="flex items-center justify-center py-20" role="status" aria-label="Loading messages">
-                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
+                      <div className="space-y-4 py-4" role="status" aria-busy="true" aria-live="polite">
+                        <span className="sr-only">Loading messages</span>
+                        <Skeleton announce={false} className="h-16 w-3/4" />
+                        <Skeleton announce={false} className="h-12 w-2/3 ml-auto" />
+                        <Skeleton announce={false} className="h-16 w-3/4" />
+                        <Skeleton announce={false} className="h-12 w-1/2 ml-auto" />
                       </div>
                     ) : messages.length === 0 && !streamingContent ? (
                       <div className="flex flex-col items-center justify-center h-64 text-center">
@@ -2158,7 +2189,7 @@ export default function CommandCenterPage() {
                             data-testid={`message-${msg.id}`}
                           >
                             <div
-                              className={`max-w-[80%] rounded-card p-4 ${
+                              className={`max-w-[80%] rounded-card p-4 shadow-acr-1 ${
                                 msg.role === "user"
                                   ? "bg-primary text-primary-foreground"
                                   : "bg-card border"
@@ -2221,7 +2252,7 @@ export default function CommandCenterPage() {
 
                         {isStreaming && (
                           <div className="flex justify-start" data-testid="message-streaming">
-                            <div className="max-w-[80%] rounded-card p-4 bg-card border">
+                            <div className="max-w-[80%] rounded-card p-4 bg-card border shadow-acr-1">
                               {activeSkill && (
                                 <div className="flex items-center gap-2 mb-3 text-xs">
                                   <Badge variant="secondary" className="text-xs">

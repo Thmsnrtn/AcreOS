@@ -57,13 +57,7 @@
   gap: 28px;
 }
 
-.acr-cc-hero {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  margin-top: 4px;
-}
+/* .acr-cc-hero promoted to client/src/index.css (global) 2026-06-11 — see note there. */
 /* ── SHIM: .acr-cc-greeting and .acr-cc-greeting-soft ─────────────────
    Canonical definition: client/src/index.css — TYPOGRAPHY HIERARCHY block.
    These declarations are intentionally kept here so pages that import
@@ -83,21 +77,7 @@
   color: var(--acr-ink-3);
   font-weight: 500;
 }
-.acr-cc-hero-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.acr-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font: 600 11px/1 var(--font-sans);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--acr-ink-3);
-}
+/* .acr-cc-hero-actions and .acr-eyebrow promoted to client/src/index.css (global) 2026-06-11 — see note there. */
 
 /* ─────────────────────────────────────────────────────── metric strip */
 
@@ -471,11 +451,7 @@
   .acr-cc {
     gap: 20px;
   }
-  .acr-cc-hero {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
+  /* .acr-cc-hero mobile stacking promoted to client/src/index.css (global) 2026-06-11. */
   .acr-cc-greeting {
     font-size: 26px;
   }

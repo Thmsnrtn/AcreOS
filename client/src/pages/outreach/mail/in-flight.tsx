@@ -37,6 +37,7 @@ import {
   useInFlightShipments,
   useShipmentPieces,
 } from "@/hooks/use-outreach-mail";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 const STAGES: { key: string; label: string; icon: typeof Printer }[] = [
   { key: "printed", label: "Printed", icon: Printer },
@@ -102,8 +103,8 @@ function ShipmentCard({ shipment }: { shipment: ShipmentSummary }) {
   const pieces = useShipmentPieces(expanded ? shipment.id : null);
 
   const sentLabel = shipment.sentAt
-    ? new Date(shipment.sentAt).toLocaleDateString()
-    : new Date(shipment.queuedAt).toLocaleDateString();
+    ? formatDate(shipment.sentAt)
+    : formatDate(shipment.queuedAt);
   const idLabel = `R${String(shipment.id).padStart(3, "0")}`;
   const label = shipment.label ?? "Untitled campaign";
 
@@ -268,8 +269,8 @@ function PiecesTable({
               <TableCell>
                 <StatusBadge status={p.status} />
               </TableCell>
-              <TableCell className="text-xs">{formatStamp(p.printedAt)}</TableCell>
-              <TableCell className="text-xs">{formatStamp(p.deliveredAt)}</TableCell>
+              <TableCell className="text-xs">{formatDateTime(p.printedAt)}</TableCell>
+              <TableCell className="text-xs">{formatDateTime(p.deliveredAt)}</TableCell>
               <TableCell className="text-right">
                 <span className="inline-flex items-center gap-1 text-xs">
                   <QrCode className="w-3 h-3" aria-hidden="true" />
@@ -305,12 +306,6 @@ function StatusBadge({ status }: { status: string }) {
     return <Badge variant="outline">{status}</Badge>;
   }
   return <Badge variant="secondary">{status}</Badge>;
-}
-
-function formatStamp(stamp: string | null | undefined): string {
-  if (!stamp) return "—";
-  const d = new Date(stamp);
-  return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 }
 
 function formatUsd(cents: number): string {

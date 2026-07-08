@@ -22,14 +22,14 @@ export const FLOATING_SLOT = {
   // md:right-16 (64px) clears the 48px PaxCopilotRail that lives
   // fixed right-0 on desktop. Mobile uses right-4 since the rail
   // isn't shown there.
-  fab: "fixed bottom-[88px] md:bottom-4 right-4 md:right-16 z-50 safe-area-bottom",
-  conversation: "fixed bottom-[160px] md:bottom-24 right-4 md:right-16 z-[49] safe-area-bottom",
-  help: "fixed bottom-[232px] md:bottom-[176px] right-4 md:right-16 z-[48] safe-area-bottom",
+  fab: "fixed bottom-[88px] md:bottom-4 right-4 md:right-16 z-floating safe-area-bottom",
+  conversation: "fixed bottom-[160px] md:bottom-24 right-4 md:right-16 z-slot-tray safe-area-bottom",
+  help: "fixed bottom-[232px] md:bottom-[176px] right-4 md:right-16 z-slot-help safe-area-bottom",
   // feedback slot retired — feedback now lives inside the help sheet
 
   // Top-right (notifications, chrome)
-  notificationsTop: "fixed top-4 right-4 z-40",
+  notificationsTop: "fixed top-4 right-4 z-overlay",
 
   // Bottom-left (secondary, avoids the right-stack entirely)
-  bottomLeft: "fixed bottom-4 left-4 z-40 safe-area-bottom",
+  bottomLeft: "fixed bottom-4 left-4 z-overlay safe-area-bottom",
 } as const;

@@ -8,6 +8,13 @@ on:
       - 'server/services/aiRouter.ts'
       - 'server/services/ai*.ts'
       - 'server/services/*ai*.ts'
+      # T3-3D sub-item 3 — AI-relevant routing/eval logic also lives in these
+      # services; changes here must fire the eval merge-gate too. aiRouter.ts +
+      # aiEvalHarness.ts already match the globs above; llmJudge.ts does NOT
+      # (no "ai" substring). Listed explicitly so the trigger is unambiguous.
+      - 'server/services/aiRouter.ts'
+      - 'server/services/llmJudge.ts'
+      - 'server/services/aiEvalHarness.ts'
       # Tahoe E7 — the eval gate must fire on actual Pax prompt/persona changes.
       - 'server/ai/paxPromptVersions.ts'
       - 'server/services/pax/**'

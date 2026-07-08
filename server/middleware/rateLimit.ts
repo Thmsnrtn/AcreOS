@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { getRedisClient } from "../utils/redis";
 import { getClientIp } from "../utils/clientIp";
 import { logger } from "../utils/logger";
+import { e2eTestAuthEnabled } from "../auth/testAuth";
 
 // ── Rate Limit Hit Monitoring ────────────────────────────────────────────────
 // Tracks how many times each key has been rate-limited in the current hour.
@@ -249,6 +250,14 @@ export function createRateLimiter(
     ((req: Request) => `ip:${getClientIp(req)}`);
 
   return async (req: Request, res: Response, next: NextFunction) => {
+    // E2E harness: every spec shares one test user against one server, so
+    // per-user limits self-block the suite (e.g. /ai's ~8-endpoint fan-out
+    // × 6 device projects trips aiLimiter's 120/min and 429s the surface).
+    // e2eTestAuthEnabled() is hard-gated off on Fly — prod behavior unchanged.
+    if (e2eTestAuthEnabled()) {
+      return next();
+    }
+
     const key = getKey(req);
 
     try {

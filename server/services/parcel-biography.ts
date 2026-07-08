@@ -55,6 +55,12 @@ export const BIOGRAPHY_FIELDS = [
   "owner",
   "owner_address",
   "acres",
+  // Tier 2A (elevation blueprint 2026-06-10): dated sale observations —
+  // observedAt is the REAL sale/deed date (provider data or backfill), so
+  // these points reach decades before the platform existed. They are the
+  // tenure clock's hard boundaries.
+  "sale_price",
+  "deed_date",
 ] as const;
 export type BiographyField = (typeof BIOGRAPHY_FIELDS)[number];
 
@@ -284,10 +290,20 @@ export function deriveNumericTrend(points: SeriesPoint[]): NumericTrend | null {
  * Derive the owner-tenure clock + deed cadence from an ordered owner series.
  * Consecutive identical owner values collapse (the log records every lookup, so
  * the same owner appears many times — a *change* is a new distinct value).
+ *
+ * Tier 2A (elevation blueprint 2026-06-10): `saleEvents` are dated sale/deed
+ * observations (observedAt = the REAL sale date). A sale IS an ownership
+ * boundary, so:
+ *   - the current owner's tenure start is pulled BACK to the most recent sale
+ *     at or before their first sighting (a 1994 deed beats a 2026 first-lookup
+ *     date by three decades of honest depth);
+ *   - sale dates that fall outside the observed transition windows join the
+ *     deed-cadence boundary set, deepening changeCount + the median gap.
  */
 export function deriveOwnerTenure(
   points: SeriesPoint[],
   asOf: Date = new Date(),
+  saleEvents: Date[] = [],
 ): OwnerTenure | null {
   const named = points.filter((p) => {
     const s = p.value == null ? "" : String(p.value).trim().toLowerCase();
@@ -296,29 +312,65 @@ export function deriveOwnerTenure(
   if (named.length === 0) return null;
 
   // Collapse consecutive identical owners; capture the observedAt that each
-  // distinct owner FIRST appeared (the start of that tenure).
-  const tenures: Array<{ owner: string; since: Date }> = [];
+  // distinct owner FIRST appeared (the start of that tenure) and the
+  // observedAt they were LAST seen (closes the transition window).
+  const tenures: Array<{ owner: string; since: Date; lastSeen: Date }> = [];
   for (const p of named) {
     const owner = String(p.value).trim();
     const prev = tenures[tenures.length - 1];
     if (!prev || prev.owner.toLowerCase() !== owner.toLowerCase()) {
-      tenures.push({ owner, since: p.observedAt });
+      tenures.push({ owner, since: p.observedAt, lastSeen: p.observedAt });
+    } else {
+      prev.lastSeen = p.observedAt;
     }
   }
 
-  const changeCount = tenures.length - 1; // transitions between distinct owners
+  // Normalize + sort sale boundaries; drop implausible future dates.
+  const sales = saleEvents
+    .filter((d) => d instanceof Date && !Number.isNaN(d.getTime()) && d.getTime() <= asOf.getTime())
+    .sort((a, b) => a.getTime() - b.getTime());
+
   const current = tenures[tenures.length - 1];
-  const currentOwnerSince = current.since;
+  const previous = tenures.length >= 2 ? tenures[tenures.length - 2] : null;
+
+  // Refine the current owner's tenure start: the most recent sale at or
+  // before their first sighting. When a previous owner was observed, the sale
+  // must fall AFTER that owner was last seen (otherwise it belongs to an
+  // earlier transition, not this one).
+  let currentOwnerSince = current.since;
+  for (const sale of sales) {
+    if (sale.getTime() > current.since.getTime()) break;
+    if (previous && sale.getTime() <= previous.lastSeen.getTime()) continue;
+    currentOwnerSince = sale; // last qualifying sale wins (sorted ascending)
+  }
+
   const currentTenureYears = Math.max(
     0,
     Math.floor((asOf.getTime() - currentOwnerSince.getTime()) / MS_PER_YEAR),
   );
 
+  // Deed-cadence boundary set: observed transition starts (with the refined
+  // current start) + sale dates not already explained by an observed
+  // transition. A sale within ±1 year of an existing boundary is the SAME
+  // hand-change seen twice (the observation lag), not a new one.
+  const ONE_YEAR_MS = MS_PER_YEAR;
+  const boundaries: Date[] = tenures.map((t, i) =>
+    i === tenures.length - 1 ? currentOwnerSince : t.since,
+  );
+  for (const sale of sales) {
+    const nearExisting = boundaries.some(
+      (b) => Math.abs(b.getTime() - sale.getTime()) <= ONE_YEAR_MS,
+    );
+    if (!nearExisting) boundaries.push(sale);
+  }
+  boundaries.sort((a, b) => a.getTime() - b.getTime());
+
+  const changeCount = boundaries.length - 1; // transitions between holds
   let medianYearsBetweenChanges: number | null = null;
-  if (tenures.length >= 3) {
+  if (boundaries.length >= 3) {
     const gaps: number[] = [];
-    for (let i = 1; i < tenures.length; i++) {
-      gaps.push(tenures[i].since.getTime() - tenures[i - 1].since.getTime());
+    for (let i = 1; i < boundaries.length; i++) {
+      gaps.push(boundaries[i].getTime() - boundaries[i - 1].getTime());
     }
     medianYearsBetweenChanges = medianYears(gaps);
   }
@@ -440,7 +492,21 @@ export function assembleBiography(
   const ownerSeries = byField.get("owner") ?? [];
   const taxStatusSeries = byField.get("tax_status") ?? [];
 
-  const ownerTenure = ownerSeries.length > 0 ? deriveOwnerTenure(ownerSeries, asOf) : null;
+  // Tier 2A: dated sale observations (observedAt = the REAL sale date) act as
+  // hard ownership boundaries for the tenure clock. deed_date + sale_price
+  // points dedupe by day (one sale is usually recorded as both fields).
+  const saleEventDays = new Set<string>();
+  const saleEvents: Date[] = [];
+  for (const fieldName of ["deed_date", "sale_price"]) {
+    for (const p of byField.get(fieldName) ?? []) {
+      const day = p.observedAt.toISOString().slice(0, 10);
+      if (saleEventDays.has(day)) continue;
+      saleEventDays.add(day);
+      saleEvents.push(p.observedAt);
+    }
+  }
+
+  const ownerTenure = ownerSeries.length > 0 ? deriveOwnerTenure(ownerSeries, asOf, saleEvents) : null;
   const taxRecurrence = taxStatusSeries.length > 0 ? deriveTaxRecurrence(taxStatusSeries) : null;
 
   const hasAnySeries = Object.values(fields).some((f) => f.hasTrend);

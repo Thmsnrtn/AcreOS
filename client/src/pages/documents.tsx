@@ -9,6 +9,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { DocumentTemplate, GeneratedDocument, Deal, Property, DocumentPackage } from "@shared/schema";
 import { PageShell } from "@/components/page-shell";
+import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { TemplateEditor } from "@/components/template-editor";
@@ -35,6 +36,8 @@ import {
   Package, FolderPlus, GripVertical, X, Play
 } from "lucide-react";
 import type { DocumentVersion } from "@shared/schema";
+import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 const DOCUMENT_TYPES = [
   { value: "purchase_agreement", label: "Purchase Agreement" },
@@ -176,6 +179,15 @@ export default function DocumentsPage() {
     retry: false,
   });
   const packages = toArray<DocumentPackage>(rawPackages);
+
+  // W2-6: remember the window-scroll offset per route. `ready` follows the
+  // ACTIVE tab's query — restoring before that tab's rows exist would clamp
+  // to the skeleton height. Tabs share one offset (key is the path).
+  const activeTabReady =
+    activeTab === "templates" ? !templatesLoading :
+    activeTab === "documents" ? !documentsLoading :
+    !packagesLoading;
+  useScrollRestoration(activeTabReady);
 
   useEffect(() => {
     if (templatesError) toast({ title: "Couldn't load templates", description: "Check your connection and try again.", variant: "destructive" });
@@ -630,7 +642,7 @@ export default function DocumentsPage() {
           <Button
             variant={templateFilter === "all" ? "default" : "outline"}
             size="sm"
-            className="min-h-11 sm:min-h-9"
+            className="min-h-11 pointer-fine:sm:min-h-9"
             aria-pressed={templateFilter === "all"}
             onClick={() => setTemplateFilter("all")}
             data-testid="button-filter-all"
@@ -640,7 +652,7 @@ export default function DocumentsPage() {
           <Button
             variant={templateFilter === "my" ? "default" : "outline"}
             size="sm"
-            className="min-h-11 sm:min-h-9"
+            className="min-h-11 pointer-fine:sm:min-h-9"
             aria-pressed={templateFilter === "my"}
             onClick={() => setTemplateFilter("my")}
             data-testid="button-filter-my"
@@ -650,7 +662,7 @@ export default function DocumentsPage() {
           <Button
             variant={templateFilter === "system" ? "default" : "outline"}
             size="sm"
-            className="min-h-11 sm:min-h-9"
+            className="min-h-11 pointer-fine:sm:min-h-9"
             aria-pressed={templateFilter === "system"}
             onClick={() => setTemplateFilter("system")}
             data-testid="button-filter-system"
@@ -744,7 +756,7 @@ export default function DocumentsPage() {
                         {humanizeType(doc.type)}
                       </span>
                       <span className="text-xs text-muted-foreground tabular-nums">
-                        {doc.createdAt && new Date(doc.createdAt).toLocaleDateString()}
+                        {doc.createdAt && formatDate(doc.createdAt)}
                       </span>
                     </div>
                   </div>
@@ -753,7 +765,7 @@ export default function DocumentsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="min-h-11 sm:min-h-9"
+                    className="min-h-11 pointer-fine:sm:min-h-9"
                     onClick={() => handlePreviewDocument(doc)}
                     data-testid={`button-view-document-${doc.id}`}
                   >
@@ -763,7 +775,7 @@ export default function DocumentsPage() {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9"
+                    className="min-h-11 min-w-11 pointer-fine:sm:min-h-9 pointer-fine:sm:min-w-9"
                     onClick={() => handleOpenVersionHistory(doc.id, "generated", doc.name)}
                     aria-label={`Version history for ${doc.name}`}
                     data-testid={`button-version-history-document-${doc.id}`}
@@ -773,7 +785,7 @@ export default function DocumentsPage() {
                   {doc.status === "draft" && (
                     <Button
                       size="sm"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={() => setSignaturesFor(doc)}
                       data-testid={`button-send-for-signature-${doc.id}`}
                     >
@@ -888,7 +900,7 @@ export default function DocumentsPage() {
                         </Badge>
                       )}
                       <span className="text-xs text-muted-foreground tabular-nums">
-                        {pkg.createdAt && new Date(pkg.createdAt).toLocaleDateString()}
+                        {pkg.createdAt && formatDate(pkg.createdAt)}
                       </span>
                     </div>
                     {pkg.description && (
@@ -900,7 +912,7 @@ export default function DocumentsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="min-h-11 sm:min-h-9"
+                    className="min-h-11 pointer-fine:sm:min-h-9"
                     onClick={(e) => { e.stopPropagation(); handleViewPackage(pkg); }}
                     data-testid={`button-view-package-${pkg.id}`}
                   >
@@ -910,7 +922,7 @@ export default function DocumentsPage() {
                   {pkg.status === "draft" && docsCount > 0 && (
                     <Button
                       size="sm"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={(e) => { e.stopPropagation(); generateAllDocsMutation.mutate({ id: pkg.id }); }}
                       disabled={generateAllDocsMutation.isPending}
                       data-testid={`button-generate-all-${pkg.id}`}
@@ -1142,7 +1154,7 @@ export default function DocumentsPage() {
           </ScrollArea>
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setIsGenerateOpen(false)}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button onClick={handleGenerateDocument} disabled={generateDocMutation.isPending} data-testid="button-generate-document">
               {generateDocMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}
@@ -1254,7 +1266,7 @@ export default function DocumentsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="min-h-11 sm:min-h-9"
+                            className="min-h-11 pointer-fine:sm:min-h-9"
                             onClick={() => setVersionToRestore(version)}
                             disabled={restoreVersionMutation.isPending || isLatest}
                             aria-label={isLatest ? "This is the latest version" : `Restore version ${version.version}`}
@@ -1265,7 +1277,7 @@ export default function DocumentsPage() {
                             ) : (
                               <RotateCcw className="w-3 h-3 mr-1" aria-hidden="true" />
                             )}
-                            Restore
+                            {Verbs.RESTORE}
                           </Button>
                         </CardContent>
                       </Card>
@@ -1409,7 +1421,7 @@ export default function DocumentsPage() {
           </ScrollArea>
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setIsCreatePackageOpen(false)} data-testid="button-cancel-create-package">
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               onClick={handleCreatePackage}
@@ -1455,7 +1467,7 @@ export default function DocumentsPage() {
                     <Badge variant="secondary" className="tabular-nums">Property #{selectedPackage.propertyId}</Badge>
                   )}
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    Created {selectedPackage.createdAt && new Date(selectedPackage.createdAt).toLocaleDateString()}
+                    Created {selectedPackage.createdAt && formatDate(selectedPackage.createdAt)}
                   </span>
                 </div>
 
@@ -1540,7 +1552,7 @@ export default function DocumentsPage() {
               ) : (
                 <Trash2 className="w-3 h-3 mr-1" aria-hidden="true" />
               )}
-              Delete
+              {Verbs.DELETE}
             </Button>
             <div className="flex flex-col sm:flex-row gap-2">
               {selectedPackage?.status === "draft" && (selectedPackage.documents as any[] || []).length > 0 && (

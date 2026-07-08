@@ -48,7 +48,7 @@ export function DayInLife() {
       <div className="lp-day-grid">
         <div className="lp-day-col lp-day-before">
           <div className="lp-day-col-head">
-            <span className="lp-day-col-label">Before AcreOS</span>
+            <h3 className="lp-day-col-label">Before AcreOS</h3>
             <span className="lp-day-col-meta">~62 hr week</span>
           </div>
           {BEFORE.map((x, i) => (
@@ -64,7 +64,7 @@ export function DayInLife() {
 
         <div className="lp-day-col lp-day-after">
           <div className="lp-day-col-head">
-            <span className="lp-day-col-label lp-day-col-label-after">With AcreOS</span>
+            <h3 className="lp-day-col-label lp-day-col-label-after">With AcreOS</h3>
             <span className="lp-day-col-meta">~22 hr week</span>
           </div>
           {AFTER.map((x, i) => (

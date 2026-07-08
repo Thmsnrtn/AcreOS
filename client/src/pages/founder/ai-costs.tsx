@@ -174,7 +174,7 @@ function StackedFeatureBar({ items }: { items: FeatureUsage[] }) {
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default function FounderAiCostsPage() {
+export function AiCostsContent() {
   useDocumentTitle("AI costs");
   const { data, isLoading, isError, error } = useQuery<CostsResponse>({
     queryKey: ["/api/founder/ai-costs"],
@@ -182,7 +182,7 @@ export default function FounderAiCostsPage() {
   });
 
   return (
-    <PageShell label="AI cost observability">
+    <>
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">AI cost observability</h1>
@@ -373,6 +373,14 @@ export default function FounderAiCostsPage() {
           </CardContent>
         </Card>
       </div>
+    </>
+  );
+}
+
+export default function FounderAiCostsPage() {
+  return (
+    <PageShell label="AI cost observability">
+      <AiCostsContent />
     </PageShell>
   );
 }

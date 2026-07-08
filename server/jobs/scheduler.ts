@@ -134,8 +134,14 @@ export async function claimJobLease(
     return true;
   } catch (err) {
     // 23505 = unique violation: another claimer inserted between our UPDATE
-    // and INSERT — they own the lease.
-    if ((err as { code?: string })?.code === "23505") return false;
+    // and INSERT — they own the lease. drizzle-orm ≥0.4x wraps the pg error
+    // in DrizzleQueryError with code on err.CAUSE, not err — checking only
+    // err.code turned every lease-contended tick into a job-run failure +
+    // DLQ row instead of a graceful skip (WS5 worker-kill drill, 2026-07-08).
+    const code =
+      (err as { code?: string })?.code ??
+      ((err as { cause?: { code?: string } })?.cause?.code);
+    if (code === "23505") return false;
     throw err;
   }
 }

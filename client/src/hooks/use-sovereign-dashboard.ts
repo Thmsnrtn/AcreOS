@@ -19,7 +19,7 @@ export function useEventMeshStats() {
     queryKey: ["/api/founder/v12/event-mesh/stats"],
     queryFn: async () => {
       const res = await fetch("/api/founder/v12/event-mesh/stats", { credentials: "include" });
-      if (!res.ok) return null;
+      if (!res.ok) throw new Error(`Failed to load event-mesh stats (${res.status})`);
       return res.json();
     },
     staleTime: 15_000,
@@ -67,7 +67,7 @@ export function useAgentNegotiations() {
     queryKey: ["/api/founder/v11/negotiation/active"],
     queryFn: async () => {
       const res = await fetch("/api/founder/v11/negotiation/active", { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Failed to load negotiations (${res.status})`);
       return res.json();
     },
     staleTime: 30_000,
@@ -91,7 +91,7 @@ export function useDelegationTokens() {
     queryKey: ["/api/founder/v11/delegation/tokens"],
     queryFn: async () => {
       const res = await fetch("/api/founder/v11/delegation/tokens", { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Failed to load delegation tokens (${res.status})`);
       return res.json();
     },
     staleTime: 30_000,
@@ -103,7 +103,7 @@ export function useCognitiveMemory() {
     queryKey: ["/api/founder/v13/memory/recent"],
     queryFn: async () => {
       const res = await fetch("/api/founder/v13/memory/recent", { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Failed to load recent memories (${res.status})`);
       return res.json();
     },
     staleTime: 30_000,
@@ -127,7 +127,7 @@ export function useTrustEnforcement() {
     queryKey: ["/api/founder/v12/trust/log"],
     queryFn: async () => {
       const res = await fetch("/api/founder/v12/trust/log", { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Failed to load trust log (${res.status})`);
       return res.json();
     },
     staleTime: 30_000,
@@ -139,7 +139,7 @@ export function useFounderOverrides() {
     queryKey: ["/api/founder/v14/feedback/overrides"],
     queryFn: async () => {
       const res = await fetch("/api/founder/v14/feedback/overrides", { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Failed to load founder overrides (${res.status})`);
       return res.json();
     },
     staleTime: 30_000,
@@ -151,7 +151,7 @@ export function useConfidenceCascade() {
     queryKey: ["/api/founder/v14/confidence/recent"],
     queryFn: async () => {
       const res = await fetch("/api/founder/v14/confidence/recent", { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Failed to load confidence cascade (${res.status})`);
       return res.json();
     },
     staleTime: 30_000,
@@ -163,7 +163,7 @@ export function useEventMeshEvents(limit: number = 50) {
     queryKey: ["/api/founder/v12/event-mesh/events", limit],
     queryFn: async () => {
       const res = await fetch(`/api/founder/v12/event-mesh/events?limit=${limit}`, { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Failed to load events (${res.status})`);
       return res.json();
     },
     staleTime: 10_000,
@@ -175,7 +175,7 @@ export function useEventMeshSubscriptions() {
     queryKey: ["/api/founder/v12/event-mesh/subscriptions"],
     queryFn: async () => {
       const res = await fetch("/api/founder/v12/event-mesh/subscriptions", { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Failed to load subscriptions (${res.status})`);
       return res.json();
     },
     staleTime: 30_000,

@@ -6,9 +6,10 @@
  */
 
 import { db } from "../db";
-import { deals, landCreditScores } from "@shared/schema";
+import { deals, landCreditScores, modelCalibrationLog } from "@shared/schema";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { raiseAlert } from "./alertSpine";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -28,9 +29,19 @@ interface CalibrationResult {
 }
 
 // ── In-memory state per org ─────────────────────────────────────────
+//
+// These Maps are a hot cache ONLY. The durable record is the
+// model_calibration_log table (Tier 2A): every adjusted calibration run
+// persists a weight snapshot, and on first access after a deploy we
+// hydrate from the latest persisted rows — so calibration learned over
+// months is no longer erased by a restart.
 
 const orgWeights: Map<number, Record<string, number>> = new Map();
 const lcsWeightHistory: Map<number, WeightSnapshot[]> = new Map();
+const hydratedOrgs: Set<number> = new Set();
+
+const MODEL_NAME = "lcs_calibrator";
+const HISTORY_LIMIT = 50;
 
 const DIMENSIONS = ["location", "physical", "legal", "financial", "environmental", "market"] as const;
 
@@ -55,6 +66,79 @@ function getWeightsForOrg(orgId: number): Record<string, number> {
     orgWeights.set(orgId, { ...DEFAULT_WEIGHTS });
   }
   return orgWeights.get(orgId)!;
+}
+
+/**
+ * Hydrate the in-memory cache from model_calibration_log on first access
+ * per org per process. Latest persisted snapshot = live weights; the last
+ * HISTORY_LIMIT rows rebuild the history. Failure-tolerant: a read error
+ * falls back to defaults (and logs) rather than blocking scoring.
+ */
+async function ensureHydrated(orgId: number): Promise<void> {
+  if (hydratedOrgs.has(orgId)) return;
+  hydratedOrgs.add(orgId);
+  try {
+    const rows = await db
+      .select()
+      .from(modelCalibrationLog)
+      .where(and(
+        eq(modelCalibrationLog.organizationId, orgId),
+        eq(modelCalibrationLog.modelName, MODEL_NAME),
+      ))
+      .orderBy(desc(modelCalibrationLog.createdAt))
+      .limit(HISTORY_LIMIT);
+
+    if (rows.length === 0) return;
+
+    // rows are newest-first; history is stored oldest-first.
+    const chronological = [...rows].reverse();
+    const history: WeightSnapshot[] = chronological.map((r) => ({
+      weights: (r.weights ?? {}) as Record<string, number>,
+      correlations: (r.correlations ?? {}) as Record<string, number>,
+      sampleSize: r.sampleSize ?? 0,
+      timestamp: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt as any)).toISOString(),
+    }));
+    lcsWeightHistory.set(orgId, history);
+
+    const latest = rows[0];
+    if (latest.weights && Object.keys(latest.weights).length > 0) {
+      orgWeights.set(orgId, { ...(latest.weights as Record<string, number>) });
+    }
+  } catch (err) {
+    logger.warn("LCS calibrator hydration failed — using defaults until next calibration", {
+      metadata: { orgId, error: err instanceof Error ? err.message : String(err) },
+    });
+  }
+}
+
+/**
+ * Persist a calibration snapshot. On failure, raises a warning-severity
+ * alert — a silent persist failure means the next deploy silently erases
+ * learned weights, which is exactly the failure mode Tier 2A closes.
+ */
+async function persistSnapshot(orgId: number, result: CalibrationResult): Promise<void> {
+  try {
+    await db.insert(modelCalibrationLog).values({
+      organizationId: orgId,
+      modelName: MODEL_NAME,
+      weights: result.weights,
+      correlations: result.correlations,
+      sampleSize: result.sampleSize,
+      adjusted: result.adjusted,
+      reason: result.reason,
+    });
+  } catch (err) {
+    logger.error("LCS calibration persist failed", err instanceof Error ? err : undefined);
+    await raiseAlert({
+      severity: "warning",
+      source: "lcs_calibrator",
+      title: "LCS calibration snapshot persist failed",
+      detail: `Calibrated weights for org ${orgId} could not be written to model_calibration_log; they will be lost on next deploy. Error: ${err instanceof Error ? err.message : String(err)}`,
+      dedupeKey: `persist_failed:${orgId}`,
+      organizationId: orgId,
+      metadata: { sampleSize: result.sampleSize },
+    }).catch(() => {});
+  }
 }
 
 function normalizeWeights(weights: Record<string, number>): Record<string, number> {
@@ -104,6 +188,7 @@ function pearsonCorrelation(xs: number[], ys: number[]): number {
 // ── Core Calibration ────────────────────────────────────────────────
 
 export async function runLcsCalibration(orgId: number): Promise<CalibrationResult> {
+  await ensureHydrated(orgId);
   const currentWeights = getWeightsForOrg(orgId);
 
   try {
@@ -230,8 +315,8 @@ export async function runLcsCalibration(orgId: number): Promise<CalibrationResul
     });
 
     // Keep last 50 snapshots
-    if (history.length > 50) {
-      history.splice(0, history.length - 50);
+    if (history.length > HISTORY_LIMIT) {
+      history.splice(0, history.length - HISTORY_LIMIT);
     }
 
     logger.info("LCS calibration completed", {
@@ -241,13 +326,18 @@ export async function runLcsCalibration(orgId: number): Promise<CalibrationResul
       newWeights: normalized,
     });
 
-    return {
+    const result: CalibrationResult = {
       weights: normalized,
       correlations,
       sampleSize: profitValues.length,
       adjusted: true,
       reason: "Weights calibrated based on outcome correlations",
     };
+
+    // Durable record — survives deploys (Tier 2A).
+    await persistSnapshot(orgId, result);
+
+    return result;
   } catch (err) {
     logger.error("LCS calibration failed", err instanceof Error ? err : undefined);
     return {
@@ -260,11 +350,12 @@ export async function runLcsCalibration(orgId: number): Promise<CalibrationResul
   }
 }
 
-export function getCurrentWeights(orgId: number): {
+export async function getCurrentWeights(orgId: number): Promise<{
   weights: Record<string, number>;
   history: WeightSnapshot[];
   lastUpdated: string | null;
-} {
+}> {
+  await ensureHydrated(orgId);
   const weights = getWeightsForOrg(orgId);
   const history = lcsWeightHistory.get(orgId) || [];
   const lastUpdated = history.length > 0 ? history[history.length - 1].timestamp : null;

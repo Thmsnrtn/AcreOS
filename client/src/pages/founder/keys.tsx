@@ -1,7 +1,7 @@
 /**
  * /founder/keys — System API keys (extracted from founder-dashboard.tsx).
  *
- * Per docs/exhaustive-completion/founder-dashboard-extraction-queue.md
+ * Per docs/archive/exhaustive-completion/founder-dashboard-extraction-queue.md
  * Extraction #1. Pure move; no behavior change. Preserves the existing
  * /api/admin/system-api-keys query key + mutation paths.
  *
@@ -17,6 +17,8 @@ import { PageShell } from "@/components/page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -36,13 +38,14 @@ const COMMON_PROVIDERS = [
 export default function FounderKeysPage() {
   useDocumentTitle("System API keys — AcreOS");
 
-  const { data: keys = [], isLoading, refetch } = useQuery<any[]>({
+  const { data: keys = [], isLoading, error, refetch } = useQuery<any[]>({
     queryKey: ["/api/admin/system-api-keys"],
   });
   const { toast } = useToast();
   const [editProvider, setEditProvider] = useState<string | null>(null);
   const [newKey, setNewKey] = useState("");
 
+  // allow-no-invalidation: onSuccess calls refetch() — refetch-based, not key-based
   const updateMutation = useMutation({
     mutationFn: async ({ provider, apiKey }: { provider: string; apiKey: string }) =>
       apiRequest("PUT", `/api/admin/system-api-keys/${provider}`, { apiKey }),
@@ -85,7 +88,34 @@ export default function FounderKeysPage() {
 
       <div className="p-6 border rounded-xl bg-card space-y-4" data-testid="section-system-api-keys">
         {isLoading ? (
-          <div className="animate-pulse h-20 rounded-card bg-muted/50" />
+          <div
+            role="status"
+            aria-busy="true"
+            aria-live="polite"
+            className="space-y-2"
+            data-testid="skeleton-system-api-keys"
+          >
+            <span className="sr-only">Loading API keys</span>
+            {Array.from({ length: COMMON_PROVIDERS.length }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 p-3 border rounded-card">
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <Skeleton announce={false} className="h-4 w-24" />
+                    <Skeleton announce={false} className="h-5 w-20 rounded-full" />
+                  </div>
+                  <Skeleton announce={false} className="h-3 w-56" />
+                </div>
+                <Skeleton announce={false} className="h-8 w-16 shrink-0" />
+              </div>
+            ))}
+          </div>
+        ) : error ? (
+          <QueryErrorState
+            error={error as Error}
+            onRetry={() => refetch()}
+            title="Couldn't load API keys"
+            testId="error-system-api-keys"
+          />
         ) : (
           <div className="space-y-2">
             {allProviders.map((key) => (

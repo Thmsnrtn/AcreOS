@@ -42,6 +42,7 @@ import { FinanceBook } from "@/components/finance/FinanceBook";
 import { usePersona, useTerm } from "@/hooks/use-persona";
 import { AtrGate } from "@/components/AtrGate";
 import { useAuth } from "@/hooks/use-auth";
+import { Verbs } from "@/lib/labels";
 
 interface StripeConnectStatus {
   isConnected: boolean;
@@ -418,9 +419,9 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               (FinanceBook). This is a section within the Finance door — not a
               new top-level nav entry. */}
           <Tabs defaultValue="portfolio" className="mt-2">
-            <TabsList className="grid w-full grid-cols-2 sm:w-auto sm:inline-grid">
-              <TabsTrigger value="portfolio" data-testid="tab-finance-portfolio">Portfolio</TabsTrigger>
-              <TabsTrigger value="book" data-testid="tab-finance-book">Book</TabsTrigger>
+            <TabsList className="grid h-12 w-full grid-cols-2 sm:w-auto sm:inline-grid">
+              <TabsTrigger value="portfolio" className="min-h-11" data-testid="tab-finance-portfolio">Portfolio</TabsTrigger>
+              <TabsTrigger value="book" className="min-h-11" data-testid="tab-finance-book">Book</TabsTrigger>
             </TabsList>
 
             <TabsContent value="portfolio" className="mt-4">
@@ -876,17 +877,28 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+      // Bold Tahoe re-skin (§4 depth): tokenized modal scrim — `bg-surface-scrim`
+      // (the .40 backdrop role) instead of a raw `bg-black/50`, layered at the
+      // semantic `z-modal` instead of `z-floating`. Behavior (onClick close, a11y)
+      // unchanged.
+      className="fixed inset-0 z-modal bg-surface-scrim backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby={drawerTitleId}
     >
       <div
-        className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto"
+        // §2.1 L3 over-backdrop panel: a slide-over floating above the scrim is an
+        // over-content surface — give it the glass material + Track-1
+        // `shadow-level-3` (mode-independent) instead of an opaque `bg-background`
+        // + raw `shadow-2xl`. Layout/sizing unchanged.
+        className="fixed right-0 top-0 h-full w-full max-w-2xl glass-panel shadow-level-3 overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-6">
+        {/* §1.2 nested sticky chrome: this header sits inside the slide-over —
+            the secondary-plane glass role (veil) under the panel's own edge,
+            softened `border-border/50` hairline, `z-docked`. */}
+        <div className="sticky top-0 z-docked bg-surface-veil backdrop-blur-lg border-b border-border/50 p-6">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
               <h2 id={drawerTitleId} className="text-xl font-bold" data-testid="text-note-title">
@@ -915,7 +927,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-11 w-11 sm:h-9 sm:w-9"
+                  className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9"
                   onClick={handleDownloadPdf}
                   disabled={isDownloading}
                   aria-label={`Download note PDF for ${borrowerName}`}
@@ -932,7 +944,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-11 w-11 sm:h-9 sm:w-9"
+                className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9"
                 onClick={onDelete}
                 aria-label={`Delete note for ${borrowerName}`}
                 data-testid="button-delete-note"
@@ -942,7 +954,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-11 w-11 sm:h-9 sm:w-9"
+                className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9"
                 onClick={onClose}
                 aria-label="Close note details"
                 data-testid="button-close-drawer"
@@ -1060,7 +1072,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     <Button
                       onClick={handleGeneratePaymentLink}
                       disabled={isGeneratingLink}
-                      className="flex-1 min-h-11 sm:min-h-9"
+                      className="flex-1 min-h-11 pointer-fine:sm:min-h-9"
                       data-testid="button-generate-payment-link"
                     >
                       {isGeneratingLink ? (
@@ -1073,7 +1085,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     <Button
                       onClick={() => setShowAcceptPayment(true)}
                       variant="outline"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       data-testid="button-accept-payment"
                     >
                       <DollarSign className="w-4 h-4 mr-2" aria-hidden="true" />
@@ -1096,7 +1108,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                         <Button
                           size="icon"
                           variant="outline"
-                          className="h-11 w-11 sm:h-9 sm:w-9 shrink-0"
+                          className="h-11 w-11 pointer-fine:sm:h-9 pointer-fine:sm:w-9 shrink-0"
                           onClick={handleCopyPaymentLink}
                           aria-label="Copy payment link to clipboard"
                           data-testid="button-copy-payment-link"
@@ -1115,12 +1127,12 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
           </Card>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <Button onClick={() => setShowRecordPayment(true)} className="flex-1 min-h-11 sm:min-h-9" data-testid="button-record-payment">
+            <Button onClick={() => setShowRecordPayment(true)} className="flex-1 min-h-11 pointer-fine:sm:min-h-9" data-testid="button-record-payment">
               <Receipt className="w-4 h-4 mr-2" aria-hidden="true" /> Record payment
             </Button>
-            <Button variant="outline" className="flex-1 min-h-11 sm:min-h-9" disabled title="Coming soon — use Generate payment link above">
-              <CreditCard className="w-4 h-4 mr-2" aria-hidden="true" /> Send payment link
-            </Button>
+            {/* "Send payment link" removed 2026-07-07 (WS1): it was a
+                permanently-disabled "Coming soon" button — Generate payment
+                link above covers the job. Restore when a send channel ships. */}
           </div>
 
           <Tabs defaultValue="payments" onValueChange={(v) => v === 'dunning' && !dunningData && fetchDunningData()}>
@@ -1133,7 +1145,48 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             <TabsContent value="payments" className="mt-4">
               <Card>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
+                  {/* Mobile: stacked payment cards — the 5-column table forces a
+                      side-scroll at phone widths. md+ renders the full table below. */}
+                  <div className="md:hidden" data-testid="list-payments-mobile">
+                    {paymentsLoading ? (
+                      <div className="p-4 space-y-3" aria-busy="true" aria-label="Loading payments">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                          <div key={`payment-skeleton-card-${i}`} className="flex items-center justify-between gap-3" data-testid="payments-skeleton-card">
+                            <div className="space-y-2">
+                              <Skeleton className="h-4 w-24" announce={i === 0} announceText="Loading payments" />
+                              <Skeleton className="h-3 w-32" announce={false} />
+                            </div>
+                            <Skeleton className="h-5 w-16 rounded-full" announce={false} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : payments?.length === 0 ? (
+                      <p className="text-center text-sm text-muted-foreground py-6">No payments recorded yet.</p>
+                    ) : (
+                      <ul className="divide-y divide-border">
+                        {payments?.map((payment) => (
+                          <li key={payment.id} className="px-4 py-3" data-testid={`card-payment-${payment.id}`}>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm tabular-nums">
+                                {format(new Date(payment.paymentDate), 'MMM d, yyyy')}
+                              </span>
+                              <span className="font-mono font-medium tabular-nums">{usd(payment.amount)}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 mt-1.5">
+                              <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'} className="capitalize">
+                                {payment.status}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground font-mono tabular-nums">
+                                P {usd(payment.principalAmount)} · I {usd(payment.interestAmount)}
+                              </span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="hidden md:block overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -1216,7 +1269,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="min-h-11 sm:min-h-9"
+                  className="min-h-11 pointer-fine:sm:min-h-9"
                   onClick={handleRegenerateSchedule}
                   disabled={isRegenerating}
                   data-testid="button-regenerate-schedule"
@@ -1227,7 +1280,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="min-h-11 sm:min-h-9"
+                  className="min-h-11 pointer-fine:sm:min-h-9"
                   onClick={handleDownloadSchedulePdf}
                   disabled={isDownloadingSchedule || schedule.length === 0}
                   data-testid="button-export-schedule"
@@ -1242,14 +1295,68 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
               </div>
               <Card>
                 <CardContent className="p-0">
+                  {/* Mobile: stacked schedule cards — the 7-column amortization
+                      table is unreadable at phone widths. md+ keeps the table. */}
                   <div
-                    className="max-h-64 overflow-y-auto overflow-x-auto"
+                    className="md:hidden max-h-64 overflow-y-auto"
+                    tabIndex={0}
+                    role="region"
+                    aria-label="Amortization schedule"
+                    data-testid="list-amort-mobile"
+                  >
+                    {schedule.length === 0 ? (
+                      <p className="text-center text-sm text-muted-foreground py-6">No amortization schedule available.</p>
+                    ) : (
+                      <ul className="divide-y divide-border">
+                        {schedule.map((row) => {
+                          const statusLabel =
+                            row.status === 'paid' ? 'Paid' :
+                            row.status === 'late' ? 'Late' :
+                            'Pending';
+                          return (
+                            <li key={row.paymentNumber} className="px-4 py-3" data-testid={`card-amort-${row.paymentNumber}`}>
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-sm tabular-nums">
+                                  <span className="text-muted-foreground font-medium mr-2">#{row.paymentNumber}</span>
+                                  {format(new Date(row.dueDate), 'MMM d, yyyy')}
+                                </span>
+                                <span className="font-mono font-medium tabular-nums">{usd(row.payment)}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-3 mt-1.5">
+                                <span className="flex items-center gap-1.5 text-xs">
+                                  {row.status === 'paid' ? (
+                                    <CheckCircle className="w-4 h-4 text-acr-pos" aria-hidden="true" />
+                                  ) : row.status === 'late' ? (
+                                    <AlertTriangle className="w-4 h-4 text-acr-neg" aria-hidden="true" />
+                                  ) : (
+                                    <Clock className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                                  )}
+                                  {statusLabel}
+                                </span>
+                                <span className="text-xs text-muted-foreground font-mono tabular-nums">
+                                  P {usd(row.principal)} · I {usd(row.interest)} · Bal {usd(row.balance)}
+                                </span>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div
+                    className="hidden md:block max-h-64 overflow-y-auto overflow-x-auto"
                     tabIndex={0}
                     role="region"
                     aria-label="Amortization schedule"
                   >
                     <Table>
-                      <TableHeader className="sticky top-0 bg-card">
+                      {/* §1.2 nested sticky chrome: the scrolling amortization
+                          header is a secondary plane — veil glass + blur +
+                          softened hairline + z-docked so it reads as a distinct
+                          layer floating over the dense rows beneath. Rows stay
+                          dense (recipe: keep dense rows dense). */}
+                      <TableHeader className="sticky top-0 z-docked bg-surface-veil backdrop-blur-lg border-b border-border/50">
                         <TableRow>
                           <TableHead className="min-w-[30px]">#</TableHead>
                           <TableHead className="min-w-[90px]">Due date</TableHead>
@@ -1376,7 +1483,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
-                      className="min-h-11 sm:min-h-9"
+                      className="min-h-11 pointer-fine:sm:min-h-9"
                       onClick={() => handleSendReminder('due')}
                       disabled={isSendingReminder}
                       data-testid="button-send-reminder"
@@ -1384,21 +1491,13 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                       {isSendingReminder ? <Loader2 className="w-4 h-4 mr-1 animate-spin" aria-hidden="true" /> : <Send className="w-4 h-4 mr-1" aria-hidden="true" />}
                       Send reminder
                     </Button>
-                    <Button size="sm" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => handleSendReminder('final_warning')} disabled={isSendingReminder} data-testid="button-escalate">
+                    <Button size="sm" variant="outline" className="min-h-11 pointer-fine:sm:min-h-9" onClick={() => handleSendReminder('final_warning')} disabled={isSendingReminder} data-testid="button-escalate">
                       <ArrowUpRight className="w-4 h-4 mr-1" aria-hidden="true" /> Escalate
                     </Button>
-                    {/* Log call: backend endpoint not yet shipped. Disable
-                        with a tooltip so users don't tap an inert button. */}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="min-h-11 sm:min-h-9"
-                      disabled
-                      title="Coming soon — call logging will appear here"
-                      data-testid="button-record-contact"
-                    >
-                      <Phone className="w-4 h-4 mr-1" aria-hidden="true" /> Log call
-                    </Button>
+                    {/* "Log call" removed 2026-07-07 (WS1): the backend
+                        endpoint never shipped, so this was a permanently
+                        disabled "Coming soon" button. Restore with the
+                        endpoint. */}
                   </div>
 
                   <Card>
@@ -1443,7 +1542,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <p>Click to load dunning information.</p>
-                  <Button variant="outline" size="sm" className="mt-2 min-h-11 sm:min-h-9" onClick={fetchDunningData}>
+                  <Button variant="outline" size="sm" className="mt-2 min-h-11 pointer-fine:sm:min-h-9" onClick={fetchDunningData}>
                     Load dunning data
                   </Button>
                 </div>
@@ -1593,7 +1692,10 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
 
   return (
     <div
-      className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center p-4"
+      // Bold Tahoe re-skin (§4 depth): tokenized modal scrim — `bg-surface-scrim`
+      // (.40 backdrop) over a raw `bg-black/50`, layered at the semantic `z-modal`
+      // (60, the escalated-sheet role) instead of the raw `z-60`. Behavior unchanged.
+      className="fixed inset-0 z-modal bg-surface-scrim flex items-center justify-center p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -1690,14 +1792,14 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
             )}
 
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={onClose} className="flex-1 min-h-11 sm:min-h-9">
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1 min-h-11 pointer-fine:sm:min-h-9">
                 {clientSecret ? 'Close' : 'Cancel'}
               </Button>
               {!clientSecret && (
                 <Button
                   type="submit"
                   disabled={isCreating || !amount}
-                  className="flex-1 min-h-11 sm:min-h-9"
+                  className="flex-1 min-h-11 pointer-fine:sm:min-h-9"
                   data-testid="button-create-payment-intent"
                 >
                   {isCreating ? (
@@ -1763,7 +1865,10 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
 
   return (
     <div
-      className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center p-4"
+      // Bold Tahoe re-skin (§4 depth): tokenized modal scrim — `bg-surface-scrim`
+      // (.40 backdrop) over a raw `bg-black/50`, layered at the semantic `z-modal`
+      // (60, the escalated-sheet role) instead of the raw `z-60`. Behavior unchanged.
+      className="fixed inset-0 z-modal bg-surface-scrim flex items-center justify-center p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -1838,13 +1943,13 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
             </dl>
 
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={onClose} className="flex-1 min-h-11 sm:min-h-9" disabled={isPending}>
-                Cancel
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1 min-h-11 pointer-fine:sm:min-h-9" disabled={isPending}>
+                {Verbs.CANCEL}
               </Button>
               <Button
                 type="submit"
                 disabled={isPending || !amount}
-                className="flex-1 min-h-11 sm:min-h-9"
+                className="flex-1 min-h-11 pointer-fine:sm:min-h-9"
                 data-testid="button-submit-payment"
               >
                 {isPending ? (

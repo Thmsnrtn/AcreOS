@@ -10,61 +10,23 @@ import { usd } from "@/lib/format";
 import { SkipToContent } from "@/components/skip-to-content";
 import { PublicFooter } from "@/components/public-footer";
 import { usePageMeta } from "@/hooks/use-document-title";
-import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 import { TIER_LIMITS } from "@shared/billing/tier-limits";
+import {
+  PRICING_TIER_COPY,
+  SCALE_SALES_MAILTO,
+  displayMonthlyPrice,
+  tierSignupHref,
+} from "@/lib/pricing-copy";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { pricingProductSchema, SITE } from "@/lib/jsonld-schemas";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
 
-// Tier labels Free / Starter / Pro / Scale match both the canonical
-// TIER_PRICES_CENTS keys and the landing-page pricing table. Prices come
-// from shared/billing/tier-pricing.ts so this page can never drift from
-// the MRR math in /api/founder/executive-dashboard or the Stripe checkout.
-const TIERS = [
-  {
-    id: "free",
-    name: "Free",
-    price: 0,
-    yearlyPrice: 0,
-    description: "Explore the platform",
-    cta: "Get started",
-    highlighted: false,
-  },
-  {
-    id: "starter",
-    name: "Starter",
-    price: TIER_PRICES_CENTS.starter.priceMonthlyCents / 100,
-    yearlyPrice: TIER_PRICES_CENTS.starter.priceYearlyCents / 100,
-    description: "Replace your spreadsheet",
-    cta: "Start 14-day free trial",
-    highlighted: false,
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    price: TIER_PRICES_CENTS.pro.priceMonthlyCents / 100,
-    yearlyPrice: TIER_PRICES_CENTS.pro.priceYearlyCents / 100,
-    description: "For serious operators",
-    cta: "Start 14-day free trial",
-    highlighted: true,
-  },
-  {
-    id: "scale",
-    name: "Scale",
-    price: TIER_PRICES_CENTS.scale.priceMonthlyCents / 100,
-    yearlyPrice: TIER_PRICES_CENTS.scale.priceYearlyCents / 100,
-    description: "For growing teams",
-    // Scale is sales-assisted, not self-serve — custom integrations,
-    // white-glove migration, and a dedicated success partner are quoted,
-    // not checked out. This matches landing/Pricing.tsx (the canonical
-    // "Talk to us" mailto). Earlier this said "Start 14-day free trial",
-    // contradicting the landing page and implying a self-serve path that
-    // doesn't exist for Scale.
-    cta: "Talk to us",
-    highlighted: false,
-  },
-];
+// Tier cards (name / tagline / price / CTA) come from the shared
+// pricing-copy module — the single source both this page and the landing
+// Pricing section render. Prices inside it derive from
+// shared/billing/tier-pricing.ts so this page can never drift from the
+// MRR math in /api/founder/executive-dashboard or the Stripe checkout.
 
 interface Feature {
   name: string;
@@ -123,7 +85,10 @@ const FEATURES: Feature[] = [
   },
   {
     name: "Campaigns",
-    free: fmtCountOrCross(TIER_LIMITS.free.campaigns),
+    // W2.1: the free tier ships a 5-piece lifetime first send (the wedge) —
+    // a bare ✗ here contradicted the in-app checklist's "first 5 pieces on
+    // us" promise on the very page meant to convert.
+    free: "5 letters free",
     starter: fmtCountOrCross(TIER_LIMITS.starter.campaigns),
     pro: fmtCountOrCross(TIER_LIMITS.pro.campaigns),
     scale: fmtCountOrCross(TIER_LIMITS.scale.campaigns),
@@ -148,6 +113,17 @@ const FEATURES: Feature[] = [
     starter: fmtSeats("starter"),
     pro: fmtSeats("pro"),
     scale: fmtSeats("scale"),
+  },
+  {
+    // Credits are the tangible "data + mail allowance" each tier carries
+    // (1 credit ≈ $0.01 of provider cost — shared/billing/credit-weights.ts).
+    // Surfacing them here was part of the 2026-07-08 pricing decision:
+    // subscription buys adoption, credits carry the variable value.
+    name: "Data & mail credits / month",
+    free: fmtCount(TIER_LIMITS.free.creditPool),
+    starter: fmtCount(TIER_LIMITS.starter.creditPool),
+    pro: fmtCount(TIER_LIMITS.pro.creditPool),
+    scale: fmtCount(TIER_LIMITS.scale.creditPool),
   },
   { name: "Data sources (6 free + 3 premium)", free: true, starter: true, pro: true, scale: true },
   { name: "AI deal intelligence", free: true, starter: true, pro: true, scale: true },
@@ -198,7 +174,7 @@ export default function PricingPage() {
       />
       <JsonLd id="ld-pricing-product" data={pricingProductSchema()} />
       {/* Nav */}
-      <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
+      <nav className="border-b bg-surface-chrome backdrop-blur sticky top-0 z-floating">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity min-h-11 py-1">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -224,6 +200,18 @@ export default function PricingPage() {
           <span className="tabular-nums">14</span>-day free trial and a{" "}
           <span className="tabular-nums">30</span>-day money-back guarantee.
         </p>
+        {/* Founding-member pricing — 2026-07-08 founder decision: launch
+            prices are held for the first cohort for as long as they stay
+            subscribed; list prices rise afterward. Honest mechanism: Stripe
+            subscriptions keep their price on later list changes. */}
+        <p
+          className="mt-4 max-w-2xl mx-auto text-sm font-medium text-primary"
+          data-testid="founding-member-note"
+        >
+          Founding-member pricing: these are launch prices. The first 25
+          customers keep them for as long as they stay subscribed — list
+          prices rise after that.
+        </p>
 
         {/* Billing toggle */}
         <div className="flex items-center justify-center gap-3 mt-8">
@@ -231,16 +219,18 @@ export default function PricingPage() {
             Monthly
           </span>
           <button
+            type="button"
             role="switch"
             aria-checked={annual}
-            aria-label="Switch to annual billing"
+            aria-label="Annual billing"
             onClick={() => setAnnual(!annual)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
               annual ? "bg-primary" : "bg-muted-foreground/30"
             }`}
           >
             <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+              aria-hidden="true"
+              className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
                 annual ? "translate-x-6" : "translate-x-1"
               }`}
             />
@@ -264,10 +254,8 @@ export default function PricingPage() {
       {/* Tier cards */}
       <section className="px-6 pb-16">
         <div className="max-w-5xl mx-auto grid sm:grid-cols-4 gap-6">
-          {TIERS.map((tier) => {
-            const displayPrice = annual
-              ? Math.round(tier.yearlyPrice / 12)
-              : tier.price;
+          {PRICING_TIER_COPY.map((tier) => {
+            const displayPrice = displayMonthlyPrice(tier, annual);
             return (
               <Card
                 key={tier.id}
@@ -284,19 +272,19 @@ export default function PricingPage() {
                 )}
                 <CardHeader className="text-center pb-2">
                   <CardTitle className="text-lg">{tier.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{tier.description}</p>
+                  <p className="text-sm text-muted-foreground">{tier.tagline}</p>
                 </CardHeader>
                 <CardContent className="text-center space-y-4">
                   <div>
                     <span className="text-4xl font-bold tabular-nums">
                       {usd(displayPrice, { noCents: true })}
                     </span>
-                    {tier.price > 0 && (
+                    {tier.priceMonthly > 0 && (
                       <span className="text-muted-foreground text-sm">/mo</span>
                     )}
-                    {annual && tier.yearlyPrice > 0 && (
+                    {annual && tier.priceYearly > 0 && (
                       <p className="text-xs text-muted-foreground mt-1 tabular-nums">
-                        {usd(tier.yearlyPrice, { noCents: true })}/year
+                        {usd(tier.priceYearly, { noCents: true })}/year
                       </p>
                     )}
                   </div>
@@ -305,18 +293,25 @@ export default function PricingPage() {
                     variant={tier.highlighted ? "default" : "outline"}
                     asChild
                   >
-                    {tier.cta === "Talk to us" ? (
+                    {tier.salesAssisted ? (
                       // Sales-assisted Scale path — mailto matches the
                       // landing page (landing/Pricing.tsx) so both surfaces
                       // tell the same story. No fake self-serve trial.
                       <a
-                        href="mailto:sales@acreos.io?subject=AcreOS%20Scale%20tier%20inquiry"
+                        href={SCALE_SALES_MAILTO}
                         data-testid="cta-scale-mailto"
                       >
-                        {tier.cta}
+                        {tier.ctaLabel}
                       </a>
                     ) : (
-                      <Link href="/auth?mode=register">{tier.cta}</Link>
+                      // Tier 2C — carry tier + cadence into the signup URL;
+                      // capturePendingUtm() folds plan/billing into the
+                      // first-touch snapshot for funnel segmentation.
+                      <Link
+                        href={tierSignupHref(tier.id, annual ? "yearly" : "monthly")}
+                      >
+                        {tier.ctaLabel}
+                      </Link>
                     )}
                   </Button>
                 </CardContent>

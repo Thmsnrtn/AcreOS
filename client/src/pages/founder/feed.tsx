@@ -21,13 +21,14 @@ import { PageShell } from "@/components/page-shell";
 import { CanonicalSurfacesBanner } from "@/components/founder/CanonicalSurfacesBanner";
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, EmptyFilter } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import {
   Select,
   SelectContent,
@@ -36,6 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { formatDateTime } from "@/lib/format";
 import { Link } from "wouter";
 import { Bot, MessageSquare, Zap, Activity } from "lucide-react";
 
@@ -86,15 +88,6 @@ interface ProposalsResponse {
   }>;
 }
 
-function formatDate(s: string): string {
-  return new Date(s).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 const SOURCE_LABEL: Record<SourceKey, string> = {
   feedback: "Feedback",
   agent_event: "Agent event",
@@ -111,13 +104,13 @@ export default function FounderFeedPage() {
   useDocumentTitle("Founder feed");
   const [filter, setFilter] = useState<SourceKey | "all">("all");
 
-  const { data: feedback, isLoading: l1 } = useQuery<FeedbackResponse>({
+  const { data: feedback, isLoading: l1, error: e1, refetch: r1 } = useQuery<FeedbackResponse>({
     queryKey: ["/api/founder/feedback"],
   });
-  const { data: events, isLoading: l2 } = useQuery<AgentNotifResponse>({
+  const { data: events, isLoading: l2, error: e2, refetch: r2 } = useQuery<AgentNotifResponse>({
     queryKey: ["/api/founder/agent-notifications"],
   });
-  const { data: proposals, isLoading: l3 } = useQuery<ProposalsResponse>({
+  const { data: proposals, isLoading: l3, error: e3, refetch: r3 } = useQuery<ProposalsResponse>({
     queryKey: ["/api/founder/proposed-changes"],
   });
 
@@ -162,6 +155,13 @@ export default function FounderFeedPage() {
   }, [feedback, events, proposals, filter]);
 
   const isLoading = l1 || l2 || l3;
+  const sourceErrors = [
+    { error: e1, refetch: r1, label: "feedback" },
+    { error: e2, refetch: r2, label: "agent events" },
+    { error: e3, refetch: r3, label: "code proposals" },
+  ].filter((s) => !!s.error);
+  const allFailed = sourceErrors.length === 3;
+  const retryFailed = () => sourceErrors.forEach((s) => void s.refetch());
 
   return (
     <PageShell>
@@ -192,24 +192,75 @@ export default function FounderFeedPage() {
         </div>
 
         {isLoading && (
-          <div className="space-y-3" aria-busy="true">
+          <div
+            role="status"
+            aria-busy="true"
+            aria-live="polite"
+            className="space-y-3"
+            data-testid="skeleton-founder-feed"
+          >
+            <span className="sr-only">Loading founder feed</span>
             {[0, 1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-24 w-full" />
+              <Card key={i}>
+                <CardHeader className="pb-3">
+                  <div className="flex items-start gap-3">
+                    <Skeleton announce={false} className="h-8 w-8 rounded-md mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Skeleton announce={false} className="h-5 w-20 rounded-full" />
+                        <Skeleton announce={false} className="h-5 w-16 rounded-full" />
+                        <Skeleton announce={false} className="h-4 w-28" />
+                      </div>
+                      <Skeleton announce={false} className="h-4 w-1/2 max-w-64" />
+                      <Skeleton announce={false} className="h-4 w-3/4" />
+                    </div>
+                  </div>
+                </CardHeader>
+              </Card>
             ))}
           </div>
         )}
 
-        {!isLoading && items.length === 0 && (
-          <Card>
-            <CardContent className="pt-10 pb-10 text-center text-muted-foreground space-y-2">
-              <Activity className="h-10 w-10 mx-auto opacity-40" aria-hidden="true" />
-              <div className="text-sm">No items in your feed.</div>
-              <div className="text-xs">
-                Feedback submissions, weekly agent digests, and code-change
-                proposals will appear here as they arrive.
-              </div>
-            </CardContent>
-          </Card>
+        {!isLoading && allFailed && (
+          <QueryErrorState
+            error={sourceErrors[0].error}
+            onRetry={retryFailed}
+            title="Couldn't load your feed"
+            testId="error-founder-feed"
+          />
+        )}
+
+        {!isLoading && !allFailed && sourceErrors.length > 0 && (
+          <QueryErrorState
+            compact
+            error={sourceErrors[0].error}
+            onRetry={retryFailed}
+            title={`Couldn't load ${sourceErrors.map((s) => s.label).join(" and ")}`}
+            description="The rest of the feed is shown below."
+            testId="error-founder-feed-partial"
+          />
+        )}
+
+        {!isLoading && !allFailed && items.length === 0 && (
+          filter !== "all" ? (
+            <EmptyFilter
+              filterCount={1}
+              onClearFilters={() => setFilter("all")}
+              subtitle={`No ${SOURCE_LABEL[filter].toLowerCase()} items right now. Clear the source filter to see everything.`}
+              clearLabel="Show all sources"
+            />
+          ) : (
+            <EmptyState
+              framed
+              icon={Activity}
+              headline="No items in your feed."
+              subtitle="Feedback submissions, weekly agent digests, and code-change proposals will appear here as they arrive."
+              // TODO(cta): feed entries are system-generated (feedback, agent events,
+              // proposals) — there is no direct founder action that creates one
+              cta={{ label: "", _noOp: true }}
+              testId="empty-state-founder-feed"
+            />
+          )
         )}
 
         <div className="space-y-3">
@@ -231,7 +282,7 @@ export default function FounderFeedPage() {
                           {item.badge}
                         </Badge>
                         <span className="text-sm font-normal text-muted-foreground">
-                          {formatDate(item.createdAt)}
+                          {formatDateTime(item.createdAt)}
                         </span>
                       </CardTitle>
                       <CardDescription className="text-sm font-medium text-foreground">

@@ -10,6 +10,7 @@ import { staggerContainer, staggerItem } from "@/lib/animations";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { TcpaComplianceBanner } from "@/components/tcpa-compliance-banner";
+import { formatDate } from "@/lib/format";
 
 interface SmsMessage {
   id: number;
@@ -85,7 +86,7 @@ export function SmsConversation({ leadId, leadPhone, leadName, tcpaConsent, doNo
 
   // Group messages by date
   const groupedMessages = (messages || []).reduce<Record<string, SmsMessage[]>>((acc, msg) => {
-    const date = new Date(msg.createdAt).toLocaleDateString();
+    const date = formatDate(msg.createdAt);
     if (!acc[date]) acc[date] = [];
     acc[date].push(msg);
     return acc;

@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Search, MapPin, FileText, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 interface ZoningResult {
   address: string;
@@ -38,6 +39,7 @@ export default function ZoningLookupPage() {
   const addressId = useId();
   const parcelInputId = useId();
 
+  // allow-no-invalidation: lookup result lands in page-local state (setResult)
   const lookupMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/zoning/lookup", { address, parcelId }),
     onSuccess: async (res) => {
@@ -198,7 +200,7 @@ export default function ZoningLookupPage() {
             )}
 
             <p className="text-xs text-muted-foreground">
-              Source: {result.source.replace(/_/g, ' ')} · As of <span className="tabular-nums">{new Date(result.asOf).toLocaleDateString()}</span>
+              Source: {result.source.replace(/_/g, ' ')} · As of <span className="tabular-nums">{formatDate(result.asOf)}</span>
             </p>
           </CardContent>
         </Card>

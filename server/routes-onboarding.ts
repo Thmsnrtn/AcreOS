@@ -14,37 +14,18 @@ import { onboardingService } from "./services/onboarding";
 import { storage } from "./storage";
 import { logger } from "./utils/logger";
 import { db } from "./db";
-import { users } from "@shared/schema";
-import type { Persona } from "@shared/models/auth";
+import { users, organizations } from "@shared/schema";
+import {
+  derivePersona,
+  isBusinessType,
+  BUSINESS_TYPE_TO_INVESTOR_TYPE,
+  type BusinessType,
+} from "@shared/models/persona-mapping";
 import { Errors } from "./utils/errors";
 
 const router = Router();
 
 function getUser(req: Request) { return req.user; }
-
-/**
- * Server-side mirror of `client/src/components/onboarding/OnboardingWizard.tsx`
- * `derivePersona`. Keep these two in sync. The client PUTs to
- * /api/me/persona at step 0; this function is the safety net so a user
- * who finishes onboarding offline (or whose step-0 PUT failed silently)
- * still ends up with the correct persona on /onboarding/complete.
- */
-function derivePersona(businessType: string | undefined, investorType: string | undefined): Persona {
-  if (investorType === "notes" && businessType === "note_investor") return "note_investor";
-  switch (businessType) {
-    case "note_investor":          return "note_investor";
-    case "residential_wholesaler": return "wholesaler";
-    case "fix_and_flip":           return "fix_flipper";
-    case "buy_and_hold":
-    case "short_term_rental":
-    case "multifamily":
-    case "mobile_home":            return "landlord";
-    case "subdivider":
-    case "developer":              return "subdivider";
-    case "tax_lien_deed":          return "tax_delinquent";
-    default:                       return "land_investor";
-  }
-}
 
 router.post("/complete", async (req: Request, res: Response) => {
   try {
@@ -79,21 +60,31 @@ router.post("/complete", async (req: Request, res: Response) => {
       logger.warn("Non-fatal: failed to save onboarding data", { error: updateErr.message });
     }
 
-    // Safety-net persona write. The client also PUTs /api/me/persona at
-    // step 0; this catches the case where that call failed (offline,
-    // 401-recovery race, etc.) and the user is now closing out the
-    // wizard with users.persona still on its "land_investor" default.
-    // No-op when the current value already matches the derived one.
+    // Safety-net persona + investorType reconcile. The client also PUTs
+    // /api/me/persona at step 0 (which reconciles all three fields); this
+    // catches the case where that call failed (offline, 401-recovery race,
+    // or dropped by the Promise.allSettled) and the user is closing out the
+    // wizard with users.persona still on its "land_investor" default and
+    // organizations.investorType never set. Derives all three from the stored
+    // businessType so the sidebar/checklist/vocabulary stay consistent. No-op
+    // when values already match.
     if (user?.id && businessType) {
       try {
-        const investorType = formData.investorType || body.investorType;
-        const persona = derivePersona(businessType, investorType);
+        const investorChoice = formData.investorType || body.investorType;
+        const noteRole = formData.noteRole || body.noteRole;
+        const persona = derivePersona(businessType, investorChoice, noteRole);
         await db
           .update(users)
           .set({ persona, updatedAt: new Date() })
           .where(eq(users.id, user.id));
+        if (isBusinessType(businessType)) {
+          await db
+            .update(organizations)
+            .set({ investorType: BUSINESS_TYPE_TO_INVESTOR_TYPE[businessType as BusinessType] })
+            .where(eq(organizations.id, org.id));
+        }
       } catch (personaErr: any) {
-        logger.warn("Non-fatal: failed to derive/persist persona", { error: personaErr.message });
+        logger.warn("Non-fatal: failed to derive/persist persona+investorType", { error: personaErr.message });
       }
     }
 
@@ -127,17 +118,11 @@ router.post("/skip", async (req: Request, res: Response) => {
   }
 });
 
-// TODO(tsc): onboardingService has no getChecklist/completeChecklistItem
-// methods. The checklist-status endpoint below computes checklist completion
-// directly. These endpoints return 501 until per-item checklist mutation is
-// implemented on the service.
-router.get("/checklist", async (_req: Request, res: Response) => {
-  res.status(501).json({ error: "Checklist endpoint not implemented" });
-});
-
-router.post("/checklist/:item", async (_req: Request, res: Response) => {
-  res.status(501).json({ error: "Checklist item endpoint not implemented" });
-});
+// Onboarding checklist completion is derived, not stored: the
+// /checklist-status endpoint below computes it directly from real org
+// activity (leads, imports, campaigns, deals, payments, parcel lookups).
+// There is intentionally no per-item mutation endpoint — items complete by
+// the user actually doing the work, never by a manual "mark done" toggle.
 
 // ============================================================================
 // Checklist status — single endpoint for the GettingStartedChecklist component
@@ -152,7 +137,7 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
     }
 
     const { db } = await import("./storage");
-    const { leads, campaigns, deals, payments, properties, activationEvents } = await import("@shared/schema");
+    const { leads, campaigns, deals, payments, properties, activationEvents, mailShipments } = await import("@shared/schema");
     const { eq, sql, and, inArray } = await import("drizzle-orm");
 
     const [leadResult, importResult, campaignResult, dealResult, notePaymentResult, propertyLookupResult] = await Promise.all([
@@ -162,8 +147,17 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
       db.select({ count: sql<number>`count(*)` }).from(leads).where(
         sql`${leads.organizationId} = ${orgId} AND (${leads.source} = 'csv_import' OR ${leads.source} = 'import')`
       ).then(r => r[0]?.count > 0),
-      // hasCampaign: org has >= 1 campaign
-      db.select({ count: sql<number>`count(*)` }).from(campaigns).where(eq(campaigns.organizationId, orgId)).then(r => r[0]?.count > 0),
+      // hasCampaign: org has >= 1 campaign OR queued a mail shipment. The
+      // modern /outreach/mail/queue path (and the free-tier first send,
+      // W2.1) writes mail_shipments without a campaigns row — counting only
+      // campaigns left the "send your first mailer" step permanently
+      // incomplete for those orgs.
+      Promise.all([
+        db.select({ count: sql<number>`count(*)` }).from(campaigns).where(eq(campaigns.organizationId, orgId)).then(r => r[0]?.count > 0),
+        db.select({ count: sql<number>`count(*)` }).from(mailShipments).where(
+          sql`${mailShipments.organizationId} = ${orgId} AND ${mailShipments.status} != 'cancelled'`
+        ).then(r => r[0]?.count > 0),
+      ]).then(([byCampaign, byShipment]) => byCampaign || byShipment),
       // hasDeal: org has >= 1 deal
       db.select({ count: sql<number>`count(*)` }).from(deals).where(eq(deals.organizationId, orgId)).then(r => r[0]?.count > 0),
       // hasNotePayment: org has >= 1 payment recorded
@@ -214,16 +208,21 @@ router.get("/instant-deal-hunt", async (req: Request, res: Response) => {
     const { computeSellerMotivationScore } = await import("./services/sellerMotivationEngine");
     const { db } = await import("./db");
     const { leads } = await import("@shared/schema");
-    const { eq, and, desc } = await import("drizzle-orm");
+    const { eq, and, or, isNull, desc } = await import("drizzle-orm");
 
-    // Pull real leads for this state from the database.
-    // TODO(tsc): the leads table has no `county` column, so county-level
-    // filtering is not possible here — filtering by state only. A leads.county
-    // column (or a property join) is needed for true county scoping.
+    // Pull real leads for this state + county. county-scoping uses leads.county
+    // when present (populated from parcel data / tax-delinquent imports);
+    // leads without a county still match on state so the surface degrades
+    // gracefully during the backfill window.
     const countyLeads = await db
       .select()
       .from(leads)
-      .where(eq(leads.state, String(state)))
+      .where(
+        and(
+          eq(leads.state, String(state)),
+          or(isNull(leads.county), eq(leads.county, String(county))),
+        ),
+      )
       .orderBy(desc(leads.score))
       .limit(10);
 

@@ -26,12 +26,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye, TestTube, Zap, AlertTriangle, DollarSign, Loader2, Lightbulb, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ListSkeleton } from "@/components/list-skeleton";
-import { FirstHelloEmpty } from "@/components/empty-states";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FirstHelloEmpty } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { Verbs } from "@/lib/labels";
 
 const campaignTypes = [
   { value: 'direct_mail', label: 'Direct Mail', icon: Mail },
@@ -349,9 +351,10 @@ function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
       {expanded && (
         <CardContent id={suggestionsRegionId} className="pt-0 space-y-3">
           {isLoading && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-              Loading suggestions…
+            <div role="status" aria-busy="true" aria-live="polite" className="space-y-2 py-2">
+              <span className="sr-only">Loading suggestions</span>
+              <Skeleton announce={false} className="h-4 w-3/4" />
+              <Skeleton announce={false} className="h-4 w-1/2" />
             </div>
           )}
 
@@ -934,7 +937,7 @@ function SendMailDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="button-cancel-send">
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button
             onClick={handleSend}
@@ -1024,7 +1027,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
   const availableLeads = leads?.filter((l: any) => l.address && l.city && l.state && l.zip) || [];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-floating bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
@@ -1032,7 +1035,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
         className="fixed right-0 top-0 h-full w-full max-w-xl bg-background shadow-2xl overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-6">
+        <div className="sticky top-0 z-docked bg-surface-chrome backdrop-blur border-b p-6">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h2 id={titleId} className="text-xl font-bold">{campaign.name}</h2>

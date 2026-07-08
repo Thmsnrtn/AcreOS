@@ -59,7 +59,12 @@ interface BetaFeedback {
   createdAt: Date;
 }
 
-// In-memory stores (would be DB tables in full production)
+// MODULE-STATE PIN (audit 2026-07-07): per-process, in-memory — waitlist
+// signups/feedback are LOST on deploy and split across machines. The public
+// POST /api/beta/waitlist endpoint currently has no client caller, so nothing
+// load-bearing writes here today — but do NOT point real signup traffic at
+// this until it persists to DB tables — tracked in
+// docs/company/deletion-ledger.md "Module-state residue".
 let waitlistEntries: WaitlistEntry[] = [];
 let betaCohorts: BetaCohort[] = [
   {

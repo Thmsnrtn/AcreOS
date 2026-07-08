@@ -16,7 +16,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,10 +28,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
+import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
-import { Trash2, Plus, FlaskConical, ArrowUp, ArrowDown } from "lucide-react";
+import { Trash2, Plus, FlaskConical, ArrowUp, ArrowDown, Users } from "lucide-react";
+import { Verbs } from "@/lib/labels";
+
+// C1 legibility: the enum is the API contract; the label is what a person
+// reads. Never render the enum.
+const RULE_TYPE_LABEL: Record<string, string> = {
+  round_robin: "Take turns",
+  territory: "By location",
+  random: "Random (weighted)",
+};
 
 interface WeightedAssignee {
   teamMemberId: number;
@@ -76,7 +88,12 @@ export default function LeadAssignmentSettingsPage() {
   const [testCounty, setTestCounty] = useState("");
   const [testResult, setTestResult] = useState<number | null | undefined>(undefined);
 
-  const { data: rules = [], isLoading: rulesLoading } = useQuery<Rule[]>({
+  const {
+    data: rules = [],
+    isLoading: rulesLoading,
+    error: rulesError,
+    refetch: refetchRules,
+  } = useQuery<Rule[]>({
     queryKey: ["/api/team-readiness/lead-assignment-rules"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/team-readiness/lead-assignment-rules");
@@ -153,7 +170,7 @@ export default function LeadAssignmentSettingsPage() {
   };
 
   return (
-    <PageShell isLoading={rulesLoading} label="Loading lead-assignment rules">
+    <PageShell label="Lead assignment rules">
       <div className="space-y-6">
         <div>
           <h1 className="text-hero">Lead assignment rules</h1>
@@ -164,16 +181,60 @@ export default function LeadAssignmentSettingsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Rules</CardTitle>
+            <div>
+              <CardTitle>Rules</CardTitle>
+              <CardDescription className="mt-1">
+                When a new lead arrives, the first matching rule decides which teammate gets it.
+              </CardDescription>
+            </div>
             <Button onClick={() => setDraft(blankRule())} size="sm">
               <Plus className="h-4 w-4 mr-1" /> New rule
             </Button>
           </CardHeader>
           <CardContent>
-            {rules.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No rules yet. New leads will be left unassigned until you add one.
-              </p>
+            {rulesLoading ? (
+              <div role="status" aria-busy="true">
+                <span className="sr-only">Loading lead-assignment rules…</span>
+                <ul className="divide-y">
+                  {[0, 1, 2].map((i) => (
+                    <li key={i} className="flex items-center justify-between py-3">
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="h-5 w-10 rounded-full" announce={false} />
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-40" announce={false} />
+                          <Skeleton className="h-3 w-28" announce={false} />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Skeleton className="h-9 w-9 rounded-md" announce={false} />
+                        <Skeleton className="h-9 w-9 rounded-md" announce={false} />
+                        <Skeleton className="h-9 w-16 rounded-md" announce={false} />
+                        <Skeleton className="h-9 w-9 rounded-md" announce={false} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : rulesError ? (
+              <QueryErrorState
+                error={rulesError as Error}
+                onRetry={() => refetchRules()}
+                title="Couldn't load assignment rules"
+                testId="lead-assignment-error"
+              />
+            ) : rules.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                headline="No assignment rules yet"
+                subtitle="New leads stay unassigned until you add a rule. Create one to route incoming leads by round-robin, territory, or weighted-random."
+                cta={{
+                  label: "New rule",
+                  onClick: () => setDraft(blankRule()),
+                  "data-testid": "lead-assignment-empty-new-rule",
+                }}
+                actionIcon={Plus}
+                testId="lead-assignment-empty"
+              />
             ) : (
               <ul className="divide-y">
                 {rules.map((rule, idx) => (
@@ -183,8 +244,8 @@ export default function LeadAssignmentSettingsPage() {
                       <div>
                         <div className="font-medium">{rule.name}</div>
                         <div className="text-xs text-muted-foreground">
-                          {rule.ruleType} · {(rule.weightedAssignees ?? []).length} assignee(s)
-                          {!rule.isActive && " · disabled"}
+                          {RULE_TYPE_LABEL[rule.ruleType] ?? rule.ruleType} · {(rule.weightedAssignees ?? []).length} teammate{(rule.weightedAssignees ?? []).length === 1 ? "" : "s"}
+                          {!rule.isActive && " · off"}
                         </div>
                       </div>
                     </div>
@@ -212,7 +273,7 @@ export default function LeadAssignmentSettingsPage() {
                         <ArrowDown className="h-4 w-4" />
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setDraft(rule)}>
-                        Edit
+                        {Verbs.EDIT}
                       </Button>
                       <Button
                         size="icon"
@@ -255,11 +316,14 @@ export default function LeadAssignmentSettingsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="round_robin">Round-robin</SelectItem>
-                      <SelectItem value="territory">Territory</SelectItem>
-                      <SelectItem value="random">Random (weighted)</SelectItem>
+                      <SelectItem value="round_robin">Take turns — each teammate gets the next lead in order</SelectItem>
+                      <SelectItem value="territory">By location — match the lead's state or county</SelectItem>
+                      <SelectItem value="random">Random — heavier weights get picked more often</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    How this rule decides who gets the next lead.
+                  </p>
                 </div>
               </div>
 
@@ -367,7 +431,7 @@ export default function LeadAssignmentSettingsPage() {
                   {saveMutation.isPending ? "Saving…" : "Save rule"}
                 </Button>
                 <Button variant="outline" onClick={() => setDraft(null)}>
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
               </div>
             </CardContent>

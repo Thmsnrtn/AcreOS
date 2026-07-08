@@ -342,9 +342,22 @@ export const revenueProtectionService = {
 // scheduleSelfRescheduling (Phase 3 Week 7-8). Previously a bare setInterval
 // that fired regardless of whether the previous scoring pass had completed,
 // risking double-charged retention offers when a pass took longer than 6h.
-export async function startRevenueProtectionJob(withJobLock: Function): Promise<void> {
+export async function startRevenueProtectionJob(
+  // Typed against the real helper — this parameter was `Function`, which is
+  // how a 2-arg call (`withJobLock(name, fn)`) compiled clean while the fn
+  // landed in `ttlSeconds`: acquireJobLock computed `Date.now() + fn * 1000`
+  // = NaN → Invalid Date → drizzle mapToDriverValue → RangeError("Invalid
+  // time value") on EVERY run since the P0 #4 migration. The job never
+  // scored a single org in that window.
+  withJobLock: typeof import("../utils/jobRuntime").withJobLock,
+): Promise<void> {
   const INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
   const STARTUP_DELAY_MS = 3 * 60 * 1000; // 3 minutes
+  // Just under the 6h interval — at-most-once per window (founderDigest's
+  // 23h/24h convention). A crashed holder can't block the next scheduled
+  // pass, and a second process can't double-send retention emails inside
+  // the same window.
+  const LOCK_TTL_SECONDS = 5.5 * 60 * 60;
 
   const { scheduleSelfRescheduling } = await import("../jobs/scheduler");
 
@@ -353,7 +366,7 @@ export async function startRevenueProtectionJob(withJobLock: Function): Promise<
     intervalMs: INTERVAL_MS,
     initialDelayMs: STARTUP_DELAY_MS,
     run: async () => {
-      await withJobLock("revenue_protection", async () => {
+      await withJobLock("revenue_protection", LOCK_TTL_SECONDS, async () => {
         logger.info("[revenueProtection] Starting scoring pass...");
         const result = await revenueProtectionService.runScoringPass();
         logger.info(`[revenueProtection] Completed: ${result.processed} orgs scored`);

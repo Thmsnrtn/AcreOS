@@ -1,7 +1,7 @@
 /**
  * /founder/growth/campaigns — Growth & Ads wizard (extracted F-D #5 Phase B).
  *
- * Per docs/exhaustive-completion/founder-dashboard-growth-extraction-phase-A.md.
+ * Per docs/archive/exhaustive-completion/founder-dashboard-growth-extraction-phase-A.md.
  * Pure move; no behavior change. Same /api/founder/growth/* endpoints,
  * same query keys, same 4-step wizard state machine.
  */
@@ -26,6 +26,11 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface GrowthCampaignItem {
   id: number;
@@ -107,6 +112,66 @@ const ANGLE_COLORS: Record<string, string> = {
   curiosity: "border-acr-warn/30 bg-acr-warn-soft/50 dark:border-acr-warn-soft/40 dark:bg-acr-warn-soft/20",
 };
 
+/** Shaped skeleton for the Live Campaigns rows — name + status badge line, stats line, trailing action buttons. */
+function CampaignRowsSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-live="polite"
+      className="space-y-2"
+      data-testid="skeleton-growth-campaigns"
+    >
+      <span className="sr-only">Loading campaigns</span>
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="p-3 border rounded-xl">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0 space-y-2">
+              <div className="flex items-center gap-2">
+                <Skeleton announce={false} className="h-4 w-44" />
+                <Skeleton announce={false} className="h-5 w-14 rounded-full" />
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <Skeleton announce={false} className="h-3 w-20" />
+                <Skeleton announce={false} className="h-3 w-16" />
+                <Skeleton announce={false} className="h-3 w-16" />
+                <Skeleton announce={false} className="h-3 w-24" />
+              </div>
+            </div>
+            <div className="flex gap-1 shrink-0">
+              <Skeleton announce={false} className="h-7 w-7" />
+              <Skeleton announce={false} className="h-7 w-10" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Shaped skeleton for the Signup Attribution rows — name + tier badge + source + date. */
+function AttributionRowsSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-live="polite"
+      className="space-y-0 border rounded-card divide-y"
+      data-testid="skeleton-growth-attribution"
+    >
+      <span className="sr-only">Loading signup attribution</span>
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="flex items-center gap-2 px-3 py-1.5">
+          <Skeleton announce={false} className="h-3.5 flex-1 max-w-40" />
+          <Skeleton announce={false} className="h-5 w-12 rounded-full shrink-0" />
+          <Skeleton announce={false} className="h-3 w-20 shrink-0" />
+          <Skeleton announce={false} className="h-3 w-16 shrink-0" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function FounderGrowthCampaignsPage() {
   useDocumentTitle("Growth campaigns — AcreOS");
   const { toast } = useToast();
@@ -128,19 +193,39 @@ export default function FounderGrowthCampaignsPage() {
   const [selectedImageIdx, setSelectedImageIdx] = useState(0);
   const [regeneratingAngle, setRegeneratingAngle] = useState<string | null>(null);
 
-  const { data: adAccount, refetch: refetchAccount } = useQuery<AdAccount | null>({
+  const {
+    data: adAccount,
+    isLoading: adAccountLoading,
+    error: adAccountError,
+    refetch: refetchAccount,
+  } = useQuery<AdAccount | null>({
     queryKey: ["/api/founder/growth/ad-account"],
   });
 
-  const { data: campaigns, refetch: refetchCampaigns } = useQuery<GrowthCampaignItem[]>({
+  const {
+    data: campaigns,
+    isLoading: campaignsLoading,
+    error: campaignsError,
+    refetch: refetchCampaigns,
+  } = useQuery<GrowthCampaignItem[]>({
     queryKey: ["/api/founder/growth/campaigns"],
   });
 
-  const { data: templates } = useQuery<CampaignTemplate[]>({
+  const {
+    data: templates,
+    isLoading: templatesLoading,
+    error: templatesError,
+    refetch: refetchTemplates,
+  } = useQuery<CampaignTemplate[]>({
     queryKey: ["/api/founder/growth/templates"],
   });
 
-  const { data: attribution } = useQuery<SignupAttribution[]>({
+  const {
+    data: attribution,
+    isLoading: attributionLoading,
+    error: attributionError,
+    refetch: refetchAttribution,
+  } = useQuery<SignupAttribution[]>({
     queryKey: ["/api/founder/growth/attribution"],
   });
 
@@ -168,12 +253,14 @@ export default function FounderGrowthCampaignsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bundleData, wizardStep]);
 
+  // allow-no-invalidation: refreshes via refetchAccount() in onSuccess — refetch-based, not key-based
   const saveAdAccountMutation = useMutation({
     mutationFn: async (data: typeof adForm) => apiRequest("PUT", "/api/founder/growth/ad-account", data),
     onSuccess: () => { refetchAccount(); setShowAdAccountForm(false); toast({ title: "Ad account saved" }); },
     onError: () => toast({ title: "Couldn't save ad account", description: "Your existing ad account credentials are unchanged.", variant: "destructive" }),
   });
 
+  // allow-no-invalidation: result feeds the wizard's bundle poller (useQuery on bundleId) — no cached list changes
   const generateCreativeMutation = useMutation({
     mutationFn: async ({ templateKey }: { templateKey: string }) =>
       apiRequest("POST", "/api/founder/growth/generate-creative", { templateKey }).then((r) => r.json()),
@@ -184,6 +271,7 @@ export default function FounderGrowthCampaignsPage() {
     onError: (err: any) => toast({ title: "Couldn't start generation", description: `${err?.message || "Try again"} — no creative bundle was generated.`, variant: "destructive" }),
   });
 
+  // allow-no-invalidation: the fresh bundle is applied to wizard-local state via setBundle(data)
   const regenerateCopyMutation = useMutation({
     mutationFn: async ({ id, angle }: { id: string; angle: string }) =>
       apiRequest("POST", `/api/founder/growth/creative-bundles/${id}/regenerate-copy`, { angle }).then((r) => r.json()),
@@ -195,6 +283,7 @@ export default function FounderGrowthCampaignsPage() {
     onError: () => { setRegeneratingAngle(null); toast({ title: "Couldn't regenerate copy", description: "The existing variant is unchanged.", variant: "destructive" }); },
   });
 
+  // allow-no-invalidation: refreshes via refetchCampaigns() in onSuccess — refetch-based, not key-based
   const deployMutation = useMutation({
     mutationFn: async () => {
       if (!bundleId) throw new Error("No bundle");
@@ -224,6 +313,7 @@ export default function FounderGrowthCampaignsPage() {
     successToast: { title: "Campaign updated" },
   });
 
+  // allow-no-invalidation: refreshes via refetchCampaigns() in onSuccess — refetch-based, not key-based
   const syncStatsMutation = useMutation({
     mutationFn: async (id: number) => apiRequest("POST", `/api/founder/growth/campaigns/${id}/sync`),
     onSuccess: () => { refetchCampaigns(); toast({ title: "Stats synced" }); },
@@ -340,9 +430,27 @@ export default function FounderGrowthCampaignsPage() {
                 disabled={saveAdAccountMutation.isPending || !adForm.adAccountId || !adForm.accessToken}>
                 Save Credentials
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowAdAccountForm(false)}>Cancel</Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowAdAccountForm(false)}>{Verbs.CANCEL}</Button>
             </div>
           </div>
+        )}
+
+        {adAccountLoading && (
+          <Skeleton
+            className="h-11 w-full rounded-card"
+            announceText="Loading ad account status"
+            data-testid="skeleton-growth-ad-account"
+          />
+        )}
+
+        {!adAccountLoading && adAccountError && (
+          <QueryErrorState
+            compact
+            error={adAccountError as Error}
+            onRetry={() => refetchAccount()}
+            title="Couldn't load ad account status"
+            testId="error-growth-ad-account"
+          />
         )}
 
         {adAccount && (
@@ -354,7 +462,7 @@ export default function FounderGrowthCampaignsPage() {
           </div>
         )}
 
-        {!adAccount && (
+        {!adAccount && !adAccountLoading && !adAccountError && (
           <div className="p-4 border border-dashed rounded-card text-center text-sm text-muted-foreground">
             Connect your Meta ad account above to enable campaign generation and deployment.
           </div>
@@ -384,6 +492,34 @@ export default function FounderGrowthCampaignsPage() {
               <div className="space-y-5 pt-2">
                 <div>
                   <p id="campaign-template-label" className="text-sm font-medium mb-2">Campaign template</p>
+                  {templatesLoading && (
+                    <div
+                      role="status"
+                      aria-busy="true"
+                      aria-live="polite"
+                      className="grid grid-cols-1 md:grid-cols-3 gap-3"
+                      data-testid="skeleton-growth-templates"
+                    >
+                      <span className="sr-only">Loading campaign templates</span>
+                      {[0, 1, 2].map((i) => (
+                        <div key={i} className="p-4 border-2 border-border rounded-xl space-y-2">
+                          <Skeleton announce={false} className="w-5 h-5" />
+                          <Skeleton announce={false} className="h-4 w-32" />
+                          <Skeleton announce={false} className="h-3 w-full" />
+                          <Skeleton announce={false} className="h-3 w-3/4" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!templatesLoading && templatesError && (
+                    <QueryErrorState
+                      compact
+                      error={templatesError as Error}
+                      onRetry={() => refetchTemplates()}
+                      title="Couldn't load campaign templates"
+                      testId="error-growth-templates"
+                    />
+                  )}
                   <div role="radiogroup" aria-labelledby="campaign-template-label" className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {(templates || []).map((t) => {
                       const meta = TEMPLATE_META[t.key] || { icon: Radio, color: "text-primary", tagline: t.description };
@@ -456,7 +592,7 @@ export default function FounderGrowthCampaignsPage() {
                 </div>
 
                 <DialogFooter>
-                  <Button variant="ghost" onClick={() => setWizardOpen(false)}>Cancel</Button>
+                  <Button variant="ghost" onClick={() => setWizardOpen(false)}>{Verbs.CANCEL}</Button>
                   <Button
                     onClick={() => generateCreativeMutation.mutate({ templateKey: wizardTemplate })}
                     disabled={!wizardTemplate || !wizardName || generateCreativeMutation.isPending}
@@ -565,6 +701,7 @@ export default function FounderGrowthCampaignsPage() {
                               <button
                                 type="button"
                                 title="Regenerate this variant"
+                                aria-label="Regenerate this variant"
                                 onClick={() => {
                                   if (!bundleId) return;
                                   setRegeneratingAngle(copy.angle);
@@ -578,6 +715,7 @@ export default function FounderGrowthCampaignsPage() {
                               <button
                                 type="button"
                                 title="Edit copy"
+                                aria-label={isEditing ? "Save copy edits" : "Edit copy"}
                                 onClick={() => {
                                   if (isEditing) { saveCopyEdit(copy.angle); }
                                   else { setEditingCopy(copy.angle); setEditDraft({ ...copy }); }
@@ -623,7 +761,7 @@ export default function FounderGrowthCampaignsPage() {
                                 />
                               </div>
                               <Button size="sm" className="w-full h-7 text-xs mt-1" onClick={() => saveCopyEdit(copy.angle)}>
-                                <Check className="w-3 h-3 mr-1" /> Save
+                                <Check className="w-3 h-3 mr-1" /> {Verbs.SAVE}
                               </Button>
                             </div>
                           ) : (
@@ -693,12 +831,42 @@ export default function FounderGrowthCampaignsPage() {
             )}
           </div>
 
-          {(campaigns || []).length === 0 ? (
-            <div className="text-center py-8 border border-dashed rounded-card">
-              <Megaphone className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" aria-hidden="true" />
-              <p className="text-sm text-muted-foreground">No campaigns yet.</p>
-              <p className="text-xs text-muted-foreground mt-1">Click "Generate Campaign" to create your first one.</p>
-            </div>
+          {campaignsLoading ? (
+            <CampaignRowsSkeleton />
+          ) : campaignsError ? (
+            <QueryErrorState
+              compact
+              error={campaignsError as Error}
+              onRetry={() => refetchCampaigns()}
+              title="Couldn't load campaigns"
+              testId="error-growth-campaigns"
+            />
+          ) : (campaigns || []).length === 0 ? (
+            <EmptyState
+              framed
+              icon={Megaphone}
+              headline="No campaigns yet."
+              subtitle={
+                adAccount
+                  ? "Generate your first AI campaign — 4 copy variants and 3 images, deployed to Meta in one click."
+                  : "Connect your Meta ad account first, then generate your first AI campaign in one click."
+              }
+              actionIcon={adAccount ? Wand2 : Key}
+              cta={
+                adAccount
+                  ? {
+                      label: "Generate Campaign",
+                      onClick: () => { resetWizard(); setWizardOpen(true); },
+                      "data-testid": "empty-state-growth-campaigns-cta",
+                    }
+                  : {
+                      label: "Connect Meta",
+                      onClick: () => setShowAdAccountForm(true),
+                      "data-testid": "empty-state-growth-campaigns-cta",
+                    }
+              }
+              testId="empty-state-growth-campaigns"
+            />
           ) : (
             <div className="space-y-2">
               {(campaigns || []).map((c) => {
@@ -729,6 +897,7 @@ export default function FounderGrowthCampaignsPage() {
                           </Button>
                         )}
                         <Button size="sm" variant="outline" className="h-7 px-2"
+                          aria-label={c.status === "active" ? "Pause campaign" : "Resume campaign"}
                           onClick={() => toggleCampaignMutation.mutate({ id: c.id, status: c.status === "active" ? "paused" : "active" })}
                           disabled={toggleCampaignMutation.isPending || !c.externalCampaignId}>
                           {c.status === "active" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
@@ -757,10 +926,27 @@ export default function FounderGrowthCampaignsPage() {
               ))}
             </div>
           )}
-          {(attribution || []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              UTM attribution will appear here once users sign up from your campaigns.
-            </p>
+          {attributionLoading ? (
+            <AttributionRowsSkeleton />
+          ) : attributionError ? (
+            <QueryErrorState
+              compact
+              error={attributionError as Error}
+              onRetry={() => refetchAttribution()}
+              title="Couldn't load signup attribution"
+              testId="error-growth-attribution"
+            />
+          ) : (attribution || []).length === 0 ? (
+            <EmptyState
+              framed
+              icon={MousePointerClick}
+              headline="No attributed signups yet"
+              subtitle="UTM attribution will appear here once users sign up from your campaigns."
+              // TODO(cta): attribution is system-generated from campaign signups —
+              // the create action lives in the Live Campaigns section above
+              cta={{ label: "", _noOp: true }}
+              testId="empty-state-growth-attribution"
+            />
           ) : (
             <div className="space-y-0 max-h-52 overflow-y-auto border rounded-card divide-y">
               {(attribution || []).slice(0, 20).map((s) => (
@@ -770,7 +956,7 @@ export default function FounderGrowthCampaignsPage() {
                   <span className="text-muted-foreground shrink-0">
                     {s.utmSource ? `${s.utmSource}${s.utmCampaign ? ` › ${s.utmCampaign}` : ""}` : "organic"}
                   </span>
-                  <span className="text-muted-foreground shrink-0">{new Date(s.createdAt).toLocaleDateString()}</span>
+                  <span className="text-muted-foreground shrink-0">{formatDate(s.createdAt)}</span>
                 </div>
               ))}
             </div>

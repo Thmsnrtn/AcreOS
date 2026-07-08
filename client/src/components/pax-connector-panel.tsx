@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -33,6 +34,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Verbs } from "@/lib/labels";
+import { formatDate } from "@/lib/format";
 
 interface CredentialField {
   key: string;
@@ -245,9 +247,18 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
           </SheetHeader>
 
           {isLoading ? (
-            <div role="status" aria-busy="true" aria-label="Loading connectors" className="flex justify-center py-12">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
-              <span className="sr-only">Loading…</span>
+            <div role="status" aria-busy="true" aria-live="polite" className="space-y-2 pt-4">
+              <span className="sr-only">Loading connectors</span>
+              <Skeleton announce={false} className="h-3 w-24 mb-2" />
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 rounded-card border">
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <Skeleton announce={false} className="h-4 w-1/3 max-w-40" />
+                    <Skeleton announce={false} className="h-3 w-3/4" />
+                  </div>
+                  <Skeleton announce={false} className="h-8 w-20 shrink-0" />
+                </div>
+              ))}
             </div>
           ) : (
             <div className="space-y-6 pt-4">
@@ -280,7 +291,7 @@ export function PaxConnectorPanel({ open, onOpenChange }: PaxConnectorPanelProps
                               </p>
                               {isConnected && connector.instance?.lastTestedAt && (
                                 <p className="text-micro text-muted-foreground mt-1">
-                                  Last tested {new Date(connector.instance.lastTestedAt).toLocaleDateString()}
+                                  Last tested {formatDate(connector.instance.lastTestedAt)}
                                 </p>
                               )}
                             </div>

@@ -304,7 +304,7 @@ function ClusterCard({
           </p>
           <Button
             size="sm"
-            className="min-h-11 sm:min-h-9 shrink-0"
+            className="min-h-11 pointer-fine:sm:min-h-9 shrink-0"
             onClick={() => {
               if (!selectedId) return;
               const duplicateIds = (Array.isArray(cluster.leads) ? cluster.leads : []).map((l) => l.id).filter((id) => id !== selectedId);

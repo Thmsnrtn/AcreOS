@@ -29,8 +29,11 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
+import { EmptyState } from "@/components/empty-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { ArrowDownAZ, ArrowUpAZ } from "lucide-react";
+import { ArrowDownAZ, ArrowUpAZ, Users } from "lucide-react";
 
 interface RepRow {
   teamMemberId: number;
@@ -55,7 +58,7 @@ export default function ManagerDashboardPage() {
   const [sortKey, setSortKey] = useState<SortKey>("mrrContribCents");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  const { data: response, isLoading } = useQuery<{
+  const { data: response, isLoading, error, refetch } = useQuery<{
     range: string;
     since: string;
     performance: RepRow[];
@@ -104,7 +107,7 @@ export default function ManagerDashboardPage() {
   );
 
   return (
-    <PageShell isLoading={isLoading} label="Loading manager dashboard">
+    <PageShell label="Manager dashboard">
       <div className="space-y-6">
         <div className="flex items-end justify-between">
           <div>
@@ -131,28 +134,56 @@ export default function ManagerDashboardPage() {
             <CardTitle>Leaderboard</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <SortHeader k="displayName">Rep</SortHeader>
-                  <TableHead>Role</TableHead>
-                  <SortHeader k="leadsAssigned">Leads assigned</SortHeader>
-                  <SortHeader k="leadsContacted">Leads contacted</SortHeader>
-                  <SortHeader k="dealsOpened">Deals opened</SortHeader>
-                  <SortHeader k="dealsClosed">Deals closed</SortHeader>
-                  <SortHeader k="mrrContribCents">Revenue</SortHeader>
-                  <TableHead className="text-right">Drill-down</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sorted.length === 0 ? (
+            {isLoading ? (
+              <div role="status" aria-busy="true">
+                <span className="sr-only">Loading rep performance…</span>
+                <div className="space-y-3">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <Skeleton className="h-4 w-32 flex-1" announce={false} />
+                      <Skeleton className="h-5 w-16 rounded-full" announce={false} />
+                      <Skeleton className="h-4 w-12" announce={false} />
+                      <Skeleton className="h-4 w-12" announce={false} />
+                      <Skeleton className="h-4 w-12" announce={false} />
+                      <Skeleton className="h-4 w-12" announce={false} />
+                      <Skeleton className="h-4 w-16" announce={false} />
+                      <Skeleton className="h-8 w-24 rounded-md" announce={false} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : error ? (
+              <QueryErrorState
+                error={error as Error}
+                onRetry={() => refetch()}
+                title="Couldn't load rep performance"
+                testId="manager-dashboard-error"
+              />
+            ) : sorted.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                headline="No performance data in this range"
+                subtitle="No active team members logged activity in the selected window. Try a longer range, or assign leads to your team to start tracking performance."
+                // TODO(cta): the range selector that changes the window is in the page header above — no separate action needed
+                cta={{ label: "", _noOp: true }}
+                testId="manager-dashboard-empty"
+              />
+            ) : (
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">
-                      No active team members or no data in this range.
-                    </TableCell>
+                    <SortHeader k="displayName">Rep</SortHeader>
+                    <TableHead>Role</TableHead>
+                    <SortHeader k="leadsAssigned">Leads assigned</SortHeader>
+                    <SortHeader k="leadsContacted">Leads contacted</SortHeader>
+                    <SortHeader k="dealsOpened">Deals opened</SortHeader>
+                    <SortHeader k="dealsClosed">Deals closed</SortHeader>
+                    <SortHeader k="mrrContribCents">Revenue</SortHeader>
+                    <TableHead className="text-right">Drill-down</TableHead>
                   </TableRow>
-                ) : (
-                  sorted.map((r) => (
+                </TableHeader>
+                <TableBody>
+                  {sorted.map((r) => (
                     <TableRow key={r.teamMemberId}>
                       <TableCell className="font-medium">{r.displayName || r.email || `#${r.teamMemberId}`}</TableCell>
                       <TableCell>
@@ -169,10 +200,10 @@ export default function ManagerDashboardPage() {
                         </Link>
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

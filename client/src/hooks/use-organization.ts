@@ -123,6 +123,7 @@ export function useStripeSubscription() {
 }
 
 export function useCreateCheckoutSession() {
+  // allow-no-invalidation: returns a Stripe URL the browser navigates away to — nothing cached changes here
   return useMutation({
     mutationFn: async (priceId: string) => {
       const res = await apiRequest("POST", "/api/stripe/checkout", { priceId }, { idempotent: true });
@@ -132,6 +133,7 @@ export function useCreateCheckoutSession() {
 }
 
 export function useCreatePortalSession() {
+  // allow-no-invalidation: returns a Stripe portal URL the browser navigates away to — nothing cached changes here
   return useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/stripe/portal", {}, { idempotent: true });

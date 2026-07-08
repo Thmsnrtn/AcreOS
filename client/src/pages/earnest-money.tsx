@@ -41,6 +41,8 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 type Status =
   | "pending"
@@ -89,13 +91,6 @@ function fmtUsd(cents: number): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(Math.round(cents / 100));
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function daysFromToday(iso: string): number {
@@ -245,7 +240,45 @@ export default function EarnestMoneyPage() {
         />
       ) : (
         <Card>
-          <div className="overflow-x-auto">
+          {/* Mobile: stacked EMD cards — the 7-column table side-scrolls at
+              phone widths. md+ renders the full table below. */}
+          <ul className="md:hidden divide-y divide-border/40" data-testid="list-emd-mobile">
+            {holds.map((h) => {
+              const days = h.status === "held" ? daysFromToday(h.refundableUntilAt) : null;
+              return (
+                <li key={h.id} className="px-4 py-3" data-testid={`card-emd-${h.id}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm truncate">{h.titleCompany ?? "—"}</div>
+                      <div className="font-mono text-xs text-muted-foreground mt-0.5">
+                        {h.referenceNumber ?? h.id.slice(0, 8)}
+                      </div>
+                    </div>
+                    <div className="font-mono font-semibold tabular-nums shrink-0">{fmtUsd(h.amountCents)}</div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 mt-2 text-xs">
+                    <span className="text-muted-foreground">
+                      Deposited {formatDate(h.depositedAt)} · Refundable until {formatDate(h.refundableUntilAt)}
+                      {days !== null && (
+                        <span className={`ml-1 ${days < 0 ? "text-acr-neg font-semibold" : days <= 2 ? "text-acr-warning" : ""}`}>
+                          ({days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "today" : `${days}d`})
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0">{STATUS_LABELS[h.status]}</span>
+                  </div>
+                  {(h.status === "held" || h.status === "non_refundable" || h.status === "pending") && (
+                    <div className="mt-2">
+                      <TerminalActions holdId={h.id} amountCents={h.amountCents} />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Desktop: full table. Hidden on mobile. */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted-foreground bg-muted/30">
@@ -266,9 +299,9 @@ export default function EarnestMoneyPage() {
                       <td className="px-3 py-2.5 text-xs">{h.titleCompany ?? "—"}</td>
                       <td className="px-3 py-2.5 text-xs font-mono">{h.referenceNumber ?? h.id.slice(0, 8)}</td>
                       <td className="px-3 py-2.5 text-right font-mono">{fmtUsd(h.amountCents)}</td>
-                      <td className="px-3 py-2.5 text-xs">{fmtDate(h.depositedAt)}</td>
+                      <td className="px-3 py-2.5 text-xs">{formatDate(h.depositedAt)}</td>
                       <td className="px-3 py-2.5 text-xs">
-                        {fmtDate(h.refundableUntilAt)}
+                        {formatDate(h.refundableUntilAt)}
                         {days !== null && (
                           <span className={`ml-1.5 text-micro ${days < 0 ? "text-acr-neg font-semibold" : days <= 2 ? "text-acr-warning" : "text-muted-foreground"}`}>
                             ({days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "today" : `${days}d`})
@@ -345,7 +378,7 @@ function TerminalActions({ holdId, amountCents }: { holdId: string; amountCents:
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 text-xs text-acr-pos"
+        className="min-h-11 pointer-fine:min-h-7 pointer-fine:h-7 text-xs text-acr-pos"
         onClick={() => setPending("release")}
         disabled={action.isPending}
         data-testid={`emd-release-${holdId}`}
@@ -355,7 +388,7 @@ function TerminalActions({ holdId, amountCents }: { holdId: string; amountCents:
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 text-xs text-muted-foreground"
+        className="min-h-11 pointer-fine:min-h-7 pointer-fine:h-7 text-xs text-muted-foreground"
         onClick={() => setPending("refund")}
         disabled={action.isPending}
         data-testid={`emd-refund-${holdId}`}
@@ -365,7 +398,7 @@ function TerminalActions({ holdId, amountCents }: { holdId: string; amountCents:
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 text-xs text-acr-neg"
+        className="min-h-11 pointer-fine:min-h-7 pointer-fine:h-7 text-xs text-acr-neg"
         onClick={() => setPending("forfeit")}
         disabled={action.isPending}
         data-testid={`emd-forfeit-${holdId}`}
@@ -482,7 +515,7 @@ function RecordEmdDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>Cancel</Button>
+          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>{Verbs.CANCEL}</Button>
           <Button onClick={() => submit.mutate()} disabled={!amount || !depositedAt || submit.isPending}>
             {submit.isPending ? "Recording…" : "Record EMD"}
           </Button>

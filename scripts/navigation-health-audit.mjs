@@ -12,9 +12,9 @@
  *   AUTH_REDIRECT— navigated to /auth (expected for protected routes unauth)
  *
  * Output:
- *   docs/exhaustive-completion/auth-screenshots/_nav-audit-<slug>.png
- *   docs/exhaustive-completion/NAVIGATION-HEALTH-AUDIT.md
- *   docs/exhaustive-completion/_nav-audit-results.json
+ *   docs/archive/exhaustive-completion/auth-screenshots/_nav-audit-<slug>.png
+ *   docs/archive/exhaustive-completion/NAVIGATION-HEALTH-AUDIT.md
+ *   docs/archive/exhaustive-completion/_nav-audit-results.json
  */
 
 import { chromium } from "playwright";
@@ -25,9 +25,9 @@ import * as url from "url";
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const APP_TSX = path.join(ROOT, "client/src/App.tsx");
-const OUT_DIR = path.join(ROOT, "docs/exhaustive-completion/auth-screenshots");
-const RESULTS_JSON = path.join(ROOT, "docs/exhaustive-completion/_nav-audit-results.json");
-const REPORT_MD = path.join(ROOT, "docs/exhaustive-completion/NAVIGATION-HEALTH-AUDIT.md");
+const OUT_DIR = path.join(ROOT, "docs/archive/exhaustive-completion/auth-screenshots");
+const RESULTS_JSON = path.join(ROOT, "docs/archive/exhaustive-completion/_nav-audit-results.json");
+const REPORT_MD = path.join(ROOT, "docs/archive/exhaustive-completion/NAVIGATION-HEALTH-AUDIT.md");
 
 const HOST = process.env.AUDIT_HOST ?? "https://acreos.io";
 const VIEWPORT = { width: 1440, height: 900 };

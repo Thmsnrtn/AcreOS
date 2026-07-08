@@ -122,6 +122,7 @@ import {
   Hammer,
   Workflow,
 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 import { useAuth } from "@/hooks/use-auth";
 import { useBrandName } from "@/hooks/use-white-label";
 import { useModals } from "@/stores/modal-store";
@@ -247,7 +248,7 @@ function PaxNotificationBadge() {
             clone+ref it → React "Function components cannot be given refs". */}
         <TooltipTrigger asChild>
           <PopoverTrigger
-            className="relative p-1.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+            className="relative p-1.5 pointer-coarse:p-3.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors"
             aria-label="Pax AI insights"
             data-testid="button-pax-notifications"
           >
@@ -295,12 +296,12 @@ function PaxNotificationBadge() {
                       <p className="text-xs font-semibold text-foreground leading-snug">{obs.title}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">{obs.description}</p>
                       <p className="text-micro text-muted-foreground/60 mt-1">
-                        {new Date(obs.detectedAt).toLocaleDateString()}
+                        {formatDate(obs.detectedAt)}
                       </p>
                     </div>
                     <button
                       onClick={() => handleDismiss(obs.id)}
-                      className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted active:bg-muted transition-colors"
                       aria-label="Dismiss"
                     >
                       <X className="w-3 h-3" />
@@ -309,7 +310,7 @@ function PaxNotificationBadge() {
                   {obs.status === "detected" && (
                     <button
                       onClick={() => handleAcknowledge(obs.id)}
-                      className="mt-1.5 ml-5 text-micro text-primary hover:underline"
+                      className="mt-1.5 ml-5 text-micro text-primary hover:underline active:underline"
                     >
                       Mark as seen
                     </button>
@@ -389,7 +390,7 @@ interface NavModule {
 // Flip, Subdivision) remain — each is `businessTypeOnly` and only
 // appears for a matching operator profile. The Founder module remains
 // `founderOnly` and is the ONLY place internal agent-codename surfaces
-// (sovereign, board-of-directors, anticipatory-enterprise, etc.) are
+// (/founder/governance, /founder/scenarios, /founder/memory, etc.) are
 // linked from. Customers never see them.
 // ─────────────────────────────────────────────────────────────────────
 const NAV_MODULES: NavModule[] = [
@@ -442,7 +443,9 @@ const NAV_MODULES: NavModule[] = [
       { label: "Leads", icon: ContactRound, href: "/leads", description: "Land seller leads CRM" },
     ],
     overflow: [
-      { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals" },
+      // Marketplace entry removed 2026-07-07 (deletion ledger): the feature
+      // is FROZEN behind feature_marketplace (off) — the sidebar shouldn't
+      // advertise a door that 404s. Restore only at the G2 liquidity proof.
       { label: "Valuations", icon: TrendingUp, href: "/avm", description: "Automated property valuations" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
       // Leads sub-surfaces (folded in with Leads, 2026-05-29).
@@ -571,7 +574,10 @@ const NAV_MODULES: NavModule[] = [
     icon: Layers,
     href: "/permits",
     description: "Lots, permits, plans, pricing grid, county timelines",
-    businessTypeOnly: ["subdivider"],
+    // W2.5: "developer" derives the subdivider persona (persona-mapping.ts) —
+    // developers get the same lots/permits/plats model, so the module gate
+    // matches both businessTypes instead of stranding developer signups.
+    businessTypeOnly: ["subdivider", "developer"],
     children: [
       { label: "Permits", icon: ClipboardList, href: "/permits", description: "County-by-county permit checklists w/ stalled-gate alerts" },
       { label: "County timelines", icon: Calendar, href: "/county-timelines", description: "Subdivision approval lead times by county" },
@@ -595,7 +601,10 @@ const NAV_MODULES: NavModule[] = [
     overflow: [
       { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
       { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month forecasting" },
-      { label: "Capital Markets", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
+      // Capital Markets entry removed 2026-07-07 (deletion ledger): the
+      // feature is FROZEN behind feature_capital_markets — same precedent as
+      // the Marketplace entry above. Restore when note securitization is a
+      // real revenue line (H4).
       { label: "Analytics", icon: Brain, href: "/analytics", description: "Insights and reporting" },
     ],
   },
@@ -624,8 +633,13 @@ const NAV_MODULES: NavModule[] = [
 
   // ── Founder business ──────────────────────────────────────────────
   // The full autonomous-operation surface. Appears only to founders.
-  // Covers the monthly 1-hour workflow: todo (hub) → letter (narrative)
-  // → trends (trust gauge) → individual approval surfaces.
+  // FOUR-DOOR DOCTRINE (client/src/lib/founder-doors.ts): the primary
+  // children ARE the four doors — the same model the mobile bottom nav
+  // renders — so desktop and mobile teach the identical mental map:
+  //   Letter (read) → Decisions (act) → Controls (configure) → Story (verify).
+  // Everything else is a deep tool, reached deliberately via the overflow
+  // (led by the categorized All-tools index), never competing for daily
+  // attention.
   {
     id: "founder-business",
     label: "Founder",
@@ -633,31 +647,25 @@ const NAV_MODULES: NavModule[] = [
     href: "/founder",
     description: "Autonomous-operation command center",
     founderOnly: true,
-    // ── Three primary screens (Phase Zero-Zero 3-screen model) ────────
-    // Tom's daily 15-minute check: Pulse → Cost → Customers.
-    // Everything else lives in the "Deep Tools" overflow below.
     children: [
-      { label: "Pulse", icon: Activity, href: "/founder", description: "Daily one-line + Autonomy Horizon + capital + phase — the pull-first CEO surface" },
-      { label: "Cost", icon: DollarSign, href: "/founder/cost", description: "AI spend, infra cost, vendor lines, per-org breakdown — one scroll" },
-      { label: "Customers", icon: Users, href: "/founder/customers", description: "Distribution truth — paid / trial / churned counts + UTM sources + recent signups" },
+      { label: "The Letter", icon: Sparkles, href: "/founder", description: "The daily read — what happened, what it decided, whether you can step away. 90% of days: read and close." },
+      { label: "Decisions", icon: Shield, href: "/founder/decisions", description: "The ONLY place you're required — the witnessed-send queue, asks, appeals" },
+      { label: "Controls", icon: Sliders, href: "/founder/autopilot/control", description: "Step-away readiness, master switches, trust levels, delegation, budgets, emergency stop" },
+      { label: "Story", icon: BookOpen, href: "/founder/autopilot/story", description: "The glass-box audit timeline — for verifying, not operating" },
     ],
-    // ── Deep Tools ────────────────────────────────────────────────────
-    // Every founder surface that's not load-bearing for the daily check.
-    // Expanded on demand; collapsed by default. Includes: chat bridge,
-    // steering, studio, inspector, CMO, all extracted sub-routes, agent
-    // surfaces, and the legacy dashboard (redirect only).
+    // ── Deep tools ────────────────────────────────────────────────────
+    // Visited deliberately; collapsed by default. All-tools leads as the
+    // categorized index of everything below (and everything not listed).
     overflow: [
-      // ── Daily-adjacent (weekly touch) ─────────────────────────────
+      { label: "All tools", icon: LayoutDashboard, href: "/founder/all-tools", description: "Categorized index of every founder deep-dive surface" },
+      { label: "Costs", icon: DollarSign, href: "/founder/admin/costs", description: "AI spend, infra, unit economics, optimizer, providers — one hub" },
+      { label: "Customers", icon: Users, href: "/founder/customers", description: "Distribution truth — paid / trial / churned counts + UTM sources + recent signups" },
+      // ── Weekly-touch surfaces ─────────────────────────────────────
       { label: "Bridge", icon: CheckCircle2, href: "/founder/bridge", description: "Chat + telemetry bridge" },
       { label: "Steering", icon: TrendingUp, href: "/founder/steering", description: "Weekly / monthly check-in: what changed, what's the trend, one strategic call" },
       { label: "Studio", icon: Sliders, href: "/founder/studio", description: "Every dial — autonomy thresholds, cost caps, lifecycle, voice, safety" },
       { label: "Inspector", icon: Search, href: "/founder/inspector/audit", description: "Provenance lens — per-agent, per-decision, founder audit feed" },
       { label: "CMO", icon: Megaphone, href: "/founder/cmo", description: "Native ad generation, approval, broadcast to Meta + TikTok" },
-      // ── Cost deep-tools ────────────────────────────────────────────
-      { label: "AI telemetry", icon: Activity, href: "/founder/ai-costs", description: "Per-call AI cost breakdown — model, feature, top spenders" },
-      { label: "Cost optimizer", icon: TrendingUp, href: "/founder/cost-optimizer", description: "Nightly optimizer runs, recommendations, auto-applied actions" },
-      { label: "Unit economics", icon: Receipt, href: "/founder/unit-economics", description: "Per-customer gross margin and COGS" },
-      { label: "Sentry cost", icon: Eye, href: "/founder/observability-cost", description: "Sampling rate projections and free-tier headroom" },
       // ── Customer health ────────────────────────────────────────────
       { label: "Customer health", icon: Heart, href: "/founder/customers/health", description: "MRR trajectory, churn risk, org health" },
       // ── Pax traces / calibration ───────────────────────────────────
@@ -671,17 +679,15 @@ const NAV_MODULES: NavModule[] = [
       { label: "Onboarding funnel", icon: Activity, href: "/founder/onboarding-funnel", description: "Signup-to-first-value time per org with 90s-target indicator + abandonment-by-step + per-org drill-down" },
       { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", description: "Agent prompt revision approvals" },
       { label: "Prompt history", icon: History, href: "/founder/prompt-history", description: "Per-agent version timeline with diffs" },
-      // ── Decisions / strategy ───────────────────────────────────────
-      { label: "Decisions", icon: Shield, href: "/founder/decisions", description: "Autonomous decision audit log" },
+      // ── Strategy ───────────────────────────────────────────────────
       { label: "Strategy", icon: Lightbulb, href: "/founder/strategy", description: "Strategic proposals (weekly + synthesis)" },
       { label: "System trends", icon: TrendingUp, href: "/founder/trends", description: "90-day trust gauge" },
       { label: "Monthly letter", icon: FileText, href: "/founder/letter", description: "Chief-of-Staff narrative" },
-      { label: "What needs you", icon: CheckCircle2, href: "/founder/todo", description: "[legacy] Unified ranked feed — see /founder for new canonical" },
       // ── Ops / admin ────────────────────────────────────────────────
       { label: "System keys", icon: Key, href: "/founder/keys", description: "Platform-wide API keys (BYOK overrides)" },
       { label: "Launch readiness", icon: ListChecks, href: "/founder/readiness", description: "Daily-during-launch progress checklist" },
       { label: "API telemetry", icon: Activity, href: "/founder/telemetry", description: "In-process per-route 2xx/4xx/5xx + p95 latency" },
-      { label: "Providers", icon: Database, href: "/founder/providers", description: "Data-layer cost + quality" },
+      { label: "Market reports", icon: Newspaper, href: "/founder/market-reports", description: "Quarterly data-co-op market report DRAFTS (k≥5 floor) — review only, no publish" },
       { label: "Founder settings", icon: Settings2, href: "/founder/settings", description: "Live-apply operational knobs" },
       { label: "Recovery console", icon: LifeBuoy, href: "/founder/recovery-console", description: "Last-resort account recovery — 2FA, sessions, autopay, ownership" },
       { label: "Feedback inbox", icon: Inbox, href: "/founder/feedback", description: "Public support/feedback/question submissions from landing pages" },
@@ -693,24 +699,18 @@ const NAV_MODULES: NavModule[] = [
       { label: "Experiments", icon: FlaskConical, href: "/founder/experiments", description: "A/B tests on decision playbooks" },
       { label: "Tool proposals", icon: Wrench, href: "/founder/tools", description: "Capability-growth queue" },
       // ── Sovereignty / experimental surfaces ────────────────────────
-      { label: "Sovereign dashboard", icon: Crown, href: "/sovereign", description: "Sovereign Protocol — top-level visibility into the autonomous org" },
-      { label: "Sovereign v13", icon: Sparkles, href: "/founder/v13", description: "Sovereign Protocol v13 — latest experimental surface" },
-      { label: "Board of directors", icon: Shield, href: "/board-of-directors", description: "AI board — strategic-review members + cadence" },
-      { label: "Conscious organization", icon: Brain, href: "/conscious-organization", description: "Org-consciousness agent surface (Atlas/Sophie/Forge taxonomy)" },
-      { label: "Anticipatory enterprise", icon: TrendingUp, href: "/anticipatory-enterprise", description: "Inter-agent negotiation / capability anticipation" },
+      // Census W3-1 (2026-06-11): sovereign-dashboard, sovereign-v13,
+      // anticipatory-enterprise, and agent-collaboration retired.
+      // The four refit survivors live under /founder/*.
+      { label: "Governance", icon: Shield, href: "/founder/governance", description: "Agent negotiations, delegation authority, trust enforcement, founder overrides" },
+      { label: "Scenarios", icon: Brain, href: "/founder/scenarios", description: "Scenario war room + org self-awareness (agent-role taxonomy)" },
       { label: "Agent performance", icon: Activity, href: "/agent-performance", description: "Per-agent trust + decision quality metrics" },
-      { label: "Agent collaboration", icon: Bot, href: "/agent-collaboration", description: "Cross-wing agent collaboration patterns" },
-      { label: "Memory browser", icon: Database, href: "/memory-browser", description: "Per-agent semantic + episodic memory inspector" },
-      { label: "Event log", icon: FileCode, href: "/event-log", description: "Agent-event firehose — every decision and side effect" },
+      { label: "Memory browser", icon: Database, href: "/founder/memory", description: "Per-agent semantic + episodic memory inspector" },
+      { label: "Event log", icon: FileCode, href: "/founder/event-log", description: "Agent-event firehose — every decision and side effect" },
       { label: "Job health", icon: Activity, href: "/job-health", description: "Background worker queues — scheduled jobs, retries, failures" },
       { label: "Data moat", icon: Database, href: "/data-moat", description: "Proprietary data accumulation + competitive moat metrics" },
       { label: "Reseller program", icon: Store, href: "/reseller", description: "White-label reseller dashboard — partners, commissions" },
       { label: "Executive dashboard", icon: LayoutDashboard, href: "/executive-dashboard", description: "Cross-org executive KPI roll-up" },
-      // ── Legacy (redirect only) ─────────────────────────────────────
-      // founder-dashboard.tsx is being extracted per Sigfried §1 / Phase
-      // Zero-Zero. The route redirects to /founder/bridge. Flagged legacy
-      // so Tom knows it's the old path.
-      { label: "Operations console (legacy)", icon: LayoutDashboard, href: "/founder-dashboard", description: "Legacy operations console — redirects to /founder/bridge", legacy: true },
     ],
   },
 
@@ -1018,7 +1018,7 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
-                  className="flex items-center justify-center w-full p-2.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
+                  className="flex items-center justify-center w-full p-2.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px]"
                   aria-label="Search (⌘K)"
                   data-tour="cmd-palette-trigger"
                   data-testid="button-search-trigger"
@@ -1036,7 +1036,7 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => useModals.getState().openQuickOffer()}
-                  className="flex items-center justify-center w-full p-2.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px]"
+                  className="flex items-center justify-center w-full p-2.5 rounded-card text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px]"
                   aria-label="Quick offer (⌘O)"
                   data-tour="quick-offer"
                   data-testid="button-quick-offer-trigger"
@@ -1055,7 +1055,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent("acreos:open-command-palette"))}
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
               aria-label="Search or jump to anywhere (Cmd K)"
               data-tour="cmd-palette-trigger"
               data-testid="button-search-trigger"
@@ -1070,7 +1070,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => useModals.getState().openQuickOffer()}
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
               aria-label="Quick offer (Cmd O)"
               data-tour="quick-offer"
               data-testid="button-quick-offer-trigger"
@@ -1089,10 +1089,11 @@ export function Sidebar() {
       {/* Nav */}
       <nav aria-label="Main navigation" className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
         {/* Founder home link — clean autonomy-health + todo hub.
-            The legacy operational dashboard is still at /founder-dashboard
-            and reachable via the "Operations console (legacy)" entry inside
-            the Founder business module overflow below. The legacy entry is
-            badge-tagged and founder-only — customers never see it. */}
+            D6 declutter: the redundant "Operations console (legacy)" and "What
+            needs you" sidebar entries were removed (their destinations have
+            canonical entries — Bridge and Pulse). The /founder-dashboard +
+            /founder/todo paths still REDIRECT (route-redirects.ts) for old
+            bookmarks; they're just no longer surfaced as nav clutter. */}
         {isFounder && (
           <DesktopNavItem
             href="/founder"
@@ -1103,7 +1104,7 @@ export function Sidebar() {
             accentClass={
               location === "/founder" || location === "/founder-home"
                 ? "bg-acr-warn text-white shadow-md"
-                : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20"
+                : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20 active:bg-acr-warn/25"
             }
             iconClass={
               location === "/founder" || location === "/founder-home" ? "text-white" : "text-acr-warn"
@@ -1148,7 +1149,7 @@ export function Sidebar() {
                   "relative flex items-center gap-2 px-3 py-2 rounded-card transition-colors duration-150 group cursor-pointer min-h-[44px]",
                   active
                     ? "nav-item-active nav-item-active--animated"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                 )}
                 onClick={() => {
                   if (hasChildren) toggleModule(module.id);
@@ -1166,8 +1167,9 @@ export function Sidebar() {
                 {!hasChildren ? (
                   <Link
                     href={module.href}
-                    className="flex items-center gap-2 flex-1 min-w-0"
+                    className="flex items-center gap-2 flex-1 min-w-0 py-3 -my-3"
                     aria-current={active ? "page" : undefined}
+                    aria-label={module.label}
                     data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
                   >
                     <module.icon
@@ -1203,7 +1205,7 @@ export function Sidebar() {
                     />
                     <Link
                       href={module.href}
-                      className="font-medium text-sm flex-1 truncate"
+                      className="font-medium text-sm flex-1 truncate py-3 -my-3"
                       data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
                       onClick={(e) => e.stopPropagation()}
                       onMouseEnter={() => handlePrefetch(module.href)}
@@ -1240,10 +1242,10 @@ export function Sidebar() {
                         key={child.href}
                         href={child.href}
                         className={cn(
-                          "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] text-xs",
+                          "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] pointer-coarse:min-h-11 text-xs",
                           childActive
                             ? "nav-item-active"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                         )}
                         aria-current={childActive ? "page" : undefined}
                         onMouseEnter={() => handlePrefetch(child.href)}
@@ -1279,7 +1281,7 @@ export function Sidebar() {
                       <button
                         type="button"
                         onClick={() => toggleOverflow(module.id)}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 min-h-[34px] text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground w-full"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 min-h-[34px] pointer-coarse:min-h-11 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground w-full"
                         data-testid={`button-overflow-${module.id}`}
                         aria-expanded={expandedOverflow.has(module.id)}
                       >
@@ -1302,10 +1304,10 @@ export function Sidebar() {
                             key={child.href}
                             href={child.href}
                             className={cn(
-                              "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] text-xs",
+                              "flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors duration-150 group min-h-[34px] pointer-coarse:min-h-11 text-xs",
                               childActive
                                 ? "nav-item-active"
-                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                             )}
                             aria-current={childActive ? "page" : undefined}
                             onMouseEnter={() => handlePrefetch(child.href)}
@@ -1358,7 +1360,7 @@ export function Sidebar() {
             <button aria-label="Tooltip"
               onClick={() => logout()}
               data-testid="button-logout"
-              className="flex items-center justify-center w-full p-2 rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+              className="flex items-center justify-center w-full p-2 rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:text-destructive active:bg-destructive/15 transition-colors min-h-[44px]"
             >
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
@@ -1369,7 +1371,7 @@ export function Sidebar() {
             </button>
             <button
               onClick={() => setIsCollapsed(false)}
-              className="flex items-center justify-center w-full p-2 rounded-card text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
+              className="flex items-center justify-center w-full p-2 rounded-card text-muted-foreground hover:bg-sidebar-accent active:bg-sidebar-accent transition-colors min-h-[44px]"
               aria-label="Expand sidebar"
             >
               <ChevronRight className="w-4 h-4" />
@@ -1384,14 +1386,14 @@ export function Sidebar() {
             <button
               onClick={() => logout()}
               data-testid="button-logout"
-              className="flex items-center gap-2 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+              className="flex items-center gap-2 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:text-destructive active:bg-destructive/15 transition-colors min-h-[44px]"
             >
               <LogOut className="w-4 h-4" />
               <span className="font-medium text-sm">Sign Out</span>
             </button>
             <button
               onClick={() => setIsCollapsed(true)}
-              className="flex items-center gap-2 px-3 py-2 w-full rounded-card text-muted-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
+              className="flex items-center gap-2 px-3 py-2 w-full rounded-card text-muted-foreground hover:bg-sidebar-accent active:bg-sidebar-accent transition-colors min-h-[44px]"
               aria-label="Collapse sidebar"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -1443,7 +1445,7 @@ export function Sidebar() {
             onNavClick?.();
             window.dispatchEvent(new CustomEvent("acreos:open-command-palette"));
           }}
-          className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-card border border-sidebar-border bg-sidebar-accent/40 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground transition-colors min-h-[44px] text-sm"
           aria-label="Search or jump to anywhere"
           data-tour="cmd-palette-trigger"
           data-testid="button-search-trigger-mobile"
@@ -1462,7 +1464,7 @@ export function Sidebar() {
               "flex items-center gap-3 px-3 py-2.5 rounded-card transition-colors duration-150 group mb-2 min-h-[44px]",
               location === "/founder" || location === "/founder-home"
                 ? "bg-acr-warn text-white shadow-md"
-                : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20"
+                : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20 active:bg-acr-warn/25"
             )}
             data-testid="link-founder-dashboard"
             data-tour-nav="founder-business"
@@ -1492,7 +1494,7 @@ export function Sidebar() {
                     ? "nav-item-active"
                     : active
                     ? "nav-item-active"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                 )}
                 onClick={() => {
                   if (hasChildren) toggleModule(module.id);
@@ -1567,7 +1569,7 @@ export function Sidebar() {
                           "flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[44px]",
                           childActive
                             ? "nav-item-active"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                         )}
                         data-testid={`link-nav-${child.href.replace("/", "")}`}
                       >
@@ -1589,7 +1591,7 @@ export function Sidebar() {
                       <button
                         type="button"
                         onClick={() => toggleOverflow(module.id)}
-                        className="flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[44px] text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground w-full"
+                        className="flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[44px] text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground w-full"
                         aria-expanded={expandedOverflow.has(module.id)}
                       >
                         {expandedOverflow.has(module.id) ? (
@@ -1615,7 +1617,7 @@ export function Sidebar() {
                               "flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 min-h-[44px]",
                               childActive
                                 ? "nav-item-active"
-                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
                             )}
                             data-testid={`link-nav-${child.href.replace("/", "")}`}
                           >
@@ -1655,7 +1657,7 @@ export function Sidebar() {
         <button
           onClick={() => logout()}
           data-testid="button-logout"
-          className="flex items-center gap-3 px-3 py-2.5 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+          className="flex items-center gap-3 px-3 py-2.5 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:text-destructive active:bg-destructive/15 transition-colors min-h-[44px]"
         >
           <LogOut className="w-5 h-5" />
           <span className="font-medium text-sm">Sign Out</span>
@@ -1675,7 +1677,7 @@ export function Sidebar() {
       <aside
         aria-label="Sidebar"
         className={cn(
-          "hidden md:flex flex-col fixed inset-y-0 left-0 z-50 m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
+          "hidden md:flex flex-col fixed inset-y-0 left-0 z-floating m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
           isCollapsed ? "w-[68px]" : "w-64"
         )}
       >
@@ -1714,7 +1716,7 @@ function CollapsedModuleItem({
               "flex items-center justify-center w-full p-2.5 rounded-card transition-colors duration-150 min-h-[44px] relative",
               isActive
                 ? "nav-item-active"
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
             )}
             onMouseEnter={() => onPrefetch(module.href)}
             data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
@@ -1753,7 +1755,7 @@ function CollapsedModuleItem({
               "flex items-center justify-center w-full p-2.5 rounded-card transition-colors duration-150 min-h-[44px] relative",
               isActive
                 ? "nav-item-active"
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
             )}
             onMouseEnter={() => onPrefetch(module.href)}
             data-testid={`module-${module.id}`}
@@ -1788,7 +1790,7 @@ function CollapsedModuleItem({
                 "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-150 text-sm",
                 childActive
                   ? "nav-item-active"
-                  : "text-foreground hover:bg-accent"
+                  : "text-foreground hover:bg-accent active:bg-accent"
               )}
               onMouseEnter={() => onPrefetch(child.href)}
             >
@@ -1814,7 +1816,7 @@ function CollapsedModuleItem({
                     "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-150 text-sm",
                     childActive
                       ? "nav-item-active"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground active:bg-accent"
                   )}
                   onMouseEnter={() => onPrefetch(child.href)}
                 >
@@ -1951,7 +1953,7 @@ function NewFounderSidebar({
     <aside
       aria-label="Founder navigation"
       className={cn(
-        "hidden md:flex flex-col fixed inset-y-0 left-0 z-50 m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
+        "hidden md:flex flex-col fixed inset-y-0 left-0 z-floating m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden sidebar-vibrancy sidebar-spring",
         isCollapsed ? "w-[68px]" : "w-64"
       )}
       data-testid="new-founder-sidebar"
@@ -2005,7 +2007,7 @@ function NewFounderSidebar({
               <TooltipTrigger asChild>
                 <Link
                   href="/founder/solene-chat"
-                  className="flex items-center justify-center w-full p-2.5 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px] shadow-sm"
+                  className="flex items-center justify-center w-full p-2.5 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors min-h-[44px] shadow-sm"
                   aria-label="Chat with Solene"
                   data-testid="button-chat-solene-collapsed"
                 >
@@ -2019,7 +2021,7 @@ function NewFounderSidebar({
           ) : (
             <Link
               href="/founder/solene-chat"
-              className="flex items-center gap-2 w-full px-3 py-2 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px] text-sm font-medium shadow-sm"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors min-h-[44px] text-sm font-medium shadow-sm"
               aria-label="Chat with Solene"
               data-testid="button-chat-solene"
             >
@@ -2076,7 +2078,7 @@ function NewFounderSidebar({
           <button
             type="button"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="flex items-center gap-3 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors min-h-[44px]"
+            className="flex items-center gap-3 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent active:bg-sidebar-accent transition-colors min-h-[44px]"
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             data-testid="button-collapse-toggle"
           >
@@ -2092,7 +2094,7 @@ function NewFounderSidebar({
           <button
             onClick={onLogout}
             data-testid="button-logout"
-            className="flex items-center gap-3 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+            className="flex items-center gap-3 px-3 py-2 w-full rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:text-destructive active:bg-destructive/15 transition-colors min-h-[44px]"
             aria-label="Sign out"
           >
             <LogOut className="w-4 h-4 shrink-0" />
@@ -2128,7 +2130,7 @@ function FounderDoorItem({
               "relative flex items-center justify-center w-full p-2.5 rounded-card transition-colors min-h-[44px]",
               isActive
                 ? "nav-item-active nav-item-active--animated"
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
             )}
             data-testid={`founder-door-${door.label.toLowerCase()}`}
           >
@@ -2164,7 +2166,7 @@ function FounderDoorItem({
             "relative flex items-center gap-3 px-3 py-2.5 rounded-card transition-colors min-h-[44px]",
             isActive
               ? "nav-item-active nav-item-active--animated"
-              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent active:text-sidebar-foreground"
           )}
           data-testid={`founder-door-${door.label.toLowerCase()}`}
         >

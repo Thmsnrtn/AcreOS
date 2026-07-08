@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +29,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface InvestorProfile {
   id: number;
@@ -194,15 +197,27 @@ export default function InvestorDirectoryPage() {
             </CardHeader>
             <CardContent>
               {myLoading ? (
-                <div className="flex justify-center py-6" role="status" aria-label="Loading your profile">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+                <div className="space-y-3" role="status" aria-busy="true" aria-live="polite">
+                  <span className="sr-only">Loading your profile</span>
+                  <div className="flex items-start justify-between">
+                    <Skeleton announce={false} className="h-5 w-32" />
+                    <Skeleton announce={false} className="h-5 w-16" />
+                  </div>
+                  <Skeleton announce={false} className="h-4 w-full" />
+                  <Skeleton announce={false} className="h-4 w-2/3" />
+                  <Skeleton announce={false} className="h-4 w-1/2" />
                 </div>
               ) : !myProfile ? (
-                <div className="text-center py-6">
-                  <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
-                  <p className="text-sm text-muted-foreground mb-3">Create your investor profile to appear in the network directory.</p>
-                  <Button onClick={() => setEditOpen(true)} size="sm">Create profile</Button>
-                </div>
+                <EmptyState
+                  icon={Users}
+                  headline="Create your investor profile to appear in the network directory."
+                  cta={{
+                    label: "Create profile",
+                    onClick: () => setEditOpen(true),
+                    "data-testid": "empty-state-investor-profile-action",
+                  }}
+                  testId="empty-state-investor-profile"
+                />
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-start justify-between">
@@ -278,14 +293,28 @@ export default function InvestorDirectoryPage() {
             </CardHeader>
             <CardContent>
               {dirLoading ? (
-                <div className="flex justify-center py-8" role="status" aria-label="Loading directory">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+                <div className="space-y-3" role="status" aria-busy="true" aria-live="polite">
+                  <span className="sr-only">Loading directory</span>
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 border rounded-card">
+                      <Skeleton announce={false} className="h-8 w-8 rounded-full flex-shrink-0" />
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <Skeleton announce={false} className="h-4 w-1/3 max-w-40" />
+                        <Skeleton announce={false} className="h-3 w-2/3 max-w-64" />
+                        <Skeleton announce={false} className="h-4 w-1/2 max-w-48" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : directory.length === 0 ? (
-                <div className="text-center py-10">
-                  <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
-                  <p className="text-muted-foreground">No verified investors yet. Be the first to get verified!</p>
-                </div>
+                <EmptyState
+                  icon={Users}
+                  headline="No verified investors yet."
+                  subtitle="Be the first to get verified!"
+                  // TODO(cta): verification CTA lives in the profile card alongside this panel
+                  cta={{ label: "", _noOp: true }}
+                  testId="empty-state-investor-directory"
+                />
               ) : (
                 <ul className="space-y-3 list-none p-0 m-0" aria-label="Verified investor directory">
                   {directory.map(profile => (
@@ -420,7 +449,7 @@ export default function InvestorDirectoryPage() {
               </fieldset>
             </div>
             <DialogFooter className="mt-4">
-              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>{Verbs.CANCEL}</Button>
               <Button type="submit" disabled={!profileForm.displayName || saveMutation.isPending}>
                 {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" /> : null}
                 Save profile
@@ -463,7 +492,7 @@ export default function InvestorDirectoryPage() {
               </div>
             </div>
             <DialogFooter className="mt-4">
-              <Button type="button" variant="outline" onClick={() => setVerifyOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => setVerifyOpen(false)}>{Verbs.CANCEL}</Button>
               <Button
                 type="submit"
                 disabled={selfAttestation.length < 50 || verifyMutation.isPending}

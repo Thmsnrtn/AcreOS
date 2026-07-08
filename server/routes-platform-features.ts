@@ -967,7 +967,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       const { getCurrentWeights } = await import("./services/lcsCalibrator");
 
       const backtest = await runBacktestAccuracy(org.id);
-      const { weights, lastUpdated } = getCurrentWeights(org.id);
+      const { weights, lastUpdated } = await getCurrentWeights(org.id);
 
       const sampleSize = backtest.totalPredictions || 0;
       if (sampleSize < 20) {
@@ -1049,14 +1049,14 @@ export function registerPlatformFeatureRoutes(app: Express): void {
 
       if (!score || !property) return Errors.notFound(res, "Property or LCS");
 
-      // 2026-06-10 (T0-12): comparison/benchmarks are typed insufficient-data
-      // results ({ available: false, reason }) until real network-cohort
-      // percentiles exist — elevation-blueprint-2026-06-10.md Tier-2 item 2A.
-      // Score + grade remain real (the property's own stored LCS row).
+      // 2026-06-10 (Tier 2A): comparison/benchmarks are computed from the
+      // own-network cohort (latest score per parcel, state-keyed, k>=5
+      // privacy floor). When the cohort is too small they remain typed
+      // insufficient-data results — never invented numbers.
       const state = property.state || "";
       const propertyType = (property as any).zoning || "";
-      const comparison = benchmarking.compareToIndustry(score.overallScore ?? 0, propertyType, state);
-      const benchmarks = benchmarking.getBenchmarks(propertyType, state);
+      const comparison = await benchmarking.compareToIndustry(score.overallScore ?? 0, propertyType, state);
+      const benchmarks = await benchmarking.getBenchmarks(propertyType, state);
 
       res.json({
         score: score.overallScore,

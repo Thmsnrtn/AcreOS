@@ -55,8 +55,24 @@ import {
 } from "@shared/billing/data-procurement-policy";
 import { getLatestEvalRun } from "./services/paidDataEvalHarness";
 import { regridProvider } from "./services/providers/regrid-provider";
+import { z } from "zod";
+import {
+  MARKETING_CHANNELS,
+  computeCac,
+  listMarketingSpend,
+  marketingSpendSummary,
+  recordMarketingSpend,
+} from "./services/marketingSpend";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+const marketingSpendInputSchema = z.object({
+  channel: z.enum(MARKETING_CHANNELS),
+  amountCents: z.number().int().positive(),
+  spentAt: z.coerce.date().optional(),
+  campaignRef: z.string().max(200).optional(),
+  note: z.string().max(1000).optional(),
+});
 
 function envFloat(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -85,6 +101,51 @@ async function sumCapitalSinceDays(days: number): Promise<number> {
 }
 
 export function registerFounderMoneyRoutes(app: Express): void {
+  // ── Marketing spend ledger (the CAC numerator, 2026-07-07 cost audit) ──
+  // Actuals only — never budgets. Recording spend here is what flips the
+  // unit-economics dashboard's cacAvailable to true.
+  app.post(
+    "/api/founder/money/marketing-spend",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const parsed = marketingSpendInputSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return Errors.validationFailed(res, parsed.error.issues);
+        }
+        const entry = await recordMarketingSpend({
+          ...parsed.data,
+          source: "manual",
+        });
+        // 200 (not 201) — the res-status-raw ratchet drives raw res.status()
+        // to zero; the created entry in the body is the contract.
+        return res.json({ entry });
+      } catch (err) {
+        return Errors.internal(res, err as Error);
+      }
+    },
+  );
+
+  app.get(
+    "/api/founder/money/marketing-spend",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const windowDays = Math.min(365, Math.max(1, Number(req.query.days) || 90));
+        const [entries, summary, cac] = await Promise.all([
+          listMarketingSpend(windowDays),
+          marketingSpendSummary(windowDays),
+          computeCac(windowDays),
+        ]);
+        return res.json({ entries, summary, cac });
+      } catch (err) {
+        return Errors.internal(res, err as Error);
+      }
+    },
+  );
+
   // ── Summary ───────────────────────────────────────────────────────────
   app.get(
     "/api/founder/money/summary",
@@ -306,6 +367,33 @@ export function registerFounderMoneyRoutes(app: Express): void {
           }))
           .sort((a, b) => a.cohort.localeCompare(b.cohort));
 
+        // CAC: real when the marketing_spend ledger has entries in the
+        // window (2026-07-07 — the ledger now exists); still honestly null
+        // when no spend is recorded or no attributed paying signups yet.
+        const cac = await computeCac(90);
+        const cacAvailable = cac.cacUsd !== null;
+        const arpuUsd =
+          rollup.totals.payingCustomerCount > 0
+            ? rollup.totals.totalMrrUsd / rollup.totals.payingCustomerCount
+            : 0;
+        const monthlyGrossProfitPerCustomer =
+          arpuUsd * (rollup.totals.grossMarginPct / 100);
+        // Payback is fully sourced (CAC ÷ monthly gross profit). LTV still
+        // requires a lifetime assumption — stated explicitly, never hidden.
+        const LIFETIME_MONTHS_ASSUMED = 24;
+        const paybackMonths =
+          cacAvailable && monthlyGrossProfitPerCustomer > 0
+            ? Math.round((cac.cacUsd! / monthlyGrossProfitPerCustomer) * 10) / 10
+            : null;
+        const ltvCacRatio =
+          cacAvailable && monthlyGrossProfitPerCustomer > 0
+            ? Math.round(
+                ((monthlyGrossProfitPerCustomer * LIFETIME_MONTHS_ASSUMED) /
+                  cac.cacUsd!) *
+                  10,
+              ) / 10
+            : null;
+
         return res.json({
           asOf: new Date().toISOString(),
           blendedGrossMarginPct: rollup.totals.grossMarginPct,
@@ -313,17 +401,25 @@ export function registerFounderMoneyRoutes(app: Express): void {
           totalMrrUsd: rollup.totals.totalMrrUsd,
           payingCustomerCount: rollup.totals.payingCustomerCount,
           cohortContribution,
-          // Honesty: no CAC numerator exists yet (no marketing_spend feature).
-          cacAvailable: false,
-          ltvCacRatio: null,
-          paybackMonths: null,
+          cacAvailable,
+          cacUsd: cac.cacUsd,
+          cacWindowDays: cac.windowDays,
+          cacSpendCents: cac.spendCents,
+          cacNewPayingCustomers: cac.newPayingCustomers,
+          ltvCacRatio,
+          ltvLifetimeMonthsAssumed: cacAvailable ? LIFETIME_MONTHS_ASSUMED : null,
+          paybackMonths,
           // Phase-gate reference lines for the eventual chart.
           thresholds: {
             grossMarginFloorPct: 70, // charter: ≥70% sustained
             ltvCacFloor: 3, // charter: ≥3:1 at Phase 3
             paybackCeilingMonths: 12, // charter: <12mo at Phase 2
           },
-          note: "LTV:CAC and payback are N/A until a marketing_spend ledger feature provides a CAC numerator. Gross margin + cohort contribution are real.",
+          note: cacAvailable
+            ? `CAC is blended over ${cac.windowDays}d of recorded marketing_spend (${cac.newPayingCustomers} new paying customers). LTV assumes a ${LIFETIME_MONTHS_ASSUMED}-month lifetime — stated, not hidden. Payback is fully sourced.`
+            : cac.spendCents > 0
+              ? "Marketing spend is recorded but no new paying customers landed in the window yet — CAC stays null rather than infinite."
+              : "LTV:CAC and payback are N/A until marketing spend is recorded (POST /api/founder/money/marketing-spend). Gross margin + cohort contribution are real.",
         });
       } catch (err) {
         logger.error(

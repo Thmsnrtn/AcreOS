@@ -70,7 +70,7 @@ export function CompMapOverlay({ subjectLat, subjectLng, comps }: CompMapOverlay
             style={{ pointerEvents: "auto" }}
           />
           {/* Overlay legend */}
-          <ul aria-label="Map legend" className="absolute bottom-2 left-2 bg-background/90 backdrop-blur-sm rounded-md p-2 text-xs space-y-1 border list-none m-0">
+          <ul aria-label="Map legend" className="absolute bottom-2 left-2 bg-surface-haze backdrop-blur-sm rounded-md p-2 text-xs space-y-1 border list-none m-0">
             <li className="flex items-center gap-1">
               <span aria-hidden="true" className="inline-block w-2.5 h-2.5 rounded-full bg-primary" />
               Subject property

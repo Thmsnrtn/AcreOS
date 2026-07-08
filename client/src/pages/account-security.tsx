@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -131,6 +132,16 @@ export default function AccountSecurityPage() {
       {/* Summary */}
       {summary.isLoading ? (
         <Skeleton className="h-32 mb-6" />
+      ) : summary.isError ? (
+        <div className="mb-6">
+          <QueryErrorState
+            error={summary.error as Error}
+            onRetry={() => summary.refetch()}
+            isRetrying={summary.isFetching}
+            compact
+            testId="account-security-summary-error"
+          />
+        </div>
       ) : summary.data ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <Card className="p-3">
@@ -192,6 +203,16 @@ export default function AccountSecurityPage() {
         <CardContent className="p-0">
           {sessions.isLoading ? (
             <Skeleton className="h-32 m-4" />
+          ) : sessions.isError ? (
+            <div className="p-4">
+              <QueryErrorState
+                error={sessions.error as Error}
+                onRetry={() => sessions.refetch()}
+                isRetrying={sessions.isFetching}
+                compact
+                testId="account-security-sessions-error"
+              />
+            </div>
           ) : list.length === 0 ? (
             <p className="px-4 py-3 text-sm text-muted-foreground">No active sessions.</p>
           ) : (
@@ -219,7 +240,7 @@ export default function AccountSecurityPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 text-xs"
+                        className="h-8 min-h-[2.25rem] text-xs px-3"
                         onClick={() => revokeOne.mutate(s.sessionId)}
                         disabled={revokeOne.isPending}
                       >

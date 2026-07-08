@@ -9,8 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, Camera, Satellite, Zap, CheckCircle, AlertTriangle, Image as ImageIcon, FileText, ArrowLeftRight, Activity } from "lucide-react";
+import { Eye, Camera, Satellite, Zap, CheckCircle, AlertTriangle, Image as ImageIcon, FileText, ArrowLeftRight, Activity, Map } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { format } from "date-fns";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 
 const reassurance = "The selection is still in place — try again.";
 
@@ -101,7 +105,7 @@ function ChangeDetectionDisplay({ snapshots }: { snapshots: any[] }) {
               className="flex items-center gap-2 text-xs p-2 bg-acr-warn-soft rounded border border-acr-warn-soft"
             >
               <AlertTriangle className="w-3.5 h-3.5 text-acr-warn shrink-0" aria-hidden="true" />
-              <span>Provider flagged change on {snap.capturedAt ? new Date(snap.capturedAt).toLocaleDateString() : '—'} · zoom {snap.zoom ?? '—'}</span>
+              <span>Provider flagged change on {snap.capturedAt ? format(new Date(snap.capturedAt), 'MMM d, yyyy') : '—'} · zoom {snap.zoom ?? '—'}</span>
             </li>
           ))}
         </ul>
@@ -141,11 +145,19 @@ export default function VisionAIPage() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const propertySelectId = useId();
 
-  const { data: summaryData, isLoading: summaryLoading } = useQuery({
+  const {
+    data: summaryData,
+    isLoading: summaryLoading,
+    isError: summaryIsError,
+    error: summaryError,
+    refetch: refetchSummary,
+    isRefetching: summaryRefetching,
+  } = useQuery({
     queryKey: ["/api/vision-ai/properties", selectedPropertyId, "summary"],
     enabled: !!selectedPropertyId,
     queryFn: async () => {
       const res = await fetch(`/api/vision-ai/properties/${selectedPropertyId}/summary`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch visual analysis summary");
       return res.json();
     },
   });
@@ -155,6 +167,7 @@ export default function VisionAIPage() {
     enabled: !!selectedPropertyId,
     queryFn: async () => {
       const res = await fetch(`/api/vision-ai/properties/${selectedPropertyId}/snapshots`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch satellite snapshots");
       return res.json();
     },
   });
@@ -175,6 +188,7 @@ export default function VisionAIPage() {
     onError: (e: any) => toast({ title: "Couldn't analyze photos", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });
 
+  // allow-no-invalidation: generated description is surfaced via toast — no cached query reads it
   const descriptionMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/vision-ai/properties/${selectedPropertyId}/description`, {
@@ -239,18 +253,57 @@ export default function VisionAIPage() {
       </Card>
 
       {!selectedPropertyId && (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <Eye className="w-14 h-14 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
-            <p className="text-muted-foreground">Select a property to view its visual intelligence summary.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Eye}
+          headline="See what your land looks like"
+          subtitle="Pick a property to get photo analysis, satellite comparisons, and a marketing-readiness read on its imagery."
+          cta={{
+            label: "Choose a property",
+            onClick: () => document.getElementById(propertySelectId)?.focus(),
+            "data-testid": "vision-ai-pick-property",
+          }}
+          actionIcon={null}
+          testId="vision-ai-empty-state"
+        />
       )}
 
       {selectedPropertyId && summaryLoading && (
-        <div className="space-y-3" role="status" aria-label="Loading visual analysis">
-          {[1, 2].map(i => <div key={i} className="h-32 bg-muted/50 rounded-card animate-pulse" />)}
+        <div className="space-y-4" aria-busy="true" aria-label="Loading visual analysis">
+          <div className="flex gap-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-28" announce={i === 0} announceText="Loading visual analysis" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-24" announce={false} />
+                    <Skeleton className="h-5 w-16 rounded-full" announce={false} />
+                  </div>
+                  <Skeleton className="h-12 w-full" announce={false} />
+                  <div className="flex gap-1">
+                    {Array.from({ length: 3 }).map((_, j) => (
+                      <Skeleton key={j} className="h-5 w-16 rounded-full" announce={false} />
+                    ))}
+                  </div>
+                  <Skeleton className="h-1.5 w-full" announce={false} />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
+      )}
+
+      {selectedPropertyId && summaryIsError && (
+        <QueryErrorState
+          error={summaryError}
+          onRetry={() => refetchSummary()}
+          isRetrying={summaryRefetching}
+          title="Couldn't load visual analysis"
+          testId="vision-ai-error"
+        />
       )}
 
       {summary && (
@@ -345,12 +398,18 @@ export default function VisionAIPage() {
                 ))}
               </ul>
             ) : (
-              <Card>
-                <CardContent className="py-10 text-center">
-                  <Camera className="w-10 h-10 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
-                  <p className="text-muted-foreground">No analyzed photos yet. Click "Analyze photos" to start.</p>
-                </CardContent>
-              </Card>
+              <EmptyState
+                icon={Camera}
+                headline="Analyze this property's photos"
+                subtitle="Pax reads each photo for terrain, water, road access, and marketing quality — one click does the whole set."
+                cta={{
+                  label: analyzeMutation.isPending ? "Analyzing…" : "Analyze photos",
+                  onClick: () => { if (!analyzeMutation.isPending) analyzeMutation.mutate(); },
+                  "data-testid": "vision-ai-analyze-cta",
+                }}
+                actionIcon={Camera}
+                testId="vision-ai-photos-empty"
+              />
             )}
           </TabsContent>
 
@@ -373,7 +432,7 @@ export default function VisionAIPage() {
                         <li key={i} className="flex items-center justify-between text-sm border-b pb-2 last:border-0">
                           <div className="flex items-center gap-2">
                             <Satellite className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                            <span>Zoom {snap.zoom ?? "—"} · {snap.capturedAt ? new Date(snap.capturedAt).toLocaleDateString() : "—"}</span>
+                            <span>Zoom {snap.zoom ?? "—"} · {snap.capturedAt ? format(new Date(snap.capturedAt), "MMM d, yyyy") : "—"}</span>
                           </div>
                           {snap.changeDetected && (
                             <Badge variant="destructive" className="text-xs" aria-label="Change detected on this snapshot">Change detected</Badge>
@@ -400,12 +459,18 @@ export default function VisionAIPage() {
             )}
 
             {snapshots.length === 0 && (
-              <Card>
-                <CardContent className="py-10 text-center">
-                  <Satellite className="w-10 h-10 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
-                  <p className="text-muted-foreground">No satellite snapshots captured yet.</p>
-                </CardContent>
-              </Card>
+              <EmptyState
+                icon={Satellite}
+                headline="No satellite snapshots yet"
+                subtitle="Snapshots are captured automatically once a satellite imagery provider is connected. In the meantime, the Map gives you current aerial imagery for this parcel."
+                cta={{
+                  label: "View on Map",
+                  href: "/map",
+                  "data-testid": "vision-ai-snapshots-map-cta",
+                }}
+                actionIcon={Map}
+                testId="vision-ai-snapshots-empty"
+              />
             )}
           </TabsContent>
 

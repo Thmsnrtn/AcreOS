@@ -14,6 +14,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
 import type { ChatThread } from "@shared/founder-chat/artifacts";
 
 /** Raw row shape returned by the server's aiConversations select. */
@@ -62,7 +63,7 @@ export function useFounderChatThreads() {
       // when the caller (e.g. the "new thread" button) doesn't supply one.
       const threadTitle =
         input.title?.trim() ||
-        `Atlas — ${new Date().toLocaleDateString()}`;
+        `Founder chat — ${formatDate(new Date())}`;
       const res = await apiRequest("POST", "/api/founder/chat/threads", {
         threadTitle,
       });

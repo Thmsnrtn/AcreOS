@@ -130,11 +130,17 @@ const ALL_ROUTES = [
   "/founder/feature-flags",
   "/founder/agents",
   "/founder/daily-digest",
+  // Census W3-1 (2026-06-11): sovereign-legacy retire/refit split.
+  // Refit surfaces live under /founder/*; the old paths and the retired
+  // pages' paths stay listed to verify their redirects keep resolving.
   "/founder/v13",
   "/executive-dashboard",
+  "/founder/governance",
   "/board-of-directors",
   "/agent-performance",
+  "/founder/memory",
   "/memory-browser",
+  "/founder/event-log",
   "/event-log",
   "/job-health",
   "/agent-collaboration",
@@ -171,6 +177,7 @@ const ALL_ROUTES = [
   "/onboarding-v2",
 
   // Sovereign / Advanced
+  "/founder/scenarios",
   "/conscious-organization",
   "/anticipatory-enterprise",
   "/real-runtime",

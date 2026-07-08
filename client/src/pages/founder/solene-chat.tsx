@@ -26,10 +26,18 @@
  *   - ≥ 44×44 touch targets
  *   - keyboard nav (Tab + Cmd+Enter + Escape)
  *   - light + dark theme; design tokens only
+ *
+ * W3-3 loading/error treatment (page-owned — MessageList stays dumb):
+ *   - history load → chat-shaped skeleton (alternating bubbles), not a spinner
+ *   - history / conversation-list errors → QueryErrorState with retry
+ *   - empty conversation → warm first-hello with a purposeful starter CTA
+ *   - failed sends never vanish — inline error row + retry
  */
-import React, { useCallback, useEffect, useState } from "react";
-import { Menu, Plus, MessageSquare } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Menu, Plus, MessageSquare, Sparkles, AlertCircle, RefreshCw } from "lucide-react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet,
   SheetContent,
@@ -39,12 +47,19 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useSoleneChat } from "@/hooks/useSoleneChat";
 import { useToast } from "@/hooks/use-toast";
 import { clientLogger } from "@/lib/clientLogger";
+import { staggerContainer, staggerItem } from "@/lib/animations";
 import { ConversationSidebar } from "@/components/solene/ConversationSidebar";
 import { MessageList } from "@/components/solene/MessageList";
 import { MessageInput } from "@/components/solene/MessageInput";
 import { ApprovalPrompt } from "@/components/solene/ApprovalPrompt";
 import { CostFooter } from "@/components/solene/CostFooter";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
+import { ThinkingDots } from "@/components/founder-chat/ThinkingDots";
 import { useQueryClient } from "@tanstack/react-query";
+import type { ContentBlock } from "@shared/schema/solene-conversations";
+import type { ChatTier } from "@shared/schema/solene-chat-config";
+import { Verbs } from "@/lib/labels";
 
 /**
  * Create a new Solene conversation. Returns the new id.
@@ -63,6 +78,59 @@ export async function createSoleneConversation(): Promise<number> {
   return json.conversationId;
 }
 
+/** Join the text blocks of a message for plain display. */
+function blocksToText(blocks: ContentBlock[]): string {
+  return blocks
+    .filter((b): b is { type: "text"; text: string } => b.type === "text")
+    .map((b) => b.text)
+    .join("\n\n");
+}
+
+/**
+ * Chat-shaped history skeleton — alternating assistant/user bubbles that
+ * mirror MessageBubble's real layout. One announcing container; the inner
+ * Skeletons are decorative (announce={false}) to avoid duplicate SR output.
+ */
+function ChatHistorySkeleton() {
+  return (
+    <div
+      className="flex-1 overflow-y-auto py-4 px-2 md:px-4"
+      role="status"
+      aria-busy="true"
+      aria-live="polite"
+      data-testid="solene-history-skeleton"
+    >
+      <span className="sr-only">Loading conversation</span>
+      <motion.div
+        variants={staggerContainer}
+        initial="hidden"
+        animate="visible"
+        className="space-y-3"
+        aria-hidden="true"
+      >
+        <motion.div variants={staggerItem} className="flex justify-start">
+          <Skeleton announce={false} className="h-16 w-3/4 md:w-3/5 rounded-2xl rounded-tl-sm" />
+        </motion.div>
+        <motion.div variants={staggerItem} className="flex justify-end">
+          <Skeleton announce={false} className="h-10 w-1/2 md:w-2/5 rounded-2xl rounded-tr-sm" />
+        </motion.div>
+        <motion.div variants={staggerItem} className="flex justify-start">
+          <Skeleton announce={false} className="h-20 w-3/4 md:w-3/5 rounded-2xl rounded-tl-sm" />
+        </motion.div>
+        <motion.div variants={staggerItem} className="flex justify-end">
+          <Skeleton announce={false} className="h-12 w-2/5 md:w-1/3 rounded-2xl rounded-tr-sm" />
+        </motion.div>
+      </motion.div>
+    </div>
+  );
+}
+
+interface BootstrapSendState {
+  content: ContentBlock[];
+  tierHint?: ChatTier;
+  failed: boolean;
+}
+
 export default function SoleneChatPage() {
   useDocumentTitle("Chat with Solene");
   const { toast } = useToast();
@@ -71,9 +139,29 @@ export default function SoleneChatPage() {
     useState<number | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
+  // ── W3-3 state ──────────────────────────────────────────────────────────
+  // History-load failures (diverted from toast → blocking QueryErrorState).
+  const [historyError, setHistoryError] = useState<Error | null>(null);
+  // Conversation-list auto-select bootstrap (mount fetch) status.
+  const [convoListLoading, setConvoListLoading] = useState(true);
+  const [convoListError, setConvoListError] = useState<Error | null>(null);
+  const [convoListNonce, setConvoListNonce] = useState(0);
+  // First-message-before-conversation send: keep the message visible while
+  // the turn drains, and inline-retryable if it fails (it used to vanish
+  // into a toast).
+  const [bootstrapSend, setBootstrapSend] = useState<BootstrapSendState | null>(null);
+  const lastTierHintRef = useRef<ChatTier | undefined>(undefined);
+
   const chat = useSoleneChat({
     conversationId: activeConversationId,
     onError: (err) => {
+      // History-load failures get the blocking error treatment with retry
+      // instead of a transient toast (the surface is unusable without
+      // history — a toast under-communicates that).
+      if (err.message.includes("Failed to load conversation")) {
+        setHistoryError(err);
+        return;
+      }
       toast({
         title: "Chat error",
         description: err.message,
@@ -81,6 +169,17 @@ export default function SoleneChatPage() {
       });
     },
   });
+
+  // The hook object is re-bound per render; async flows that change the
+  // conversation mid-flight (bootstrap send) need the LATEST binding to
+  // refetch against the new conversation id, not the stale null one.
+  const chatRef = useRef(chat);
+  chatRef.current = chat;
+
+  // Reset history error when switching conversations.
+  useEffect(() => {
+    setHistoryError(null);
+  }, [activeConversationId]);
 
   const handleNewConversation = useCallback(async () => {
     try {
@@ -109,7 +208,12 @@ export default function SoleneChatPage() {
       content: Parameters<typeof chat.sendMessage>[0],
       tierHint?: Parameters<typeof chat.sendMessage>[1],
     ) => {
+      lastTierHintRef.current = tierHint;
       if (activeConversationId == null) {
+        // Keep the message on screen while the bootstrap turn runs — the
+        // composer clears its draft on send, so this state is the only
+        // place the message lives until history hydrates.
+        setBootstrapSend({ content, tierHint, failed: false });
         try {
           const id = await createSoleneConversation();
           setActiveConversationId(id);
@@ -131,6 +235,9 @@ export default function SoleneChatPage() {
               }),
             },
           );
+          if (!res.ok) {
+            throw new Error(`Failed to send message: HTTP ${res.status}`);
+          }
           // The stream fires; we don't consume it here — the hook will
           // pick up history on its next refetch (triggered by conversation
           // change). Best UX: just await server-side completion.
@@ -145,7 +252,11 @@ export default function SoleneChatPage() {
               if (done) break;
             }
           }
-          void chat.refetchHistory();
+          // Refetch via the LATEST hook binding (now wired to the new
+          // conversation id) so the transcript hydrates before we drop
+          // the local echo of the sent message.
+          await chatRef.current.refetchHistory();
+          setBootstrapSend(null);
           void queryClient.invalidateQueries({
             queryKey: ["/api/founder/solene-chat/conversations"],
           });
@@ -155,30 +266,35 @@ export default function SoleneChatPage() {
             "[SoleneChatPage] bootstrap-send failed",
             error,
           );
-          toast({
-            title: "Couldn't send message",
-            description: error.message,
-            variant: "destructive",
-          });
+          // Inline error treatment — the message stays visible with a
+          // retry affordance instead of vanishing into a toast.
+          setBootstrapSend({ content, tierHint, failed: true });
         }
         return;
       }
       await chat.sendMessage(content, tierHint);
     },
-    [activeConversationId, chat, queryClient, toast],
+    [activeConversationId, chat, queryClient],
   );
 
   // Auto-select most recent conversation on mount (lazy bootstrap).
   useEffect(() => {
-    if (activeConversationId != null) return;
+    if (activeConversationId != null) {
+      setConvoListLoading(false);
+      return;
+    }
     let cancelled = false;
+    setConvoListLoading(true);
+    setConvoListError(null);
     (async () => {
       try {
         const res = await fetch(
           "/api/founder/solene-chat/conversations?archived=false&limit=1",
           { credentials: "include" },
         );
-        if (!res.ok) return;
+        if (!res.ok) {
+          throw new Error(`Failed to load conversations: HTTP ${res.status}`);
+        }
         const json = (await res.json()) as {
           conversations: { id: number }[];
         };
@@ -186,17 +302,60 @@ export default function SoleneChatPage() {
         if (json.conversations.length > 0) {
           setActiveConversationId(json.conversations[0].id);
         }
+        setConvoListLoading(false);
       } catch (err) {
+        if (cancelled) return;
+        const error = err instanceof Error ? err : new Error(String(err));
         clientLogger.warn(
           "[SoleneChatPage] failed to auto-select conversation",
-          String(err),
+          String(error),
         );
+        setConvoListError(error);
+        setConvoListLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [activeConversationId]);
+  }, [activeConversationId, convoListNonce]);
+
+  // ── Derived render states ─────────────────────────────────────────────
+  const lastMessage =
+    chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : undefined;
+  // Streaming has started but no assistant bubble exists yet (the bubble's
+  // own "Thinking…" treatment takes over from turn_start onward).
+  const awaitingAssistant =
+    chat.streaming &&
+    !(lastMessage?.role === "assistant" && lastMessage.isStreaming);
+  // The last turn ended in an error — the failed bubble is preserved in the
+  // transcript (MessageBubble renders its inline error); offer a retry.
+  const lastTurnFailed =
+    !chat.streaming && bootstrapSend == null && lastMessage?.errorMessage != null;
+
+  const showConvoListError =
+    convoListError != null && activeConversationId == null;
+  const showHistoryError =
+    historyError != null && chat.messages.length === 0 && !chat.loading;
+  const showHistorySkeleton =
+    !showConvoListError &&
+    !showHistoryError &&
+    ((convoListLoading && activeConversationId == null) ||
+      (chat.loading && chat.messages.length === 0));
+
+  const retryLastTurn = useCallback(() => {
+    const lastUser = [...chat.messages]
+      .reverse()
+      .find((m) => m.role === "user");
+    if (!lastUser) return;
+    void handleSend(lastUser.content, lastTierHintRef.current);
+  }, [chat.messages, handleSend]);
+
+  const retryBootstrapSend = useCallback(() => {
+    const failed = bootstrapSend;
+    if (!failed) return;
+    setBootstrapSend(null);
+    void handleSend(failed.content, failed.tierHint);
+  }, [bootstrapSend, handleSend]);
 
   return (
     <div
@@ -267,7 +426,146 @@ export default function SoleneChatPage() {
           </Button>
         </header>
 
-        <MessageList messages={chat.messages} loading={chat.loading} />
+        {showConvoListError ? (
+          <div className="flex-1 overflow-y-auto flex items-center justify-center p-4">
+            <QueryErrorState
+              error={convoListError}
+              title="Couldn't load your conversations"
+              onRetry={() => setConvoListNonce((n) => n + 1)}
+              isRetrying={convoListLoading}
+              testId="solene-conversations-error"
+            />
+          </div>
+        ) : showHistoryError ? (
+          <div className="flex-1 overflow-y-auto flex items-center justify-center p-4">
+            <QueryErrorState
+              error={historyError}
+              title="Couldn't load this conversation"
+              onRetry={() => {
+                setHistoryError(null);
+                void chat.refetchHistory();
+              }}
+              isRetrying={chat.loading}
+              testId="solene-history-error"
+            />
+          </div>
+        ) : showHistorySkeleton ? (
+          <ChatHistorySkeleton />
+        ) : chat.messages.length === 0 && bootstrapSend != null ? (
+          // The first message is in flight (rendered below as a local
+          // echo); keep the log area blank instead of flashing the empty
+          // state under it.
+          <div className="flex-1 overflow-y-auto" aria-hidden="true" />
+        ) : chat.messages.length === 0 ? (
+          <div className="flex-1 overflow-y-auto flex items-center justify-center p-4">
+            <EmptyState
+              icon={Sparkles}
+              headline="Start the conversation"
+              subtitle="Ask Solene about dispatches in flight, capital, costs — or hand her something to run with. She has the full company picture."
+              actionIcon={null}
+              cta={{
+                label: "Ask for today's rundown",
+                onClick: () =>
+                  void handleSend([
+                    {
+                      type: "text",
+                      text: "Give me today's rundown — what's in flight, what's waiting on me, and anything you'd flag.",
+                    },
+                  ]),
+                "data-testid": "solene-chat-empty-cta",
+              }}
+              testId="solene-chat-empty"
+            />
+          </div>
+        ) : (
+          <MessageList messages={chat.messages} loading={chat.loading} />
+        )}
+
+        {/* Local echo of a bootstrap send — visible (and retryable on
+            failure) until the hydrated transcript takes over. */}
+        {bootstrapSend ? (
+          <div
+            className="px-2 md:px-4 pb-2 flex flex-col gap-1.5"
+            data-testid="solene-bootstrap-send"
+          >
+            <div className="flex justify-end">
+              <div className="max-w-[88%] md:max-w-[78%] rounded-2xl rounded-tr-sm px-4 py-3 shadow-sm bg-primary text-primary-foreground">
+                <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                  {blocksToText(bootstrapSend.content)}
+                </p>
+              </div>
+            </div>
+            {bootstrapSend.failed ? (
+              <div
+                className="flex items-center justify-end gap-2"
+                role="alert"
+              >
+                <AlertCircle
+                  className="h-3.5 w-3.5 text-destructive"
+                  aria-hidden="true"
+                />
+                <span className="text-xs text-destructive">Didn't send.</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={retryBootstrapSend}
+                  className="h-7 gap-1.5 text-xs"
+                  data-testid="solene-bootstrap-send-retry"
+                >
+                  <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                  {Verbs.RETRY}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex justify-start">
+                <div className="rounded-2xl rounded-tl-sm border border-border/60 bg-muted/40 px-4 py-2.5 text-muted-foreground">
+                  <ThinkingDots aria-label="Solene is thinking" />
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {/* Pre-turn-start indicator — the streaming bubble's own
+            "Thinking…" treatment takes over once turn_start lands. */}
+        {awaitingAssistant && !bootstrapSend ? (
+          <div
+            className="px-2 md:px-4 pb-2 flex justify-start"
+            data-testid="solene-awaiting-reply"
+          >
+            <div className="rounded-2xl rounded-tl-sm border border-border/60 bg-muted/40 px-4 py-2.5 text-muted-foreground">
+              <ThinkingDots aria-label="Solene is thinking" />
+            </div>
+          </div>
+        ) : null}
+
+        {/* Last turn failed — the bubble keeps its inline error (role=alert
+            in MessageBubble); this row adds the retry affordance. */}
+        {lastTurnFailed ? (
+          <div className="px-3 md:px-4 pb-2" data-testid="solene-turn-retry">
+            <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+              <p className="flex min-w-0 items-center gap-1.5 text-xs text-destructive">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">
+                  That turn hit an error — your message is preserved above.
+                </span>
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={retryLastTurn}
+                disabled={chat.streaming}
+                className="h-7 shrink-0 gap-1.5 text-xs"
+                data-testid="solene-turn-retry-button"
+              >
+                <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                {Verbs.RETRY}
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {chat.pendingApproval ? (
           <ApprovalPrompt
@@ -279,7 +577,7 @@ export default function SoleneChatPage() {
         <MessageInput
           onSend={handleSend}
           onAbort={chat.abortCurrentTurn}
-          disabled={chat.streaming}
+          disabled={chat.streaming || bootstrapSend?.failed === false}
           streaming={chat.streaming}
         />
 

@@ -68,6 +68,7 @@ export function SellerIntentPanel({ leads }: Props) {
     .filter(l => ["new", "contacted", "warm"].includes(l.status))
     .slice(0, 10);
 
+  // allow-no-invalidation: predictions land in a component-local Map (setPredictions)
   const predictMutation = useMutation({
     mutationFn: async (leadId: number): Promise<IntentPrediction> => {
       const res = await apiRequest("POST", "/api/ai-ops/intent/predict", { leadId });

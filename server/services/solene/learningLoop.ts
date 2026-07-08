@@ -51,12 +51,13 @@
  * comparisons.
  *
  * ----------------------------------------------------------------------------
- * Wire-in to dispatchRunner (DEFERRED)
+ * Wire-in to dispatchRunner (DONE — Tier 2D, 2026-06-10)
  * ----------------------------------------------------------------------------
- * The dispatchRunner.buildSystemPrompt integration that calls
- * retrieveRelevantMemories(task) + appends buildRetrievedMemoriesPromptBlock(…)
- * is deferred to a follow-up wave — the runner is frozen for this dispatch.
- * This service ships the foundation; the integration is a 5-line follow-up.
+ * dispatchRunner.buildSystemPromptParts now calls
+ * retrieveRelevantMemories({ queryText: brief, … }) in its parallel loader
+ * set and renders buildRetrievedMemoriesPromptBlock(…) into the static
+ * prompt prefix under "# Relevant past lessons (learning-loop RAG)".
+ * Retrieval failures degrade to an empty block — never block a dispatch.
  * ----------------------------------------------------------------------------
  */
 

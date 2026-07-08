@@ -6,6 +6,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Badge } from "@/components/ui/badge";
 import { Paperclip, Trash2, Loader2, FolderOpen, Plus, CheckCircle2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Verbs } from "@/lib/labels";
 
 interface PaxProject {
   id: number;
@@ -181,12 +183,22 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
                   onClick={() => { if (newProjectName.trim()) createMutation.mutate(newProjectName.trim()); }}
                   disabled={!newProjectName.trim() || createMutation.isPending}
                 >
-                  Create
+                  {Verbs.CREATE}
                 </Button>
               </div>
             )}
 
-            {isLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground mx-auto my-4" />}
+            {isLoading && (
+              <div role="status" aria-busy="true" aria-live="polite" className="space-y-1">
+                <span className="sr-only">Loading projects</span>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-2 px-2.5 py-2">
+                    <Skeleton announce={false} className="h-3.5 w-3.5 rounded-sm shrink-0" />
+                    <Skeleton announce={false} className="h-3.5 w-2/3" />
+                  </div>
+                ))}
+              </div>
+            )}
 
             {!isLoading && projects.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-4">No projects yet. Create one above.</p>

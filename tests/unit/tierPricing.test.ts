@@ -1,10 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import {
   TIERS,
   TIER_PRICES_CENTS,
   tierPriceCents,
   tierPriceDollars,
   tierForSubscriptionTier,
+  tierForStripePriceId,
   monthlyRevenueCentsFor,
   type Tier,
 } from "@shared/billing/tier-pricing";
@@ -159,6 +160,45 @@ describe("shared/billing/tier-pricing", () => {
         expect(stored).toBe(envValue);
       },
     );
+
+    describe("tierForStripePriceId() — the webhook's metadata fallback (roadmap W1.2)", () => {
+      const SAVED: Record<string, string | undefined> = {};
+      const ENV_NAMES = [
+        "STRIPE_PRICE_SOLO_MONTHLY", "STRIPE_PRICE_SOLO_YEARLY",
+        "STRIPE_PRICE_OPERATOR_MONTHLY", "STRIPE_PRICE_OPERATOR_YEARLY",
+        "STRIPE_PRICE_EMPIRE_MONTHLY", "STRIPE_PRICE_EMPIRE_YEARLY",
+      ];
+      const stash = () => { for (const n of ENV_NAMES) { SAVED[n] = process.env[n]; delete process.env[n]; } };
+      afterEach(() => {
+        for (const n of ENV_NAMES) {
+          if (SAVED[n] === undefined) delete process.env[n];
+          else process.env[n] = SAVED[n];
+        }
+      });
+
+      it("maps every configured price ID back to its tier (both intervals)", () => {
+        stash();
+        process.env.STRIPE_PRICE_SOLO_MONTHLY = "price_solo_m";
+        process.env.STRIPE_PRICE_OPERATOR_YEARLY = "price_op_y";
+        process.env.STRIPE_PRICE_EMPIRE_MONTHLY = "price_emp_m";
+        expect(tierForStripePriceId("price_solo_m")).toBe("starter");
+        expect(tierForStripePriceId("price_op_y")).toBe("pro");
+        expect(tierForStripePriceId("price_emp_m")).toBe("scale");
+      });
+
+      it("returns null for unknown, null, and undefined price IDs (never guesses)", () => {
+        stash();
+        process.env.STRIPE_PRICE_SOLO_MONTHLY = "price_solo_m";
+        expect(tierForStripePriceId("price_someone_elses")).toBeNull();
+        expect(tierForStripePriceId(null)).toBeNull();
+        expect(tierForStripePriceId(undefined)).toBeNull();
+      });
+
+      it("with no env vars configured at all, resolves nothing", () => {
+        stash();
+        expect(tierForStripePriceId("price_solo_m")).toBeNull();
+      });
+    });
 
     it("does not fail when no Stripe env vars are set", () => {
       // Smoke test: the module should still expose all tier pricing without

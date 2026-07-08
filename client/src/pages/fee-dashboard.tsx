@@ -16,12 +16,13 @@ import {
 } from "recharts";
 import { chartColor } from "@/lib/chartPalette";
 import { useToast } from "@/hooks/use-toast";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   DollarSign, Clock, TrendingUp, ArrowUpRight, CheckCircle2,
   Send, Settings, Wallet, FileText,
 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -71,10 +72,6 @@ interface Payout {
 // previous maximumFractionDigits: 0 which dropped up to $0.99 per line.
 function fmtCurrency(val: number) {
   return usd(val);
-}
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -256,12 +253,14 @@ function SettlementsTab() {
           {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12" />)}
         </div>
       ) : settlements.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Wallet className="w-10 h-10 mx-auto mb-2 text-muted-foreground" aria-hidden="true" />
-            <p className="text-muted-foreground">No settlements found.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          framed
+          icon={Wallet}
+          headline="No settlements found."
+          // TODO(cta): read-only settlement ledger — entries are system-generated
+          cta={{ label: "", _noOp: true }}
+          testId="empty-state-settlements"
+        />
       ) : (
         <div className="rounded-md border" role="region" aria-label="Settlements" tabIndex={0}>
           <Table>
@@ -282,7 +281,7 @@ function SettlementsTab() {
                   <TableCell className="font-semibold tabular-nums">{fmtCurrency(s.amount)}</TableCell>
                   <TableCell className="tabular-nums">{(s.feeRate * 100).toFixed(2)}%</TableCell>
                   <TableCell><StatusBadge status={s.status} /></TableCell>
-                  <TableCell className="text-xs text-muted-foreground tabular-nums">{fmtDate(s.createdAt)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground tabular-nums">{formatDate(s.createdAt)}</TableCell>
                   <TableCell>
                     {s.status === "held" && (
                       <Button
@@ -343,12 +342,14 @@ function LedgerTab() {
           {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12" />)}
         </div>
       ) : entries.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <FileText className="w-10 h-10 mx-auto mb-2 text-muted-foreground" aria-hidden="true" />
-            <p className="text-muted-foreground">No ledger entries yet.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          framed
+          icon={FileText}
+          headline="No ledger entries yet."
+          // TODO(cta): read-only fee ledger — entries are system-generated
+          cta={{ label: "", _noOp: true }}
+          testId="empty-state-fee-ledger"
+        />
       ) : (
         <div className="rounded-md border" role="region" aria-label="Fee ledger" tabIndex={0}>
           <Table>
@@ -364,7 +365,7 @@ function LedgerTab() {
             <TableBody>
               {entries.map(e => (
                 <TableRow key={e.id}>
-                  <TableCell className="text-xs text-muted-foreground tabular-nums">{fmtDate(e.createdAt)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground tabular-nums">{formatDate(e.createdAt)}</TableCell>
                   <TableCell><StatusBadge status={e.type} /></TableCell>
                   <TableCell className="font-mono text-xs">{e.reference}</TableCell>
                   <TableCell className="text-sm">{e.description}</TableCell>
@@ -389,6 +390,7 @@ function TriggerPayoutDialog({ onSuccess }: { onSuccess: () => void }) {
   const bankId = useId();
   const noteId = useId();
 
+  // allow-no-invalidation: the parent's onSuccess prop invalidates /api/fees/payouts (see dialog usage)
   const triggerMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/fees/payouts/trigger", {
@@ -492,6 +494,7 @@ function SchedulePanel() {
   const minAmountId = useId();
   const enabledId = useId();
 
+  // allow-no-invalidation: schedule settings live in this form's local state — no query caches them
   const scheduleMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/fees/payouts/schedule", {
@@ -599,12 +602,14 @@ function PayoutsTab() {
           {[1,2,3].map(i => <Skeleton key={i} className="h-12" />)}
         </div>
       ) : payouts.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <ArrowUpRight className="w-10 h-10 mx-auto mb-2 text-muted-foreground" aria-hidden="true" />
-            <p className="text-muted-foreground">No payouts yet.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          framed
+          icon={ArrowUpRight}
+          headline="No payouts yet."
+          // TODO(cta): read-only payout ledger — entries are system-generated
+          cta={{ label: "", _noOp: true }}
+          testId="empty-state-payouts"
+        />
       ) : (
         <div className="rounded-md border" role="region" aria-label="Payouts" tabIndex={0}>
           <Table>
@@ -620,7 +625,7 @@ function PayoutsTab() {
             <TableBody>
               {payouts.map(p => (
                 <TableRow key={p.id}>
-                  <TableCell className="text-xs text-muted-foreground tabular-nums">{fmtDate(p.triggeredAt)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground tabular-nums">{formatDate(p.triggeredAt)}</TableCell>
                   <TableCell className="font-semibold tabular-nums">{fmtCurrency(p.amount)}</TableCell>
                   <TableCell className="font-mono text-xs">{p.bankAccountId}</TableCell>
                   <TableCell><StatusBadge status={p.status} /></TableCell>

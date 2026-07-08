@@ -13,6 +13,9 @@ import { useToast } from "@/hooks/use-toast";
 import { TrendingUp, Building, Users, DollarSign, BarChart2, ArrowRight, SlidersHorizontal, CheckCircle } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 
 function RatingBadge({ rating }: { rating: string }) {
   const colors: Record<string, string> = { AAA: "bg-acr-pos-soft text-acr-pos", AA: "bg-acr-accent text-acr-accent", A: "bg-acr-accent text-acr-accent", BBB: "bg-acr-warn-soft text-acr-warn" };
@@ -165,7 +168,7 @@ function SecuritizationWizard() {
               Next <ArrowRight className="w-4 h-4 ml-1" aria-hidden="true" />
             </Button>
           ) : (
-            <Button onClick={handleLaunch} className="bg-acr-pos hover:bg-acr-pos">
+            <Button onClick={handleLaunch} className="bg-acr-pos hover:bg-acr-pos/90 active:bg-acr-pos/80">
               <CheckCircle className="w-4 h-4 mr-1" aria-hidden="true" /> Launch offering
             </Button>
           )}
@@ -194,34 +197,59 @@ export default function CapitalMarketsPage() {
   const matchStateId = useId();
   const matchLtvId = useId();
 
-  const { data: securitiesData } = useQuery({
+  const {
+    data: securitiesData,
+    isLoading: securitiesLoading,
+    isError: securitiesIsError,
+    error: securitiesError,
+    refetch: refetchSecurities,
+    isRefetching: securitiesRefetching,
+  } = useQuery({
     queryKey: ["/api/capital-markets/securities"],
     queryFn: async () => {
       const res = await fetch("/api/capital-markets/securities", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch securities");
       return res.json();
     },
   });
 
-  const { data: lendersData } = useQuery({
+  const {
+    data: lendersData,
+    isLoading: lendersLoading,
+    isError: lendersIsError,
+    error: lendersError,
+    refetch: refetchLenders,
+    isRefetching: lendersRefetching,
+  } = useQuery({
     queryKey: ["/api/capital-markets/lenders"],
     queryFn: async () => {
       const res = await fetch("/api/capital-markets/lenders", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch lenders");
       return res.json();
     },
   });
 
-  const { data: raisesData } = useQuery({
+  const {
+    data: raisesData,
+    isLoading: raisesLoading,
+    isError: raisesIsError,
+    error: raisesError,
+    refetch: refetchRaises,
+    isRefetching: raisesRefetching,
+  } = useQuery({
     queryKey: ["/api/capital-markets/raises"],
     queryFn: async () => {
       const res = await fetch("/api/capital-markets/raises", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch capital raises");
       return res.json();
     },
   });
 
-  const { data: efficiencyData } = useQuery({
+  const { data: efficiencyData, isLoading: efficiencyLoading } = useQuery({
     queryKey: ["/api/capital-markets/efficiency"],
     queryFn: async () => {
       const res = await fetch("/api/capital-markets/efficiency", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch efficiency metrics");
       return res.json();
     },
   });
@@ -231,8 +259,12 @@ export default function CapitalMarketsPage() {
   const raises = raisesData?.raises ?? [];
   const metrics = efficiencyData?.metrics;
 
+  // Controlled tabs so empty-state CTAs can route the user to the right tool.
+  const [activeTab, setActiveTab] = useState("securities");
+
   const [matchForm, setMatchForm] = useState({ dealAmount: "", state: "", ltv: "" });
   const [matchResults, setMatchResults] = useState<any[]>([]);
+  // allow-no-invalidation: lender matches land in page-local state (setMatchResults)
   const matchMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/capital-markets/match-lenders", {
@@ -264,6 +296,19 @@ export default function CapitalMarketsPage() {
         </p>
       </div>
 
+      {efficiencyLoading && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4" aria-busy="true" aria-label="Loading capital metrics">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4 space-y-2">
+                <Skeleton className="h-3 w-28" announce={i === 0} announceText="Loading capital metrics" />
+                <Skeleton className="h-7 w-20" announce={false} />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
       {metrics && (
         <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card><CardContent className="p-4">
@@ -285,7 +330,7 @@ export default function CapitalMarketsPage() {
         </dl>
       )}
 
-      <Tabs defaultValue="securities">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="securities">Securities</TabsTrigger>
           <TabsTrigger value="lenders">Lender network</TabsTrigger>
@@ -296,12 +341,46 @@ export default function CapitalMarketsPage() {
 
         {/* Securities */}
         <TabsContent value="securities" className="mt-4">
-          {securities.length === 0 ? (
-            <Card><CardContent className="py-12 text-center">
-              <BarChart2 className="w-12 h-12 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
-              <p className="text-muted-foreground">No securitization offerings yet.</p>
-              <p className="text-xs text-muted-foreground mt-1">Pool your seller-financed notes to create offerings for institutional investors.</p>
-            </CardContent></Card>
+          {securitiesLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4" aria-busy="true" aria-label="Loading securitization offerings">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Card key={i}>
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Skeleton className="h-5 w-40" announce={i === 0} announceText="Loading securitization offerings" />
+                      <Skeleton className="h-5 w-12 rounded-full" announce={false} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {Array.from({ length: 3 }).map((_, j) => (
+                        <Skeleton key={j} className="h-8" announce={false} />
+                      ))}
+                    </div>
+                    <Skeleton className="h-1.5 w-full" announce={false} />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : securitiesIsError ? (
+            <QueryErrorState
+              error={securitiesError}
+              onRetry={() => refetchSecurities()}
+              isRetrying={securitiesRefetching}
+              title="Couldn't load securitization offerings"
+              testId="capital-securities-error"
+            />
+          ) : securities.length === 0 ? (
+            <EmptyState
+              icon={BarChart2}
+              headline="Securitize your first note pool"
+              subtitle="Pool your seller-financed notes into a rated offering institutional investors can subscribe to."
+              cta={{
+                label: "Securitize your notes",
+                onClick: () => setActiveTab("securitization"),
+                "data-testid": "capital-securities-empty-cta",
+              }}
+              actionIcon={ArrowRight}
+              testId="capital-securities-empty"
+            />
           ) : (
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-4 list-none p-0 m-0" aria-label="Active securitization offerings">
               {securities.map((sec: any) => (
@@ -419,11 +498,46 @@ export default function CapitalMarketsPage() {
             </CardContent>
           </Card>
 
-          {lenders.length === 0 ? (
-            <Card><CardContent className="py-12 text-center">
-              <Users className="w-12 h-12 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
-              <p className="text-muted-foreground">No lenders in your network yet.</p>
-            </CardContent></Card>
+          {lendersLoading ? (
+            <ul className="space-y-3 list-none p-0 m-0" aria-busy="true" aria-label="Loading lender network">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <li key={i}>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-2 flex-1">
+                          <Skeleton className="h-5 w-44" announce={i === 0} announceText="Loading lender network" />
+                          <Skeleton className="h-3 w-32" announce={false} />
+                          <Skeleton className="h-3 w-56" announce={false} />
+                        </div>
+                        <Skeleton className="h-5 w-20 rounded-full" announce={false} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </li>
+              ))}
+            </ul>
+          ) : lendersIsError ? (
+            <QueryErrorState
+              error={lendersError}
+              onRetry={() => refetchLenders()}
+              isRetrying={lendersRefetching}
+              title="Couldn't load your lender network"
+              testId="capital-lenders-error"
+            />
+          ) : lenders.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              headline="No lenders in your network yet"
+              subtitle="Run a lender match on one of your deals — matched lenders join your network automatically."
+              cta={{
+                label: "Match lenders to a deal",
+                onClick: () => setActiveTab("match"),
+                "data-testid": "capital-lenders-empty-cta",
+              }}
+              actionIcon={ArrowRight}
+              testId="capital-lenders-empty"
+            />
           ) : (
             <ul className="space-y-3 list-none p-0 m-0" aria-label="Filtered lender network">
               {lenders
@@ -485,11 +599,48 @@ export default function CapitalMarketsPage() {
 
         {/* Capital Raises */}
         <TabsContent value="raises" className="mt-4">
-          {raises.length === 0 ? (
-            <Card><CardContent className="py-12 text-center">
-              <DollarSign className="w-12 h-12 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
-              <p className="text-muted-foreground">No capital-raise campaigns active.</p>
-            </CardContent></Card>
+          {raisesLoading ? (
+            <ul className="space-y-4 list-none p-0 m-0" aria-busy="true" aria-label="Loading capital-raise campaigns">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <li key={i}>
+                  <Card>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Skeleton className="h-5 w-48" announce={i === 0} announceText="Loading capital-raise campaigns" />
+                        <Skeleton className="h-5 w-16 rounded-full" announce={false} />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {Array.from({ length: 3 }).map((_, j) => (
+                          <Skeleton key={j} className="h-8" announce={false} />
+                        ))}
+                      </div>
+                      <Skeleton className="h-2 w-full" announce={false} />
+                    </CardContent>
+                  </Card>
+                </li>
+              ))}
+            </ul>
+          ) : raisesIsError ? (
+            <QueryErrorState
+              error={raisesError}
+              onRetry={() => refetchRaises()}
+              isRetrying={raisesRefetching}
+              title="Couldn't load capital raises"
+              testId="capital-raises-error"
+            />
+          ) : raises.length === 0 ? (
+            <EmptyState
+              icon={DollarSign}
+              headline="No capital-raise campaigns active"
+              subtitle="Securitized note pools become offerings you can raise against — start by pooling your notes."
+              cta={{
+                label: "Securitize your notes",
+                onClick: () => setActiveTab("securitization"),
+                "data-testid": "capital-raises-empty-cta",
+              }}
+              actionIcon={ArrowRight}
+              testId="capital-raises-empty"
+            />
           ) : (
             <ul className="space-y-4 list-none p-0 m-0" aria-label="Active capital-raise campaigns">
               {raises.map((raise: any) => {
@@ -589,11 +740,32 @@ export default function CapitalMarketsPage() {
               </CardContent>
             </Card>
             <div className="space-y-3">
-              {matchResults.length === 0 ? (
-                <Card><CardContent className="py-10 text-center">
-                  <Building className="w-8 h-8 mx-auto mb-2 text-muted-foreground" aria-hidden="true" />
-                  <p className="text-sm text-muted-foreground">Enter deal details to find matching lenders.</p>
-                </CardContent></Card>
+              {matchMutation.isPending ? (
+                <ul className="space-y-3 list-none p-0 m-0" aria-busy="true" aria-label="Matching lenders">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <li key={i}>
+                      <Card>
+                        <CardContent className="p-4 space-y-2">
+                          <Skeleton className="h-5 w-40" announce={i === 0} announceText="Matching lenders to your deal" />
+                          <Skeleton className="h-3 w-56" announce={false} />
+                        </CardContent>
+                      </Card>
+                    </li>
+                  ))}
+                </ul>
+              ) : matchResults.length === 0 ? (
+                <EmptyState
+                  icon={Building}
+                  headline="Find lenders for your next deal"
+                  subtitle="Enter the deal amount, state, and LTV — matches are pulled from the full lender network."
+                  cta={{
+                    label: "Enter deal details",
+                    onClick: () => document.getElementById(matchAmountId)?.focus(),
+                    "data-testid": "capital-match-empty-cta",
+                  }}
+                  actionIcon={ArrowRight}
+                  testId="capital-match-empty"
+                />
               ) : (
                 <ul className="space-y-3 list-none p-0 m-0" aria-label={`${matchResults.length} matching lenders`}>
                   {matchResults.map((l: any, i: number) => (

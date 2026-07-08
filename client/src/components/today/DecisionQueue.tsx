@@ -1,17 +1,29 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useKeyboardLayer } from "@/hooks/use-keyboard-layer";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ContentReveal } from "@/components/ContentReveal";
-import { ClearedEmpty } from "@/components/empty-states";
+import { ClearedEmpty } from "@/components/empty-state";
 import { ConfidenceBar } from "@/components/today/ConfidenceBar";
 import { ConfidenceSparkline } from "@/components/today/ConfidenceSparkline";
 import { SwipeableCard } from "@/components/mobile/SwipeableCard";
 import { lightImpact } from "@/lib/haptics";
 import { staggerContainer, staggerItem } from "@/lib/animations";
+import { Verbs } from "@/lib/labels";
 import {
   Sparkles,
   Zap,
@@ -25,6 +37,8 @@ import {
   Check,
   CalendarClock,
   X as XIcon,
+  Trash2,
+  Loader2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -103,6 +117,10 @@ export interface DecisionItem {
   confidenceHistory?: number[];
   // What the operator can do in place. Absent → treated as "navigate".
   inlineAction?: InlineAction;
+  // Urgency class from the server's one ranking function (Tier 3C):
+  // overdue → money → time → routine. Informational on the client — the
+  // server already sorted by it; we never re-derive or re-sort.
+  urgency?: "overdue" | "money" | "time" | "routine";
 }
 
 interface DecisionQueueProps {
@@ -127,6 +145,25 @@ interface DecisionQueueProps {
   onResolve?: (itemId: string, action: ResolveAction) => void;
   /** Ids currently mid-resolve (pending PATCH) — disables their controls. */
   resolvingIds?: ReadonlySet<string>;
+  /**
+   * Finishability (Tier 3C): items the operator marked done TODAY (server-
+   * derived from today_queue_state, org-scoped, survives reload) and the
+   * day's total (cleared + still in queue). Drives the "N of M cleared"
+   * header readout and the day-done zero state.
+   */
+  clearedToday?: number;
+  totalToday?: number;
+  /**
+   * Permanently clear the ENTIRE active queue (POST /api/today/queue/clear).
+   * Destructive + irreversible, so the button is gated behind a confirm
+   * dialog before this fires. The parent owns the mutation + query
+   * invalidation (mirrors onResolve), so this component stays presentational.
+   * When omitted, the "Clear queue" control falls back to the local 24h
+   * snooze-all (temporary hide).
+   */
+  onClearAll?: () => void;
+  /** True while the clear-all POST is in flight — drives the confirm spinner. */
+  isClearing?: boolean;
 }
 
 // localStorage-backed snooze map. Keyed by item id, value is an ISO
@@ -171,8 +208,13 @@ export function DecisionQueue({
   autoThreshold = 1.01,
   onResolve,
   resolvingIds,
+  clearedToday = 0,
+  totalToday = 0,
+  onClearAll,
+  isClearing = false,
 }: DecisionQueueProps) {
   const [snoozed, setSnoozed] = useState<Record<string, number>>(() => loadSnoozed());
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [, setLocation] = useLocation();
 
   // A Pax-sourced item is "auto-handled" when its confidence meets/exceeds the
@@ -185,6 +227,17 @@ export function DecisionQueue({
   useEffect(() => {
     persistSnoozed(snoozed);
   }, [snoozed]);
+
+  // Close the confirm dialog once the clear-all mutation finishes (isClearing
+  // falls back to false). The queue then refetches empty and the zero state
+  // renders. Tracks the previous value so we only act on the true→false edge.
+  const wasClearingRef = useRef(false);
+  useEffect(() => {
+    if (wasClearingRef.current && !isClearing) {
+      setConfirmClearOpen(false);
+    }
+    wasClearingRef.current = isClearing;
+  }, [isClearing]);
 
   function snoozeItem(id: string) {
     lightImpact();
@@ -205,15 +258,43 @@ export function DecisionQueue({
     setSnoozed({});
   }
 
+  // Server owns the ranking (one explainable comparator in routes-today.ts:
+  // overdue → money-touching → time-sensitive → routine). The client only
+  // subtracts locally-snoozed rows — it never re-sorts.
   const visible = useMemo(
-    () => items.filter((it) => !snoozed[it.id]).sort((a, b) => a.rank - b.rank),
+    () => items.filter((it) => !snoozed[it.id]),
     [items, snoozed],
   );
   const snoozedCount = Object.keys(snoozed).length;
 
+  // ── Keyboard layer (Tier 3C) — J/K traverses, Enter opens ──────────────
+  // Desktop-only (fine pointer + hover); suppressed while typing and while
+  // dialogs are open. See hooks/use-keyboard-layer.ts.
+  const { activeIndex } = useKeyboardLayer({
+    itemCount: visible.length,
+    enabled: !isLoading,
+    onOpen: (index) => {
+      const item = visible[index];
+      if (item) setLocation(item.actionUrl);
+    },
+  });
+  const activeId = activeIndex !== null ? visible[activeIndex]?.id ?? null : null;
+  const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+  useEffect(() => {
+    if (!activeId) return;
+    const el = rowRefs.current.get(activeId);
+    if (el) {
+      el.scrollIntoView({ block: "nearest" });
+      el.focus({ preventScroll: true });
+    }
+  }, [activeId]);
+
+  // Finishability readout: only rendered when something real happened today.
+  const showProgress = clearedToday > 0 && totalToday > 0;
+
   return (
     <div data-testid="section-decision-queue">
-      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Zap className="w-4 h-4 text-acr-brand" aria-hidden="true" />
           <h2 className="acr-section-h2 text-section-h2">Decision queue</h2>
@@ -222,20 +303,61 @@ export function DecisionQueue({
               {visible.length}
             </Badge>
           )}
+          {/* "N of M cleared" — real completions today, server-derived. */}
+          {showProgress && (
+            <span
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums"
+              data-testid="text-queue-progress"
+            >
+              <span
+                className="h-1.5 w-16 rounded-full bg-muted overflow-hidden"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={totalToday}
+                aria-valuenow={clearedToday}
+                aria-label={`${clearedToday} of ${totalToday} cleared today`}
+              >
+                <span
+                  className="block h-full rounded-full bg-acr-pos"
+                  style={{ width: `${Math.min(100, Math.round((clearedToday / totalToday) * 100))}%` }}
+                />
+              </span>
+              {clearedToday} of {totalToday} cleared
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           {visible.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1 text-xs"
-              onClick={() => snoozeAll(visible.map((v) => v.id))}
-              aria-label="Snooze all items for 24 hours"
-              data-testid="button-snooze-all-decisions"
-            >
-              <EyeOff className="w-3 h-3" aria-hidden="true" />
-              Clear queue
-            </Button>
+            onClearAll ? (
+              // Permanent clear — destructive, so it opens a confirm dialog
+              // before firing POST /api/today/queue/clear (server clears the
+              // WHOLE active queue, not just the rows loaded here).
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1 text-xs"
+                onClick={() => setConfirmClearOpen(true)}
+                aria-label={`Clear all ${visible.length} decisions permanently`}
+                data-testid="button-clear-queue"
+              >
+                <Trash2 className="w-3 h-3" aria-hidden="true" />
+                Clear queue
+              </Button>
+            ) : (
+              // Fallback: local 24h snooze-all (temporary hide) when no
+              // permanent-clear handler is wired.
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1 text-xs"
+                onClick={() => snoozeAll(visible.map((v) => v.id))}
+                aria-label="Snooze all items for 24 hours"
+                data-testid="button-snooze-all-decisions"
+              >
+                <EyeOff className="w-3 h-3" aria-hidden="true" />
+                Clear queue
+              </Button>
+            )
           )}
           {snoozedCount > 0 && (
             <Button
@@ -247,7 +369,7 @@ export function DecisionQueue({
               data-testid="button-restore-snoozed-decisions"
             >
               <RotateCcw className="w-3 h-3" aria-hidden="true" />
-              Restore {snoozedCount}
+              {Verbs.RESTORE} {snoozedCount}
             </Button>
           )}
           <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
@@ -267,12 +389,23 @@ export function DecisionQueue({
         }
       >
         {visible.length === 0 ? (
+          // Three honest zero states: snoozed-away, day finished (real
+          // completions today), and nothing-came-in. The finished state is
+          // the Tier 3C payoff — the day is DONE and we say so.
           <ClearedEmpty
-            headline={snoozedCount > 0 ? "Queue cleared for now" : "All clear — nothing needs you right now"}
+            headline={
+              snoozedCount > 0
+                ? "Queue cleared for now"
+                : clearedToday > 0
+                  ? `That's the day — all ${totalToday} cleared.`
+                  : "All clear — nothing needs you right now"
+            }
             subtitle={
               snoozedCount > 0
                 ? `${snoozedCount} item${snoozedCount === 1 ? "" : "s"} snoozed for 24 hours. Use Restore to bring them back.`
-                : "When new leads, deals, or signals come in, they'll show up here first."
+                : clearedToday > 0
+                  ? "Nothing else needs you today. Tomorrow's queue builds overnight."
+                  : "When new leads, deals, or signals come in, they'll show up here first."
             }
           />
         ) : (
@@ -318,8 +451,24 @@ export function DecisionQueue({
               const onSwipeSnooze = canResolveInline
                 ? () => { lightImpact(); onResolve!(item.id, "snooze"); }
                 : () => snoozeItem(item.id);
+              const isKeyboardActive = item.id === activeId;
               return (
-                <motion.li key={item.id} role="listitem" variants={staggerItem}>
+                <motion.li
+                  key={item.id}
+                  role="listitem"
+                  variants={staggerItem}
+                  // Roving keyboard focus (J/K): the active row takes
+                  // programmatic focus so screen readers announce it and
+                  // Enter opens it. tabIndex -1 keeps Tab order unchanged.
+                  tabIndex={isKeyboardActive ? -1 : undefined}
+                  data-keyboard-active={isKeyboardActive ? "true" : undefined}
+                  className={isKeyboardActive ? "rounded-card ring-2 ring-ring outline-none" : undefined}
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(item.id, el);
+                    else rowRefs.current.delete(item.id);
+                  }}
+                  aria-label={isKeyboardActive ? `${item.title} — press Enter to open` : undefined}
+                >
                   <SwipeableCard
                     leftAction={{
                       icon: ArrowRightCircle,
@@ -335,13 +484,13 @@ export function DecisionQueue({
                     }}
                   >
                   <Card
-                    className="rounded-card hover:shadow-md transition-shadow border-l-2"
+                    className="rounded-card shadow-acr-1 hover-elevate border-l-2"
                     style={{ borderLeftColor: borderColor }}
                     data-auto-handled={auto ? "true" : undefined}
                     data-priority={item.priority}
                     data-testid={`decision-item-${item.id}`}
                   >
-                    <CardContent className="flex items-start gap-4 p-4">
+                    <CardContent className="flex items-start gap-4 p-6">
                       {auto && (
                         <div
                           className="shrink-0 mt-1.5 w-2 h-2 rounded-full ring-1"
@@ -488,6 +637,61 @@ export function DecisionQueue({
           </motion.ul>
         )}
       </ContentReveal>
+
+      {/* ── Permanent clear confirm (destructive) ─────────────────────────
+          Gated behind the house AlertDialog — never window.confirm. Confirm
+          fires the parent's POST /api/today/queue/clear mutation; the button
+          shows the in-flight spinner while it runs. */}
+      {onClearAll && (
+        <AlertDialog
+          open={confirmClearOpen}
+          onOpenChange={(open) => {
+            // Don't let an outside-click close the dialog mid-clear.
+            if (isClearing) return;
+            setConfirmClearOpen(open);
+          }}
+        >
+          <AlertDialogContent data-testid="dialog-clear-queue">
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Clear all {visible.length} decision{visible.length === 1 ? "" : "s"} permanently?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This removes every item currently in your decision queue. It can't
+                be undone — cleared items won't come back. New leads, deals, and
+                signals will still show up here going forward.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                disabled={isClearing}
+                data-testid="cancel-clear-queue"
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isClearing}
+                onClick={(e) => {
+                  // Keep the dialog mounted while the mutation runs so the
+                  // spinner is visible; the parent closes it on success via
+                  // the queue refetching empty (visible.length → 0).
+                  e.preventDefault();
+                  onClearAll();
+                }}
+                className="gap-1.5"
+                data-testid="confirm-clear-queue"
+              >
+                {isClearing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
+                )}
+                Clear queue
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }

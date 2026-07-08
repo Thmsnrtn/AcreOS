@@ -62,7 +62,7 @@ export function CashStrip({
 
   return (
     <div data-testid="section-cash-strip">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4">
         <h2 className="acr-section-h2 text-section-h2">
           Cash
         </h2>
@@ -72,8 +72,8 @@ export function CashStrip({
           </Link>
         </Button>
       </div>
-      <Card>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4">
+      <Card className="rounded-card shadow-acr-2">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-6">
           <div className="flex items-start gap-2">
             <Banknote
               className="w-3 h-3 mt-1 shrink-0"

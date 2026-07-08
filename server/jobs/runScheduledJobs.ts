@@ -312,11 +312,21 @@ async function processDomainAudits() {
     // Andrei (domain "ai") — Pax quality-drift detectors: hallucination-flag-rate
     // spike (load-bearing), eval-pass-rate regression, cost-per-interaction creep.
     const { aiQualityDetectors } = await import('../services/andrei/aiQualityAudit');
+    // Tess (reliability) — SES platform identity watchdog: DKIM / MAIL FROM /
+    // verified-for-sending status straight from SES, so a failing identity
+    // pages here instead of only via an AWS Health email in a human inbox.
+    const { platformEmailIdentityDetector } = await import('../services/audit/detectors/platformEmailIdentityDetector');
+    // Tess (reliability) — credential LIVENESS: re-authenticates every
+    // configured vendor key against a free endpoint daily. Born 2026-07-04:
+    // four keys were dead while presence checks said "live".
+    const { credentialLivenessDetector } = await import('../services/audit/detectors/credentialLivenessDetector');
 
     const result = await runDomainAudits([
       ...financeDetectors,
       observationRateDetector,
       ...aiQualityDetectors,
+      platformEmailIdentityDetector,
+      credentialLivenessDetector,
     ]);
     // Auto-age open findings whose condition stopped firing >7d ago.
     const staled = await staleFindings(7);
@@ -332,7 +342,13 @@ async function processDomainAudits() {
 
 function startDomainAuditJob() {
   const ONE_DAY = 24 * 60 * 60 * 1000;
-  const TTL_SECONDS = 23 * 60 * 60; // Lock TTL slightly less than interval
+  // Lock TTL slightly less than the interval — withJobLock never releases on
+  // completion, so this TTL IS the once-daily fleet-wide dedupe. Known
+  // tradeoff (WS5 drill, 2026-07-08): a holder that crashes mid-run blocks
+  // re-running until expiry, costing at most one day's audit — acceptable
+  // for a daily observability job; do NOT shorten without adding a
+  // completion-release, or multi-instance boots would re-run the audit daily.
+  const TTL_SECONDS = 23 * 60 * 60;
 
   log('Starting domain-audit background job (daily)', 'domain-audit');
 
@@ -345,6 +361,35 @@ function startDomainAuditJob() {
 
   withJobLock('domain_audit', TTL_SECONDS, processDomainAudits).catch(err => {
     log(`Initial domain audit run failed: ${err}`, 'domain-audit');
+  });
+}
+
+// The autonomous daily Operator cognition cycle (gated, OBSERVE-first). A no-op
+// until cognition is switched ON in the Control Center — so this runs zero model
+// calls by default. When on, one Opus-grade pass over the live Context Pack ~once
+// per day surfaces a single deduped brief into the founder's Decisions queue.
+// The 23h job lock makes it ~daily even across frequent deploys.
+function startOperatorCycleJob() {
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const TTL_SECONDS = 23 * 60 * 60;
+  log('Starting Operator daily cognition cycle (gated OFF by default)', 'operator');
+  const run = async () => {
+    const { runOperatorCycle } = await import('../services/autopilot/operator');
+    const { askFounder } = await import('../services/solene/founderCollab');
+    await runOperatorCycle({
+      ask: async (input) => {
+        const r = await askFounder(input);
+        return { askId: r.askId };
+      },
+    });
+  };
+  trackInterval(() => {
+    withJobLock('operator_cycle', TTL_SECONDS, run).catch(err => log(`Operator cycle failed: ${err}`, 'operator'));
+  }, ONE_DAY);
+  // Initial run on boot, lock-guarded → effectively once per ~23h regardless of
+  // restart frequency (gated OFF ⇒ a cheap no-op until the founder enables it).
+  withJobLock('operator_cycle', TTL_SECONDS, run).catch(err => {
+    log(`Initial Operator cycle failed: ${err}`, 'operator');
   });
 }
 
@@ -675,6 +720,38 @@ function startCustomerConcentrationJob() {
 }
 
 // ============================================================================
+// Launch-Week WS4 — Gate-Watcher (the self-birthing roadmap). Daily 09:00 UTC.
+// Evaluates every machine-encoded roadmap gate (mature-machine §4 autonomy
+// switch schedule + phase triggers: Phase-1 runbook at $200 MRR held 30d,
+// Sentry rung at $500, Telnyx eval at $3k, switch eligibility at 25 paying).
+// A ripened gate raises a one-tap founder Decision via founderCollab, or
+// auto-executes ONLY where the studio revenue-trigger dial already says
+// autoApprove. Hard-stops never auto-execute. Every evaluation is logged and
+// persisted to the Story surface; dedup state lives in founder_settings, so a
+// duplicate tick (second machine acquiring the lock later in the hour) is a
+// no-op.
+// ============================================================================
+function startGateWatcherJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering gate watcher job (daily 09:00 UTC)', 'gate-watcher');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 9) {
+      import('../services/autopilot/gateWatcher').then(({ runGateWatch }) => {
+        withJobLock('gate_watcher_daily', TTL_SECONDS, async () => {
+          await runGateWatch();
+        }).catch(err => {
+          log(`Gate watcher run failed: ${err}`, 'gate-watcher');
+        });
+      }).catch(err => log(`Gate watcher import failed: ${err}`, 'gate-watcher'));
+    }
+  }, ONE_HOUR);
+}
+
+// ============================================================================
 // Wave 10: Self-Tuning Cost Optimizer — daily, self-rescheduling
 // Analyses last 30 days of AI usage + MRR + Fly estimate, generates
 // recommendations, auto-applies safe changes (prompt-cache, log-volume),
@@ -894,6 +971,15 @@ function startFounderWeeklyDigestJob() {
           log(`Cost optimiser weekly digest failed: ${err}`, 'cost-optimizer-digest');
         });
       }).catch(err => log(`Cost optimiser digest import failed: ${err}`, 'cost-optimizer-digest'));
+
+      // W4.5 — weekly MRR snapshot in the same Monday window, so WoW growth
+      // and the runway upside scenario compute from history instead of
+      // defaulting to zero. Separate lock; failure never blocks the digests.
+      import('../services/finance/runwayModel').then(({ captureMrrSnapshot }) => {
+        withJobLock('mrr_snapshot_weekly', TTL_SECONDS, captureMrrSnapshot).catch(err => {
+          log(`MRR snapshot failed: ${err}`, 'mrr-snapshot');
+        });
+      }).catch(err => log(`MRR snapshot import failed: ${err}`, 'mrr-snapshot'));
     }
   }, ONE_HOUR);
 }
@@ -1019,8 +1105,14 @@ function startAutonomousDecisionExecutorJob() {
     });
   }, 2 * 60 * 1000);
 
-  // Then every 30 minutes
-  trackInterval(() => {
+  // Then every 30 minutes. Idle pacing (2026-07-07 cost audit): below the
+  // paying-customer threshold only 1 in N slots does real work — the
+  // executor's inbox barely changes on an idle platform, and this job was
+  // the historical #1 LLM burn source. Full cadence resumes automatically
+  // as soon as paying customers exist.
+  trackInterval(async () => {
+    const { shouldRunAtPace } = await import("./idlePace");
+    if (!(await shouldRunAtPace('autonomous_decision_executor', THIRTY_MINUTES))) return;
     withJobLock('autonomous_decision_executor', TTL_SECONDS, runDecisionExecutorTickBounded).catch(err => {
       log(`Autonomous decision executor run failed: ${err}`, 'decision-executor');
     });
@@ -1953,6 +2045,85 @@ function startActionPreviewSweeperJob() {
 }
 
 /**
+ * Mail flusher — every 3 minutes, sends `mail_shipments` whose 30-minute hold
+ * window has elapsed (status='queued', leaves_at<=now) through the real Lob
+ * path, writes provider piece ids back, and REFUNDS the enqueue debit on a send
+ * failure. Without this, the outreach-mail queue charged customers and never
+ * mailed (the product-truth audit's most serious gap). withJobLock + the
+ * atomic FOR UPDATE SKIP LOCKED claim make it safe to run on every worker.
+ */
+function startMailFlusherJob() {
+  const THREE_MIN = 3 * 60 * 1000;
+  log('Registering mail flusher (every 3m)', 'sovereign');
+  trackInterval(async () => {
+    withJobLock("mail_flusher", 2 * 60 + 30, async () => {
+      const { flushDueMailShipments } = await import('../services/mail/mailFlusher');
+      const r = await flushDueMailShipments();
+      if (r.claimed > 0) log(`[mail-flusher] claimed=${r.claimed} sent=${r.sent} failed=${r.failed}`, 'sovereign');
+    }).catch((err: any) => {
+      log(`[mail-flusher] failed: ${err?.message ?? err}`, 'sovereign');
+    });
+  }, THREE_MIN);
+}
+
+/**
+ * Dispatch reaper — every 10 minutes, marks `solene_dispatch_queue` rows
+ * stuck `in_progress` past their own timeout + a 5-minute margin as 'failed'.
+ * Those are workers that crashed mid-dispatch: the claim is exactly-once
+ * (FOR UPDATE SKIP LOCKED) so the row is never re-claimed, but without a
+ * reaper it would pin a queue slot forever. Reaped rows are FAILED, never
+ * requeued — an orphan's outward effect may have partially fired, so the
+ * safe stance is at-most-once (surface it, never risk a double-send).
+ */
+function startDispatchReaperJob() {
+  const TEN_MIN = 10 * 60 * 1000;
+  log('Registering dispatch reaper (every 10m)', 'sovereign');
+  trackInterval(async () => {
+    // TTL = 9m (≈90% of cadence) so a stuck instance can't double-run it.
+    withJobLock("dispatch_reaper", 9 * 60, async () => {
+      const { reapOrphanedDispatches } = await import('../services/solene/dispatchQueue');
+      const n = await reapOrphanedDispatches();
+      if (n > 0) log(`[dispatch-reaper] reaped ${n} orphaned in_progress dispatch(es)`, 'sovereign');
+    }).catch((err: any) => {
+      log(`[dispatch-reaper] reap failed: ${err?.message ?? err}`, 'sovereign');
+    });
+  }, TEN_MIN);
+}
+
+/**
+ * Proof-receipt chain self-verify (Frontier #4) — daily, walks every scope's
+ * persisted receipt chain and re-checks the per-row seal + chain linkage. A
+ * tamper-evident log is only worth anything if something re-verifies it: a
+ * silent corruption (an edited row, a forked chain) becomes a critical page
+ * instead of sitting undetected until a regulator/insurer asks for the proof.
+ */
+function startProofChainAuditJob() {
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  log('Registering proof-receipt chain audit (daily)', 'sovereign');
+  trackInterval(async () => {
+    // Daily — TTL = 23h (≈90% of cadence).
+    withJobLock("proof_chain_audit", 23 * 60 * 60, async () => {
+      const { auditAllReceiptChains } = await import('../services/autopilot/proofReceiptStore');
+      const r = await auditAllReceiptChains();
+      if (r.brokenChains.length > 0) {
+        const detail = r.brokenChains.map((b) => `${b.scope}: ${b.reason}`).join('; ');
+        log(`[proof-chain-audit] BROKEN ${r.brokenChains.length}/${r.scopesChecked} chains — ${detail}`, 'sovereign');
+        const { sendSolenePage } = await import('../services/solene/pagerService');
+        await sendSolenePage({
+          severity: 'critical',
+          subject: `Proof-receipt chain integrity broken (${r.brokenChains.length} scope${r.brokenChains.length === 1 ? '' : 's'})`,
+          body: `A persisted governance receipt chain failed self-verification — possible tampering or corruption. ${detail}`,
+        }).catch(() => { /* paging best-effort; the log line is the durable record */ });
+      } else {
+        log(`[proof-chain-audit] OK — ${r.receiptsChecked} receipts across ${r.scopesChecked} scopes verify`, 'sovereign');
+      }
+    }).catch((err: any) => {
+      log(`[proof-chain-audit] failed: ${err?.message ?? err}`, 'sovereign');
+    });
+  }, ONE_DAY);
+}
+
+/**
  * Strategic proposals — weekly + monthly. Weekly fires Sundays at
  * 00:00 UTC; monthly synthesis fires on the 1st at 10:00 UTC so its
  * output is available when the founder letter generates at 12:00 UTC.
@@ -2533,6 +2704,48 @@ function startSoleneContinuousTickJob() {
 }
 
 /**
+ * Founder Autopilot — loop-stall watchdog.
+ *
+ * The autopilot's one un-silenceable failure is going dark. This independent
+ * observer reads the loop's heartbeat (latest morning pulse) + the dispatch
+ * queue and pages the founder if the loop has STALLED. It runs on its own
+ * interval (offset from the tick) so a wedged tick can't suppress its own
+ * alarm. Paging is debounced to once per 6h so a persistent stall doesn't spam.
+ */
+let lastStallPageAt = 0;
+function startSoleneLoopWatchdogJob() {
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  const SIX_HOURS = 6 * 60 * 60 * 1000;
+  const TTL_SECONDS = 5 * 60;
+  log('Registering Solene loop-stall watchdog (every 30 minutes)', 'solene-watchdog');
+  const runOnce = async () => {
+    await withJobLock('solene_loop_watchdog', TTL_SECONDS, async () => {
+      const { observeLoopHealth } = await import('../services/autopilot/loopStall');
+      const v = await observeLoopHealth();
+      if (v.severity !== 'healthy') {
+        log(`[solene-watchdog] ${v.summary}`, 'solene-watchdog');
+      }
+      if (v.shouldPageFounder && Date.now() - lastStallPageAt > SIX_HOURS) {
+        lastStallPageAt = Date.now();
+        const { sendSolenePage } = await import('../services/solene/pagerService');
+        await sendSolenePage({
+          severity: 'critical',
+          subject: 'Autopilot loop has stalled',
+          body: v.summary,
+        });
+        log('[solene-watchdog] paged founder: loop stalled', 'solene-watchdog');
+      }
+    }).catch((err) =>
+      log(`[solene-watchdog] failed: ${err}`, 'solene-watchdog'),
+    );
+  };
+  // First run 180s after boot (after the tick's first run at 120s) so a fresh
+  // pulse exists before we judge liveness.
+  setTimeout(() => void runOnce(), 180 * 1000);
+  trackInterval(() => void runOnce(), THIRTY_MINUTES);
+}
+
+/**
  * Solene (COO) — team-state map regenerator.
  *
  * Runs scripts/regenerate-team-state.mjs every 15 minutes so the auto-
@@ -2618,6 +2831,54 @@ function startAgentClaimsExpiryJob() {
       }
     }).catch((err) => {
       log(`[agent-claims] expiry run failed: ${err}`, 'agent-claims');
+    });
+  }, FIVE_MINUTES);
+}
+
+function startEvolutionRegressionScanJob() {
+  const TEN_MINUTES = 10 * 60 * 1000;
+  const TTL_SECONDS = 9 * 60;
+  log(
+    'Registering evolution regression scan (every 10 minutes; durable Stage-6)',
+    'evolution-regression',
+  );
+
+  trackInterval(() => {
+    withJobLock('evolution_regression_scan', TTL_SECONDS, async () => {
+      const { scanDueRegressionChecks } = await import('../services/evolutionPipeline');
+      const r = await scanDueRegressionChecks();
+      if (r.checked > 0 || r.mergesDetected > 0) {
+        log(
+          `[evolution-regression] checks run=${r.checked} merged PRs armed=${r.mergesDetected}`,
+          'evolution-regression',
+        );
+      }
+    }).catch((err) => {
+      log(`[evolution-regression] scan failed: ${err}`, 'evolution-regression');
+    });
+  }, TEN_MINUTES);
+}
+
+function startAutoWitnessSweepJob() {
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  const TTL_SECONDS = 4 * 60 + 30;
+  log(
+    'Registering auto-witness sweep (every 5 minutes; no-op with zero grants)',
+    'auto-witness',
+  );
+
+  trackInterval(() => {
+    withJobLock('autopilot_auto_witness_sweep', TTL_SECONDS, async () => {
+      const { runAutoWitnessSweep } = await import('../services/autopilot/autoWitness');
+      const r = await runAutoWitnessSweep();
+      if (r.witnessed > 0) {
+        log(
+          `[auto-witness] delegated ${r.witnessed}/${r.considered} frozen action(s) under founder-issued grants`,
+          'auto-witness',
+        );
+      }
+    }).catch((err) => {
+      log(`[auto-witness] sweep failed: ${err}`, 'auto-witness');
     });
   }, FIVE_MINUTES);
 }
@@ -3344,6 +3605,18 @@ function startNpmWatchJob() {
           `[npm-watch] daily run: scanned=${r.advisoriesScanned} matched=${r.advisoriesMatched} persisted=${r.advisoriesPersisted} dupes=${r.advisoriesSkippedDuplicate}${r.auditError ? ` err=${r.auditError}` : ''}`,
           'npm-watch',
         );
+        // Step-away gap #4 — the immune-response wire. The watch above only
+        // RECORDS advisories; this runs the plan→act chain (gated repair plan,
+        // self-patch PR when earned + enabled, deduped founder ask for the
+        // witnessed class, honesty-ledger report row). Never throws.
+        const { runImmuneResponse } = await import(
+          '../services/autopilot/immuneResponse'
+        );
+        const immune = await runImmuneResponse();
+        log(
+          `[npm-watch] immune response: ${immune.line} selfPatch=${immune.selfPatch.ran ? immune.selfPatch.prUrl ?? 'PR' : immune.selfPatch.reason} ask=${immune.askCreated}`,
+          'npm-watch',
+        );
       }).catch((err) => {
         log(`[npm-watch] daily run failed: ${err}`, 'npm-watch');
       });
@@ -3591,6 +3864,37 @@ function startNpsPromptSchedulerJob() {
 }
 
 // ============================================================================
+// Tier 2C (elevation blueprint) — lifecycle email dispatcher.
+//
+// Daily 15:05 UTC (morning across US timezones — a check-in email landing at
+// 3am local reads as automation; one landing mid-morning reads as a person).
+// Finds orgs due for d7_check_in / d30_nps / cancellation_reason_ask and
+// dispatches each at most once, ever, per (org, key). Eligibility windows,
+// dedupe, and the once-only contract live in jobs/lifecycleDispatch.ts.
+// ============================================================================
+function startLifecycleDispatchJob() {
+  const TTL_SECONDS = 55 * 60;
+
+  log('Registering lifecycle dispatch job (daily 15:05 UTC)', 'lifecycle');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 15 && now.getUTCMinutes() >= 5 && now.getUTCMinutes() < 10) {
+      void withJobLock('lifecycle_dispatch', TTL_SECONDS, async () => {
+        const { runLifecycleDispatch } = await import('./lifecycleDispatch');
+        const counters = await runLifecycleDispatch(now);
+        log(
+          `[lifecycle-dispatch] daily run: candidates=${counters.candidates} dispatched=${counters.dispatched} skipped=${counters.skipped} noOwnerEmail=${counters.noOwnerEmail} errors=${counters.errors}`,
+          'lifecycle',
+        );
+      }).catch((err) => {
+        log(`[lifecycle-dispatch] daily run failed: ${err}`, 'lifecycle');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ============================================================================
 // Rafe — Recourse-loop heartbeat (every 30 minutes).
 //
 // The recourse loop (server/services/recourseDrafter.ts) turns every negative
@@ -3822,6 +4126,7 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Start domain-audit substrate sweep (daily — Iris shared continuous audit)
   startDomainAuditJob();
+  startOperatorCycleJob();
 
   // Start sequence processor background job (every 60 seconds)
   startSequenceProcessorJob();
@@ -3860,6 +4165,11 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Customer Concentration (daily 13:00 UTC) — MRR concentration alerts
   startCustomerConcentrationJob();
+
+  // Launch-Week WS4 — Gate-Watcher (daily 09:00 UTC): condition-gated
+  // roadmap items detect their own moment and become one-tap founder
+  // Decisions (or auto-execute where the studio dial says autoApprove).
+  startGateWatcherJob();
 
   // §1026.41 periodic statements — monthly (1st of month, 09:00 UTC).
   // Generates one statement per active loan per org per cycle.
@@ -3966,6 +4276,22 @@ export async function runScheduledJobs(): Promise<void> {
   // Phase 1+ consideration when revenue justifies the ops complexity.
   startSoleneMorningPulseJob();
   startSoleneContinuousTickJob();
+  startSoleneLoopWatchdogJob();
+
+  // Founder Autopilot — seed the per-domain Trust Ledger at the safe default
+  // (every domain at OBSERVE) so the autonomy gate has rows to read + the
+  // founder UI has a ledger to show. Idempotent (onConflictDoNothing); fire-
+  // and-forget so a transient DB hiccup can't block job registration. The gate
+  // fails safe regardless — an absent row reads as OBSERVE → block.
+  void (async () => {
+    try {
+      const { ensureDomainsSeeded } = await import('../services/autopilot/domainAutonomy');
+      await ensureDomainsSeeded();
+      log('[autopilot] Trust Ledger domains seeded (OBSERVE)', 'autopilot');
+    } catch (err) {
+      log(`[autopilot] domain seed failed (gate still fails safe): ${err}`, 'autopilot');
+    }
+  })();
 
   // Iris — continuous p95 baseline (every 30 minutes). Drains the
   // response-time ring buffer for IRIS_TRACKED_ENDPOINTS, persists p50/
@@ -4017,6 +4343,12 @@ export async function runScheduledJobs(): Promise<void> {
   // dialog reads the queue on next login via /api/nps/pending.
   startNpsPromptSchedulerJob();
 
+  // Tier 2C — lifecycle email dispatcher (daily 15:05 UTC ≈ morning US).
+  // Sends d7_check_in / d30_nps / cancellation_reason_ask through
+  // lifecycleProgram.sendLifecycleMessage (suppression-checked, audited,
+  // CAN-SPAM-compliant transport via the worker's lifecycle_email handler).
+  startLifecycleDispatchJob();
+
   // Rafe — Recourse-loop heartbeat (every 30 minutes). Sweeps negative
   // customer signals into the recourse_drafts ledger and drafts the
   // founder's personal reply (aggregateAndDraft, bounded 25/tick), then
@@ -4066,6 +4398,19 @@ export async function runScheduledJobs(): Promise<void> {
   // a crashed dispatch or forgotten releaseClaim() can't leave a stale row
   // blocking future commits via the pre-commit hook.
   startAgentClaimsExpiryJob();
+
+  // Step-away gap #5 — auto-witness sweep (every 5m). Taps frozen witnessed-
+  // send actions covered by a live founder-issued WitnessGrant, through the
+  // SAME approvePendingHand path a founder tap uses. With zero grants issued
+  // this is a pure no-op; the founder issues/revokes grants on the Control
+  // door. Money/broadcast classes require explicit opt-in per grant.
+  startAutoWitnessSweepJob();
+
+  // Step-away gap #6 — durable Stage-6 regression scan (every 10m). Fires the
+  // 30-min post-deploy evolution regression check from a persisted due-time
+  // (the old in-process setTimeout died on redeploy and never armed in PR
+  // mode), and detects founder-merged evolution PRs to arm their checks.
+  startEvolutionRegressionScanJob();
 
   // Solene — team-state map regenerator (every 15m). Refreshes the
   // auto-generated section of docs/internal/solene-team-state.md so the
@@ -4136,6 +4481,18 @@ export async function runScheduledJobs(): Promise<void> {
   // previews (commitAt passed + 1h) as 'failed' so they don't
   // misleadingly show up in /founder/preview.
   startActionPreviewSweeperJob();
+
+  // Dispatch reaper — every 10m; fails orphaned in_progress dispatches
+  // (worker crashed mid-dispatch) so a dead row can't pin a queue slot.
+  startDispatchReaperJob();
+
+  // Mail flusher — every 3m; sends queued mail_shipments past their hold
+  // window via Lob + refunds on failure (never charge-without-send).
+  startMailFlusherJob();
+
+  // Proof-receipt chain audit — daily; re-verifies every persisted
+  // receipt chain and pages on a broken seal/link (Frontier #4).
+  startProofChainAuditJob();
 
   // Customer monthly letters — per-org narrative from Sophie.
   // Fires on the 1st at 15:00 UTC (3h after the founder letter
@@ -4525,8 +4882,13 @@ export async function runScheduledJobs(): Promise<void> {
 
   // ─── Panel-300 #9: reconciliation cron (daily) ──────────────────
   // Compares Stripe MTD-paid total vs revenue_recognition_periods
-  // recognized_cents. Divergence > $1 → status='divergent' run row.
-  import("../services/reconciliation").then(({ runReconciliation }) => {
+  // recognized_cents AND vs financial_ledger revenue rows (Tier 2B money
+  // spine — divergence on that rule pages critical via the 1D alert spine).
+  // Divergence > tolerance → status='divergent' run row + raiseAlert.
+  // Tier 2B activation: ensureDefaultRules() self-provisions the two Stripe
+  // rules before every run — previously nothing ever seeded
+  // reconciliation_rules, so this cron was a registered no-op in prod.
+  import("../services/reconciliation").then(({ runReconciliation, ensureDefaultRules }) => {
     import("./scheduler").then(({ scheduleSelfRescheduling }) => {
       log("Reconciliation cron registered (self-rescheduling, 24h)", "billing");
       scheduleSelfRescheduling({
@@ -4536,6 +4898,7 @@ export async function runScheduledJobs(): Promise<void> {
         run: async () => {
           // Daily cadence; TTL = expected max duration + buffer (60m).
           await withJobLock("reconciliation_cron", 60 * 60, async () => {
+            await ensureDefaultRules();
             await runReconciliation();
           });
         },
@@ -4543,6 +4906,65 @@ export async function runScheduledJobs(): Promise<void> {
     });
   }).catch(err => {
     log(`Failed to import reconciliation cron: ${err}`, "billing");
+  });
+
+  // ─── Tier 2B: ledger dead-letter replay (hourly) ─────────────────
+  // Re-dispatches failed financial_ledger postings captured by the Stripe
+  // webhook catch blocks (ledger_dead_letters) through the same idempotent
+  // posting functions, and raises an alert-spine finding when entries
+  // accumulate (warning) or are abandoned after max attempts (critical).
+  import("../services/ledgerDeadLetter").then(({ runLedgerDeadLetterSweep }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("Ledger dead-letter replay registered (self-rescheduling, 1h)", "billing");
+      scheduleSelfRescheduling({
+        name: "ledger_dead_letter_replay",
+        intervalMs: 60 * 60 * 1000,
+        initialDelayMs: 5 * 60 * 1000,
+        run: async () => {
+          await withJobLock("ledger_dead_letter_replay", 30 * 60, async () => {
+            const r = await runLedgerDeadLetterSweep();
+            if (r.scanned > 0) {
+              log(
+                `[ledger-dlq] replayed=${r.replayed} failed=${r.failed} abandoned=${r.abandoned} pending=${r.pendingAfter}`,
+                "billing",
+              );
+            }
+          });
+        },
+      });
+    });
+  }).catch(err => {
+    log(`Failed to import ledger dead-letter replay: ${err}`, "billing");
+  });
+
+  // ─── Tier 3F: county market rollup (monthly) ─────────────────────
+  // Cross-org data co-op: recomputes the current + previous month's
+  // privacy-preserving county rollups (k>=5 floor, value bucketing,
+  // structural org-null — see server/services/dataCoop/privacyRollup.ts),
+  // records a county_rollup_runs ledger row, raises an alert-spine warning
+  // after two consecutive zero-rollup runs, and drafts the quarterly market
+  // report at quarter close (draft only — founder reviews; never published).
+  import("../services/dataCoop/countyRollupJob").then(({ runCountyMarketRollup }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("County market rollup registered (self-rescheduling, 30d)", "data");
+      scheduleSelfRescheduling({
+        name: "county_market_rollup",
+        intervalMs: 30 * 24 * 60 * 60 * 1000,
+        initialDelayMs: 18 * 60 * 1000,
+        run: async () => {
+          // Monthly cadence; TTL = expected max duration + buffer (60m).
+          await withJobLock("county_market_rollup", 60 * 60, async () => {
+            const r = await runCountyMarketRollup();
+            log(
+              `[data-coop] counties=${r.countiesScanned} rollups=${r.rollupsWritten} periods=${r.periods.join(",")}`,
+              "data",
+            );
+          });
+        },
+      });
+    });
+  }).catch(err => {
+    log(`Failed to import county market rollup: ${err}`, "data");
   });
 
   // ─── Panel-300 #10: disclosure-timing dispatcher (every 1h) ──────
@@ -4962,7 +5384,7 @@ export async function runScheduledJobs(): Promise<void> {
   // Compares the live Stripe account against shared/billing/tier-pricing.ts.
   // Surfaces missing tiers, price drift, and orphan acreos_product
   // entries as /founder/now inbox items. See
-  // docs/exhaustive-completion/pillar-t-self-healing-ops.md.
+  // docs/archive/exhaustive-completion/pillar-t-self-healing-ops.md.
   import("../services/stripeDriftDetector").then(({ runStripeDriftJob }) => {
     import("./scheduler").then(({ scheduleSelfRescheduling }) => {
       log("Stripe drift detector registered (self-rescheduling, 24h)", "ops");
@@ -5039,7 +5461,7 @@ export async function runScheduledJobs(): Promise<void> {
   });
 
   // ─── Pillar U — monthly pillar review ────────────────────────────────
-  // Reads docs/exhaustive-completion/pillar-*.md, scores each on
+  // Reads docs/archive/exhaustive-completion/pillar-*.md, scores each on
   // shipped-artifact recency, writes pillar-review-{YYYY-MM-DD}.md,
   // surfaces stale/dead pillars as /founder/now inbox items.
   import("../services/pillarReviewer").then(({ runPillarReviewJob }) => {
@@ -5240,38 +5662,103 @@ export async function runScheduledJobs(): Promise<void> {
         run: async () => {
           // Weekly cadence; TTL generous for a full-table walk (30m).
           await withJobLock("audit_chain_verify", 30 * 60, async () => {
+            // ── 1) Global audit_events chain (Quinn F2) ─────────────────
             const result = await verifyAuditEventsChain();
             if (result.ok) {
               log(
                 `[audit-chain] OK — scanned=${result.scanned} preChainSkipped=${result.preChainSkipped}`,
                 "audit-chain",
               );
-              return;
+            } else {
+              const f = result.failure;
+              const title = "Audit-events hash chain BROKEN";
+              const body =
+                `verifyAuditEventsChain reported ok:false after scanning ${result.scanned} rows. ` +
+                `First failure: auditEventId=${f?.auditEventId} seq=${f?.seq} reason=${f?.reason}. ` +
+                `This means an audit_events row was tampered with, reordered, or lost its hash — ` +
+                `a tamper-evidence / integrity violation.`;
+              log(`[audit-chain] ${body}`, "audit-chain");
+              // Tier 1D: one spine call replaces the recordFinding +
+              // notifyOnCall pair (the spine pages critical findings itself).
+              const { raiseAlert } = await import("../services/alertSpine");
+              await raiseAlert({
+                severity: "critical",
+                source: "audit_chain_verify",
+                title,
+                detail: body,
+                dedupeKey: `audit_chain_broken:${f?.auditEventId ?? "unknown"}`,
+                domain: "compliance",
+                citedReason: "SOC 2 CC7.2/CC7.3 — the audit_events chain must be tamper-evident.",
+                subjectRef: f?.auditEventId ?? null,
+                alertType: "audit_chain_broken",
+                pagePriority: "P1",
+                metadata: { scanned: result.scanned, failure: f },
+              }).catch(() => {/* raiseAlert is internally best-effort */});
             }
-            const f = result.failure;
-            const title = "Audit-events hash chain BROKEN";
-            const body =
-              `verifyAuditEventsChain reported ok:false after scanning ${result.scanned} rows. ` +
-              `First failure: auditEventId=${f?.auditEventId} seq=${f?.seq} reason=${f?.reason}. ` +
-              `This means an audit_events row was tampered with, reordered, or lost its hash — ` +
-              `a tamper-evidence / integrity violation.`;
-            log(`[audit-chain] ${body}`, "audit-chain");
-            // Tier 1D: one spine call replaces the recordFinding +
-            // notifyOnCall pair (the spine pages critical findings itself).
-            const { raiseAlert } = await import("../services/alertSpine");
-            await raiseAlert({
-              severity: "critical",
-              source: "audit_chain_verify",
-              title,
-              detail: body,
-              dedupeKey: `audit_chain_broken:${f?.auditEventId ?? "unknown"}`,
-              domain: "compliance",
-              citedReason: "SOC 2 CC7.2/CC7.3 — the audit_events chain must be tamper-evident.",
-              subjectRef: f?.auditEventId ?? null,
-              alertType: "audit_chain_broken",
-              pagePriority: "P1",
-              metadata: { scanned: result.scanned, failure: f },
-            }).catch(() => {/* raiseAlert is internally best-effort */});
+
+            // ── 2) Per-org audit_log chains (Tier 2D, 2026-06-10) ──────
+            // The org-scoped audit_log table carries its own per-tenant
+            // SHA-256 chain (Kareem §1) that until now was only verified
+            // on demand via the admin endpoint. Walk every org's chain
+            // weekly; tamper/break → CRITICAL page per failing org.
+            // Runs even when the global chain failed — one broken chain
+            // must never mask another.
+            try {
+              const { verifyAllOrgAuditLogChains } = await import("../utils/auditLogChain");
+              const orgSummary = await verifyAllOrgAuditLogChains();
+              if (orgSummary.ok) {
+                log(
+                  `[audit-chain] per-org OK — orgs=${orgSummary.orgsChecked} scanned=${orgSummary.totalScanned}`,
+                  "audit-chain",
+                );
+              } else {
+                const { raiseAlert } = await import("../services/alertSpine");
+                for (const failure of orgSummary.failures) {
+                  const f = failure.failure;
+                  const detail =
+                    `verifyAuditLogChain(org=${failure.organizationId}) reported ok:false after ` +
+                    `scanning ${failure.scanned} rows. First failure: auditLogId=${f?.auditLogId} ` +
+                    `reason=${f?.reason}. An org-scoped audit_log row was tampered with, deleted ` +
+                    `without a documented purge, or lost its hash — a per-tenant tamper-evidence violation.`;
+                  log(`[audit-chain] ${detail}`, "audit-chain");
+                  await raiseAlert({
+                    severity: "critical",
+                    source: "audit_chain_verify",
+                    title: `Org audit_log hash chain BROKEN (org ${failure.organizationId})`,
+                    detail,
+                    dedupeKey: `org_audit_chain_broken:${failure.organizationId}`,
+                    domain: "compliance",
+                    citedReason:
+                      "SOC 2 CC7.2/CC7.3 — every tenant's audit_log chain must be tamper-evident.",
+                    subjectRef: String(failure.organizationId),
+                    alertType: "audit_chain_broken",
+                    pagePriority: "P1",
+                    metadata: {
+                      organizationId: failure.organizationId,
+                      scanned: failure.scanned,
+                      failure: f,
+                    },
+                  }).catch(() => {/* raiseAlert is internally best-effort */});
+                }
+                for (const err of orgSummary.errors) {
+                  // Verifier infra errors are NOT tamper evidence — warn,
+                  // don't page, but never let them pass silently (a verifier
+                  // that can't run is a dark control).
+                  await raiseAlert({
+                    severity: "warning",
+                    source: "audit_chain_verify",
+                    title: `Org audit_log chain verification errored (org ${err.organizationId})`,
+                    detail: `verifyAuditLogChain(org=${err.organizationId}) threw: ${err.message}`,
+                    dedupeKey: `org_audit_chain_verify_error:${err.organizationId}`,
+                    domain: "compliance",
+                    alertType: "audit_chain_verify_error",
+                    metadata: { organizationId: err.organizationId },
+                  }).catch(() => {/* raiseAlert is internally best-effort */});
+                }
+              }
+            } catch (orgErr) {
+              log(`[audit-chain] per-org verification failed to run: ${orgErr}`, "audit-chain");
+            }
           });
         },
       });

@@ -46,6 +46,45 @@ export interface PendingUtm {
   utm_content?: string;
   referrer?: string;
   landedAt?: string;
+  // Tier 2C — referral + tier context ride the same first-touch chain.
+  ref?: string;
+  plan?: string;
+  billing?: string;
+  // Tier 3A — the public parcel report ("ST/county-slug/APN") that brought
+  // this visitor in. Captured from a /p/:state/:county/:apn landing so the
+  // parcel rides the first-touch snapshot through signup, exactly like ?ref=.
+  parcel?: string;
+}
+
+// Referral codes are 8-char base64url-uppercase from routes-referral
+// generateCode(); accept a slightly wider [4,16] window so a future code
+// format change doesn't silently drop attribution, but reject anything
+// that isn't URL-token shaped (defends against junk/abuse params).
+const REF_CODE_RE = /^[A-Za-z0-9_-]{4,16}$/;
+
+// Pricing-CTA tier context. Closed vocabularies — these come from our own
+// CTAs, so anything else is noise and gets dropped.
+const PLAN_VALUES = new Set(["free", "starter", "pro", "scale"]);
+const BILLING_VALUES = new Set(["monthly", "yearly"]);
+
+// Tier 3A — public parcel report pathname. Mirrors the server route shape
+// /p/:state/:county/:apn; segment bounds match normalizeReportKey's limits.
+const PARCEL_PATH_RE = /^\/p\/([A-Za-z]{2})\/([a-z0-9-]{1,64})\/([^/?#]{2,64})$/;
+
+/** Parse a /p/... pathname into the "ST/county-slug/APN" carry format. */
+function parcelFromPathname(pathname: string): string | undefined {
+  const m = PARCEL_PATH_RE.exec(pathname);
+  if (!m) return undefined;
+  let apn = m[3];
+  try {
+    apn = decodeURIComponent(apn);
+  } catch {
+    /* keep raw */
+  }
+  // Server-side validation accepts [A-Za-z0-9 ._-]{2,64} — pre-filter here
+  // so a junk path never produces a snapshot field the server will reject.
+  if (!/^[A-Za-z0-9 ._-]{2,64}$/.test(apn) || !/\d/.test(apn)) return undefined;
+  return `${m[1].toUpperCase()}/${m[2].toLowerCase()}/${apn}`;
 }
 
 /**
@@ -90,7 +129,36 @@ function buildSnapshot(): PendingUtm | null {
     snap.referrer = referrer.slice(0, 1024);
   }
 
-  if (!hasUtm && !crossOrigin) return null;
+  // Tier 2C — referral code + pricing-CTA tier context. Each is
+  // acquisition-relevant on its own (a ?ref= link with no UTM params
+  // must still produce a snapshot, or the referral is lost at signup).
+  let hasGrowthContext = false;
+  const ref = params.get("ref");
+  if (ref && REF_CODE_RE.test(ref)) {
+    snap.ref = ref.toUpperCase();
+    hasGrowthContext = true;
+  }
+  const plan = params.get("plan")?.toLowerCase();
+  if (plan && PLAN_VALUES.has(plan)) {
+    snap.plan = plan;
+    hasGrowthContext = true;
+  }
+  const billing = params.get("billing")?.toLowerCase();
+  if (billing && BILLING_VALUES.has(billing)) {
+    snap.billing = billing;
+    hasGrowthContext = true;
+  }
+
+  // Tier 3A — landing directly on a shared public parcel report is
+  // acquisition signal on its own (a shared /p link with no UTM params
+  // must still produce a snapshot, or the parcel carry is lost at signup).
+  const parcel = parcelFromPathname(window.location.pathname);
+  if (parcel) {
+    snap.parcel = parcel;
+    hasGrowthContext = true;
+  }
+
+  if (!hasUtm && !crossOrigin && !hasGrowthContext) return null;
 
   snap.landedAt = new Date().toISOString();
   return snap;
@@ -115,6 +183,38 @@ export function capturePendingUtm(): void {
     if (sessionStorage.getItem(PENDING_UTM_KEY)) return;
     const snap = buildSnapshot();
     if (!snap) return;
+    sessionStorage.setItem(PENDING_UTM_KEY, JSON.stringify(snap));
+  } catch {
+    /* sessionStorage unavailable (private mode etc.) — silent no-op. */
+  }
+}
+
+/**
+ * Tier 3A — record the public parcel report the visitor viewed so it rides
+ * the first-touch snapshot through signup. Unlike capturePendingUtm (which
+ * never overwrites an existing snapshot), this MERGES the parcel into the
+ * existing snapshot when one exists — a visitor who landed on /?utm_source=x
+ * and then browsed to a /p report keeps BOTH the UTM attribution and the
+ * parcel. First parcel wins; later report views don't overwrite it.
+ *
+ * Called from the public report page on mount (covers client-side
+ * navigation, where buildSnapshot's pathname check at first load missed it).
+ */
+export function capturePendingParcel(
+  state: string,
+  countySlug: string,
+  apn: string,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    const parcel = parcelFromPathname(
+      `/p/${state}/${countySlug}/${encodeURIComponent(apn)}`,
+    );
+    if (!parcel) return;
+    const existing = readPendingUtm();
+    if (existing?.parcel) return; // first parcel wins
+    const snap: PendingUtm = existing ?? { landedAt: new Date().toISOString() };
+    snap.parcel = parcel;
     sessionStorage.setItem(PENDING_UTM_KEY, JSON.stringify(snap));
   } catch {
     /* sessionStorage unavailable (private mode etc.) — silent no-op. */

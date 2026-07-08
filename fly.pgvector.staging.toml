@@ -1,0 +1,47 @@
+# Staging Postgres — a CUSTOM pgvector image, not Fly's managed Postgres.
+#
+# Why custom: AcreOS's schema uses the `vector` extension (pgvector) for the
+# memory/embedding tables. Fly's managed Postgres image does not ship the
+# pgvector extension, and apt-installing it on a 256MB managed PG machine OOMs.
+# The official `pgvector/pgvector:pg16` image has it built in.
+#
+# Provision:
+#   fly apps create acreos-staging-pgv
+#   fly volumes create pgdata -a acreos-staging-pgv -r iad -n 1 -s 1   # 1GB
+#   fly secrets set -a acreos-staging-pgv POSTGRES_PASSWORD=<generated>
+#   fly deploy -a acreos-staging-pgv -c fly.pgvector.staging.toml --remote-only
+#
+# Then point the app at it over 6PN (.internal):
+#   fly secrets set -a acreos-staging \
+#     DATABASE_URL="postgresql://acreos:<pw>@acreos-staging-pgv.internal:5432/acreos"
+#
+# Schema is built with `npm run db:push` over a `fly proxy 15432:5432 -a
+# acreos-staging-pgv` tunnel (full current schema from shared/schema.ts). The
+# incremental migrate.mjs seed layer is intentionally skipped on staging — see
+# fly.staging.toml's no-op release_command and tests/README-realism-mode.md.
+
+app = "acreos-staging-pgv"
+primary_region = "iad"
+
+[build]
+  image = "pgvector/pgvector:pg16"
+
+[env]
+  POSTGRES_USER = "acreos"
+  POSTGRES_DB = "acreos"
+  PGDATA = "/var/lib/postgresql/data/pgdata"
+
+[mounts]
+  source = "pgdata"
+  destination = "/var/lib/postgresql/data"
+
+[[services]]
+  internal_port = 5432
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

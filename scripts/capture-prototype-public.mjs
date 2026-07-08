@@ -14,7 +14,7 @@
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 
-const OUT = "docs/exhaustive-completion/prototype-screenshots";
+const OUT = "docs/archive/exhaustive-completion/prototype-screenshots";
 const VIEWPORTS = [
   { name: "1440", width: 1440, height: 900 },
   { name: "375", width: 375, height: 800 },

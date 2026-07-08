@@ -184,6 +184,10 @@ export const LANDING_COPY = {
     dimensionsTitle: "Six weighted dimensions",
     dimensionsSub:
       "The score is a weighted blend of six dimensions, drawn from the same government and market data behind every parcel check.",
+    // Keep in sync with LCS_METHODOLOGY_VERSION in server/services/landCredit.ts
+    // (the canonical constant stamped on every public report).
+    methodologyNote:
+      "Published methodology, version v1 — the weights below are the methodology. Any change to the weights, scale, or grade thresholds revs the version, and every free parcel report is stamped with the version that produced it.",
     dimensions: [
       { name: "Location", weight: 25, what: "Market strength, population growth, economic health, accessibility." },
       { name: "Financial", weight: 20, what: "Cash flow, appreciation, liquidity, tax burden, carrying cost." },

@@ -37,6 +37,8 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate, formatDateTime } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 type LossMitStatus =
   | "open"
@@ -104,18 +106,6 @@ const ACTION_LABELS: Record<ActionType, string> = {
   bpo_refresh_ordered: "BPO refresh ordered",
   note: "Note",
 };
-
-function fmtDate(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-}
-
-function fmtDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
 
 const STATUS_LABELS: Record<LossMitStatus, string> = {
   open: "Open",
@@ -206,7 +196,7 @@ export function NoteLossMitCard({ noteId, currentNoteStatus }: { noteId: string;
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Opened</div>
-                <div className="font-medium mt-0.5">{fmtDate(c.openedAt)}</div>
+                <div className="font-medium mt-0.5">{formatDate(c.openedAt)}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">DPD at open</div>
@@ -249,7 +239,7 @@ export function NoteLossMitCard({ noteId, currentNoteStatus }: { noteId: string;
                       <div className="font-medium">{ACTION_LABELS[a.actionType]}</div>
                       {a.notes && <div className="text-muted-foreground mt-0.5 whitespace-pre-wrap">{a.notes}</div>}
                     </div>
-                    <span className="text-muted-foreground whitespace-nowrap">{fmtDateTime(a.performedAt)}</span>
+                    <span className="text-muted-foreground whitespace-nowrap">{formatDateTime(a.performedAt)}</span>
                   </li>
                 ))}
               </ul>
@@ -332,7 +322,7 @@ function OpenCaseDialog({ open, onOpenChange, noteId }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button onClick={() => submit.mutate()} disabled={submit.isPending}>
             {submit.isPending ? "Opening…" : "Open case"}
           </Button>
@@ -417,7 +407,7 @@ function LogActionDialog({ open, onOpenChange, caseId, noteId }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button onClick={() => submit.mutate()} disabled={submit.isPending}>
             {submit.isPending ? "Logging…" : "Log action"}
           </Button>
@@ -477,7 +467,7 @@ function CloseCaseButton({ caseId, noteId }: { caseId: string; noteId: string })
             </Select>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>{Verbs.CANCEL}</Button>
             <Button onClick={() => submit.mutate()} disabled={submit.isPending}>
               {submit.isPending ? "Closing…" : "Close"}
             </Button>

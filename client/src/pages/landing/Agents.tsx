@@ -92,13 +92,29 @@ export function Agents() {
   const [activeIdx, setActiveIdx] = useState(0);
   const a = SURFACES[activeIdx];
 
+  // Roving-tabindex keyboard support per the WAI-ARIA tabs pattern:
+  // arrows move + activate, Home/End jump, Tab leaves the tablist.
+  function onTabKeyDown(e: React.KeyboardEvent<HTMLButtonElement>, i: number) {
+    let next: number | null = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (i + 1) % SURFACES.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp")
+      next = (i - 1 + SURFACES.length) % SURFACES.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = SURFACES.length - 1;
+    if (next !== null) {
+      e.preventDefault();
+      setActiveIdx(next);
+      document.getElementById(`agent-tab-${SURFACES[next].id}`)?.focus();
+    }
+  }
+
   return (
     <section className="lp-section" id="agents">
       <div className="lp-eyebrow lp-eyebrow-brand">{c.eyebrow}</div>
       <h2 className="lp-section-title">{c.title}</h2>
       <p className="lp-section-sub">{c.sub}</p>
 
-      <div className="lp-agents-tabs" role="tablist">
+      <div className="lp-agents-tabs" role="tablist" aria-label="Pax surfaces">
         {SURFACES.map((s, i) => (
           <button
             key={s.id}
@@ -106,8 +122,10 @@ export function Agents() {
             aria-selected={activeIdx === i}
             aria-controls={`agent-panel-${s.id}`}
             id={`agent-tab-${s.id}`}
+            tabIndex={activeIdx === i ? 0 : -1}
             className={`lp-agent-tab ${activeIdx === i ? "lp-agent-tab-active" : ""}`}
             onClick={() => setActiveIdx(i)}
+            onKeyDown={(e) => onTabKeyDown(e, i)}
             style={
               activeIdx === i
                 ? ({ "--tab-color": PAX_COLOR } as React.CSSProperties)
@@ -131,13 +149,14 @@ export function Agents() {
         role="tabpanel"
         id={`agent-panel-${a.id}`}
         aria-labelledby={`agent-tab-${a.id}`}
+        tabIndex={0}
       >
         <div>
           <h3 className="lp-agent-tagline">{a.tagline}</h3>
           <ul className="lp-agent-bullets">
             {a.bullets.map((b, i) => (
               <li key={i}>
-                <span className="lp-agent-check" style={{ color: PAX_COLOR }}>
+                <span className="lp-agent-check" style={{ color: PAX_COLOR }} aria-hidden="true">
                   ✓
                 </span>
                 {b}

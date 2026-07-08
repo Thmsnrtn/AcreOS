@@ -10,7 +10,7 @@ export function SkipToContent({ href = "#main-content" }: { href?: string }) {
   return (
     <a
       href={href}
-      className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:text-sm focus:font-medium"
+      className="sr-only focus:not-sr-only focus:absolute focus:z-toast focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:text-sm focus:font-medium"
     >
       Skip to content
     </a>

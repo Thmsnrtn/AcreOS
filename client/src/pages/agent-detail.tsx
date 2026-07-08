@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { agentTextClass, agentBgClass, getAgentIdentity } from "@/lib/agent-identity";
 import { useToast } from "@/hooks/use-toast";
@@ -61,12 +61,17 @@ export default function AgentDetailPage() {
     enabled: !!codename,
   });
 
+  const queryClient = useQueryClient();
   const statusMutation = useMutation({
     mutationFn: async (status: string) => {
       const res = await apiRequest("PATCH", `/api/founder/intelligence/company-agents/${codename}/status`, { status });
       return res.json();
     },
-    onSuccess: (_, status) => toast({ title: `Agent ${status}` }),
+    onSuccess: (_, status) => {
+      // The detail card shows the status just changed — refresh it.
+      queryClient.invalidateQueries({ queryKey: [`/api/founder/intelligence/company-agents/${codename}/detail`] });
+      toast({ title: `Agent ${status}` });
+    },
     onError: () =>
       toast({
         title: "Couldn't update agent status",

@@ -3,9 +3,12 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DollarSign, FileText, TrendingUp, Loader2, Download } from "lucide-react";
+import { DollarSign, FileText, TrendingUp, Download } from "lucide-react";
+import { PageSkeleton } from "@/components/page-skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { Verbs } from "@/lib/labels";
 
 interface AnnualInterestReport {
   taxYear: number;
@@ -38,15 +41,29 @@ export default function BookkeepingPage() {
   useDocumentTitle("Bookkeeping");
   const { toast } = useToast();
 
-  const { data: report, isLoading: loadingReport } = useQuery<AnnualInterestReport>({
+  const {
+    data: report,
+    isLoading: loadingReport,
+    isError: reportError,
+    error: reportErrorObj,
+    refetch: refetchReport,
+    isRefetching: reportRefetching,
+  } = useQuery<AnnualInterestReport>({
     queryKey: ["/api/bookkeeping/annual-report", taxYear],
     queryFn: () => fetch(`/api/bookkeeping/annual-report?year=${taxYear}`).then(r => r.json()),
   });
 
-  const { data: summary, isLoading: loadingSummary } = useQuery<PortfolioSummary>({
+  const {
+    data: summary,
+    isLoading: loadingSummary,
+    isError: summaryError,
+    refetch: refetchSummary,
+  } = useQuery<PortfolioSummary>({
     queryKey: ["/api/bookkeeping/portfolio-summary", taxYear],
     queryFn: () => fetch(`/api/bookkeeping/portfolio-summary?year=${taxYear}`).then(r => r.json()),
   });
+
+  const hasError = reportError || summaryError;
 
   // cents → "$X,XXX.XX" with full precision so $1,234.56 never rounds to $1,235.
   const fmt = (n: number) =>
@@ -100,14 +117,25 @@ export default function BookkeepingPage() {
           }}
           data-testid="button-export-bookkeeping"
         >
-          <Download className="w-4 h-4 mr-2" aria-hidden="true" /> Export
+          <Download className="w-4 h-4 mr-2" aria-hidden="true" /> {Verbs.EXPORT}
         </Button>
       </div>
 
       {loadingReport || loadingSummary ? (
-        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading bookkeeping data…
-        </div>
+        <PageSkeleton variant="table" statCards={4} announceText="Loading bookkeeping data" />
+      ) : hasError ? (
+        <QueryErrorState
+          error={reportErrorObj instanceof Error ? reportErrorObj : null}
+          onRetry={() => {
+            refetchReport();
+            refetchSummary();
+          }}
+          isRetrying={reportRefetching}
+          compact
+          title="Couldn't load your books"
+          description="We hit a snag loading your interest income and P&L. Your data is safe — try again."
+          testId="bookkeeping-query-error"
+        />
       ) : (
         <>
           <dl className="grid grid-cols-2 md:grid-cols-4 gap-3">

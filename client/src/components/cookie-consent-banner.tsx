@@ -84,11 +84,11 @@ export function CookieConsentBanner() {
       // under the home-bar gesture zone (the previous bottom-2 had them
       // landing in iOS's tap-intercept area, making the banner feel
       // impossible to click out of on mobile).
-      // z-40 keeps it BELOW the mobile bottom nav (z-50) so it never covers the
+      // z-overlay keeps it BELOW the mobile bottom nav (z-floating) so it never covers the
       // tab bar. On mobile it sits ABOVE the 72px bottom nav (+ safe area) so it
       // doesn't bury primary CTAs like "Add lead"; on sm+ (no bottom nav) it
       // returns to the normal 8px offset.
-      className="fixed inset-x-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(48rem,calc(100vw-2rem))] z-40 rounded-xl border border-border/60 bg-background/95 backdrop-blur-sm p-4 pr-12 shadow-2xl bottom-[calc(72px+env(safe-area-inset-bottom,0px)+12px)] sm:bottom-[max(env(safe-area-inset-bottom,0px)+8px,8px)]"
+      className="fixed inset-x-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(48rem,calc(100vw-2rem))] z-overlay rounded-xl border border-border/60 bg-surface-chrome backdrop-blur-sm p-4 pr-12 shadow-2xl bottom-[calc(72px+env(safe-area-inset-bottom,0px)+12px)] sm:bottom-[max(env(safe-area-inset-bottom,0px)+8px,8px)]"
       data-testid="cookie-consent-banner"
     >
       {/* Explicit dismiss-for-now affordance — top-right X. Snoozes 24h. */}
@@ -97,7 +97,7 @@ export function CookieConsentBanner() {
         onClick={snooze}
         aria-label="Dismiss for now"
         data-testid="cookie-consent-dismiss"
-        className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
@@ -109,7 +109,7 @@ export function CookieConsentBanner() {
           taking no action) keeps optional cookies off. See our{" "}
           <Link
             href="/privacy"
-            className="underline hover:text-foreground inline-flex items-center min-h-11 px-1 -mx-1"
+            className="underline hover:text-foreground active:text-foreground inline-flex items-center min-h-11 px-1 -mx-1"
           >
             Privacy &amp; Cookie Policy
           </Link>
@@ -122,7 +122,12 @@ export function CookieConsentBanner() {
             onClick={decline}
             aria-label="Decline optional cookies"
             data-testid="cookie-consent-decline"
-            className="min-h-11 flex-1 sm:flex-initial"
+            // sm:min-h-11 — the Button default carries sm:min-h-9 (36px,
+            // "desktop stays dense"), which tw-merge keeps alongside a bare
+            // min-h-11 and wins at >=640px. A 768px iPad is a TOUCH device on
+            // the desktop-density arm, and consent is a universal surface:
+            // 44px on every pointer type, every width.
+            className="min-h-11 sm:min-h-11 flex-1 sm:flex-initial"
           >
             Decline
           </Button>
@@ -131,7 +136,7 @@ export function CookieConsentBanner() {
             onClick={accept}
             aria-label="Accept optional cookies"
             data-testid="cookie-consent-accept"
-            className="min-h-11 flex-1 sm:flex-initial"
+            className="min-h-11 sm:min-h-11 flex-1 sm:flex-initial"
           >
             Accept
           </Button>

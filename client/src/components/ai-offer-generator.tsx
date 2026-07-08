@@ -31,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import type { Property } from "@shared/schema";
 import { useProviderStatus } from "@/hooks/use-provider-status";
+import { Verbs } from "@/lib/labels";
 
 interface OfferSuggestion {
   strategyName: string;
@@ -129,6 +130,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     marketValue: property.marketValue ? Number(property.marketValue) : undefined,
   };
 
+  // allow-no-invalidation: AI generation result lands in wizard-local state (setOfferData) — no cached reads change
   const generateOfferMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/ai/generate-offer", propertyData);
@@ -152,6 +154,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     },
   });
 
+  // allow-no-invalidation: AI generation result lands in wizard-local state (setLetterContent) — no cached reads change
   const generateLetterMutation = useMutation({
     mutationFn: async () => {
       const offerAmount = selectedOffer?.offerAmount || Number(customOfferAmount);
@@ -190,6 +193,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
     },
   });
 
+  // allow-no-invalidation: AI prediction is displayed in the wizard only — no cached reads change
   const predictAcceptanceMutation = useMutation({
     mutationFn: async () => {
       const offerAmount = Number(customOfferAmount) || selectedOffer?.offerAmount || 0;
@@ -630,7 +634,7 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
                     aria-label="Copy generated letter to clipboard"
                   >
                     <Copy className="w-4 h-4 mr-2" aria-hidden="true" />
-                    Copy
+                    {Verbs.COPY}
                   </Button>
                 </div>
                 {letterSubject && (

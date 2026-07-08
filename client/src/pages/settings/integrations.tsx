@@ -11,7 +11,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,10 +23,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
+import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
-import { Trash2 } from "lucide-react";
+import { Trash2, Webhook } from "lucide-react";
 
 interface SlackIntegration {
   id: number;
@@ -40,6 +43,13 @@ interface SlackIntegration {
 }
 
 const ALL_EVENTS = ["deal_closed", "big_lead_arrived", "offer_pending_approval"];
+// C1 legibility (experience-legibility.md): the raw enum is the API
+// contract; the label is what a person reads. Never render the enum.
+const EVENT_LABEL: Record<string, string> = {
+  deal_closed: "A deal closes",
+  big_lead_arrived: "A big lead comes in",
+  offer_pending_approval: "An offer is waiting for your approval",
+};
 
 export default function IntegrationsSettingsPage() {
   useDocumentTitle("Integrations");
@@ -49,7 +59,12 @@ export default function IntegrationsSettingsPage() {
   const [channelName, setChannelName] = useState("");
   const [eventTypes, setEventTypes] = useState<string[]>(["deal_closed", "big_lead_arrived"]);
 
-  const { data: integrations = [], isLoading } = useQuery<SlackIntegration[]>({
+  const {
+    data: integrations = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<SlackIntegration[]>({
     queryKey: ["/api/team-readiness/slack-integrations"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/team-readiness/slack-integrations");
@@ -93,18 +108,21 @@ export default function IntegrationsSettingsPage() {
   });
 
   return (
-    <PageShell isLoading={isLoading} label="Loading integrations">
+    <PageShell label="Integrations">
       <div className="space-y-6">
         <div>
           <h1 className="text-hero">Integrations</h1>
           <p className="text-sm text-muted-foreground">
-            Send AcreOS events to Slack or Microsoft Teams via incoming webhooks.
+            Get a message in Slack or Teams the moment something important happens in AcreOS.
           </p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Add webhook</CardTitle>
+            <CardTitle>Connect a channel</CardTitle>
+            <CardDescription>
+              Pick where messages go and which moments send one.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -131,7 +149,7 @@ export default function IntegrationsSettingsPage() {
               </div>
             </div>
             <div>
-              <Label htmlFor="webhook-input">Webhook URL</Label>
+              <Label htmlFor="webhook-input">Paste the link from Slack or Teams</Label>
               <Input
                 id="webhook-input"
                 type="url"
@@ -139,9 +157,12 @@ export default function IntegrationsSettingsPage() {
                 value={webhookUrl}
                 onChange={(e) => setWebhookUrl(e.target.value)}
               />
+              <p className="mt-1 text-xs text-muted-foreground">
+                In Slack, open Incoming Webhooks and copy the web address it gives you — that's how we deliver messages to your channel.
+              </p>
             </div>
             <div>
-              <Label>Events to subscribe</Label>
+              <Label>Which moments send a message</Label>
               <div className="grid grid-cols-2 gap-2 mt-2">
                 {ALL_EVENTS.map((evt) => (
                   <div key={evt} className="flex items-center gap-2">
@@ -155,7 +176,7 @@ export default function IntegrationsSettingsPage() {
                         );
                       }}
                     />
-                    <Label htmlFor={`evt-${evt}`}>{evt}</Label>
+                    <Label htmlFor={`evt-${evt}`}>{EVENT_LABEL[evt] ?? evt}</Label>
                   </div>
                 ))}
               </div>
@@ -164,18 +185,51 @@ export default function IntegrationsSettingsPage() {
               onClick={() => saveMutation.mutate()}
               disabled={saveMutation.isPending || !webhookUrl}
             >
-              {saveMutation.isPending ? "Saving…" : "Save webhook"}
+              {saveMutation.isPending ? "Saving…" : "Start sending to this channel"}
             </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Configured webhooks</CardTitle>
+            <CardTitle>Connected channels</CardTitle>
+            <CardDescription>
+              Every channel currently getting messages, and which moments trigger them.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            {integrations.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No webhooks configured yet.</p>
+            {isLoading ? (
+              <div role="status" aria-busy="true">
+                <span className="sr-only">Loading configured webhooks…</span>
+                <ul className="divide-y">
+                  {[0, 1, 2].map((i) => (
+                    <li key={i} className="flex items-center justify-between py-3">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-32" announce={false} />
+                        <Skeleton className="h-3 w-64" announce={false} />
+                        <Skeleton className="h-3 w-40" announce={false} />
+                      </div>
+                      <Skeleton className="h-9 w-9 rounded-md" announce={false} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : error ? (
+              <QueryErrorState
+                error={error as Error}
+                onRetry={() => refetch()}
+                title="Couldn't load integrations"
+                testId="integrations-error"
+              />
+            ) : integrations.length === 0 ? (
+              <EmptyState
+                icon={Webhook}
+                headline="No webhooks configured yet"
+                subtitle="Send AcreOS events to Slack or Microsoft Teams. Add a webhook above to start receiving deal-closed, big-lead, and approval notifications."
+                // TODO(cta): the "Add webhook" form is already on this page above — no separate action needed
+                cta={{ label: "", _noOp: true }}
+                testId="integrations-empty"
+              />
             ) : (
               <ul className="divide-y">
                 {integrations.map((i) => (
@@ -185,11 +239,11 @@ export default function IntegrationsSettingsPage() {
                         {i.provider === "teams" ? "Microsoft Teams" : "Slack"}
                         {!i.isActive && <Badge variant="secondary">disabled</Badge>}
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {i.webhookUrl} {i.channelName ? `· ${i.channelName}` : ""}
+                      <div className="text-xs text-muted-foreground truncate max-w-[46ch]">
+                        {i.channelName ? `${i.channelName} · ` : ""}{i.webhookUrl}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Events: {i.eventTypes.join(", ")}
+                        Sends when: {i.eventTypes.map((e) => EVENT_LABEL[e]?.toLowerCase() ?? e).join(" · ")}
                       </div>
                       {i.lastError && (
                         <div className="text-xs text-destructive">Last error: {i.lastError}</div>

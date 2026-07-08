@@ -46,6 +46,7 @@ export function RequestCountyCTA({
   const [county, setCounty] = useState(defaultCounty);
   const [submitted, setSubmitted] = useState(false);
 
+  // allow-no-invalidation: logs a coverage request — confirmation is local state (setSubmitted)
   const request = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", REQUEST_COUNTY_ENDPOINT, {
@@ -82,7 +83,7 @@ export function RequestCountyCTA({
     return (
       <div
         className={cn(
-          "flex items-center gap-2 rounded-lg border border-acr-pos/30 bg-acr-pos-soft/40 p-3 text-sm",
+          "flex items-center gap-2 rounded-card border border-acr-pos/30 bg-acr-pos-soft/40 p-3 text-sm",
           className,
         )}
         role="status"
@@ -103,7 +104,7 @@ export function RequestCountyCTA({
   return (
     <form
       className={cn(
-        "rounded-lg border bg-card p-3",
+        "rounded-card border bg-card p-3",
         compact ? "space-y-2" : "space-y-3",
         className,
       )}
@@ -136,7 +137,7 @@ export function RequestCountyCTA({
             value={county}
             onChange={(e) => setCounty(e.target.value)}
             placeholder="County"
-            className="h-11 sm:h-9"
+            className="h-11 pointer-fine:sm:h-9"
             autoComplete="off"
           />
         </div>
@@ -150,7 +151,7 @@ export function RequestCountyCTA({
             onChange={(e) => setState(e.target.value.slice(0, 2))}
             placeholder="ST"
             maxLength={2}
-            className="h-11 sm:h-9 uppercase"
+            className="h-11 pointer-fine:sm:h-9 uppercase"
             autoComplete="off"
           />
         </div>
@@ -159,7 +160,7 @@ export function RequestCountyCTA({
       <Button
         type="submit"
         size="sm"
-        className="w-full min-h-11 sm:min-h-9"
+        className="w-full min-h-11 pointer-fine:sm:min-h-9"
         disabled={!canSubmit}
         data-testid="button-request-county"
       >

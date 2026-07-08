@@ -22,20 +22,31 @@ const buttonVariants = cva(
       },
       size: {
         // WCAG 2.1 SC 2.5.5 + Apple HIG call for 44px min touch target.
-        // Desktop stays dense (h-9 / 36px) but mobile (<640px) bumps to
-        // h-11 (44px) and icon buttons bump to 44x44.
+        // Density follows POINTER TYPE, not just viewport width: mouse/
+        // trackpad users keep the dense 36px scale at >=640px, but any
+        // coarse-pointer (touch) device holds the 44px floor at EVERY
+        // width — a 768px iPad lands on the "desktop" width arm with a
+        // finger as the pointer (ipad-mini Krieger contract, 2026-06-10).
+        // max-sm:min-h-11 stays as a belt-and-suspenders floor for narrow
+        // viewports on browsers that misreport pointer media.
+        //
+        // NOTE: deliberately NO `sm:min-h-*` here. A same-property pair of
+        // media rules (`sm:min-h-9` + `pointer-coarse:min-h-11`) ties on
+        // specificity and resolves by stylesheet order — a silent cascade
+        // hazard. The bare `min-h-*` (no media) always loses to the
+        // pointer-coarse rule, which is the behavior we want.
         //
         // Radius locked to the two-value system (§0.2): `rounded-card`
         // for standard surfaces and `rounded-full` only when the variant
         // is explicitly pill (lg). Prior values (rounded-lg / rounded-md
         // / rounded-full mixed across sizes) created three shapes inside
         // the same primitive.
-        default: "min-h-9 sm:min-h-9 max-sm:min-h-11 rounded-card px-4 py-2",
+        default: "min-h-9 max-sm:min-h-11 pointer-coarse:min-h-11 rounded-card px-4 py-2",
         // max-sm:min-h-11 = 44px on mobile — Apple HIG / WCAG 2.5.5 minimum.
         // Previously min-h-10 (40px), 4px below the HIG threshold.
-        sm: "min-h-8 max-sm:min-h-11 rounded-card px-3 text-xs",
-        lg: "min-h-10 max-sm:min-h-12 rounded-full px-8",
-        icon: "h-9 w-9 max-sm:h-11 max-sm:w-11 rounded-card",
+        sm: "min-h-8 max-sm:min-h-11 pointer-coarse:min-h-11 rounded-card px-3 text-xs",
+        lg: "min-h-10 max-sm:min-h-12 pointer-coarse:min-h-11 rounded-full px-8",
+        icon: "h-9 w-9 max-sm:h-11 max-sm:w-11 pointer-coarse:h-11 pointer-coarse:w-11 rounded-card",
       },
     },
     defaultVariants: {

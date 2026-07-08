@@ -336,9 +336,14 @@ voiceRouter.post('/calls/:id/outcome', async (req: Request, res: Response) => {
     });
     if (!call) return Errors.notFound(res, 'Call');
 
-    // TODO(tsc): voice_calls has no outcome/outcome_notes/updated_at columns,
-    // so the outcome can only be persisted to agent_events below. A schema
-    // migration is needed to store the outcome directly on the call row.
+    // Persist the outcome on the call row (and mirror to agent_events for the
+    // activity feed). Org-scoped update — the findFirst above already verified
+    // this call belongs to the caller's org.
+    await db
+      .update(voiceCalls)
+      .set({ outcome: type, outcomeNotes: notes ?? null, updatedAt: new Date() })
+      .where(and(eq(voiceCalls.id, callId), eq(voiceCalls.organizationId, org.id)));
+
     await db.insert(agentEvents).values({
       organizationId: org.id,
       eventType: 'call_outcome_tagged',
@@ -392,14 +397,11 @@ voiceRouter.get('/calls/:id/summary', async (req: Request, res: Response) => {
       summary: summary || 'No summary available',
       actionItems,
       sentiment: transcript?.sentiment ?? null,
-      // TODO(tsc): voice_calls/call_transcripts have no `intent` column; needs
-      // a schema migration to persist call intent. Returning null preserves the
-      // response shape until then.
-      intent: null,
+      // Now persisted on the call row (migration 0164); null until tagged.
+      intent: call.intent ?? null,
       duration: call.durationSeconds,
-      // TODO(tsc): voice_calls has no `outcome` column (the /outcome endpoint
-      // records outcome to agent_events). Schema migration needed to surface it.
-      outcome: null,
+      outcome: call.outcome ?? null,
+      outcomeNotes: call.outcomeNotes ?? null,
       transcript: transcript
         ? { id: transcript.id, preview: (transcript.transcriptRaw || '').slice(0, 300) }
         : null,

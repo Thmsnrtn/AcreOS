@@ -7,9 +7,9 @@ import {
   ChevronDown,
   ChevronUp,
   Phone,
-  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 
 // ---------------------------------------------------------------
@@ -200,9 +200,11 @@ function CallRow({ call }: { call: VoiceCall }) {
       {expanded && (
         <div id={detailId} role="region" aria-label={`Call details: ${dateLabel}`} className="px-4 py-3 border-t bg-muted/20 space-y-3">
           {detailLoading ? (
-            <div role="status" aria-busy="true" aria-label="Loading transcript" className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-              Loading transcript…
+            <div role="status" aria-busy="true" aria-live="polite" className="space-y-2">
+              <span className="sr-only">Loading transcript</span>
+              <Skeleton announce={false} className="h-3.5 w-full" />
+              <Skeleton announce={false} className="h-3.5 w-5/6" />
+              <Skeleton announce={false} className="h-3.5 w-2/3" />
             </div>
           ) : (
             <>
@@ -274,9 +276,16 @@ export function CallLog({ leadId }: CallLogProps) {
 
       <CardContent>
         {isLoading ? (
-          <div role="status" aria-busy="true" aria-label="Loading calls" className="flex items-center justify-center py-8">
-            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" aria-hidden="true" />
-            <span className="sr-only">Loading…</span>
+          <div role="status" aria-busy="true" aria-live="polite" className="space-y-2">
+            <span className="sr-only">Loading calls</span>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="border rounded-card flex items-center gap-3 px-4 py-3">
+                <Skeleton announce={false} className="w-4 h-4 rounded-sm shrink-0" />
+                <Skeleton announce={false} className="h-4 flex-1 max-w-44" />
+                <Skeleton announce={false} className="h-4 w-12 shrink-0 ml-auto" />
+                <Skeleton announce={false} className="h-5 w-16 shrink-0 rounded-full" />
+              </div>
+            ))}
           </div>
         ) : isError ? (
           <p role="alert" className="text-sm text-destructive text-center py-4 m-0">

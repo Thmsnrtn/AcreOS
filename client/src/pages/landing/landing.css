@@ -355,16 +355,22 @@
   background: var(--acr-brand);
   color: var(--acr-bg-raised);
 }
-.lp-btn-primary:hover {
-  background: #A6431A;
+@media (hover: hover) {
+  /* Touch (iOS Safari) applies :hover on the first tap and cancels that
+     tap's click — forcing a double tap. Gate to hover-capable pointers. */
+  .lp-btn-primary:hover {
+    background: #A6431A;
+  }
 }
 .lp-btn-secondary {
   background: var(--acr-surface);
   color: var(--acr-ink);
   border: 0.5px solid var(--acr-line);
 }
-.lp-btn-secondary:hover {
-  background: var(--acr-surface-2);
+@media (hover: hover) {
+  .lp-btn-secondary:hover {
+    background: var(--acr-surface-2);
+  }
 }
 .lp-btn-lg {
   padding: 14px 22px;
@@ -375,8 +381,10 @@
   margin-left: 4px;
   transition: transform 0.15s;
 }
-.lp-btn-arrow:hover::after {
-  transform: translateX(2px);
+@media (hover: hover) {
+  .lp-btn-arrow:hover::after {
+    transform: translateX(2px);
+  }
 }
 
 /* ─── Section common (acreos-landing.html lines 129-138) ─────────────── */
@@ -443,9 +451,11 @@
   position: relative;
   transition: transform 0.25s, box-shadow 0.25s;
 }
-.lp-how-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--acr-shadow-2);
+@media (hover: hover) {
+  .lp-how-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--acr-shadow-2);
+  }
 }
 
 .lp-how-num {
@@ -504,7 +514,9 @@
   cursor: pointer;
   font: inherit;
 }
-.lp-agent-tab:hover { background: var(--acr-surface-2); }
+@media (hover: hover) {
+  .lp-agent-tab:hover { background: var(--acr-surface-2); }
+}
 .lp-agent-tab-active {
   background: var(--acr-surface);
   border-color: var(--tab-color);
@@ -754,10 +766,12 @@
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   position: relative;
 }
-.lp-feature-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--acr-shadow-2);
-  border-color: var(--acr-brand);
+@media (hover: hover) {
+  .lp-feature-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--acr-shadow-2);
+    border-color: var(--acr-brand);
+  }
 }
 .lp-feature-cat {
   font: 600 10px/1 var(--font-sans);
@@ -954,8 +968,10 @@
   transition: all 0.2s;
   min-height: 44px;
 }
-.lp-pricing-toggle button:hover {
-  color: var(--acr-ink);
+@media (hover: hover) {
+  .lp-pricing-toggle button:hover {
+    color: var(--acr-ink);
+  }
 }
 .lp-pricing-toggle .lp-toggle-active {
   background: var(--acr-surface);
@@ -1096,8 +1112,10 @@
   cursor: pointer;
   transition: color 0.15s;
 }
-.lp-faq-q:hover {
-  color: var(--acr-brand);
+@media (hover: hover) {
+  .lp-faq-q:hover {
+    color: var(--acr-brand);
+  }
 }
 .lp-faq-icon {
   font-family: var(--font-serif);
@@ -1216,8 +1234,10 @@
   padding: 8px 12px;
   border-radius: 6px;
 }
-.lp-btn-ghost:hover {
-  color: var(--acr-bg-raised);
+@media (hover: hover) {
+  .lp-btn-ghost:hover {
+    color: var(--acr-bg-raised);
+  }
 }
 .lp-cta-trust {
   display: flex;
@@ -1323,9 +1343,11 @@
   text-align: left;
   justify-content: flex-start;
 }
-.lp-footer-col a:hover,
-.lp-footer-col .lp-footer-link-btn:hover {
-  color: var(--acr-brand);
+@media (hover: hover) {
+  .lp-footer-col a:hover,
+  .lp-footer-col .lp-footer-link-btn:hover {
+    color: var(--acr-brand);
+  }
 }
 
 .lp-footer-bottom {
@@ -1346,8 +1368,10 @@
   min-height: 44px;
   padding: 0 6px;
 }
-.lp-footer-fine a:hover {
-  color: var(--acr-brand);
+@media (hover: hover) {
+  .lp-footer-fine a:hover {
+    color: var(--acr-brand);
+  }
 }
 
 /* ───────────────────────────────────────────────────────────────── NAV */
@@ -1417,7 +1441,11 @@
   text-decoration: none;
   transition: color 0.15s;
 }
-.lp-nav-links a:hover,
+@media (hover: hover) {
+  .lp-nav-links a:hover {
+    color: var(--acr-ink);
+  }
+}
 .lp-nav-links a:focus-visible {
   color: var(--acr-ink);
   outline: none;
@@ -1441,7 +1469,11 @@
   min-height: 44px;
   padding: 0 8px;
 }
-.lp-nav-signin:hover,
+@media (hover: hover) {
+  .lp-nav-signin:hover {
+    color: var(--acr-ink);
+  }
+}
 .lp-nav-signin:focus-visible {
   color: var(--acr-ink);
   outline: none;
@@ -1467,10 +1499,12 @@
   white-space: nowrap;
   transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
 }
-.lp-nav-btn:hover {
-  background: #000;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px -4px rgba(36, 22, 7, 0.3);
+@media (hover: hover) {
+  .lp-nav-btn:hover {
+    background: #000;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px -4px rgba(36, 22, 7, 0.3);
+  }
 }
 .lp-nav-btn:focus-visible {
   outline: none;
@@ -1495,7 +1529,11 @@
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
-.lp-nav-burger:hover,
+@media (hover: hover) {
+  .lp-nav-burger:hover {
+    background: color-mix(in srgb, var(--acr-ink) 6%, transparent);
+  }
+}
 .lp-nav-burger:focus-visible {
   background: color-mix(in srgb, var(--acr-ink) 6%, transparent);
   outline: none;
@@ -1585,7 +1623,11 @@
     text-decoration: none;
     border-radius: 8px;
   }
-  .lp-nav-mobile a:hover,
+  @media (hover: hover) {
+    .lp-nav-mobile a:hover {
+      background: color-mix(in srgb, var(--acr-ink) 5%, transparent);
+    }
+  }
   .lp-nav-mobile a:focus-visible {
     background: color-mix(in srgb, var(--acr-ink) 5%, transparent);
     outline: none;
@@ -1778,10 +1820,12 @@
   padding: 20px;
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
-.lp-data-source:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--acr-shadow-2);
-  border-color: var(--acr-brand);
+@media (hover: hover) {
+  .lp-data-source:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--acr-shadow-2);
+    border-color: var(--acr-brand);
+  }
 }
 .lp-data-source-agency {
   font: 700 13px/1.2 var(--font-sans);
@@ -1925,4 +1969,52 @@
   font: 400 12px/1.5 var(--font-mono, ui-monospace, monospace);
   color: var(--acr-ink-2);
   white-space: pre;
+}
+
+/* ─── Accessibility: heading-retag resets + visible focus (W4-3) ────────
+   Several visual labels were promoted to real heading tags (h2/h3) so the
+   document outline is navigable; these resets keep the rendered look
+   byte-identical (the divs/spans they replaced had no UA margin).        */
+
+.lp-positioning-primary {
+  margin: 0;
+}
+.lp-day-col-label {
+  margin: 0;
+}
+/* FAQ trigger heading wrapper — the <button> owns all visual styling. */
+.lp-faq-h {
+  margin: 0;
+  font: inherit;
+}
+
+/* Visible keyboard focus for every landing interactive element that
+   wasn't already covered by the nav rules above. House pattern:
+   suppress UA outline, show the brand ring token. */
+.lp-btn:focus-visible,
+.lp-agent-tab:focus-visible,
+.lp-faq-q:focus-visible,
+.lp-pricing-toggle button:focus-visible,
+.lp-logo:focus-visible,
+.lp-footer-logo:focus-visible,
+.lp-footer-col a:focus-visible,
+.lp-footer-col .lp-footer-link-btn:focus-visible,
+.lp-footer-fine a:focus-visible {
+  outline: none;
+  box-shadow: var(--acr-ring);
+}
+/* Flat text links/buttons get a small radius so the ring hugs cleanly. */
+.lp-faq-q:focus-visible,
+.lp-logo:focus-visible,
+.lp-footer-logo:focus-visible,
+.lp-footer-col a:focus-visible,
+.lp-footer-col .lp-footer-link-btn:focus-visible,
+.lp-footer-fine a:focus-visible {
+  border-radius: 6px;
+}
+/* The keyboard-focusable agent tabpanel (WAI-ARIA tabs pattern). */
+.lp-agent-panel:focus-visible {
+  outline: none;
+  box-shadow: var(--acr-ring);
+  border-radius: 12px;
 }

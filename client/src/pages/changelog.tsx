@@ -103,7 +103,7 @@ export default function ChangelogPage() {
       ))}
 
       {/* Top nav — same pattern as /pricing, /security, /privacy */}
-      <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
+      <nav className="border-b bg-surface-chrome backdrop-blur sticky top-0 z-floating">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link
             href="/"

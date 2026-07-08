@@ -144,6 +144,30 @@ async function assertThemeContract(
   // probeEvaluate additionally survives the context-destroyed /
   // target-crashed races (see its doc comment) without weakening the
   // transparent-body assertion below.
+  //
+  // Stylesheet-application race (3 CI sightings by 2026-06-11, fast-fail
+  // ~1.7s into J1/J3 with passes interleaved on identical shas): the
+  // one-shot probe can land in the window between DOM-interactive and the
+  // main CSS chunk APPLYING on a cold loaded runner — body computes
+  // transparent for a few hundred ms and would resolve right after.
+  // Transient paint-time transparency was never the regression this
+  // contract exists to catch; "tokens never apply" is. So: bounded wait
+  // for the tokens to apply, THEN the one-shot probe + hard assertion —
+  // a stylesheet that genuinely never resolves still fails with the same
+  // honest signal, just deterministically instead of racily.
+  await page
+    .waitForFunction(
+      () => {
+        const body = document.body;
+        if (!body) return false;
+        const bg = window.getComputedStyle(body).backgroundColor;
+        return bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent";
+      },
+      undefined,
+      { timeout: 10_000 },
+    )
+    // Teardown/context races surface through the probe below instead.
+    .catch(() => {});
   const probe = await probeEvaluate(page, () => {
     const body = document.body;
     const bodyStyle = body ? window.getComputedStyle(body) : null;
@@ -263,6 +287,19 @@ async function seedSessionCookie(page: Page, baseURL: string): Promise<void> {
       path: "/",
     },
   ]);
+  // Model a RETURNING user: consent already answered. The first-visit
+  // cookie banner is a fixed z-40 card spanning the strip above the bottom
+  // nav — run 27334034694 (iphone-se) showed it intercepting the tap on
+  // Pax's settings gear, failing J1 3/3. "declined" (not "accepted") so
+  // nothing optional (Sentry etc.) initializes in CI. The banner's own
+  // rendering stays exercised by fresh-context specs that don't call this.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("acreos_cookie_consent", "declined");
+    } catch {
+      /* storage unavailable — banner shows, journey degrades visibly */
+    }
+  });
 }
 
 /**
@@ -300,6 +337,28 @@ async function checkpoint(
     await scanLightModeArtifacts(page, testInfo, meta, stepName);
   }
 
+  // Blank-screen detector: bounded wait, then the hard assertion.
+  //
+  // The probe used to fire ONCE, POST_NAV_SETTLE_MS (800ms) after
+  // domcontentloaded. On a cold loaded CI runner the first door after login
+  // (j1-today) is still on its skeleton pass at that instant — Skeleton
+  // blocks render no innerText, so the probe read ~33 chars (the bottom
+  // nav) and fast-failed. 2026-06-11 run 27330994449: hard fail iphone-14 +
+  // flaky-pass iphone-se/14-pro-max/ipad-mini, all at j1-today, all
+  // innerText==33 — the page rendered fine on retry, so "never renders"
+  // (the target regression) was not what fired. Same class of bug as the
+  // theme-contract stylesheet race fixed in 56ccfdd4: one-shot probe racing
+  // a slow first paint. The bounded wait below absorbs slow-loading
+  // windows; a page that genuinely never renders content still fails the
+  // same assertion with the same message at the deadline.
+  await page
+    .waitForFunction(
+      (minLen) =>
+        (document.body?.innerText || "").trim().length > minLen,
+      MIN_BODY_TEXT_LEN,
+      { timeout: 10_000 },
+    )
+    .catch(() => {});
   const bodyTextLen = await probeEvaluate(
     page,
     () => (document.body?.innerText || "").trim().length,
@@ -526,49 +585,47 @@ test.describe("J3: pax interaction loop", () => {
     // credits in CI and create real ai_messages rows. The presence of the
     // composer affordance is the load-bearing structural check.
     //
-    // CI-harness reality: the composer lives inside <AiChatGuard> (client/src/
-    // pages/pax.tsx), which queries /api/health/cached and renders a GRACEFUL
-    // "Pax is temporarily unavailable" EmptyState (data-testid=
-    // "pax-ai-unavailable") when the AI provider reports `unconfigured`. The
-    // monitor workflow sets no AI_INTEGRATIONS_OPENROUTER_API_KEY, so health
-    // correctly reports the provider unconfigured and the composer is
-    // legitimately ABSENT — that is the doctrine-correct degrade (EmptyState,
-    // not a crash), NOT a regression. On production (OpenRouter configured,
-    // acreos.fly.dev healthy) the composer renders. So we accept EITHER the
-    // composer OR the honest unavailable-EmptyState; only a blank /ai (neither)
-    // is a real failure.
+    // CI-harness reality: <AiChatGuard> (client/src/pages/pax.tsx) queries
+    // /api/health/cached; the e2e/monitor workflows set no
+    // AI_INTEGRATIONS_OPENROUTER_API_KEY, so health correctly reports the
+    // provider `unconfigured`. The guard degrades the CHAT capability, not
+    // the surface: it renders a "Pax is temporarily unavailable" status
+    // banner (data-testid="pax-ai-unavailable") ABOVE its children — the
+    // composer, tabs, and panels still mount. So in CI we assert BOTH: the
+    // banner surfaces honest copy AND the composer is still present. On
+    // production (OpenRouter configured) the banner is absent and only the
+    // composer assertion applies.
     const aiUnavailable = await page
       .locator('[data-testid="pax-ai-unavailable"]')
       .isVisible()
       .catch(() => false);
 
     if (aiUnavailable) {
-      // Degraded-but-graceful: assert the EmptyState actually surfaces its
-      // copy (not a blank panel), then skip the composer-dependent steps.
-      const emptyText = await page
+      // Degraded-but-graceful: the banner must surface its copy (not render
+      // blank) — and the rest of the surface must still be alive below it.
+      const bannerText = await page
         .locator('[data-testid="pax-ai-unavailable"]')
         .textContent()
         .catch(() => "");
       expect(
-        (emptyText ?? "").trim().length,
-        "Pax unavailable-EmptyState rendered BLANK — even the degraded state must surface copy",
+        (bannerText ?? "").trim().length,
+        "Pax unavailable-banner rendered BLANK — even the degraded state must surface copy",
       ).toBeGreaterThan(0);
-      await checkpoint(page, ctx, "j3-pax-after-overflow", testInfo);
-      return;
     }
 
+    // The composer lives inside the lazy Suspense(CommandCenterPage) chunk
+    // while the banner above is part of the eager pax.tsx chunk — on a
+    // starved CI runner the chunk fetch can lose the race against an
+    // immediate isVisible(), so this MUST auto-retry rather than snapshot.
     const composer = page
       .locator(
         'textarea, [contenteditable="true"], [data-testid*="composer"], [data-testid*="message-input"]',
       )
       .first();
-    const composerVisible = await composer
-      .isVisible()
-      .catch(() => false);
-    expect(
-      composerVisible,
-      "pax composer affordance missing on /ai (and no graceful 'Pax unavailable' EmptyState either — surface is blank)",
-    ).toBe(true);
+    await expect(
+      composer,
+      "pax composer affordance missing on /ai — AiChatGuard must degrade chat with a banner, never unmount the surface",
+    ).toBeVisible({ timeout: 60_000 });
 
     // Try overflow / kebab menu — common selectors. We don't fail if absent
     // (UI variant); we DO fail if it opens to a blank popover.

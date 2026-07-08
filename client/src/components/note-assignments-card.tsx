@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface Assignment {
   id: string;
@@ -63,13 +65,6 @@ function fmtUsd(cents: number | null): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(Math.round(cents / 100));
-}
-
-function fmtDate(iso: string): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function downloadPdf(pdfBase64: string, filename: string) {
@@ -134,12 +129,12 @@ export function NoteAssignmentsCard({ noteId, noteNumber }: { noteId: string; no
                     {a.state && <span className="text-xs text-muted-foreground">{a.state}</span>}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    Sold {fmtDate(a.saleDate)} for {fmtUsd(a.salePriceCents)}
+                    Sold {formatDate(a.saleDate)} for {fmtUsd(a.salePriceCents)}
                     {a.recordingNumber && ` · Recorded ${a.recordingNumber}`}
                   </div>
                 </div>
                 <span className="text-xs text-muted-foreground whitespace-nowrap pt-0.5">
-                  {fmtDate(a.createdAt)}
+                  {formatDate(a.createdAt)}
                 </span>
               </li>
             ))}
@@ -272,7 +267,7 @@ function GenerateAssignmentDialog({ open, onOpenChange, noteId, noteNumber }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>Cancel</Button>
+          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>{Verbs.CANCEL}</Button>
           <Button
             onClick={() => generateMutation.mutate()}
             disabled={!assigneeName || generateMutation.isPending}

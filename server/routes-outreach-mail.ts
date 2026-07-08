@@ -50,6 +50,33 @@ import {
 
 const HOLD_WINDOW_MINUTES = 30;
 const PIECE_TYPES = ["postcard_4x6", "postcard_6x9", "letter_10", "handwritten"] as const;
+
+// W2.1 — the activation wedge. The free tier gets a small LIFETIME mail
+// allowance so "send your first mailer" is actually reachable before paying
+// (TTFM was structurally impossible: the checklist hid the step and the
+// upgrade panel showed an ✗). Five pieces ≈ one tiny test batch — enough to
+// feel the magic moment (a seller writing back), not enough to run a
+// business on. Lifetime, not monthly: counted from non-cancelled
+// mail_shipments rows, so a cancel within the hold window gives the pieces
+// back. All witnessed-send / live-send interlocks are untouched — this only
+// widens WHO may queue, never HOW mail leaves the building.
+export const FREE_TIER_LIFETIME_PIECES = 5;
+
+/** Lifetime pieces a free org has already committed (cancelled excluded). */
+async function freeTierPiecesUsed(organizationId: number): Promise<number> {
+  const [agg] = await db
+    .select({
+      used: sql<number>`coalesce(sum(${mailShipments.pieceCount}), 0)::int`,
+    })
+    .from(mailShipments)
+    .where(
+      and(
+        eq(mailShipments.organizationId, organizationId),
+        sql`${mailShipments.status} != 'cancelled'`,
+      ),
+    );
+  return agg?.used ?? 0;
+}
 const SPEEDS = ["next_day", "standard", "batch_3d", "batch_weekly", "eddm_geo"] as const;
 
 // Recent-mail dedupe window (matches the composer warning copy).
@@ -355,6 +382,43 @@ export function registerOutreachMailRoutes(app: Express): void {
 
         const quote = await buildQuote(org.id, audienceFilter, pieceType, speed);
 
+        // W2.1 — free-tier lifetime cap. Checked BEFORE the pool debit so a
+        // refusal never writes a ledger row. The refusal payload mirrors
+        // poolRefusalDetails' shape (one refusal component client-side) but
+        // points at the plan comparison, not BYOK — the wedge's job is to
+        // convert, not to dead-end.
+        const orgTier = ((org.subscriptionTier ?? "free").toLowerCase()) as SubscriptionTier;
+        if (!req.isFounder && orgTier === "free") {
+          const used = await freeTierPiecesUsed(org.id);
+          const remainingPieces = Math.max(0, FREE_TIER_LIFETIME_PIECES - used);
+          if (remainingPieces === 0) {
+            return Errors.limitExceeded(res, {
+              reason: "free_send_spent",
+              resourceType: "free_first_send" as const,
+              capPieces: FREE_TIER_LIFETIME_PIECES,
+              remainingPieces: 0,
+              upgradeUrl: "/settings#billing",
+              message:
+                `Your ${FREE_TIER_LIFETIME_PIECES} free letters are in the mail. ` +
+                "Upgrade to keep reaching sellers — every paid plan includes a monthly outreach pool.",
+            });
+          }
+          if (quote.pieceCount > remainingPieces) {
+            return Errors.limitExceeded(res, {
+              reason: "free_send_cap",
+              resourceType: "free_first_send" as const,
+              capPieces: FREE_TIER_LIFETIME_PIECES,
+              remainingPieces,
+              requestedPieces: quote.pieceCount,
+              upgradeUrl: "/settings#billing",
+              message:
+                `The free plan includes ${FREE_TIER_LIFETIME_PIECES} letters total and you have ` +
+                `${remainingPieces} left — narrow the audience to ${remainingPieces} ` +
+                `recipient${remainingPieces === 1 ? "" : "s"}, or upgrade for a monthly pool.`,
+            });
+          }
+        }
+
         const leavesAt = new Date(Date.now() + HOLD_WINDOW_MINUTES * 60 * 1000);
 
         // Lens 3 (Pricing Coherence) — debit the customer's credit pool for
@@ -405,6 +469,11 @@ export function registerOutreachMailRoutes(app: Express): void {
                 copySnapshot: copy ?? null,
                 audienceFilter,
                 leavesAt,
+                // Persist the exact draw so the flusher can refund on a send
+                // failure (never charge-without-send) + the cancel path can
+                // refund without the client round-tripping the key.
+                debitEventKey: mailDebitKey,
+                debitedCents: mailDebit.debitedCents,
               })
               .returning({ id: mailShipments.id });
 
@@ -436,6 +505,20 @@ export function registerOutreachMailRoutes(app: Express): void {
           }
           throw txErr;
         }
+
+        // Activation telemetry — first mailer queued is the wedge's magic
+        // moment precursor. Idempotent first-occurrence via the
+        // (org, eventName) unique index; the legacy campaigns path fires
+        // first_letter_sent, this is the modern queue path's marker.
+        try {
+          const { recordActivationEventAsync } = await import("./services/activation");
+          recordActivationEventAsync({
+            orgId: org.id,
+            userId,
+            eventName: "first_mailer_sent",
+            eventValue: { shipmentId, pieceCount: quote.pieceCount, pieceType, source: "outreach:mail:queue" },
+          });
+        } catch { /* non-fatal */ }
 
         res.status(201).json({
           shipmentId,
@@ -494,17 +577,20 @@ export function registerOutreachMailRoutes(app: Express): void {
           .where(eq(mailShipments.id, idParam))
           .returning();
 
-        // Lens 3 — refund the pool draw posted at queue time. The client can
-        // pass the original `shipmentDebitKey` to ensure idempotency; if not
-        // provided, we synthesize the canonical key for callers who only have
-        // the shipmentId. Either way `refundPoolDebit` is no-op on conflict.
-        const debitKey = typeof req.body?.shipmentDebitKey === "string"
-          ? req.body.shipmentDebitKey
-          : null;
-        if (debitKey) {
-          // We don't know the exact debited amount from the canceled shipment,
-          // so we recompute from the per-piece weight × pieceCount. Same math
-          // as queue time, so the refund matches.
+        // Refund the pool draw posted at queue time. Prefer the EXACT debit
+        // now persisted on the shipment (debitEventKey + debitedCents) — no
+        // client round-trip, no recompute drift. Fall back to the legacy
+        // client-key + recompute path for rows enqueued before this column
+        // existed. refundPoolDebit is idempotent (no-op on conflict).
+        if (existing.debitEventKey && existing.debitedCents && existing.debitedCents > 0) {
+          await refundPoolDebit({
+            organizationId: orgId,
+            originalEventId: existing.debitEventKey,
+            amountCents: existing.debitedCents,
+            reason: `Mail shipment ${idParam} cancelled within hold window`,
+          });
+        } else if (typeof req.body?.shipmentDebitKey === "string") {
+          // Legacy fallback: recompute from per-piece weight × pieceCount.
           const action = mailPoolActionFor(existing.provider ?? "", existing.pieceType);
           const { creditCost } = await import("./services/creditCost");
           const weight = await creditCost(action);
@@ -512,7 +598,7 @@ export function registerOutreachMailRoutes(app: Express): void {
           if (refundCents > 0) {
             await refundPoolDebit({
               organizationId: orgId,
-              originalEventId: debitKey,
+              originalEventId: req.body.shipmentDebitKey,
               amountCents: refundCents,
               reason: `Mail shipment ${idParam} cancelled within hold window`,
             });

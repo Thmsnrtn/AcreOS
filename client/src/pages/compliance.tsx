@@ -8,6 +8,10 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Shield, AlertTriangle, CheckCircle, Clock, FileText } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
+import { formatDate } from "@/lib/format";
 
 const SEVERITY_LABEL: Record<string, string> = {
   critical: "Critical",
@@ -42,18 +46,31 @@ export default function CompliancePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: dashboardData, isLoading } = useQuery({
+  const {
+    data: dashboardData,
+    isLoading,
+    isError: dashboardError,
+    error: dashboardErr,
+    refetch: refetchDashboard,
+  } = useQuery({
     queryKey: ["/api/compliance/dashboard"],
     queryFn: async () => {
       const res = await fetch("/api/compliance/dashboard", { credentials: "include" });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
       return res.json();
     },
   });
 
-  const { data: alertsData } = useQuery({
+  const {
+    data: alertsData,
+    isError: alertsError,
+    error: alertsErr,
+    refetch: refetchAlerts,
+  } = useQuery({
     queryKey: ["/api/compliance/alerts"],
     queryFn: async () => {
       const res = await fetch("/api/compliance/alerts", { credentials: "include" });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
       return res.json();
     },
   });
@@ -103,11 +120,47 @@ export default function CompliancePage() {
   const dashboard = dashboardData?.dashboard;
   const alerts = alertsData?.alerts ?? [];
 
+  if (dashboardError) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto">
+        <QueryErrorState
+          error={dashboardErr as Error | null}
+          onRetry={() => refetchDashboard()}
+          testId="compliance-dashboard-error"
+        />
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
-      <div className="p-6" role="status" aria-live="polite">
+      <div className="p-6 max-w-5xl mx-auto space-y-6" role="status" aria-busy="true">
         <span className="sr-only">Loading compliance dashboard…</span>
-        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-24 bg-muted/50 rounded-card animate-pulse" />)}</div>
+        <div className="space-y-2">
+          <Skeleton announce={false} className="h-8 w-56" />
+          <Skeleton announce={false} className="h-4 w-80" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i}>
+              <CardContent className="p-4 space-y-2">
+                <Skeleton announce={false} className="h-4 w-24" />
+                <Skeleton announce={false} className="h-7 w-16" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <Card key={i}>
+              <CardContent className="p-4 space-y-2">
+                <Skeleton announce={false} className="h-5 w-48" />
+                <Skeleton announce={false} className="h-4 w-full" />
+                <Skeleton announce={false} className="h-4 w-2/3" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }
@@ -174,14 +227,23 @@ export default function CompliancePage() {
         </TabsList>
 
         <TabsContent value="alerts" className="mt-4">
-          {alerts.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center" role="status">
-                <CheckCircle className="w-12 h-12 mx-auto mb-3 text-acr-pos" aria-hidden="true" />
-                <p className="font-medium">All clear — no compliance alerts.</p>
-                <p className="text-sm text-muted-foreground mt-1">AcreOS is actively monitoring your portfolio for regulatory changes.</p>
-              </CardContent>
-            </Card>
+          {alertsError ? (
+            <QueryErrorState
+              error={alertsErr as Error | null}
+              onRetry={() => refetchAlerts()}
+              compact
+              testId="compliance-alerts-error"
+            />
+          ) : alerts.length === 0 ? (
+            <EmptyState
+              icon={CheckCircle}
+              tone="celebratory"
+              headline="All clear — no compliance alerts."
+              subtitle="AcreOS is actively monitoring your portfolio for regulatory changes."
+              // TODO(cta): system-monitored state — no user action available
+              cta={{ label: "", _noOp: true }}
+              testId="empty-state-compliance-alerts"
+            />
           ) : (
             <ul className="space-y-3" aria-label="Compliance alerts">
               {alerts.map((alert: any) => (
@@ -198,7 +260,7 @@ export default function CompliancePage() {
                           <SeverityBadge severity={alert.severity} />
                         </div>
                         <span className="text-xs text-muted-foreground tabular-nums">
-                          {alert.createdAt ? new Date(alert.createdAt).toLocaleDateString() : ""}
+                          {formatDate(alert.createdAt)}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground mb-3">{alert.description}</p>
@@ -259,7 +321,7 @@ export default function CompliancePage() {
                       </div>
                       <p className="text-xs text-muted-foreground">{rule.description}</p>
                       {rule.effectiveDate && (
-                        <p className="text-xs text-muted-foreground mt-1 tabular-nums">Effective: {new Date(rule.effectiveDate).toLocaleDateString()}</p>
+                        <p className="text-xs text-muted-foreground mt-1 tabular-nums">Effective: {formatDate(rule.effectiveDate)}</p>
                       )}
                     </CardContent>
                   </Card>
@@ -267,12 +329,14 @@ export default function CompliancePage() {
               ))}
             </ul>
           ) : (
-            <Card>
-              <CardContent className="py-10 text-center">
-                <FileText className="w-10 h-10 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
-                <p className="text-muted-foreground">No active compliance rules loaded.</p>
-              </CardContent>
-            </Card>
+            <EmptyState
+              framed
+              icon={FileText}
+              headline="No active compliance rules loaded."
+              // TODO(cta): rules are system-loaded per jurisdiction — no user action available
+              cta={{ label: "", _noOp: true }}
+              testId="empty-state-compliance-rules"
+            />
           )}
         </TabsContent>
 

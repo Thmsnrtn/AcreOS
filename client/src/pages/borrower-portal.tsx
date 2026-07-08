@@ -16,6 +16,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DollarSign, Calendar, CreditCard, CheckCircle, Clock, AlertTriangle, Building, Phone, Mail, Shield, Loader2, FileText, Download, MapPin, CalendarDays, RefreshCw, Calculator, ChevronDown, MessageSquare, Send, X, Info } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
+import { motion } from "framer-motion";
+import { staggerContainer, staggerItem } from "@/lib/animations";
+import { Verbs } from "@/lib/labels";
 import { format, differenceInDays } from "date-fns";
 // jsPDF is dynamically imported inside generatePDF below — it's ~340KB
 // raw / 100KB brotli'd and only fires when a borrower actually downloads
@@ -49,6 +55,10 @@ export default function BorrowerPortal() {
   const [isVerified, setIsVerified] = useState(false);
   const [loanData, setLoanData] = useState<BorrowerLoanData | null>(null);
   const [error, setError] = useState("");
+  // Connection-level failures get a distinct, retryable treatment — a
+  // borrower on a weak cell connection must never end up staring at a
+  // dead form with no path forward.
+  const [networkError, setNetworkError] = useState<Error | null>(null);
   const [verifiedEmail, setVerifiedEmail] = useState("");
 
   useDocumentTitle("Borrower portal");
@@ -61,13 +71,20 @@ export default function BorrowerPortal() {
     }
     setIsVerifying(true);
     setError("");
+    setNetworkError(null);
 
     try {
       const res = await fetch(`/api/borrower/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessToken, email: trimmed }),
-      });
+      }).catch(() => null);
+
+      if (!res) {
+        // fetch itself failed — offline or unreachable, not a wrong email.
+        setNetworkError(new Error("Failed to fetch"));
+        return;
+      }
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -91,7 +108,7 @@ export default function BorrowerPortal() {
 
   if (!isVerified) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#F5E6D3] to-[#E8D4C4] dark:from-[#2D2118] dark:to-[#1A130D] flex items-center justify-center p-4">
+      <div className="min-h-[100dvh] bg-gradient-to-br from-acr-portal-from to-acr-portal-to flex items-center justify-center p-4">
         <h1 className="sr-only">Borrower portal sign-in</h1>
         <Card className="w-full max-w-md floating-window">
           <CardHeader className="text-center">
@@ -142,6 +159,17 @@ export default function BorrowerPortal() {
                 </div>
               )}
 
+              {networkError && (
+                <QueryErrorState
+                  compact
+                  error={networkError}
+                  onRetry={() => void handleVerify()}
+                  isRetrying={isVerifying}
+                  description="We couldn't reach the portal. Check your connection and try again — nothing was lost."
+                  testId="borrower-verify-network-error"
+                />
+              )}
+
               <Button
                 type="submit"
                 className="w-full min-h-11"
@@ -169,19 +197,82 @@ export default function BorrowerPortal() {
   }
 
   if (!loanData) {
-    return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        role="status"
-        aria-live="polite"
-      >
-        <Loader2 className="w-5 h-5 mr-2 animate-spin text-muted-foreground" aria-hidden="true" />
-        <p className="text-muted-foreground">Loading your loan…</p>
-      </div>
-    );
+    return <PortalLoadingSkeleton />;
   }
 
   return <BorrowerDashboard data={loanData} accessToken={accessToken} verifiedEmail={verifiedEmail} />;
+}
+
+/**
+ * Content-shaped loading state mirroring the dashboard layout — payment
+ * card, quick actions, stat cards, and ledger rows — so the page doesn't
+ * jump when the real data lands. The first Skeleton announces for screen
+ * readers; the rest stay quiet to avoid duplicate announcements.
+ */
+function PortalLoadingSkeleton() {
+  return (
+    <div className="min-h-[100dvh] bg-gradient-to-br from-acr-portal-from to-acr-portal-to">
+      <header className="border-b bg-surface-veil backdrop-blur sticky top-0 z-floating">
+        <div className="max-w-5xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Building className="w-5 h-5 sm:w-6 sm:h-6 text-primary" aria-hidden="true" />
+            <span className="font-bold text-base sm:text-lg">AcreOS portal</span>
+          </div>
+          <Skeleton className="h-6 w-20 rounded-full" announce announceText="Loading your loan" />
+        </div>
+      </header>
+      <main className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-4 sm:space-y-6" aria-busy="true">
+        {/* Amount-due card */}
+        <Card className="glass-panel border-2 border-primary/20">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="space-y-2 text-center sm:text-left">
+                <Skeleton className="h-4 w-24 mx-auto sm:mx-0" announce={false} />
+                <Skeleton className="h-12 w-48" announce={false} />
+                <Skeleton className="h-4 w-36 mx-auto sm:mx-0" announce={false} />
+              </div>
+              <Skeleton className="h-14 w-full sm:w-40 rounded-md" announce={false} />
+            </div>
+          </CardContent>
+        </Card>
+        {/* Quick actions */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 rounded-md" announce={false} />
+          ))}
+        </div>
+        {/* Stat cards */}
+        <div className="grid sm:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="glass-panel">
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 rounded-xl" announce={false} />
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-16" announce={false} />
+                    <Skeleton className="h-6 w-24" announce={false} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        {/* Ledger rows */}
+        <Card className="floating-window">
+          <CardContent className="p-4 sm:p-6 space-y-3">
+            <Skeleton className="h-5 w-32" announce={false} />
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between gap-3 py-1">
+                <Skeleton className="h-4 w-28" announce={false} />
+                <Skeleton className="h-4 w-20" announce={false} />
+                <Skeleton className="h-5 w-16 rounded-full hidden sm:block" announce={false} />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
 }
 
 // Sigfried §1 — borrower-portal sunset banner.
@@ -217,7 +308,7 @@ function PortalSunsetBanner() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 pt-4">
-      <Alert className="relative pr-10 border-acr-warn/40 bg-acr-warn-soft/60 dark:bg-acr-warn-soft/20" role="status" data-testid="banner-portal-sunset">
+      <Alert className="relative pr-12 border-acr-warn/40 bg-acr-warn-soft/60 dark:bg-acr-warn-soft/20" role="status" data-testid="banner-portal-sunset">
         <Info className="h-4 w-4 text-acr-warn" aria-hidden="true" />
         <AlertTitle className="text-acr-warn dark:text-acr-warn">
           This portal is being upgraded
@@ -230,7 +321,7 @@ function PortalSunsetBanner() {
         <button
           type="button"
           onClick={handleDismiss}
-          className="absolute top-2 right-2 p-1 rounded-md text-acr-warn/60 hover:bg-acr-warn/10 hover:text-acr-warn transition-colors focus:outline-none focus:ring-2 focus:ring-acr-warn/40"
+          className="absolute top-0 right-0 flex h-11 w-11 items-center justify-center rounded-md text-acr-warn/60 hover:bg-acr-warn/10 hover:text-acr-warn active:bg-acr-warn/10 transition-colors focus:outline-none focus:ring-2 focus:ring-acr-warn/40"
           aria-label="Dismiss portal upgrade notice"
           data-testid="button-dismiss-portal-sunset"
         >
@@ -244,7 +335,7 @@ function PortalSunsetBanner() {
 function BorrowerLandingPage() {
   useDocumentTitle("Borrower portal — AcreOS");
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F5E6D3] to-[#E8D4C4] dark:from-[#2D2118] dark:to-[#1A130D] flex items-center justify-center p-4">
+    <div className="min-h-[100dvh] bg-gradient-to-br from-acr-portal-from to-acr-portal-to flex items-center justify-center p-4">
       <h1 className="sr-only">AcreOS borrower portal</h1>
       <Card className="w-full max-w-lg floating-window text-center">
         <CardHeader>
@@ -310,6 +401,11 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   const [showPayoffQuote, setShowPayoffQuote] = useState(false);
   const [payoffQuote, setPayoffQuote] = useState<PayoffQuote | null>(null);
   const [isLoadingPayoff, setIsLoadingPayoff] = useState(false);
+  const [payoffError, setPayoffError] = useState<Error | null>(null);
+
+  // Controlled tabs — quick actions and the mobile bar switch tabs through
+  // state instead of synthetic DOM clicks on the tab triggers.
+  const [activeTab, setActiveTab] = useState("history");
   
   const [showStatementDialog, setShowStatementDialog] = useState(false);
   const [statementType, setStatementType] = useState<'statement' | '1098'>('statement');
@@ -323,7 +419,8 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   // Messaging state
   const [messages, setMessages] = useState<BorrowerMessage[]>([]);
   const [messagesLoaded, setMessagesLoaded] = useState(false);
-  const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [messagesError, setMessagesError] = useState<Error | null>(null);
   const [sendMessageError, setSendMessageError] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState("");
   const [isSendingMessage, setIsSendingMessage] = useState(false);
@@ -332,6 +429,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
 
   const loadMessages = useCallback(async () => {
     setMessagesError(null);
+    setIsLoadingMessages(true);
     try {
       const res = await fetch("/api/borrower/messages", { credentials: "include" });
       if (!res.ok) {
@@ -341,11 +439,17 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       setMessages(data);
       setUnreadCount(0); // Messages are marked read on fetch
     } catch (err: any) {
-      setMessagesError(err?.message || "Couldn't load messages. Check your connection and try again.");
+      setMessagesError(err instanceof Error ? err : new Error("Couldn't load messages. Check your connection and try again."));
     } finally {
+      setIsLoadingMessages(false);
       setMessagesLoaded(true);
     }
   }, []);
+
+  const openMessagesTab = useCallback(() => {
+    setActiveTab("messages");
+    if (!messagesLoaded) void loadMessages();
+  }, [messagesLoaded, loadMessages]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || isSendingMessage) return;
@@ -487,20 +591,21 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   const handleRequestPayoffQuote = async () => {
     setIsLoadingPayoff(true);
     setShowPayoffQuote(true);
+    setPayoffError(null);
     try {
       const res = await fetch(`/api/borrower/payoff-quote?accessToken=${accessToken}&email=${encodeURIComponent(verifiedEmail)}`);
-      
+
       if (res.ok) {
         const data = await res.json();
         setPayoffQuote(data);
       } else {
-        const data = await res.json();
-        setPaymentStatusMessage({ type: 'error', message: data.message || 'Failed to get payoff quote' });
-        setShowPayoffQuote(false);
+        const data = await res.json().catch(() => ({}));
+        // Keep the dialog open with a retry path instead of bouncing the
+        // borrower back out with a banner.
+        setPayoffError(new Error(data.message || "We couldn't prepare your payoff quote."));
       }
     } catch (err) {
-      setPaymentStatusMessage({ type: 'error', message: 'Failed to request payoff quote' });
-      setShowPayoffQuote(false);
+      setPayoffError(new Error("We couldn't reach the server to prepare your quote. Check your connection and try again."));
     } finally {
       setIsLoadingPayoff(false);
     }
@@ -732,8 +837,8 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   const borrowerName = borrower ? `${borrower.firstName} ${borrower.lastName}` : 'Borrower';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F5E6D3] to-[#E8D4C4] dark:from-[#2D2118] dark:to-[#1A130D]">
-      <header className="border-b bg-background/80 backdrop-blur sticky top-0 z-50">
+    <div className="min-h-[100dvh] bg-gradient-to-br from-acr-portal-from to-acr-portal-to">
+      <header className="border-b bg-surface-veil backdrop-blur sticky top-0 z-floating">
         <div className="max-w-5xl mx-auto px-4 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3">
             <Building className="w-5 h-5 sm:w-6 sm:h-6 text-primary" aria-hidden="true" />
@@ -794,7 +899,14 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         </div>
       )}
 
-      <main ref={portalDocRef} className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-4 sm:space-y-6">
+      <motion.main
+        ref={portalDocRef}
+        className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-4 sm:space-y-6"
+        variants={staggerContainer}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.div variants={staggerItem}>
         <Card className={`glass-panel border-2 ${paymentStatusBadge.status === 'late' ? 'border-acr-neg/60' : 'border-primary/20'}`} data-testid="card-payment-due">
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -839,15 +951,13 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             </div>
           </CardContent>
         </Card>
+        </motion.div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4" role="group" aria-label="Quick actions">
+        <motion.div variants={staggerItem} className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4" role="group" aria-label="Quick actions">
           <Button
             variant="outline"
             className="flex flex-col items-center gap-1 h-auto py-4 min-h-16"
-            onClick={() => {
-              const element = document.getElementById('schedule-tab');
-              if (element) element.click();
-            }}
+            onClick={() => setActiveTab("schedule")}
             data-testid="button-view-schedule"
           >
             <Calendar className="w-5 h-5" aria-hidden="true" />
@@ -875,9 +985,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             variant="outline"
             className="flex flex-col items-center gap-1 h-auto py-4 min-h-16 relative"
             onClick={() => {
-              const tab = document.querySelector('[data-testid="tab-messages"]') as HTMLElement | null;
-              if (tab) tab.click();
-              if (!messagesLoaded) loadMessages();
+              openMessagesTab();
               window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
             }}
             data-testid="button-contact"
@@ -894,9 +1002,9 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
               </span>
             )}
           </Button>
-        </div>
+        </motion.div>
 
-        <div className="grid sm:grid-cols-3 gap-4">
+        <motion.div variants={staggerItem} className="grid sm:grid-cols-3 gap-4">
           <Card className="glass-panel">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3">
@@ -954,7 +1062,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
               </div>
             </CardContent>
           </Card>
-        </div>
+        </motion.div>
 
         <Card className="floating-window">
           <CardContent className="p-4 sm:p-6">
@@ -1044,7 +1152,13 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           </Card>
         )}
 
-        <Tabs defaultValue="history">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            setActiveTab(value);
+            if (value === "messages" && !messagesLoaded && !isLoadingMessages) void loadMessages();
+          }}
+        >
           <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
             <TabsTrigger value="history" data-testid="tab-history">Payment history</TabsTrigger>
             <TabsTrigger value="schedule" id="schedule-tab" data-testid="tab-schedule">Payment schedule</TabsTrigger>
@@ -1052,7 +1166,6 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             <TabsTrigger
               value="messages"
               data-testid="tab-messages"
-              onClick={() => { if (!messagesLoaded) loadMessages(); }}
               className="relative"
               aria-label={unreadCount > 0 ? `Messages (${unreadCount} unread)` : "Messages"}
             >
@@ -1071,6 +1184,22 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           <TabsContent value="history">
             <Card>
               <CardContent className="p-0">
+                {payments.length === 0 ? (
+                  <div className="p-6">
+                    <EmptyState
+                      icon={CreditCard}
+                      headline="No payments yet"
+                      subtitle="Once your first payment goes through, it shows up here with exactly how it was applied — principal, interest, and your new balance."
+                      cta={{
+                        label: "Make my first payment",
+                        onClick: handleMakePayment,
+                        "data-testid": "empty-payments-pay",
+                      }}
+                      actionIcon={null}
+                      testId="empty-payment-history"
+                    />
+                  </div>
+                ) : (
                 <div
                   ref={paymentListRef}
                   className="max-h-96 overflow-y-auto"
@@ -1080,7 +1209,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                   aria-label="Payment history"
                 >
                   <Table>
-                    <TableHeader className="sticky top-0 bg-card z-10">
+                    <TableHeader className="sticky top-0 bg-card z-docked">
                       <TableRow>
                         <TableHead className="text-xs sm:text-sm">Date</TableHead>
                         <TableHead className="text-right text-xs sm:text-sm">Amount</TableHead>
@@ -1091,14 +1220,6 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {payments.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
-                            No payments recorded yet.
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        <>
                           {payments.slice(0, visiblePayments).map((payment) => (
                             <TableRow key={payment.id} data-testid={`payment-row-${payment.id}`}>
                               <TableCell className="text-xs sm:text-sm tabular-nums">{format(new Date(payment.paymentDate), 'MMM d, yyyy')}</TableCell>
@@ -1125,6 +1246,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                                 <Button
                                   variant="ghost"
                                   size="sm"
+                                  className="min-h-11"
                                   onClick={handleLoadMorePayments}
                                   disabled={isLoadingMore}
                                   data-testid="button-load-more"
@@ -1139,11 +1261,10 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                               </TableCell>
                             </TableRow>
                           )}
-                        </>
-                      )}
                     </TableBody>
                   </Table>
                 </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1159,9 +1280,22 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-4 space-y-4">
-                {!messagesLoaded ? (
+                {isLoadingMessages ? (
+                  /* Bubble-shaped skeletons mirroring the conversation layout. */
+                  <div className="space-y-3 py-2" aria-busy="true">
+                    <div className="flex justify-start">
+                      <Skeleton className="h-14 w-3/5 rounded-card" announce announceText="Loading your messages" />
+                    </div>
+                    <div className="flex justify-end">
+                      <Skeleton className="h-10 w-2/5 rounded-card" announce={false} />
+                    </div>
+                    <div className="flex justify-start">
+                      <Skeleton className="h-10 w-1/2 rounded-card" announce={false} />
+                    </div>
+                  </div>
+                ) : !messagesLoaded ? (
                   <div className="flex items-center justify-center py-8">
-                    <Button variant="outline" onClick={loadMessages} data-testid="button-load-messages">
+                    <Button variant="outline" className="min-h-11" onClick={() => void loadMessages()} data-testid="button-load-messages">
                       <MessageSquare className="w-4 h-4 mr-2" aria-hidden="true" />
                       Load messages
                     </Button>
@@ -1169,20 +1303,14 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                 ) : (
                   <>
                     {messagesError && (
-                      <div
-                        role="alert"
-                        className="p-3 rounded-md border border-destructive/50 bg-destructive/5 text-sm flex items-start gap-2"
-                        data-testid="alert-messages-error"
-                      >
-                        <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
-                        <div className="flex-1">
-                          <p className="text-foreground">{messagesError}</p>
-                          <Button size="sm" variant="outline" className="mt-2" onClick={loadMessages}>
-                            <RefreshCw className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
-                            Try again
-                          </Button>
-                        </div>
-                      </div>
+                      <QueryErrorState
+                        compact
+                        error={messagesError}
+                        onRetry={() => void loadMessages()}
+                        isRetrying={isLoadingMessages}
+                        description="We couldn't load your conversation. Check your connection and try again."
+                        testId="alert-messages-error"
+                      />
                     )}
                     <div
                       className="space-y-3 max-h-80 overflow-y-auto"
@@ -1254,7 +1382,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                       <Button
                         onClick={handleSendMessage}
                         disabled={!newMessage.trim() || isSendingMessage}
-                        className="self-end"
+                        className="self-end min-h-11 min-w-11"
                         data-testid="button-send-message"
                         aria-label={isSendingMessage ? "Sending message" : "Send message"}
                       >
@@ -1281,6 +1409,22 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
           <TabsContent value="schedule">
             <Card>
               <CardContent className="p-0">
+                {schedule.length === 0 ? (
+                  <div className="p-6">
+                    <EmptyState
+                      icon={Calendar}
+                      headline="Your schedule isn't posted yet"
+                      subtitle="Your lender hasn't published the payment schedule for this loan. Send them a quick message and they can post it for you."
+                      cta={{
+                        label: "Message my lender",
+                        onClick: openMessagesTab,
+                        "data-testid": "empty-schedule-message",
+                      }}
+                      actionIcon={null}
+                      testId="empty-payment-schedule"
+                    />
+                  </div>
+                ) : (
                 <div
                   className="max-h-96 overflow-y-auto"
                   tabIndex={0}
@@ -1288,7 +1432,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                   aria-label="Payment schedule"
                 >
                   <Table>
-                    <TableHeader className="sticky top-0 bg-card z-10">
+                    <TableHeader className="sticky top-0 bg-card z-docked">
                       <TableRow>
                         <TableHead scope="col" className="text-xs sm:text-sm">#</TableHead>
                         <TableHead scope="col" className="text-xs sm:text-sm">Due date</TableHead>
@@ -1300,14 +1444,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {schedule.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center h-24 text-muted-foreground">
-                            No payment schedule available.
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        schedule.map((row) => (
+                      {schedule.map((row) => (
                           <TableRow key={row.paymentNumber} data-testid={`schedule-row-${row.paymentNumber}`}>
                             <TableCell className="font-medium text-xs sm:text-sm tabular-nums">{row.paymentNumber}</TableCell>
                             <TableCell className="text-xs sm:text-sm tabular-nums">
@@ -1331,16 +1468,16 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                               </Badge>
                             </TableCell>
                           </TableRow>
-                        ))
-                      )}
+                      ))}
                     </TableBody>
                   </Table>
                 </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
-      </main>
+      </motion.main>
 
       <Dialog open={showPayoffQuote} onOpenChange={setShowPayoffQuote}>
         <DialogContent className="sm:max-w-md" data-testid="dialog-payoff-quote">
@@ -1354,10 +1491,31 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             </DialogDescription>
           </DialogHeader>
           {isLoadingPayoff ? (
-            <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" aria-hidden="true" />
-              <span className="sr-only">Calculating your payoff quote…</span>
+            /* Quote-line-shaped skeletons matching the rendered dl below. */
+            <div className="space-y-2 py-2" aria-busy="true">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex justify-between py-2 border-b">
+                  <Skeleton
+                    className="h-4 w-32"
+                    announce={i === 0}
+                    announceText="Calculating your payoff quote"
+                  />
+                  <Skeleton className="h-4 w-24" announce={false} />
+                </div>
+              ))}
+              <Skeleton className="h-12 w-full rounded-card mt-4" announce={false} />
+              <Skeleton className="h-4 w-48 mx-auto mt-2" announce={false} />
             </div>
+          ) : payoffError ? (
+            <QueryErrorState
+              compact
+              error={payoffError}
+              onRetry={() => void handleRequestPayoffQuote()}
+              isRetrying={isLoadingPayoff}
+              title="Quote not ready"
+              description={payoffError.message}
+              testId="payoff-quote-error"
+            />
           ) : payoffQuote ? (
             <div className="space-y-4">
               <dl className="space-y-2">
@@ -1395,7 +1553,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             </div>
           ) : null}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPayoffQuote(false)}>Close</Button>
+            <Button variant="outline" className="min-h-11" onClick={() => setShowPayoffQuote(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1443,8 +1601,8 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowStatementDialog(false)}>Cancel</Button>
-            <Button onClick={handleGenerateStatement} disabled={isGeneratingStatement} data-testid="button-generate-pdf">
+            <Button variant="outline" className="min-h-11" onClick={() => setShowStatementDialog(false)}>{Verbs.CANCEL}</Button>
+            <Button className="min-h-11" onClick={handleGenerateStatement} disabled={isGeneratingStatement} data-testid="button-generate-pdf">
               {isGeneratingStatement ? (
                 <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />
               ) : (
@@ -1457,7 +1615,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       </Dialog>
 
       <nav
-        className="fixed bottom-0 left-0 right-0 sm:hidden border-t bg-background/95 backdrop-blur"
+        className="fixed bottom-0 left-0 right-0 sm:hidden border-t bg-surface-chrome backdrop-blur"
         aria-label="Primary actions"
       >
         <div className="grid grid-cols-3 gap-1 p-2">
@@ -1475,8 +1633,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             variant="ghost"
             className="flex flex-col items-center gap-1 h-auto py-2 min-h-14"
             onClick={() => {
-              const element = document.getElementById('schedule-tab');
-              if (element) element.click();
+              setActiveTab("schedule");
               window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
             }}
             data-testid="mobile-button-schedule"
@@ -1488,9 +1645,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             variant="ghost"
             className="flex flex-col items-center gap-1 h-auto py-2 min-h-14 relative"
             onClick={() => {
-              const tab = document.querySelector('[data-testid="tab-messages"]') as HTMLElement | null;
-              if (tab) tab.click();
-              if (!messagesLoaded) loadMessages();
+              openMessagesTab();
               window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
             }}
             data-testid="mobile-button-contact"

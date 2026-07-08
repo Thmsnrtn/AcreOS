@@ -9,7 +9,10 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { usd } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { AlertTriangle, CreditCard, Mail, RefreshCw, CheckCircle2, XCircle, Loader2, Clock } from "lucide-react";
+import { AlertTriangle, CreditCard, Mail, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { Verbs } from "@/lib/labels";
 
 interface DunningCase {
   id: number;
@@ -151,14 +154,27 @@ export default function DunningManagerPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
-              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading cases…
+            <div className="space-y-2" role="status" aria-busy="true" aria-live="polite">
+              <span className="sr-only">Loading cases</span>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between p-3 border rounded-card gap-3">
+                  <div className="space-y-1.5 min-w-0 flex-1">
+                    <Skeleton announce={false} className="h-4 w-1/3 max-w-48" />
+                    <Skeleton announce={false} className="h-3 w-1/2 max-w-64" />
+                  </div>
+                  <Skeleton announce={false} className="h-9 w-20 shrink-0" />
+                </div>
+              ))}
             </div>
           ) : cases.length === 0 ? (
-            <div className="text-center py-8">
-              <CheckCircle2 className="w-8 h-8 text-acr-pos mx-auto mb-2" aria-hidden="true" />
-              <p className="text-muted-foreground text-sm">No active dunning cases.</p>
-            </div>
+            <EmptyState
+              icon={CheckCircle2}
+              tone="celebratory"
+              headline="No active dunning cases."
+              // TODO(cta): cleared queue — cases are created by payment failures, not users
+              cta={{ label: "", _noOp: true }}
+              testId="empty-state-dunning-cases"
+            />
           ) : (
             <ul className="space-y-2" aria-label="Active dunning cases">
               {cases.map(c => {
@@ -200,7 +216,7 @@ export default function DunningManagerPage() {
                           disabled={retryMutation.isPending}
                           aria-label={`Retry payment for ${c.orgName}`}
                         >
-                          <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> Retry
+                          <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" /> {Verbs.RETRY}
                         </Button>
                       )}
                       {c.status !== "resolved" && c.status !== "cancelled" && (
@@ -211,7 +227,7 @@ export default function DunningManagerPage() {
                           onClick={() => setPendingCancel(c)}
                           aria-label={`Cancel dunning case for ${c.orgName}`}
                         >
-                          Cancel
+                          {Verbs.CANCEL}
                         </Button>
                       )}
                     </div>

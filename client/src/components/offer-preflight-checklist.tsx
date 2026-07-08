@@ -25,6 +25,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import type { Lead, Property } from "@shared/schema";
+import { Verbs } from "@/lib/labels";
 
 interface ValidationIssue {
   leadId: number;
@@ -342,7 +343,7 @@ export function OfferPreflightChecklist({
             onClick={() => onOpenChange(false)}
             data-testid="button-cancel-preflight"
           >
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button
             onClick={() => {

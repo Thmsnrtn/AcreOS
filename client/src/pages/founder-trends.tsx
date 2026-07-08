@@ -30,6 +30,7 @@ import { EmptyState } from "@/components/empty-state";
 import { TrendingUp, TrendingDown, Minus, Activity } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { CHART_COLORS } from "@/lib/chart-colors";
 
 interface TrendPoint {
   date: string;
@@ -253,7 +254,8 @@ function AgentTrustChart({ points }: { points: AgentTrustPoint[] }) {
     String(a.date).localeCompare(String(b.date)),
   );
   const codenames = Array.from(new Set(points.map((p) => p.codename))).slice(0, 6);
-  const colors = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+  // Theme-derived categorical palette — cycles via `colors[i % colors.length]`.
+  const colors = CHART_COLORS;
   return (
     <div role="img" aria-label={`Per-agent trust scores over time for ${codenames.length} agents: ${codenames.join(", ")}`}>
       <ResponsiveContainer width="100%" height={280}>

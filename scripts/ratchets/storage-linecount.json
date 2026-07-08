@@ -1,0 +1,8 @@
+{
+  "name": "storage-linecount",
+  "description": "server/storage.ts is a god-class being split into mixin repos under server/storage/*Repo.ts (wired via `interface DatabaseStorage extends ...Repo` + Object.assign). This ratchet drives its line count strictly DOWN so each extraction can only make progress; the baseline tightens as repos are carved out.",
+  "mode": "lineCount",
+  "globs": ["server/storage.ts"],
+  "baselineCount": 7688,
+  "direction": "down"
+}

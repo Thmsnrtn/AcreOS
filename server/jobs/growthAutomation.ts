@@ -446,7 +446,9 @@ async function runEngagementReactivation(): Promise<{ sent: number }> {
       db.select({ c: count() }).from(leads).where(and(
         eq(leads.organizationId, org.orgId),
         sql`score >= 75`,
-        eq(leads.status, "active"),
+        // W3.4: "active" is never a written lead status — in-play means
+        // not closed/dead (the old filter always counted zero hot leads).
+        sql`${leads.status} NOT IN ('closed', 'dead')`,
       )),
       db.select({ c: count() }).from(deals).where(and(
         eq(deals.organizationId, org.orgId),

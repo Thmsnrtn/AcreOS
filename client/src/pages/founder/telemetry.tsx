@@ -13,10 +13,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { formatDateTime } from "@/lib/format";
 
 interface RouteSummary {
   route: string;
@@ -47,7 +50,7 @@ export default function FounderTelemetryPage() {
   useDocumentTitle("API telemetry — AcreOS");
   const { toast } = useToast();
 
-  const { data, isLoading, refetch } = useQuery<TelemetryResponse>({
+  const { data, isLoading, error, refetch } = useQuery<TelemetryResponse>({
     queryKey: ["/api/admin/telemetry"],
     refetchInterval: 30_000,
   });
@@ -96,7 +99,52 @@ export default function FounderTelemetryPage() {
       </div>
 
       {isLoading ? (
-        <Skeleton className="h-32" />
+        <div
+          role="status"
+          aria-busy="true"
+          aria-live="polite"
+          className="space-y-6"
+          data-testid="skeleton-telemetry"
+        >
+          <span className="sr-only">Loading API telemetry</span>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Card key={i} className="p-3 space-y-2">
+                <Skeleton announce={false} className="h-3 w-20" />
+                <Skeleton announce={false} className="h-8 w-16" />
+              </Card>
+            ))}
+          </div>
+          <Card>
+            <CardHeader>
+              <Skeleton announce={false} className="h-5 w-40" />
+              <Skeleton announce={false} className="h-4 w-72" />
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-4 pb-3 border-b">
+                <Skeleton announce={false} className="h-3 w-40" />
+                <Skeleton announce={false} className="h-3 w-12 ml-auto" />
+                <Skeleton announce={false} className="h-3 w-12" />
+                <Skeleton announce={false} className="h-3 w-12" />
+              </div>
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex items-center gap-4 py-2.5">
+                  <Skeleton announce={false} className="h-3 w-56" />
+                  <Skeleton announce={false} className="h-3 w-10 ml-auto" />
+                  <Skeleton announce={false} className="h-3 w-10" />
+                  <Skeleton announce={false} className="h-3 w-10" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      ) : error ? (
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          title="Couldn't load API telemetry"
+          testId="error-telemetry"
+        />
       ) : data ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
@@ -133,7 +181,18 @@ export default function FounderTelemetryPage() {
             </CardHeader>
             <CardContent className="p-0">
               {data.routes.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-muted-foreground">No traffic yet.</p>
+                <EmptyState
+                  icon={Activity}
+                  headline="No traffic yet"
+                  subtitle="Per-route counts appear as soon as the API serves its first request after this process started."
+                  actionIcon={RefreshCw}
+                  cta={{
+                    label: "Refresh",
+                    onClick: () => refetch(),
+                    "data-testid": "empty-state-telemetry-refresh",
+                  }}
+                  testId="empty-state-telemetry"
+                />
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
@@ -182,7 +241,7 @@ export default function FounderTelemetryPage() {
           </Card>
 
           <p className="text-xs text-muted-foreground mt-4">
-            Generated at {new Date(data.generatedAt).toLocaleString()}.
+            Generated at {formatDateTime(data.generatedAt)}.
           </p>
         </>
       ) : null}

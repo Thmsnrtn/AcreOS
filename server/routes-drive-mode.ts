@@ -6,7 +6,6 @@
  * file is the server side of that flow:
  *
  *   POST /api/field-scout/quick-add        — one-tap GPS lead creation
- *   POST /api/leads/:leadId/photos         — multipart photo evidence
  *
  * The quick-add endpoint reverse-geocodes the (lat, lng) via the Regrid
  * coordinate lookup (same path the parcel pipeline uses) so the lead row
@@ -15,51 +14,26 @@
  * label so the user still has a row to enrich later — empty screens are
  * a bug.
  *
- * The photo endpoint mirrors routes-rehab-photos.ts: DB-then-blob write
- * order so a blob failure leaves a row we can retry against, and a DB
- * failure never leaks an orphaned blob. Blob driver is still stubbed
- * (Wave 10 — docs/cost/blob-storage-migration.md).
+ * Mounted via registerDriveModeRoutes(app) in routes.ts (2026-06-11). It
+ * shipped unwired in W5-10, so the client DriveMode quick-add button 404'd
+ * in production until the 3E route-manifest orphan test surfaced it.
+ *
+ * NOTE: the lead-photo endpoint that used to live here was a 501 stub
+ * duplicating fieldScoutRouter's working POST /api/leads/:id/photos (the
+ * client DriveMode photo upload already hits that mounted route). It was
+ * removed rather than mounted, to avoid a duplicate /api/leads/:id/photos
+ * registration.
  */
 
 import type { Express, Response } from "express";
-import { and, eq } from "drizzle-orm";
 import { db } from "./db";
 import { leads } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import {
-  createUploadMiddleware,
-  validateFileMiddleware,
-} from "./middleware/fileUploadSecurity";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
-
-const photoUpload = createUploadMiddleware({ maxSizeMB: 10, allowedTypes: ["image"] });
-const validatePhotos = validateFileMiddleware(["image"]);
-
-function extensionFromMime(mime: string | undefined): string {
-  switch (mime) {
-    case "image/jpeg": return "jpg";
-    case "image/png":  return "png";
-    case "image/webp": return "webp";
-    case "image/gif":  return "gif";
-    case "image/heic": return "heic";
-    default:           return "bin";
-  }
-}
-
-/**
- * TODO(blob-storage): replace with shared driver.write(key, buffer) once
- * Wave 10 lands per docs/cost/blob-storage-migration.md. Deterministic key
- * means the DB row already points at the future canonical location.
- */
-async function persistToBlob(_buffer: Buffer, key: string): Promise<void> {
-  logger.info("[drive-mode] lead photo blob persist (stub)", {
-    metadata: { key, bytes: _buffer.length },
-  });
-}
 
 /**
  * Reverse-geocode (lat, lng) via Regrid when configured. Returns null if
@@ -168,59 +142,6 @@ export function registerDriveModeRoutes(app: Express): void {
         });
       } catch (err) {
         logger.error("[drive-mode] quick-add error", err as Error);
-        return Errors.internal(res, err);
-      }
-    },
-  );
-
-  // ── POST /api/leads/:leadId/photos ───────────────────────────────────────
-  // Multipart photo upload tied to a lead. Field name: "photos" (array of
-  // up to 10). Reuses fileUploadSecurity so the validateFileMiddleware
-  // applied here matches the rehab + field-scout paths exactly.
-  app.post(
-    "/api/leads/:leadId/photos",
-    isAuthenticated,
-    getOrCreateOrg,
-    photoUpload.array("photos", 10),
-    validatePhotos,
-    async (req: AuthenticatedRequest, res: Response) => {
-      try {
-        const orgId = getOrganizationId(req);
-        const userId = getUserId(req);
-        const leadIdRaw = req.params.leadId;
-        const leadId = parseInt(leadIdRaw, 10);
-        if (!Number.isFinite(leadId)) {
-          return Errors.badRequest(res, "Invalid leadId");
-        }
-
-        // Org-scope the lead — protects against attaching to another org's
-        // lead the same way the rehab photo route protects rehabId.
-        const [lead] = await db
-          .select({ id: leads.id })
-          .from(leads)
-          .where(and(eq(leads.id, leadId), eq(leads.organizationId, orgId)));
-        if (!lead) return Errors.notFound(res, "Lead");
-
-        const files = (req as any).files as Express.Multer.File[] | undefined;
-        if (!files || files.length === 0) {
-          return Errors.badRequest(
-            res,
-            'No photo files provided. Upload as multipart field "photos".',
-          );
-        }
-
-        // TODO(tsc): the lead_photos table referenced here does not exist in the
-        // schema (no exported `leadPhotos` with leadId/s3Key/capturedBy/lat/lng
-        // columns). This persistence path crashed at runtime (db.insert on an
-        // undefined table). Returning 501 until the lead_photos table is added.
-        logger.warn("[drive-mode] lead photo upload not implemented (missing lead_photos table)", {
-          orgId,
-          userId,
-          metadata: { leadId, count: files.length },
-        });
-        return res.status(501).json({ error: "Lead photo storage not implemented" });
-      } catch (err) {
-        logger.error("[drive-mode] lead photo upload error", err as Error);
         return Errors.internal(res, err);
       }
     },

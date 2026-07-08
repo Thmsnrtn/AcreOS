@@ -26,10 +26,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
+import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
+import { CheckCircle2, XCircle, Inbox } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 interface OfferApproval {
   id: number;
@@ -50,7 +55,12 @@ export default function OfferApprovalsPage() {
   const [thresholdInput, setThresholdInput] = useState<string>("");
   const [notes, setNotes] = useState<Record<number, string>>({});
 
-  const { data: approvals = [], isLoading } = useQuery<OfferApproval[]>({
+  const {
+    data: approvals = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<OfferApproval[]>({
     queryKey: ["/api/team-readiness/offer-approvals"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/team-readiness/offer-approvals");
@@ -85,6 +95,8 @@ export default function OfferApprovalsPage() {
       return await res.json();
     },
     onSuccess: () => {
+      // The threshold governs which offers require approval — refresh the list.
+      queryClient.invalidateQueries({ queryKey: ["/api/team-readiness/offer-approvals"] });
       toast({ title: "Threshold updated" });
     },
     onError: (error) => {
@@ -98,7 +110,7 @@ export default function OfferApprovalsPage() {
   const decided = approvals.filter((a) => a.status !== "pending");
 
   return (
-    <PageShell isLoading={isLoading} label="Loading offer approvals">
+    <PageShell label="Offer approvals">
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold">Offer approvals</h1>
@@ -129,7 +141,7 @@ export default function OfferApprovalsPage() {
                 }
                 disabled={thresholdMutation.isPending}
               >
-                Save
+                {Verbs.SAVE}
               </Button>
               <Button
                 variant="outline"
@@ -144,13 +156,52 @@ export default function OfferApprovalsPage() {
           </CardContent>
         </Card>
 
+        {isLoading ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Pending</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div role="status" aria-busy="true">
+                <span className="sr-only">Loading offer approvals…</span>
+                <div className="space-y-3">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <Skeleton className="h-4 w-16" announce={false} />
+                      <Skeleton className="h-4 w-40 flex-1" announce={false} />
+                      <Skeleton className="h-4 w-20" announce={false} />
+                      <Skeleton className="h-16 w-40" announce={false} />
+                      <Skeleton className="h-9 w-44 rounded-md" announce={false} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : error ? (
+          <QueryErrorState
+            error={error as Error}
+            onRetry={() => refetch()}
+            title="Couldn't load offer approvals"
+            testId="offer-approvals-error"
+          />
+        ) : (
+          <>
         <Card>
           <CardHeader>
             <CardTitle>Pending ({pending.length})</CardTitle>
           </CardHeader>
           <CardContent>
             {pending.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No offers awaiting approval.</p>
+              <EmptyState
+                icon={Inbox}
+                headline="No offers awaiting approval"
+                subtitle="Offers above your approval threshold land here for review. You're all caught up."
+                tone="celebratory"
+                // TODO(cta): system-generated queue — clears as offers are reviewed; no user action available
+                cta={{ label: "", _noOp: true }}
+                testId="offer-approvals-pending-empty"
+              />
             ) : (
               <Table>
                 <TableHeader>
@@ -216,7 +267,14 @@ export default function OfferApprovalsPage() {
           </CardHeader>
           <CardContent>
             {decided.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No decided approvals yet.</p>
+              <EmptyState
+                icon={CheckCircle2}
+                headline="No decided approvals yet"
+                subtitle="Once you approve or decline an offer, the decision and reviewer are recorded here."
+                // TODO(cta): read-only history — populated by decisions made above; no user action available
+                cta={{ label: "", _noOp: true }}
+                testId="offer-approvals-decided-empty"
+              />
             ) : (
               <Table>
                 <TableHeader>
@@ -239,7 +297,7 @@ export default function OfferApprovalsPage() {
                       </TableCell>
                       <TableCell className="text-right">${Number(a.offerAmount).toLocaleString()}</TableCell>
                       <TableCell className="text-xs">{a.reviewerId ?? "—"}</TableCell>
-                      <TableCell className="text-xs">{a.decidedAt ? new Date(a.decidedAt).toLocaleString() : "—"}</TableCell>
+                      <TableCell className="text-xs">{a.decidedAt ? formatDateTime(a.decidedAt) : "—"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -247,6 +305,8 @@ export default function OfferApprovalsPage() {
             )}
           </CardContent>
         </Card>
+          </>
+        )}
       </div>
     </PageShell>
   );

@@ -21,6 +21,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { QueryErrorState } from "@/components/query-error-state";
 import { ConversionFunnel, type FunnelStage } from "@/components/ui/conversion-funnel";
 import { dollarsCompact, plural } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -218,7 +219,13 @@ export default function PipelinePage() {
   const dealsLabel = useTerm("entity.deal.plural");
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
 
-  const { data: leads = [] } = useQuery<Lead[]>({
+  const {
+    data: leads = [],
+    isError: leadsError,
+    error: leadsErrorObj,
+    refetch: refetchLeads,
+    isRefetching: leadsRefetching,
+  } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
     queryFn: () => fetchJsonArray<Lead>("/api/leads"),
     staleTime: 2 * 60 * 1000,
@@ -253,6 +260,34 @@ export default function PipelinePage() {
   // Homestead editorial pipeline summary (prototype: acreos/pages-tier1.jsx
   // Pipeline header — "{n} active deals · {value} in flight")
   const totalActiveDeals = activeDealsCount;
+
+  // The board is built entirely from /api/leads (+ /api/deals). If the
+  // primary leads fetch fails, the `= []` default would otherwise paint a
+  // silent empty pipeline indistinguishable from "no leads yet" — surface
+  // the failure with a retry instead.
+  if (leadsError) {
+    return (
+      <PageShell>
+        <div className="acr-cc-hero">
+          <div>
+            <div className="acr-eyebrow">Pipeline</div>
+            <h1 className="acr-cc-greeting" data-testid="text-pipeline-title">
+              Your deal machine.
+            </h1>
+          </div>
+        </div>
+        <QueryErrorState
+          error={leadsErrorObj instanceof Error ? leadsErrorObj : null}
+          onRetry={() => refetchLeads()}
+          isRetrying={leadsRefetching}
+          compact
+          title="Couldn't load your pipeline"
+          description="We hit a snag loading your leads and deals. Your data is safe — try again."
+          testId="pipeline-query-error"
+        />
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>

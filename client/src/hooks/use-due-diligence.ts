@@ -113,49 +113,41 @@ export function useUpdateDueDiligenceChecklist() {
   });
 }
 
-export function useLookupFloodZone() {
+// Each lookup POST writes its results into the property's due-diligence
+// checklist server-side, so the checklist (and its annotations child key)
+// must be invalidated on success — prefix matching on
+// ["/api/due-diligence", propertyId] covers both.
+function useLookupMutation(path: string) {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (propertyId: number) => {
-      const res = await apiRequest("POST", `/api/due-diligence/${propertyId}/lookup/flood-zone`);
+      const res = await apiRequest("POST", `/api/due-diligence/${propertyId}/lookup/${path}`);
       return res.json();
     },
+    onSuccess: (_data, propertyId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/due-diligence", propertyId] });
+    },
   });
+}
+
+export function useLookupFloodZone() {
+  return useLookupMutation("flood-zone");
 }
 
 export function useLookupWetlands() {
-  return useMutation({
-    mutationFn: async (propertyId: number) => {
-      const res = await apiRequest("POST", `/api/due-diligence/${propertyId}/lookup/wetlands`);
-      return res.json();
-    },
-  });
+  return useLookupMutation("wetlands");
 }
 
 export function useLookupTax() {
-  return useMutation({
-    mutationFn: async (propertyId: number) => {
-      const res = await apiRequest("POST", `/api/due-diligence/${propertyId}/lookup/tax`);
-      return res.json();
-    },
-  });
+  return useLookupMutation("tax");
 }
 
 export function useLookupSoilData() {
-  return useMutation({
-    mutationFn: async (propertyId: number) => {
-      const res = await apiRequest("POST", `/api/due-diligence/${propertyId}/lookup/soil`);
-      return res.json();
-    },
-  });
+  return useLookupMutation("soil");
 }
 
 export function useLookupEnvironmental() {
-  return useMutation({
-    mutationFn: async (propertyId: number) => {
-      const res = await apiRequest("POST", `/api/due-diligence/${propertyId}/lookup/environmental`);
-      return res.json();
-    },
-  });
+  return useLookupMutation("environmental");
 }
 
 export function useDueDiligenceTemplates() {

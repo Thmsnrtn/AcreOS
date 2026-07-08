@@ -54,9 +54,16 @@ router.get("/greeting", async (req, res) => {
       }
     }
 
+    // Only claim sample data exists if it was actually seeded — onboarding sets
+    // onboardingData.sampleDataLoaded (server/services/onboarding.ts). Saying
+    // "I've set up some sample data" when none was loaded is a fabrication
+    // (truth-ratchet); the greeting must reflect the org's real state.
+    const sampleDataLoaded = onboardingData.sampleDataLoaded === true;
+    const sampleClause = sampleDataLoaded ? " I've set up some sample data to get you started." : "";
+
     const message = orgState
-      ? `Welcome to AcreOS! I've set up some sample data to get you started. Based on your location in ${orgState}, here are some active land markets I'm watching for you.`
-      : `Welcome to AcreOS! I've set up some sample data to get you started. Ask me anything about your leads, properties, or deals — I'm here to help you move faster.`;
+      ? `Welcome to AcreOS!${sampleClause} Based on your location in ${orgState}, here are some active land markets I'm watching for you.`
+      : `Welcome to AcreOS!${sampleClause} Ask me anything about your leads, properties, or deals — I'm here to help you move faster.`;
 
     return res.json({ message, isFirstSession: true });
   } catch (error: any) {

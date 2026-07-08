@@ -45,9 +45,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { staggerContainer, staggerItem } from "@/lib/animations";
+import { formatDate, formatRelative } from "@/lib/format";
 
 // ─── API contracts (provisional — Lena's surfaces land in Phase 1) ────────
 
@@ -200,19 +202,6 @@ function fmtRunwayMonths(value: number): string {
   return fmtMonths(value);
 }
 
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return "—";
-  const diffMs = Date.now() - then;
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
 // ─── Phase 0 banner ──────────────────────────────────────────────────────
 
 /**
@@ -269,7 +258,7 @@ function CfoPositionBanner({
               Lena&apos;s position
               {summary?.asOf ? (
                 <span className="ml-2 font-normal text-muted-foreground">
-                  as of {new Date(summary.asOf).toLocaleDateString()}
+                  as of {formatDate(summary.asOf)}
                 </span>
               ) : null}
             </h2>
@@ -340,9 +329,17 @@ function ScenarioCard({
 function RunwaySection({
   data,
   isLoading,
+  isError,
+  error,
+  onRetry,
+  isRetrying,
 }: {
   data?: MoneySummary | null;
   isLoading: boolean;
+  isError?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
+  isRetrying?: boolean;
 }) {
   return (
     <section aria-busy={isLoading} data-testid="money-runway-section">
@@ -354,7 +351,7 @@ function RunwaySection({
           {/* The model only has a real cash basis to stand behind once the
               ledger (or a founder-declared override) reports cash on hand.
               Until then it's "awaiting ledger", not a confident "modeled". */}
-          {data && data.cashOnHandUsd > 0 ? "modeled" : "awaiting ledger"}
+          {isError ? "unavailable" : data && data.cashOnHandUsd > 0 ? "modeled" : "awaiting ledger"}
         </span>
       </div>
       {isLoading ? (
@@ -363,6 +360,16 @@ function RunwaySection({
           <Skeleton className="h-28 w-full" />
           <Skeleton className="h-28 w-full" />
         </div>
+      ) : isError ? (
+        <QueryErrorState
+          error={error ?? null}
+          onRetry={onRetry}
+          isRetrying={isRetrying}
+          compact
+          title="Couldn't load runway"
+          description="We hit a snag loading your runway model. Your data is safe — try again."
+          testId="founder-money-query-error"
+        />
       ) : (
         <>
           <div className="grid gap-3 md:gap-4 grid-cols-1 sm:grid-cols-3">
@@ -790,7 +797,7 @@ function RecentEventsSection() {
                     {e.label}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {relativeTime(e.occurredAt)}
+                    {formatRelative(e.occurredAt)}
                     {e.envelopeId ? ` · ${e.envelopeId}` : ""}
                   </p>
                 </div>
@@ -812,13 +819,17 @@ export default function FounderMoneyPage() {
   useDocumentTitle("Money · Founder");
 
   // Lifted to the page so the position banner + runway cards read one fetch.
+  // A non-ok response now throws so the runway surfaces an error + retry
+  // rather than silently collapsing every scenario to "—" (which read as a
+  // confident zero-runway model). A 200-with-malformed-body still resolves
+  // to null — that's a "no data yet" shape, not a fetch failure.
   const summaryQuery = useQuery<MoneySummary | null>({
     queryKey: ["/api/founder/money/summary"],
     queryFn: async () => {
       const res = await fetch("/api/founder/money/summary", {
         credentials: "include",
       });
-      if (!res.ok) return null;
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
       try {
         return (await res.json()) as MoneySummary;
       } catch {
@@ -866,6 +877,10 @@ export default function FounderMoneyPage() {
         <RunwaySection
           data={summaryQuery.data}
           isLoading={summaryQuery.isLoading}
+          isError={summaryQuery.isError}
+          error={summaryQuery.error instanceof Error ? summaryQuery.error : null}
+          onRetry={() => summaryQuery.refetch()}
+          isRetrying={summaryQuery.isRefetching}
         />
 
         <div className="grid gap-3 md:gap-4 grid-cols-1 lg:grid-cols-2">
@@ -894,7 +909,7 @@ export default function FounderMoneyPage() {
               className="h-auto justify-start py-3"
             >
               <Link
-                href="/founder/cost"
+                href="/founder/admin/costs"
                 aria-label="Open the cost console"
                 data-testid="link-money-cost"
               >

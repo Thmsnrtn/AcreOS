@@ -115,6 +115,52 @@ export const financialLedger = pgTable("financial_ledger", {
 export type FinancialLedgerRow = typeof financialLedger.$inferSelect;
 export type InsertFinancialLedgerRow = typeof financialLedger.$inferInsert;
 
+// ── Tier 2B (one money spine) — ledger dead letters ─────────────────────────
+//
+// When a ledger posting (postRevenue / postRefund / postOpexSpent) fails at a
+// call site that must never throw (the Stripe webhook handlers), the original
+// args are captured here verbatim so the money is never silently lost. The
+// hourly `ledger_dead_letter_replay` job re-dispatches pending rows through
+// the same idempotent posting functions (external_event_id collisions make
+// replay retry-safe), and raises an alert-spine finding when entries
+// accumulate instead of draining.
+//
+//   - external_event_id is UNIQUE: one dead letter per failed event, no
+//     matter how many times Stripe redelivers while the failure persists.
+//   - payload is the exact PostRevenueArgs / PostRefundArgs / PostOpexArgs
+//     object (Date fields serialized to ISO strings by jsonb).
+//   - status: pending → replayed (success) | abandoned (attempts exhausted —
+//     founder intervention required; the accumulation alert escalates).
+export const ledgerDeadLetters = pgTable("ledger_dead_letters", {
+  id: serial("id").primaryKey(),
+  // Org the failed posting attributes to. Nullable to mirror financial_ledger
+  // (platform-level postings aren't customer-attributable).
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "set null" }),
+  // Which posting function failed: revenue | refund | opex.
+  kind: text("kind").notNull(),
+  // The idempotency anchor of the failed posting — also OUR dedupe key.
+  externalEventId: text("external_event_id").notNull().unique(),
+  // Verbatim args of the failed call, replayable as-is.
+  payload: jsonb("payload").notNull(),
+  lastError: text("last_error"),
+  // Replay attempts so far (the original failed call is NOT counted).
+  attempts: integer("attempts").notNull().default(0),
+  // pending | replayed | abandoned
+  status: text("status").notNull().default("pending"),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  replayedAt: timestamp("replayed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  // Org-leading per repo discipline; the replay scan + accumulation check
+  // both filter on status first, so give them their own composite.
+  index("ledger_dead_letters_org_status_idx").on(table.organizationId, table.status),
+  index("ledger_dead_letters_status_created_idx").on(table.status, table.createdAt),
+]);
+
+export type LedgerDeadLetterRow = typeof ledgerDeadLetters.$inferSelect;
+export type InsertLedgerDeadLetterRow = typeof ledgerDeadLetters.$inferInsert;
+
 // ── Pillar 5: Communications Router ──────────────────────────────────────
 // Tracking-number assignments. A "tracking number" is a phone number we
 // rent (currently from Twilio) and assign to a specific (org, campaign)
@@ -291,6 +337,11 @@ export const mailShipments = pgTable("mail_shipments", {
   sentAt: timestamp("sent_at", { withTimezone: true }),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   cancellationReason: text("cancellation_reason"),
+  // The credit-pool debit taken at enqueue, persisted so BOTH the flusher
+  // worker (on send failure) and the cancel path can refund this exact draw —
+  // the guarantee that a shipment is never charged-without-sent.
+  debitEventKey: text("debit_event_key"),
+  debitedCents: integer("debited_cents"),
 }, (table) => [
   index("mail_shipments_org_status_idx").on(table.organizationId, table.status),
   index("mail_shipments_leaves_at_idx").on(table.leavesAt),

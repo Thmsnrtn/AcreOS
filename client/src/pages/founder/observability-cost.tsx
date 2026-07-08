@@ -70,11 +70,11 @@ function fmtRate(r: number): string {
 
 function StatusBadge({ within }: { within: boolean }) {
   return within ? (
-    <Badge variant="outline" className="gap-1 border-emerald-500/40 text-emerald-700 dark:text-emerald-400">
+    <Badge variant="outline" className="gap-1 border-acr-pos/40 text-acr-pos">
       <CheckCircle2 className="h-3 w-3" aria-hidden="true" /> Within free tier
     </Badge>
   ) : (
-    <Badge variant="outline" className="gap-1 border-amber-500/40 text-amber-700 dark:text-amber-400">
+    <Badge variant="outline" className="gap-1 border-acr-warn/40 text-acr-warn">
       <AlertTriangle className="h-3 w-3" aria-hidden="true" /> Over free tier
     </Badge>
   );
@@ -138,7 +138,7 @@ function ProjectionCard({
               <TableRow key={row.label}>
                 <TableCell className="font-medium">{row.label}</TableCell>
                 <TableCell
-                  className={`text-right font-mono ${row.over ? "text-amber-600 dark:text-amber-400" : ""}`}
+                  className={`text-right font-mono ${row.over ? "text-acr-warn" : ""}`}
                 >
                   {fmtNum(row.value)}
                 </TableCell>
@@ -150,7 +150,7 @@ function ProjectionCard({
           </TableBody>
         </Table>
         {!projection.withinFreeTier ? (
-          <p className="mt-4 rounded-md border border-amber-500/30 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          <p className="mt-4 rounded-md border border-acr-warn/30 bg-acr-warn-soft p-3 text-sm text-acr-warn">
             <strong>Recommendation:</strong> {projection.recommendation}
           </p>
         ) : (
@@ -222,7 +222,7 @@ function RatesCard({ rates }: { rates: Rates }) {
   );
 }
 
-export default function FounderObservabilityCostPage() {
+export function ObservabilityCostContent() {
   useDocumentTitle("Observability cost");
   const { data, isLoading, isError, error } = useQuery<ObservabilityCostResponse>({
     queryKey: ["/api/founder/observability-cost"],
@@ -230,7 +230,7 @@ export default function FounderObservabilityCostPage() {
   });
 
   return (
-    <PageShell label="Observability cost">
+    <>
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Observability cost</h1>
@@ -303,6 +303,14 @@ export default function FounderObservabilityCostPage() {
           </div>
         </>
       )}
+    </>
+  );
+}
+
+export default function FounderObservabilityCostPage() {
+  return (
+    <PageShell label="Observability cost">
+      <ObservabilityCostContent />
     </PageShell>
   );
 }

@@ -5,7 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, RefreshCw } from "lucide-react";
 import { StatusDot } from "@/components/ui/status-dot";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
+import { EmptyState } from "@/components/empty-state";
 import { usePageMeta } from "@/hooks/use-document-title";
+import { formatDateTime } from "@/lib/format";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
 
 type Tone = "green" | "amber" | "red" | "gray";
@@ -35,7 +39,7 @@ export default function StatusPage() {
     "System status",
     "Live status of AcreOS platform services — database, authentication, email, SMS, payments, and integrations. Real-time health checks."
   );
-  const { data, isLoading, refetch } = useQuery<{
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<{
     status: string;
     services: { name: string; status: string }[];
     lastChecked: string;
@@ -65,7 +69,11 @@ export default function StatusPage() {
               tone={config.tone}
               size="lg"
               pulse={config.tone === "green"}
-              label={<span className="text-lg font-medium">{isLoading ? "Checking…" : config.label}</span>}
+              label={
+                <span className="text-lg font-medium">
+                  {isLoading ? "Checking…" : isError ? "Status check unavailable" : config.label}
+                </span>
+              }
             />
           </div>
         </div>
@@ -85,13 +93,45 @@ export default function StatusPage() {
           </CardHeader>
           <CardContent className="p-0">
             {isLoading ? (
-              <div className="p-6 text-center text-muted-foreground" role="status" aria-live="polite">
+              // Shaped to match the real status rows: service name left, status badge right.
+              <div role="status" aria-busy="true" data-testid="status-services-loading">
                 <span className="sr-only">Loading service status…</span>
-                Checking every service…
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between px-6 py-4 border-t first:border-t-0"
+                  >
+                    <Skeleton announce={false} className="h-5 w-28" />
+                    <Skeleton announce={false} className="h-6 w-28 rounded-full" />
+                  </div>
+                ))}
               </div>
+            ) : isError ? (
+              // A status page that fails silently is self-defeating — say so, with retry.
+              <QueryErrorState
+                error={error instanceof Error ? error : null}
+                onRetry={() => refetch()}
+                isRetrying={isRefetching}
+                title="Can't load service status"
+                description="The status check itself didn't respond. That may indicate a wider issue — try again in a moment."
+                testId="status-error-state"
+              />
+            ) : !data?.services?.length ? (
+              <EmptyState
+                icon={AlertTriangle}
+                headline="No service checks reported"
+                subtitle="The status endpoint responded but returned no services. Refresh to re-run the checks."
+                cta={{
+                  label: "Refresh status",
+                  onClick: () => refetch(),
+                  "data-testid": "status-empty-refresh",
+                }}
+                actionIcon={RefreshCw}
+                testId="status-empty-state"
+              />
             ) : (
               <ul aria-label="Platform services">
-                {data?.services.map((service) => {
+                {data.services.map((service) => {
                   const svc = STATUS_CONFIG[service.status] || STATUS_CONFIG.unknown;
                   const SvcIcon = svc.icon;
                   return (
@@ -120,7 +160,7 @@ export default function StatusPage() {
 
         {data?.lastChecked && (
           <p className="text-center text-sm text-muted-foreground mt-6">
-            Last checked: <span className="tabular-nums">{new Date(data.lastChecked).toLocaleString()}</span>
+            Last checked: <span className="tabular-nums">{formatDateTime(data.lastChecked)}</span>
           </p>
         )}
 

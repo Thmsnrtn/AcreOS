@@ -32,12 +32,32 @@
   --acr-ease-spring:   cubic-bezier(.22, 1, .36, 1);
   --acr-ease-standard: cubic-bezier(0.25, 0.46, 0.45, 0.94);
 
-  /* Z-index layers */
-  --acr-z-sidebar: 10;
-  --acr-z-topbar:  20;
-  --acr-z-drawer:  30;
-  --acr-z-modal:   9100;
-  --acr-z-toast:   9999;
+  /* ── Z-index / layering scale ───────────────────────────────────────
+     Canonical stacking scale, mirrored from theme.extend.zIndex in
+     tailwind.config.ts and the runtime Z registry in lib/z-index.ts.
+     Tailwind classes (`z-modal`, `z-toast`, …) are preferred; these
+     custom properties exist for the rare non-Tailwind / inline-style
+     consumer so it can say `style={{ zIndex: "var(--z-modal)" }}`
+     instead of hardcoding a number. Role-named, low → high; values are
+     the existing anchors so adopting a token never re-layers anything.
+     (Replaces the old, unused --acr-z-* block whose values had drifted
+     out of sync with the real anchors.) */
+  --z-base:      0;     /* in-flow default content                       */
+  --z-raised:    1;     /* card hover-lift; thin in-flow raise           */
+  --z-docked:    10;    /* sticky subheaders, table headers, raised cards*/
+  --z-dropdown:  20;    /* in-page dropdowns / popper menus              */
+  --z-sticky:    30;    /* page topbar                                   */
+  --z-overlay:   40;    /* autopilot bar, top notifications, cookie banner*/
+  --z-slot-help: 48;    /* floating help slot (just under the FAB stack) */
+  --z-slot-tray: 49;    /* floating conversation tray slot               */
+  --z-floating:  50;    /* FAB, bottom nav, base dialogs/sheets, PWA prompt*/
+  --z-modal:     60;    /* modal scrim, command palette, escalated sheets*/
+  --z-toast:     100;   /* toasts / transient banners above modals       */
+  --z-offline:   110;   /* offline indicator above toasts                */
+  --z-tour:      9990;  /* product tour scrim                            */
+  --z-island:    9998;  /* dynamic island, tour/demo highlight rings     */
+  --z-spotlight: 9999;  /* demo orb / highlight focus above the island   */
+  --z-max:       10000; /* absolute top — demo control panel             */
 
   /* Card radius — locked at 14px per design-system §0.2 */
   --radius: 1rem;
@@ -79,6 +99,53 @@
   --glass-border-sm:   rgba(255, 255, 255, 0.40);
   --glass-specular:    linear-gradient(135deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 60%);
 
+  /* ── Surface-translucency scale (Tahoe F2 — 2026-06-11) ──────────────
+     SEMANTIC, role-named translucency for layered surfaces. The glass
+     material kit (.liquid-glass*) above is the depth ANCHOR — these
+     tokens are the opacity layer of the same house language, named by
+     the ROLE a surface plays, not by a raw `/NN` opacity number. Call
+     sites say `bg-surface-chrome`, never `bg-background/95`; the
+     `.surface-*` utility classes (defined with the elevation utilities
+     below) resolve to these vars. The `bg-…/NN` value each token
+     replaces is noted so the migration stays behavior-identical.
+
+       --surface-chrome   hsl(bg / .95)  glass chrome: topbars, navs, the
+                                         Pax rail, bottom nav, sticky
+                                         detail headers — the systematic
+                                         95%+backdrop-blur surface. Pair
+                                         with a `backdrop-blur*` utility
+                                         (the blur depth — sm/md/lg —
+                                         stays per-site; this token only
+                                         owns the translucent fill). Same
+                                         family as .liquid-glass.
+       --surface-haze     hsl(bg / .90)  map/canvas overlay chrome
+                                         (legends, floating control pods)
+                                         that sits over imagery and needs
+                                         a touch more opacity than veil.
+       --surface-veil     hsl(bg / .80)  secondary / lighter sticky
+                                         chrome: page-topbar, persona
+                                         switcher, map tool clusters —
+                                         lets more of the layer below
+                                         read through.
+       --surface-sheer    hsl(bg / .70)  sheerest tinted veil: full-bleed
+                                         loading/empty scrims over content
+                                         and the sidebar backdrop on
+                                         mobile. (Form-input fills keep
+                                         their own `inset-input` idiom.)
+       --surface-scrim         rgba(0,0,0,.40)  modal/dialog backdrop —
+                                         the dim layer behind a focused
+                                         surface (dialog, command palette,
+                                         new-item menu).
+       --surface-scrim-strong  rgba(0,0,0,.80)  heavy backdrop for the
+                                         most-blocking overlays
+                                         (alert-dialog, drawer). */
+  --surface-chrome:        hsl(var(--background) / 0.95);
+  --surface-haze:          hsl(var(--background) / 0.90);
+  --surface-veil:          hsl(var(--background) / 0.80);
+  --surface-sheer:         hsl(var(--background) / 0.70);
+  --surface-scrim:         rgba(0, 0, 0, 0.40);
+  --surface-scrim-strong:  rgba(0, 0, 0, 0.80);
+
   --shadow-1: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
   --shadow-2: 0 0 0 0.5px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.08), 0 8px 24px -4px rgba(0,0,0,0.06);
   --shadow-3: 0 0 0 0.5px rgba(0,0,0,0.08), 0 8px 40px rgba(0,0,0,0.12), 0 16px 48px -8px rgba(0,0,0,0.10);
@@ -105,6 +172,21 @@
   --acr-heat-cold-soft: rgba(107,114,128,0.14);
   --acr-heat-warm-soft: rgba(185,122,30,0.14);
   --acr-heat-hot-soft:  rgba(142,43,22,0.14);
+
+  /* ── Sequential density tokens ───────────────────────────────────────
+     4-anchor perceptual light→dark ramp for choropleth-style map fills
+     (EDDM household density, future parcel-density surfaces). Distinct
+     from --acr-heat-* which is a 3-anchor activity-intensity stripe —
+     density encodes a monotone quantity, low→high. Each theme derives
+     its ramp from its primary hue (lightness ladder 93/68/48/33). Map
+     GL code resolves these at runtime via getComputedStyle — CSS var()
+     cannot reach WebGL paint expressions.
+
+     Default values match BEDROCK light. Per-theme blocks below override. */
+  --acr-density-1: #F8E7E2;
+  --acr-density-2: #DE937C;
+  --acr-density-3: #C45331;
+  --acr-density-4: #873922;
 }
 .dark {
   --glass-bg-light:  rgba(20, 14, 8, 0.78);
@@ -131,6 +213,13 @@
   --acr-heat-cold-soft: rgba(156,142,114,0.16);
   --acr-heat-warm-soft: rgba(217,162,74,0.16);
   --acr-heat-hot-soft:  rgba(191,76,46,0.18);
+
+  /* Density tokens — dark-mode global override (BEDROCK dark baseline).
+     Per-theme dark blocks below refine these further. */
+  --acr-density-1: #F6E8E4;
+  --acr-density-2: #D59485;
+  --acr-density-3: #B6543E;
+  --acr-density-4: #7D3A2B;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -193,7 +282,7 @@
   --secondary:                   38 31% 83%;
   --secondary-foreground:        28 33% 9%;
   --muted:                       38 31% 83%;
-  --muted-foreground:            34 21% 40%;
+  --muted-foreground:            34 21% 34%;
   --accent:                      36 61% 45%;
   --accent-foreground:           41 51% 92%;
   --destructive:                 11 73% 32%;
@@ -226,6 +315,11 @@
   --acr-heat-cold-soft: rgba(107,92,66,0.14);
   --acr-heat-warm-soft: rgba(185,122,30,0.14);
   --acr-heat-hot-soft:  rgba(142,43,22,0.14);
+  /* Density tokens — BEDROCK light */
+  --acr-density-1: #F8E7E2;
+  --acr-density-2: #DE937C;
+  --acr-density-3: #C45331;
+  --acr-density-4: #873922;
 }
 
 /* ─────────────── BEDROCK · dark ─────────────── */
@@ -274,7 +368,7 @@
   --secondary:                   33 28% 13%;
   --secondary-foreground:        39 50% 84%;
   --muted:                       33 28% 13%;
-  --muted-foreground:            41 19% 46%;
+  --muted-foreground:            41 19% 51%;
   --accent:                      40 64% 57%;
   --accent-foreground:           31 22% 6%;
   --destructive:                 11 60% 47%;
@@ -302,6 +396,26 @@
   --acr-heat-cold-soft: rgba(156,142,114,0.16);
   --acr-heat-warm-soft: rgba(217,162,74,0.16);
   --acr-heat-hot-soft:  rgba(191,76,46,0.18);
+  /* Density tokens — BEDROCK dark */
+  --acr-density-1: #F6E8E4;
+  --acr-density-2: #D59485;
+  --acr-density-3: #B6543E;
+  --acr-density-4: #7D3A2B;
+}
+
+/* ─────────────── Borrower portal — warm public identity ─────────────── */
+/* The borrower portal is a PUBLIC surface — our customers' land buyers see
+   it. It keeps a deliberately warm, parchment-like backdrop distinct from
+   the in-app themes (a borrower never picks a theme). Tokenized here so the
+   identity stays consistent, rides the light/dark switch, and no component
+   className carries hardcoded hex. */
+:root {
+  --acr-portal-grad-from: #F5E6D3;
+  --acr-portal-grad-to:   #E8D4C4;
+}
+.dark {
+  --acr-portal-grad-from: #2D2118;
+  --acr-portal-grad-to:   #1A130D;
 }
 
 /* ─────────────── Homestead · light ─────────────── */
@@ -353,7 +467,7 @@
   --secondary:                   43 56.4% 89.2%;
   --secondary-foreground:        31 67.4% 8.4%;
   --muted:                       43 56.4% 89.2%;
-  --muted-foreground:            39 27.1% 44.1%;
+  --muted-foreground:            39 27.1% 37.1%;
   --accent:                      186 25.5% 40%;
   --accent-foreground:           43 100% 97.3%;
   --destructive:                 11 75.5% 40%;
@@ -381,6 +495,11 @@
   --acr-heat-cold-soft: rgba(120,102,68,0.14);
   --acr-heat-warm-soft: rgba(196,138,30,0.14);
   --acr-heat-hot-soft:  rgba(179,52,25,0.14);
+  /* Density tokens — Homestead light */
+  --acr-density-1: #FBE9E0;
+  --acr-density-2: #EB9970;
+  --acr-density-3: #D65C1F;
+  --acr-density-4: #933F15;
 }
 
 /* ─────────────── Homestead · dark ─────────────── */
@@ -431,7 +550,7 @@
   --secondary:                   25 32.4% 13.3%;
   --secondary-foreground:        38 73.1% 89.8%;
   --muted:                       25 32.4% 13.3%;
-  --muted-foreground:            37 18.7% 47.3%;
+  --muted-foreground:            37 18.7% 51.3%;
   --accent:                      184 28% 60.8%;
   --accent-foreground:           26 67.7% 6.1%;
   --destructive:                 13 80.3% 66.1%;
@@ -459,6 +578,11 @@
   --acr-heat-cold-soft: rgba(143,126,98,0.16);
   --acr-heat-warm-soft: rgba(240,188,88,0.16);
   --acr-heat-hot-soft:  rgba(238,128,99,0.16);
+  /* Density tokens — Homestead dark */
+  --acr-density-1: #FCE9DF;
+  --acr-density-2: #EF9A6B;
+  --acr-density-3: #DE5D17;
+  --acr-density-4: #984010;
 }
 
 /* ─────────────── Quarry · light ─────────────── */
@@ -510,7 +634,7 @@
   --secondary:                   44 23.4% 90.8%;
   --secondary-foreground:        60 9.1% 4.3%;
   --muted:                       44 23.4% 90.8%;
-  --muted-foreground:            60 4% 43.7%;
+  --muted-foreground:            60 4% 38.7%;
   --accent:                      60 9.1% 4.3%;
   --accent-foreground:           50 42.9% 97.3%;
   --destructive:                 3 74.6% 35.5%;
@@ -538,6 +662,11 @@
   --acr-heat-cold-soft: rgba(106,106,98,0.10);
   --acr-heat-warm-soft: rgba(143,106,0,0.10);
   --acr-heat-hot-soft:  rgba(158,30,23,0.10);
+  /* Density tokens — Quarry light */
+  --acr-density-1: #FBE1E0;
+  --acr-density-2: #EB7670;
+  --acr-density-3: #D6281F;
+  --acr-density-4: #931B15;
 }
 
 /* ─────────────── Quarry · dark ─────────────── */
@@ -589,7 +718,7 @@
   --secondary:                   60 4.5% 13.1%;
   --secondary-foreground:        46 33.3% 92.4%;
   --muted:                       60 4.5% 13.1%;
-  --muted-foreground:            46 5.4% 46.9%;
+  --muted-foreground:            46 5.4% 53.9%;
   --accent:                      46 33.3% 92.4%;
   --accent-foreground:           60 5.9% 6.7%;
   --destructive:                 5 78.3% 58.4%;
@@ -617,6 +746,11 @@
   --acr-heat-cold-soft: rgba(135,132,122,0.14);
   --acr-heat-warm-soft: rgba(228,177,74,0.14);
   --acr-heat-hot-soft:  rgba(232,81,66,0.14);
+  /* Density tokens — Quarry dark */
+  --acr-density-1: #FBE2DF;
+  --acr-density-2: #ED786E;
+  --acr-density-3: #DA2B1B;
+  --acr-density-4: #961D13;
 }
 
 /* ─────────────── Nocturne · light ─────────────── */
@@ -668,7 +802,7 @@
   --secondary:                   60 8.3% 95.3%;
   --secondary-foreground:        0 0% 3.9%;
   --muted:                       60 8.3% 95.3%;
-  --muted-foreground:            0 0% 46.7%;
+  --muted-foreground:            0 0% 42.7%;
   --accent:                      0 0% 3.9%;
   --accent-foreground:           0 0% 100%;
   --destructive:                 5 69.2% 40.8%;
@@ -696,6 +830,11 @@
   --acr-heat-cold-soft: rgba(109,109,109,0.10);
   --acr-heat-warm-soft: rgba(184,130,14,0.10);
   --acr-heat-hot-soft:  rgba(176,43,32,0.10);
+  /* Density tokens — Nocturne light */
+  --acr-density-1: #F9E3E1;
+  --acr-density-2: #E48077;
+  --acr-density-3: #CC3628;
+  --acr-density-4: #8D251C;
 }
 
 /* ─────────────── Nocturne · dark ─────────────── */
@@ -746,7 +885,7 @@
   --secondary:                   0 0% 10.2%;
   --secondary-foreground:        0 0% 95.7%;
   --muted:                       0 0% 10.2%;
-  --muted-foreground:            0 0% 47.8%;
+  --muted-foreground:            0 0% 51.8%;
   --accent:                      0 0% 95.7%;
   --accent-foreground:           0 33.3% 2.9%;
   --destructive:                 5 100% 61%;
@@ -774,6 +913,11 @@
   --acr-heat-cold-soft: rgba(122,122,122,0.12);
   --acr-heat-warm-soft: rgba(250,200,77,0.12);
   --acr-heat-hot-soft:  rgba(255,74,56,0.12);
+  /* Density tokens — Nocturne dark */
+  --acr-density-1: #FFDEDB;
+  --acr-density-2: #FF695C;
+  --acr-density-3: #F51400;
+  --acr-density-4: #A80E00;
 }
 
 /* ─────────────── Meadow · light ─────────────── */
@@ -826,7 +970,7 @@
   --secondary:                   69 30.2% 91.6%;
   --secondary-foreground:        109 33.3% 9.4%;
   --muted:                       69 30.2% 91.6%;
-  --muted-foreground:            87 8.2% 47.8%;
+  --muted-foreground:            87 8.2% 39.8%;
   --accent:                      37 69.3% 50.2%;
   --accent-foreground:           60 53.8% 97.5%;
   --destructive:                 14 60% 49%;
@@ -854,6 +998,11 @@
   --acr-heat-cold-soft: rgba(103,110,94,0.14);
   --acr-heat-warm-soft: rgba(216,149,40,0.16);
   --acr-heat-hot-soft:  rgba(200,86,50,0.14);
+  /* Density tokens — Meadow light */
+  --acr-density-1: #E9F4E6;
+  --acr-density-2: #9CCD8E;
+  --acr-density-3: #61AA4B;
+  --acr-density-4: #437533;
 }
 
 /* ─────────────── Meadow · dark ─────────────── */
@@ -904,7 +1053,7 @@
   --secondary:                   90 21.1% 14.9%;
   --secondary-foreground:        73 40.9% 91.4%;
   --muted:                       90 21.1% 14.9%;
-  --muted-foreground:            79 9.9% 49.6%;
+  --muted-foreground:            79 9.9% 54.6%;
   --accent:                      41 85.8% 64.1%;
   --accent-foreground:           92 44.8% 5.7%;
   --destructive:                 16 76.7% 64.7%;
@@ -932,6 +1081,11 @@
   --acr-heat-cold-soft: rgba(131,139,114,0.18);
   --acr-heat-warm-soft: rgba(242,191,85,0.18);
   --acr-heat-hot-soft:  rgba(234,132,96,0.18);
+  /* Density tokens — Meadow dark */
+  --acr-density-1: #EBF5E5;
+  --acr-density-2: #A2D289;
+  --acr-density-3: #6AB143;
+  --acr-density-4: #497A2E;
 }
 
 /* ─────────────── Slate · light ─────────────── */
@@ -983,7 +1137,7 @@
   --secondary:                   216 31.3% 93.7%;
   --secondary-foreground:        220 48.8% 8.4%;
   --muted:                       216 31.3% 93.7%;
-  --muted-foreground:            219 14.5% 50%;
+  --muted-foreground:            219 14.5% 43%;
   --accent:                      184 84.4% 27.6%;
   --accent-foreground:           0 0% 100%;
   --destructive:                 350 69.6% 42.5%;
@@ -1011,6 +1165,11 @@
   --acr-heat-cold-soft: rgba(95,107,128,0.12);
   --acr-heat-warm-soft: rgba(181,114,10,0.12);
   --acr-heat-hot-soft:  rgba(184,33,59,0.12);
+  /* Density tokens — Slate light (closest to the legacy hardcoded blues) */
+  --acr-density-1: #E0E7FA;
+  --acr-density-2: #7193EA;
+  --acr-density-3: #2053D5;
+  --acr-density-4: #163992;
 }
 
 /* ─────────────── Slate · dark ─────────────── */
@@ -1061,7 +1220,7 @@
   --secondary:                   215 29.7% 14.5%;
   --secondary-foreground:        217 56.3% 93.7%;
   --muted:                       215 29.7% 14.5%;
-  --muted-foreground:            217 11.9% 52.4%;
+  --muted-foreground:            217 11.9% 56.4%;
   --accent:                      184 55.8% 54.7%;
   --accent-foreground:           218 63.2% 7.5%;
   --destructive:                 350 84.9% 63.5%;
@@ -1089,6 +1248,11 @@
   --acr-heat-cold-soft: rgba(119,130,148,0.18);
   --acr-heat-warm-soft: rgba(234,177,74,0.18);
   --acr-heat-hot-soft:  rgba(241,83,110,0.18);
+  /* Density tokens — Slate dark */
+  --acr-density-1: #DBE6FF;
+  --acr-density-2: #5C8DFF;
+  --acr-density-3: #0049F5;
+  --acr-density-4: #0032A8;
 }
 
 @layer base {
@@ -1101,6 +1265,19 @@
      users. Applies site-wide. */
   html {
     -webkit-tap-highlight-color: transparent;
+  }
+  /* The fixed mobile bottom nav (72px + safe-area, md:hidden) overlays the
+     bottom edge of the scroll viewport. Without scroll padding, any
+     programmatic scroll that parks a target at the bottom edge — keyboard
+     focus scrolling, in-page anchor jumps, scrollIntoView — leaves the
+     target UNDER the nav, which then intercepts the tap (seen live: the
+     nav's "More" chip swallowing the Pax settings-gear click on iphone-se,
+     E2E run 27330994449). Gated to the nav's own breakpoint so desktop
+     keeps edge-to-edge scroll behavior. */
+  @media (max-width: 767px) {
+    html {
+      scroll-padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    }
   }
   body {
     @apply bg-background text-foreground antialiased;
@@ -1132,8 +1309,10 @@
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-foreground/25;
+@media (hover: hover) {
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-foreground/25;
+  }
 }
 
 /* Apple-style Glass Panel Effect — Liquid Glass */
@@ -1225,6 +1404,25 @@
 .elevation-3 { box-shadow: var(--shadow-3); }
 .elevation-4 { box-shadow: var(--shadow-4); }
 
+/* ── Surface-translucency utilities (Tahoe F2) ─────────────────────────
+   Role-named translucent fills — the opacity layer of the liquid-glass
+   house language. Each class sets only `background-color` from the
+   matching `--surface-*` var, so it composes with the existing
+   `backdrop-blur*` / border / shadow utilities exactly as the raw
+   `bg-…/NN` modifier it replaces did (behavior-identical migration).
+   Use the ROLE, not a number: chrome (95) for primary glass chrome,
+   haze (90) for canvas-overlay chrome, veil (80) for secondary sticky
+   chrome, sheer (70) for the lightest content veils, and the scrim
+   pair for modal backdrops. New translucent surfaces pick a role here
+   rather than re-introducing a raw `bg-background/NN` (enforced by
+   scripts/lint-translucency.mjs). */
+.bg-surface-chrome       { background-color: var(--surface-chrome); }
+.bg-surface-haze         { background-color: var(--surface-haze); }
+.bg-surface-veil         { background-color: var(--surface-veil); }
+.bg-surface-sheer        { background-color: var(--surface-sheer); }
+.bg-surface-scrim        { background-color: var(--surface-scrim); }
+.bg-surface-scrim-strong { background-color: var(--surface-scrim-strong); }
+
 /* ── Tahoe Typography ─────────────────────────────────────────────── */
 .heading-display  { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; }
 .heading-section  { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; }
@@ -1265,6 +1463,36 @@
   font-weight: 500;
 }
 
+/* ── Editorial header scaffold (promoted from today.css 2026-06-11) ──
+   .acr-cc-hero / .acr-cc-hero-actions / .acr-eyebrow were page-scoped in
+   today.css, so any page that uses the editorial header pattern WITHOUT
+   importing today.css (Pax, and the Wave-R Batch 2/3 door headers) got an
+   inert, unstyled header — the eyebrow + flex layout simply did not apply.
+   Defining them here, next to the already-global .acr-cc-greeting, makes the
+   editorial header render correctly on every surface. Canonical home is now
+   index.css; today.css keeps only a one-line pointer. */
+.acr-cc-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 4px;
+}
+.acr-cc-hero-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.acr-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 11px/1 var(--font-sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--acr-ink-3);
+}
+
 /* section — h2-grade in-page section heads (Decision Queue, Activity, …)
    Keeps --font-display identity at body weight so it reads below the H1. */
 .acr-section-h2 {
@@ -1276,6 +1504,11 @@
 
 /* Mobile override — hero scales down at ≤720px to match today.css breakpoint */
 @media (max-width: 720px) {
+  .acr-cc-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
   .acr-cc-greeting {
     font-size: 26px;
   }
@@ -1328,9 +1561,11 @@
   }
 }
 
-/* Skip-to-content link for keyboard accessibility */
+/* Skip-to-content link for keyboard accessibility.
+   min-height 44px — it is a real focus/touch target when revealed, and the
+   Krieger touch-target contract measures it even while translated offscreen. */
 .skip-to-content {
-  @apply fixed top-0 left-0 z-[9999] px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-br-lg;
+  @apply fixed top-0 left-0 z-[9999] flex min-h-11 items-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-br-lg;
   transform: translateY(-100%);
   transition: transform 0.2s ease;
 }
@@ -1464,6 +1699,17 @@
     min-height: 44px;
     min-width: 44px;
   }
+
+  /* MapLibre/Mapbox GL ships 29×29px control buttons (zoom, compass,
+     geolocate) — under the 44px Apple-HIG floor. Lift them on coarse
+     pointers only so the desktop map keeps its compact chrome. Both
+     vendor prefixes covered: maplibregl-* and mapboxgl-* (engine is
+     selected at runtime via MAP_ENGINE). */
+  .maplibregl-ctrl-group button,
+  .mapboxgl-ctrl-group button {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 /* When the offline banner is up (40px tall, fixed top-0 z-[100]), shift
@@ -1567,22 +1813,41 @@ body[data-offline-banner="true"] [data-page-topbar] {
    element, which makes the first tap a "maybe a zoom gesture" no-op and forces
    a second tap to navigate/activate. `manipulation` keeps pan + pinch-zoom but
    drops the double-tap-zoom + its ~300ms delay, so links/buttons fire on the
-   first tap. Scoped to interactive elements so content (maps, etc.) keep their
-   own gestures. */
-a,
-button,
-[role="button"],
-[role="link"],
-[role="tab"],
-[role="menuitem"],
-label,
-summary,
-select,
-input[type="submit"],
-input[type="button"],
-input[type="checkbox"],
-input[type="radio"] {
+   first tap.
+
+   PERMANENT, NON-LEAKY FIX (do not revert to a selector list). This was fixed
+   ~7 times via curated selector lists (a, button, [role], .cursor-pointer,
+   [tabindex]…) and kept returning, because the app has 477+ files with onClick
+   and any clickable <div> that lacks .cursor-pointer / a role / tabindex
+   re-arms double-tap-zoom — pure whack-a-mole. The universal rule below covers
+   EVERY element forever at specificity 0, so the double-tap can never sneak
+   back in via a new clickable element.
+
+   `manipulation` preserves panning + pinch-zoom (so accessibility zoom still
+   works), and only drops the double-tap-zoom gesture. Surfaces that genuinely
+   need a different touch-action — the map canvas (its own double-tap-zoom), the
+   Vaul drawer / dnd-kit draggables (touch-action: none for drag) — set their
+   own value inline or via a utility class, which beats this universal selector
+   on specificity and wins. */
+* {
   touch-action: manipulation;
+}
+
+/* Mobile perf: backdrop-filter blur re-composites every scroll/tap frame and is
+   the dominant cost on touch GPUs — the re-skin has 30+ sticky/fixed glass
+   surfaces (topbars, rails, panels). Blur cost scales ~quadratically with
+   radius, and the chrome surfaces are 80-95% opaque so a heavy blur is nearly
+   invisible yet pays full cost. On coarse pointers (touch), cap every blur
+   radius to a light 6px: the glass still reads, the GPU cost drops ~16x and
+   taps/scrolls go smooth. Desktop keeps the full radius. Tailwind v4 emits the
+   radius via --tw-backdrop-blur, so overriding that variable caps it while
+   leaving the rest of the backdrop-filter composite intact. */
+@media (pointer: coarse) {
+  .backdrop-blur-xl,
+  .backdrop-blur-lg,
+  .backdrop-blur-md {
+    --tw-backdrop-blur: blur(6px);
+  }
 }
 
 /* Shimmer skeleton for loading states */

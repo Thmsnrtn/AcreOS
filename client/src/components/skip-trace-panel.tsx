@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -21,6 +22,7 @@ import {
 import { GlossaryTerm } from "@/components/Glossary";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { Lead } from "@shared/schema";
+import { formatDate } from "@/lib/format";
 
 type SkipTraceResult = {
   phones?: Array<{ number: string; type: string; verified: boolean }>;
@@ -49,6 +51,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
     queryKey: ['/api/skip-traces/lead', lead.id],
   });
 
+  // allow-no-invalidation: starts an async trace; the polling query (setIsPolling) picks up results
   const runSkipTrace = useMutation({
     mutationFn: async () => {
       const res = await apiRequest('POST', '/api/skip-traces', { leadId: lead.id });
@@ -96,8 +99,10 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
   if (isLoading) {
     return (
       <Card className="glass-panel">
-        <CardContent className="pt-6 flex items-center justify-center">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        <CardContent className="pt-6 space-y-2" role="status" aria-busy="true" aria-live="polite">
+          <span className="sr-only">Loading skip trace</span>
+          <Skeleton announce={false} className="h-4 w-1/2 max-w-40" />
+          <Skeleton announce={false} className="h-4 w-3/4 max-w-64" />
         </CardContent>
       </Card>
     );
@@ -153,7 +158,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                       <span className="font-medium">{phone.number}</span>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-xs">{phone.type}</Badge>
-                        {phone.verified && <CheckCircle className="w-3 h-3 text-emerald-500" />}
+                        {phone.verified && <CheckCircle className="w-3 h-3 text-acr-pos" />}
                       </div>
                     </div>
                   ))}
@@ -170,7 +175,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                   {skipTrace.results.emails.map((email, idx) => (
                     <div key={idx} className="flex items-center justify-between text-sm" data-testid={`skip-trace-email-${idx}`}>
                       <span className="font-medium">{email.email}</span>
-                      {email.verified && <CheckCircle className="w-3 h-3 text-emerald-500" />}
+                      {email.verified && <CheckCircle className="w-3 h-3 text-acr-pos" />}
                     </div>
                   ))}
                 </div>
@@ -188,7 +193,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
                       <p className="font-medium">{addr.address}</p>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Badge variant="outline" className="text-xs">{addr.type}</Badge>
-                        {addr.current && <Badge className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">Current</Badge>}
+                        {addr.current && <Badge className="text-xs bg-acr-pos-soft text-acr-pos">Current</Badge>}
                       </div>
                     </div>
                   ))}
@@ -222,7 +227,7 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
             <div className="pt-3 border-t text-xs text-muted-foreground flex items-center justify-between">
               <span>Cost: ${((skipTrace.costCents || 50) / 100).toFixed(2)}</span>
               {skipTrace.completedAt && (
-                <span>Completed: {new Date(skipTrace.completedAt).toLocaleDateString()}</span>
+                <span>Completed: {formatDate(skipTrace.completedAt)}</span>
               )}
             </div>
 

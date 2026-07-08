@@ -524,6 +524,10 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
+      // Perf audit 2026-07-04: queries that opt INTO an interval must not
+      // keep polling a backgrounded tab — roughly halves idle polling load
+      // (battery + server) across every interval query in the app.
+      refetchIntervalInBackground: false,
       refetchOnWindowFocus: false,
       staleTime: STALE_TIMES.medium,
       gcTime: CACHE_TIMES.medium,
@@ -552,10 +556,46 @@ export const queryClient = new QueryClient({
   },
 });
 
-export function prefetchRoute(path: string) {
+/**
+ * Endpoints whose bare-key cache shape is, by consumer contract, a FLAT
+ * ARRAY: every subscribing queryFn (inbox, pipeline, decision-queue,
+ * command-palette, PersonaMapStrip, type-specific-widgets, …) normalizes
+ * the paginated envelope to `T[]` before caching. Prefetching these with
+ * the default fetcher cached the RAW envelope object under the same key —
+ * a consumer mounting while that entry was still fresh then served the
+ * envelope to code expecting an array and crashed
+ * (`leads.forEach is not a function` → 500 boundary on /inbox, caught by
+ * the ipad-mini sidebar tab-walk in nav-smoke, 2026-06-10). The poison was
+ * desktop-only because only the sidebar hover/click prefetch path fires
+ * `prefetchRoute` for these keys.
+ */
+const ARRAY_SHAPE_PREFETCH_PATHS = new Set([
+  "/api/leads",
+  "/api/properties",
+  "/api/deals",
+  "/api/notes",
+]);
+
+/**
+ * The ONLY sanctioned way to warm an API path's bare-key cache entry.
+ * Every prefetch surface (sidebar handlePrefetch, command palette,
+ * PrefetchLink) MUST route through here — a second prefetch path calling
+ * queryClient.prefetchQuery directly with the default fetcher
+ * reintroduces the envelope-poisoning crash for the array-contract keys
+ * (exactly how PrefetchLink re-broke the ipad-mini tab walk after the
+ * first fix, 2026-06-11: link focus on click → prefetch → envelope
+ * cached fresh → /inbox `leads.forEach` crash).
+ */
+export function prefetchRoute(path: string, staleTime: number = STALE_TIMES.short) {
   queryClient.prefetchQuery({
     queryKey: [path],
-    staleTime: STALE_TIMES.short,
+    // Match the shape the key's consumers store — see
+    // ARRAY_SHAPE_PREFETCH_PATHS. Object-shaped endpoints keep the default
+    // fetcher (raw JSON is what their consumers expect).
+    ...(ARRAY_SHAPE_PREFETCH_PATHS.has(path)
+      ? { queryFn: () => fetchJsonArray(path) }
+      : {}),
+    staleTime,
   });
 }
 

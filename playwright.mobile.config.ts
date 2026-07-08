@@ -26,8 +26,21 @@ export default defineConfig({
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5000",
     trace: "on-first-retry",
-    screenshot: "on",
-    video: "retain-on-failure",
+    // only-on-failure: "on" captured a screenshot after EVERY action across
+    // ~250 test executions — on a 2-core CI runner that IO/CPU pressure
+    // manifested as page crashes, "#root never rendered", and WebKit fetch
+    // failures ("due to access control checks") in otherwise-sound tests.
+    screenshot: "only-on-failure",
+    // on-first-retry: retain-on-failure still RECORDS every test (the pass
+    // case merely deletes the file afterward) — recording is the expensive
+    // part. With retries=2 in CI, every real failure still gets a video on
+    // its first retry.
+    video: "on-first-retry",
+    // Without this, a single detached/obstructed element makes click()'s
+    // auto-wait run until the 200s TEST timeout — seen as C1's 3.4-minute
+    // hangs on /settings. 15s is generous for a starved runner while keeping
+    // one bad element from eating the whole test budget.
+    actionTimeout: 15_000,
   },
   // The real device classes founders + customers use. iOS Safari (WebKit)
   // dominates on Tom's audience; Android Chrome is the second-largest. The
@@ -38,8 +51,12 @@ export default defineConfig({
   projects: [
     { name: "iphone-14", use: { ...devices["iPhone 14"] } },
     { name: "pixel-5", use: { ...devices["Pixel 5"] } },
-    // iPhone SE (3rd gen) — 375x667. The narrowest current-spec iPhone;
-    // catches buttons that wrap-and-collide at the smallest viewport.
+    // Playwright's "iPhone SE" descriptor is the ORIGINAL 2016 SE:
+    // 320x568, iOS 10 UA — NOT the 375x667 3rd-gen. Even stricter than
+    // intended: catches buttons that wrap-and-collide at the absolute
+    // smallest viewport any customer could bring. (Verified against
+    // playwright deviceDescriptors, 2026-06-10 — same descriptor-
+    // assumption error class as the iPad Mini 768x1024-vs-744 mixup.)
     { name: "iphone-se", use: { ...devices["iPhone SE"] } },
     // iPhone 14 Pro Max — 430x932. The widest iPhone in production; catches
     // surfaces that assume <= 414px width and stretch awkwardly.

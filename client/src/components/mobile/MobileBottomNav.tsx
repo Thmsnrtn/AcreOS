@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { prefetchDoorChunksOnIdle } from "@/lib/door-prefetch";
 import { MobileCommandDrawer } from "./MobileCommandDrawer";
 import { QuickAddSheet } from "./QuickAddSheet";
 import { useAuth } from "@/hooks/use-auth";
@@ -24,9 +25,28 @@ export function MobileBottomNav() {
     .map((id) => NAV_ITEM_MAP.get(id))
     .filter((item): item is MasterNavItem => item != null);
 
+  // Perceived speed (Tier 3C): once the bar is up for a signed-in user,
+  // warm the five door chunks during idle time so the next door tap paints
+  // immediately instead of hitting the route-level fallback.
+  useEffect(() => {
+    if (isMobile && user) prefetchDoorChunksOnIdle();
+  }, [isMobile, user]);
+
   if (!isMobile || isKeyboardOpen) {
     return null;
   }
+
+  // Surfaces whose primary action lives in the page chrome — on these the
+  // FAB stacks OVER the working area (Pax's composer + settings gear,
+  // inbox message actions). Mirrors the FloatingActionButton suppression
+  // list in App.tsx ("the global FAB overlaps the chat input on mobile");
+  // this newer FAB repeated that mistake — E2E run 27334034694 caught it
+  // intercepting the tap on Pax's settings gear on iphone-se. Exact-or-
+  // subpath match so /ai-* siblings (e.g. /ai-observatory) keep the FAB.
+  const FAB_SUPPRESSED_PREFIXES = ["/ai", "/inbox", "/field-scout", "/founder"];
+  const fabSuppressed = FAB_SUPPRESSED_PREFIXES.some(
+    (p) => location === p || location.startsWith(p + "/"),
+  );
 
   return (
     <>
@@ -34,24 +54,24 @@ export function MobileBottomNav() {
           note) tailored to the user's persona. Floats above the fixed
           five-door bar so it never becomes a sixth door. Hidden while the
           More drawer is open to avoid stacking over its overlay. */}
-      {!isDrawerOpen && (
+      {!isDrawerOpen && !fabSuppressed && (
         <button
           type="button"
           aria-label="Quick add"
           aria-haspopup="dialog"
           aria-expanded={isQuickAddOpen}
           onClick={() => setIsQuickAddOpen(true)}
-          className="fixed right-4 z-50 flex items-center justify-center w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-level-3 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="fixed right-4 z-floating flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-level-3 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           style={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px) + 16px)" }}
           data-testid="mobile-quick-add-fab"
         >
-          <Plus className="w-7 h-7" aria-hidden="true" />
+          <Plus className="w-6 h-6" aria-hidden="true" />
         </button>
       )}
 
       <nav
         aria-label="Mobile navigation"
-        className="fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-t border-border"
+        className="fixed bottom-0 left-0 right-0 z-floating bg-surface-chrome backdrop-blur-lg border-t border-border"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
         data-testid="mobile-bottom-nav"
       >

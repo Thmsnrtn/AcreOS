@@ -21,15 +21,24 @@ import { JOB_ROSTER } from "../../server/jobs/jobRegistry";
 // actually ARE withJobLock literals too. Nothing is roster-only.
 const ROSTER_ONLY: string[] = [];
 
+// Files that carry withJobLock literals. runScheduledJobs.ts is the main
+// registrar; the W5.1 migrations (2026-07) moved three former bare
+// setIntervals into the runtime at their own definition sites.
+const SCANNED_FILES = [
+  "../../server/jobs/runScheduledJobs.ts",
+  "../../server/jobs/atlasPendingConfirmationNudger.ts",
+  "../../server/jobs/autonomousTaskProcessor.ts",
+  "../../server/services/founderDigest.ts",
+];
+
 function extractWithJobLockNames(): Set<string> {
-  const src = readFileSync(
-    resolve(__dirname, "../../server/jobs/runScheduledJobs.ts"),
-    "utf8",
-  );
   const names = new Set<string>();
   const re = /withJobLock\(\s*(["'])([^"']+)\1/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(src)) !== null) names.add(m[2]);
+  for (const rel of SCANNED_FILES) {
+    const src = readFileSync(resolve(__dirname, rel), "utf8");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src)) !== null) names.add(m[2]);
+  }
   return names;
 }
 

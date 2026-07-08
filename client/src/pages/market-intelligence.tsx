@@ -14,6 +14,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Globe, TrendingUp, ArrowUpRight, ArrowDownRight, Plus, Search, Star, Target } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 
 function HealthBadge({ score }: { score: number }) {
   if (score >= 70) return <StatusBadge status="success" label={`Strong ${score}`} />;
@@ -22,8 +25,8 @@ function HealthBadge({ score }: { score: number }) {
 }
 
 function TrendArrow({ direction }: { direction: string }) {
-  if (direction === "up") return <ArrowUpRight className="w-4 h-4 text-green-500" aria-hidden="true" />;
-  if (direction === "down") return <ArrowDownRight className="w-4 h-4 text-red-500" aria-hidden="true" />;
+  if (direction === "up") return <ArrowUpRight className="w-4 h-4 text-acr-pos" aria-hidden="true" />;
+  if (direction === "down") return <ArrowDownRight className="w-4 h-4 text-acr-neg" aria-hidden="true" />;
   return null;
 }
 
@@ -40,11 +43,19 @@ export default function MarketIntelligencePage() {
   const countyId = useId();
   const stateId = useId();
 
-  const { data: analysisData, isLoading: analysisLoading } = useQuery({
+  const {
+    data: analysisData,
+    isLoading: analysisLoading,
+    isError: analysisIsError,
+    error: analysisError,
+    refetch: refetchAnalysis,
+    isRefetching: analysisRefetching,
+  } = useQuery({
     queryKey: ["/api/market-intelligence/analyze", submitted],
     enabled: !!submitted,
     queryFn: async () => {
       const res = await fetch(`/api/market-intelligence/analyze?county=${encodeURIComponent(submitted!.county)}&state=${encodeURIComponent(submitted!.state)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to analyze market");
       return res.json();
     },
   });
@@ -54,6 +65,7 @@ export default function MarketIntelligencePage() {
     enabled: !!submitted,
     queryFn: async () => {
       const res = await fetch(`/api/market-intelligence/trends?county=${encodeURIComponent(submitted!.county)}&state=${encodeURIComponent(submitted!.state)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch price trends");
       return res.json();
     },
   });
@@ -63,10 +75,12 @@ export default function MarketIntelligencePage() {
     enabled: !!submitted,
     queryFn: async () => {
       const res = await fetch(`/api/market-intelligence/growth-indicators?county=${encodeURIComponent(submitted!.county)}&state=${encodeURIComponent(submitted!.state)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch growth indicators");
       return res.json();
     },
   });
 
+  // allow-no-invalidation: comparison renders from mutation.data — read-only analysis
   const compareMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/market-intelligence/compare", {
@@ -99,10 +113,10 @@ export default function MarketIntelligencePage() {
     : null;
 
   const investmentGrade = overallScore !== null
-    ? overallScore >= 75 ? { label: "A — Prime", color: "text-emerald-600 bg-emerald-50 border-emerald-200" }
-    : overallScore >= 60 ? { label: "B — Strong", color: "text-blue-600 bg-blue-50 border-blue-200" }
-    : overallScore >= 45 ? { label: "C — Moderate", color: "text-amber-600 bg-amber-50 border-amber-200" }
-    : { label: "D — Weak", color: "text-red-600 bg-red-50 border-red-200" }
+    ? overallScore >= 75 ? { label: "A — Prime", color: "text-acr-pos bg-acr-pos-soft border-acr-pos-soft" }
+    : overallScore >= 60 ? { label: "B — Strong", color: "text-primary bg-primary/10 border-primary/20" }
+    : overallScore >= 45 ? { label: "C — Moderate", color: "text-acr-warn bg-acr-warn-soft border-acr-warn-soft" }
+    : { label: "D — Weak", color: "text-acr-neg bg-acr-neg-soft border-acr-neg-soft" }
     : null;
 
   const priceHistory = trends?.historicalPrices?.map((p: any) => ({
@@ -211,17 +225,58 @@ export default function MarketIntelligencePage() {
 
       {!submitted && !compareMutation.data && (
         <Card>
-          <CardContent className="py-16 text-center">
-            <Globe className="w-14 h-14 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
-            <p className="text-muted-foreground">Enter a county and state to analyze market conditions.</p>
-          </CardContent>
+          <EmptyState
+            icon={Globe}
+            headline="Analyze your first market"
+            subtitle="Enter a county and state above to get price trends, growth factors, and an investment-grade score for that market."
+            cta={{
+              label: "Pick a county",
+              onClick: () => document.getElementById(countyId)?.focus(),
+              "data-testid": "market-intel-pick-county",
+            }}
+            actionIcon={Search}
+            testId="market-intel-empty-state"
+          />
         </Card>
       )}
 
       {analysisLoading && (
-        <div className="space-y-3" role="status" aria-label="Loading market analysis">
-          {[1, 2, 3].map(i => <div key={i} className="h-24 bg-muted/50 rounded-card animate-pulse" />)}
+        <div className="space-y-4" aria-busy="true" aria-label="Loading market analysis">
+          {/* Shaped like the analysis that replaces it: tab bar, the
+              investment-grade hero card, then the four KPI cards. */}
+          <Skeleton className="h-10 w-80 max-w-full" announce announceText="Analyzing market" />
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-28" announce={false} />
+                  <Skeleton className="h-9 w-24" announce={false} />
+                  <Skeleton className="h-5 w-32 rounded-full" announce={false} />
+                </div>
+                <Skeleton className="w-32 h-32 rounded-full" announce={false} />
+              </div>
+            </CardContent>
+          </Card>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-4 space-y-2">
+                  <Skeleton className="h-3 w-24" announce={false} />
+                  <Skeleton className="h-7 w-20" announce={false} />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
+      )}
+
+      {analysisIsError && !analysisLoading && (
+        <QueryErrorState
+          error={analysisError as Error}
+          onRetry={() => refetchAnalysis()}
+          isRetrying={analysisRefetching}
+          title="Couldn't analyze that market"
+        />
       )}
 
       {analysis && (
@@ -287,7 +342,7 @@ export default function MarketIntelligencePage() {
                 <dt className="text-xs text-muted-foreground">YoY change</dt>
                 <dd className="flex items-center gap-1">
                   <TrendArrow direction={(analysis.yoyChange ?? 0) >= 0 ? "up" : "down"} />
-                  <span className={`text-xl font-bold tabular-nums ${(analysis.yoyChange ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  <span className={`text-xl font-bold tabular-nums ${(analysis.yoyChange ?? 0) >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
                     {(analysis.yoyChange ?? 0).toFixed(1)}%
                   </span>
                 </dd>
@@ -352,7 +407,20 @@ export default function MarketIntelligencePage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card><CardContent className="py-10 text-center text-muted-foreground">No price history available.</CardContent></Card>
+              <Card>
+                <EmptyState
+                  icon={TrendingUp}
+                  headline="No price history for this market"
+                  subtitle="This county doesn't have enough recorded transactions for a 12-month trend yet. Try a neighboring county for a read on the area."
+                  cta={{
+                    label: "Analyze another market",
+                    onClick: () => document.getElementById(countyId)?.focus(),
+                    "data-testid": "market-intel-trends-retry",
+                  }}
+                  actionIcon={Search}
+                  testId="market-intel-trends-empty"
+                />
+              </Card>
             )}
 
             {trends?.forecast && (
@@ -362,7 +430,7 @@ export default function MarketIntelligencePage() {
                     <dt className="text-xs text-muted-foreground">{label} forecast</dt>
                     <dd className="flex items-center gap-1 mt-1">
                       <TrendArrow direction={(trends.forecast[key] ?? 0) >= 0 ? "up" : "down"} />
-                      <span className={`text-lg font-bold tabular-nums ${(trends.forecast[key] ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <span className={`text-lg font-bold tabular-nums ${(trends.forecast[key] ?? 0) >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>
                         {(trends.forecast[key] ?? 0).toFixed(1)}%
                       </span>
                     </dd>
@@ -396,7 +464,20 @@ export default function MarketIntelligencePage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card><CardContent className="py-10 text-center text-muted-foreground">No growth data available.</CardContent></Card>
+              <Card>
+                <EmptyState
+                  icon={Target}
+                  headline="No growth data for this market"
+                  subtitle="Growth indicators (population, employment, infrastructure) aren't available for this county yet. Try a nearby market."
+                  cta={{
+                    label: "Analyze another market",
+                    onClick: () => document.getElementById(countyId)?.focus(),
+                    "data-testid": "market-intel-growth-retry",
+                  }}
+                  actionIcon={Search}
+                  testId="market-intel-growth-empty"
+                />
+              </Card>
             )}
 
             {growth?.leadingIndicators?.length > 0 && (
@@ -469,7 +550,7 @@ export default function MarketIntelligencePage() {
                             aria-label={`${d.dimension} score`}
                           >
                             <div
-                              className={`h-full rounded-full ${d.score >= 70 ? "bg-emerald-500" : d.score >= 50 ? "bg-amber-500" : "bg-red-400"}`}
+                              className={`h-full rounded-full ${d.score >= 70 ? "bg-acr-pos" : d.score >= 50 ? "bg-acr-warn" : "bg-acr-neg"}`}
                               style={{ width: `${d.score}%` }}
                             />
                           </div>
@@ -507,7 +588,7 @@ export default function MarketIntelligencePage() {
                           </div>
                           <div>
                             <dt className="text-muted-foreground">YoY</dt>
-                            <dd className={`font-bold tabular-nums ${(m.yoyChange ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>{(m.yoyChange ?? 0).toFixed(1)}%</dd>
+                            <dd className={`font-bold tabular-nums ${(m.yoyChange ?? 0) >= 0 ? "text-acr-pos" : "text-acr-neg"}`}>{(m.yoyChange ?? 0).toFixed(1)}%</dd>
                           </div>
                           <div>
                             <dt className="text-muted-foreground">Rank</dt>

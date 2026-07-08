@@ -53,13 +53,32 @@ const MAPBOX_TOKEN =
 // Per Pillar 3 cost weights — 31¢/piece for EDDM postcards.
 const EDDM_PER_PIECE_CENTS = 31;
 
-// Households-to-color ramp anchors. Matches the legend in the side panel.
-const HOUSEHOLD_RAMP: { stop: number; color: string }[] = [
-  { stop: 100, color: "#dbeafe" },
-  { stop: 250, color: "#60a5fa" },
-  { stop: 400, color: "#1d4ed8" },
-  { stop: 500, color: "#1e3a8a" },
-];
+// Households-to-color ramp anchors. Colors come from the theme's sequential
+// --acr-density-* tokens (index.css): the legend uses the CSS vars directly,
+// while the GL layers resolve them via resolveMapColors below.
+const HOUSEHOLD_STOPS = [100, 250, 400, 500];
+const DENSITY_TOKENS = [
+  "--acr-density-1",
+  "--acr-density-2",
+  "--acr-density-3",
+  "--acr-density-4",
+] as const;
+
+// GL paint colors — resolved at layer-creation time from CSS vars so the map
+// follows the active theme (mirrors getDealStatusColor in pages/maps.tsx).
+// Mapbox paint expressions need concrete color strings; CSS var() cannot
+// resolve inside WebGL. Like maps.tsx, GL layers painted before a theme
+// switch keep their colors until the surface remounts — shared limitation.
+function resolveMapColors() {
+  const style = getComputedStyle(document.documentElement);
+  const get = (v: string) => style.getPropertyValue(v).trim();
+  return {
+    density: DENSITY_TOKENS.map(get), // sequential household-density ramp
+    routeOutline: get("--acr-density-4"), // unselected outline = ramp's deep end
+    selected: get("--acr-pos"), // selected route = positive/committed choice
+    parcel: get("--acr-brand"), // parcel overlay = active outreach targets
+  };
+}
 
 interface OrgWithSettings {
   id: number;
@@ -180,6 +199,7 @@ export default function EddmTab() {
       }
 
       map.addSource("eddm-routes", { type: "geojson", data: annotated as GeoJSON.FeatureCollection });
+      const colors = resolveMapColors();
       map.addLayer({
         id: "eddm-routes-fill",
         type: "fill",
@@ -188,12 +208,12 @@ export default function EddmTab() {
           "fill-color": [
             "case",
             ["==", ["get", "selected"], true],
-            "#16a34a",
+            colors.selected,
             [
               "interpolate",
               ["linear"],
               ["get", "householdCount"],
-              ...HOUSEHOLD_RAMP.flatMap((s) => [s.stop, s.color]),
+              ...HOUSEHOLD_STOPS.flatMap((stop, i) => [stop, colors.density[i]]),
             ],
           ],
           "fill-opacity": ["case", ["==", ["get", "selected"], true], 0.65, 0.45],
@@ -204,7 +224,15 @@ export default function EddmTab() {
         type: "line",
         source: "eddm-routes",
         paint: {
-          "line-color": ["case", ["==", ["get", "selected"], true], "#15803d", "#1e3a8a"],
+          // Selected outline shares --acr-pos with the fill; the 2.5px width
+          // (vs 1px) carries the selected emphasis previously done with a
+          // darker green shade.
+          "line-color": [
+            "case",
+            ["==", ["get", "selected"], true],
+            colors.selected,
+            colors.routeOutline,
+          ],
           "line-width": ["case", ["==", ["get", "selected"], true], 2.5, 1],
         },
       });
@@ -262,6 +290,10 @@ export default function EddmTab() {
           type: "geojson",
           data: fc as GeoJSON.FeatureCollection,
         });
+        // Parcels are active outreach targets — brand accent, same meaning
+        // maps.tsx assigns --acr-brand. The full-opacity outline over the
+        // 0.35 fill keeps the boundary contrast the darker shade used to add.
+        const colors = resolveMapColors();
         map.addLayer({
           id: "eddm-parcels-circle",
           type: "circle",
@@ -269,7 +301,7 @@ export default function EddmTab() {
           filter: ["==", ["geometry-type"], "Point"],
           paint: {
             "circle-radius": 3,
-            "circle-color": "#f97316",
+            "circle-color": colors.parcel,
             "circle-opacity": 0.9,
           },
         });
@@ -279,9 +311,9 @@ export default function EddmTab() {
           source: "eddm-parcels",
           filter: ["!=", ["geometry-type"], "Point"],
           paint: {
-            "fill-color": "#f97316",
+            "fill-color": colors.parcel,
             "fill-opacity": 0.35,
-            "fill-outline-color": "#c2410c",
+            "fill-outline-color": colors.parcel,
           },
         });
       }
@@ -441,7 +473,7 @@ export default function EddmTab() {
 
         {/* Routes loading spinner */}
         {routesQuery.isLoading && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-background/95 rounded-full px-3 py-1 text-xs flex items-center gap-2 shadow">
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-surface-chrome rounded-full px-3 py-1 text-xs flex items-center gap-2 shadow">
             <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
             Loading carrier routes…
           </div>
@@ -450,7 +482,7 @@ export default function EddmTab() {
         {/* Side panel — layer toggles + filters */}
         {panelOpen && (
           <aside
-            className="absolute top-3 left-3 w-72 max-w-[calc(100%-1.5rem)] bg-background/95 rounded-card shadow-lg border p-3 space-y-3"
+            className="absolute top-3 left-3 w-72 max-w-[calc(100%-1.5rem)] bg-surface-chrome rounded-card shadow-lg border p-3 space-y-3"
             data-testid="eddm-side-panel"
           >
             <div className="flex items-center justify-between">
@@ -502,18 +534,18 @@ export default function EddmTab() {
             <div className="border-t pt-3 space-y-2">
               <p className="text-xs text-muted-foreground">Household density</p>
               <div className="flex gap-1 items-center">
-                {HOUSEHOLD_RAMP.map((s) => (
+                {HOUSEHOLD_STOPS.map((stop, i) => (
                   <div
-                    key={s.stop}
+                    key={stop}
                     className="flex-1 h-2 rounded"
-                    style={{ background: s.color }}
+                    style={{ background: `var(${DENSITY_TOKENS[i]})` }}
                     aria-hidden="true"
                   />
                 ))}
               </div>
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{HOUSEHOLD_RAMP[0].stop}</span>
-                <span>{HOUSEHOLD_RAMP[HOUSEHOLD_RAMP.length - 1].stop}+</span>
+                <span>{HOUSEHOLD_STOPS[0]}</span>
+                <span>{HOUSEHOLD_STOPS[HOUSEHOLD_STOPS.length - 1]}+</span>
               </div>
             </div>
 
@@ -555,7 +587,7 @@ export default function EddmTab() {
 
       {/* ── Bottom toolbar: selection summary + queue ──────────────────── */}
       <Card
-        className="mx-4 md:mx-6 mt-3 mb-4 sticky bottom-3 z-10 shadow-lg"
+        className="mx-4 md:mx-6 mt-3 mb-4 sticky bottom-3 z-docked shadow-lg"
         data-testid="eddm-summary-bar"
       >
         <CardContent className="p-3 flex flex-wrap items-center gap-3">

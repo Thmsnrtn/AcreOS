@@ -407,7 +407,48 @@ export class SequenceProcessorService {
       return;
     }
 
-    logger.info("[sequence-processor] Direct mail sent", { metadata: { firstName: lead.firstName, lastName: lead.lastName, address: lead.address } });
+    // REAL SEND (product-truth audit): this step was a log-only stub —
+    // "Direct mail sent" with no Lob call — so automated cadences silently
+    // dropped their mail touch. Route through the same governed MailRouter →
+    // Lob path the campaign blast uses (handles provider choice + the ledger).
+    // Honest failure logging on missing config / sender identity, mirroring the
+    // email/SMS steps above (never a fake success).
+    const orgId = (lead as any).organizationId as number | undefined;
+    if (!orgId) {
+      logger.warn("[sequence-processor] Direct mail skipped — lead has no organizationId", { metadata: { leadId: lead.id } });
+      return;
+    }
+    try {
+      const { MailRouter } = await import("./mail/router");
+      const route = await new MailRouter().route({
+        customerId: orgId,
+        organizationId: orgId,
+        pieces: [
+          {
+            recipient: {
+              firstName: lead.firstName ?? undefined,
+              lastName: lead.lastName ?? undefined,
+              address1: lead.address,
+              city: lead.city,
+              state: lead.state,
+              zip: lead.zip,
+            },
+            pieceType: "letter_10",
+            vars: { htmlContent: content },
+          },
+        ],
+        speed: "standard",
+        personalizationRequired: false,
+        feature: "sequence_cadence",
+      });
+      logger.info("[sequence-processor] Direct mail SENT", {
+        metadata: { leadId: lead.id, provider: route.chosenProvider, pieceId: route.result.pieces[0]?.providerPieceId },
+      });
+    } catch (err: any) {
+      logger.warn("[sequence-processor] Direct mail send unavailable/failed", {
+        metadata: { leadId: lead.id, error: err instanceof Error ? err.message : String(err) },
+      });
+    }
   }
 
   async pauseEnrollmentOnResponse(leadId: number) {

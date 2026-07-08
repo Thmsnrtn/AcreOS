@@ -9,7 +9,7 @@
  * Payment ledger + amortization-schedule rendering use the existing
  * /api/notes/:id/payments and /api/notes/:id/amortization endpoints.
  * Loss-mit case files, BPO order, and Pax default-risk score ride
- * follow-up PRs (see docs/exhaustive-completion/note-investor-followups.md).
+ * follow-up PRs (see docs/archive/exhaustive-completion/note-investor-followups.md).
  */
 
 import { useState } from "react";
@@ -37,6 +37,7 @@ import { NoteAssignmentsCard } from "@/components/note-assignments-card";
 import { NoteSplitsCard } from "@/components/note-splits-card";
 import { NoteComplianceCard } from "@/components/note-compliance-card";
 import { NoteLossMitCard } from "@/components/note-loss-mit-card";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 export interface AcquiredNote {
   id: string;
@@ -128,13 +129,6 @@ function fmtUsdRound(cents: number): string {
 
 function fmtPct(bps: number): string {
   return `${(bps / 100).toFixed(3)}%`;
-}
-
-function fmtDate(iso: string): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function statusKindFor(status: AcquiredNote["status"]): StatusKind {
@@ -233,7 +227,7 @@ function ReconciliationCard({ noteId }: { noteId: string }) {
               <AlertCircle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
             )}
             <h2 className="text-sm font-semibold">
-              {driftIsZero ? "Ledger reconciled" : "Ledger drift detected"}
+              {driftIsZero ? "Payments reconciled" : "Payment drift detected"}
             </h2>
             <span
               className="text-xs text-muted-foreground tabular-nums"
@@ -282,7 +276,7 @@ function ReconciliationCard({ noteId }: { noteId: string }) {
               />
             </div>
             <p className="text-xs text-muted-foreground mt-3">
-              As of {new Date(data.asOf).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+              As of {formatDateTime(data.asOf)}
               {data.lastPostingId ? ` · last posting ${data.lastPostingId.slice(0, 8)}` : ""}
             </p>
           </>
@@ -438,13 +432,13 @@ export default function NoteDetailPage() {
         <StatCard
           label="Acquisition price"
           value={fmtUsdRound(note.acquisitionPriceCents)}
-          sub={`Bought ${fmtDate(note.acquisitionDate)}`}
+          sub={`Bought ${formatDate(note.acquisitionDate)}`}
           testid="note-detail-acquisition-price"
         />
         <StatCard
           label="Original face value"
           value={fmtUsdRound(note.originalPrincipalCents)}
-          sub={`Originated ${fmtDate(note.originationDate)}`}
+          sub={`Originated ${formatDate(note.originationDate)}`}
           testid="note-detail-face-value"
         />
         <StatCard
@@ -477,7 +471,7 @@ export default function NoteDetailPage() {
               sub={`Due day ${note.paymentDueDay}`}
             />
             <KV label="Term" value={`${note.termMonths} months`} />
-            <KV label="Maturity" value={fmtDate(note.maturityDate)} />
+            <KV label="Maturity" value={formatDate(note.maturityDate)} />
             <KV
               label="Original lender"
               value={note.originalLender || "—"}
@@ -586,7 +580,7 @@ export default function NoteDetailPage() {
 
       {/* Provenance footer */}
       <p className="text-xs text-muted-foreground">
-        Added {fmtDate(note.createdAt)} · Last updated {fmtDate(note.updatedAt)}
+        Added {formatDate(note.createdAt)} · Last updated {formatDate(note.updatedAt)}
         {note.assignmentDocS3Key && (
           <> · Assignment paperwork on file</>
         )}
@@ -672,7 +666,76 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
     totals.principal + totals.interest + totals.escrow + totals.lateFee + totals.unapplied;
 
   return (
-    <div className="overflow-x-auto -mx-2">
+    <>
+      {/* Mobile: stacked ledger cards — the 9-column ledger side-scrolls at
+          phone widths. md+ renders the full reconciliation table below. */}
+      <div className="md:hidden" data-testid="list-payment-ledger-mobile">
+        <ul className="divide-y divide-border/40">
+          {payments.map((p) => {
+            const total =
+              p.principalCents + p.interestCents + p.escrowCents + p.lateFeeCents + p.unappliedCents;
+            return (
+              <li key={p.id} className="py-3" data-testid={`card-ledger-${p.id}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm whitespace-nowrap">{formatDate(p.paymentDate)}</div>
+                    <span className={`inline-block rounded-md px-2 py-0.5 text-xs mt-1 ${PAYMENT_TYPE_TONE[p.paymentType]}`}>
+                      {PAYMENT_TYPE_LABEL[p.paymentType]}
+                    </span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-mono font-semibold tabular-nums">{fmtCents(total)}</div>
+                    <div className="text-xs uppercase text-muted-foreground mt-0.5">{p.paymentMethod}</div>
+                  </div>
+                </div>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-0.5 mt-2 text-xs">
+                  {([
+                    ["Principal", p.principalCents],
+                    ["Interest", p.interestCents],
+                    ["Escrow", p.escrowCents],
+                    ["Late fee", p.lateFeeCents],
+                    ["Unapplied", p.unappliedCents],
+                  ] as const)
+                    .filter(([, cents]) => cents !== 0)
+                    .map(([label, cents]) => (
+                      <div key={label} className="flex items-center justify-between gap-2">
+                        <dt className="text-muted-foreground">{label}</dt>
+                        <dd className="font-mono tabular-nums">{fmtCents(cents)}</dd>
+                      </div>
+                    ))}
+                </dl>
+              </li>
+            );
+          })}
+        </ul>
+        {/* Totals — same reconciliation buckets as the desktop tfoot row. */}
+        <div
+          className="border-t-2 border-border bg-muted/30 rounded-b-md px-3 py-2 text-xs"
+          data-testid="payment-ledger-totals-card"
+        >
+          <div className="flex items-center justify-between gap-2 font-semibold">
+            <span>Totals · {payments.length} payment{payments.length === 1 ? "" : "s"}</span>
+            <span className="font-mono tabular-nums">{fmtCents(grandTotal)}</span>
+          </div>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-0.5 mt-1.5">
+            {([
+              ["Principal", totals.principal],
+              ["Interest", totals.interest],
+              ["Escrow", totals.escrow],
+              ["Late fee", totals.lateFee],
+              ["Unapplied", totals.unapplied],
+            ] as const).map(([label, cents]) => (
+              <div key={label} className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="font-mono tabular-nums">{fmtCents(cents)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </div>
+
+      {/* Desktop: full 9-column ledger. Hidden on mobile. */}
+      <div className="hidden md:block overflow-x-auto -mx-2">
       <table className="w-full text-sm">
         <thead>
           <tr className="text-xs text-muted-foreground">
@@ -693,7 +756,7 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
               p.principalCents + p.interestCents + p.escrowCents + p.lateFeeCents + p.unappliedCents;
             return (
               <tr key={p.id} className="border-t border-border/40">
-                <td className="px-2 py-2 whitespace-nowrap">{fmtDate(p.paymentDate)}</td>
+                <td className="px-2 py-2 whitespace-nowrap">{formatDate(p.paymentDate)}</td>
                 <td className="px-2 py-2">
                   <span className={`inline-block rounded-md px-2 py-0.5 text-xs ${PAYMENT_TYPE_TONE[p.paymentType]}`}>
                     {PAYMENT_TYPE_LABEL[p.paymentType]}
@@ -728,7 +791,8 @@ function PaymentLedger({ payments }: { payments: NotePayment[] }) {
           </tr>
         </tfoot>
       </table>
-    </div>
+      </div>
+    </>
   );
 }
 

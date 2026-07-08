@@ -347,11 +347,21 @@ export const aiModelConfigs = pgTable("ai_model_configs", {
 
 // ─── System API Keys ──────────────────────────────────────────────────────────
 // Founder-managed system-wide API keys. Users' BYOK keys override these.
+// Roadmap W1.6 (2026-07 security audit): partner Data-API keys were minted
+// with Math.random() and stored/compared as PLAINTEXT. New keys are CSPRNG
+// (crypto.randomBytes) and only their SHA-256 lands in key_hash (+ last4 for
+// display); legacy plaintext rows are upgraded opportunistically on first
+// successful auth (hash written, plaintext nulled).
 export const systemApiKeys = pgTable("system_api_keys", {
   id: serial("id").primaryKey(),
   provider: text("provider").notNull().unique(),
   displayName: text("display_name").notNull(),
+  /** LEGACY plaintext column — nulled as rows upgrade to key_hash. */
   apiKey: text("api_key"),
+  /** SHA-256 hex of the key — the only long-term credential at rest. */
+  keyHash: text("key_hash"),
+  /** Last 4 chars for founder display; never the full key. */
+  keyLast4: text("key_last4"),
   isActive: boolean("is_active").default(true),
   lastValidatedAt: timestamp("last_validated_at"),
   validationStatus: text("validation_status").default("pending"),

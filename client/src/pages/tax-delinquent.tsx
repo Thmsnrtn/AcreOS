@@ -12,6 +12,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 import { AlertTriangle, DollarSign, Calendar, TrendingUp, Filter, Loader2, MapPin } from "lucide-react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 interface DelinquentLead {
   id: number;
@@ -69,7 +70,11 @@ export default function TaxDelinquentPage() {
 
   const contactMutation = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/tax-delinquent/${id}/contact`),
-    onSuccess: () => toast({ title: "Lead added to outreach sequence." }),
+    onSuccess: () => {
+      // The lead's contacted/outreach state shows in this list — refresh it.
+      qc.invalidateQueries({ queryKey: ["/api/tax-delinquent"] });
+      toast({ title: "Lead added to outreach sequence." });
+    },
     onError: () =>
       toast({
         title: "Couldn't add lead to outreach",
@@ -165,9 +170,7 @@ export default function TaxDelinquentPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading delinquent leads…
-        </div>
+        <PageSkeleton variant="list" rows={6} announceText="Loading delinquent leads" />
       ) : leads.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">

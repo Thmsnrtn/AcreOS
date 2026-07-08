@@ -224,12 +224,18 @@ export const LIFECYCLE_MESSAGES: Record<LifecycleMessageKey, LifecycleMessage> =
     key: "cancellation_reason_ask",
     category: "lifecycle.cancel",
     channel: "email",
-    version: 1,
+    version: 2,
+    // v2 (Tier 2C): reply-based. v1 linked a {surveyUrl} but no public
+    // cancel-survey route exists — the in-app cancel flow already collects
+    // the reason (churn_reasons), so this email only ever goes to customers
+    // who cancelled OUTSIDE the app (Stripe-side / dunning) and a dead link
+    // would be worse than no link. A reply lands in the support inbox.
     subject: "Quick question on your way out",
     body:
-      "Sorry to see you go. One question — why? It genuinely shapes the " +
-      "product. {surveyUrl}",
-    trigger: "T+0 from cancel.",
+      "Sorry to see you go. One question — why? Reply to this email with a " +
+      "sentence or two; a human reads every answer, and it genuinely shapes " +
+      "the product.",
+    trigger: "T+0 from cancel (Stripe webhook), daily catch-up sweep after.",
   },
   post_cancel_d14_winback: {
     key: "post_cancel_d14_winback",

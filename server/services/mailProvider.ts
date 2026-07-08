@@ -3,6 +3,7 @@ import { organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import Lob from 'lob';
 import { logger } from "../utils/logger";
+import { resolvePlatformLobKey, isLiveSendArmed } from './mail/liveSendInterlock';
 
 export enum MailProvider {
   LOB = "lob",
@@ -82,16 +83,26 @@ async function getOrgMailCredentials(organizationId: number): Promise<ProviderCr
 }
 
 function getDefaultCredentials(): ProviderCredentials | null {
-  const lobKey = process.env.LOB_LIVE_API_KEY || process.env.LOB_TEST_API_KEY || process.env.LOB_API_KEY;
-  if (lobKey) {
-    return {
-      provider: MailProvider.LOB,
-      apiKey: lobKey,
-      isTestKey: lobKey.startsWith('test_'),
-    };
+  // Platform key under the live-send interlock (mail/liveSendInterlock.ts):
+  // test environment unless production is explicitly armed. This path used
+  // to prefer the live key in EVERY environment, which would have printed
+  // real mail from dev/CI the moment the live secret existed there.
+  try {
+    const { apiKey, isTestKey } = resolvePlatformLobKey();
+    return { provider: MailProvider.LOB, apiKey, isTestKey };
+  } catch {
+    // Legacy LOB_API_KEY-only installs: honor it, but never as a live key
+    // while disarmed.
+    const legacy = process.env.LOB_API_KEY;
+    if (legacy && (legacy.startsWith('test_') || isLiveSendArmed())) {
+      return {
+        provider: MailProvider.LOB,
+        apiKey: legacy,
+        isTestKey: legacy.startsWith('test_'),
+      };
+    }
+    return null;
   }
-
-  return null;
 }
 
 function formatAddressForLob(addr: MailAddress): any {

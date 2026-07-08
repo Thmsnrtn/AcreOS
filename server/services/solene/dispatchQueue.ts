@@ -31,6 +31,7 @@
  *  - SKIP LOCKED requires Postgres >= 9.5; AcreOS runs 16, so this is safe.
  */
 
+import { createHash } from "node:crypto";
 import { desc, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import {
@@ -39,6 +40,7 @@ import {
   DISPATCH_MAX_COST_USD,
   DISPATCH_DEFAULT_COST_USD,
   DISPATCH_DEFAULT_TIMEOUT_MS,
+  DISPATCH_MAX_ATTEMPTS,
   type SoleneDispatchAgentRole,
   type SoleneDispatchQueueRow,
   type SoleneDispatchResultRow,
@@ -62,6 +64,13 @@ export interface EnqueueDispatchOpts {
   enqueuedBy?: string;
   /** Bypass the $100 ceiling. Required for any cap above DISPATCH_MAX_COST_USD. */
   founderOverride?: boolean;
+  /**
+   * Exactly-once seal (panel #2). When set, the SAME key inserts ONCE — a second
+   * enqueue with the same key returns the FIRST row's id without creating a
+   * duplicate (the concurrent-tick / retry double-fire). NULL/omitted = legacy
+   * behavior (always insert). Use computeEffectKey() to build it.
+   */
+  idempotencyKey?: string | null;
 }
 
 export interface DispatchResultInput {
@@ -85,6 +94,32 @@ export interface DispatchFailureInput {
   resultFullPath?: string | null;
   commitsReferenced?: string[];
   filesModified?: string[];
+}
+
+/** Default exactly-once window: an effect repeated within this span dedups.
+ *  Sized ≥ the loop's lock TTL so a concurrent tick (the documented double-fire
+ *  cause) lands in the same window; legitimate cadence runs are further apart. */
+export const DEFAULT_EFFECT_WINDOW_MS = 30 * 60_000;
+
+/**
+ * Compute a deterministic exactly-once effect-key for an autopilot dispatch
+ * (panel #2). The SAME concrete effect (domain + move + play + target) inside
+ * the SAME time window hashes identically, so a concurrent tick / retry dedups;
+ * a different target or a later window hashes differently, so legitimately
+ * distinct effects each run. Pure + total — `nowMs` injected (no clock here).
+ */
+export function computeEffectKey(parts: {
+  domain: string;
+  moveKind: string;
+  playId?: string | null;
+  targetId?: string | null;
+  nowMs: number;
+  windowMs?: number;
+}): string {
+  const w = parts.windowMs && parts.windowMs > 0 ? parts.windowMs : DEFAULT_EFFECT_WINDOW_MS;
+  const bucket = Math.floor(parts.nowMs / w);
+  const raw = `${parts.domain}|${parts.moveKind}|${parts.playId ?? "-"}|${parts.targetId ?? "-"}|${bucket}`;
+  return createHash("sha256").update(raw, "utf8").digest("hex");
 }
 
 // ----------------------------------------------------------------------------
@@ -125,20 +160,50 @@ export async function enqueueDispatch(
   // error so a hiccup can never quietly unbound the ensemble.
   await assertWithinEnsembleCap({ founderOverride: opts.founderOverride });
 
-  const [inserted] = await db
-    .insert(soleneDispatchQueue)
-    .values({
-      status: "queued",
-      priority: priority.toFixed(3),
-      sourceType: opts.sourceType,
-      sourceId: opts.sourceId,
-      agentRole: opts.agentRole,
-      promptText: opts.promptText,
-      maxCostUsd: maxCostUsd.toFixed(2),
-      timeoutMs,
-      enqueuedBy: opts.enqueuedBy ?? null,
-    })
-    .returning({ id: soleneDispatchQueue.id });
+  const key = opts.idempotencyKey?.trim() || null;
+  const values = {
+    status: "queued" as const,
+    priority: priority.toFixed(3),
+    sourceType: opts.sourceType,
+    sourceId: opts.sourceId,
+    agentRole: opts.agentRole,
+    promptText: opts.promptText,
+    maxCostUsd: maxCostUsd.toFixed(2),
+    timeoutMs,
+    enqueuedBy: opts.enqueuedBy ?? null,
+    idempotencyKey: key,
+  };
+
+  // Exactly-once (panel #2): a keyed enqueue inserts ON CONFLICT DO NOTHING
+  // against the partial unique index. On conflict (a concurrent tick / retry
+  // already enqueued this exact effect) the insert returns nothing — we then
+  // fetch and return the FIRST row's id so the caller gets at-most-once
+  // semantics without a duplicate dispatch. An unkeyed enqueue is unchanged.
+  let inserted: { id: number } | undefined;
+  if (key) {
+    [inserted] = await db
+      .insert(soleneDispatchQueue)
+      .values(values)
+      .onConflictDoNothing({ target: soleneDispatchQueue.idempotencyKey })
+      .returning({ id: soleneDispatchQueue.id });
+    if (!inserted) {
+      const [existing] = await db
+        .select({ id: soleneDispatchQueue.id })
+        .from(soleneDispatchQueue)
+        .where(eq(soleneDispatchQueue.idempotencyKey, key))
+        .limit(1);
+      if (existing) {
+        logger.info(`[dispatchQueue] enqueue deduped on idempotencyKey → existing id=${existing.id}`);
+        return existing.id;
+      }
+      throw new Error("enqueueDispatch: conflict but no existing row found");
+    }
+  } else {
+    [inserted] = await db
+      .insert(soleneDispatchQueue)
+      .values(values)
+      .returning({ id: soleneDispatchQueue.id });
+  }
 
   if (!inserted) {
     throw new Error("enqueueDispatch: insert returned no id");
@@ -184,12 +249,15 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
     review_status: string | null;
     reviewed_by_dispatch_id: number | null;
     original_dispatch_id: number | null;
+    attempts: number;
+    not_before_at: Date | null;
   }>(sql`
     UPDATE solene_dispatch_queue
-    SET status = 'in_progress', started_at = now()
+    SET status = 'in_progress', started_at = now(), attempts = attempts + 1
     WHERE id = (
       SELECT id FROM solene_dispatch_queue
       WHERE status = 'queued'
+        AND (not_before_at IS NULL OR not_before_at <= now())
       ORDER BY priority DESC, queued_at ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -199,7 +267,7 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
       agent_role, prompt_text, max_cost_usd, timeout_ms,
       started_at, completed_at, result_summary, result_full_path,
       enqueued_by, review_status, reviewed_by_dispatch_id,
-      original_dispatch_id
+      original_dispatch_id, idempotency_key, attempts, not_before_at
   `);
 
   // drizzle's `execute` returns slightly different shapes across drivers.
@@ -229,9 +297,12 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
     reviewStatus: r.review_status,
     reviewedByDispatchId: r.reviewed_by_dispatch_id,
     originalDispatchId: r.original_dispatch_id,
+    idempotencyKey: r.idempotency_key ?? null,
     // Batch 5 cost-audit — optional per-dispatch model override
     // (selectModelForDispatch picks when null).
     model: r.model ?? null,
+    attempts: r.attempts ?? 1,
+    notBeforeAt: r.not_before_at ?? null,
   };
 }
 
@@ -318,27 +389,99 @@ export async function completeDispatch(
 }
 
 // ----------------------------------------------------------------------------
-// failDispatch
+// failDispatch — terminal fail, OR bounded requeue for proven-transient failures.
 // ----------------------------------------------------------------------------
 
+/**
+ * Pure: backoff delay before a retried dispatch becomes claimable again.
+ * `attempts` is the number of runs already started (claim-time counter), so
+ * after the first failed run (attempts=1) the row waits 2 minutes, after the
+ * second 4 minutes. Exponential, deliberately short — these are provider
+ * blips, not incident recovery.
+ */
+export function retryBackoffMs(attempts: number): number {
+  const n = Math.max(1, Math.floor(attempts));
+  return Math.pow(2, n) * 60_000;
+}
+
+/** Marker prepended to the result summary when retries are exhausted, so the
+ *  Control-door dispatch list reads as a dead-letter surface without a new
+ *  status enum value (terminal DLQ rows keep status='failed'). */
+export const DEAD_LETTER_MARKER = "[dead-letter]";
+
+/**
+ * Record a failed run. Default is TERMINAL (the original at-most-once stance —
+ * we never risk a double outward effect by re-running blind).
+ *
+ * `opts.transient = true` is the caller's PROOF that the failure happened
+ * before any side effect: no tool executed, nothing sent, nothing charged
+ * (e.g. the ensemble-cap READ failed, or the model call itself threw before
+ * the first tool ran). Only then do we requeue with exponential backoff,
+ * up to DISPATCH_MAX_ATTEMPTS total runs; after that the row dead-letters
+ * (status='failed', summary prefixed with DEAD_LETTER_MARKER).
+ *
+ * Every attempt — requeued or terminal — still inserts its own
+ * solene_dispatch_results row, so the audit trail shows each real run.
+ */
 export async function failDispatch(
   id: number,
   error: DispatchFailureInput,
-  opts: { status?: "failed" | "cancelled" } = {},
-): Promise<void> {
-  const status = opts.status ?? "failed";
+  opts: { status?: "failed" | "cancelled"; transient?: boolean } = {},
+): Promise<{ requeued: boolean; attempts: number }> {
+  const requestedStatus = opts.status ?? "failed";
   const now = new Date();
-  await db.transaction(async (tx) => {
-    await tx
-      .update(soleneDispatchQueue)
-      .set({
-        status,
-        completedAt: now,
-        resultSummary: error.errorMessage.slice(0, 4000),
-        resultFullPath: error.resultFullPath ?? null,
-      })
-      .where(eq(soleneDispatchQueue.id, id));
 
+  return await db.transaction(async (tx) => {
+    // Read attempts inside the transaction so the retry decision and the
+    // status write can't race another writer.
+    const [row] = await tx
+      .select({ attempts: soleneDispatchQueue.attempts })
+      .from(soleneDispatchQueue)
+      .where(eq(soleneDispatchQueue.id, id))
+      .limit(1);
+    const attempts = row?.attempts ?? DISPATCH_MAX_ATTEMPTS;
+
+    // A cancellation is a decision, not a blip — never retried.
+    const canRetry =
+      opts.transient === true &&
+      requestedStatus !== "cancelled" &&
+      attempts < DISPATCH_MAX_ATTEMPTS;
+
+    const exhaustedTransient =
+      opts.transient === true &&
+      requestedStatus !== "cancelled" &&
+      attempts >= DISPATCH_MAX_ATTEMPTS;
+
+    const summary = exhaustedTransient
+      ? `${DEAD_LETTER_MARKER} ${error.errorMessage}`.slice(0, 4000)
+      : error.errorMessage.slice(0, 4000);
+
+    if (canRetry) {
+      const notBeforeAt = new Date(now.getTime() + retryBackoffMs(attempts));
+      await tx
+        .update(soleneDispatchQueue)
+        .set({
+          status: "queued",
+          startedAt: null,
+          completedAt: null,
+          notBeforeAt,
+          resultSummary: `retry ${attempts}/${DISPATCH_MAX_ATTEMPTS} scheduled (transient): ${error.errorMessage}`.slice(0, 4000),
+          resultFullPath: error.resultFullPath ?? null,
+        })
+        .where(eq(soleneDispatchQueue.id, id));
+    } else {
+      await tx
+        .update(soleneDispatchQueue)
+        .set({
+          status: requestedStatus,
+          completedAt: now,
+          resultSummary: summary,
+          resultFullPath: error.resultFullPath ?? null,
+        })
+        .where(eq(soleneDispatchQueue.id, id));
+    }
+
+    // Per-attempt audit row regardless of requeue/terminal.
     await tx.insert(soleneDispatchResults).values({
       dispatchId: id,
       success: false,
@@ -346,11 +489,23 @@ export async function failDispatch(
       durationMs: Math.max(0, Math.floor(error.durationMs ?? 0)),
       tokenInput: Math.max(0, Math.floor(error.tokenInput ?? 0)),
       tokenOutput: Math.max(0, Math.floor(error.tokenOutput ?? 0)),
-      errorMessage: error.errorMessage.slice(0, 4000),
+      errorMessage: summary,
       commitsReferenced: error.commitsReferenced ?? null,
       filesModified: error.filesModified ?? null,
       followUpOpportunities: {},
     });
+
+    if (canRetry) {
+      logger.info(
+        `[dispatchQueue] transient failure — requeued id=${id} attempt=${attempts}/${DISPATCH_MAX_ATTEMPTS} backoffMs=${retryBackoffMs(attempts)}`,
+      );
+    } else if (exhaustedTransient) {
+      logger.warn(
+        `[dispatchQueue] transient failure with retries exhausted — dead-lettered id=${id} after ${attempts} attempt(s)`,
+      );
+    }
+
+    return { requeued: canRetry, attempts };
   });
 }
 
@@ -507,4 +662,50 @@ export async function cancelQueuedDispatch(
   );
 
   return { ok: true, priorStatus: "queued" };
+}
+
+// ── Orphaned-dispatch reaper (frontier #12: exactly-once outward effects) ─────
+// The claim itself is already exactly-once (FOR UPDATE SKIP LOCKED — exactly one
+// worker claims a queued row). The remaining gap is an ORPHAN: a dispatch claimed
+// `in_progress` whose worker crashed before it could complete — it would sit
+// in_progress forever (claimNextDispatch only picks `queued`), never re-run,
+// never finished. This reaps it.
+
+/** Pure: a dispatch is ORPHANED once it's been `in_progress` longer than its own
+ *  timeout + a margin — almost always a worker that crashed mid-dispatch. */
+export function isOrphanedDispatch(
+  d: { status: string; startedAt: Date | null; timeoutMs: number },
+  now: number,
+  marginMs = 5 * 60_000,
+): boolean {
+  if (d.status !== "in_progress" || !d.startedAt) return false;
+  return now - new Date(d.startedAt).getTime() > (d.timeoutMs ?? 0) + marginMs;
+}
+
+/**
+ * Reap orphaned `in_progress` dispatches. They are marked FAILED, NOT requeued:
+ * we cannot know whether the orphan's outward effect (a send, a charge) partially
+ * fired, so the safe exactly-once stance is AT-MOST-ONCE for the side effect —
+ * fail it and surface it, never risk a double-send by re-running. The reaped
+ * dispatch's domain takes its honest autonomy hit through the normal feedback
+ * edge the next tick reads. Best-effort; returns the count reaped.
+ */
+export async function reapOrphanedDispatches(marginMs = 5 * 60_000): Promise<number> {
+  try {
+    const res = await db.execute(sql`
+      UPDATE solene_dispatch_queue
+      SET status = 'failed', completed_at = now(),
+          result_summary = 'reaped: orphaned in_progress past timeout (likely a worker crash mid-dispatch)'
+      WHERE status = 'in_progress'
+        AND started_at IS NOT NULL
+        AND started_at < now() - (((timeout_ms + ${marginMs}) || ' milliseconds')::interval)
+      RETURNING id
+    `);
+    const list: unknown[] = Array.isArray(res) ? res : ((res as { rows?: unknown[] })?.rows ?? []);
+    if (list.length > 0) logger.warn(`[dispatchQueue] reaped ${list.length} orphaned in_progress dispatch(es)`);
+    return list.length;
+  } catch (err) {
+    logger.warn("[dispatchQueue] orphan reap failed", err instanceof Error ? err : undefined);
+    return 0;
+  }
 }

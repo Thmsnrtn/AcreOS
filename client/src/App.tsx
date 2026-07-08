@@ -8,7 +8,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { useWhiteLabel } from "@/hooks/use-white-label";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
-import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { setSentryUser } from "@/lib/sentry";
 import { identifyUser, trackCanonicalEvent, trackEvent } from "@/lib/analytics";
@@ -39,11 +38,13 @@ const NewItemMenu = React.lazy(() => import("@/components/new-item-menu").then(m
 // `OnboardingGate` (defined below), which redirects orgs with
 // `onboardingCompleted !== true` to `/onboarding-v2`. The dialog
 // component file remains on disk pending eventual deletion.
-import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
+// Cold-start: these shell-chrome pieces render after the first paint (most are
+// auth-gated and never appear pre-auth), so keep their code out of the entry
+// chunk. Each render site is wrapped in <Suspense fallback={null}>.
+const PWAInstallPrompt = React.lazy(() => import("@/components/pwa-install-prompt").then(m => ({ default: m.PWAInstallPrompt })));
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
-import { DealModalsHost } from "@/components/modals";
-import { FloatingActionButton } from "@/components/floating-action-button";
+const DealModalsHost = React.lazy(() => import("@/components/modals").then(m => ({ default: m.DealModalsHost })));
 import { EarlyAccessBanner } from "@/components/early-access-banner";
 const CommandPalette = React.lazy(() => import("@/components/command-palette").then(m => ({ default: m.CommandPalette })));
 // IA consolidation (Lens 4 Fix 3): the founder-only ⌘⇧K palette was
@@ -54,20 +55,22 @@ import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { usePWA } from "@/hooks/use-pwa";
 import { usePersonaMode, isTypingTarget } from "@/hooks/use-persona-mode";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
+import { useRouteHeadingFocus } from "@/hooks/use-route-heading-focus";
+import { RouteFallback } from "@/components/route-fallback";
 import { MobileBottomNav, FounderMobileBottomNav } from "@/components/mobile";
 import { useIsMobile } from "@/hooks/use-mobile";
 // Phase D — Atlas Dock follows Tom across every founder surface. Lazy
 // so non-founder users never download the chat bundle.
 const AtlasDock = React.lazy(() => import("@/components/founder-chat/Dock").then(m => ({ default: m.Dock })));
 import { usePageContext } from "@/hooks/use-page-context";
-import { BetaActivationDetector } from "@/components/beta-activation-detector";
+const BetaActivationDetector = React.lazy(() => import("@/components/beta-activation-detector").then(m => ({ default: m.BetaActivationDetector })));
 const PaxCopilotRail = React.lazy(() => import("@/components/pax-copilot-rail").then(m => ({ default: m.PaxCopilotRail })));
-import { DynamicIsland } from "@/components/dynamic-island";
+const DynamicIsland = React.lazy(() => import("@/components/dynamic-island").then(m => ({ default: m.DynamicIsland })));
 import { DynamicIslandProvider } from "@/contexts/dynamic-island-context";
 import { useCursorGlass } from "@/hooks/use-cursor-glass";
 import { TrialBanner } from "@/components/trial-banner";
 import { NotificationStack } from "@/components/notification-stack";
-import { NotificationBanner } from "@/components/notification-banner";
+const NotificationBanner = React.lazy(() => import("@/components/notification-banner").then(m => ({ default: m.NotificationBanner })));
 const NpsDialog = React.lazy(() => import("@/components/nps-dialog").then(m => ({ default: m.NpsDialog })));
 
 // Authed users hit /today and never see LandingPage; landing visitors never
@@ -190,9 +193,13 @@ const DocumentIntelligencePage = React.lazy(() => import("@/pages/document-intel
 
 // Operations
 const MapsPage = React.lazy(() => import("@/pages/maps"));
-const CommandCenterPage = React.lazy(() => import("@/pages/command-center"));
-const ConsciousOrganizationPage = React.lazy(() => import("@/pages/conscious-organization"));
-const AnticipatoryEnterprisePage = React.lazy(() => import("@/pages/anticipatory-enterprise"));
+// CommandCenterPage binding removed (client perf audit 2026-07-04): the
+// /command-center route is a Redirect to /ai#chat and pax.tsx owns the only
+// live lazy import of pages/command-center.tsx.
+// ConsciousOrganizationPage refit 2026-06-11 (Census W3-1) — moved to
+// @/pages/founder/scenarios, served at /founder/scenarios (lazy import below).
+// AnticipatoryEnterprisePage retired 2026-06-11 (Census W3-1) — page deleted;
+// /anticipatory-enterprise redirects to /founder/bridge.
 // /real-runtime removed (Lens 4 Fix 4): customer-facing surface that
 // exposed runtime internals and had no nav link or referrers.
 const AutomationPage = React.lazy(() => import("@/pages/automation"));
@@ -214,6 +221,10 @@ const ParcelCheckPage = React.lazy(() => import("@/pages/tools/parcel-check"));
 const ParcelCheckEmbedPage = React.lazy(() =>
   import("@/pages/tools/parcel-check").then((m) => ({ default: m.ParcelCheckEmbedPage })),
 );
+// Public /p/:state/:county/:apn — saved, shareable parcel report permalink
+// with the partial Land Credit Score (Tier 3A). No auth; server injects
+// per-report head meta for crawlers.
+const PublicParcelReportPage = React.lazy(() => import("@/pages/public-parcel-report"));
 const SkipTracingPage = React.lazy(() => import("@/pages/skip-tracing"));
 // TerritoryManagerPage archived 2026-06-01 — no nav entry, no callers.
 const ZoningLookupPage = React.lazy(() => import("@/pages/zoning-lookup"));
@@ -292,13 +303,9 @@ const FounderTelemetryPage = React.lazy(() => import("@/pages/founder/telemetry"
 // GET /api/founder/audit-findings (owned by the substrate agent).
 const FounderCommandPage = React.lazy(() => import("@/pages/founder/command"));
 // FounderIntegrationsPage archived 2026-06-01 — no sidebar entry.
-const FounderCostPage = React.lazy(() => import("@/pages/founder/cost"));
+// Costs & economics consolidated into one /founder/admin/costs hub (Phase 2).
+const FounderAdminCostsPage = React.lazy(() => import("@/pages/founder/admin/costs"));
 const FounderLifeCockpitPage = React.lazy(() => import("@/pages/founder/life-cockpit"));
-const FounderAiCostsPage = React.lazy(() => import("@/pages/founder/ai-costs"));
-const FounderObservabilityCostPage = React.lazy(() => import("@/pages/founder/observability-cost"));
-const FounderCostOptimizerPage = React.lazy(() => import("@/pages/founder/cost-optimizer"));
-const FounderUnitEconomicsPage = React.lazy(() => import("@/pages/founder/unit-economics"));
-const FounderPaidDataEvalPage = React.lazy(() => import("@/pages/founder/paid-data-eval"));
 // FounderDsarPage archived 2026-06-01 — no sidebar entry.
 // FounderLegalHoldsPage archived 2026-06-01 — no sidebar entry.
 // FounderSubProcessorsPage archived 2026-06-01 — no sidebar entry.
@@ -314,6 +321,9 @@ const FounderAppealsPage = React.lazy(() => import("@/pages/founder/appeals"));
 // Rafe — the Recourse Loop. Every negative customer signal → a drafted,
 // personal, same-hour human reply. GET /api/founder/recourse.
 const FounderRecoursePage = React.lazy(() => import("@/pages/founder/recourse"));
+// Tier 3F — the data co-op's quarterly market-report DRAFT review surface.
+// Review only (no publish path). GET /api/founder/market-reports.
+const FounderMarketReportsPage = React.lazy(() => import("@/pages/founder/market-reports"));
 const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
 const FounderDispatchesPage = React.lazy(() => import("@/pages/founder/dispatches"));
 // L6.32 founder-collab UI — surface for /api/founder/asks (commit 05a2e122).
@@ -328,11 +338,17 @@ const FounderPaxCalibrationPage = React.lazy(() => import("@/pages/founder/pax-c
 const FounderCustomersPage = React.lazy(() => import("@/pages/founder/customers"));
 // Solene's daily one-line + Autonomy Horizon + capital + phase — the
 // pull-first CEO surface at /founder. Replaces the FounderChat shell
-// which was previously served at /founder (now remains at /founder/chat).
+// that was previously served at /founder (page since deleted).
 // Phase 4 of the Solene migration — new 5-door founder UI. /founder/today
 // is the founder landing page; /founder now always renders it (the legacy
 // Pulse page at founder/index.tsx is retired).
-const FounderTodayPage = React.lazy(() => import("@/pages/founder/today"));
+const FounderHomePage = React.lazy(() => import("@/pages/founder/home"));
+// "Your Voice" — set durable intents + standing orders the autopilot honors.
+const FounderVoicePage = React.lazy(() => import("@/pages/founder/voice"));
+// "The Story" — the glass-box timeline of every action + its full reasoning.
+const FounderAutopilotStoryPage = React.lazy(() => import("@/pages/founder/autopilot-story"));
+// The Control Center — master switches + per-domain trust + everything in one.
+const FounderAutopilotControlPage = React.lazy(() => import("@/pages/founder/autopilot-control"));
 // Categorized index of every founder deep-dive — the visible affordance
 // into the ~70 secondary /founder/* surfaces beyond the 5 primary doors.
 const FounderAllToolsPage = React.lazy(() => import("@/pages/founder/all-tools"));
@@ -342,10 +358,9 @@ const FounderTeamPage = React.lazy(() => import("@/pages/founder/team"));
 const FounderMoneyPage = React.lazy(() => import("@/pages/founder/money"));
 const FounderBuildPage = React.lazy(() => import("@/pages/founder/build"));
 // FounderNowPage removed (Lens 4) — /founder/now now redirects to
-// /founder/bridge. The page file lives on disk pending extraction sweep.
-// /founder is the Atlas chat shell; /founder/bridge is the fused
-// canonical home (chat + telemetry).
-const FounderChatPage = React.lazy(() => import("@/pages/founder/chat"));
+// /founder/bridge. FounderChatPage (pages/founder/chat.tsx) deleted in the
+// WS2 sweep (2026-07-07): no route ever mounted it and solene-chat is the
+// live founder chat face.
 // Phase 3 — iOS-Claude-UX chat surface that consumes the Phase 2 backend
 // at /api/founder/solene-chat/*. This is the face Tom interacts with when
 // he flips the in-app Solene flag on.
@@ -362,7 +377,9 @@ const FounderTrustGraduationPage = React.lazy(() => import("@/pages/founder/trus
 // PropertiesComparePage archived 2026-06-01 — no callers.
 // DealUnderwritingPage archived 2026-06-01 — route is Redirect to /deals/discover.
 // TeamKPIPage archived 2026-06-01 — no nav entry, no callers.
-const SovereignV13Page = React.lazy(() => import("@/pages/sovereign-v13"));
+// SovereignV13Page retired 2026-06-11 (Census W3-1) — page deleted;
+// /founder/v13 redirects to /founder/bridge. Its API surface
+// (/api/founder/v13/*) is still consumed by the refit founder pages.
 const AgentDetailPage = React.lazy(() => import("@/pages/agent-detail"));
 const SafetyGatesPage = React.lazy(() => import("@/pages/safety-gates"));
 const DecisionQueuePage = React.lazy(() => import("@/pages/decision-queue"));
@@ -377,14 +394,21 @@ const ResellerDashboardPage = React.lazy(() => import("@/pages/reseller-dashboar
 // DataMoatDashboardPage archived 2026-06-01 — no nav entry (sidebar shows "/data-moat" which routes to it, but page is a founder deep-tool with no unique value vs other telemetry pages).
 const ExecutiveDashboardPage = React.lazy(() => import("@/pages/executive-dashboard"));
 
-// Sovereign Protocol — Phase A Visibility Layer
-const SovereignDashboardPage = React.lazy(() => import("@/pages/sovereign-dashboard"));
-const BoardOfDirectorsPage = React.lazy(() => import("@/pages/board-of-directors"));
+// Sovereign Protocol — Phase A Visibility Layer.
+// Census W3-1 (2026-06-11) retire/refit split: sovereign-dashboard,
+// sovereign-v13, anticipatory-enterprise, and agent-collaboration were
+// retired (pages deleted, routes redirect). The four surviving surfaces
+// moved under /founder/* as first-class founder deep-dives:
+//   board-of-directors    → /founder/governance
+//   memory-browser        → /founder/memory
+//   event-log             → /founder/event-log
+//   conscious-organization → /founder/scenarios
+const FounderGovernancePage = React.lazy(() => import("@/pages/founder/governance"));
 const AgentPerformancePage = React.lazy(() => import("@/pages/agent-performance"));
-const MemoryBrowserPage = React.lazy(() => import("@/pages/memory-browser"));
-const EventLogPage = React.lazy(() => import("@/pages/event-log"));
+const FounderMemoryPage = React.lazy(() => import("@/pages/founder/memory"));
+const FounderEventLogPage = React.lazy(() => import("@/pages/founder/event-log"));
 const JobHealthPage = React.lazy(() => import("@/pages/job-health"));
-const AgentCollaborationPage = React.lazy(() => import("@/pages/agent-collaboration"));
+const FounderScenariosPage = React.lazy(() => import("@/pages/founder/scenarios"));
 
 // Misc public
 const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
@@ -407,6 +431,9 @@ const StateVerticalLearnPage = React.lazy(() => import("@/pages/learn/state-vert
 // county-level long-tail queries. Public, lazy-loaded. Pages are only emitted
 // by the county-rollup generator when free-data completeness clears the bar.
 const CountyLearnPage = React.lazy(() => import("@/pages/learn/county"));
+// /learn — the hub that lists every authored vertical + county primer. Public,
+// lazy-loaded; gives the orphaned deep pages a crawlable + human path.
+const LearnHubPage = React.lazy(() => import("@/pages/learn/index"));
 const ParcelDetailPage = React.lazy(() => import("@/pages/parcel-detail"));
 const PermitsPage = React.lazy(() => import("@/pages/permits"));
 const LotPricingPage = React.lazy(() => import("@/pages/lot-pricing"));
@@ -446,7 +473,7 @@ const FounderTrendsPage = React.lazy(() => import("@/pages/founder-trends"));
 const FounderOnboardingPage = React.lazy(() => import("@/pages/founder-onboarding"));
 const FounderExpansionPage = React.lazy(() => import("@/pages/founder-expansion"));
 const FounderExperimentsPage = React.lazy(() => import("@/pages/founder-experiments"));
-const FounderProvidersPage = React.lazy(() => import("@/pages/founder-providers"));
+// FounderProvidersPage folded into the /founder/admin/costs hub (Providers tab).
 const ForgotPasswordPage = React.lazy(() => import("@/pages/forgot-password"));
 const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
 // Onboarding consolidation (2026-05-11): `/onboarding-v2` is the canonical
@@ -489,7 +516,7 @@ const GlossaryPage = React.lazy(() => import("@/pages/glossary"));
 function PageLoader() {
   return (
     <div
-      className="min-h-screen flex items-center justify-center bg-background px-4"
+      className="min-h-[100dvh] flex items-center justify-center bg-background px-4"
       role="status"
       aria-label="Loading AcreOS"
     >
@@ -557,11 +584,7 @@ function FlaggedRoute({ route, component: Component }: { route: string; componen
   const { isRouteEnabled, isLoading: flagsLoading } = useFeatureFlags();
 
   if (authLoading || flagsLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <RouteFallback />;
   }
 
   if (!user) return <Redirect to="/auth" />;
@@ -583,11 +606,7 @@ function PersonaRoute({
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <RouteFallback />;
   }
 
   if (!user) return <Redirect to="/auth" />;
@@ -602,11 +621,17 @@ export { PersonaRoute };
 
 
 function HomeRoute() {
-  const { user, isLoading } = useAuth();
+  const { user, isFounder, isLoading } = useAuth();
   if (isLoading) {
     return <PageLoader />;
   }
-  return user ? <Redirect to="/today" /> : <LandingPage />;
+  // A founder lands in their own cockpit (/founder), not the customer hub. They
+  // can still navigate to /today anytime; this just makes the default door the
+  // one a CEO actually wants on login. Everyone else lands on /today.
+  if (user) {
+    return <Redirect to={isFounder ? "/founder" : "/today"} />;
+  }
+  return <LandingPage />;
 }
 
 // Onboarding consolidation (Lens 5, 2026-05-27). Fresh signups land on
@@ -648,12 +673,14 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 function Router() {
   const [pathname] = useLocation();
   useNextRoutePrefetch(pathname);
+  // Tier 3C keyboard layer: after a client-side navigation (G-chord, link,
+  // bottom-nav tap) move focus to the new page's H1 so the destination is
+  // announced and keyboard focus starts at the top of the new surface.
+  useRouteHeadingFocus(pathname);
   return (
-    <React.Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    }>
+    // Door-shaped fallback (Tier 3C perceived speed) — Skeletons in the
+    // PageShell silhouette, not a spinner, while a lazy chunk downloads.
+    <React.Suspense fallback={<RouteFallback />}>
     <Switch>
       <Route path="/auth" component={AuthPage} />
       <Route path="/terms" component={TermsOfService} />
@@ -697,6 +724,8 @@ function Router() {
       <Route path="/learn/county/:state/:county" component={CountyLearnPage} />
       {/* Programmatic SEO — state×vertical primers */}
       <Route path="/learn/:vertical/:state" component={StateVerticalLearnPage} />
+      {/* Learn hub — exact /learn; lists every vertical + county primer. */}
+      <Route path="/learn" component={LearnHubPage} />
       <Route path="/status" component={StatusPage} />
       <Route path="/changelog" component={ChangelogPage} />
       <Route path="/security" component={SecurityPage} />
@@ -714,6 +743,9 @@ function Router() {
           bare route (wouter first-match on the more-specific /embed URL). */}
       <Route path="/tools/parcel-check/embed" component={ParcelCheckEmbedPage} />
       <Route path="/tools/parcel-check" component={ParcelCheckPage} />
+      {/* Public parcel report permalinks — saved, shareable, free-data-only
+          reports with the partial Land Credit Score (Tier 3A). */}
+      <Route path="/p/:state/:county/:apn" component={PublicParcelReportPage} />
       {/* Public Land Investor glossary — sitemap-promised + prerendered
           long-tail SEO surface (restored 2026-06-10, T0-8). */}
       <Route path="/glossary" component={GlossaryPage} />
@@ -1130,14 +1162,31 @@ function Router() {
           reachable from /founder/all-tools + the command palette. Every
           variant home (/founder-dashboard, /founder/now, /founder/cockpit,
           /founder/dashboard) continues to redirect to /founder/bridge. */}
+      {/* D6 — the single fused founder home (board report + pulse strip + chat +
+          hub). The old /founder (Pulse) and /founder/autopilot (Letter) overview
+          surfaces are fused here; both now redirect to it. */}
       <Route path="/founder">
-        {() => <FounderProtectedRoute component={FounderTodayPage} />}
+        {() => <FounderProtectedRoute component={FounderHomePage} />}
       </Route>
-      {/* Phase 4 — new 5-door founder Today landing page. Direct URL
-          always resolves regardless of the feature flag; the flag only
-          controls whether /founder defaults here. */}
       <Route path="/founder/today">
-        {() => <FounderProtectedRoute component={FounderTodayPage} />}
+        {() => <Redirect to="/founder" />}
+      </Route>
+      {/* The Letter is now the fused home; the path redirects for old bookmarks.
+          The /founder/autopilot/{voice,story,control} sub-surfaces stay. */}
+      <Route path="/founder/autopilot">
+        {() => <Redirect to="/founder" />}
+      </Route>
+      {/* "Your Voice" — durable intents + standing orders the autopilot honors. */}
+      <Route path="/founder/autopilot/voice">
+        {() => <FounderProtectedRoute component={FounderVoicePage} />}
+      </Route>
+      {/* "The Story" — glass-box timeline of every autopilot action + its why. */}
+      <Route path="/founder/autopilot/story">
+        {() => <FounderProtectedRoute component={FounderAutopilotStoryPage} />}
+      </Route>
+      {/* The Control Center — master switches + per-domain trust + status. */}
+      <Route path="/founder/autopilot/control">
+        {() => <FounderProtectedRoute component={FounderAutopilotControlPage} />}
       </Route>
       {/* Categorized index of every founder deep-dive — reachable from the
           "All tools" entry in the founder sidebar. Keeps all ~70 secondary
@@ -1179,8 +1228,8 @@ function Router() {
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
       </Route>
       <Route path="/founder/financials">
-        {/* 2026-06-01 cut — FounderFinancialsPage archived; no sidebar entry. */}
-        {() => <Redirect to="/founder/cost" />}
+        {/* 2026-06-01 cut — FounderFinancialsPage archived; redirect to the costs hub. */}
+        {() => <Redirect to="/founder/admin/costs" />}
       </Route>
       <Route path="/founder/compliance-ops">
         {() => <FounderProtectedRoute component={FounderComplianceOpsPage} />}
@@ -1190,6 +1239,9 @@ function Router() {
       </Route>
       <Route path="/founder/recourse">
         {() => <FounderProtectedRoute component={FounderRecoursePage} />}
+      </Route>
+      <Route path="/founder/market-reports">
+        {() => <FounderProtectedRoute component={FounderMarketReportsPage} />}
       </Route>
       {/* Legacy binary-flag page consolidated to /founder/features per
           JUDGMENT-CALL-RECOMMENDATIONS #6. Old page kept registered (lazy-
@@ -1237,29 +1289,15 @@ function Router() {
         {/* 2026-06-01 cut — FounderIntegrationsPage archived; redirect to bridge. */}
         {() => <Redirect to="/founder/bridge" />}
       </Route>
-      {/* Consolidated cost screen — AI spend + infra + vendor lines. */}
-      <Route path="/founder/cost">
-        {() => <FounderProtectedRoute component={FounderCostPage} />}
+      {/* Costs & economics — unified hub (Phase 2 consolidation): cost, AI spend,
+          optimizer, unit economics, observability cost, providers, and the
+          paid-data trial eval, all as tabs under the /founder/admin namespace. */}
+      <Route path="/founder/admin/costs">
+        {() => <FounderProtectedRoute component={FounderAdminCostsPage} />}
       </Route>
       {/* Founder Life-Cockpit — personal taxes, income, deadlines, encrypted vault. */}
       <Route path="/founder/life-cockpit">
         {() => <FounderProtectedRoute component={FounderLifeCockpitPage} />}
-      </Route>
-      <Route path="/founder/ai-costs">
-        {() => <FounderProtectedRoute component={FounderAiCostsPage} />}
-      </Route>
-      <Route path="/founder/observability-cost">
-        {() => <FounderProtectedRoute component={FounderObservabilityCostPage} />}
-      </Route>
-      <Route path="/founder/cost-optimizer">
-        {() => <FounderProtectedRoute component={FounderCostOptimizerPage} />}
-      </Route>
-      <Route path="/founder/unit-economics">
-        {() => <FounderProtectedRoute component={FounderUnitEconomicsPage} />}
-      </Route>
-      {/* Paid-data eval — would a Regrid/Zamplo/PropGrid trial flip decisions? */}
-      <Route path="/founder/paid-data-eval">
-        {() => <FounderProtectedRoute component={FounderPaidDataEvalPage} />}
       </Route>
       <Route path="/founder/dsar">
         {/* 2026-06-01 cut — FounderDsarPage archived; redirect to bridge. */}
@@ -1459,9 +1497,6 @@ function Router() {
       <Route path="/founder/experiments">
         {() => <FounderProtectedRoute component={FounderExperimentsPage} />}
       </Route>
-      <Route path="/founder/providers">
-        {() => <FounderProtectedRoute component={FounderProvidersPage} />}
-      </Route>
       {/* /founder/todo — legacy "what needs you" feed, now folded into the
           Today door (active asks + decisions waiting). Redirects there; the
           old standalone page was deleted 2026-06-09. */}
@@ -1542,17 +1577,12 @@ function Router() {
         {() => <Redirect to="/deals/discover" />}
       </Route>
       <Route path="/conscious-organization">
-        {/* Founder-gated 2026-05-11: this page exposes the org-consciousness
-            agent surface (Atlas/Sophie/Forge codenames) which must never
-            reach customer-facing users per the persona-architecture rule. */}
-        {() => <FounderProtectedRoute component={ConsciousOrganizationPage} />}
+        {/* Census W3-1 refit 2026-06-11 — page moved to /founder/scenarios. */}
+        {() => <Redirect to="/founder/scenarios" />}
       </Route>
       <Route path="/anticipatory-enterprise">
-        {/* Exposes internal agent-negotiation codenames (forge_revenue,
-            sophie_support, shield_compliance...). Founder-only to keep
-            the internal agent taxonomy off customer surfaces — customers
-            see one AI brand (Pax), not the dozen under the hood. */}
-        {() => <FounderProtectedRoute component={AnticipatoryEnterprisePage} />}
+        {/* Census W3-1 retire 2026-06-11 — page deleted; no nav entry. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       {/* /real-runtime removed (Lens 4 Fix 4) — see lazy-import note. */}
       <Route path="/agent-command-center">
@@ -1678,7 +1708,8 @@ function Router() {
 
       {/* Founder / Admin — additional */}
       <Route path="/founder/v13">
-        {() => <FounderProtectedRoute component={SovereignV13Page} />}
+        {/* Census W3-1 retire 2026-06-11 — SovereignV13Page deleted. */}
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/founder/agents/:codename">
         {() => <FounderProtectedRoute component={AgentDetailPage} />}
@@ -1707,27 +1738,42 @@ function Router() {
         {() => <Redirect to="/founder/telemetry" />}
       </Route>
 
-      {/* Sovereign Protocol — Phase A Visibility Layer */}
-      <Route path="/sovereign">
-        {() => <FounderProtectedRoute component={SovereignDashboardPage} />}
+      {/* Sovereign Protocol — Census W3-1 retire/refit split (2026-06-11).
+          Refit surfaces live at their /founder/* routes; old paths 301. */}
+      <Route path="/founder/governance">
+        {() => <FounderProtectedRoute component={FounderGovernancePage} />}
       </Route>
+      <Route path="/founder/memory">
+        {() => <FounderProtectedRoute component={FounderMemoryPage} />}
+      </Route>
+      <Route path="/founder/event-log">
+        {() => <FounderProtectedRoute component={FounderEventLogPage} />}
+      </Route>
+      <Route path="/founder/scenarios">
+        {() => <FounderProtectedRoute component={FounderScenariosPage} />}
+      </Route>
+      {/* Old-path redirects for the refit surfaces. */}
       <Route path="/board-of-directors">
-        {() => <FounderProtectedRoute component={BoardOfDirectorsPage} />}
+        {() => <Redirect to="/founder/governance" />}
+      </Route>
+      <Route path="/memory-browser">
+        {() => <Redirect to="/founder/memory" />}
+      </Route>
+      <Route path="/event-log">
+        {() => <Redirect to="/founder/event-log" />}
+      </Route>
+      {/* Retired sovereign-legacy routes — pages deleted. */}
+      <Route path="/sovereign">
+        {() => <Redirect to="/founder/bridge" />}
+      </Route>
+      <Route path="/agent-collaboration">
+        {() => <Redirect to="/founder/bridge" />}
       </Route>
       <Route path="/agent-performance">
         {() => <FounderProtectedRoute component={AgentPerformancePage} />}
       </Route>
-      <Route path="/memory-browser">
-        {() => <FounderProtectedRoute component={MemoryBrowserPage} />}
-      </Route>
-      <Route path="/event-log">
-        {() => <FounderProtectedRoute component={EventLogPage} />}
-      </Route>
       <Route path="/job-health">
         {() => <FounderProtectedRoute component={JobHealthPage} />}
-      </Route>
-      <Route path="/agent-collaboration">
-        {() => <FounderProtectedRoute component={AgentCollaborationPage} />}
       </Route>
 
       <Route component={NotFound} />
@@ -1745,19 +1791,29 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
   const variants = isMobile ? variantPageFadeMobile : pageTransition;
 
   return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={location}
-        variants={variants}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        className="min-h-screen"
-        id="main-content"
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
+    // overflow-x-clip: the desktop variant's x-translate transiently pushes
+    // the 100%-width page 8px past the viewport during every route change.
+    // On desktop that's a scrollbar flicker; on mobile browsers it expands
+    // the layout viewport at first paint (shrink-to-fit), which both zooms
+    // the page below CSS-pixel scale and — at 744px (iPad mini) — pushes
+    // innerWidth across the 768 breakpoint, flipping the app to the desktop
+    // arm. Clip (not hidden — no new scroll container) keeps the slide
+    // animation while the document never exceeds the viewport.
+    <div className="overflow-x-clip">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={location}
+          variants={variants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          className="min-h-[100dvh]"
+          id="main-content"
+        >
+          {children}
+        </motion.div>
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -1787,7 +1843,7 @@ function AtlasDockHost() {
 function AppContent() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { isMobile } = useIsMobile();
   useSwipeNavigation();
   useWhiteLabel();
@@ -1866,7 +1922,28 @@ function AppContent() {
         utm_content: snap?.utm_content ?? null,
         utm_term: snap?.utm_term ?? null,
         referrer: snap?.referrer ?? null,
+        // Tier 2C — referral + pricing-CTA tier context (?ref=, ?plan=,
+        // ?billing=) ride the same snapshot. The server applies the
+        // referral code itself during the flush; these props are for
+        // funnel segmentation only.
+        ref: snap?.ref ?? null,
+        plan: snap?.plan ?? null,
+        billing: snap?.billing ?? null,
       });
+
+      // Tier 3A / T3-3B — a visitor who came in from a shared public parcel
+      // report (/p/:state/:county/:apn) carried that parcel through signup on
+      // snap.parcel. Close the loop: tell the new user Pax already has their
+      // parcel and drop them on the Map door so the signature parcel → offer
+      // flow is one tap away. The parcel rode the first-touch chain via
+      // capturePendingParcel(); we never fabricate a parcel that wasn't carried.
+      if (snap?.parcel) {
+        toast({
+          title: "Pax already has your parcel",
+          description: "We carried the parcel you were viewing into your account. Opening it on the map.",
+        });
+        setLocation("/maps");
+      }
     })();
   }, [user]);
 
@@ -1971,14 +2048,13 @@ function AppContent() {
           slot 2 (bottom-176):  help (also hosts feedback)
           Feedback was slot 3 until the consolidation pass — now it
           lives inside the help sheet + settings + command palette. */}
-      {/* FloatingActionButton hidden on desktop — desktop has ⌘K + sidebar
-          New-Item menu; mobile keeps the FAB as a tap target.
-          Also hidden on /ai (chat surface has its own send button — the
-          global FAB overlaps the chat input on mobile) and on /inbox
-          (primary action lives in the page chrome there too). */}
-      {user && !location.startsWith("/ai") && !location.startsWith("/inbox") && !location.startsWith("/field-scout") && !location.startsWith("/founder") && (
-        <div className="md:hidden"><FloatingActionButton /></div>
-      )}
+      {/* Legacy FloatingActionButton retired 2026-06-11 — it duplicated the
+          persona-aware quick-add FAB in MobileBottomNav (QuickAddSheet) at the
+          exact same fixed bottom-right slot, so on customer surfaces (e.g.
+          /maps) the two "+" FABs stacked and overlapped (founder-reported).
+          The QuickAddSheet is the canonical capture FAB; its menu's nav
+          shortcuts (New Property/Deal/Documents/AI/Search) are all reachable
+          via the five doors + More drawer + topbar search. */}
       {/* ConversationTray removed 2026-05-20 — the floating chat button opened
           to a frosted/empty sheet on every screen (team-messaging feature isn't
           mature enough to surface as a global FAB yet). When team messaging
@@ -2020,18 +2096,22 @@ function AppContent() {
           <AtlasDockHost />
         </Suspense>
       )}
-      {user && <BetaActivationDetector />}
+      {user && <Suspense fallback={null}><BetaActivationDetector /></Suspense>}
       {/* Hide the global PaxCopilotRail on /ai because that page has
           its own main-area chat UI ("AcreOS Assistant"). r3 Gabriel
-          caught the dual-chat-UI confusion (UX-R3-001). Elsewhere
-          the rail remains the primary conversational entry point. */}
-      {user && !location.startsWith("/ai") && (
+          caught the dual-chat-UI confusion (UX-R3-001). Also hidden on
+          /founder/*: the founder's conversational surface is Atlas
+          (the /founder shell + AtlasDock on subpages) — mounting the
+          customer copilot there stacked TWO chat FABs on every founder
+          door (mobile eyeball pass, 2026-07-08). Elsewhere the rail
+          remains the primary conversational entry point. */}
+      {user && !location.startsWith("/ai") && !location.startsWith("/founder") && (
         <Suspense fallback={null}>
           <PaxCopilotRail />
         </Suspense>
       )}
-      {user && <DynamicIsland />}
-      {user && <NotificationBanner />}
+      {user && <Suspense fallback={null}><DynamicIsland /></Suspense>}
+      {user && <Suspense fallback={null}><NotificationBanner /></Suspense>}
       {user && npsData?.shouldShow && npsData.trigger && (
         <Suspense fallback={null}>
           <NpsDialog
@@ -2044,7 +2124,7 @@ function AppContent() {
       {/* PWA install prompt — gated on auth so it never overlaps the
           landing-page primary CTA (Chesky review finding). Unauthenticated
           visitors on landing should never see the install banner. */}
-      {user && <PWAInstallPrompt />}
+      {user && <Suspense fallback={null}><PWAInstallPrompt /></Suspense>}
     </>
   );
 }
@@ -2088,7 +2168,7 @@ function App() {
                   <Suspense fallback={null}>
                     <KeyboardShortcutsModal />
                   </Suspense>
-                  <DealModalsHost />
+                  <Suspense fallback={null}><DealModalsHost /></Suspense>
                 </KeyboardShortcutsProvider>
               </HintsProvider>
             </TooltipProvider>

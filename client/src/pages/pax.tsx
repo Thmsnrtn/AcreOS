@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { QueryErrorState } from "@/components/query-error-state";
 import { EmptyState } from "@/components/empty-state";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { PaxOverflowMenu } from "@/components/pax/pax-overflow-menu";
 import { PaxDisclosureRail } from "@/components/pax/pax-disclosure-rail";
 import { PullToRefresh } from "@/components/mobile/PullToRefresh";
@@ -49,6 +50,38 @@ function ChatFallback() {
     >
       <span className="text-sm text-acr-ink-3">Waking Pax…</span>
     </motion.div>
+  );
+}
+
+// Chat-crash fallback — a VISIBLE, recoverable state shown if the lazy chat
+// subtree (CommandCenterPage) throws at render. Without an error boundary
+// scoped to JUST the chat, a single chat-render crash bubbles to PageShell's
+// page-level boundary and blanks the WHOLE Pax surface (header + chat). This
+// keeps the editorial header alive and degrades only the chat, with a path
+// back (hard refresh pulls a fresh bundle if it was a stale-chunk crash).
+function ChatErrorFallback() {
+  return (
+    <div
+      role="alert"
+      data-testid="pax-chat-error"
+      className="flex flex-col items-center justify-center gap-3 rounded-card border border-border bg-muted/40 px-4 py-10 text-center"
+    >
+      <Bot className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+      <div className="text-sm">
+        <span className="font-medium">Pax couldn't open the conversation.</span>{" "}
+        <span className="text-muted-foreground">
+          This usually clears with a refresh. Your tasks and history are safe.
+        </span>
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => window.location.reload()}
+        data-testid="pax-chat-error-refresh"
+      >
+        Refresh
+      </Button>
+    </div>
   );
 }
 
@@ -223,7 +256,7 @@ function GreetingBanner() {
         onClick={handleDismiss}
         disabled={ackMutation.isPending}
         aria-label="Dismiss greeting from Pax"
-        className="shrink-0 text-acr-brand/60 active:text-acr-brand transition-colors disabled:opacity-50"
+        className="shrink-0 flex h-11 w-11 -m-3 items-center justify-center text-acr-brand/60 active:text-acr-brand transition-colors disabled:opacity-50"
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
@@ -305,7 +338,7 @@ function InsightsPanel() {
       {/* Pax Noticed */}
       {observations.length > 0 && (
         <section aria-labelledby="pax-noticed-heading">
-          <h2 id="pax-noticed-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3">
+          <h2 id="pax-noticed-heading" className="acr-eyebrow mb-4">
             Pax noticed
           </h2>
           <ul className="space-y-2 list-none p-0 m-0" aria-label="Observations Pax wants you to know about">
@@ -315,7 +348,7 @@ function InsightsPanel() {
               return (
                 <li
                   key={obs.id}
-                  className={`rounded-card border-l-4 border border-border ${SEVERITY_BORDER[obs.severity] ?? SEVERITY_BORDER.info} bg-card p-4`}
+                  className={`rounded-card border-l-4 border border-border ${SEVERITY_BORDER[obs.severity] ?? SEVERITY_BORDER.info} bg-card p-4 shadow-acr-1`}
                   role={isCritical ? "alert" : undefined}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -358,7 +391,7 @@ function InsightsPanel() {
       {/* Stale Leads */}
       {staleLeads.length > 0 && (
         <section aria-labelledby="stale-leads-heading">
-          <h2 id="stale-leads-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <h2 id="stale-leads-heading" className="acr-eyebrow mb-4 flex items-center gap-2">
             <Clock className="w-3.5 h-3.5 text-acr-warn" aria-hidden="true" />
             Stale leads
             <Badge variant="outline" className="text-micro tabular-nums" aria-label={`${staleLeads.length} stale lead${staleLeads.length === 1 ? "" : "s"}`}>{staleLeads.length}</Badge>
@@ -412,7 +445,7 @@ function InsightsPanel() {
       {/* Expiring Offers */}
       {expiringOffers.length > 0 && (
         <section aria-labelledby="expiring-offers-heading">
-          <h2 id="expiring-offers-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <h2 id="expiring-offers-heading" className="acr-eyebrow mb-4 flex items-center gap-2">
             <AlertCircle className="w-3.5 h-3.5 text-acr-neg" aria-hidden="true" />
             Expiring offers
             <Badge variant="destructive" className="text-micro tabular-nums" aria-label={`${expiringOffers.length} expiring offer${expiringOffers.length === 1 ? "" : "s"}`}>{expiringOffers.length}</Badge>
@@ -464,7 +497,7 @@ function InsightsPanel() {
       {/* Motivated Callers */}
       {motivatedCallers.length > 0 && (
         <section aria-labelledby="motivated-callers-heading">
-          <h2 id="motivated-callers-heading" className="text-xs font-semibold text-acr-ink-2 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <h2 id="motivated-callers-heading" className="acr-eyebrow mb-4 flex items-center gap-2">
             <Phone className="w-3.5 h-3.5 text-acr-pos" aria-hidden="true" />
             Motivated callers
             <Badge variant="outline" className="text-micro text-acr-pos border-acr-pos/30 tabular-nums" aria-label={`${motivatedCallers.length} motivated caller${motivatedCallers.length === 1 ? "" : "s"}`}>{motivatedCallers.length}</Badge>
@@ -701,15 +734,31 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (aiUnavailable) {
+    // Degrade the CHAT capability, not the whole surface. Tasks, the
+    // conversation list, and the founder tabs (Team / Agents / AI Ops) don't
+    // depend on the chat provider — replacing all of them with a dead-end
+    // EmptyState turned a provider blip into a full-page outage. Render a
+    // calm status banner and keep the surface alive; a send attempt while
+    // down gets the server's own error toast, and health re-polls clear the
+    // banner automatically.
     return (
-      <EmptyState
-        icon={Bot}
-        headline="Pax is temporarily unavailable"
-        subtitle="The AI service is not reachable right now. This usually clears in a minute or two."
-        // TODO(cta): auto-recovers — no manual action available
-        cta={{ label: "", _noOp: true }}
-        testId="pax-ai-unavailable"
-      />
+      <>
+        <div
+          role="status"
+          data-testid="pax-ai-unavailable"
+          className="flex items-center gap-3 rounded-card border border-border bg-muted/50 px-4 py-3 mb-4"
+        >
+          <Bot className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="text-sm">
+            <span className="font-medium">Pax is temporarily unavailable.</span>{" "}
+            <span className="text-muted-foreground">
+              The AI service is not reachable right now — this usually clears in
+              a minute or two. Your tasks and conversation history still work.
+            </span>
+          </div>
+        </div>
+        {children}
+      </>
     );
   }
 
@@ -856,29 +905,55 @@ export default function PaxPage() {
           fighting the chat composer's own scroll + input handling below.
           No-ops on pointer/desktop. */}
       <PullToRefresh onRefresh={handlePullRefresh}>
-        <div className="flex items-start justify-between gap-4">
+        {/* Bold Tahoe re-skin (Wave R, §3.1 signature editorial header):
+            the eyebrow + Fraunces greeting + soft trailing clause pattern.
+            `acr-cc-greeting` carries the Fraunces 600 / −0.03em identity that a
+            raw `text-hero` would lose; the subtitle becomes the muted
+            `acr-cc-greeting-soft` clause. data-testid preserved; visual-only. */}
+        <div className="acr-cc-hero">
           <div>
-            <h1 className="text-hero" data-testid="text-ai-hub-title">
-              Pax
+            <div className="acr-eyebrow">Pax</div>
+            <h1 className="acr-cc-greeting" data-testid="text-ai-hub-title">
+              Ask Pax{" "}
+              <span className="acr-cc-greeting-soft">
+                anything about your portfolio, deals, or leads.
+              </span>
             </h1>
-            <p className="text-sm text-acr-ink-2 mt-1">
-              Ask anything about your portfolio, deals, or leads.
-            </p>
           </div>
-          <div className="shrink-0">
-            <PaxOverflowMenu insightsContent={<InsightsPanel />} />
+          <div className="acr-cc-hero-actions shrink-0">
+            {/* The overflow menu carries the only founder-divergent header
+                element (the isFounder-gated Agents entry) + the InsightsPanel
+                query. Scope a boundary here so a crash in the tools menu can't
+                blank the header or, via PageShell's page-level boundary, the
+                whole Pax door. It degrades to nothing — the menu is auxiliary;
+                the conversation below is the primary surface. */}
+            <ErrorBoundary fallback={null}>
+              <PaxOverflowMenu insightsContent={<InsightsPanel />} />
+            </ErrorBoundary>
           </div>
         </div>
 
-        <GreetingBanner />
+        {/* The disclosure banner is non-essential chrome; never let it blank
+            the surface. */}
+        <ErrorBoundary fallback={null}>
+          <GreetingBanner />
+        </ErrorBoundary>
       </PullToRefresh>
 
       <div data-testid="pax-conversation">
         <AiChatGuard>
           <SuggestedPrompts />
-          <Suspense fallback={<ChatFallback />}>
-            <CommandCenterPage />
-          </Suspense>
+          {/* Scoped boundary: a chat-render crash (incl. a stale lazy-chunk
+              reject post-deploy — ErrorBoundary.componentDidCatch self-heals
+              those by reloading) degrades ONLY the chat to a visible,
+              refreshable fallback. It can no longer bubble to PageShell's
+              page-level boundary and blank the whole Pax door (header +
+              chat). The editorial header above stays rendered regardless. */}
+          <ErrorBoundary fallback={<ChatErrorFallback />}>
+            <Suspense fallback={<ChatFallback />}>
+              <CommandCenterPage />
+            </Suspense>
+          </ErrorBoundary>
           {/* Standing AI-disclosure rail — always present beneath the composer
               on the Pax door. "Tool, not advisor" (doctrine pillar #1 +
               customer immutable #7). Calm, non-dismissible, copy sourced from a

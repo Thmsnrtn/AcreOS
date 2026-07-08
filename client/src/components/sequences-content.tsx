@@ -18,6 +18,8 @@ import { Plus, Edit, Trash2, Users, Play, Pause, StopCircle, Eye, Loader2 } from
 import { SequenceBuilder, type SequenceStepData } from "@/components/sequence-builder";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { CampaignSequence, SequenceStep, SequenceEnrollment, Lead } from "@shared/schema";
+import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 type SequenceWithSteps = CampaignSequence & { steps: SequenceStep[] };
 type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; lead: Lead };
@@ -321,7 +323,7 @@ export function SequencesContent() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); }}>
-                Cancel
+                {Verbs.CANCEL}
               </Button>
               <Button
                 type="submit"
@@ -401,7 +403,7 @@ export function SequencesContent() {
                           data-testid={`button-edit-sequence-${sequence.id}`}
                         >
                           <Edit className="w-4 h-4 mr-1" />
-                          Edit
+                          {Verbs.EDIT}
                         </Button>
                         <Button aria-label="Delete"
                           variant="ghost"
@@ -461,7 +463,7 @@ export function SequencesContent() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {enrollment.enrolledAt ? new Date(enrollment.enrolledAt).toLocaleDateString() : "N/A"}
+                          {formatDate(enrollment.enrolledAt)}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">

@@ -169,7 +169,7 @@ export function LiveDemoMode({
     <>
       {isOrbVisible && (
         <div
-          className="fixed pointer-events-none z-[9999] transition-all duration-300 ease-out"
+          className="fixed pointer-events-none z-spotlight transition-all duration-300 ease-out"
           style={{
             left: orbPosition.x,
             top: orbPosition.y,
@@ -206,7 +206,7 @@ export function LiveDemoMode({
       {highlightRect && (
         <div
           ref={highlightOverlayRef}
-          className="fixed pointer-events-none z-[9998] transition-all duration-200 ease-out"
+          className="fixed pointer-events-none z-island transition-all duration-200 ease-out"
           style={{
             left: highlightRect.left - 4,
             top: highlightRect.top - 4,
@@ -234,8 +234,8 @@ export function LiveDemoMode({
 
       <div
         className={cn(
-          "fixed bottom-20 left-1/2 -translate-x-1/2 z-[10000]",
-          "bg-background/95 backdrop-blur-md",
+          "fixed bottom-20 left-1/2 -translate-x-1/2 z-max",
+          "bg-surface-chrome backdrop-blur-md",
           "border border-border rounded-2xl shadow-2xl",
           "p-4 min-w-[400px]"
         )}
@@ -363,7 +363,7 @@ export function LiveDemoMode({
       </div>
 
       <div 
-        className="fixed inset-0 z-[9990] pointer-events-none"
+        className="fixed inset-0 z-tour pointer-events-none"
         style={{
           background: "radial-gradient(circle at center, transparent 70%, rgba(0,0,0,0.1) 100%)",
         }}

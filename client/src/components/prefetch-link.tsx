@@ -25,7 +25,7 @@
  */
 import { type AnchorHTMLAttributes, type ReactNode, forwardRef, useCallback, useRef } from "react";
 import { Link } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
+import { prefetchRoute } from "@/lib/queryClient";
 
 interface PrefetchLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
   href: string;
@@ -102,7 +102,6 @@ export const PrefetchLink = forwardRef<HTMLAnchorElement, PrefetchLinkProps>(fun
   onFocus,
   ...rest
 }, ref) {
-  const queryClient = useQueryClient();
   // Once-per-mount guard so the same link doesn't prefetch repeatedly
   // when the user hovers/leaves/hovers again. The cache entry persists
   // for staleTime so the second hover is a no-op anyway, but this
@@ -115,10 +114,17 @@ export const PrefetchLink = forwardRef<HTMLAnchorElement, PrefetchLinkProps>(fun
     for (const key of keys) {
       if (prefetched.current.has(key)) continue;
       prefetched.current.add(key);
-      // Fire-and-forget — react-query handles its own errors + caching.
-      void queryClient.prefetchQuery({ queryKey: [key], staleTime });
+      // MUST go through prefetchRoute — it normalizes the cache shape for
+      // array-contract keys (/api/leads etc.). Calling prefetchQuery
+      // directly with the default fetcher cached the raw paginated
+      // envelope under the bare key and crashed any consumer expecting a
+      // flat array while the entry was fresh (`leads.forEach is not a
+      // function` → 500 boundary on /inbox; ipad-mini nav-smoke tab walk,
+      // 2026-06-11 — the focus-triggered prefetch on link click was the
+      // second poisoning path after the sidebar's handlePrefetch).
+      prefetchRoute(key, staleTime);
     }
-  }, [queryClient, href, prefetchKeys, noPrefetch, staleTime]);
+  }, [href, prefetchKeys, noPrefetch, staleTime]);
 
   return (
     <Link

@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Collapsible,
   CollapsibleContent,
@@ -147,9 +148,12 @@ export function SystemHealth() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex items-center justify-center py-4" role="status" aria-busy="true" aria-label="Loading system health">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
-            <span className="sr-only">Loading…</span>
+          <div role="status" aria-busy="true" aria-live="polite" className="px-2 py-2">
+            <span className="sr-only">Loading system health</span>
+            <div className="flex items-center justify-between">
+              <Skeleton announce={false} className="h-4 w-40" />
+              <Skeleton announce={false} className="h-4 w-4" />
+            </div>
           </div>
         ) : healthData ? (
           <Collapsible open={isOpen} onOpenChange={setIsOpen}>

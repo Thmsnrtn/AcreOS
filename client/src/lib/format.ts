@@ -91,7 +91,97 @@ export function percent(value: number | null | undefined, opts: { decimals?: num
 
 // ── Dates ───────────────────────────────────────────────────────────
 
-/** Relative: "2h ago", "3d ago". Uses date-fns naming. */
+type DateInput = Date | string | number | null | undefined;
+
+/** Parse any accepted date input; null when missing or invalid. */
+function toDate(input: DateInput): Date | null {
+  if (input == null || input === "") return null;
+  const d = input instanceof Date ? input : new Date(input);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Module-level cached formatters — Intl.DateTimeFormat construction is
+// expensive; these helpers run inside render loops (tables, feeds).
+const HOUSE_DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+const HOUSE_TIME_FMT = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+/**
+ * House absolute date: "Jun 11, 2026".
+ *
+ * Convention source: the dominant explicit `toLocaleDateString` option
+ * set across the client (`{ year: "numeric", month: "short", day:
+ * "numeric" }` — leads, deals, finance surfaces) and the existing
+ * `shortDate` helper below. Pure Intl, no date-fns.
+ *
+ * Returns "—" for null/undefined/invalid input.
+ *
+ * W2-2 codemod target: all bare `toLocaleDateString(...)` call sites
+ * route through here.
+ */
+export function formatDate(date: DateInput): string {
+  const d = toDate(date);
+  return d ? HOUSE_DATE_FMT.format(d) : "—";
+}
+
+/**
+ * House absolute datetime: "Jun 11, 2026 · 9:47 PM" (matches the
+ * existing `shortDateTime` middot convention). Pure Intl.
+ *
+ * Returns "—" for null/undefined/invalid input.
+ *
+ * W2-2 codemod target: `toLocaleString(...)` call sites rendering a
+ * date+time route through here.
+ */
+export function formatDateTime(date: DateInput): string {
+  const d = toDate(date);
+  if (!d) return "—";
+  return `${HOUSE_DATE_FMT.format(d)} · ${HOUSE_TIME_FMT.format(d)}`;
+}
+
+/**
+ * House relative date: "just now" / "5m ago" / "2h ago" / "3d ago",
+ * falling back to {@link formatDate} ("Jun 11, 2026") once the moment
+ * is more than 7 days in the past — relative phrasing loses meaning
+ * past a week. Future timestamps (beyond 60s of clock skew, which
+ * reads as "just now") also fall back to the absolute date.
+ *
+ * Pass `now` explicitly in tests for determinism; defaults to
+ * `Date.now()` at call time. Pure function, Intl only.
+ *
+ * Returns "—" for null/undefined/invalid input.
+ *
+ * W2-2 codemod target: ad-hoc "X ago" math and `formatDistanceToNow`
+ * call sites route through here.
+ */
+export function formatRelative(date: DateInput, now: Date | number = Date.now()): string {
+  const d = toDate(date);
+  if (!d) return "—";
+  const nowMs = now instanceof Date ? now.getTime() : now;
+  const diffMs = nowMs - d.getTime();
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+  if (diffMs < -MINUTE) return formatDate(d); // future beyond skew
+  if (diffMs < MINUTE) return "just now";
+  if (diffMs < HOUR) return `${Math.floor(diffMs / MINUTE)}m ago`;
+  if (diffMs < DAY) return `${Math.floor(diffMs / HOUR)}h ago`;
+  if (diffMs <= 7 * DAY) return `${Math.floor(diffMs / DAY)}d ago`;
+  return formatDate(d);
+}
+
+/**
+ * Relative: "2h ago", "3d ago". Uses date-fns naming.
+ * Legacy — prefer {@link formatRelative} (W2-2 house primitive; no
+ * date-fns dependency, deterministic via explicit `now`). The W2-2
+ * codemod will consolidate call sites onto formatRelative.
+ */
 export function relative(date: Date | string | null | undefined): string {
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
@@ -99,7 +189,10 @@ export function relative(date: Date | string | null | undefined): string {
   return formatDistanceToNow(d, { addSuffix: true });
 }
 
-/** Short absolute: "Apr 21, 2026". */
+/**
+ * Short absolute: "Apr 21, 2026".
+ * Legacy — prefer {@link formatDate} (same output, Intl only).
+ */
 export function shortDate(date: Date | string | null | undefined): string {
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
@@ -107,7 +200,10 @@ export function shortDate(date: Date | string | null | undefined): string {
   return dfFormat(d, "MMM d, yyyy");
 }
 
-/** Short datetime: "Apr 21, 2026 · 9:47 PM". */
+/**
+ * Short datetime: "Apr 21, 2026 · 9:47 PM".
+ * Legacy — prefer {@link formatDateTime} (same output, Intl only).
+ */
 export function shortDateTime(date: Date | string | null | undefined): string {
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;

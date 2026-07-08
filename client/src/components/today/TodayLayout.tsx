@@ -36,6 +36,10 @@ import {
   Target,
   HandCoins,
   ClipboardList,
+  Repeat,
+  Layers,
+  Hammer,
+  Home,
 } from "lucide-react";
 import type { Persona } from "@shared/models/auth";
 import { usd, plural } from "@/lib/format";
@@ -100,7 +104,7 @@ function LedeShell({
 }) {
   return (
     <Card
-      className="rounded-card border-l-2 mb-4"
+      className="rounded-card shadow-acr-1 border-l-2 mb-4"
       style={{ borderLeftColor: ACCENT_VAR[accent] }}
       data-testid={testId}
     >
@@ -287,16 +291,144 @@ function TaxLienLede({ data: _data }: { data: TodayLedeData }) {
   );
 }
 
+// ── wholesaler: contracts to assign ──────────────────────────────────────────
+// Wholesalers get a property under contract and assign it to a cash buyer for a
+// fee — speed and a ready buyers list are everything. Leads with contracts in
+// flight; honest empty is a "lock one up" prompt.
+function WholesalerLede({ data }: { data: TodayLedeData }) {
+  const hasPipeline = data.openDealsCount > 0;
+  return (
+    <LedeShell
+      testId="today-lede-wholesaler"
+      accent="brand"
+      icon={<Repeat className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+      title={
+        hasPipeline ? (
+          <>
+            {plural(data.openDealsCount, "contract")} to assign
+            {data.openDealsValue > 0 && <> · {usd(data.openDealsValue, { noCents: true })} in spread</>}
+          </>
+        ) : (
+          "No contracts to assign yet"
+        )
+      }
+      detail={
+        hasPipeline
+          ? "Match a cash buyer and assign before your inspection window closes."
+          : "Lock up a motivated seller, then line up the cash buyer."
+      }
+      cta={{ href: "/deals", label: hasPipeline ? "Work assignments" : "Find a deal", emphasised: hasPipeline }}
+    />
+  );
+}
+
+// ── subdivider: parent parcels mid-split ─────────────────────────────────────
+// Subdividers buy a large parent parcel and sell child lots over 18-36 months —
+// the job is moving projects through entitlement and selling lots. Leads with
+// active projects.
+function SubdividerLede({ data }: { data: TodayLedeData }) {
+  const hasProjects = data.openDealsCount > 0;
+  return (
+    <LedeShell
+      testId="today-lede-subdivider"
+      accent="brand"
+      icon={<Layers className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+      title={
+        hasProjects ? (
+          <>
+            {plural(data.openDealsCount, "project")} in progress
+            {data.openDealsValue > 0 && <> · {usd(data.openDealsValue, { noCents: true })} in lot value</>}
+          </>
+        ) : (
+          "No subdivision projects yet"
+        )
+      }
+      detail={
+        hasProjects
+          ? "Advance one project through entitlement or move a child lot today."
+          : "Find a parent parcel that pencils once it's cut into lots."
+      }
+      cta={{ href: "/deals", label: hasProjects ? "Work projects" : "Find a parcel", emphasised: hasProjects }}
+    />
+  );
+}
+
+// ── fix_flipper: flips in progress ───────────────────────────────────────────
+// Fix-and-flippers buy distressed, rehab, and resell — holding cost is the
+// enemy, so the lede leads with active flips and pushes one forward.
+function FixFlipperLede({ data }: { data: TodayLedeData }) {
+  const hasFlips = data.openDealsCount > 0;
+  return (
+    <LedeShell
+      testId="today-lede-fix_flipper"
+      accent="brand"
+      icon={<Hammer className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+      title={
+        hasFlips ? (
+          <>
+            {plural(data.openDealsCount, "flip")} in progress
+            {data.openDealsValue > 0 && <> · {usd(data.openDealsValue, { noCents: true })} at work</>}
+          </>
+        ) : (
+          "No flips in progress yet"
+        )
+      }
+      detail={
+        hasFlips
+          ? "Every holding day costs — push one rehab or listing forward today."
+          : "Find a distressed deal where the rehab math leaves room."
+      }
+      cta={{ href: "/deals", label: hasFlips ? "Work flips" : "Find a flip", emphasised: hasFlips }}
+    />
+  );
+}
+
+// ── landlord: building the rental book ───────────────────────────────────────
+// Buy-and-hold landlords add doors and run them long-term. Today's aggregates
+// only carry the acquisition pipeline, so the lede leads with acquisitions in
+// flight (honest empty otherwise) and points at the portfolio.
+function LandlordLede({ data }: { data: TodayLedeData }) {
+  const hasPipeline = data.openDealsCount > 0;
+  return (
+    <LedeShell
+      testId="today-lede-landlord"
+      accent="brand"
+      icon={<Home className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+      title={
+        hasPipeline ? (
+          <>
+            {plural(data.openDealsCount, "acquisition")} in flight
+            {data.openDealsValue > 0 && <> · {usd(data.openDealsValue, { noCents: true })} to add</>}
+          </>
+        ) : (
+          "No acquisitions in flight"
+        )
+      }
+      detail={
+        hasPipeline
+          ? "Move one acquisition toward close to add the next door."
+          : "Find a property where the rent covers the note and then some."
+      }
+      cta={{ href: "/deals", label: hasPipeline ? "Work acquisitions" : "Find a rental", emphasised: hasPipeline }}
+    />
+  );
+}
+
 // ── The registry ─────────────────────────────────────────────────────────────
-// Each note persona now leads with its OWN job — investor (tape), originator
-// (origination pipeline), servicer (servicing queue) — and land investors lead
-// with sourcing momentum. tax-delinquent leads with the redemption clock;
-// everyone else is generic (no lede).
+// Each persona leads with its OWN job — note investor (tape), originator
+// (origination pipeline), servicer (servicing queue), land investor (sourcing
+// momentum), tax-delinquent (redemption clock), and the deal-driven verticals
+// (wholesaler/subdivider/fix_flipper/landlord) each with their own framing of
+// the shared deal aggregates. No persona is left on the generic briefing.
 const LAND_LEDE: TodayLayout = { key: "land", Lede: LandInvestorLede };
 const NOTE_INVESTOR_LEDE: TodayLayout = { key: "note_investor", Lede: NoteInvestorLede };
 const NOTE_ORIGINATOR_LEDE: TodayLayout = { key: "note_originator", Lede: NoteOriginatorLede };
 const NOTE_SERVICER_LEDE: TodayLayout = { key: "note_servicer", Lede: NoteServicerLede };
 const TAX_LIEN_LEDE: TodayLayout = { key: "tax_lien", Lede: TaxLienLede };
+const WHOLESALER_LEDE: TodayLayout = { key: "wholesaler", Lede: WholesalerLede };
+const SUBDIVIDER_LEDE: TodayLayout = { key: "subdivider", Lede: SubdividerLede };
+const FIX_FLIPPER_LEDE: TodayLayout = { key: "fix_flipper", Lede: FixFlipperLede };
+const LANDLORD_LEDE: TodayLayout = { key: "landlord", Lede: LandlordLede };
 const GENERIC_LAYOUT: TodayLayout = { key: "generic", Lede: null };
 
 const TODAY_LAYOUTS: Partial<Record<Persona, TodayLayout>> = {
@@ -305,6 +437,10 @@ const TODAY_LAYOUTS: Partial<Record<Persona, TodayLayout>> = {
   note_originator: NOTE_ORIGINATOR_LEDE,
   note_servicer: NOTE_SERVICER_LEDE,
   tax_delinquent: TAX_LIEN_LEDE,
+  wholesaler: WHOLESALER_LEDE,
+  subdivider: SUBDIVIDER_LEDE,
+  fix_flipper: FIX_FLIPPER_LEDE,
+  landlord: LANDLORD_LEDE,
 };
 
 /**

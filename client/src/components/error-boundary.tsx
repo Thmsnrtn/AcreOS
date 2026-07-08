@@ -183,7 +183,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 <button
                   type="button"
                   onClick={this.handleRefresh}
-                  className="mt-2 inline-flex items-center gap-1 underline-offset-2 hover:underline"
+                  className="mt-2 inline-flex min-h-11 items-center gap-1 px-2 -mx-2 -my-2 underline-offset-2 hover:underline active:opacity-70"
                   data-testid="button-error-refresh"
                   style={{ color: "var(--acr-ink-2)" }}
                 >

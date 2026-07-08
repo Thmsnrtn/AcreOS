@@ -78,7 +78,7 @@ export function MeshGradient({
       )}
 
       {/* Content sits above the orbs */}
-      <div className="relative z-10">{children}</div>
+      <div className="relative z-docked">{children}</div>
     </div>
   );
 }

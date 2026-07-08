@@ -21,12 +21,23 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
-  LineChart,
+  Cell,
   Line,
   Area,
   AreaChart,
 } from 'recharts';
-import { chartColor } from "@/lib/chartPalette";
+import {
+  CHART_COLORS,
+  CHART_POS,
+  CHART_NEG,
+  CHART_PRIMARY,
+  CHART_GRID,
+  CHART_SURFACE,
+} from '@/lib/chart-colors';
+import { format } from 'date-fns';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/empty-state';
+import { QueryErrorState } from '@/components/query-error-state';
 import {
   TrendingUp,
   MapPin,
@@ -58,13 +69,13 @@ function formatDollar(n: number) {
 
 function SHAPWaterfallPlaceholder({ adjustments }: { adjustments: any[] }) {
   const factors = adjustments?.length > 0
-    ? adjustments.map((a: any, i: number) => ({ name: a.factor?.slice(0, 22) ?? `Factor ${i+1}`, value: a.adjustment, fill: a.adjustment >= 0 ? '#10b981' : '#ef4444' }))
+    ? adjustments.map((a: any, i: number) => ({ name: a.factor?.slice(0, 22) ?? `Factor ${i+1}`, value: a.adjustment, fill: a.adjustment >= 0 ? CHART_POS : CHART_NEG }))
     : [
-        { name: 'Base value', value: 100, fill: '#6366f1' },
-        { name: 'Road access', value: 8, fill: '#10b981' },
-        { name: 'Water rights', value: 6, fill: '#10b981' },
-        { name: 'Zoning', value: -4, fill: '#ef4444' },
-        { name: 'Terrain', value: -2, fill: '#ef4444' },
+        { name: 'Base value', value: 100, fill: CHART_PRIMARY },
+        { name: 'Road access', value: 8, fill: CHART_POS },
+        { name: 'Water rights', value: 6, fill: CHART_POS },
+        { name: 'Zoning', value: -4, fill: CHART_NEG },
+        { name: 'Terrain', value: -2, fill: CHART_NEG },
       ];
 
   return (
@@ -185,7 +196,7 @@ function PricePerAcreTrendChart({ history }: { history: any[] }) {
   if (history.length < 2) return null;
 
   const chartData = [...history].reverse().map((v: any, i: number) => ({
-    date: v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : `v${i + 1}`,
+    date: v.createdAt ? format(new Date(v.createdAt), 'MMM d') : `v${i + 1}`,
     pricePerAcre: Math.round(v.pricePerAcre ?? 0),
     low: Math.round((v.confidenceInterval?.low ?? v.estimatedValue * 0.85) / (v.sizeAcres || 1)),
     high: Math.round((v.confidenceInterval?.high ?? v.estimatedValue * 1.15) / (v.sizeAcres || 1)),
@@ -208,17 +219,17 @@ function PricePerAcreTrendChart({ history }: { history: any[] }) {
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="ciGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#4f8ef7" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#4f8ef7" stopOpacity={0} />
+                  <stop offset="5%" stopColor={CHART_PRIMARY} stopOpacity={0.15} />
+                  <stop offset="95%" stopColor={CHART_PRIMARY} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
               <XAxis dataKey="date" tick={{ fontSize: 10 }} />
               <YAxis tickFormatter={v => formatDollar(v)} tick={{ fontSize: 10 }} />
               <Tooltip formatter={((v: any, name: string) => [`${formatDollar(Number(v))}/acre`, name === 'pricePerAcre' ? 'Price per acre' : name === 'high' ? 'Upper bound (CI)' : 'Lower bound (CI)']) as any} />
               <Area type="monotone" dataKey="high" stroke="transparent" fill="url(#ciGrad)" />
-              <Area type="monotone" dataKey="low" stroke="transparent" fill="white" />
-              <Line type="monotone" dataKey="pricePerAcre" stroke={chartColor(0)} strokeWidth={2} dot={{ r: 3 }} />
+              <Area type="monotone" dataKey="low" stroke="transparent" fill={CHART_SURFACE} />
+              <Line type="monotone" dataKey="pricePerAcre" stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 3 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -239,7 +250,41 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="overflow-x-auto" role="region" aria-label="Comparable sales" tabIndex={0}>
+        {/* Mobile: stacked comp cards — the 6-column table side-scrolls at
+            phone widths. md+ renders the full table below. */}
+        <ul className="md:hidden divide-y divide-border" data-testid="list-comps-mobile">
+          {comparables.map((c: any, i: number) => {
+            const diff = c.pricePerAcre - pricePerAcre;
+            const diffPct = ((diff / pricePerAcre) * 100).toFixed(1);
+            return (
+              <li key={i} className="px-4 py-3 text-xs" data-testid={`card-comp-${i}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground tabular-nums">
+                    #{i + 1} · {c.distance?.toFixed(1) ?? '—'} mi away
+                  </span>
+                  <span className="font-medium tabular-nums">{formatDollar(c.salePrice)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 mt-1.5">
+                  <span
+                    className={`px-1.5 py-0.5 rounded tabular-nums ${c.similarity >= 70 ? 'bg-acr-pos-soft text-acr-pos' : 'bg-muted text-muted-foreground'}`}
+                    aria-label={`${c.similarity}% similarity${c.similarity >= 70 ? ', high' : ''}`}
+                  >
+                    {c.similarity}% similar
+                  </span>
+                  <span className="tabular-nums">
+                    {formatDollar(c.pricePerAcre)}/ac
+                    <span className={`ml-1.5 font-semibold ${diff >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
+                      {diff >= 0 ? '+' : ''}{diffPct}%
+                    </span>
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* Desktop: full table. Hidden on mobile. */}
+        <div className="hidden md:block overflow-x-auto" role="region" aria-label="Comparable sales" tabIndex={0}>
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b bg-muted/40">
@@ -315,7 +360,7 @@ export default function AVMPage() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const propertySelectId = useId();
 
-  const { data: statsData } = useQuery({
+  const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ['avm', 'stats'],
     queryFn: async () => {
       const res = await fetch('/api/avm/stats', { credentials: 'include' });
@@ -324,7 +369,14 @@ export default function AVMPage() {
     },
   });
 
-  const { data: historyData, isLoading: historyLoading } = useQuery({
+  const {
+    data: historyData,
+    isLoading: historyLoading,
+    isError: historyIsError,
+    error: historyError,
+    refetch: refetchHistory,
+    isRefetching: historyRefetching,
+  } = useQuery({
     queryKey: ['avm', 'history', selectedPropertyId],
     queryFn: async () => {
       const res = await fetch(`/api/avm/history/${selectedPropertyId}`, { credentials: 'include' });
@@ -347,8 +399,26 @@ export default function AVMPage() {
       }
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: 'Valuation complete.', description: 'AVM estimate ready.' });
+    onSuccess: (data: any) => {
+      // W3.1 — refuse-not-fabricate: an honest "not enough data" is a valid
+      // outcome, and an AI estimate must announce itself as one.
+      const v = data?.valuation;
+      if (v?.status === 'insufficient_data') {
+        toast({
+          title: 'Not enough data to value this parcel honestly',
+          description:
+            (v.missing ?? []).join(' · ') ||
+            'No comparable sales and no trained model for this area yet. No credit was used.',
+        });
+      } else if (v?.classification === 'ai_estimate') {
+        toast({
+          title: 'AI estimate ready',
+          description:
+            'No local comparable sales — this number is an AI model’s educated guess, not a comps-based valuation. Treat it as a starting point.',
+        });
+      } else {
+        toast({ title: 'Valuation complete.', description: 'AVM estimate ready.' });
+      }
       queryClient.invalidateQueries({ queryKey: ['avm', 'history', selectedPropertyId] });
     },
     onError: (err: Error) => {
@@ -360,6 +430,7 @@ export default function AVMPage() {
     },
   });
 
+  // allow-no-invalidation: kicks off an async background batch — valuations land server-side over time
   const bulkMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch('/api/avm/bulk', {
@@ -413,7 +484,7 @@ export default function AVMPage() {
             Valuation model (<GlossaryTerm slug="AVM">AVM</GlossaryTerm>)
           </h1>
           <p className="text-muted-foreground mt-1">
-            Proprietary ML valuation model trained on land transactions — instant estimates with confidence intervals.
+            Values from comparable sales and trained models, with confidence intervals — and when there isn't enough data, it says so instead of guessing.
           </p>
         </div>
         <Button
@@ -428,6 +499,18 @@ export default function AVMPage() {
       </div>
 
       {/* Model Stats */}
+      {statsLoading && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4" aria-busy="true" aria-label="Loading model stats">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="pt-4 space-y-2">
+                <Skeleton className="h-8 w-24" announce={i === 0} announceText="Loading model stats" />
+                <Skeleton className="h-4 w-32" announce={false} />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
       {stats && (
         <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
@@ -485,9 +568,61 @@ export default function AVMPage() {
       </div>
 
       {historyLoading && (
-        <div className="text-center py-16 text-muted-foreground" role="status" aria-live="polite">
-          Loading valuation history…
+        <div className="space-y-6" aria-busy="true" aria-label="Loading valuation history">
+          {/* Shaped like the Estimate tab that replaces it: tab bar, then the
+              big-number estimate card beside the details card. */}
+          <Skeleton className="h-10 w-72 max-w-full" announce announceText="Loading valuation history" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <Skeleton className="h-5 w-36" announce={false} />
+                <Skeleton className="h-4 w-56" announce={false} />
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <Skeleton className="h-12 w-64 max-w-full" announce={false} />
+                <Skeleton className="h-4 w-full" announce={false} />
+                <Skeleton className="h-2 w-full" announce={false} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-5 w-32" announce={false} />
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex justify-between">
+                    <Skeleton className="h-4 w-28" announce={false} />
+                    <Skeleton className="h-4 w-12" announce={false} />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
         </div>
+      )}
+
+      {historyIsError && !historyLoading && (
+        <QueryErrorState
+          error={historyError as Error}
+          onRetry={() => refetchHistory()}
+          isRetrying={historyRefetching}
+          title="Couldn't load valuation history"
+        />
+      )}
+
+      {!historyLoading && !historyIsError && selectedPropertyId && !latest && (
+        <EmptyState
+          icon={TrendingUp}
+          headline="Run your first valuation"
+          subtitle="No AVM estimates yet for this property. Generate one — comparable sales, market adjustments, and a confidence interval come back in seconds."
+          cta={{
+            label: valuationMutation.isPending ? 'Valuing…' : 'Generate valuation',
+            onClick: () => valuationMutation.mutate(selectedPropertyId),
+            'data-testid': 'avm-empty-generate',
+          }}
+          actionIcon={RefreshCw}
+          testId="avm-empty-state"
+        />
       )}
 
       {latest && (
@@ -579,7 +714,7 @@ export default function AVMPage() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Valuation Date</span>
                     <span className="font-medium">
-                      {latest.createdAt ? new Date(latest.createdAt).toLocaleDateString() : 'Today'}
+                      {latest.createdAt ? format(new Date(latest.createdAt), 'MMM d, yyyy') : 'Today'}
                     </span>
                   </div>
                   {latest.confidence >= 70 ? (
@@ -616,7 +751,7 @@ export default function AVMPage() {
                     <div role="img" aria-label={`Price-per-acre comparison across ${compsData.length} comparable sales ranked by similarity to subject property at ${formatDollar(latest.pricePerAcre)}/acre`}>
                     <ResponsiveContainer width="100%" height={260}>
                       <BarChart data={compsData}>
-                        <CartesianGrid strokeDasharray="3 3" />
+                        <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                         <XAxis dataKey="label" />
                         <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} />
                         <Tooltip
@@ -625,8 +760,8 @@ export default function AVMPage() {
                             name === 'pricePerAcre' ? 'Price/Acre' : 'Similarity',
                           ]) as any}
                         />
-                        <ReferenceLine y={latest.pricePerAcre} stroke={chartColor(1)} strokeDasharray="5 5" label="Subject" />
-                        <Bar dataKey="pricePerAcre" fill={chartColor(0)} radius={[4, 4, 0, 0]} name="pricePerAcre" />
+                        <ReferenceLine y={latest.pricePerAcre} stroke={CHART_COLORS[1]} strokeDasharray="5 5" label="Subject" />
+                        <Bar dataKey="pricePerAcre" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} name="pricePerAcre" />
                       </BarChart>
                     </ResponsiveContainer>
                     </div>
@@ -662,7 +797,18 @@ export default function AVMPage() {
                 </div>
               </>
             ) : (
-              <div className="text-center py-12 text-muted-foreground">No comparable sales data available</div>
+              <EmptyState
+                icon={MapPin}
+                headline="No comparable sales on this valuation"
+                subtitle="The model couldn't surface comps for this run. Re-run the valuation — newly recorded sales are pulled in each time."
+                cta={{
+                  label: valuationMutation.isPending ? 'Valuing…' : 'Re-run valuation',
+                  onClick: () => valuationMutation.mutate(selectedPropertyId),
+                  'data-testid': 'avm-comps-rerun',
+                }}
+                actionIcon={RefreshCw}
+                testId="avm-comps-empty"
+              />
             )}
           </TabsContent>
 
@@ -678,16 +824,18 @@ export default function AVMPage() {
                   <div role="img" aria-label={`Market adjustments applied: ${adjustmentsData.length} factors with percentage impact`}>
                   <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={adjustmentsData} layout="vertical" margin={{ left: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
+                      <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                       <XAxis type="number" tickFormatter={(v) => `${v > 0 ? '+' : ''}${v}%`} />
                       <YAxis type="category" dataKey="factor" width={140} tick={{ fontSize: 11 }} />
                       <Tooltip formatter={(v: any) => [`${v > 0 ? '+' : ''}${v}%`, 'Adjustment']} />
-                      <ReferenceLine x={0} stroke={chartColor(2)} />
-                      <Bar
-                        dataKey="adjustment"
-                        radius={[0, 4, 4, 0]}
-                        fill={chartColor(1)}
-                      />
+                      <ReferenceLine x={0} stroke={CHART_GRID} />
+                      <Bar dataKey="adjustment" radius={[0, 4, 4, 0]}>
+                        {/* Sign-coded fills so the chart agrees with the
+                            +green/−red list below it. */}
+                        {adjustmentsData.map((a: any, i: number) => (
+                          <Cell key={i} fill={a.adjustment >= 0 ? CHART_POS : CHART_NEG} />
+                        ))}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                   </div>
@@ -705,7 +853,18 @@ export default function AVMPage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="text-center py-12 text-muted-foreground">No adjustments data available</div>
+              <EmptyState
+                icon={Activity}
+                headline="No market adjustments on this valuation"
+                subtitle="This estimate came straight from comparable sales with no factor adjustments. Re-run the valuation to refresh the factor analysis."
+                cta={{
+                  label: valuationMutation.isPending ? 'Valuing…' : 'Re-run valuation',
+                  onClick: () => valuationMutation.mutate(selectedPropertyId),
+                  'data-testid': 'avm-adjustments-rerun',
+                }}
+                actionIcon={RefreshCw}
+                testId="avm-adjustments-empty"
+              />
             )}
           </TabsContent>
 
@@ -722,7 +881,7 @@ export default function AVMPage() {
                           <p className="font-bold">{formatDollar(v.estimatedValue)}</p>
                           <p className="text-sm text-muted-foreground">
                             {v.pricePerAcre ? `${formatDollar(v.pricePerAcre)}/acre · ` : ''}
-                            {v.createdAt ? new Date(v.createdAt).toLocaleDateString() : ''}
+                            {v.createdAt ? format(new Date(v.createdAt), 'MMM d, yyyy') : ''}
                           </p>
                         </div>
                         <div className="text-right">
@@ -742,13 +901,18 @@ export default function AVMPage() {
       )}
 
       {!selectedPropertyId && (
-        <div className="text-center py-20 text-muted-foreground">
-          <Database className="w-12 h-12 mx-auto mb-4 opacity-30" />
-          <p className="text-lg font-medium">Select a property to generate an AVM estimate</p>
-          <p className="text-sm mt-1">
-            The Valuation Model (AVM) uses comparable sales, market adjustments, and GPT-4 qualitative analysis
-          </p>
-        </div>
+        <EmptyState
+          icon={Database}
+          headline="Select a property to generate an AVM estimate"
+          subtitle="The valuation model blends comparable sales, market adjustments, and Pax's qualitative read into one estimate with a confidence interval."
+          cta={{
+            label: 'Choose a property',
+            onClick: () => document.getElementById(propertySelectId)?.focus(),
+            'data-testid': 'avm-choose-property',
+          }}
+          actionIcon={null}
+          testId="avm-no-property-state"
+        />
       )}
     </div>
   );

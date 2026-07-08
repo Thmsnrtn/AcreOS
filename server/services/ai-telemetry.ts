@@ -85,8 +85,24 @@ export interface RecordAiCallOpts {
  * captures AI spend.
  *
  * Fully fire-and-forget — every failure is logged but never rethrown.
+ *
+ * The never-rethrows contract is enforced HERE (outer wrapper), not by the
+ * granular try/catches below — callers `void recordAiCall(...)`, so any
+ * escape (e.g. a throw before the first try block) becomes an unhandled
+ * rejection. CI caught exactly that when coerceAiFeature raced vitest's
+ * module teardown.
  */
 export async function recordAiCall(opts: RecordAiCallOpts): Promise<void> {
+  try {
+    await recordAiCallUnsafe(opts);
+  } catch (err) {
+    logger.warn("[ai-telemetry] recordAiCall failed (fire-and-forget; swallowed)", {
+      metadata: { detail: err instanceof Error ? err.message : err },
+    });
+  }
+}
+
+async function recordAiCallUnsafe(opts: RecordAiCallOpts): Promise<void> {
   // L5a — coerce arbitrary caller-tag strings into the locked AiFeature
   // enum. Unknown values fall back to "unknown" rather than spawning a
   // new per-feature dashboard row, and we log a warn so the drift is

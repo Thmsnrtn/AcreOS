@@ -69,14 +69,20 @@ const LEARN_FALLBACK_LASTMOD = "2026-06-02";
 // Each path here MUST correspond to a real public <Route> in client/src/App.tsx.
 // Ordered by descending priority for a stable, readable sitemap.
 const STATIC_ROUTES = [
-  { path: "/",                        lastmod: "2026-06-08", changefreq: "weekly",  priority: "1.0", appRoute: 'App.tsx: <Route path="/" component={HomeRoute} />' },
-  { path: "/pricing",                 lastmod: "2026-06-08", changefreq: "monthly", priority: "0.9", appRoute: 'App.tsx: <Route path="/pricing" component={PricingPage} />' },
+  // "/" + "/pricing" lastmod bumped 2026-06-10 (Tier 2C): footer Free
+  // tools/Learn columns + tier-context pricing CTAs changed both pages.
+  { path: "/",                        lastmod: "2026-06-10", changefreq: "weekly",  priority: "1.0", appRoute: 'App.tsx: <Route path="/" component={HomeRoute} />' },
+  { path: "/pricing",                 lastmod: "2026-06-10", changefreq: "monthly", priority: "0.9", appRoute: 'App.tsx: <Route path="/pricing" component={PricingPage} />' },
   { path: "/why",                     lastmod: "2026-06-08", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/why" component={WhyPage} />' },
   { path: "/tools/parcel-check",      lastmod: "2026-06-08", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/tools/parcel-check" component={ParcelCheckPage} />' },
   { path: "/tools/calculator",        lastmod: "2026-06-08", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/tools/calculator" component={CalculatorPage} />' },
   { path: "/security",                lastmod: "2026-06-08", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/security" component={SecurityPage} />' },
-  { path: "/compare/acreos-vs-propstream",  lastmod: "2026-06-08", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/compare/acreos-vs-propstream" component={AcreosVsPropstreamPage} />' },
-  { path: "/compare/acreos-vs-dealmachine", lastmod: "2026-06-08", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/compare/acreos-vs-dealmachine" component={AcreosVsDealmachinePage} />' },
+  // Tier 2C (2026-06-10): the two /compare/* pages are intentionally
+  // noindex'd (their positioning slots are data-todo until the founder
+  // fills them) — listing a noindex page in the sitemap is contradictory
+  // and Search Console flags it as "Submitted URL marked noindex". They
+  // were REMOVED here rather than de-noindexed; re-add them when the
+  // noindex comes off the pages.
   { path: "/land-credit-score",       lastmod: "2026-06-08", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/land-credit-score" component={LandCreditScorePage} />' },
   { path: "/glossary",                lastmod: "2026-06-10", changefreq: "monthly", priority: "0.6", appRoute: 'App.tsx: <Route path="/glossary" component={GlossaryPage} /> (restored 2026-06-10, T0-8)' },
   { path: "/changelog",               lastmod: "2026-06-08", changefreq: "weekly",  priority: "0.6", appRoute: 'App.tsx: <Route path="/changelog" component={ChangelogPage} />' },

@@ -27,6 +27,13 @@
  *      via performance.timing. The 3s ceiling reflects 4G median (the
  *      lowest reasonable bar Tom's audience operates from).
  *
+ *   5. Layout-viewport integrity             (shrink-to-fit zoom guard)
+ *      window.innerWidth must equal the emulated device width and
+ *      visualViewport.scale must be ~1. Any first-paint horizontal
+ *      overflow makes mobile browsers expand the layout viewport + lock
+ *      a <1 zoom — which silently corrupts every other measurement on
+ *      the page (and at 744px flips the app across the 768 breakpoint).
+ *
  * Failures are reported in batch per page so a single run names every
  * violation, not just the first. Sets the threshold pattern the wider
  * mobile-craft discipline can grow from.
@@ -35,7 +42,13 @@ import { test, expect, type Page } from "@playwright/test";
 
 const ROUTES_TO_AUDIT = [
   "/today",
-  "/map",
+  // The Map door's canonical route is /maps (nav-items.ts href:"/maps") —
+  // "/map" has NO route and falls through to the 404 catch-all, so this
+  // suite spent its Map-door budget measuring the not-found page (which is
+  // how it caught the 38px coverage-page CTAs, but it never once audited
+  // the real Map surface). Same wrong-premise class as J1's /map → /maps
+  // correction in customer-surface-journeys.spec.ts.
+  "/maps",
   "/deals",
   "/money",
   "/ai",
@@ -118,6 +131,31 @@ test.describe("Krieger mobile-feel contracts", () => {
         return;
       }
 
+      // Contract 5 — layout-viewport integrity. If any content overflows the
+      // layout viewport at first paint, mobile WebKit/Blink expand the layout
+      // viewport and lock a <1 shrink-to-fit zoom: every element then
+      // measures below its CSS size (phantom touch-target failures), and at
+      // 744px the expansion can push innerWidth across the 768 breakpoint,
+      // flipping the app to the desktop arm (vanishing bottom nav). Assert
+      // the layout viewport still matches the emulated device, and name any
+      // overflowing elements so the culprit lands in CI output, not a
+      // mystery. Runs BEFORE the touch-target assert: when this fires, the
+      // touch-target numbers are scaled garbage.
+      const deviceWidth = page.viewportSize()?.width ?? 0;
+      const viewportIntegrity = await collectViewportIntegrity(page);
+      expect(
+        viewportIntegrity.innerWidth <= deviceWidth + 1 &&
+          viewportIntegrity.visualScale >= 0.99,
+        `${route} layout viewport corrupted on ${project}: ` +
+          `innerWidth=${viewportIntegrity.innerWidth} (device=${deviceWidth}), ` +
+          `scrollWidth=${viewportIntegrity.scrollWidth}, ` +
+          `visualScale=${viewportIntegrity.visualScale.toFixed(4)}.\n` +
+          `Overflowing elements:\n  ${
+            viewportIntegrity.offenders.join("\n  ") ||
+            "(none detected post-settle — overflow was transient at first paint)"
+          }`,
+      ).toBe(true);
+
       // Touch-target — hard fail.
       expect(
         violations.touchTarget,
@@ -147,6 +185,56 @@ test.describe("Krieger mobile-feel contracts", () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// Layout-viewport integrity collector (contract 5)
+// ────────────────────────────────────────────────────────────────────────────
+
+interface ViewportIntegrity {
+  innerWidth: number;
+  scrollWidth: number;
+  clientWidth: number;
+  visualScale: number;
+  offenders: string[];
+}
+
+async function collectViewportIntegrity(page: Page): Promise<ViewportIntegrity> {
+  return await page.evaluate(() => {
+    const clientW = document.documentElement.clientWidth;
+    const offenders: string[] = [];
+    document.querySelectorAll("body *").forEach((node) => {
+      const el = node as HTMLElement;
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.right <= clientW + 1) return;
+      if (getComputedStyle(el).position === "fixed") return;
+      // Skip elements inside a horizontal scroll/clip container — those are
+      // contained and never expand the document.
+      let p = el.parentElement;
+      let contained = false;
+      while (p && p !== document.body) {
+        const ox = getComputedStyle(p).overflowX;
+        if (ox === "auto" || ox === "scroll" || ox === "hidden" || ox === "clip") {
+          contained = true;
+          break;
+        }
+        p = p.parentElement;
+      }
+      if (contained) return;
+      offenders.push(
+        `${el.tagName.toLowerCase()}` +
+          `${el.getAttribute("data-testid") ? `[${el.getAttribute("data-testid")}]` : ""}` +
+          ` right=${Math.round(rect.right)} (viewport=${clientW})`,
+      );
+    });
+    return {
+      innerWidth: window.innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: clientW,
+      visualScale: window.visualViewport?.scale ?? 1,
+      offenders: offenders.slice(0, 8),
+    };
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Touch-target collector
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -162,6 +250,15 @@ async function collectTouchTargetViolations(
 ): Promise<TouchTargetViolation[]> {
   return await page.evaluate(
     ({ minPx }) => {
+      // NB: do NOT add an animation-settle wait here. A getAnimations()
+      // await was tried (to dodge a phone sub-pixel false-positive) and
+      // regressed ipad-mini: at 768px the DESKTOP sidebar is the primary
+      // nav (by design — see nav-smoke.spec.ts), and the extra wait let its
+      // collapsed 34px submodule children finish rendering so they got
+      // measured as touch-target violations on every route (run
+      // 27340175460). The synchronous measurement matches the state this
+      // contract has always audited. The phone sub-pixel issue is handled
+      // by round-then-compare below instead.
       const out: Array<TouchTargetViolation> = [];
       const sels = ['button', 'a', '[role="button"]', '[role="link"]'];
       const nodes = document.querySelectorAll(sels.join(","));
@@ -180,7 +277,13 @@ async function collectTouchTargetViolations(
         const rect = el.getBoundingClientRect();
         // Skip offscreen / collapsed elements (rect 0x0 = not currently rendered).
         if (rect.width === 0 && rect.height === 0) return;
-        if (rect.width < minPx || rect.height < minPx) {
+        // Compare what we report: round-to-nearest so sub-pixel rendering
+        // of an exactly-minPx target (43.6–43.99 at fractional DPR / end
+        // of a scale animation) isn't a violation, while a genuinely
+        // undersized 43px target still is.
+        const width = Math.round(rect.width);
+        const height = Math.round(rect.height);
+        if (width < minPx || height < minPx) {
           out.push({
             tag: el.tagName.toLowerCase(),
             label: (
@@ -189,8 +292,8 @@ async function collectTouchTargetViolations(
               el.getAttribute("href") ??
               "(unlabeled)"
             ).replace(/\s+/g, " "),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
+            width,
+            height,
           });
         }
       });
@@ -318,7 +421,15 @@ test.describe("Krieger C1: no-blank-dialog", () => {
       ]);
 
       await page.goto(route, { waitUntil: "domcontentloaded" });
-      await page.waitForLoadState("networkidle").catch(() => {});
+      // BOUNDED settle: networkidle NEVER fires on pages with a live or
+      // reconnecting connection (the Pax door's global WebSocket retries
+      // with backoff when the AI service is absent in CI), and the
+      // @playwright/test default navigation timeout is 0 = unlimited — so
+      // an unbounded wait here ate the entire 200s test budget on
+      // [iphone-14] /ai (run 28950430806) and the .catch below never got
+      // to do its intended best-effort job. Bound it: idle if quick,
+      // proceed regardless.
+      await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
 
       const triggers = page.locator(DIALOG_TRIGGER_SELECTORS.join(", "));
       const triggerCount = await triggers.count();
@@ -345,7 +456,9 @@ test.describe("Krieger C1: no-blank-dialog", () => {
           (await trigger.textContent())?.trim().slice(0, 40) ??
           `trigger#${i}`;
 
-        await trigger.click({ trial: false }).catch(() => {});
+        // Bounded click — auto-wait on a trigger that detaches (e.g. a
+        // re-render mid-loop) must cost ≤5s, not the whole test budget.
+        await trigger.click({ trial: false, timeout: 5_000 }).catch(() => {});
         await page.waitForTimeout(DIALOG_RENDER_MS);
 
         const dialog = page
@@ -390,7 +503,10 @@ test.describe("Krieger C2: no-blank-route", () => {
       ]);
 
       await page.goto(route, { waitUntil: "domcontentloaded" });
-      await page.waitForLoadState("networkidle").catch(() => {});
+      // Bounded settle — same reason as C1 above: unbounded networkidle
+      // never resolves on routes with a reconnecting WebSocket and starves
+      // the whole test budget.
+      await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
 
       const bodyTextLen = await page.evaluate(
         () => (document.body?.innerText || "").trim().length,

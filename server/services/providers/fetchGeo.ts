@@ -31,7 +31,7 @@ import { logger } from "../../utils/logger";
  * Fly egress IP — which would degrade the product for EVERY org at once.
  * Override the contact via DATABOT_CONTACT (e.g. an ops alias) in prod.
  */
-const CONTACT = process.env.DATABOT_CONTACT || "ops@acreos.com";
+const CONTACT = process.env.DATABOT_CONTACT || "ops@acreos.io";
 export const GEO_USER_AGENT = `AcreOS-DataBot (${CONTACT})`;
 
 export interface FetchGeoOptions extends Omit<RequestInit, "signal"> {

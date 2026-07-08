@@ -1,16 +1,18 @@
 import { PageShell } from "@/components/page-shell";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useTerm } from "@/hooks/use-persona";
-import { plural } from "@/lib/format";
+import { plural, formatDate } from "@/lib/format";
 import { clientLogger } from "@/lib/clientLogger";
 import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useLeads, useLeadsPaginated, useCreateLead, useUpdateLead, useDeleteLead, useRescoreLead } from "@/hooks/use-leads";
+import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { useProperties } from "@/hooks/use-properties";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useToast } from "@/hooks/use-toast";
 import { ListSkeleton, TableRowSkeleton } from "@/components/list-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -82,7 +84,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield, CheckSquare, RefreshCw, TrendingUp, TrendingDown, Minus, History, Filter, ChevronDown, MoreVertical } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-states";
+import { FirstHelloEmpty, EmptyFilter } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -103,6 +105,7 @@ import { SafeBulkDeleteDialog } from "@/components/safe-bulk-delete-dialog";
 import { LeadDetailContent } from "@/components/lead-detail-content";
 import { format } from "date-fns";
 import type { SavedView } from "@shared/schema";
+import { Verbs } from "@/lib/labels";
 
 type LeadWithScore = Lead & {
   score: number;
@@ -261,7 +264,7 @@ function ScoreDetailsDialog({
             Score Details: {lead.firstName} {lead.lastName}
           </ResponsiveModalTitle>
           <ResponsiveModalDescription>
-            Betty-style lead scoring breakdown
+            How this lead&apos;s score is calculated
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
 
@@ -306,7 +309,7 @@ function ScoreDetailsDialog({
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground">
-                          {new Date(entry.scoredAt).toLocaleDateString()}
+                          {formatDate(entry.scoredAt)}
                         </span>
                         {historyRec && (
                           <Badge 
@@ -480,7 +483,7 @@ function ContactAgeBadge({ lead }: { lead: Lead }) {
       <TooltipContent>
         <span data-testid={`tooltip-contact-age-${lead.id}`}>
           {days === 0 ? 'Contacted today' : `${days} days since last contact`}
-          {lastContactDate && ` (${new Date(lastContactDate).toLocaleDateString()})`}
+          {lastContactDate && ` (${formatDate(lastContactDate)})`}
         </span>
       </TooltipContent>
     </Tooltip>
@@ -488,14 +491,17 @@ function ContactAgeBadge({ lead }: { lead: Lead }) {
 }
 
 export function TcpaConsentToggle({ lead }: { lead: Lead }) {
-  const { toast } = useToast();
-  
-  const consentMutation = useMutation({
-    mutationFn: async ({ tcpaConsent, consentSource, optOutReason }: { 
-      tcpaConsent: boolean; 
-      consentSource?: string;
-      optOutReason?: string;
-    }) => {
+  // Optimistic consent flip — the Grant/Opt Out/Restore button swaps
+  // instantly across every cached leads list, with snapshot + rollback on
+  // server reject (useOptimisticUpdate factory, the house pattern from
+  // useUpdateLead). The patch mirrors storage.updateLeadConsent exactly:
+  // granting clears the opt-out fields, opting out sets doNotContact.
+  const consentMutation = useOptimisticUpdate<{
+    tcpaConsent: boolean;
+    consentSource?: string;
+    optOutReason?: string;
+  }>({
+    mutationFn: async ({ tcpaConsent, consentSource, optOutReason }) => {
       const res = await apiRequest("PATCH", `/api/leads/${lead.id}/consent`, {
         tcpaConsent,
         consentSource,
@@ -504,19 +510,27 @@ export function TcpaConsentToggle({ lead }: { lead: Lead }) {
       if (!res.ok) throw new Error("Failed to update consent");
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
-      toast({
-        title: "Consent updated",
-        description: "TCPA consent status has been updated.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Couldn't update consent status",
-        description: "TCPA consent is unchanged. Try again.",
-        variant: "destructive",
-      });
+    listKeys: [["/api/leads"]],
+    getId: () => lead.id,
+    buildPatch: ({ tcpaConsent, consentSource, optOutReason }) =>
+      tcpaConsent
+        ? {
+            tcpaConsent: true,
+            doNotContact: false,
+            consentSource: consentSource || "manual",
+            consentDate: new Date().toISOString(),
+            optOutDate: null,
+            optOutReason: null,
+          }
+        : {
+            tcpaConsent: false,
+            doNotContact: true,
+            optOutDate: new Date().toISOString(),
+            optOutReason: optOutReason ?? null,
+          },
+    successToast: {
+      title: "Consent updated",
+      description: "TCPA consent status has been updated.",
     },
   });
 
@@ -587,7 +601,7 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
         <TooltipContent>
           <span data-testid={`tooltip-tcpa-${lead.id}`}>
             Do Not Contact - Opted out
-            {lead.optOutDate && ` on ${new Date(lead.optOutDate).toLocaleDateString()}`}
+            {lead.optOutDate && ` on ${formatDate(lead.optOutDate)}`}
           </span>
         </TooltipContent>
       </Tooltip>
@@ -610,7 +624,7 @@ export function TcpaConsentBadge({ lead }: { lead: Lead }) {
         <TooltipContent>
           <span data-testid={`tooltip-tcpa-${lead.id}`}>
             TCPA consent on file
-            {lead.consentDate && ` since ${new Date(lead.consentDate).toLocaleDateString()}`}
+            {lead.consentDate && ` since ${formatDate(lead.consentDate)}`}
             {lead.consentSource && ` (${lead.consentSource})`}
           </span>
         </TooltipContent>
@@ -668,6 +682,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
   const HeadingTag = embedded ? ("h2" as const) : ("h1" as const);
   const leadsLabel = useTerm("entity.lead.plural");
   const leadLabel = useTerm("entity.lead");
+  const offerLabel = useTerm("entity.offer");
   useDocumentTitle(`${leadsLabel} — AcreOS`);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -1030,6 +1045,12 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
   const serverTotal = leadsResponse?.total ?? 0;
   const serverTotalPages = leadsResponse?.totalPages ?? 1;
 
+  // W2-6: remember the list's window-scroll offset per route so door
+  // switches reopen at the prior position. Restores only once the rows can
+  // render (ContentReveal gates on !isLoading too); disabled when embedded
+  // in /pipeline, where several list pages share one route's window scroll.
+  useScrollRestoration(!isLoading, { enabled: !embedded });
+
   const filteredLeads = useMemo(() => {
     if (!leads) return [];
 
@@ -1333,16 +1354,17 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                   />
                   <div className="relative flex-1 max-w-sm">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                      placeholder="Search leads…" 
+                    <Input
+                      placeholder="Search leads…"
                       className="pl-9 bg-muted border-none"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
+                      aria-label="Search leads"
                       data-testid="input-search-leads"
                     />
                   </div>
                   <Select value={stageFilter} onValueChange={handleStageFilterChange}>
-                    <SelectTrigger className="w-[160px]" data-testid="select-stage-filter">
+                    <SelectTrigger className="w-[160px]" aria-label="Filter by stage" data-testid="select-stage-filter">
                       <SelectValue placeholder="Filter by stage" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1371,7 +1393,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                   </Select>
                   {userPermissions && !userPermissions.permissions.viewOnlyAssignedLeads && teamMembers && teamMembers.length > 0 && (
                     <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-                      <SelectTrigger className="w-[180px]" data-testid="select-assignee-filter">
+                      <SelectTrigger className="w-[180px]" aria-label="Filter by assignee" data-testid="select-assignee-filter">
                         <SelectValue placeholder="Filter by assignee" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1398,11 +1420,12 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                     <div className="p-3 flex items-center gap-2">
                       <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input 
-                          placeholder="Search leads…" 
+                        <Input
+                          placeholder="Search leads…"
                           className="pl-9 bg-muted border-none min-h-[44px]"
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
+                          aria-label="Search leads"
                           data-testid="input-search-leads-mobile"
                         />
                       </div>
@@ -1446,7 +1469,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                           }}
                         />
                         <Select value={stageFilter} onValueChange={handleStageFilterChange}>
-                          <SelectTrigger className="w-full min-h-[44px]" data-testid="select-stage-filter-mobile">
+                          <SelectTrigger className="w-full min-h-[44px]" aria-label="Filter by stage" data-testid="select-stage-filter-mobile">
                             <SelectValue placeholder="Filter by stage" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1475,7 +1498,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                         </Select>
                         {userPermissions && !userPermissions.permissions.viewOnlyAssignedLeads && teamMembers && teamMembers.length > 0 && (
                           <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-                            <SelectTrigger className="w-full min-h-[44px]" data-testid="select-assignee-filter-mobile">
+                            <SelectTrigger className="w-full min-h-[44px]" aria-label="Filter by assignee" data-testid="select-assignee-filter-mobile">
                               <SelectValue placeholder="Filter by assignee" />
                             </SelectTrigger>
                             <SelectContent>
@@ -1507,10 +1530,10 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                     </div>
                     <div className="flex flex-wrap items-center gap-2 ml-auto">
                       <Button variant="outline" size="sm" onClick={handleBulkExport} data-testid="button-bulk-export">
-                        <Download className="w-4 h-4 mr-1" /> Export
+                        <Download className="w-4 h-4 mr-1" /> {Verbs.EXPORT}
                       </Button>
                       <Select onValueChange={handleBulkStatusChange} disabled={isBulkUpdating}>
-                        <SelectTrigger className="w-[150px]" data-testid="select-bulk-status">
+                        <SelectTrigger className="w-[150px]" aria-label="Change status for selected leads" data-testid="select-bulk-status">
                           <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Change Status"} />
                         </SelectTrigger>
                         <SelectContent>
@@ -1522,9 +1545,9 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                         </SelectContent>
                       </Select>
                       <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete">
-                        <Trash2 className="w-4 h-4 mr-1" /> Delete
+                        <Trash2 className="w-4 h-4 mr-1" /> {Verbs.DELETE}
                       </Button>
-                      <Button aria-label="Content Reveal" variant="ghost" size="sm" onClick={() => setSelectedLeadIds(new Set())} data-testid="button-clear-selection">
+                      <Button aria-label="Clear selection" variant="ghost" size="sm" onClick={() => setSelectedLeadIds(new Set())} data-testid="button-clear-selection">
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
@@ -1549,6 +1572,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                               <Checkbox
                                 checked={filteredLeads && filteredLeads.length > 0 && selectedLeadIds.size === filteredLeads.length}
                                 onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                                aria-label="Select all leads"
                                 data-testid="checkbox-select-all-leads"
                               />
                             </TableHead>
@@ -1609,6 +1633,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                 <Checkbox
                                   checked={selectedLeadIds.has(lead.id)}
                                   onCheckedChange={(checked) => handleSelectLead(lead.id, checked === true)}
+                                  aria-label={`Select ${lead.firstName} ${lead.lastName}`}
                                   data-testid={`checkbox-lead-${lead.id}`}
                                 />
                               </TableCell>
@@ -1629,7 +1654,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                   <TcpaConsentBadge lead={lead} />
 {lead.lastContactedAt && (
                                     <span className="text-xs text-muted-foreground bg-muted/50 rounded px-[6px] py-[2px]" title="Last contacted">
-                                      {new Date(lead.lastContactedAt).toLocaleDateString()}
+                                      {formatDate(lead.lastContactedAt)}
                                     </span>
                                   )}
                                 </div>
@@ -1711,7 +1736,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                       </DropdownMenuItem>
                                       <DropdownMenuItem onClick={() => setEditingLead(lead)} data-testid={`button-edit-lead-${lead.id}`}>
                                         <Edit className="w-4 h-4 mr-2" />
-                                        Edit
+                                        {Verbs.EDIT}
                                       </DropdownMenuItem>
                                       <RescoreMenuItem leadId={lead.id} />
                                       <DropdownMenuItem onClick={() => setOfferLetterLead(lead)} data-testid={`button-offer-letter-${lead.id}`}>
@@ -1724,7 +1749,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                         data-testid={`button-delete-lead-${lead.id}`}
                                       >
                                         <Trash2 className="w-4 h-4 mr-2" />
-                                        Delete
+                                        {Verbs.DELETE}
                                       </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
@@ -1879,7 +1904,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                     data-testid={`button-edit-lead-mobile-${lead.id}`}
                                   >
                                     <Edit className="w-4 h-4 mr-2" />
-                                    Edit
+                                    {Verbs.EDIT}
                                   </DropdownMenuItem>
                                   <RescoreMenuItem leadId={lead.id} />
                                   <DropdownMenuItem 
@@ -1896,7 +1921,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                     data-testid={`button-delete-lead-mobile-${lead.id}`}
                                   >
                                     <Trash2 className="w-4 h-4 mr-2" />
-                                    Delete
+                                    {Verbs.DELETE}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -1989,7 +2014,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor={offerAmountId} className="text-sm font-medium">Offer amount (optional)</Label>
+              <Label htmlFor={offerAmountId} className="text-sm font-medium">{offerLabel} amount (optional)</Label>
               <Input
                 id={offerAmountId}
                 type="number"
@@ -2004,7 +2029,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
           </form>
           <ResponsiveModalFooter>
             <Button type="button" variant="outline" onClick={() => setOfferLetterLead(null)}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               type="submit"
@@ -2150,7 +2175,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
             {!importResult ? (
               <>
                 <Button variant="outline" className="min-h-11" onClick={resetImportDialog}>
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
                 <Button
                   onClick={handleImport}
@@ -2454,7 +2479,7 @@ export function ScoreBreakdownCard({ leadId }: { leadId: number }) {
                   );
                 })}
                 <p className="text-xs text-muted-foreground text-center pt-2">
-                  Scored {scoreHistory?.[0]?.scoredAt ? new Date(scoreHistory[0].scoredAt).toLocaleDateString() : "recently"}
+                  Scored {scoreHistory?.[0]?.scoredAt ? formatDate(scoreHistory[0].scoredAt) : "recently"}
                 </p>
               </div>
             )}

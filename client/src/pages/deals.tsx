@@ -2,9 +2,11 @@ import { PageShell } from "@/components/page-shell";
 import { plural, usd } from "@/lib/format";
 import "./today.css";
 import { DealJourney } from "@/components/ui/deal-journey";
+import { DealCoach } from "@/components/deals/DealCoach";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useDeals, useDealsPaginated, useDealAggregates, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, useAdvanceDealStage, type BulkStageUpdateResult } from "@/hooks/use-deals";
+import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -55,7 +57,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, AlertCircle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Undo2, Send, Phone, ArrowRight, EllipsisVertical, ChevronsRight, Archive } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { FirstHelloEmpty } from "@/components/empty-states";
+import { FirstHelloEmpty } from "@/components/empty-state";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
 import type { SavedView } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -72,6 +74,7 @@ import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { getDealNextAction, getDaysInStage, getDealUrgency, type DealNextAction } from "@/lib/deal-utils";
 import { DealDetailContent } from "@/components/deal-detail-content";
 import { SwipeableCard } from "@/components/mobile/SwipeableCard";
+import { Verbs } from "@/lib/labels";
 
 type DealWithProperty = Deal & { property?: Property };
 
@@ -128,6 +131,13 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
   const [dealCurrentPage, setDealCurrentPage] = useState(1);
   const [dealPageSize, setDealPageSize] = useState(25);
   const { data: dealsResponse, isLoading, isError, error, refetch } = useDealsPaginated({ page: dealCurrentPage, pageSize: dealPageSize });
+
+  // W2-6: remember the board/list window-scroll offset per route so door
+  // switches reopen at the prior position. Restores once per mount after
+  // the deals query resolves; disabled when embedded in /pipeline, where
+  // several list pages share one route's window scroll.
+  useScrollRestoration(!isLoading, { enabled: !embedded });
+
   const rawDeals = dealsResponse?.data;
   const serverDealTotal = dealsResponse?.total ?? 0;
   const { data: propertiesRaw } = useProperties();
@@ -523,8 +533,8 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
 
           <DisclaimerBanner type="deals" />
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-            <Card className="glass-panel">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="bg-card shadow-acr-1 rounded-card hover-elevate">
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-acr-brand-soft flex-shrink-0">
@@ -542,7 +552,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
               </CardContent>
             </Card>
 
-            <Card className="glass-panel">
+            <Card className="bg-card shadow-acr-1 rounded-card hover-elevate">
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-acr-pos/10 flex-shrink-0">
@@ -560,7 +570,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
               </CardContent>
             </Card>
 
-            <Card className="glass-panel">
+            <Card className="bg-card shadow-acr-1 rounded-card hover-elevate">
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-primary/10 flex-shrink-0">
@@ -580,7 +590,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
               </CardContent>
             </Card>
 
-            <Card className="glass-panel">
+            <Card className="bg-card shadow-acr-1 rounded-card hover-elevate">
               <CardContent className="p-4 md:p-6">
                 <div className="flex items-center gap-2 md:gap-3">
                   <div className="p-2 md:p-3 rounded-xl bg-acr-pos/10 flex-shrink-0">
@@ -601,16 +611,19 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
             </Card>
           </div>
 
+          {/* Deal Coach (D4) — autopilot next-best actions over the pipeline */}
+          <DealCoach />
+
           {/* Pipeline Health Bar — org-wide counts from /api/deals/aggregates (T0-10) */}
           {isAggregatesLoading ? (
-            <div className="rounded-xl border bg-card p-4 space-y-2" role="status" aria-live="polite" aria-busy="true">
+            <div className="rounded-card border bg-card shadow-acr-1 p-4 space-y-2" role="status" aria-live="polite" aria-busy="true">
               <span className="sr-only">Loading pipeline distribution…</span>
               <Skeleton className="h-4 w-48" />
               <Skeleton className="h-2 w-full rounded-full" />
               <Skeleton className="h-3 w-64" />
             </div>
           ) : totalDealCount > 0 && (
-            <div className="rounded-xl border bg-card p-4 space-y-2" aria-labelledby="pipeline-distribution-heading">
+            <div className="rounded-card border bg-card shadow-acr-1 p-4 space-y-2" aria-labelledby="pipeline-distribution-heading">
               <div className="flex items-center justify-between text-xs">
                 <span id="pipeline-distribution-heading" className="font-medium text-muted-foreground uppercase tracking-wide">
                   Pipeline stage distribution
@@ -691,7 +704,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
           </div>
 
           {selectedDealIds.size > 0 && (
-            <div className="p-3 bg-muted/50 border rounded-md space-y-3 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3" data-testid="bulk-actions-toolbar-deals">
+            <div className="p-3 bg-muted/50 border rounded-card space-y-3 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3" data-testid="bulk-actions-toolbar-deals">
               <div className="flex items-center gap-2">
                 <CheckSquare className="w-4 h-4" aria-hidden="true" />
                 <span className="text-sm font-medium">{plural(selectedDealIds.size, "deal")} selected</span>
@@ -700,14 +713,14 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                 </Button>
               </div>
               <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:gap-2 md:ml-auto">
-                <Button variant="outline" className="min-h-[44px] md:min-h-8" onClick={handleBulkExport} data-testid="button-bulk-export-deals">
-                  <Download className="w-4 h-4 mr-1" aria-hidden="true" /> Export
+                <Button variant="outline" className="min-h-[44px] pointer-fine:md:min-h-8" onClick={handleBulkExport} data-testid="button-bulk-export-deals">
+                  <Download className="w-4 h-4 mr-1" aria-hidden="true" /> {Verbs.EXPORT}
                 </Button>
                 <Select
                   value={bulkTargetStage}
                   onValueChange={setBulkTargetStage}
                 >
-                  <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[160px]" aria-label="Change stage for selected deals" data-testid="select-bulk-stage-deals">
+                  <SelectTrigger className="min-h-[44px] pointer-fine:md:min-h-8 w-full md:w-[160px]" aria-label="Change stage for selected deals" data-testid="select-bulk-stage-deals">
                     <SelectValue placeholder="Change stage" />
                   </SelectTrigger>
                   <SelectContent>
@@ -725,8 +738,8 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                   ) : null}
                   Update stage
                 </Button>
-                <Button variant="destructive" className="min-h-[44px] md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-deals">
-                  <Trash2 className="w-4 h-4 mr-1" aria-hidden="true" /> Delete
+                <Button variant="destructive" className="min-h-[44px] pointer-fine:md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-deals">
+                  <Trash2 className="w-4 h-4 mr-1" aria-hidden="true" /> {Verbs.DELETE}
                 </Button>
                 <Button variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedDealIds(new Set())} aria-label="Clear selection">
                   <X className="w-4 h-4" aria-hidden="true" />
@@ -829,7 +842,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                     if (stageDeals.length === 0) return null;
                     return (
                       <section key={stage.value} aria-labelledby={`mobile-list-stage-${stage.value}`}>
-                        <div className={`rounded-xl px-4 py-3 mb-2 ${stage.color}`}>
+                        <div className={`rounded-card px-4 py-3 mb-2 ${stage.color}`}>
                           <div className="flex items-center justify-between gap-2">
                             <h2 id={`mobile-list-stage-${stage.value}`} className="font-medium text-sm">
                               {stage.label}
@@ -888,7 +901,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                     const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
                     return (
                       <section aria-labelledby={`mobile-kanban-stage-${stage.value}`}>
-                        <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
+                        <div className={`rounded-t-card px-4 py-3 ${stage.color}`}>
                           <div className="flex items-center justify-between gap-2">
                             <h2 id={`mobile-kanban-stage-${stage.value}`} className="font-medium text-sm">
                               {stage.label}
@@ -898,7 +911,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                             </Badge>
                           </div>
                         </div>
-                        <div className="bg-muted/30 rounded-b-xl p-3 min-h-[300px] space-y-3">
+                        <div className="bg-muted/30 rounded-b-card p-3 min-h-[300px] space-y-3">
                           <ContentReveal
                             ready={!isLoading}
                             skeleton={
@@ -927,10 +940,12 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                           </ContentReveal>
                         </div>
                         <div
-                          className="flex justify-center gap-1.5 mt-3"
+                          className="flex justify-center mt-1"
                           role="tablist"
                           aria-label="Jump to stage"
                         >
+                          {/* 44px hit areas (negative margins keep the row visually compact);
+                              the 12px dot is a decorative span inside the real target. */}
                           {dealStages.map((s, idx) => (
                             <button
                               key={s.value}
@@ -939,13 +954,18 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                               role="tab"
                               aria-selected={idx === selectedStageIndex}
                               aria-label={`Show ${s.label}`}
-                              className={`w-3 h-3 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                                idx === selectedStageIndex
-                                  ? 'bg-primary'
-                                  : 'bg-muted-foreground/30 hover:bg-muted-foreground/50'
-                              }`}
+                              className="flex h-11 w-11 -my-2 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                               data-testid={`dot-stage-${s.value}`}
-                            />
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={`block w-3 h-3 rounded-full transition-colors ${
+                                  idx === selectedStageIndex
+                                    ? 'bg-primary'
+                                    : 'bg-muted-foreground/30 hover:bg-muted-foreground/50 active:bg-muted-foreground/60'
+                                }`}
+                              />
+                            </button>
                           ))}
                         </div>
                       </section>
@@ -1079,7 +1099,7 @@ function KanbanColumn({
   const headingId = `kanban-stage-${stage.value}`;
   return (
     <section className="w-72 flex-shrink-0" aria-labelledby={headingId}>
-      <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
+      <div className={`rounded-t-card px-4 py-3 ${stage.color}`}>
         <div className="flex items-center justify-between gap-2">
           <h2 id={headingId} className="font-medium text-sm">
             {stage.label}
@@ -1094,7 +1114,7 @@ function KanbanColumn({
         role="list"
         aria-label={`${stage.label} drop zone`}
         aria-describedby={headingId}
-        className={`bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2 transition-colors ${isOver ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}`}
+        className={`bg-muted/30 rounded-b-card p-2 min-h-[400px] space-y-2 transition-colors ${isOver ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}`}
         data-testid={`column-${stage.value}`}
       >
         {isLoading ? (
@@ -1172,7 +1192,7 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
     <Card
       ref={setNodeRef}
       style={style}
-      className={`group floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${isDragging ? "opacity-40" : ""}`}
+      className={`group bg-card shadow-acr-1 rounded-card cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${isDragging ? "opacity-40" : ""}`}
       onClick={onSelect}
       data-testid={`card-deal-${deal.id}`}
     >
@@ -1234,7 +1254,7 @@ function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSele
                       // [@media(hover:none)]:opacity-60 makes it visible
                       // (subdued) on touch — same pattern as the Pax
                       // delete-conversation button (contract test #4).
-                      className="min-h-11 min-w-11 sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
+                      className="min-h-11 min-w-11 pointer-fine:sm:h-8 pointer-fine:sm:w-8 pointer-fine:sm:min-h-0 pointer-fine:sm:min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
                       aria-label="More deal actions"
                     >
                       <EllipsisVertical className="h-4 w-4" aria-hidden="true" />
@@ -1368,6 +1388,8 @@ interface PricingRecommendation {
 function DealForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateDeal();
   const { data: properties, isLoading: propertiesLoading } = useProperties();
+  // Persona-correct word for the priced artefact (Offer / Bid / Note terms).
+  const offerLabel = useTerm("entity.offer");
 
   const form = useForm<z.infer<typeof dealFormSchema>, unknown, z.infer<typeof dealFormSchema>>({
     resolver: zodResolver(dealFormSchema),
@@ -1458,7 +1480,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             name="offerAmount"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Offer amount</FormLabel>
+                <FormLabel>{offerLabel} amount</FormLabel>
                 <FormControl>
                   <div className="relative">
                     <span
@@ -1489,7 +1511,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             name="offerDate"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Offer date</FormLabel>
+                <FormLabel>{offerLabel} date</FormLabel>
                 <FormControl>
                   <Input
                     type="date"

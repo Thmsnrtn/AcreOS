@@ -8,6 +8,7 @@ import {
   type Deal, type InsertDeal,
 } from "@shared/schema";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
+import { logger } from "../utils/logger";
 
 export const dealRepo = {
   async getDeals(this: DatabaseStorage, orgId: number): Promise<Deal[]> {
@@ -87,8 +88,7 @@ export const dealRepo = {
       if (triggerStatuses.has(updated.status ?? "")) {
         void this._autoGenerateClosingChecklist(updated.id, before?.propertyId ?? null).catch((err) => {
           // Never let a hook failure break the primary update.
-          // eslint-disable-next-line no-console
-          console.warn("[storage.updateDeal] auto-checklist skipped:", err?.message);
+          logger.warn(`[storage.updateDeal] auto-checklist skipped: ${err?.message}`);
         });
       }
     }

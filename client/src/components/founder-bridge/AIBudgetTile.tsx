@@ -79,7 +79,7 @@ export function AIBudgetTile({
             aria-hidden
             className={cn(
               "h-full rounded-full transition-all duration-500",
-              isCapped ? "bg-amber-400" : isHot ? "bg-amber-400/70" : "bg-foreground/40",
+              isCapped ? "bg-acr-bridge-accent" : isHot ? "bg-acr-bridge-accent/70" : "bg-foreground/40",
             )}
             style={{ width: isLoading ? "0%" : `${Math.min(100, pctSpent)}%` }}
           />

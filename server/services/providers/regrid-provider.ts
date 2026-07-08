@@ -177,10 +177,16 @@ export const regridProvider: DataProvider = {
     }
 
     try {
-      const response = await fetch("https://app.regrid.com/api/v2/parcels?limit=1", {
-        headers: { Authorization: `Bearer ${key}` },
-        signal: AbortSignal.timeout(5000),
-      });
+      // Regrid has no bare `/parcels` collection route (it 404s); a valid call
+      // needs a selector sub-path. Mirror the real lookup/validate path
+      // (parcels/address) so the probe reflects the integration's true health.
+      const response = await fetch(
+        "https://app.regrid.com/api/v2/parcels/address?query=1600%20Pennsylvania%20Ave%20NW,%20Washington,%20DC&limit=1",
+        {
+          headers: { Authorization: `Bearer ${key}` },
+          signal: AbortSignal.timeout(5000),
+        },
+      );
       return {
         healthy: response.ok,
         latencyMs: Date.now() - start,

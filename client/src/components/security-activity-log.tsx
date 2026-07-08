@@ -37,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { staggerContainer, staggerItem } from "@/lib/animations";
+import { formatDateTime } from "@/lib/format";
 
 interface AuditEntry {
   id: number;
@@ -67,27 +68,16 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORY_TONE: Record<string, string> = {
-  auth: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  members: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-  billing: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  data: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  security: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+  auth: "bg-primary/10 text-primary",
+  members: "bg-acr-brand-soft text-acr-brand",
+  billing: "bg-acr-warn-soft text-acr-warn",
+  data: "bg-acr-pos-soft text-acr-pos",
+  security: "bg-acr-neg-soft text-acr-neg",
 };
 
 function humanizeAction(action: string): string {
   const tail = action.split(".").slice(1).join(" ") || action;
   return tail.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
-}
-
-function formatWhen(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  } catch {
-    return iso;
-  }
 }
 
 export function SecurityActivityLog() {
@@ -258,7 +248,7 @@ export function SecurityActivityLog() {
                     className="shrink-0 text-xs text-muted-foreground"
                     dateTime={entry.createdAt}
                   >
-                    {formatWhen(entry.createdAt)}
+                    {formatDateTime(entry.createdAt)}
                   </time>
                 </motion.li>
               );

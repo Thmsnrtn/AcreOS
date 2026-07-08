@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { formatDate } from "@/lib/format";
 
 interface RuleRow {
   state: string;
@@ -101,17 +102,13 @@ function StickyPreliminaryBanner({
   totalStates: number;
 }) {
   const stamp = rulesUpdatedAt
-    ? new Date(rulesUpdatedAt).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
+    ? formatDate(rulesUpdatedAt)
     : "before launch";
   return (
     <div
       role="alert"
       aria-live="polite"
-      className="sticky top-0 z-40 -mx-4 md:-mx-6 mb-4 px-4 md:px-6 py-2.5 border-b border-acr-warning/40 bg-acr-warning/10 backdrop-blur supports-[backdrop-filter]:bg-acr-warning/10"
+      className="sticky top-0 z-overlay -mx-4 md:-mx-6 mb-4 px-4 md:px-6 py-2.5 border-b border-acr-warning/40 bg-acr-warning/10 backdrop-blur supports-[backdrop-filter]:bg-acr-warning/10"
     >
       <div className="flex items-start gap-2 max-w-5xl mx-auto">
         <ShieldAlert
@@ -311,7 +308,7 @@ function StateRuleDetail({ state }: { state: string }) {
         >
           {reviewed ? <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" /> : <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true" />}
           {reviewed
-            ? `Reviewed ${new Date(r.attorneyReviewedAt!).toLocaleDateString()}`
+            ? `Reviewed ${formatDate(r.attorneyReviewedAt!)}`
             : "Preliminary — not attorney-reviewed"}
         </span>
       </div>

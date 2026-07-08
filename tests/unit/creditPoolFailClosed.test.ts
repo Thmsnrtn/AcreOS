@@ -15,6 +15,16 @@
  *                                       no ledger write
  *   6. normal debit under pool        → allowed:true with ledger row
  *   7. poolRefusalDetails             → 429 payload shape incl. byokAvailable
+ *
+ * W1.8 (2026-07 audit) — the gate is now a single atomic conditional
+ * INSERT (db.execute) instead of SELECT-then-INSERT, and BYOK lookup
+ * failures refuse instead of silently drawing the pool:
+ *
+ *   8. gate + zero rows + existing externalEventId row → idempotent replay,
+ *      allowed:true with zero debit
+ *   9. BYOK lookup error (gate)   → allowed:false, "pool_debit_error",
+ *      never guesses the payer, no ledger write
+ *  10. BYOK lookup error (record) → proceeds, COGS row still recorded
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -24,8 +34,12 @@ const state = {
   orgRow: { subscriptionTier: "pro", isFounder: false } as any,
   usedAbsCents: 0,
   byokActive: false,
+  byokThrows: false,
   insertThrows: false,
   insertCalls: 0,
+  /** Simulates a pre-existing financial_ledger row for the externalEventId
+   *  (the idempotent-replay disambiguation SELECT in the atomic gate). */
+  replayRowExists: false,
 };
 
 function mockModules() {
@@ -57,11 +71,18 @@ function mockModules() {
   }));
 
   vi.doMock("../../server/db", () => {
-    // One thenable-with-.limit shape serves both query styles:
-    //   fetchOrgTier:        select().from().where().limit(1)  → await
-    //   poolUsageThisMonth:  select().from().where()           → await
-    const rows = () => {
-      const r = [{ ...state.orgRow, usedAbsCents: state.usedAbsCents }];
+    // One thenable-with-.limit shape serves all three select styles. The
+    // projection keys tell us which caller we're serving:
+    //   fetchOrgTier:        select({subscriptionTier,...}) → org row
+    //   poolUsageThisMonth:  select({usedAbsCents})         → usage agg
+    //   gate replay check:   select({id})                   → ledger-by-eventId
+    const rows = (projection?: Record<string, unknown>) => {
+      let r: any[];
+      if (projection && "id" in projection && Object.keys(projection).length === 1) {
+        r = state.replayRowExists ? [{ id: 42 }] : [];
+      } else {
+        r = [{ ...state.orgRow, usedAbsCents: state.usedAbsCents }];
+      }
       const thenable: any = {
         limit: (_n: number) => Promise.resolve(r),
         then: (resolve: any, reject: any) => Promise.resolve(r).then(resolve, reject),
@@ -70,7 +91,21 @@ function mockModules() {
     };
     return {
       db: {
-        select: () => ({ from: () => ({ where: () => rows() }) }),
+        select: (projection?: Record<string, unknown>) => ({
+          from: () => ({ where: () => rows(projection) }),
+        }),
+        // W1.8 atomic gate — INSERT ... SELECT ... WHERE used < pool.
+        // Mirrors Postgres: throws on ledger failure, inserts nothing when
+        // the pool is spent, returns the new row id otherwise.
+        execute: (_q: unknown) => {
+          if (state.insertThrows) return Promise.reject(new Error("ledger down"));
+          const poolMonthly = 2500; // pro tier in TIER_LIMITS
+          if (state.usedAbsCents >= poolMonthly || state.replayRowExists) {
+            return Promise.resolve({ rows: [] });
+          }
+          state.insertCalls += 1;
+          return Promise.resolve({ rows: [{ id: 42 }] });
+        },
         insert: () => ({
           values: () => ({
             onConflictDoNothing: () => ({
@@ -87,7 +122,10 @@ function mockModules() {
   });
 
   vi.doMock("../../server/services/byok/toggle", () => ({
-    isByokEnabled: async () => state.byokActive,
+    isByokEnabled: async () => {
+      if (state.byokThrows) throw new Error("byok lookup down");
+      return state.byokActive;
+    },
   }));
 
   // Tier 1C moved creditCost out of shared/ into server/services/creditCost
@@ -112,8 +150,10 @@ beforeEach(() => {
   state.orgRow = { subscriptionTier: "pro", isFounder: false };
   state.usedAbsCents = 0;
   state.byokActive = false;
+  state.byokThrows = false;
   state.insertThrows = false;
   state.insertCalls = 0;
+  state.replayRowExists = false;
 });
 
 describe("poolDebit — fail-CLOSED semantics (Tier 1I)", () => {
@@ -203,6 +243,52 @@ describe("poolDebit — fail-CLOSED semantics (Tier 1I)", () => {
     expect(r.debitedCents).toBe(2); // ceil(1.5¢)
     expect(r.ledgerRowId).toBe(42);
     expect(state.insertCalls).toBe(1);
+  });
+});
+
+describe("poolDebit — W1.8 atomic gate + BYOK payer integrity", () => {
+  it("zero rows from the gate + an existing eventId row = idempotent replay, not a refusal", async () => {
+    state.usedAbsCents = 100;
+    state.replayRowExists = true; // retry of an already-debited externalEventId
+    const { poolDebit } = await importPool();
+    const r = await poolDebit({
+      organizationId: 7,
+      action: "ai_turn_avg",
+      units: 1,
+      externalEventId: "t:replay:1",
+    });
+    expect(r.allowed).toBe(true);
+    expect(r.debitedCents).toBe(0); // no new spend on a replay
+    expect(r.reason).toBeUndefined();
+    expect(state.insertCalls).toBe(0);
+  });
+
+  it("BYOK lookup failure in gate mode refuses — never guesses the payer", async () => {
+    state.byokThrows = true;
+    const { poolDebit } = await importPool();
+    const r = await poolDebit({
+      organizationId: 7,
+      action: "ai_turn_avg", // has BYOK channels → lookup runs
+      units: 1,
+      externalEventId: "t:byokerr:1",
+    });
+    expect(r.allowed).toBe(false);
+    expect(r.reason).toBe("pool_debit_error");
+    expect(state.insertCalls).toBe(0); // the pool was NOT silently drawn
+  });
+
+  it("BYOK lookup failure in record mode still records the COGS row", async () => {
+    state.byokThrows = true;
+    const { poolDebit } = await importPool();
+    const r = await poolDebit({
+      organizationId: 7,
+      action: "sms_outbound", // BYOK-capable, but the spend already happened
+      units: 1,
+      externalEventId: "t:byokerr:2",
+      enforce: "record",
+    });
+    expect(r.allowed).toBe(true);
+    expect(state.insertCalls).toBe(1); // ledger stays honest
   });
 });
 

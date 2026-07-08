@@ -35,6 +35,7 @@ import {
 import { EmptyState } from "@/components/empty-state";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
 
 const TAG_ORDER = [
   "before",
@@ -261,7 +262,7 @@ function PhotoTile({ photo }: { photo: PhotoRow }) {
       </div>
       <div className="text-muted-foreground flex items-center gap-1 mt-1">
         {photo.capturedAt && (
-          <span>{new Date(photo.capturedAt).toLocaleDateString()}</span>
+          <span>{formatDate(photo.capturedAt)}</span>
         )}
         {photo.lat && photo.lng && (
           <Badge variant="outline" className="text-micro gap-0.5 px-1">

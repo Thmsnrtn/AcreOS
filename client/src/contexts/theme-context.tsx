@@ -5,7 +5,7 @@ import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 /**
  * Theme system — five themes × light/dark + five font pairings.
  *
- * Spec: docs/exhaustive-completion/prototype-design-system.md (§3 themes,
+ * Spec: docs/archive/exhaustive-completion/prototype-design-system.md (§3 themes,
  * §4 type pairings, §0.2 Phase B locked decisions).
  *
  * Apple-native auto semantics: when the user explicitly picks `light` or
@@ -40,7 +40,13 @@ function getInitialMotion(): MotionPreference {
 const DEFAULT_CONFIG: ThemeConfig = {
   theme: "bedrock",
   mode: "auto",
-  fontPairing: "native",
+  // Brand default is `editorial` (Fraunces display + Inter body) — the
+  // editorial-mechanical identity (Phase 2 Wave F, founder-decided 2026-06-11).
+  // Matches the server-side DEFAULT_PREFERENCES (routes-preferences.ts) so a
+  // fresh client and a fresh server-synced account resolve to the same pairing.
+  // Fraunces is self-hosted (fonts.css) with font-display: swap, so the cold
+  // path stays CLS-safe. Users can still switch among all five pairings.
+  fontPairing: "editorial",
   density: "adaptive",
   motion: "full",
 };

@@ -26,6 +26,7 @@ import {
   ArrowUp,
   ArrowDown,
 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 interface Review {
   id: number;
@@ -78,7 +79,7 @@ function ReviewCard({ review }: { review: Review }) {
           <div>
             <p id={`${reviewId}-heading`} className="text-sm font-semibold m-0">{role}</p>
             <p className="text-micro text-muted-foreground m-0">
-              <time dateTime={review.periodStart} className="tabular-nums">{new Date(review.periodStart).toLocaleDateString()}</time> — <time dateTime={review.periodEnd} className="tabular-nums">{new Date(review.periodEnd).toLocaleDateString()}</time>
+              <time dateTime={review.periodStart} className="tabular-nums">{formatDate(review.periodStart)}</time> — <time dateTime={review.periodEnd} className="tabular-nums">{formatDate(review.periodEnd)}</time>
             </p>
           </div>
         </div>

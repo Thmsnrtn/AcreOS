@@ -12,8 +12,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  TrendingUp, TrendingDown, DollarSign, Percent, BarChart3, Loader2,
+  TrendingUp, TrendingDown, DollarSign, Percent, BarChart3,
 } from "lucide-react";
+import { PageSkeleton } from "@/components/page-skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 import { usd } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
@@ -72,7 +74,14 @@ export default function PortfolioPnLPage() {
     queryFn: () => fetch("/api/portfolio-pnl/periods").then(r => r.json()),
   });
 
-  const { data: reportData, isLoading } = useQuery<{ report: PnLReport }>({
+  const {
+    data: reportData,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isRefetching,
+  } = useQuery<{ report: PnLReport }>({
     queryKey: ["/api/portfolio-pnl", selectedYear],
     queryFn: () => fetch(`/api/portfolio-pnl/${selectedYear}`).then(r => r.json()),
   });
@@ -109,9 +118,17 @@ export default function PortfolioPnLPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground py-12 justify-center" role="status" aria-live="polite">
-          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Loading P&amp;L data…
-        </div>
+        <PageSkeleton variant="table" statCards={4} rows={6} announceText="Loading P&L data" />
+      ) : isError ? (
+        <QueryErrorState
+          error={error instanceof Error ? error : null}
+          onRetry={() => refetch()}
+          isRetrying={isRefetching}
+          compact
+          title="Couldn't load your P&L"
+          description="We hit a snag loading your portfolio profit and loss. Your data is safe — try again."
+          testId="portfolio-pnl-query-error"
+        />
       ) : !report ? (
         <div className="text-center py-16 text-muted-foreground">
           <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-30" aria-hidden="true" />

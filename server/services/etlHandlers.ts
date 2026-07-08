@@ -24,7 +24,7 @@ import { and, eq } from "drizzle-orm";
 
 import { providerCache, parcelSnapshots } from "@shared/schema";
 import { logger } from "../utils/logger";
-import { recordParcelObservations } from "./data-cache/observation-log";
+import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observation-log";
 import {
   registerEtlHandler,
   type DrizzleDb,
@@ -35,6 +35,13 @@ import {
 } from "./etlOrchestrator";
 
 // ─── Regrid ─────────────────────────────────────────────────────────────────
+
+/** Numeric-string coercion for parcel_snapshots numeric columns; null on junk. */
+function etlNumericStr(v: number | string | null | undefined): string | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(String(v).replace(/[$,\s]/g, ""));
+  return Number.isFinite(n) ? String(n) : null;
+}
 
 /**
  * Shape of a Regrid parcel record we care about for the orchestrator.
@@ -53,6 +60,11 @@ export interface RegridParcelRecord {
   ownerAddress?: string | null;
   siteAddress?: string | null;
   acres?: number | string | null;
+  // Tier 2A widened facts (elevation blueprint 2026-06-10) — captured
+  // opportunistically from the Regrid standardized schema when present.
+  assessedValue?: number | string | null;
+  lastSalePrice?: number | string | null;
+  lastSaleDate?: string | number | null;
   centroid?: { lat: number; lng: number } | null;
   boundary?: {
     type: "Polygon" | "MultiPolygon";
@@ -111,6 +123,10 @@ const defaultRegridFetchPage: RegridFetchPageFn = async ({ since, cursor, apiKey
       ownerAddress: (fields.mailadd as string | undefined) ?? null,
       siteAddress: (fields.address as string | undefined) ?? null,
       acres: (fields.gisacre as number | string | undefined) ?? null,
+      // Tier 2A widened facts — Regrid standardized schema, absent stays null.
+      assessedValue: (fields.parval as number | string | undefined) ?? null,
+      lastSalePrice: (fields.saleprice as number | string | undefined) ?? null,
+      lastSaleDate: (fields.saledate as string | number | undefined) ?? null,
       centroid:
         typeof fields.lat === "number" && typeof fields.lon === "number"
           ? { lat: fields.lat as number, lng: fields.lon as number }
@@ -169,18 +185,21 @@ export const regridEtlHandler: EtlProviderHandler & {
     // Iyari — the acorn: every fact this ETL sees becomes an immutable
     // observation. Fire-and-forget; never block or fail the upsert. Read each
     // fact defensively — provenance fields on the record may not exist.
+    // Tier 2A: widened to assessed value + sale history; the sale facts land
+    // as DATED observations (observedAt = sale date) for the tenure clock.
     if (r?.apn && r?.state && r?.county) {
-      void recordParcelObservations({
+      void recordProviderParcelFacts({
         apn: r.apn,
         state: r.state,
         county: r.county,
         source: "regrid",
-        facts: {
-          owner: r.owner ?? undefined,
-          owner_address: r.ownerAddress ?? undefined,
-          site_address: r.siteAddress ?? undefined,
-          acres: r.acres ?? undefined,
-        },
+        owner: r.owner,
+        ownerAddress: r.ownerAddress,
+        siteAddress: r.siteAddress,
+        acres: r.acres ?? undefined,
+        assessedValue: r.assessedValue ?? undefined,
+        lastSalePrice: r.lastSalePrice ?? undefined,
+        lastSaleDate: r.lastSaleDate ?? undefined,
       });
     }
 
@@ -207,6 +226,9 @@ export const regridEtlHandler: EtlProviderHandler & {
           ownerAddress: r.ownerAddress ?? null,
           siteAddress: r.siteAddress ?? null,
           acres: r.acres == null ? null : String(r.acres),
+          assessedValue: etlNumericStr(r.assessedValue),
+          lastSalePrice: etlNumericStr(r.lastSalePrice),
+          lastSaleDate: coerceSaleDate(r.lastSaleDate),
           centroid: r.centroid ?? null,
           boundary: r.boundary ?? null,
           rawData: r.rawData ?? null,
@@ -227,6 +249,9 @@ export const regridEtlHandler: EtlProviderHandler & {
       ownerAddress: r.ownerAddress ?? null,
       siteAddress: r.siteAddress ?? null,
       acres: r.acres == null ? null : String(r.acres),
+      assessedValue: etlNumericStr(r.assessedValue),
+      lastSalePrice: etlNumericStr(r.lastSalePrice),
+      lastSaleDate: coerceSaleDate(r.lastSaleDate),
       centroid: r.centroid ?? null,
       boundary: r.boundary ?? null,
       rawData: r.rawData ?? null,

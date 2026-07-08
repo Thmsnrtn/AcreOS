@@ -179,7 +179,7 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className={`absolute inset-0 z-10 flex items-center justify-center rounded-xl ${
+              className={`absolute inset-0 z-docked flex items-center justify-center rounded-xl ${
                 flashState === 'approved'
                   ? 'bg-acr-pos/20'
                   : 'bg-acr-neg/20'

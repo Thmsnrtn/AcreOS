@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { formatDate } from "@/lib/format";
 
 type Status = "unrestricted" | "license_required" | "advertising_restricted" | "pending_legislation";
 
@@ -84,17 +85,13 @@ function StickyPreliminaryBanner({
   totalStates: number;
 }) {
   const stamp = rulesUpdatedAt
-    ? new Date(rulesUpdatedAt).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
+    ? formatDate(rulesUpdatedAt)
     : "before launch";
   return (
     <div
       role="alert"
       aria-live="polite"
-      className="sticky top-0 z-40 -mx-4 md:-mx-6 mb-4 px-4 md:px-6 py-2.5 border-b border-acr-warning/40 bg-acr-warning/10 backdrop-blur supports-[backdrop-filter]:bg-acr-warning/10"
+      className="sticky top-0 z-overlay -mx-4 md:-mx-6 mb-4 px-4 md:px-6 py-2.5 border-b border-acr-warning/40 bg-acr-warning/10 backdrop-blur supports-[backdrop-filter]:bg-acr-warning/10"
     >
       <div className="flex items-start gap-2 max-w-5xl mx-auto">
         <ShieldAlert
@@ -201,7 +198,12 @@ function RulesIndex() {
               const meta = STATUS_META[r.status];
               const Icon = meta.Icon;
               return (
-                <Link key={r.state} href={`/wholesaler-state-rules/${r.state}`}>
+                <Link
+                  key={r.state}
+                  href={`/wholesaler-state-rules/${r.state}`}
+                  className="rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  aria-label={`${r.state} — ${STATUS_META[r.status].label}`}
+                >
                   <Card className="p-4 hover:bg-accent/50 transition-colors cursor-pointer">
                     <div className="flex items-start justify-between mb-2">
                       <span className="text-2xl font-bold">{r.state}</span>
@@ -284,7 +286,7 @@ function RuleDetail({ state }: { state: string }) {
           }`}
         >
           {reviewed
-            ? `Reviewed ${new Date(r.attorneyReviewedAt!).toLocaleDateString()}`
+            ? `Reviewed ${formatDate(r.attorneyReviewedAt!)}`
             : "Preliminary"}
         </span>
       </div>

@@ -156,6 +156,14 @@ export const Errors = {
     );
   },
 
+  /**
+   * 402 — the account can read everything but must resolve a billing state
+   * (dunning read-only window, paused subscription) before mutating.
+   */
+  paymentRequired(res: Response, message: string, details?: unknown, opts?: ErrorOptions): void {
+    sendError(res, 402, "PAYMENT_REQUIRED", message, details, buildDocsUrl(opts) ?? "/help/article/billing");
+  },
+
   legalHoldActive(res: Response, message: string, details?: unknown, opts?: ErrorOptions): void {
     // 423 Locked — surface the FRCP 37(e) delete-block as a distinct status
     // so client UI can render a "this is under legal hold" panel rather than
@@ -163,7 +171,56 @@ export const Errors = {
     sendError(res, 423, "LEGAL_HOLD_ACTIVE", message, details, buildDocsUrl(opts));
   },
 
+  serviceUnavailable(res: Response, message?: string, opts?: ErrorOptions): void {
+    // 503 — a dependency the request needs isn't configured/reachable right now
+    // (e.g. no AI provider key set). Distinct from 500 so the client can render a
+    // "temporarily unavailable, try later" state and retries are sane, rather than
+    // treating it as a bug on our end.
+    const finalMessage =
+      message && message.length > 0
+        ? message
+        : "This feature is temporarily unavailable. Please try again in a few minutes.";
+    sendError(res, 503, "SERVICE_UNAVAILABLE", finalMessage, undefined, buildDocsUrl(opts));
+  },
+
+  badGateway(res: Response, message?: string, opts?: ErrorOptions): void {
+    // 502 — an upstream dependency we proxy returned an unusable response
+    // (e.g. the Clerk reverse proxy). Distinct from 500 (our bug) and 503
+    // (we're up but a dependency is unconfigured); the client should treat it
+    // as a transient upstream problem and retry.
+    const finalMessage =
+      message && message.length > 0
+        ? message
+        : "An upstream service returned an unexpected response. Please try again in a moment.";
+    sendError(res, 502, "BAD_GATEWAY", finalMessage, undefined, buildDocsUrl(opts));
+  },
+
+  gatewayTimeout(res: Response, message?: string, opts?: ErrorOptions): void {
+    // 504 — an upstream dependency we proxy didn't respond in time (the Clerk
+    // upstream timeout guard). Retry-safe by nature.
+    const finalMessage =
+      message && message.length > 0
+        ? message
+        : "An upstream service took too long to respond. Please try again in a moment.";
+    sendError(res, 504, "GATEWAY_TIMEOUT", finalMessage, undefined, buildDocsUrl(opts));
+  },
+
   internal(res: Response, error: unknown, opts?: ErrorOptions): void {
+    // A missing AI provider is a config/operational state, not a code bug — every
+    // route that funnels its AI failure through internal() should surface a 503,
+    // not a 500. Detect the typed error by shape (no import of aiRouter — that
+    // would invert the layering) and delegate. See aiRouter.NoAIProviderError.
+    if (
+      error instanceof Error &&
+      ((error as { code?: string }).code === "NO_AI_PROVIDER" || error.name === "NoAIProviderError")
+    ) {
+      this.serviceUnavailable(
+        res,
+        "AI features are temporarily unavailable. Our team has been notified — please try again shortly.",
+        opts,
+      );
+      return;
+    }
     // In production we never leak the raw error to the client — it goes
     // to the logger so SRE can correlate via the request ID we surface
     // alongside the message. In dev we keep the underlying message so

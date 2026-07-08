@@ -6,7 +6,7 @@
  *   FounderChatHeader. Slides in over the chat (Sheet-style).
  */
 import { useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Plus, MessageCircle, MessagesSquare, ChevronLeft, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -45,7 +45,7 @@ export function ThreadSidebar({
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-background/70 backdrop-blur-sm"
+          className="md:hidden fixed inset-0 z-overlay bg-surface-sheer backdrop-blur-sm"
           onClick={onMobileClose}
           aria-hidden="true"
         />
@@ -53,7 +53,7 @@ export function ThreadSidebar({
 
       <aside
         className={cn(
-          "flex flex-col bg-background border-r border-border z-50",
+          "flex flex-col bg-background border-r border-border z-floating",
           // Desktop layout — fixed width column inside the parent grid.
           "hidden md:flex md:static md:h-full",
           collapsedDesktop ? "md:w-12" : "md:w-64",
@@ -163,7 +163,7 @@ function ThreadRow({
   try {
     const ts = new Date(thread.lastActivityAt);
     if (!Number.isNaN(ts.getTime()) && ts.getTime() > 0) {
-      relative = formatDistanceToNow(ts, { addSuffix: true });
+      relative = formatRelative(ts);
     }
   } catch {
     /* swallow */

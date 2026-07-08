@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef, createContext, useContext, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
+import { DOOR_CHORDS, shortcutTransition, isEditableTarget, type PendingChord } from "@/lib/keyboard-layer";
 
 type ShortcutCallback = () => void;
 
@@ -30,8 +31,9 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
   const [isDialogOpen, setDialogOpen] = useState(false);
   const [isNewMenuOpen, setNewMenuOpen] = useState(false);
   const [, setLocation] = useLocation();
-  const pendingKeyRef = useRef<string | null>(null);
-  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Pending chord prefix ("g" awaiting its second key). Expiry is
+  // timestamp-based inside shortcutTransition — no timer to manage.
+  const pendingChordRef = useRef<PendingChord | null>(null);
   const initializedRef = useRef(false);
   const sidebarToggleCallbackRef = useRef<(() => void) | null>(null);
 
@@ -67,13 +69,22 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
     if (initializedRef.current) return;
     initializedRef.current = true;
 
+    // The five doors come from the SAME tested mapping the keyboard-layer
+    // unit tests lock down (lib/keyboard-layer.ts DOOR_CHORDS): g t/m/d/f/p →
+    // Today/Map/Deals/Finance/Pax. Runtime and tests can't drift.
+    const doorShortcuts: Array<[string, Shortcut]> = Object.entries(DOOR_CHORDS).map(
+      ([secondKey, door]) => [
+        `nav-door-${secondKey}`,
+        { key: `g ${secondKey}`, description: door.label, callback: () => setLocation(door.route), global: true },
+      ],
+    );
     const defaultShortcuts: Array<[string, Shortcut]> = [
+      ...doorShortcuts,
+      // Non-door legacy chords kept for muscle memory; they deep-link to
+      // surfaces that live BEHIND doors (leads under Deals, etc.).
       ["nav-leads", { key: "g l", description: "Go to Leads", callback: () => setLocation("/leads"), global: true }],
-      ["nav-properties", { key: "g p", description: "Go to Properties", callback: () => setLocation("/properties"), global: true }],
-      ["nav-deals", { key: "g d", description: "Go to Deals", callback: () => setLocation("/deals"), global: true }],
-      ["nav-finance", { key: "g f", description: "Go to Finance", callback: () => setLocation("/finance"), global: true }],
-      ["nav-dashboard", { key: "g h", description: "Go to Home/Dashboard", callback: () => setLocation("/"), global: true }],
-      ["nav-ai", { key: "g a", description: "Go to AI Hub", callback: () => setLocation("/ai"), global: true }],
+      ["nav-inbox", { key: "g i", description: "Go to Inbox", callback: () => setLocation("/inbox"), global: true }],
+      ["nav-dashboard", { key: "g h", description: "Go to Today", callback: () => setLocation("/today"), global: true }],
       ["nav-settings", { key: "g s", description: "Go to Settings", callback: () => setLocation("/settings"), global: true }],
       ["show-shortcuts", { key: "?", description: "Show keyboard shortcuts", callback: () => setDialogOpen(true), global: true }],
       ["search-focus", { key: "/", description: "Focus search", callback: () => {
@@ -87,17 +98,10 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
-      
       if (e.key === "Escape") {
         setDialogOpen(false);
         setNewMenuOpen(false);
-        pendingKeyRef.current = null;
-        if (pendingTimerRef.current) {
-          clearTimeout(pendingTimerRef.current);
-          pendingTimerRef.current = null;
-        }
+        pendingChordRef.current = null;
         return;
       }
 
@@ -126,16 +130,17 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
           setLocation("/ai");
           return;
         }
-        // Don't return early for other meta/ctrl combos - let them pass through
+        // Other meta/ctrl combos belong to the browser (⌘G find-again,
+        // ⌘S save dialog…) — never arm a chord or fire a single-key
+        // shortcut from them.
+        return;
       }
       
-      // Only skip vim-style shortcuts (no meta key) when in input
-      if (!e.metaKey && !e.ctrlKey && isInput) {
-        pendingKeyRef.current = null;
-        if (pendingTimerRef.current) {
-          clearTimeout(pendingTimerRef.current);
-          pendingTimerRef.current = null;
-        }
+      // Only skip vim-style shortcuts (no meta key) while the user is typing.
+      // isEditableTarget is the same tested predicate the Today queue layer
+      // uses (input/textarea/select/contenteditable/textbox roles).
+      if (!e.metaKey && !e.ctrlKey && isEditableTarget(e.target)) {
+        pendingChordRef.current = null;
         return;
       }
 
@@ -143,39 +148,23 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
         return;
       }
 
-      const key = e.key.toLowerCase();
-      
-      const shortcutList = Array.from(shortcuts.values());
-      for (const shortcut of shortcutList) {
-        if (shortcut.key === key) {
-          e.preventDefault();
-          shortcut.callback();
-          return;
-        }
-      }
-
-      if (pendingKeyRef.current) {
-        const combo = `${pendingKeyRef.current} ${key}`;
-        pendingKeyRef.current = null;
-        if (pendingTimerRef.current) {
-          clearTimeout(pendingTimerRef.current);
-          pendingTimerRef.current = null;
-        }
-
-        for (const shortcut of shortcutList) {
-          if (shortcut.key === combo) {
+      // Resolve through the pure, unit-tested chord machine
+      // (lib/keyboard-layer.ts): single keys ("?", "/"), G-chords
+      // ("g t" … "g s"), CHORD_TIMEOUT_MS expiry, modifier passthrough.
+      const { pending, match } = shortcutTransition(
+        pendingChordRef.current,
+        e.key,
+        Date.now(),
+        Array.from(shortcuts.values(), (s) => s.key),
+      );
+      pendingChordRef.current = pending;
+      if (match) {
+        for (const shortcut of shortcuts.values()) {
+          if (shortcut.key === match) {
             e.preventDefault();
             shortcut.callback();
             return;
           }
-        }
-      } else {
-        const hasComboStartingWith = Array.from(shortcuts.values()).some(s => s.key.startsWith(`${key} `));
-        if (hasComboStartingWith) {
-          pendingKeyRef.current = key;
-          pendingTimerRef.current = setTimeout(() => {
-            pendingKeyRef.current = null;
-          }, 500);
         }
       }
     };

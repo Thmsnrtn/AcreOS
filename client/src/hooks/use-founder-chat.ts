@@ -323,6 +323,7 @@ export function useFounderChat(threadId: string | null): UseFounderChatResult {
 }
 
 export function useChatConfirm() {
+  // allow-no-invalidation: the chat stream delivers the confirmation outcome — no cached query reads it
   return useMutation({
     mutationFn: async (requestId: string) => {
       const res = await apiRequest(
@@ -335,6 +336,7 @@ export function useChatConfirm() {
 }
 
 export function useChatCancel() {
+  // allow-no-invalidation: the chat stream delivers the cancellation outcome — no cached query reads it
   return useMutation({
     mutationFn: async (requestId: string) => {
       const res = await apiRequest(

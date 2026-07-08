@@ -28,10 +28,15 @@ import type {
   SoleneDispatchAgentRole,
 } from "@shared/schema/solene-dispatch";
 import { DISPATCH_MAX_TURNS } from "@shared/schema/solene-dispatch";
+import { ANTHROPIC_MODELS } from "../models";
 import { logger } from "../../utils/logger";
 import { listActiveClaims } from "./agentClaims";
 import { loadAgentIdentityBlock } from "./agentIdentity";
 import { loadFailureModePreambleFor } from "./failureModeLibrary";
+import {
+  retrieveRelevantMemories,
+  buildRetrievedMemoriesPromptBlock,
+} from "./learningLoop";
 import { recordCapitalEvent } from "./capitalTracker";
 import {
   completeDispatch,
@@ -39,7 +44,7 @@ import {
   type DispatchFailureInput,
 } from "./dispatchQueue";
 import {
-  DISPATCH_TOOL_SCHEMAS,
+  getDispatchToolSchemas,
   executeDispatchTool,
 } from "./dispatchToolExecutor";
 import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
@@ -55,12 +60,13 @@ import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
 // Tom wants every agent on the same tier — but day-to-day routing is
 // per-role.
 const DEFAULT_MODEL =
-  process.env.SOLENE_DISPATCH_MODEL ?? "claude-sonnet-4-6";
+  process.env.SOLENE_DISPATCH_MODEL ?? ANTHROPIC_MODELS.SONNET;
 
 // Strategic-tier model. Used when selectModelForDispatch() routes the
-// dispatch up to Opus.
+// dispatch up to Opus. Resolved through models.ts (2026-07-03 pin
+// centralization — this held a stale Opus 4-7 while models.ts pinned 4-8).
 const STRATEGIC_MODEL =
-  process.env.SOLENE_DISPATCH_STRATEGIC_MODEL ?? "claude-opus-4-7";
+  process.env.SOLENE_DISPATCH_STRATEGIC_MODEL ?? ANTHROPIC_MODELS.OPUS;
 const TRANSCRIPT_DIR =
   process.env.SOLENE_DISPATCH_TRANSCRIPT_DIR ??
   "/tmp/solene-dispatches";
@@ -101,20 +107,32 @@ interface ModelPricing {
   cachedInput: number;
 }
 const MODEL_PRICING: Record<string, ModelPricing> = {
-  "claude-opus-4-7": {
-    input: Number(process.env.SOLENE_DISPATCH_OPUS_INPUT_PER_M ?? "15"),
-    output: Number(process.env.SOLENE_DISPATCH_OPUS_OUTPUT_PER_M ?? "75"),
-    cachedInput: Number(process.env.SOLENE_DISPATCH_OPUS_CACHED_INPUT_PER_M ?? "1.5"),
+  // Current Opus (4-8): $5/$25 per 1M, cached input ~10% ($0.5).
+  [ANTHROPIC_MODELS.OPUS]: {
+    input: Number(process.env.SOLENE_DISPATCH_OPUS_INPUT_PER_M ?? "5"),
+    output: Number(process.env.SOLENE_DISPATCH_OPUS_OUTPUT_PER_M ?? "25"),
+    cachedInput: Number(process.env.SOLENE_DISPATCH_OPUS_CACHED_INPUT_PER_M ?? "0.5"),
   },
-  "claude-sonnet-4-6": {
+  // Legacy Opus 4-7 row kept so queued rows carrying a per-dispatch
+  // model="claude-opus-4-7" pin still price at that model's real rates —
+  // which are $5/$25 (claude-api skill, 2026-07-08); this row previously
+  // carried the pre-4.6 Opus price and over-attributed those dispatches 3×.
+  "claude-opus-4-7": {
+    input: 5,
+    output: 25,
+    cachedInput: 0.5,
+  },
+  [ANTHROPIC_MODELS.SONNET]: {
     input: Number(process.env.SOLENE_DISPATCH_SONNET_INPUT_PER_M ?? "3"),
     output: Number(process.env.SOLENE_DISPATCH_SONNET_OUTPUT_PER_M ?? "15"),
     cachedInput: Number(process.env.SOLENE_DISPATCH_SONNET_CACHED_INPUT_PER_M ?? "0.3"),
   },
-  "claude-haiku-4-5-20251001": {
-    input: Number(process.env.SOLENE_DISPATCH_HAIKU_INPUT_PER_M ?? "0.25"),
-    output: Number(process.env.SOLENE_DISPATCH_HAIKU_OUTPUT_PER_M ?? "1.25"),
-    cachedInput: Number(process.env.SOLENE_DISPATCH_HAIKU_CACHED_INPUT_PER_M ?? "0.025"),
+  // Haiku 4.5 publishes at $1/$5 (claude-api skill, 2026-07-08) — the old
+  // $0.25/$1.25 defaults were Haiku-3.5-era and undercounted spend 4×.
+  [ANTHROPIC_MODELS.HAIKU]: {
+    input: Number(process.env.SOLENE_DISPATCH_HAIKU_INPUT_PER_M ?? "1"),
+    output: Number(process.env.SOLENE_DISPATCH_HAIKU_OUTPUT_PER_M ?? "5"),
+    cachedInput: Number(process.env.SOLENE_DISPATCH_HAIKU_CACHED_INPUT_PER_M ?? "0.1"),
   },
 };
 
@@ -122,7 +140,7 @@ function pricingFor(model: string): ModelPricing {
   // Fall back to Sonnet pricing if the model isn't in the table — safer than
   // assuming Opus rates for an unknown model, which would over-bill the
   // capital tracker and potentially trigger the cost cap early.
-  return MODEL_PRICING[model] ?? MODEL_PRICING["claude-sonnet-4-6"];
+  return MODEL_PRICING[model] ?? MODEL_PRICING[ANTHROPIC_MODELS.SONNET];
 }
 
 // ----------------------------------------------------------------------------
@@ -347,20 +365,39 @@ export async function buildSystemPromptParts(
   maxCostUsd: number,
   timeoutMs: number,
 ): Promise<SystemPromptParts> {
-  // Resolve preambles in parallel — all four are I/O bound and independent.
+  // Resolve preambles in parallel — all five are I/O bound and independent.
   // Order in the rendered prompt:
   //   team-state → active-claims → identity (L1.4) → failure-modes (L3.12)
-  //     → hard-rules → role brief.
+  //     → retrieved lessons (L3.11 learning loop) → hard-rules → role brief.
   // plannedFiles is unavailable at this layer (the model decides what to
   // touch via tool_use mid-turn), so the failure-mode preamble falls back
   // to the top-3 critical/high modes for every dispatch.
-  const [teamStatePreamble, activeClaimsBlock, identityBlock, failureModeBlock] =
-    await Promise.all([
-      loadTeamStatePreamble(),
-      loadActiveClaimsBlock(dispatchId),
-      loadAgentIdentityBlock(role),
-      loadFailureModePreambleFor(role, undefined),
-    ]);
+  // retrieveRelevantMemories never throws by contract, but the .catch keeps
+  // prompt assembly alive even if that contract regresses — a missed lesson
+  // must never block a dispatch.
+  const [
+    teamStatePreamble,
+    activeClaimsBlock,
+    identityBlock,
+    failureModeBlock,
+    retrievedLessons,
+  ] = await Promise.all([
+    loadTeamStatePreamble(),
+    loadActiveClaimsBlock(dispatchId),
+    loadAgentIdentityBlock(role),
+    loadFailureModePreambleFor(role, undefined),
+    retrieveRelevantMemories({
+      queryText: brief,
+      queryingAgentRole: role,
+      queryDispatchId: dispatchId,
+    })
+      .then((r) => r.retrieved)
+      .catch(() => []),
+  ]);
+
+  const retrievedLessonsBlock =
+    buildRetrievedMemoriesPromptBlock(retrievedLessons) ||
+    "_No relevant past corrections retrieved for this task._";
 
   const staticPrefix = [
     "# Team-state preamble (auto-generated, 15-min refresh)",
@@ -378,6 +415,10 @@ export async function buildSystemPromptParts(
     "# Failure-mode library — patterns to avoid",
     "",
     failureModeBlock,
+    "",
+    "# Relevant past lessons (learning-loop RAG)",
+    "",
+    retrievedLessonsBlock,
     "",
     "# Solene autonomous-dispatch mode",
     "",
@@ -551,15 +592,21 @@ export async function runDispatch(
   // Pre-dispatch ensemble cap (runtime backstop) — the binding monthly bound
   // on agent_dispatch spend. enqueueDispatch already gates this at enqueue
   // time, but a row may have been queued before the cap was crossed, so we
-  // re-check at run time. Fails CLOSED on DB error (refuse rather than risk
-  // unbounding the largest cash cost). Founder per-dispatch overrides are
-  // applied at enqueue, not here.
+  // re-check at run time. Fails CLOSED both when the cap is exceeded AND when
+  // MTD spend can't be read (ENSEMBLE_CAP_READ_FAILED) — refuse rather than
+  // risk unbounding the largest cash cost. Founder per-dispatch overrides are
+  // applied at enqueue, not here. (re-audit iteration 2: the read-error path
+  // used to fall through and PROCEED — now it refuses, matching this comment.)
   try {
     const { assertWithinEnsembleCap } = await import("./capitalTracker");
     await assertWithinEnsembleCap();
   } catch (err) {
-    if ((err as { code?: string })?.code === "ENSEMBLE_MONTHLY_CAP_EXCEEDED") {
-      const msg = "ensemble monthly cap reached; refusing dispatch";
+    const code = (err as { code?: string })?.code;
+    if (code === "ENSEMBLE_MONTHLY_CAP_EXCEEDED" || code === "ENSEMBLE_CAP_READ_FAILED") {
+      const msg =
+        code === "ENSEMBLE_CAP_READ_FAILED"
+          ? "ensemble cap unverifiable (spend unreadable); failing closed — refusing dispatch"
+          : "ensemble monthly cap reached; refusing dispatch";
       logger.warn(`[dispatchRunner] ${msg}`, {
         metadata: {
           dispatchId,
@@ -568,10 +615,17 @@ export async function runDispatch(
       });
       await appendTranscript(transcriptPath, { event: "rejected", reason: msg });
       try {
-        await failDispatch(dispatchId, {
-          errorMessage: msg,
-          resultFullPath: transcriptPath,
-        });
+        // Retry classification: a cap READ failure is a telemetry blip that
+        // happened before any model call or tool ran — safe to requeue with
+        // backoff. Cap EXCEEDED is a real monthly bound — terminal.
+        await failDispatch(
+          dispatchId,
+          {
+            errorMessage: msg,
+            resultFullPath: transcriptPath,
+          },
+          { transient: code === "ENSEMBLE_CAP_READ_FAILED" },
+        );
       } catch (failErr) {
         logger.warn(
           `[dispatchRunner] failDispatch after ensemble cap swallow id=${dispatchId}: ${failErr instanceof Error ? failErr.message : String(failErr)}`,
@@ -602,10 +656,12 @@ export async function runDispatch(
   // 24h spend is already at-or-over AI_PLATFORM_DAILY_CEILING_CENTS
   // (default $15/day). Same backstop as the chat path; without it a single
   // dispatch can spend $25 (the per-dispatch cap) regardless of total
-  // daily burn. Fail-open on transient DB errors.
+  // daily burn. failClosed: an autonomous caller refuses on a telemetry-read
+  // outage rather than unbounding spend (re-audit it.3) — a refused dispatch
+  // is fully recoverable.
   try {
     const { assertWithinAiCostCeiling } = await import("../aiCostCeiling");
-    await assertWithinAiCostCeiling(null);
+    await assertWithinAiCostCeiling(null, { failClosed: true });
   } catch (err) {
     if ((err as { code?: string })?.code === "AI_COST_CEILING_EXCEEDED") {
       const msg = "platform AI cost ceiling reached; refusing dispatch";
@@ -708,7 +764,7 @@ export async function runDispatch(
       "# Failure-mode library — patterns to avoid",
     );
     const blockClose = systemPrompt.indexOf(
-      "# Solene autonomous-dispatch mode",
+      "# Relevant past lessons (learning-loop RAG)",
     );
     if (blockOpen === -1 || blockClose === -1) return 0;
     const block = systemPrompt.slice(blockOpen, blockClose);
@@ -744,6 +800,11 @@ export async function runDispatch(
   let finalText = "";
   const filesModified = new Set<string>();
   const commitsReferenced = new Set<string>();
+  // Side-effect witness for the retry classifier: counts tool executions we
+  // STARTED (incremented before executeDispatchTool, so a mid-tool crash still
+  // registers). A dispatch that dies with this at 0 provably had no outward
+  // effect and is safe to requeue; any other failure stays terminal.
+  let toolCallsExecuted = 0;
 
   let terminationReason: RunDispatchResult["terminationReason"] = "error";
   let timedOut = false;
@@ -854,7 +915,8 @@ export async function runDispatch(
           max_tokens: 4096,
           system: cachedSystem as any,
           messages: messages as any,
-          tools: DISPATCH_TOOL_SCHEMAS as any,
+          // Worker dispatches are untrusted → no free-form bash in the toolset.
+          tools: getDispatchToolSchemas({ untrusted: true }) as any,
         },
         { timeout: remainingMs },
       );
@@ -921,7 +983,15 @@ export async function runDispatch(
       const toolResults: any[] = [];
       for (const tu of toolUses) {
         if (timedOut) break;
-        const exec = await executeDispatchTool(tu.name, tu.input);
+        // SECURITY (elite-audit P0): worker-run dispatches are autonomous agents —
+        // their bash runs with a SECRET-SCRUBBED env (no prod creds), so they
+        // cannot deploy / exfiltrate / move money outside the witnessed-send hands.
+        toolCallsExecuted++;
+        const exec = await executeDispatchTool(tu.name, tu.input, {
+          dispatchId,
+          agentRole: row.agentRole,
+          untrusted: true,
+        });
         await appendTranscript(transcriptPath, {
           event: "tool_use",
           turn,
@@ -1023,7 +1093,13 @@ export async function runDispatch(
         terminationReason === "timeout" || terminationReason === "cost_cap"
           ? "cancelled"
           : "failed";
-      await failDispatch(dispatchId, failureInput, { status: cancelStatus });
+      // Retry classification: only a thrown error with ZERO tool executions is
+      // provably side-effect-free (a provider blip before any work happened) —
+      // safe to requeue with backoff. Timeouts, cost caps, max-turns, and any
+      // failure after a tool ran stay terminal: the original at-most-once
+      // stance for outward effects.
+      const transient = terminationReason === "error" && toolCallsExecuted === 0;
+      await failDispatch(dispatchId, failureInput, { status: cancelStatus, transient });
     }
   } catch (err) {
     logger.error(

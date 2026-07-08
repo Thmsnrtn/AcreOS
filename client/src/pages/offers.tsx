@@ -30,6 +30,7 @@ import {
   Loader2, Calendar, DollarSign, Clock, Filter, Check, X, ClipboardCheck
 } from "lucide-react";
 import { format } from "date-fns";
+import { Verbs } from "@/lib/labels";
 
 // Status → semantic --acr-* tone (Tier 1 pattern). Re-skins across all
 // five themes; replaces raw blue/indigo/purple/amber/emerald/red hardcodes.
@@ -402,7 +403,7 @@ export default function OffersPage() {
                       aria-label={`Delete ${selectedOffers.length} selected offer${selectedOffers.length === 1 ? "" : "s"}`}
                     >
                       <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
-                      Delete
+                      {Verbs.DELETE}
                     </Button>
                   </div>
                 )}
@@ -424,7 +425,83 @@ export default function OffersPage() {
                 />
               ) : (
                 <Card>
-                  <div role="region" aria-label={`${filteredOffers.length} offer${filteredOffers.length === 1 ? "" : "s"}`} tabIndex={0} className="overflow-x-auto">
+                  {/* Mobile: stacked offer cards — the 7-column table side-scrolls
+                      at phone widths. md+ renders the full table below. */}
+                  <ul className="md:hidden divide-y divide-border" data-testid="list-offers-mobile">
+                    {filteredOffers.map((offer) => {
+                      const lead = leads?.find(l => l.id === offer.leadId);
+                      const property = properties?.find(p => p.id === offer.propertyId);
+                      return (
+                        <li key={offer.id} className="px-4 py-3" data-testid={`card-offer-${offer.id}`}>
+                          <div className="flex items-start gap-3">
+                            <Checkbox
+                              checked={selectedOffers.includes(offer.id)}
+                              onCheckedChange={() => toggleOfferSelection(offer.id)}
+                              className="mt-1"
+                              aria-label={`Select offer for ${property?.address || "property"}`}
+                              data-testid={`checkbox-offer-${offer.id}-card`}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium truncate">{property?.address || "No property"}</div>
+                              <div className="text-sm text-muted-foreground truncate">
+                                {lead ? `${lead.firstName} ${lead.lastName}` : "Unknown lead"}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="font-mono font-medium tabular-nums">{usd(Number(offer.offerAmount))}</div>
+                              {offer.offerPercent && (
+                                <div className="text-xs text-muted-foreground tabular-nums">{offer.offerPercent}% of assessed</div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 mt-2">
+                            <div className="flex items-center gap-2 flex-wrap min-w-0">
+                              {getStatusBadge(offer.status)}
+                              <Badge variant="outline" className="capitalize">
+                                {offer.deliveryMethod?.replace(/_/g, " ") || "Direct mail"}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground tabular-nums">
+                                {offer.sentAt ? (
+                                  <time dateTime={new Date(offer.sentAt).toISOString()}>
+                                    Sent {format(new Date(offer.sentAt), "MMM d, yyyy")}
+                                  </time>
+                                ) : "Not sent"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {offer.status === "draft" && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="min-h-11 min-w-11"
+                                  onClick={() => setPendingSendOffer(offer)}
+                                  disabled={sendOfferMutation.isPending}
+                                  aria-label={`Send offer to ${lead ? `${lead.firstName} ${lead.lastName}` : "lead"} for ${property?.address || "property"}`}
+                                  data-testid={`button-send-${offer.id}-card`}
+                                >
+                                  <Send className="w-4 h-4" aria-hidden="true" />
+                                </Button>
+                              )}
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="min-h-11 min-w-11"
+                                onClick={() => setPendingDeleteOffer(offer)}
+                                disabled={deleteOfferMutation.isPending}
+                                aria-label={`Delete offer to ${lead ? `${lead.firstName} ${lead.lastName}` : "lead"} for ${property?.address || "property"}`}
+                                data-testid={`button-delete-${offer.id}-card`}
+                              >
+                                <Trash2 className="w-4 h-4" aria-hidden="true" />
+                              </Button>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+
+                  {/* Desktop: full table. Hidden on mobile. */}
+                  <div role="region" aria-label={`${filteredOffers.length} offer${filteredOffers.length === 1 ? "" : "s"}`} tabIndex={0} className="hidden md:block overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -819,7 +896,7 @@ export default function OffersPage() {
                       </div>
                       <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setIsTemplateDialogOpen(false)}>
-                          Cancel
+                          {Verbs.CANCEL}
                         </Button>
                         <Button
                           type="submit"
@@ -892,7 +969,7 @@ export default function OffersPage() {
                             aria-label={`Edit ${template.name} template`}
                           >
                             <Edit className="w-4 h-4 mr-1" aria-hidden="true" />
-                            Edit
+                            {Verbs.EDIT}
                           </Button>
                           <Button
                             variant="ghost"

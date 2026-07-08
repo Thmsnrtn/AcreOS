@@ -14,6 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ import {
   ChevronLeft, Zap, Shield, ArrowRight, Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Verbs } from "@/lib/labels";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -426,9 +428,15 @@ export function FounderSetupWizard({ open, onClose }: Props) {
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0">
         {/* Loading state */}
         {isLoading && (
-          <div className="flex items-center justify-center p-12">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            <span className="ml-3 text-sm text-muted-foreground">Loading platform configuration...</span>
+          <div role="status" aria-busy="true" aria-live="polite" className="p-12 space-y-4">
+            <span className="sr-only">Loading platform configuration</span>
+            <Skeleton announce={false} className="h-5 w-48" />
+            <Skeleton announce={false} className="h-4 w-72" />
+            <div className="space-y-3 pt-2">
+              <Skeleton announce={false} className="h-10 w-full" />
+              <Skeleton announce={false} className="h-10 w-full" />
+              <Skeleton announce={false} className="h-10 w-full" />
+            </div>
           </div>
         )}
         {!isLoading && !status && (
@@ -486,8 +494,12 @@ export function FounderSetupWizard({ open, onClose }: Props) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {isLoading ? (
-            <div className="flex items-center justify-center h-40">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <div role="status" aria-busy="true" aria-live="polite" className="space-y-3">
+              <span className="sr-only">Loading step</span>
+              <Skeleton announce={false} className="h-5 w-40" />
+              <Skeleton announce={false} className="h-4 w-64" />
+              <Skeleton announce={false} className="h-10 w-full" />
+              <Skeleton announce={false} className="h-10 w-full" />
             </div>
           ) : (
             <>
@@ -848,7 +860,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
             {stepService && Object.values(fieldValues).some(v => v.trim()) && (
               <Button variant="outline" size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
                 {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                Save
+                {Verbs.SAVE}
               </Button>
             )}
             {step < STEPS.length - 1 ? (

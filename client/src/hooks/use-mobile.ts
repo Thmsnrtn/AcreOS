@@ -4,14 +4,26 @@ const MOBILE_BREAKPOINT = 768
 const TABLET_BREAKPOINT = 1024
 
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean>(false)
-  const [isTablet, setIsTablet] = React.useState<boolean>(false)
+  // Initialize synchronously from the real viewport — the previous
+  // useState(false) + mounted dance made EVERY consumer render one frame
+  // in desktop mode on phones (bottom nav absent, desktop page-transition
+  // variant with x-translate, copilot rail mounted). That first wrong frame
+  // is what mobile WebKit/Blink use to lock shrink-to-fit zoom when the
+  // desktop variant's translateX widens the document. CSR app — no SSR
+  // hydration to protect, so reading window here is safe.
+  const [isMobile, setIsMobile] = React.useState<boolean>(
+    () => typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT,
+  )
+  const [isTablet, setIsTablet] = React.useState<boolean>(
+    () =>
+      typeof window !== "undefined" &&
+      window.innerWidth >= MOBILE_BREAKPOINT &&
+      window.innerWidth < TABLET_BREAKPOINT,
+  )
   const [isKeyboardOpen, setIsKeyboardOpen] = React.useState<boolean>(false)
-  const [mounted, setMounted] = React.useState(false)
 
   React.useEffect(() => {
-    setMounted(true)
-    
+
     const updateScreenSize = () => {
       const width = window.innerWidth
       setIsMobile(width < MOBILE_BREAKPOINT)
@@ -43,10 +55,10 @@ export function useIsMobile() {
   }, [])
 
   return {
-    isMobile: mounted ? isMobile : false,
-    isTablet: mounted ? isTablet : false,
-    isKeyboardOpen: mounted ? isKeyboardOpen : false,
-    isDesktop: mounted ? !isMobile && !isTablet : true
+    isMobile,
+    isTablet,
+    isKeyboardOpen,
+    isDesktop: !isMobile && !isTablet,
   }
 }
 

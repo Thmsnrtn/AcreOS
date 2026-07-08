@@ -53,10 +53,24 @@ export function Footer() {
             <a href="#features">Features</a>
             <a href="#pricing">Pricing</a>
           </div>
+          {/* Tier 2C — internal-link surfacing. The parcel-check tool and
+              the Land Credit Score page were orphaned (zero internal links
+              → crawlers can't find them, prospects can't either), and /why
+              had no path from the landing page. Free tools and Learn are
+              separate columns because they serve different intents: "try
+              something now" vs "understand the approach". */}
           <div className="lp-footer-col">
-            <div className="lp-footer-h">Resources</div>
-            <a href="https://acreos.substack.com" target="_blank" rel="noreferrer">Field notes</a>
+            <div className="lp-footer-h">Free tools</div>
+            <Link href="/tools/parcel-check">Parcel check</Link>
             <Link href="/tools/calculator">Land deal calculator</Link>
+            <Link href="/land-credit-score">Land Credit Score</Link>
+          </div>
+          <div className="lp-footer-col">
+            <div className="lp-footer-h">Learn</div>
+            <Link href="/learn">Guides by state &amp; county</Link>
+            <Link href="/why">Why AcreOS</Link>
+            <Link href="/glossary">Glossary</Link>
+            <a href="https://acreos.substack.com" target="_blank" rel="noreferrer">Field notes</a>
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-h">Contact</div>
@@ -68,7 +82,16 @@ export function Footer() {
             >
               Contact us
             </button>
-            <Link href="/help#support">Support</Link>
+            {/* /help is auth-gated — a logged-out visitor clicking it bounced
+                to /auth. The support form modal is the public support path. */}
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              className="lp-footer-link-btn"
+              data-testid="footer-support"
+            >
+              Support
+            </button>
             <Link href="/status">Status</Link>
           </div>
         </div>

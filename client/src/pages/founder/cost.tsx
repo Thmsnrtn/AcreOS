@@ -55,6 +55,7 @@ import { staggerContainer, staggerItem } from "@/lib/animations";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { cn } from "@/lib/utils";
+import { CHART_NEG, CHART_POS } from "@/lib/chart-colors";
 
 // ─── Types — mirror routes-founder-cost.ts response shape ────────────────────
 
@@ -158,7 +159,7 @@ function SparkLine({ data }: { data: DailyPoint[] }) {
     ` L ${points[points.length - 1][0].toFixed(1)},${H} L ${points[0][0].toFixed(1)},${H} Z`;
 
   const trend = data[data.length - 1].usd > data[0].usd ? "up" : "down";
-  const strokeColor = trend === "up" ? "var(--acr-neg, #ef4444)" : "var(--acr-pos, #22c55e)";
+  const strokeColor = trend === "up" ? CHART_NEG : CHART_POS;
 
   return (
     <svg
@@ -219,7 +220,7 @@ function CostSkeleton() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function FounderCostPage() {
+export function CostContent() {
   useDocumentTitle("Cost — Founder");
 
   const { data, isLoading, error, refetch } = useQuery<CostSummaryResponse>({
@@ -228,7 +229,7 @@ export default function FounderCostPage() {
   });
 
   return (
-    <PageShell>
+    <>
       <div className="max-w-3xl mx-auto space-y-6 pb-12">
 
         {/* ── Page header ─────────────────────────────────────────────── */}
@@ -564,6 +565,14 @@ export default function FounderCostPage() {
           </motion.div>
         )}
       </div>
+    </>
+  );
+}
+
+export default function FounderCostPage() {
+  return (
+    <PageShell>
+      <CostContent />
     </PageShell>
   );
 }

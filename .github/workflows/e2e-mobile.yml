@@ -45,15 +45,32 @@ jobs:
       # No Sentry source-map upload for the E2E build — not needed here.
       SENTRY_SOURCEMAPS: skip
       # The inbound-email webhook refuses to boot in production without one of
-      # these; we don't exercise email here, so require SNS-only (no secret).
+      # these. SNS-only mode satisfies the boot assertion, but the wedge
+      # email-reply leg (wedge-email-reply.spec.ts) exercises the webhook's
+      # HMAC fallback path for real — verifyInboundEmailSignature fail-closes
+      # (401) on that path without a secret, so a dummy one (>= 32 chars per
+      # secretsValidation) is provided. The spec signs its POST with this
+      # same value; no signature bypass exists — by design.
       INBOUND_EMAIL_SNS_ONLY: "1"
-      # Founder-positive E2E gating: when a spec needs to assert what Tom sees
-      # (Team / Background / AI Ops tabs visible to founder), bypass-auth must
-      # know which email = founder. The e2e seed uses e2e@acreos.test.
-      # Iris's Phase Zero-One verification (#182) flagged the absence of this
-      # var as the one coverage asymmetry (customer-side E2E only). Closing.
-      FOUNDER_EMAIL: e2e@acreos.test
-      FOUNDER_EMAILS: e2e@acreos.test
+      INBOUND_EMAIL_WEBHOOK_SECRET: e2e-dummy-inbound-email-webhook-secret-0123456789abcdef
+      # Founder-positive E2E gating (Iris #182): bypass-auth must know which
+      # email = founder. This MUST be the founder-only seed identity — NOT
+      # e2e@acreos.test. Pointing it at the customer user made the entire
+      # suite run as a founder, contradicting pax-founder-gate's non-founder
+      # premise (its founder-tab toHaveCount(0) assertions). The test-auth
+      # bypass maps the "e2e-founder" __session cookie to this user and every
+      # other cookie value to the customer user — see server/auth/testAuth.ts
+      # + tests/e2e-mobile/global-setup.ts.
+      FOUNDER_EMAIL: founder-e2e@acreos.test
+      FOUNDER_EMAILS: founder-e2e@acreos.test
+      # Wedge journey (wedge-journey.spec.ts): the campaign send-sms route
+      # requires Twilio env to exist (it 400s otherwise), and the inbound
+      # webhook's signature verification is deliberately never bypassed —
+      # the spec signs its POST with this same dummy token. The seeded org
+      # runs simulationMode, so no real Twilio call can occur.
+      TWILIO_AUTH_TOKEN: e2e-dummy-twilio-token
+      TWILIO_ACCOUNT_SID: ACe2e00000000000000000000000000000
+      TWILIO_PHONE_NUMBER: "+15005550006"
 
     steps:
       - uses: actions/checkout@v6

@@ -66,7 +66,7 @@ export function OfflineIndicator() {
   if (showReconnecting) {
     return (
       <div
-        className="fixed top-0 left-0 right-0 z-[100] bg-acr-pos text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2"
+        className="fixed top-0 left-0 right-0 z-toast bg-acr-pos text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2"
         data-testid="reconnecting-indicator"
       >
         <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -79,7 +79,7 @@ export function OfflineIndicator() {
   if (isOnline && queuedCount > 0) {
     return (
       <div
-        className="fixed top-0 left-0 right-0 z-[100] bg-acr-warn-soft text-acr-warn px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-3 flex-wrap"
+        className="fixed top-0 left-0 right-0 z-toast bg-acr-warn-soft text-acr-warn px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-3 flex-wrap"
         data-testid="queued-indicator"
       >
         <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
@@ -124,7 +124,7 @@ export function OfflineIndicator() {
   // Offline.
   return (
     <div
-      className="fixed top-0 left-0 right-0 z-[100] bg-acr-warn text-acr-warn px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2 flex-wrap"
+      className="fixed top-0 left-0 right-0 z-toast bg-acr-warn text-acr-warn px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2 flex-wrap"
       data-testid="offline-indicator"
     >
       <WifiOff className="w-4 h-4" aria-hidden="true" />

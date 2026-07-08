@@ -9,6 +9,7 @@
 import { type Express, type Request, type Response } from "express";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { isAuthenticated, requireFounder } from "./auth";
 
 // ─── Lazy imports to avoid circular dependencies ───────────────────────────
 
@@ -46,6 +47,33 @@ let evolutionPausedReason: string | null = null;
 // ─── Route Registration ────────────────────────────────────────────────────
 
 export function registerSCPv2Routes(app: Express) {
+  // Perimeter auth (2026-07-03 security fix): every SCP v2 endpoint is founder
+  // tooling — including trust promote/demote and evolution pause/resume/
+  // rollback — yet the file registered them with NO auth middleware. One
+  // prefix-level guard covers every current and future /api/scp/v2 route so
+  // a newly added endpoint can't ship open by omission.
+  app.use("/api/scp/v2", isAuthenticated, requireFounder);
+
+  // ─── Founder-triggered batch evolution (step-away gap #6) ────────────────
+  /**
+   * POST /api/scp/v2/evolution/run
+   * Arm the evolution engine on demand: consolidation across all agents now;
+   * per-agent evolution runs where the engine's cadence rules allow. Honest
+   * response — reports exactly what ran and what was skipped.
+   */
+  app.post("/api/scp/v2/evolution/run", async (_req: Request, res: Response) => {
+    try {
+      if (evolutionPaused) {
+        return Errors.badRequest(res, `Evolution is paused (${evolutionPausedReason ?? "no reason recorded"}). Resume it first.`);
+      }
+      const { runBatchEvolution } = await getEvolutionEngine();
+      const result = await runBatchEvolution();
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      logger.error("[scp-v2] founder-triggered evolution run failed", err instanceof Error ? err : undefined);
+      return Errors.internal(res, err);
+    }
+  });
 
   // ─── Evolution Dashboard ───────────────────────────────────────────────
 
@@ -195,13 +223,13 @@ export function registerSCPv2Routes(app: Express) {
     try {
       const { agent, new_trust_score } = req.body;
       if (!agent || new_trust_score === undefined) {
-        return res.status(400).json({ error: "Missing agent or new_trust_score" });
+        return Errors.badRequest(res, "Missing agent or new_trust_score");
       }
 
       const { companyAgentService } = await import("./services/companyAgents");
       const currentAgent = await companyAgentService.getByCodename(agent);
       if (!currentAgent) {
-        return res.status(404).json({ error: `Agent ${agent} not found` });
+        return Errors.notFound(res, `agent "${agent}"`);
       }
 
       const delta = new_trust_score - (currentAgent.trustScore ?? 50);
@@ -228,13 +256,13 @@ export function registerSCPv2Routes(app: Express) {
     try {
       const { agent, new_trust_score } = req.body;
       if (!agent || new_trust_score === undefined) {
-        return res.status(400).json({ error: "Missing agent or new_trust_score" });
+        return Errors.badRequest(res, "Missing agent or new_trust_score");
       }
 
       const { companyAgentService } = await import("./services/companyAgents");
       const currentAgent = await companyAgentService.getByCodename(agent);
       if (!currentAgent) {
-        return res.status(404).json({ error: `Agent ${agent} not found` });
+        return Errors.notFound(res, `agent "${agent}"`);
       }
 
       const delta = new_trust_score - (currentAgent.trustScore ?? 50);
@@ -313,13 +341,13 @@ export function registerSCPv2Routes(app: Express) {
     try {
       const { agent, to_version, reason } = req.body;
       if (!agent) {
-        return res.status(400).json({ error: "Missing agent" });
+        return Errors.badRequest(res, "Missing agent");
       }
 
       const cv = await getConfigVersioning();
       const currentVersion = cv.getAgentVersion(agent);
       if (!currentVersion) {
-        return res.status(404).json({ error: `Agent ${agent} not found` });
+        return Errors.notFound(res, `agent "${agent}"`);
       }
 
       const { executeRollback } = await getGoldenSuiteService();
@@ -358,7 +386,7 @@ export function registerSCPv2Routes(app: Express) {
     try {
       const { query } = req.body;
       if (!query) {
-        return res.status(400).json({ error: "Missing query" });
+        return Errors.badRequest(res, "Missing query");
       }
 
       const response = await handleTalkQuery(query);

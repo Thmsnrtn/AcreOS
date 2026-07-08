@@ -98,9 +98,9 @@ function ActionRow({
 }) {
   const tone =
     item.tone === "warn"
-      ? "bg-amber-400"
+      ? "bg-acr-bridge-accent"
       : item.tone === "info"
-        ? "bg-sky-400"
+        ? "bg-acr-accent"
         : "bg-muted-foreground/60";
 
   const inner = (

@@ -52,6 +52,21 @@ export interface JobRosterEntry {
    * interval for free-running jobs). The deadman threshold is 2× this.
    */
   intervalMs: number;
+  /**
+   * OPTIONAL standard 5-field cron expression (min hour dom month dow, UTC) for
+   * jobs whose cadence is a true wall-clock / calendar boundary (monthly on the
+   * 1st, daily at a fixed hour, quarterly, etc.) rather than interval drift.
+   *
+   * ⚠️ NOT YET CONSUMED. This is pure declarative data — the deadman still uses
+   * `intervalMs` as its (deadman/fallback) cadence, and the scheduler is
+   * unchanged. `cron` is the data foundation for the deferred, multi-session
+   * `scheduleSelfRescheduling` consolidation that will eventually drive a
+   * roster-derived launcher (cron for calendar-anchored jobs, intervalMs as the
+   * deadman/fallback cadence for everyone). Leave `cron` undefined for
+   * interval-drift jobs (every-N-minutes pollers) — they have no wall-clock
+   * anchor to express. Do NOT remove intervalMs when adding cron.
+   */
+  cron?: string;
   /** true → page P1 on absence; false → P2. */
   critical: boolean;
   /**
@@ -131,10 +146,19 @@ export const JOB_ROSTER: JobRosterEntry[] = [
     disabledWhen: () => process.env.AUTONOMOUS_DECISION_EXECUTOR_DISABLED === "1" },
 
   { name: "finance_agent", intervalMs: 30 * MIN, critical: false },
+  // W5.1 — former bare setIntervals routed through the runtime (2026-07).
+  // The task processor auto-executes agent actions: critical.
+  { name: "autonomous_task_processor", intervalMs: 30 * 1000, critical: true },
+  { name: "atlas_pending_confirmation_nudge", intervalMs: MIN, critical: false },
+  // founder_digest took the job lock (job_health_logs rows existed) but was
+  // never rostered — locked yet invisible to the deadman. Daily send window
+  // gated inside an hourly tick; roster tracks the hourly tick.
+  { name: "founder_digest", intervalMs: HOUR, critical: false },
   { name: "api_queue", intervalMs: 10 * 1000, critical: false },
   { name: "alerting", intervalMs: HOUR, critical: true },
   { name: "digest", intervalMs: 6 * HOUR, critical: false },
   { name: "domain_audit", intervalMs: DAY, critical: false },
+  { name: "operator_cycle", intervalMs: DAY, critical: false },
   { name: "scheduled_tasks", intervalMs: MIN, critical: true },
   { name: "pax_scheduler", intervalMs: MIN, critical: true },
   { name: "pax_nudges", intervalMs: 6 * HOUR, critical: true },
@@ -142,15 +166,24 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "autonomous_deal_machine", intervalMs: HOUR, critical: true },
   { name: "autonomous_health_monitor", intervalMs: HOUR, critical: true },
   { name: "customer_concentration", intervalMs: DAY, critical: false },
+  // Launch-Week WS4 — Gate-Watcher: daily 09:00 UTC evaluation of the
+  // machine-encoded roadmap gates (mature-machine §4 + phase triggers).
+  // Non-critical: a dark watcher delays a gate by days, it doesn't harm a
+  // customer — and the deadman still surfaces the absence as P2.
+  { name: "gate_watcher_daily", intervalMs: DAY, critical: false, cron: "0 9 * * *" },
   { name: "customer_unit_economics", intervalMs: DAY, critical: false },
   { name: "api_telemetry_rollup", intervalMs: DAY, critical: false },
   { name: "reserve_floor_check", intervalMs: DAY, critical: true },
   { name: "parcel_delta_detector", intervalMs: 6 * HOUR, critical: false },
   { name: "founder_weekly_digest", intervalMs: WEEK, critical: false },
   { name: "cost_optimizer_weekly_digest", intervalMs: WEEK, critical: false },
+  // W4.5 — weekly MRR snapshot (Monday window shared with the digests).
+  { name: "mrr_snapshot_weekly", intervalMs: WEEK, critical: false },
   { name: "growth_automation", intervalMs: 6 * HOUR, critical: false },
-  { name: "churn_engine_daily", intervalMs: DAY, critical: true },
-  { name: "founder_briefing_daily", intervalMs: DAY, critical: false },
+  // Wall-clock daily 06:00 (local==UTC on the Fly worker). cron not yet consumed.
+  { name: "churn_engine_daily", intervalMs: DAY, critical: true, cron: "0 6 * * *" },
+  // Wall-clock daily 07:00. cron not yet consumed.
+  { name: "founder_briefing_daily", intervalMs: DAY, critical: false, cron: "0 7 * * *" },
   { name: "atlas_morning_brief_daily", intervalMs: DAY, critical: true },
   { name: "error_boundary_spike_detect", intervalMs: 15 * MIN, critical: true },
   { name: "outcome_analyzer", intervalMs: DAY, critical: false },
@@ -165,9 +198,14 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "trial_engine", intervalMs: DAY, critical: true },
   { name: "customer_health", intervalMs: DAY, critical: true },
   { name: "onboarding_scheduler", intervalMs: DAY, critical: true },
-  { name: "data_retention", intervalMs: DAY, critical: true },
-  { name: "access_review_quarterly", intervalMs: DAY, critical: true },
-  { name: "prompt_evolution_monthly", intervalMs: MONTH, critical: false },
+  // Wall-clock daily 03:30 UTC. cron not yet consumed.
+  { name: "data_retention", intervalMs: DAY, critical: true, cron: "30 3 * * *" },
+  // The withJobLock liveness fires DAILY at 14:00 UTC (the body self-gates to
+  // the first Tue of Jan/Apr/Jul/Oct internally) — so the deadman cadence + the
+  // cron anchor are both daily. cron not yet consumed.
+  { name: "access_review_quarterly", intervalMs: DAY, critical: true, cron: "0 14 * * *" },
+  // Wall-clock 1st-of-month 09:00 UTC. cron not yet consumed.
+  { name: "prompt_evolution_monthly", intervalMs: MONTH, critical: false, cron: "0 9 1 * *" },
   { name: "outcome_driven_evolution_nightly", intervalMs: DAY, critical: false },
   { name: "experiment_sweep_weekly", intervalMs: WEEK, critical: false },
   { name: "agent_memory_consolidation_weekly", intervalMs: WEEK, critical: false },
@@ -175,12 +213,19 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "onboarding_sweeper", intervalMs: HOUR, critical: true },
   { name: "customer_letters_monthly", intervalMs: HOUR, critical: false },
   { name: "action_preview_sweeper", intervalMs: HOUR, critical: false },
+  { name: "dispatch_reaper", intervalMs: 10 * MIN, critical: false },
+  { name: "mail_flusher", intervalMs: 3 * MIN, critical: true },
+  { name: "proof_chain_audit", intervalMs: DAY, critical: true },
   { name: "strategic_proposals_weekly", intervalMs: WEEK, critical: false },
-  { name: "strategic_proposals_monthly_synthesis", intervalMs: MONTH, critical: false },
-  { name: "founder_letter_monthly", intervalMs: MONTH, critical: false },
+  // Wall-clock 1st-of-month 10:00 UTC. cron not yet consumed.
+  { name: "strategic_proposals_monthly_synthesis", intervalMs: MONTH, critical: false, cron: "0 10 1 * *" },
+  // Wall-clock 1st-of-month 12:00 UTC. cron not yet consumed.
+  { name: "founder_letter_monthly", intervalMs: MONTH, critical: false, cron: "0 12 1 * *" },
   { name: "autonomy_outcome_grader", intervalMs: DAY, critical: false },
   { name: "company_briefing_generator", intervalMs: DAY, critical: false },
-  { name: "periodic_statements_monthly", intervalMs: MONTH, critical: true },
+  // §1026.41 periodic statements — wall-clock 1st-of-month 09:00 UTC. cron not
+  // yet consumed.
+  { name: "periodic_statements_monthly", intervalMs: MONTH, critical: true, cron: "0 9 1 * *" },
   { name: "trust_evolution", intervalMs: WEEK, critical: false },
   { name: "agent_reaction_processor", intervalMs: 2 * MIN, critical: false },
   { name: "agent_proactive_engine", intervalMs: 5 * MIN, critical: false },
@@ -193,7 +238,13 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "solene_audit_per_session", intervalMs: HOUR, critical: false },
   { name: "solene_morning_pulse", intervalMs: DAY, critical: false },
   { name: "solene_continuous_tick", intervalMs: 30 * MIN, critical: false },
+  { name: "solene_loop_watchdog", intervalMs: 30 * MIN, critical: false },
   { name: "solene_agent_claims_expiry", intervalMs: 5 * MIN, critical: false },
+  // Step-away gap #5 — taps frozen witnessed-send actions covered by a live
+  // founder-issued WitnessGrant. No-op with zero grants issued.
+  { name: "autopilot_auto_witness_sweep", intervalMs: 5 * MIN, critical: false },
+  // Step-away gap #6 — durable Stage-6 evolution regression check driver.
+  { name: "evolution_regression_scan", intervalMs: 10 * MIN, critical: false },
   { name: "solene_team_state_regenerator", intervalMs: 15 * MIN, critical: false },
   { name: "solene_weekly_retro", intervalMs: WEEK, critical: false },
   { name: "solene_failure_modes_seed", intervalMs: DAY, critical: false },
@@ -208,16 +259,27 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "index_analyzer", intervalMs: DAY, critical: false },
   { name: "land_credit_score_recalc", intervalMs: DAY, critical: false },
   { name: "feature_engineering", intervalMs: WEEK, critical: false },
+  // Tier 3F — cross-org data co-op: monthly privacy-preserving county
+  // rollups (k>=5 floor enforced in the aggregation). Production check on
+  // "ran but produced nothing" is the job's own two-zero-runs alert-spine
+  // warning; the deadman covers absence.
+  // NO cron: this is a scheduleSelfRescheduling 30d INTERVAL-DRIFT job (fires
+  // ~30d from process start, not on a calendar boundary), so there is no
+  // wall-clock anchor to express — intervalMs is the truth. (Same applies to
+  // fair_lending_audit / reconciliation_cron / disclosure_timing_dispatch.)
+  { name: "county_market_rollup", intervalMs: MONTH, critical: false },
   // db_backup's body (runDbBackupIfConfigured) no-ops without the S3 bucket —
   // declare that dormancy HERE so the deadman skips it cleanly AND the
   // config-dormant meta-check reports it every sweep instead of letting a
   // critical job rot invisibly. Same predicate gates backup_restore_verify.
-  { name: "db_backup", intervalMs: DAY, critical: true,
+  // Wall-clock daily 07:00 UTC dump. cron not yet consumed.
+  { name: "db_backup", intervalMs: DAY, critical: true, cron: "0 7 * * *",
     disabledWhen: () => backupConfigMissingReason() !== null,
     disabledReason: "backup destination not configured — 🔑 founder: fly secrets set DB_BACKUP_S3_BUCKET / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY" },
   // Tier 1E — weekly restore-verification of the latest backup (scratch-DB
   // restore + crown-jewel count parity + backup_verified proof row).
-  { name: "backup_restore_verify", intervalMs: WEEK, critical: true,
+  // Wall-clock weekly Sunday 05:00 UTC restore-verify. cron not yet consumed.
+  { name: "backup_restore_verify", intervalMs: WEEK, critical: true, cron: "0 5 * * 0",
     disabledWhen: () => backupConfigMissingReason() !== null,
     disabledReason: "backup bucket/creds not configured — 🔑 founder: fly secrets set DB_BACKUP_S3_BUCKET / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY" },
   // course_completion_check's body no-ops without SES sender config.
@@ -234,7 +296,11 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "npm_watch", intervalMs: DAY, critical: false },
   { name: "model_upgrade_backfill", intervalMs: DAY, critical: false },
   { name: "beatrice_reg_watch", intervalMs: DAY, critical: false },
-  { name: "nps_prompt_scheduler", intervalMs: DAY, critical: false },
+  // Wall-clock daily 04:15 UTC. cron not yet consumed.
+  { name: "nps_prompt_scheduler", intervalMs: DAY, critical: false, cron: "15 4 * * *" },
+  // Tier 2C — daily 15:05 UTC lifecycle email dispatcher
+  // (d7_check_in / d30_nps / cancellation_reason_ask). cron not yet consumed.
+  { name: "lifecycle_dispatch", intervalMs: DAY, critical: false, cron: "5 15 * * *" },
   { name: "recourse_sweep", intervalMs: 30 * MIN, critical: true },
   { name: "resume_expired_pauses", intervalMs: HOUR, critical: true },
   { name: "data_source_probe", intervalMs: 30 * MIN, critical: true },
@@ -259,6 +325,10 @@ export const JOB_ROSTER: JobRosterEntry[] = [
       process.env.NODE_ENV !== "production" || !process.env.FLY_API_TOKEN },
   { name: "synthetic_checks", intervalMs: 15 * MIN, critical: true },
   { name: "reconciliation_cron", intervalMs: DAY, critical: true },
+  // Tier 2B — hourly replay of failed financial_ledger postings. Critical:
+  // if this goes dark while dead letters exist, money is silently missing
+  // from the system of record and nothing is retrying.
+  { name: "ledger_dead_letter_replay", intervalMs: HOUR, critical: true },
   { name: "disclosure_timing_dispatch", intervalMs: HOUR, critical: true },
   { name: "fair_lending_audit", intervalMs: MONTH, critical: true },
 
@@ -294,8 +364,11 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // 09:00 UTC); intervalMs is their EXPECTED cadence so the deadman's 2× window
   // tolerates the wall-clock gap. The calibration grader is Andrei's daily job
   // (server/services/andrei/supportResolverCalibration.ts), registered alongside.
-  { name: "solene_monthly_team_member_review", intervalMs: MONTH, critical: false },
-  { name: "solene_quarterly_arc_review", intervalMs: 3 * MONTH, critical: false },
+  // Wall-clock 1st-of-month 09:00 UTC. cron not yet consumed.
+  { name: "solene_monthly_team_member_review", intervalMs: MONTH, critical: false, cron: "0 9 1 * *" },
+  // Wall-clock 1st of Jan/Apr/Jul/Oct 09:00 UTC (quarter starts). cron not yet
+  // consumed.
+  { name: "solene_quarterly_arc_review", intervalMs: 3 * MONTH, critical: false, cron: "0 9 1 1,4,7,10 *" },
   { name: "support_resolve_calibration_grader", intervalMs: DAY, critical: false },
 ];
 

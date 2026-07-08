@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   ExternalLink,
   CheckCircle2,
@@ -174,9 +175,17 @@ export default function SyndicationPage() {
             </CardHeader>
             <CardContent>
               {platformsLoading ? (
-                <div className="flex justify-center py-4" role="status" aria-live="polite">
+                <div className="space-y-3" role="status" aria-live="polite">
                   <span className="sr-only">Loading platforms…</span>
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <Skeleton announce={false} className="h-4 w-4 shrink-0 rounded-sm" />
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <Skeleton announce={false} className="h-4 w-32" />
+                        <Skeleton announce={false} className="h-3 w-48 max-w-full" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <fieldset>

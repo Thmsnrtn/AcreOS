@@ -15,7 +15,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format";
 import {
   Gauge,
   RefreshCw,
@@ -41,7 +41,9 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
+import { QueryErrorState } from "@/components/query-error-state";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { Verbs } from "@/lib/labels";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -93,15 +95,6 @@ function fmtSeconds(s: number | null | undefined): string {
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${(s / 60).toFixed(1)}m`;
   return `${(s / 3600).toFixed(1)}h`;
-}
-
-function fmtRelative(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true });
-  } catch {
-    return "—";
-  }
 }
 
 function ttfvTone(
@@ -297,7 +290,7 @@ export default function FounderOnboardingFunnelPage() {
               }}
               aria-label="Retry loading onboarding funnel"
             >
-              Retry
+              {Verbs.RETRY}
             </Button>
           </CardContent>
         </Card>
@@ -440,6 +433,9 @@ export default function FounderOnboardingFunnelPage() {
             </CardContent>
           </Card>
 
+          {/* Wedge loop — the business loop past onboarding */}
+          <WedgeLoopCard />
+
           {/* Per-org table */}
           <Card>
             <CardHeader>
@@ -539,7 +535,7 @@ export default function FounderOnboardingFunnelPage() {
                               {o.vertical ?? "—"}
                             </td>
                             <td className="px-3 py-2 text-muted-foreground">
-                              {fmtRelative(o.signupAt)}
+                              {formatRelative(o.signupAt)}
                             </td>
                             <td
                               className={`px-3 py-2 text-right tabular-nums font-medium ${toneClass(
@@ -659,6 +655,119 @@ function HeadlineTtfvCard({ summary }: { summary: FunnelSummary | undefined }) {
 function toneClass(tone: "pos" | "warn" | "neg" | "muted"): string {
   if (tone === "pos") return "text-acr-pos";
   if (tone === "neg") return "text-acr-neg";
-  if (tone === "warn") return "text-amber-500 dark:text-amber-400";
+  if (tone === "warn") return "text-acr-warn";
   return "";
+}
+
+// ─── Wedge loop (activation events) ─────────────────────────────────────────
+// The onboarding funnel above ends at "first value"; this card continues the
+// story through the BUSINESS loop: lead in → outreach out → seller responds →
+// deal closed. Reads /api/founder/activation/funnel (activation_events) —
+// the API that lost its surface when founder-activation.tsx was archived in
+// the four-doors consolidation. "Seller responded" (first_seller_response)
+// is the retention magic moment; which loop step collapses tells us whether
+// the constraint is product friction, list/copy quality, or deal coaching.
+
+interface ActivationFunnelResponse {
+  windowDays: number;
+  totalOrgs: number;
+  events: Array<{
+    eventName: string;
+    orgsHit: number;
+    totalOrgs: number;
+    pct: number;
+  }>;
+}
+
+const WEDGE_LOOP_STEPS: Array<{
+  event: string;
+  label: string;
+  accent?: "pos";
+}> = [
+  { event: "org_created", label: "Signed up" },
+  { event: "first_lead_added", label: "Lead in" },
+  { event: "first_letter_sent", label: "Mail out" },
+  { event: "first_mailer_sent", label: "Email/SMS out" },
+  { event: "first_seller_response", label: "Seller responded", accent: "pos" },
+  { event: "first_deal_closed", label: "Deal closed", accent: "pos" },
+];
+
+function WedgeLoopCard() {
+  const query = useQuery<ActivationFunnelResponse>({
+    queryKey: ["/api/founder/activation/funnel?window=30"],
+  });
+  const byName = new Map(
+    (query.data?.events ?? []).map((e) => [e.eventName, e]),
+  );
+
+  return (
+    <Card className="mb-6" data-testid="card-wedge-loop">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Activity className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+          Wedge loop
+        </CardTitle>
+        <CardDescription>
+          Past onboarding: % of orgs (30d) whose outreach reached each business
+          milestone. "Seller responded" is the retention magic moment.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {query.isLoading ? (
+          <div className="space-y-2" role="status" aria-busy="true">
+            <span className="sr-only">Loading wedge loop</span>
+            {WEDGE_LOOP_STEPS.map((s) => (
+              <Skeleton key={s.event} className="h-6 w-full" announce={false} />
+            ))}
+          </div>
+        ) : query.error ? (
+          <QueryErrorState
+            error={query.error as Error}
+            onRetry={() => query.refetch()}
+            title="Couldn't load the wedge loop"
+            testId="wedge-loop-error"
+          />
+        ) : (
+          <div className="space-y-2">
+            {WEDGE_LOOP_STEPS.map((step) => {
+              const e = byName.get(step.event);
+              const pct = e?.pct ?? 0;
+              const count = e?.orgsHit ?? 0;
+              return (
+                <div
+                  key={step.event}
+                  className="flex items-center gap-3"
+                  data-testid={`wedge-bar-${step.event}`}
+                >
+                  <div className="w-32 text-xs text-muted-foreground shrink-0">
+                    {step.label}
+                  </div>
+                  <div className="flex-1 h-6 bg-muted/40 rounded relative overflow-hidden">
+                    <div
+                      className={`h-full rounded transition-all ${
+                        step.accent === "pos" ? "bg-acr-pos/70" : "bg-primary/40"
+                      }`}
+                      style={{ width: `${Math.min(100, pct)}%` }}
+                      role="progressbar"
+                      aria-valuenow={count}
+                      aria-valuemin={0}
+                      aria-valuemax={e?.totalOrgs ?? 0}
+                      aria-label={`${step.label}: ${count} orgs (${pct.toFixed(0)}%)`}
+                    />
+                  </div>
+                  <div className="w-32 text-xs text-right tabular-nums">
+                    <span className="font-medium">{count}</span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      ({pct.toFixed(0)}%)
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }

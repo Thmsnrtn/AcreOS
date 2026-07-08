@@ -104,7 +104,13 @@ export function OverlayLegend({ active }: { active: OverlayLegendActive }) {
 
   return (
     <div
-      className="bg-background/90 backdrop-blur-sm rounded-md shadow-lg border overflow-hidden max-w-[200px]"
+      // Bold Tahoe re-skin (Wave R, §1.4 canvas-overlay chrome): this legend
+      // floats OVER the map imagery, so it earns the canvas-overlay glass role —
+      // `bg-surface-haze` (.90), the bold `backdrop-blur-lg` depth read, a
+      // softened `border-border/50` edge-of-light hairline, `shadow-level-2`
+      // (Track-1, theme-neutral — floats over content on all sides) and
+      // `rounded-card`. Visual-only. See docs/design/reskin-treatment.md.
+      className="bg-surface-haze backdrop-blur-lg rounded-card shadow-level-2 border border-border/50 overflow-hidden max-w-[200px]"
       data-testid="overlay-legend"
     >
       <button

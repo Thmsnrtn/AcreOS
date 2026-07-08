@@ -21,10 +21,10 @@ const DialogOverlay = React.forwardRef<
     ref={ref}
     className={cn(
       // Tahoe-style: blurred glass scrim instead of opaque black.
-      // z-[60] sits above MobileBottomNav (z-50) so the nav doesn't
-      // paint over modal scrims on mobile.
-      "fixed inset-0 z-[60]",
-      "bg-black/40 backdrop-blur-[6px] backdrop-saturate-150",
+      // z-modal (60) sits above MobileBottomNav (z-floating/50) so the nav
+      // doesn't paint over modal scrims on mobile.
+      "fixed inset-0 z-modal",
+      "bg-surface-scrim backdrop-blur-[6px] backdrop-saturate-150",
       "data-[state=open]:animate-in data-[state=closed]:animate-out",
       "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
@@ -43,7 +43,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        // Position — z-[60] paired with the overlay so dialog content
+        // Position — z-modal (60) paired with the overlay so dialog content
         // also sits above MobileBottomNav.
         //
         // Sizing default — explicit viewport-relative width with a
@@ -56,7 +56,7 @@ const DialogContent = React.forwardRef<
         // `min-w-[280px]` is the safety floor — no dialog renders
         // narrower than this even if a consumer or downstream JSX
         // tries to collapse it.
-        "fixed left-[50%] top-[50%] z-[60] grid w-[calc(100vw-2rem)] min-w-[280px] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4",
+        "fixed left-[50%] top-[50%] z-modal grid w-[calc(100vw-2rem)] min-w-[280px] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4",
         // Tahoe Liquid Glass material
         "glass-panel rounded-2xl p-6",
         // Spring animation

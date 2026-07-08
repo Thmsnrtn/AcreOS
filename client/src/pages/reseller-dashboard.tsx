@@ -1,6 +1,6 @@
 import { useId, useState, useEffect, type FormEvent } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,10 +72,6 @@ function fmtCurrency(val: number) {
 
 const reassurance = "Your form is unchanged — try again.";
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`bg-muted/50 rounded animate-pulse ${className}`} />;
 }
@@ -117,6 +113,7 @@ function CreateTenantDialog({ onSuccess }: { onSuccess: () => void }) {
   const adminEmailId = useId();
   const notesId = useId();
 
+  // allow-no-invalidation: the parent's onSuccess prop invalidates /api/white-label/tenants (see dialog usage)
   const createMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/white-label/tenants", {
@@ -389,7 +386,7 @@ function TenantTable({ tenants, loading }: { tenants: Tenant[]; loading: boolean
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {tenant.lastActiveAt
-                        ? <time dateTime={tenant.lastActiveAt}>{fmtDate(tenant.lastActiveAt)}</time>
+                        ? <time dateTime={tenant.lastActiveAt}>{formatDate(tenant.lastActiveAt)}</time>
                         : "Never"}
                     </TableCell>
                   </TableRow>
@@ -501,6 +498,7 @@ const FONT_OPTIONS = [
 
 function WhiteLabelPanel() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [branding, setBranding] = useState({
     brandName: "My Brand",
     logoUrl: "",
@@ -525,7 +523,12 @@ function WhiteLabelPanel() {
       if (!res.ok) throw new Error((await res.json()).error ?? "Save failed");
       return res.json();
     },
-    onSuccess: () => toast({ title: "Branding saved", description: "Your white-label settings have been updated." }),
+    onSuccess: () => {
+      // useBrandName reads /api/white-label/config — the saved branding
+      // must reach the live chrome without a reload.
+      queryClient.invalidateQueries({ queryKey: ["/api/white-label/config"] });
+      toast({ title: "Branding saved", description: "Your white-label settings have been updated." });
+    },
     onError: (e: any) =>
       toast({ title: "Couldn't save branding", description: `${e.message}. ${reassurance}`, variant: "destructive" }),
   });

@@ -265,7 +265,7 @@ function SummaryTile({
         </div>
         <div
           className={`text-2xl font-semibold tabular-nums ${
-            tone === "pos" ? "text-emerald-600" : tone === "neg" ? "text-destructive" : ""
+            tone === "pos" ? "text-acr-pos" : tone === "neg" ? "text-destructive" : ""
           }`}
         >
           {value}
@@ -278,7 +278,7 @@ function SummaryTile({
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default function FounderUnitEconomicsPage() {
+export function UnitEconomicsContent() {
   useDocumentTitle("Unit economics");
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<UnitEconomicsResponse>({
     queryKey: ["/api/founder/unit-economics"],
@@ -299,7 +299,7 @@ export default function FounderUnitEconomicsPage() {
   }, [data?.rows]);
 
   return (
-    <PageShell label="Per-customer unit economics">
+    <>
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Per-customer unit economics</h1>
@@ -396,7 +396,7 @@ export default function FounderUnitEconomicsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-emerald-600" aria-hidden />
+                <TrendingUp className="h-4 w-4 text-acr-pos" aria-hidden />
                 Top 10 profitable
               </CardTitle>
               <CardDescription>Most positive profit-margin customers (30d).</CardDescription>
@@ -416,7 +416,7 @@ export default function FounderUnitEconomicsPage() {
                   </TableHeader>
                   <TableBody>
                     {topProfitable.map((r) => (
-                      <TableRow key={r.organizationId} className="bg-emerald-500/5">
+                      <TableRow key={r.organizationId} className="bg-acr-pos/5">
                         <TableCell>
                           <div className="font-medium">{r.organizationName}</div>
                           <div className="text-xs text-muted-foreground">{r.subscriptionTier}</div>
@@ -425,7 +425,7 @@ export default function FounderUnitEconomicsPage() {
                         <TableCell className="text-right tabular-nums text-muted-foreground">
                           {fmtUsd(r.totalCogsUsd, 4)}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums text-emerald-600">
+                        <TableCell className="text-right tabular-nums text-acr-pos">
                           {fmtUsd(r.profitMarginUsd)} ({fmtPct(r.profitMarginPct)})
                         </TableCell>
                       </TableRow>
@@ -514,6 +514,14 @@ export default function FounderUnitEconomicsPage() {
           {isLoading ? <Skeleton className="h-[200px] w-full" /> : <TrendChart trend={data?.trend ?? []} />}
         </CardContent>
       </Card>
+    </>
+  );
+}
+
+export default function FounderUnitEconomicsPage() {
+  return (
+    <PageShell label="Per-customer unit economics">
+      <UnitEconomicsContent />
     </PageShell>
   );
 }

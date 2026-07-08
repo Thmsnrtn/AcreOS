@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { relative } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Verbs } from "@/lib/labels";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -136,6 +138,7 @@ function NewChannelDialog({ onCreated }: { onCreated: () => void }) {
   const { toast } = useToast();
   const channelNameId = useId();
 
+  // allow-no-invalidation: onSuccess calls the parent's onCreated() prop, which refreshes the channel list
   const create = useMutation({
     mutationFn: () =>
       fetch("/api/team-messaging/channels", {
@@ -197,7 +200,7 @@ function NewChannelDialog({ onCreated }: { onCreated: () => void }) {
             disabled={!name.trim() || create.isPending}
           >
             {create.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" aria-hidden="true" /> : null}
-            Create
+            {Verbs.CREATE}
           </Button>
         </form>
       </DialogContent>
@@ -373,7 +376,12 @@ export default function TeamInboxPage() {
             </p>
           </div>
           {channelsLoading ? (
-            <div className="px-3 py-2"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+            <div className="px-3 py-2 space-y-2.5" role="status" aria-live="polite">
+              <span className="sr-only">Loading channels…</span>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton announce={false} key={i} className="h-4 w-32 max-w-full" />
+              ))}
+            </div>
           ) : (
             channels.map(ch => (
               <SidebarItem
@@ -429,8 +437,17 @@ export default function TeamInboxPage() {
               </p>
             )}
             {activeConvId && msgsLoading && (
-              <div className="flex items-center justify-center py-8 text-muted-foreground" role="status" aria-label="Loading messages">
-                <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> Loading…
+              <div className="space-y-4 py-2" role="status" aria-live="polite">
+                <span className="sr-only">Loading messages…</span>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <Skeleton announce={false} className="h-8 w-8 rounded-full shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <Skeleton announce={false} className="h-3 w-24" />
+                      <Skeleton announce={false} className="h-4 w-2/3 max-w-80" />
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
             {!msgsLoading && messages.length === 0 && activeConvId && (

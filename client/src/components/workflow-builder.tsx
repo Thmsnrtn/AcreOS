@@ -36,6 +36,7 @@ import type {
   WorkflowTriggerEvent,
   WorkflowActionType
 } from "@shared/schema";
+import { Verbs } from "@/lib/labels";
 
 // ─── WorkflowConfig type (spec-compatible) ───────────────────────────────────
 
@@ -747,7 +748,7 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
 
         <DialogFooter className="gap-2 pt-4 border-t">
           <Button type="button" variant="outline" onClick={handleClose} data-testid="button-cancel">
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button type="button" onClick={handleSave} disabled={!isValid || isSaving} data-testid="button-save-workflow">
             {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -965,7 +966,7 @@ function PanelActionForm({ onAdd, onCancel }: PanelActionFormProps) {
           Add action
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel} className="h-7 text-xs">
-          Cancel
+          {Verbs.CANCEL}
         </Button>
       </div>
     </div>
@@ -1238,7 +1239,7 @@ export function WorkflowBuilderPanel({ onSave, onClose, existingWorkflow }: Work
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={onClose}>
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           {step < 2 ? (
             <Button

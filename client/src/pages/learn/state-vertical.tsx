@@ -30,17 +30,22 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { JsonLd } from "@/components/seo/JsonLd";
-import { OpenGraph } from "@/components/seo/OpenGraph";
+import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
+import { SITE } from "@/lib/jsonld-schemas";
 
 import { getLearnContent, listLearnRoutes } from "./registry";
 import { DataSnapshotBand } from "./DataSnapshotBand";
 import type { LearnContent } from "./types";
 
-const SITE_URL = "https://acreos.io";
+const SITE_URL = SITE.url;
 
 function NotFoundForLearn() {
+  usePageMeta(
+    "Learn",
+    "State-by-vertical primers for land and note investors.",
+  );
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="max-w-md text-center space-y-4">
@@ -149,13 +154,8 @@ export default function StateVerticalLandingPage() {
 
   const content = useMemo(() => getLearnContent(vertical, state), [vertical, state]);
 
-  // Always call hooks unconditionally — render fallback after.
-  usePageMeta(
-    content?.headline ?? "Learn · AcreOS",
-    content?.metaDescription ??
-      "State-by-vertical primers for land and note investors.",
-  );
-
+  // Title/description/OG/canonical are handled by SeoPageShell in the
+  // found branch; NotFoundForLearn sets its own fallback meta.
   const allRoutes = useMemo(() => listLearnRoutes(), []);
 
   // Marketing-touch substrate — record a /learn page view keyed to the
@@ -190,43 +190,39 @@ export default function StateVerticalLandingPage() {
     content.vertical === "land-flipping" ? "Land flipping" : "Note investing";
 
   return (
-    <div className="min-h-screen bg-background">
-      <OpenGraph
-        url={canonicalUrl}
-        title={`${content.headline} · AcreOS`}
-        description={content.metaDescription}
-        type="article"
-      />
-      <JsonLd id={`learn-article-${content.vertical}-${content.stateSlug}`} data={schemas.article} />
-      <JsonLd id={`learn-faq-${content.vertical}-${content.stateSlug}`} data={schemas.faqPage} />
-      <JsonLd id={`learn-breadcrumb-${content.vertical}-${content.stateSlug}`} data={schemas.breadcrumbs} />
-
-      <div className="max-w-3xl mx-auto px-4 md:px-6 py-8 md:py-12 pb-24">
-        <nav aria-label="Breadcrumb" className="mb-6">
-          <Button asChild variant="ghost" size="sm" data-testid="button-learn-back">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" />
-              Back to AcreOS
-            </Link>
-          </Button>
-        </nav>
-
-        <header className="space-y-3 mb-8">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground font-medium" data-testid="text-learn-eyebrow">
-            {verticalLabel} · {content.stateName}
-          </p>
-          <h1
-            className="text-3xl md:text-4xl font-semibold leading-tight tracking-tight"
-            data-testid="text-learn-headline"
-          >
-            {content.headline}
-          </h1>
-          <p className="text-lg text-muted-foreground" data-testid="text-learn-intro">
-            {content.intro}
-          </p>
-        </header>
-
-        <section className="prose prose-neutral dark:prose-invert max-w-none mb-10" data-testid="section-learn-mechanics">
+    <SeoPageShell
+      title={content.headline}
+      titleTestId="text-learn-headline"
+      description={content.metaDescription}
+      canonicalUrl={canonicalUrl}
+      ogType="article"
+      structuredData={
+        <>
+          <JsonLd id={`learn-article-${content.vertical}-${content.stateSlug}`} data={schemas.article} />
+          <JsonLd id={`learn-faq-${content.vertical}-${content.stateSlug}`} data={schemas.faqPage} />
+          <JsonLd id={`learn-breadcrumb-${content.vertical}-${content.stateSlug}`} data={schemas.breadcrumbs} />
+        </>
+      }
+      breadcrumb={
+        <Button asChild variant="ghost" size="sm" data-testid="button-learn-back">
+          <Link href="/">
+            <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" />
+            Back to AcreOS
+          </Link>
+        </Button>
+      }
+      eyebrow={
+        <p className="text-xs uppercase tracking-wide text-muted-foreground font-medium" data-testid="text-learn-eyebrow">
+          {verticalLabel} · {content.stateName}
+        </p>
+      }
+      intro={
+        <p className="text-lg text-muted-foreground" data-testid="text-learn-intro">
+          {content.intro}
+        </p>
+      }
+    >
+      <section className="prose prose-neutral dark:prose-invert max-w-none mb-10" data-testid="section-learn-mechanics">
           <h2 className="text-2xl font-semibold mb-3">How it works in {content.stateName}</h2>
           <p className="text-base leading-relaxed whitespace-pre-wrap">
             {content.mechanics}
@@ -398,7 +394,6 @@ export default function StateVerticalLandingPage() {
             </p>
           </section>
         )}
-      </div>
-    </div>
+    </SeoPageShell>
   );
 }

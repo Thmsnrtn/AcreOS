@@ -1,5 +1,21 @@
 import type { Config } from "tailwindcss";
 
+/**
+ * Alpha-capable acr-* token. The --acr-* CSS vars hold raw hex, so
+ * Tailwind's native `<alpha-value>` injection can't apply — and before
+ * this wrapper, `bg-acr-pos/10` silently compiled to NOTHING (the class
+ * was dropped), stranding ~650 authored washes/tints across the app.
+ * A literal opacity modifier now mixes the token with transparency via
+ * CSS color-mix (Baseline 2023); no modifier — or a var()-based legacy
+ * opacity-plugin value — returns the raw var unchanged.
+ */
+const acrToken =
+  (cssVar: string) =>
+  ({ opacityValue }: { opacityValue?: string } = {}): string => {
+    if (!opacityValue || opacityValue.includes("var(")) return `var(${cssVar})`;
+    return `color-mix(in srgb, var(${cssVar}) calc(${opacityValue} * 100%), transparent)`;
+  };
+
 export default {
   darkMode: ["class"],
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
@@ -46,6 +62,40 @@ export default {
       transitionTimingFunction: {
         "acr-spring": "cubic-bezier(.22, 1, .36, 1)",
         "acr-standard": "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+      },
+      // ── Z-index / layering scale ──────────────────────────────────────
+      // Single SEMANTIC stacking scale for the whole app. Before this,
+      // z-index was entirely ad-hoc (52 × `z-50`, 44 × `z-10`, plus
+      // arbitrary escalations `z-[60]`/`z-[100]`/`z-[9998]`/`z-[9999]`)
+      // and the same numbers were reused for unrelated roles, which caused
+      // stacking bugs (FAB-over-FAB; founder tab list over the settings
+      // gear). Future code must say `z-modal`, not `z-50`.
+      //
+      // The numeric values are derived from the EXISTING anchors so the
+      // migration is a behavior-identical RENAME, never a re-layer: every
+      // distinct legacy layer keeps its own token at its own value, and
+      // the documented stacking order (low → high) is preserved exactly.
+      //
+      // Mirrored as CSS custom properties (--z-*) in index.css for the
+      // handful of non-Tailwind / inline-style consumers, and as the
+      // runtime `Z` registry in client/src/lib/z-index.ts.
+      zIndex: {
+        base: "0",          // in-flow default content
+        raised: "1",        // card hover-lift; thin in-flow raise
+        docked: "10",       // sticky subheaders, table headers, raised cards
+        dropdown: "20",     // in-page dropdowns / popper menus
+        sticky: "30",       // page topbar
+        overlay: "40",      // autopilot status bar, top notifications, cookie banner
+        "slot-help": "48",  // floating help slot (just under the FAB stack)
+        "slot-tray": "49",  // floating conversation tray slot
+        floating: "50",     // FAB, bottom nav, base dialogs/sheets, PWA prompt
+        modal: "60",        // modal scrim, command palette, new-item menu, escalated dialogs/sheets
+        toast: "100",       // toasts / transient banners above modals
+        offline: "110",     // offline indicator above toasts
+        tour: "9990",       // product tour scrim
+        island: "9998",     // dynamic island, tour/demo highlight rings
+        spotlight: "9999",  // demo orb / highlight focus above the island
+        max: "10000",       // absolute top — demo control panel
       },
       colors: {
         // Flat / base colors (regular buttons)
@@ -119,50 +169,56 @@ export default {
           offline: "rgb(156 163 175)",
         },
         // Prototype-derived semantic tokens (acreos/theme.jsx homestead).
-        // Literal hex/rgba — alpha modifiers (e.g. `bg-acr-brand/50`) are not
-        // alpha-aware; use `*-soft` variants for tinted variants.
+        // Raw hex/rgba vars wrapped by acrToken so literal alpha modifiers
+        // (e.g. `bg-acr-brand/50`) resolve via color-mix; `*-soft` variants
+        // remain the semantic choice for standard tinted surfaces.
         acr: {
-          bg:           "var(--acr-bg)",
-          "bg-sunken":  "var(--acr-bg-sunken)",
-          "bg-raised":  "var(--acr-bg-raised)",
-          surface:      "var(--acr-surface)",
-          "surface-2":  "var(--acr-surface-2)",
-          "sidebar-bg": "var(--acr-sidebar-bg)",
-          "sidebar-ink": "var(--acr-sidebar-ink)",
-          ink:    "var(--acr-ink)",
-          "ink-2": "var(--acr-ink-2)",
-          "ink-3": "var(--acr-ink-3)",
-          "ink-4": "var(--acr-ink-4)",
-          line:        "var(--acr-line)",
-          "line-soft": "var(--acr-line-soft)",
-          brand:        "var(--acr-brand)",
-          "brand-ink":  "var(--acr-brand-ink)",
-          "brand-soft": "var(--acr-brand-soft)",
-          accent: "var(--acr-accent)",
-          pos:        "var(--acr-pos)",
-          "pos-soft": "var(--acr-pos-soft)",
-          warn:       "var(--acr-warn)",
-          "warn-soft": "var(--acr-warn-soft)",
-          neg:       "var(--acr-neg)",
-          "neg-soft": "var(--acr-neg-soft)",
-          glow: "var(--acr-glow)",
-          "chart-a": "var(--acr-chart-a)",
-          "chart-b": "var(--acr-chart-b)",
-          "chart-c": "var(--acr-chart-c)",
-          "chart-d": "var(--acr-chart-d)",
+          bg:           acrToken("--acr-bg"),
+          "bg-sunken":  acrToken("--acr-bg-sunken"),
+          "bg-raised":  acrToken("--acr-bg-raised"),
+          surface:      acrToken("--acr-surface"),
+          "surface-2":  acrToken("--acr-surface-2"),
+          "sidebar-bg": acrToken("--acr-sidebar-bg"),
+          "sidebar-ink": acrToken("--acr-sidebar-ink"),
+          ink:    acrToken("--acr-ink"),
+          "ink-2": acrToken("--acr-ink-2"),
+          "ink-3": acrToken("--acr-ink-3"),
+          "ink-4": acrToken("--acr-ink-4"),
+          line:        acrToken("--acr-line"),
+          "line-soft": acrToken("--acr-line-soft"),
+          brand:        acrToken("--acr-brand"),
+          "brand-ink":  acrToken("--acr-brand-ink"),
+          "brand-soft": acrToken("--acr-brand-soft"),
+          accent: acrToken("--acr-accent"),
+          pos:        acrToken("--acr-pos"),
+          "pos-soft": acrToken("--acr-pos-soft"),
+          warn:       acrToken("--acr-warn"),
+          "warn-soft": acrToken("--acr-warn-soft"),
+          neg:       acrToken("--acr-neg"),
+          "neg-soft": acrToken("--acr-neg-soft"),
+          glow: acrToken("--acr-glow"),
+          // Borrower portal — warm public-surface gradient endpoints.
+          // Defined as CSS vars in index.css (light + dark) so the portal's
+          // distinct parchment identity is tokenized, not hardcoded hex.
+          "portal-from": acrToken("--acr-portal-grad-from"),
+          "portal-to":   acrToken("--acr-portal-grad-to"),
+          "chart-a": acrToken("--acr-chart-a"),
+          "chart-b": acrToken("--acr-chart-b"),
+          "chart-c": acrToken("--acr-chart-c"),
+          "chart-d": acrToken("--acr-chart-d"),
           // Bridge surface — single amber accent for live / active / now.
           // Defined as a CSS var in index.css so it can theoretically
           // theme without touching component code.
-          "bridge-accent": "var(--acr-bridge-accent)",
+          "bridge-accent": acrToken("--acr-bridge-accent"),
           // Heat tokens — activity/demand intensity (Kai finding #1, 2026-06-01).
           // Distinct from neg/warn/pos which encode outcome sentiment.
           // cold = quiet/low, warm = building/medium, hot = high/active.
-          "heat-cold":      "var(--acr-heat-cold)",
-          "heat-warm":      "var(--acr-heat-warm)",
-          "heat-hot":       "var(--acr-heat-hot)",
-          "heat-cold-soft": "var(--acr-heat-cold-soft)",
-          "heat-warm-soft": "var(--acr-heat-warm-soft)",
-          "heat-hot-soft":  "var(--acr-heat-hot-soft)",
+          "heat-cold":      acrToken("--acr-heat-cold"),
+          "heat-warm":      acrToken("--acr-heat-warm"),
+          "heat-hot":       acrToken("--acr-heat-hot"),
+          "heat-cold-soft": acrToken("--acr-heat-cold-soft"),
+          "heat-warm-soft": acrToken("--acr-heat-warm-soft"),
+          "heat-hot-soft":  acrToken("--acr-heat-hot-soft"),
         },
       },
       fontFamily: {
@@ -221,5 +277,22 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+  plugins: [
+    require("tailwindcss-animate"),
+    require("@tailwindcss/typography"),
+    // pointer-coarse: — touch-target sizing must follow POINTER TYPE, not
+    // viewport width. The Button scale's "desktop stays dense" arm keyed
+    // density to sm: (>=640px), which silently under-sized every control on
+    // touch tablets: a 768px iPad lands on the desktop-density arm with a
+    // finger as the pointer (caught by the ipad-mini Krieger touch-target
+    // contract, 2026-06-10 — 38px CTAs on the 404 page / cookie banner).
+    // `pointer-coarse:min-h-11` lets a control stay dense for mouse users at
+    // ANY width while holding the 44px Apple-HIG floor whenever the primary
+    // input is a finger. (Tailwind v4 ships this variant natively; this is
+    // the v3 equivalent.)
+    function pointerVariants({ addVariant }: { addVariant: (name: string, def: string) => void }) {
+      addVariant("pointer-coarse", "@media (pointer: coarse)");
+      addVariant("pointer-fine", "@media (pointer: fine)");
+    },
+  ],
 } satisfies Config;

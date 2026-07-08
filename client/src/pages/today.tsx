@@ -34,6 +34,8 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { DecisionQueue, type DecisionItem, type ResolveAction } from "@/components/today/DecisionQueue";
+import { ReceiptsStrip, type ReceiptItem } from "@/components/today/ReceiptsStrip";
+import { trackEvent } from "@/lib/telemetry";
 import { CashStrip } from "@/components/today/CashStrip";
 import { TodayActivityFeed } from "@/components/today/ActivityFeed";
 import { MorningBrief } from "@/components/today/MorningBrief";
@@ -45,6 +47,13 @@ import "./today.css";
 interface TodayPayload {
   queue: DecisionItem[];
   brief: string | null;
+  // Finishability (Tier 3C): real completions today (today_queue_state
+  // "done" rows since the user's local midnight) + the day's total.
+  progress?: { cleared: number; total: number };
+  // Receipts (Tier 3C): completed events since last visit, each traceable
+  // to real rows (pax_sends, completed payments, successful scheduled-task
+  // runs). Empty → render nothing.
+  receipts?: ReceiptItem[];
   cash: {
     cashOnHand: number;
     openDealsValue: number;
@@ -98,6 +107,15 @@ const HEADING_OUT_MORNING_END_HOUR = 11; // exclusive
 const DRIVE_MODE_LEAD_SOURCE = "driving_for_dollars";
 const DRIVE_MODE_ROUTE = "/drivemode";
 
+// ── Referral nudge (Tier 2C) ─────────────────────────────────────────────
+// The referral program existed (settings → Account → refer & earn) but had
+// zero surfacing post-first-value, so nobody found it. This is the single
+// in-product touch: a quiet, permanently-dismissible card on Today that
+// only renders once the org has real data (hasAnyData — the "it's working"
+// proxy). Lives behind the Today door per the five-doors rule; the CTA
+// deep-links to the existing referral section in Settings.
+const REFERRAL_NUDGE_DISMISS_KEY = "acreos-today-referral-nudge-dismissed";
+
 function isHeadingOutMorning(now: Date): boolean {
   const day = now.getDay(); // 0=Sun, 6=Sat
   if (day === 0 || day === 6) return false;
@@ -147,6 +165,28 @@ export default function TodayPage() {
   // + ranks all of those (server/routes-today.ts) so the screen paints from a
   // single query. The Activity feed stays a separate component (it owns its
   // own infinite-scroll pagination) — see TodayActivityFeed below.
+  // Last-visit timestamp (read BEFORE the effect below overwrites it) — feeds
+  // both the welcome-back card and the server's receipts window.
+  const lastVisitTs = React.useMemo(() => {
+    try {
+      const stored = localStorage.getItem(LAST_VISIT_KEY);
+      return stored ? parseInt(stored, 10) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Tier 3C: the consolidated fetch carries `since` (receipts window, server-
+  // clamped to [7d, 12h] ago) and `tz` (user-local midnight for the "N of M
+  // cleared" progress). The key stays ["/api/today", "?..."] so prefix
+  // invalidation on ["/api/today"] keeps working; values are stable per
+  // mount, so refetches reuse the same cache entry.
+  const todayQueryKey = React.useMemo(() => {
+    const tz = new Date().getTimezoneOffset();
+    const since = lastVisitTs ?? Date.now() - 24 * 60 * 60 * 1000;
+    return ["/api/today", `?since=${since}&tz=${tz}`] as const;
+  }, [lastVisitTs]);
+
   const {
     data: today,
     isLoading: todayLoading,
@@ -155,8 +195,21 @@ export default function TodayPage() {
     refetch: refetchToday,
     isRefetching: todayRefetching,
   } = useQuery<TodayPayload>({
-    queryKey: ["/api/today"],
+    queryKey: todayQueryKey,
     staleTime: 2 * 60 * 1000,
+    // Perceived speed (Tier 3C): the key embeds since/tz, which change
+    // between visits — without this, every return to Today would paint a
+    // cold skeleton even though the previous payload is still cached. Paint
+    // the door from the most recent /api/today entry while the fresh fetch
+    // runs; the receipts/progress refresh in place when it lands.
+    placeholderData: () => {
+      const cached = queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ["/api/today"] })
+        .filter((q) => q.state.data !== undefined)
+        .sort((a, b) => b.state.dataUpdatedAt - a.state.dataUpdatedAt)[0];
+      return cached?.state.data as TodayPayload | undefined;
+    },
   });
 
   const decisionItems: DecisionItem[] = today?.queue ?? [];
@@ -181,21 +234,29 @@ export default function TodayPage() {
       if (!res.ok) throw new Error("Failed to resolve item");
       return res.json();
     },
-    onMutate: async ({ itemId }) => {
+    onMutate: async ({ itemId, action }) => {
       setResolvingIds((prev) => new Set(prev).add(itemId));
       await queryClient.cancelQueries({ queryKey: ["/api/today"] });
-      const previous = queryClient.getQueryData<TodayPayload>(["/api/today"]);
+      const previous = queryClient.getQueryData<TodayPayload>(todayQueryKey);
       if (previous) {
-        queryClient.setQueryData<TodayPayload>(["/api/today"], {
+        queryClient.setQueryData<TodayPayload>(todayQueryKey, {
           ...previous,
           queue: previous.queue.filter((q) => q.id !== itemId),
+          // Optimistic finishability: a "done" counts toward today's cleared
+          // tally immediately; the server recomputes on the next fetch.
+          progress:
+            action === "done" && previous.progress
+              ? { cleared: previous.progress.cleared + 1, total: previous.progress.total }
+              : action !== "done" && previous.progress
+                ? { cleared: previous.progress.cleared, total: Math.max(previous.progress.cleared, previous.progress.total - 1) }
+                : previous.progress,
         });
       }
       return { previous };
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(["/api/today"], context.previous);
+        queryClient.setQueryData(todayQueryKey, context.previous);
       }
       toast({
         variant: "destructive",
@@ -219,6 +280,41 @@ export default function TodayPage() {
     },
     [resolveItem],
   );
+
+  // ── Permanent clear-all (Founder ask) ──────────────────────────────────
+  // POST /api/today/queue/clear server-side dismisses the ENTIRE active queue
+  // (server-computes-all — independent of what the client paginated). On
+  // success we invalidate /api/today so the queue refetches empty. The
+  // DecisionQueue's confirm dialog gates this destructive action.
+  const clearQueue = useMutation<{ cleared: number }, Error, void>({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/today/queue/clear", {});
+      if (!res.ok) throw new Error("Failed to clear queue");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      const cleared = data?.cleared ?? 0;
+      toast({
+        title: "Queue cleared",
+        description:
+          cleared > 0
+            ? `${cleared} decision${cleared === 1 ? "" : "s"} cleared.`
+            : "Your queue was already clear.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/today"] });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Couldn't clear the queue",
+        description: "Nothing was changed — try again in a moment.",
+      });
+    },
+  });
+
+  const handleClearAll = React.useCallback(() => {
+    clearQueue.mutate();
+  }, [clearQueue]);
 
   // ── Pull-to-refresh (mobile only) ──────────────────────────────────────
   // A pull gesture at the top re-pulls the consolidated /api/today payload
@@ -277,6 +373,25 @@ export default function TodayPage() {
   // Cash strip + pipeline aggregates now arrive pre-computed from /api/today.
   const cash = today?.cash;
 
+  // ── Measured (Tier 3C) ─────────────────────────────────────────────────
+  // One event when the queue first paints with data, through the existing
+  // trackEvent pipeline (/api/telemetry) — no new telemetry system.
+  const mountedAtRef = React.useRef(typeof performance !== "undefined" ? performance.now() : 0);
+  const paintTrackedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (paintTrackedRef.current || !today) return;
+    paintTrackedRef.current = true;
+    trackEvent("today_queue_rendered", {
+      items: today.queue.length,
+      cleared: today.progress?.cleared ?? 0,
+      total: today.progress?.total ?? 0,
+      receipts: today.receipts?.length ?? 0,
+      msToData: Math.round(
+        (typeof performance !== "undefined" ? performance.now() : 0) - mountedAtRef.current,
+      ),
+    });
+  }, [today]);
+
   // ── Persona Today (Maren CPO #3 / Krieger UX) ──────────────────────────
   // Each persona's actual JOB leads the day, not a relabeled clone: land
   // investors see sourcing/offer momentum, note investors the tape they own,
@@ -287,6 +402,56 @@ export default function TodayPage() {
   const persona = usePersona();
   const todayLayout = getTodayLayout(persona);
 
+  // W2.3 — the brand-new-org empty state speaks the persona's language:
+  // note investors don't have "parcels", subdividers start from acreage,
+  // wholesalers from contracts. Copy + CTA targets only; layout is shared.
+  const emptyStateContent = (() => {
+    switch (persona) {
+      case "note_investor":
+      case "note_originator":
+      case "note_servicer":
+        return {
+          headline: "Ready to build your note book?",
+          subtitle:
+            "Import your note portfolio, add your first note, or explore with a realistic sample dataset — amortization schedules render automatically.",
+          primaryLabel: "Add your first note",
+          primaryHref: "/notes?action=new",
+          secondaryLabel: "Import your portfolio",
+          secondaryHref: "/finance",
+        };
+      case "subdivider":
+        return {
+          headline: "Ready to split your first parcel?",
+          subtitle:
+            "Add the parent acreage, or import a lead list of land owners — lots, permits, and county timelines light up from there.",
+          primaryLabel: "Add your acreage",
+          primaryHref: "/properties",
+          secondaryLabel: "Import leads",
+          secondaryHref: "/leads",
+        };
+      case "wholesaler":
+        return {
+          headline: "Ready to lock your first contract?",
+          subtitle:
+            "Import a seller list or add your first property — outreach, offers, and assignment tracking start from here.",
+          primaryLabel: "Add your first property",
+          primaryHref: "/properties",
+          secondaryLabel: "Import sellers",
+          secondaryHref: "/leads",
+        };
+      default:
+        return {
+          headline: "Ready to find your first deal?",
+          subtitle:
+            "Add a parcel, import a lead list, or explore with a realistic sample dataset — your workspace is yours to shape.",
+          primaryLabel: "Add your first parcel",
+          primaryHref: "/properties",
+          secondaryLabel: "Import leads",
+          secondaryHref: "/leads",
+        };
+    }
+  })();
+
   // ── Empty-state / welcome-back state machine (single pathway) ──────────
   const hasAnyData =
     (stats?.activeLeads ?? leads.length) > 0 ||
@@ -294,14 +459,8 @@ export default function TodayPage() {
     (today?.meta?.hasAnyData ?? false);
 
   const [welcomeBackDismissed, setWelcomeBackDismissed] = React.useState(false);
-  const lastVisitTs = React.useMemo(() => {
-    try {
-      const stored = localStorage.getItem(LAST_VISIT_KEY);
-      return stored ? parseInt(stored, 10) : null;
-    } catch {
-      return null;
-    }
-  }, []);
+  // lastVisitTs is read once near the top of the component (it also feeds
+  // the /api/today receipts window) — see todayQueryKey above.
   const daysSinceLastVisit = lastVisitTs
     ? Math.floor((Date.now() - lastVisitTs) / (1000 * 60 * 60 * 24))
     : null;
@@ -355,6 +514,25 @@ export default function TodayPage() {
     isHeadingOutMorning(now) &&
     hasRecentDriveModeCapture(leads, now);
 
+  // ── Referral nudge state (Tier 2C) ───────────────────────────────────
+  // Permanent dismiss (no date suffix) — a growth nudge the user closed
+  // should stay closed; re-surfacing it would erode trust in dismissal.
+  const [referralNudgeDismissed, setReferralNudgeDismissed] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem(REFERRAL_NUDGE_DISMISS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const dismissReferralNudge = React.useCallback(() => {
+    setReferralNudgeDismissed(true);
+    try {
+      localStorage.setItem(REFERRAL_NUDGE_DISMISS_KEY, "1");
+    } catch {
+      // ignore — best-effort dismiss persistence
+    }
+  }, []);
+
   // Sample-data CTA: seed a realistic dataset directly from /today's
   // empty state without forcing the user into the onboarding wizard.
   const loadSampleDataMutation = useMutation({
@@ -407,7 +585,7 @@ export default function TodayPage() {
           {pendingDecisionCount > 0 && (
             <Link
               href="/decision-queue"
-              className="inline-flex items-center gap-2 mt-3 md:mt-2 min-h-11 sm:min-h-9 md:min-h-0 px-3 py-1.5 md:px-2.5 md:py-1 rounded-full bg-acr-neg-soft border border-[color:var(--acr-neg)]/30 text-sm md:text-xs text-acr-neg hover:opacity-80 active:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-2 mt-3 md:mt-2 min-h-11 pointer-fine:sm:min-h-9 pointer-fine:md:min-h-0 px-3 py-1.5 md:px-2.5 md:py-1 rounded-full bg-acr-neg-soft border border-[color:var(--acr-neg)]/30 text-sm md:text-xs text-acr-neg hover:opacity-80 active:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`${plural(pendingDecisionCount, "pending decision")} — review now`}
             >
               <Clock className="w-4 h-4 md:w-3.5 md:h-3.5" aria-hidden="true" />
@@ -421,35 +599,35 @@ export default function TodayPage() {
         </div>
       </div>
 
-      {/* ── Empty-state: single pathway ──────────────────────────────── */}
+      {/* ── Empty-state: single pathway, persona-branched (W2.3) ─────── */}
       {showEmptyState && (
         <div className="space-y-4">
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5">
+          <Card className="rounded-card border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 shadow-acr-2">
             <CardContent className="p-6 md:p-5 text-center space-y-3 md:space-y-2.5">
               <div className="inline-flex items-center justify-center w-12 h-12 md:w-10 md:h-10 rounded-full bg-primary/10">
                 <Target className="w-6 h-6 md:w-5 md:h-5 text-primary" aria-hidden="true" />
               </div>
-              <h2 className="text-xl md:text-lg font-bold md:font-semibold">Ready to find your first deal?</h2>
+              <h2 className="text-xl md:text-lg font-bold md:font-semibold">{emptyStateContent.headline}</h2>
               <p className="text-muted-foreground md:text-sm max-w-md mx-auto leading-relaxed">
-                Add a parcel, import a lead list, or explore with a realistic sample dataset — your workspace is yours to shape.
+                {emptyStateContent.subtitle}
               </p>
               <div className="flex flex-wrap gap-2 justify-center pt-2">
-                <Button asChild size="sm" className="min-h-11 sm:min-h-9">
-                  <Link href="/properties">
+                <Button asChild size="sm" className="min-h-11 pointer-fine:sm:min-h-9">
+                  <Link href={emptyStateContent.primaryHref}>
                     <Map className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                    Add your first parcel
+                    {emptyStateContent.primaryLabel}
                   </Link>
                 </Button>
-                <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-9">
-                  <Link href="/leads">
+                <Button asChild size="sm" variant="outline" className="min-h-11 pointer-fine:sm:min-h-9">
+                  <Link href={emptyStateContent.secondaryHref}>
                     <Users className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                    Import leads
+                    {emptyStateContent.secondaryLabel}
                   </Link>
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="min-h-11 sm:min-h-9"
+                  className="min-h-11 pointer-fine:sm:min-h-9"
                   onClick={() => loadSampleDataMutation.mutate()}
                   disabled={loadSampleDataMutation.isPending}
                   data-testid="button-try-sample-data"
@@ -466,8 +644,8 @@ export default function TodayPage() {
 
       {/* ── Welcome back (returning user, single card) ───────────────── */}
       {showWelcomeBack && (
-        <Card className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft" data-testid="welcome-back-card">
-          <CardContent className="p-5 md:p-4 flex items-start justify-between gap-4 md:gap-3">
+        <Card className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft shadow-acr-2" data-testid="welcome-back-card">
+          <CardContent className="p-6 md:p-5 flex items-start justify-between gap-4 md:gap-3">
             <div className="flex items-center gap-3 md:gap-2.5">
               <div className="p-2.5 md:p-2 rounded-card bg-acr-brand-soft shrink-0">
                 <RefreshCw className="w-5 h-5 md:w-4 md:h-4 text-acr-brand" aria-hidden="true" />
@@ -515,7 +693,7 @@ export default function TodayPage() {
           least one drive-mode lead captured in the last 14 days. */}
       {!showEmptyState && !todayError && showHeadingOut && (
         <Card
-          className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft mb-4"
+          className="rounded-card border-[color:var(--acr-brand)]/30 bg-acr-brand-soft shadow-acr-1 mb-4"
           data-testid="card-heading-out"
         >
           <CardContent className="p-4 md:p-3 flex items-start justify-between gap-3">
@@ -537,7 +715,7 @@ export default function TodayPage() {
               <Button
                 asChild
                 size="sm"
-                className="min-h-11 sm:min-h-9 md:h-8"
+                className="min-h-11 pointer-fine:sm:min-h-9 pointer-fine:md:h-8"
                 data-testid="button-heading-out-open"
               >
                 <Link href={DRIVE_MODE_ROUTE}>Open Drive Mode</Link>
@@ -546,7 +724,7 @@ export default function TodayPage() {
                 type="button"
                 onClick={dismissHeadingOut}
                 aria-label="Dismiss Heading out card for today"
-                className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 md:h-8 md:w-8 -mr-1 flex items-center justify-center rounded-full text-muted-foreground hover:bg-background/60 active:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-h-11 min-w-11 pointer-fine:sm:min-h-9 pointer-fine:sm:min-w-9 pointer-fine:md:h-8 pointer-fine:md:w-8 -mr-1 flex items-center justify-center rounded-full text-muted-foreground hover:bg-background/60 active:bg-background/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 data-testid="button-heading-out-dismiss"
               >
                 <XIcon className="w-4 h-4" aria-hidden="true" />
@@ -556,11 +734,18 @@ export default function TodayPage() {
         </Card>
       )}
 
-      {/* ── Morning brief (Chesky) ───────────────────────────────────── */}
-      {/* Replaces the autonomy slider in this slot. The slider was a
-          monthly-tune control; this is a daily one-paragraph read-out of
-          what happened overnight. The slider now lives at /settings/pax. */}
+      {/* ── Morning brief — collapsed queue preamble (Tier 3C) ───────── */}
+      {/* One-line disclosure directly above the queue, not a separate
+          destination. Expands in place; Pax controls live behind it. */}
       {!showEmptyState && !todayError && <MorningBrief brief={today?.brief ?? null} />}
+
+      {/* ── Receipts strip (Tier 3C) ─────────────────────────────────── */}
+      {/* Completed events since the last visit, each traceable to real
+          rows (pax_sends, completed payments). Renders nothing when there
+          are none — no padding. */}
+      {!showEmptyState && !todayError && (
+        <ReceiptsStrip receipts={today?.receipts ?? []} />
+      )}
 
       {/* ── Persona lede (Maren CPO #3 / Krieger UX) ─────────────────── */}
       {/* Each persona's own job, surfaced first: sourcing momentum (land),
@@ -586,6 +771,10 @@ export default function TodayPage() {
           autoThreshold={autoThreshold}
           onResolve={handleResolve}
           resolvingIds={resolvingIds}
+          clearedToday={today?.progress?.cleared ?? 0}
+          totalToday={today?.progress?.total ?? 0}
+          onClearAll={handleClearAll}
+          isClearing={clearQueue.isPending}
         />
       )}
 
@@ -606,6 +795,51 @@ export default function TodayPage() {
           pipeline, derived free from county records. Owns its own query
           + mark-read; behind the Today door per the five-doors rule. */}
       {!showEmptyState && !todayError && <ParcelAlerts />}
+
+      {/* ── Referral nudge (Tier 2C) ─────────────────────────────────── */}
+      {/* Post-first-value only (hasAnyData) and permanently dismissible.
+          Sits low on the page on purpose — it's a quiet suggestion, not
+          a banner competing with the operator's actual work. */}
+      {!showEmptyState && !todayError && hasAnyData && !referralNudgeDismissed && (
+        <Card className="rounded-card shadow-acr-1" data-testid="card-referral-nudge">
+          <CardContent className="p-4 md:p-3 flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 md:gap-2.5 min-w-0">
+              <div className="p-2 rounded-card bg-primary/10 shrink-0">
+                <Sparkles className="w-5 h-5 md:w-4 md:h-4 text-primary" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-semibold text-sm md:text-[13px] leading-snug">
+                  Working well?
+                </h3>
+                <p className="text-xs md:text-[11px] text-muted-foreground leading-snug">
+                  Refer another Land Investor — you both earn a free month
+                  when they close their first deal.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                asChild
+                size="sm"
+                variant="outline"
+                className="min-h-11 pointer-fine:sm:min-h-9 pointer-fine:md:h-8"
+                data-testid="button-referral-nudge-open"
+              >
+                <Link href="/settings?tab=account">Get your link</Link>
+              </Button>
+              <button
+                type="button"
+                onClick={dismissReferralNudge}
+                aria-label="Dismiss referral suggestion"
+                className="min-h-11 min-w-11 pointer-fine:sm:min-h-9 pointer-fine:sm:min-w-9 pointer-fine:md:h-8 pointer-fine:md:w-8 -mr-1 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                data-testid="button-referral-nudge-dismiss"
+              >
+                <XIcon className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Section 5: Activity feed ─────────────────────────────────── */}
       {/* Kept as a standalone component — it owns its own infinite-scroll

@@ -17,6 +17,15 @@
  * auto-generation from drizzle-zod would require a more invasive Zod
  * inference pass; this scaffold is the foundation the panel-300 backend-eng
  * category called for.
+ *
+ * T3-3E Phase 3 — the zod-backed contract layer (shared/contracts/) is now
+ * the SINGLE source of truth for the request/response shape of the first
+ * adopted endpoints. The two routes documented inline below (POST /api/leads,
+ * GET /api/properties) are the SAME endpoints codified there
+ * (shared/contracts/leads.ts, shared/contracts/properties.ts) so the OpenAPI
+ * doc and the runtime-validated contracts converge. As adoption grows
+ * (tracked by scripts/check-contract-adoption.mjs), prefer deriving these
+ * path entries from API_CONTRACTS over re-hand-curating them.
  */
 
 import type { Express, Request, Response } from "express";

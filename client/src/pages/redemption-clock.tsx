@@ -53,6 +53,8 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface Certificate {
   id: string;
@@ -100,13 +102,6 @@ function fmtUsd(cents: number): string {
     currency: "USD",
     maximumFractionDigits: 2,
   }).format(cents / 100);
-}
-
-function fmtDate(iso: string): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 function fmtPct(bps: number): string {
@@ -210,7 +205,7 @@ export default function RedemptionClockPage() {
       {/* Filters */}
       <div className="flex items-center gap-3 mb-6">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-44" data-testid="status-filter"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-44" aria-label="Filter by status" data-testid="status-filter"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="active">Active</SelectItem>
             <SelectItem value="redeemed">Redeemed</SelectItem>
@@ -223,6 +218,7 @@ export default function RedemptionClockPage() {
           className="w-32"
           maxLength={2}
           placeholder="State"
+          aria-label="Filter by state"
           value={stateFilter}
           onChange={(e) => setStateFilter(e.target.value.toUpperCase())}
         />
@@ -251,11 +247,11 @@ export default function RedemptionClockPage() {
           {certs.map((c) => {
             const tone =
               c.daysRemaining < 0
-                ? "border-rose-500/60"
+                ? "border-acr-neg"
                 : c.daysRemaining <= 7
-                  ? "border-rose-400/60"
+                  ? "border-acr-neg"
                   : c.daysRemaining <= 30
-                    ? "border-amber-400/60"
+                    ? "border-acr-warn"
                     : "";
             return (
               <Card
@@ -263,7 +259,13 @@ export default function RedemptionClockPage() {
                 role="button"
                 tabIndex={0}
                 onClick={() => navigate(`/redemption-clock/${c.id}`)}
-                className={`p-4 cursor-pointer active:bg-muted/50 ${tone}`}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/redemption-clock/${c.id}`);
+                  }
+                }}
+                className={`p-4 cursor-pointer active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${tone}`}
                 data-testid={`certificate-card-${c.id}`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -279,11 +281,11 @@ export default function RedemptionClockPage() {
                     <div
                       className={`text-2xl font-semibold tabular-nums ${
                         c.daysRemaining < 0
-                          ? "text-rose-600 dark:text-rose-400"
+                          ? "text-acr-neg"
                           : c.daysRemaining <= 7
-                            ? "text-rose-600 dark:text-rose-400"
+                            ? "text-acr-neg"
                             : c.daysRemaining <= 30
-                              ? "text-amber-600 dark:text-amber-400"
+                              ? "text-acr-warn"
                               : ""
                       }`}
                     >
@@ -299,14 +301,15 @@ export default function RedemptionClockPage() {
                     <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Deadline
                     </div>
-                    <div className="font-medium tabular-nums">{fmtDate(c.redemptionDeadline)}</div>
+                    <div className="font-medium tabular-nums">{formatDate(c.redemptionDeadline)}</div>
                   </div>
                   <div>
                     <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Rate
                     </div>
-                    <div className={`font-mono tabular-nums ${c.preliminary ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                    <div className={`font-mono tabular-nums ${c.preliminary ? "text-acr-warn" : ""}`}>
                       {fmtPct(c.appliedRateBps)}{c.preliminary && "*"}
+                      {c.preliminary && <span className="sr-only"> (preliminary rate — verify with the county clerk)</span>}
                     </div>
                   </div>
                   <div>
@@ -319,7 +322,7 @@ export default function RedemptionClockPage() {
                     <div className="text-micro uppercase tracking-wide text-muted-foreground">
                       Interest
                     </div>
-                    <div className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
+                    <div className="font-mono tabular-nums text-acr-pos">
                       +{fmtUsd(c.currentInterestCents)}
                     </div>
                   </div>
@@ -347,23 +350,30 @@ export default function RedemptionClockPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted-foreground bg-muted/30">
-                  <th className="px-3 py-2.5 text-left font-medium">Parcel</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Sale</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Deadline</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Days</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Principal</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Interest</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Total redemption</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Rate</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Status</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-medium">Parcel</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-medium">Sale</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-medium">Deadline</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Days</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Principal</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Interest</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Total redemption</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Rate</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {certs.map((c) => (
                   <tr
                     key={c.id}
-                    className="border-t border-border/40 hover:bg-accent/30 cursor-pointer"
+                    tabIndex={0}
+                    className="border-t border-border/40 hover:bg-accent/30 cursor-pointer focus-visible:outline-none focus-visible:bg-accent/30"
                     onClick={() => navigate(`/redemption-clock/${c.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(`/redemption-clock/${c.id}`);
+                      }
+                    }}
                     data-testid={`certificate-row-${c.id}`}
                   >
                     <td className="px-3 py-2.5">
@@ -371,10 +381,10 @@ export default function RedemptionClockPage() {
                       <div className="text-xs text-muted-foreground font-mono">{c.apn}</div>
                     </td>
                     <td className="px-3 py-2.5 text-xs">
-                      <div>{fmtDate(c.saleDate)}</div>
+                      <div>{formatDate(c.saleDate)}</div>
                       <div className="text-muted-foreground capitalize">{c.saleType.replace("_", " ")}</div>
                     </td>
-                    <td className="px-3 py-2.5 text-xs">{fmtDate(c.redemptionDeadline)}</td>
+                    <td className="px-3 py-2.5 text-xs">{formatDate(c.redemptionDeadline)}</td>
                     <td className={`px-3 py-2.5 text-right text-xs ${dayCellTone(c.daysRemaining)}`}>
                       {c.daysRemaining < 0 ? `${Math.abs(c.daysRemaining)} overdue` : `${c.daysRemaining}`}
                     </td>
@@ -385,7 +395,11 @@ export default function RedemptionClockPage() {
                       <span className={c.preliminary ? "text-acr-warning" : ""}>
                         {fmtPct(c.appliedRateBps)}
                       </span>
-                      {c.preliminary && <span className="ml-0.5">*</span>}
+                      {c.preliminary && (
+                        <span className="ml-0.5">
+                          *<span className="sr-only"> (preliminary rate — verify with the county clerk)</span>
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-xs">
                       <span className="capitalize">{STATUS_LABELS[c.status]}</span>
@@ -554,7 +568,7 @@ function CreateCertificateDialog({ open, onOpenChange }: { open: boolean; onOpen
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>Cancel</Button>
+          <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>{Verbs.CANCEL}</Button>
           <Button
             onClick={() => submit.mutate()}
             disabled={!state || !county || !apn || !saleDate || !purchase || submit.isPending}

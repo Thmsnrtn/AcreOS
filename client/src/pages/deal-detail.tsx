@@ -130,7 +130,7 @@ export default function DealDetailPage() {
   return (
     <PageShell>
       <BackToDeals />
-      <div className="rounded-xl border bg-background overflow-hidden">
+      <div className="rounded-card border bg-card shadow-acr-2 overflow-hidden">
         <DealDetailContent
           deal={dealWithProperty}
           onDelete={() => setShowDelete(true)}

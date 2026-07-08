@@ -8,8 +8,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  CheckCircle2, XCircle, AlertCircle, ShieldCheck, Loader2,
+  CheckCircle2, XCircle, AlertCircle, ShieldCheck,
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 
@@ -187,7 +189,14 @@ export default function SafetyGatesPage() {
   const dealSelectId = useId();
   const [selectedDealId, setSelectedDealId] = useState<string>("");
 
-  const { data: deals = [], isLoading: dealsLoading } = useQuery<Deal[]>({
+  const {
+    data: deals = [],
+    isLoading: dealsLoading,
+    isError: dealsError,
+    error: dealsErrorObj,
+    refetch: refetchDeals,
+    isRefetching: dealsRefetching,
+  } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
     queryFn: async () => {
       const r = await fetch("/api/deals", { credentials: "include" });
@@ -228,6 +237,18 @@ export default function SafetyGatesPage() {
           </p>
         </div>
 
+        {dealsError && (
+          <QueryErrorState
+            error={dealsErrorObj instanceof Error ? dealsErrorObj : null}
+            onRetry={() => refetchDeals()}
+            isRetrying={dealsRefetching}
+            compact
+            title="Couldn't load your deals"
+            description="We hit a snag loading the deals to check. Your data is safe — try again."
+            testId="safety-gates-query-error"
+          />
+        )}
+
         <div className="max-w-sm">
           <Label htmlFor={dealSelectId} className="sr-only">Select a deal to check</Label>
           <Select value={selectedDealId} onValueChange={setSelectedDealId}>
@@ -255,10 +276,7 @@ export default function SafetyGatesPage() {
               <CardTitle className="text-base flex items-center justify-between gap-2 flex-wrap">
                 <span>Gates for Deal #<span className="tabular-nums">{selectedDeal.id}</span></span>
                 {propLoading ? (
-                  <span role="status" aria-live="polite">
-                    <span className="sr-only">Loading property data…</span>
-                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" aria-hidden="true" />
-                  </span>
+                  <Skeleton announceText="Loading property data…" className="h-4 w-36" />
                 ) : (
                   <span
                     className={`text-sm font-normal tabular-nums ${

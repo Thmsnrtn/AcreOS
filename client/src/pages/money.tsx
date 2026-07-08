@@ -7,33 +7,38 @@ import {
   PieChart,
   TrendingUp,
   BarChart3,
-  Landmark,
   Upload,
 } from "lucide-react";
 // All embedded pages are lazy-loaded so opening /money doesn't ship the
-// entire FinancePage (1,824 LOC) + PortfolioPage / Optimizer / CashFlow /
-// CapitalMarkets bundle. The active tab loads on mount; siblings load on
-// click via Suspense fallback.
+// entire FinancePage (1,824 LOC) + PortfolioPage / Optimizer / CashFlow
+// bundle. The active tab loads on mount; siblings load on click via
+// Suspense fallback.
 import { NotesImportDialog } from "@/components/notes-import-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const FinancePage = lazy(() => import("@/pages/finance"));
 const PortfolioOptimizerPage = lazy(() => import("@/pages/portfolio-optimizer"));
 const CashFlowPage = lazy(() => import("@/pages/cash-flow"));
-const CapitalMarketsPage = lazy(() => import("@/pages/capital-markets"));
 const PortfolioPage = lazy(() => import("@/pages/portfolio"));
 
 // Tab values now MATCH their labels (and their mounted content). Previously
 // the labels were swapped to match content while the values were left stale,
 // so a deep link to #portfolio opened the Optimizer. Old hashes are migrated
 // in getTabFromHash so existing links/bookmarks still land correctly.
-type TabValue = "notes" | "portfolio" | "optimizer" | "forecast" | "capital";
+type TabValue = "notes" | "portfolio" | "optimizer" | "forecast";
 
-const TAB_VALUES: TabValue[] = ["notes", "portfolio", "optimizer", "forecast", "capital"];
+// "capital" removed 2026-07-07 (deletion ledger): the Capital tab rendered
+// unconditionally while /api/capital-markets is gated off — an erroring
+// panel for every non-founder. The page stays FROZEN behind the
+// feature_capital_markets flag at /capital-markets; restore the tab when
+// note securitization is a real revenue line (H4).
+const TAB_VALUES: TabValue[] = ["notes", "portfolio", "optimizer", "forecast"];
 
 // Legacy hash → current value. The old "finance" value rendered the Portfolio
-// page; map it forward so bookmarks don't break.
-const LEGACY_HASH: Record<string, TabValue> = { finance: "portfolio" };
+// page; map it forward so bookmarks don't break. "capital" maps to the door
+// default since its tab was removed (see TAB_VALUES note above).
+const LEGACY_HASH: Record<string, TabValue> = { finance: "portfolio", capital: "notes" };
 
 function getTabFromHash(): TabValue {
   const raw = window.location.hash.replace("#", "");
@@ -46,10 +51,10 @@ function TabFallback() {
     <div className="space-y-4 py-4" role="status" aria-live="polite">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-24 rounded-card bg-muted/40 animate-pulse" />
+          <Skeleton key={i} className="h-24 rounded-card" announce={false} />
         ))}
       </div>
-      <div className="h-40 rounded-card bg-muted/30 animate-pulse" />
+      <Skeleton className="h-40 rounded-card" announce={false} />
       <span className="sr-only">Loading Finance…</span>
     </div>
   );
@@ -78,6 +83,12 @@ export default function FinancePageShell() {
 
   return (
     <PageShell>
+      {/* §2.3 generous editorial rhythm: the door header→content gap steps up to
+          the bold mb-8 (32px). The `.acr-cc-hero*` editorial wrapper is NOT used
+          here — those classes live only in page-scoped today.css, which this lazy
+          door shell does not import; the global `.acr-cc-greeting` H1 below already
+          carries the Fraunces editorial identity (index.css). Visible copy and the
+          activeTab-gated Import button are unchanged. */}
       <div className="flex items-start justify-between gap-4">
         <div>
           {/* §1.3: dual class + Tailwind utility for the page H1. */}
@@ -97,27 +108,26 @@ export default function FinancePageShell() {
       </div>
       <NotesImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-money">
-        <TabsList className="w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-money">
-          <TabsTrigger value="notes" className="flex items-center gap-2 min-w-max" data-testid="tab-notes">
+      {/* §2.3 generous editorial rhythm: the door's tab section stack steps up
+          from space-y-6 to the bold space-y-8 (32px), matching the PageShell
+          default. Layout-only. */}
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-8" data-testid="tabs-money">
+        <TabsList className="h-12 w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-money">
+          <TabsTrigger value="notes" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-notes">
             <Banknote className="h-4 w-4" aria-hidden="true" />
             <span>Notes</span>
           </TabsTrigger>
-          <TabsTrigger value="portfolio" className="flex items-center gap-2 min-w-max" data-testid="tab-portfolio">
+          <TabsTrigger value="portfolio" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-portfolio">
             <PieChart className="h-4 w-4" aria-hidden="true" />
             <span>Portfolio</span>
           </TabsTrigger>
-          <TabsTrigger value="optimizer" className="flex items-center gap-2 min-w-max" data-testid="tab-optimizer">
+          <TabsTrigger value="optimizer" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-optimizer">
             <BarChart3 className="h-4 w-4" aria-hidden="true" />
             <span>Optimizer</span>
           </TabsTrigger>
-          <TabsTrigger value="forecast" className="flex items-center gap-2 min-w-max" data-testid="tab-forecast">
+          <TabsTrigger value="forecast" className="flex min-h-11 items-center gap-2 min-w-max" data-testid="tab-forecast">
             <TrendingUp className="h-4 w-4" aria-hidden="true" />
             <span>Forecast</span>
-          </TabsTrigger>
-          <TabsTrigger value="capital" className="flex items-center gap-2 min-w-max" data-testid="tab-capital">
-            <Landmark className="h-4 w-4" aria-hidden="true" />
-            <span>Capital</span>
           </TabsTrigger>
         </TabsList>
 
@@ -145,12 +155,6 @@ export default function FinancePageShell() {
         <TabsContent value="forecast" data-testid="tab-content-forecast">
           <Suspense fallback={<TabFallback />}>
             <CashFlowPage />
-          </Suspense>
-        </TabsContent>
-
-        <TabsContent value="capital" data-testid="tab-content-capital">
-          <Suspense fallback={<TabFallback />}>
-            <CapitalMarketsPage />
           </Suspense>
         </TabsContent>
       </Tabs>

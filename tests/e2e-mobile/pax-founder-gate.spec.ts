@@ -8,9 +8,12 @@
  *   - the "AI Ops" tab (founder-only operational tooling)
  * They DO see "Assistant" (Chat) and "Tasks".
  *
- * The E2E test-auth bypass seeds user `e2e@acreos.test`, which is NOT a
- * founder email (the workflow does not set FOUNDER_EMAIL / FOUNDER_EMAILS),
- * so this spec inherently runs as a customer / non-founder session.
+ * The test-auth bypass seeds TWO identities (tests/e2e-mobile/global-setup.ts):
+ * the customer `e2e@acreos.test` and the founder `founder-e2e@acreos.test`.
+ * The workflow's FOUNDER_EMAIL/FOUNDER_EMAILS names the founder email ONLY,
+ * and the bypass selects identity by `__session` cookie value — "e2e-founder"
+ * = founder, anything else = customer (server/auth/testAuth.ts). This spec
+ * seeds value "e2e", so it runs as a genuine non-founder customer session.
  *
  * What we assert:
  *   1. /ai renders (no auth bounce, no error fallback).
@@ -42,11 +45,32 @@ const CODENAMES_THAT_MUST_NOT_LEAK = [
   "Atlas",
 ];
 
-const IGNORED_PAGE_ERRORS = [/Clerk/i, /clerk\.browser\.js/i, /failed to load/i, /ResizeObserver/i];
+const IGNORED_PAGE_ERRORS = [
+  /Clerk/i,
+  /clerk\.browser\.js/i,
+  /failed to load/i,
+  /ResizeObserver/i,
+  // WebKit-in-CI fetch-abort noise: WebKit reports aborted same-origin
+  // fetches (page teardown / rapid nav) as "…due to access control checks."
+  // while the server log shows the request completed 200. Not a CORS or
+  // app bug — same rationale as customer-surface-journeys.spec.ts.
+  /due to access control checks/i,
+  /\bsw\.js\b/i,
+];
 
 async function seedSessionCookie(page: Page, baseURL: string) {
   const { hostname } = new URL(baseURL);
   await page.context().addCookies([{ name: "__session", value: "e2e", domain: hostname, path: "/" }]);
+  // Returning-user consent state — keeps the first-visit cookie banner
+  // (fixed z-40 over the bottom strip) from intercepting taps. Same
+  // rationale + incident as customer-surface-journeys.spec.ts.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("acreos_cookie_consent", "declined");
+    } catch {
+      /* storage unavailable — banner shows, test degrades visibly */
+    }
+  });
 }
 
 async function waitForRoot(page: Page) {

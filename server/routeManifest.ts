@@ -1,0 +1,342 @@
+/**
+ * Route Manifest — descriptive truth for server route-file mounting (T3-3E Phase 2).
+ *
+ * This file DESCRIBES, it does not MOUNT. The single source of truth for *how*
+ * routes attach to Express remains `registerRoutes()` in `server/routes.ts`
+ * (plus the `/.well-known/*` handlers wired from `server/index.ts`). This
+ * manifest is a structural mirror of that reality so an orphan-detection test
+ * can guarantee every `server/routes-*.ts` is either mounted (and listed here)
+ * or explicitly allowlisted as non-mounted.
+ *
+ * DO NOT wire mounting off this manifest — that would reorder middleware, which
+ * is on the do-not-touch list. Keep it purely descriptive.
+ *
+ * Three mounting conventions are represented:
+ *   - "router":   default-export Express Router mounted via `app.use(path, router)`
+ *                 (static import OR dynamic `(await import(...)).default`).
+ *   - "register": a `registerXRoutes(app)` function that attaches handlers itself
+ *                 (no single literal mountPath — handlers define their own paths).
+ *   - "default":  reserved for a default-export router mounted without a clean
+ *                 literal mount path. (None at present; kept for forward use.)
+ *
+ * `mountPath` is the literal first arg of the `app.use(...)` mount for routers;
+ * `null` for register-style files (which mount many paths internally) and for
+ * any router whose mount path is not a single literal.
+ *
+ * When you add/remove a route file: update this manifest in the same commit.
+ * `tests/unit/routeManifest.test.ts` fails on any drift.
+ */
+
+export interface RouteManifestEntry {
+  /** Basename of the route file under `server/`, including `.ts`. */
+  file: string;
+  /** Literal mount path for "router" entries; `null` for register-style. */
+  mountPath: string | null;
+  /** Which of the three mounting conventions this file uses. */
+  kind: "router" | "register" | "default";
+  /** The export consumed by the mount (`"default"` or the register fn name). */
+  export: string;
+}
+
+/**
+ * Every server/routes-*.ts that is CURRENTLY MOUNTED, in sorted file order.
+ * Sourced from a structural read of server/routes.ts + server/index.ts.
+ * Mounted count is asserted in the test against the on-disk file set minus
+ * KNOWN_NON_MOUNTED.
+ */
+export const ROUTE_MANIFEST: RouteManifestEntry[] = [
+  { file: "routes-ab-tests.ts", mountPath: "/api/ab-tests", kind: "router", export: "default" },
+  { file: "routes-account-security.ts", mountPath: null, kind: "register", export: "registerAccountSecurityRoutes" },
+  { file: "routes-accounting.ts", mountPath: "/api/accounting", kind: "router", export: "default" },
+  { file: "routes-acquisition-radar.ts", mountPath: "/api/radar", kind: "router", export: "default" },
+  { file: "routes-acquisition-utm.ts", mountPath: "/api/me/acquisition-utm", kind: "router", export: "default" },
+  { file: "routes-activation.ts", mountPath: null, kind: "register", export: "registerActivationRoutes" },
+  { file: "routes-admin.ts", mountPath: null, kind: "register", export: "registerAdminRoutes" },
+  { file: "routes-admin-audit.ts", mountPath: null, kind: "register", export: "registerAdminAuditLogRoutes" },
+  { file: "routes-admin-compliance.ts", mountPath: null, kind: "register", export: "registerAdminComplianceRoutes" },
+  { file: "routes-admin-finance.ts", mountPath: "/api/admin/finance", kind: "router", export: "default" },
+  { file: "routes-admin-recovery.ts", mountPath: null, kind: "register", export: "registerAdminRecoveryRoutes" },
+  { file: "routes-agent-claims.ts", mountPath: null, kind: "register", export: "registerAgentClaimsRoutes" },
+  { file: "routes-agent-prereqs.ts", mountPath: null, kind: "register", export: "registerAgentPrereqsRoute" },
+  { file: "routes-ai.ts", mountPath: null, kind: "register", export: "registerAIRoutes" },
+  { file: "routes-ai-cost.ts", mountPath: null, kind: "register", export: "registerAiCostRoutes" },
+  { file: "routes-ai-disclosure.ts", mountPath: "/api/me/ai-disclosure", kind: "router", export: "default" },
+  { file: "routes-ai-draft.ts", mountPath: "/api/ai", kind: "router", export: "default" },
+  { file: "routes-ai-operations.ts", mountPath: null, kind: "register", export: "registerAIOperationsRoutes" },
+  { file: "routes-analytics.ts", mountPath: null, kind: "register", export: "registerAnalyticsRoutes" },
+  { file: "routes-api-contract.ts", mountPath: null, kind: "register", export: "registerApiVersionHeader" },
+  { file: "routes-api-docs.ts", mountPath: null, kind: "register", export: "registerApiDocsApp" },
+  { file: "routes-arv.ts", mountPath: null, kind: "register", export: "registerArvRoutes" },
+  { file: "routes-autonomous-agent.ts", mountPath: null, kind: "register", export: "registerAutonomousAgentRoutes" },
+  { file: "routes-autonomy.ts", mountPath: "/api/me/autonomy", kind: "router", export: "default" },
+  { file: "routes-autopilot.ts", mountPath: null, kind: "register", export: "registerAutopilotRoutes" },
+  { file: "routes-avm.ts", mountPath: "/api/avm", kind: "router", export: "default" },
+  { file: "routes-beatrice-regwatch.ts", mountPath: null, kind: "register", export: "registerBeatriceRegWatchRoutes" },
+  { file: "routes-beta.ts", mountPath: "/api/beta", kind: "router", export: "default" },
+  { file: "routes-bid-estimates.ts", mountPath: null, kind: "register", export: "registerBidEstimateRoutes" },
+  { file: "routes-billing.ts", mountPath: null, kind: "register", export: "registerBillingRoutes" },
+  { file: "routes-bookkeeping.ts", mountPath: "/api/bookkeeping", kind: "router", export: "default" },
+  { file: "routes-borrower.ts", mountPath: null, kind: "register", export: "registerBorrowerRoutes" },
+  { file: "routes-bulk.ts", mountPath: "/api/bulk", kind: "router", export: "default" },
+  { file: "routes-buyer-analytics.ts", mountPath: null, kind: "register", export: "registerBuyerAnalyticsRoutes" },
+  { file: "routes-buyer-blasts.ts", mountPath: null, kind: "register", export: "registerBuyerBlastRoutes" },
+  { file: "routes-buyer-network.ts", mountPath: "/api/buyer-network", kind: "router", export: "default" },
+  { file: "routes-buyer-qualification.ts", mountPath: "/api/buyer-qualification", kind: "router", export: "default" },
+  { file: "routes-byok.ts", mountPath: "/api/byok", kind: "router", export: "default" },
+  { file: "routes-call-routing.ts", mountPath: "/api/call-routing", kind: "router", export: "default" },
+  { file: "routes-campaigns.ts", mountPath: null, kind: "register", export: "registerCampaignRoutes" },
+  { file: "routes-capital-markets.ts", mountPath: "/api/capital-markets", kind: "router", export: "default" },
+  { file: "routes-cash-flow.ts", mountPath: "/api/cash-flow", kind: "router", export: "default" },
+  { file: "routes-ccr-templates.ts", mountPath: null, kind: "register", export: "registerCcrTemplateRoutes" },
+  { file: "routes-certification.ts", mountPath: "/api/certification", kind: "router", export: "default" },
+  { file: "routes-closing.ts", mountPath: null, kind: "register", export: "registerClosingRoutes" },
+  { file: "routes-cmo.ts", mountPath: null, kind: "register", export: "registerCmoRoutes" },
+  // Platform Connections — native connect-an-account infra (encrypted
+  // founder-entered credentials, DB-first/env-fallback, OAuth prewire).
+  { file: "routes-connections.ts", mountPath: null, kind: "register", export: "registerConnectionsRoutes" },
+  { file: "routes-cohort-analysis.ts", mountPath: "/api/analytics/cohorts", kind: "router", export: "default" },
+  { file: "routes-cohort-ltv.ts", mountPath: null, kind: "register", export: "registerCohortLtvRoutes" },
+  { file: "routes-cohort-retention.ts", mountPath: null, kind: "register", export: "registerCohortRetentionRoutes" },
+  { file: "routes-comments.ts", mountPath: "/api/comments", kind: "router", export: "default" },
+  { file: "routes-commissions.ts", mountPath: "/api/commissions", kind: "router", export: "default" },
+  { file: "routes-communications.ts", mountPath: null, kind: "register", export: "registerCommunicationRoutes" },
+  { file: "routes-compliance.ts", mountPath: "/api/compliance", kind: "router", export: "default" },
+  { file: "routes-construction-draws.ts", mountPath: null, kind: "register", export: "registerConstructionDrawRoutes" },
+  { file: "routes-contractors.ts", mountPath: null, kind: "register", export: "registerContractorRoutes" },
+  { file: "routes-core-ai.ts", mountPath: null, kind: "register", export: "registerCoreAIRoutes" },
+  { file: "routes-cost-optimizer.ts", mountPath: null, kind: "register", export: "registerCostOptimizerRoutes" },
+  { file: "routes-county-coverage.ts", mountPath: null, kind: "register", export: "registerCountyCoverageRoutes" },
+  { file: "routes-county-timelines.ts", mountPath: null, kind: "register", export: "registerCountyTimelineRoutes" },
+  { file: "routes-crm-extras.ts", mountPath: null, kind: "register", export: "registerCRMExtrasRoutes" },
+  { file: "routes-customer-audit.ts", mountPath: null, kind: "register", export: "registerCustomerAuditRoutes" },
+  { file: "routes-customer-health.ts", mountPath: null, kind: "register", export: "registerCustomerHealthRoutes" },
+  { file: "routes-customer-letter.ts", mountPath: "/api/my-letter", kind: "router", export: "default" },
+  { file: "routes-dashboard.ts", mountPath: null, kind: "register", export: "registerDashboardRoutes" },
+  { file: "routes-data-api.ts", mountPath: "/api/data-api", kind: "router", export: "default" },
+  { file: "routes-data-intelligence.ts", mountPath: "/api/data-intel", kind: "router", export: "default" },
+  { file: "routes-data-sources.ts", mountPath: null, kind: "register", export: "registerDataSourcesRoutes" },
+  { file: "routes-deal-feed.ts", mountPath: "/api/deal-feed", kind: "router", export: "default" },
+  { file: "routes-deal-patterns.ts", mountPath: "/api/deal-patterns", kind: "router", export: "default" },
+  { file: "routes-deal-rooms.ts", mountPath: null, kind: "register", export: "registerPublicDealRoomRoute" },
+  { file: "routes-deal-underwriting.ts", mountPath: "/api/deal-underwriting", kind: "router", export: "default" },
+  { file: "routes-deals.ts", mountPath: null, kind: "register", export: "registerDealRoutes" },
+  { file: "routes-deliverability.ts", mountPath: null, kind: "register", export: "registerDeliverabilityRoutes" },
+  { file: "routes-dispatch.ts", mountPath: null, kind: "register", export: "registerDispatchRoutes" },
+  { file: "routes-disposition.ts", mountPath: "/api/disposition", kind: "router", export: "default" },
+  { file: "routes-doc-system.ts", mountPath: null, kind: "register", export: "registerDocSystemRoutes" },
+  { file: "routes-document-intelligence.ts", mountPath: "/api/document-intelligence", kind: "router", export: "default" },
+  { file: "routes-documents.ts", mountPath: null, kind: "register", export: "registerDocumentRoutes" },
+  { file: "routes-dodd-frank.ts", mountPath: "/api/dodd-frank", kind: "router", export: "default" },
+  { file: "routes-double-close.ts", mountPath: null, kind: "register", export: "registerDoubleCloseRoutes" },
+  { file: "routes-dsar.ts", mountPath: null, kind: "register", export: "registerDsarRoutes" },
+  { file: "routes-due-diligence.ts", mountPath: "/api/due-diligence", kind: "router", export: "default" },
+  { file: "routes-dunning.ts", mountPath: "/api/dunning", kind: "router", export: "default" },
+  { file: "routes-earnest-money.ts", mountPath: null, kind: "register", export: "registerEarnestMoneyRoutes" },
+  { file: "routes-eddm.ts", mountPath: null, kind: "register", export: "registerEddmRoutes" },
+  { file: "routes-elite-features.ts", mountPath: null, kind: "register", export: "registerEliteFeatureRoutes" },
+  { file: "routes-enhancements.ts", mountPath: null, kind: "register", export: "registerEnhancementRoutes" },
+  { file: "routes-epic-services.ts", mountPath: "/api", kind: "router", export: "default" },
+  { file: "routes-error-boundary.ts", mountPath: null, kind: "register", export: "registerErrorBoundaryRoutes" },
+  { file: "routes-error-boundary-aggregator.ts", mountPath: null, kind: "register", export: "registerErrorBoundaryAggregatorRoutes" },
+  { file: "routes-error-budget.ts", mountPath: null, kind: "register", export: "registerErrorBudgetRoute" },
+  { file: "routes-etl.ts", mountPath: null, kind: "register", export: "registerEtlRoutes" },
+  { file: "routes-eval.ts", mountPath: "/api/eval", kind: "router", export: "default" },
+  { file: "routes-exchange-1031.ts", mountPath: "/api/exchange-1031", kind: "router", export: "default" },
+  { file: "routes-external-watch.ts", mountPath: null, kind: "register", export: "registerExternalWatchRoutes" },
+  { file: "routes-feature-flags.ts", mountPath: "/api/feature-flags", kind: "router", export: "default" },
+  { file: "routes-feedback.ts", mountPath: null, kind: "register", export: "registerFeedbackRoutes" },
+  { file: "routes-field-scout.ts", mountPath: "/api", kind: "router", export: "default" },
+  { file: "routes-finance.ts", mountPath: null, kind: "register", export: "registerFinanceRoutes" },
+  { file: "routes-finance-ledger.ts", mountPath: "/api/founder/finance", kind: "router", export: "default" },
+  { file: "routes-founder-anticipatory-enterprise.ts", mountPath: null, kind: "register", export: "registerFounderV11Routes" },
+  { file: "routes-founder-appeals.ts", mountPath: null, kind: "register", export: "registerFounderAppealRoutes" },
+  { file: "routes-founder-audit.ts", mountPath: null, kind: "register", export: "registerFounderAuditRoutes" },
+  { file: "routes-founder-bridge.ts", mountPath: "/api/founder/bridge", kind: "router", export: "default" },
+  { file: "routes-founder-bypass.ts", mountPath: null, kind: "register", export: "registerFounderBypassRoutes" },
+  { file: "routes-founder-chat.ts", mountPath: null, kind: "register", export: "registerFounderChatRoutes" },
+  { file: "routes-founder-cockpit.ts", mountPath: "/api/founder/cockpit", kind: "router", export: "default" },
+  { file: "routes-founder-collab.ts", mountPath: null, kind: "register", export: "registerFounderCollabRoutes" },
+  { file: "routes-founder-compliance.ts", mountPath: null, kind: "register", export: "registerFounderComplianceRoutes" },
+  { file: "routes-founder-conscious-organization.ts", mountPath: null, kind: "register", export: "registerFounderV10Routes" },
+  { file: "routes-founder-cost.ts", mountPath: null, kind: "register", export: "registerFounderCostRoutes" },
+  { file: "routes-founder-coverage.ts", mountPath: null, kind: "register", export: "registerFounderCoverageRoutes" },
+  { file: "routes-founder-critical-alerts.ts", mountPath: "/api/founder/critical-alerts", kind: "router", export: "default" },
+  { file: "routes-founder-customers.ts", mountPath: null, kind: "register", export: "registerFounderCustomersRoutes" },
+  { file: "routes-founder-dlq.ts", mountPath: null, kind: "register", export: "registerFounderDlqRoutes" },
+  { file: "routes-founder-financials.ts", mountPath: null, kind: "register", export: "registerFounderFinancialsRoutes" },
+  { file: "routes-founder-graduation.ts", mountPath: "/api/founder/graduation", kind: "router", export: "default" },
+  { file: "routes-founder-inspector.ts", mountPath: null, kind: "register", export: "registerFounderInspectorRoutes" },
+  { file: "routes-founder-inspector-finance.ts", mountPath: null, kind: "register", export: "registerFounderInspectorFinanceRoutes" },
+  { file: "routes-founder-integrations.ts", mountPath: null, kind: "register", export: "registerFounderIntegrationsRoutes" },
+  { file: "routes-founder-intelligence.ts", mountPath: "/api/founder/intelligence", kind: "router", export: "default" },
+  { file: "routes-founder-learning-company.ts", mountPath: null, kind: "register", export: "registerFounderV7Routes" },
+  { file: "routes-founder-letters.ts", mountPath: null, kind: "register", export: "registerFounderLetterRoutes" },
+  { file: "routes-founder-life-cockpit.ts", mountPath: null, kind: "register", export: "registerFounderLifeCockpitRoutes" },
+  { file: "routes-founder-living-organization.ts", mountPath: null, kind: "register", export: "registerFounderV8Routes" },
+  { file: "routes-founder-market-reports.ts", mountPath: null, kind: "register", export: "registerFounderMarketReportRoutes" },
+  { file: "routes-founder-money.ts", mountPath: null, kind: "register", export: "registerFounderMoneyRoutes" },
+  { file: "routes-founder-now.ts", mountPath: "/api/founder/now", kind: "router", export: "default" },
+  { file: "routes-founder-paid-data-eval.ts", mountPath: null, kind: "register", export: "registerFounderPaidDataEvalRoutes" },
+  { file: "routes-founder-pulse.ts", mountPath: null, kind: "register", export: "registerFounderPulseRoutes" },
+  { file: "routes-founder-real-runtime.ts", mountPath: null, kind: "register", export: "registerFounderV12Routes" },
+  { file: "routes-founder-recourse.ts", mountPath: null, kind: "register", export: "registerFounderRecourseRoutes" },
+  { file: "routes-founder-self-running-company.ts", mountPath: null, kind: "register", export: "registerFounderV14Routes" },
+  { file: "routes-founder-sentient-enterprise.ts", mountPath: null, kind: "register", export: "registerFounderV13Routes" },
+  { file: "routes-founder-sovereign-company.ts", mountPath: null, kind: "register", export: "registerFounderV6Routes" },
+  { file: "routes-founder-studio.ts", mountPath: null, kind: "register", export: "registerFounderStudioRoutes" },
+  { file: "routes-founder-studio-dials.ts", mountPath: null, kind: "register", export: "registerFounderStudioDialRoutes" },
+  { file: "routes-founder-vendor-status.ts", mountPath: "/api/founder/vendor-status", kind: "router", export: "default" },
+  { file: "routes-gdpr.ts", mountPath: "/api/privacy", kind: "router", export: "default" },
+  { file: "routes-import-export.ts", mountPath: null, kind: "register", export: "registerImportExportRoutes" },
+  { file: "routes-inbound-email.ts", mountPath: null, kind: "register", export: "registerInboundEmailRoutes" },
+  { file: "routes-incidents.ts", mountPath: null, kind: "register", export: "registerIncidentRoutes" },
+  { file: "routes-integrations.ts", mountPath: null, kind: "register", export: "registerIntegrationRoutes" },
+  { file: "routes-investor-analytics.ts", mountPath: null, kind: "register", export: "registerInvestorAnalyticsRoutes" },
+  { file: "routes-investor-verification.ts", mountPath: "/api/investor-verification", kind: "router", export: "default" },
+  { file: "routes-iris-perf.ts", mountPath: null, kind: "register", export: "registerIrisPerfRoutes" },
+  { file: "routes-job-health.ts", mountPath: null, kind: "register", export: "registerJobHealthRoutes" },
+  { file: "routes-kb.ts", mountPath: null, kind: "register", export: "registerKnowledgeBaseRoutes" },
+  { file: "routes-kpis.ts", mountPath: "/api/kpis", kind: "router", export: "default" },
+  { file: "routes-land-credit.ts", mountPath: "/api/land-credit", kind: "router", export: "default" },
+  { file: "routes-lead-enrichment.ts", mountPath: "/api/leads", kind: "router", export: "default" },
+  { file: "routes-leads.ts", mountPath: null, kind: "register", export: "registerLeadRoutes" },
+  { file: "routes-legal-holds.ts", mountPath: null, kind: "register", export: "registerLegalHoldRoutes" },
+  { file: "routes-lifecycle.ts", mountPath: null, kind: "register", export: "registerLifecycleRoutes" },
+  { file: "routes-lot-basis.ts", mountPath: null, kind: "register", export: "registerLotBasisRoutes" },
+  { file: "routes-lot-pricing.ts", mountPath: null, kind: "register", export: "registerLotPricingRoutes" },
+  { file: "routes-maintenance-tickets.ts", mountPath: null, kind: "register", export: "registerMaintenanceTicketRoutes" },
+  { file: "routes-market-heat.ts", mountPath: null, kind: "register", export: "registerMarketHeatRoutes" },
+  { file: "routes-market-intelligence.ts", mountPath: "/api/market-intelligence", kind: "router", export: "default" },
+  { file: "routes-market-watchlist.ts", mountPath: "/api/market/watchlist", kind: "router", export: "default" },
+  { file: "routes-marketing-touch.ts", mountPath: null, kind: "register", export: "registerMarketingTouchRoutes" },
+  { file: "routes-marketplace.ts", mountPath: "/api/marketplace", kind: "router", export: "default" },
+  { file: "routes-matching.ts", mountPath: "/api/matching", kind: "router", export: "default" },
+  { file: "routes-metrics.ts", mountPath: "/api/metrics", kind: "router", export: "default" },
+  { file: "routes-micro-features.ts", mountPath: null, kind: "register", export: "registerMicroFeatureRoutes" },
+  { file: "routes-misc.ts", mountPath: null, kind: "register", export: "registerMiscRoutes" },
+  { file: "routes-ml-snapshots.ts", mountPath: null, kind: "register", export: "registerMlSnapshotsRoutes" },
+  { file: "routes-morning-pulse.ts", mountPath: null, kind: "register", export: "registerMorningPulseRoutes" },
+  { file: "routes-move-inspections.ts", mountPath: null, kind: "register", export: "registerMoveInspectionRoutes" },
+  { file: "routes-needs-onboarding.ts", mountPath: "/api/me/needs-onboarding", kind: "router", export: "default" },
+  { file: "routes-negotiation.ts", mountPath: "/api/negotiation", kind: "router", export: "default" },
+  { file: "routes-night-cap.ts", mountPath: "/api/night-cap", kind: "router", export: "default" },
+  { file: "routes-note-acquisitions.ts", mountPath: null, kind: "register", export: "registerNoteAcquisitionRoutes" },
+  { file: "routes-notes.ts", mountPath: null, kind: "register", export: "registerNoteRoutes" },
+  { file: "routes-notifications.ts", mountPath: "/api/notifications", kind: "router", export: "default" },
+  { file: "routes-observability-cost.ts", mountPath: null, kind: "register", export: "registerObservabilityCostRoutes" },
+  { file: "routes-onboarding.ts", mountPath: "/api/onboarding", kind: "router", export: "default" },
+  { file: "routes-onboarding-funnel.ts", mountPath: null, kind: "register", export: "registerOnboardingFunnelRoutes" },
+  { file: "routes-organization.ts", mountPath: null, kind: "register", export: "registerOrganizationRoutes" },
+  { file: "routes-outreach-mail.ts", mountPath: null, kind: "register", export: "registerOutreachMailRoutes" },
+  { file: "routes-parcel-alerts.ts", mountPath: "/api/parcel-alerts", kind: "router", export: "default" },
+  { file: "routes-parcel-biography.ts", mountPath: "/api/parcel-biography", kind: "router", export: "default" },
+  { file: "routes-pax-appeals.ts", mountPath: null, kind: "register", export: "registerPaxAppealRoutes" },
+  { file: "routes-pax-audit.ts", mountPath: null, kind: "register", export: "registerPaxAuditRoutes" },
+  { file: "routes-pax-calibration.ts", mountPath: null, kind: "register", export: "registerPaxCalibrationRoutes" },
+  { file: "routes-pax-context.ts", mountPath: null, kind: "register", export: "registerPaxContextRoutes" },
+  { file: "routes-pax-disclosure.ts", mountPath: "/api/pax", kind: "router", export: "default" },
+  { file: "routes-pax-insights.ts", mountPath: "/api/pax", kind: "router", export: "default" },
+  { file: "routes-pax-quality.ts", mountPath: null, kind: "register", export: "registerPaxQualityRoutes" },
+  { file: "routes-pax-traces.ts", mountPath: null, kind: "register", export: "registerPaxTracesRoutes" },
+  { file: "routes-permit-tracker.ts", mountPath: null, kind: "register", export: "registerPermitTrackerRoutes" },
+  { file: "routes-persona.ts", mountPath: "/api/me/persona", kind: "router", export: "default" },
+  { file: "routes-plan-proposals.ts", mountPath: null, kind: "register", export: "registerPlanProposalRoutes" },
+  { file: "routes-platform-features.ts", mountPath: null, kind: "register", export: "registerPlatformFeatureRoutes" },
+  { file: "routes-portfolio-health.ts", mountPath: "/api/portfolio-health", kind: "router", export: "default" },
+  { file: "routes-portfolio-optimizer.ts", mountPath: "/api/portfolio-optimizer", kind: "router", export: "default" },
+  { file: "routes-portfolio-pnl.ts", mountPath: "/api/portfolio-pnl", kind: "router", export: "default" },
+  { file: "routes-portfolio-sentinel.ts", mountPath: "/api/portfolio-sentinel", kind: "router", export: "default" },
+  { file: "routes-predictions.ts", mountPath: "/api/predictions", kind: "router", export: "default" },
+  { file: "routes-preferences.ts", mountPath: "/api/me/preferences", kind: "router", export: "default" },
+  { file: "routes-price-optimizer.ts", mountPath: "/api/price-optimizer", kind: "router", export: "default" },
+  { file: "routes-privacy-dsar.ts", mountPath: null, kind: "register", export: "registerPrivacyDsarRoutes" },
+  { file: "routes-prompt-versions.ts", mountPath: null, kind: "register", export: "registerPromptVersionsRoutes" },
+  { file: "routes-properties.ts", mountPath: null, kind: "register", export: "registerPropertyRoutes" },
+  { file: "routes-property-enrichment.ts", mountPath: "/api/properties", kind: "router", export: "default" },
+  { file: "routes-property-tax.ts", mountPath: "/api/property-tax", kind: "router", export: "default" },
+  { file: "routes-public-parcel-check.ts", mountPath: "/api/public/parcel-check", kind: "router", export: "default" },
+  { file: "routes-public-parcel-report.ts", mountPath: null, kind: "register", export: "registerPublicParcelReportPages" },
+  { file: "routes-public-sign.ts", mountPath: null, kind: "register", export: "registerPublicSignRoutes" },
+  { file: "routes-public-trust.ts", mountPath: null, kind: "register", export: "registerPublicTrustRoutes" },
+  { file: "routes-quiet-title.ts", mountPath: null, kind: "register", export: "registerQuietTitleRoutes" },
+  { file: "routes-realtime.ts", mountPath: "/api/realtime", kind: "router", export: "default" },
+  { file: "routes-recording-fees.ts", mountPath: "/api/recording-fees", kind: "router", export: "default" },
+  { file: "routes-referral.ts", mountPath: null, kind: "register", export: "registerReferralRoutes" },
+  { file: "routes-regulatory.ts", mountPath: "/api/regulatory", kind: "router", export: "default" },
+  { file: "routes-rehab-photos.ts", mountPath: null, kind: "register", export: "registerRehabPhotoRoutes" },
+  { file: "routes-drive-mode.ts", mountPath: null, kind: "register", export: "registerDriveModeRoutes" },
+  { file: "routes-rehabs.ts", mountPath: null, kind: "register", export: "registerRehabRoutes" },
+  { file: "routes-rent-ledger.ts", mountPath: null, kind: "register", export: "registerRentLedgerRoutes" },
+  { file: "routes-rent-roll-import.ts", mountPath: null, kind: "register", export: "registerRentRollImportRoutes" },
+  { file: "routes-rentals.ts", mountPath: null, kind: "register", export: "registerRentalRoutes" },
+  { file: "routes-rosy-river.ts", mountPath: null, kind: "register", export: "registerRosyRiverRoutes" },
+  { file: "routes-scp-v2.ts", mountPath: null, kind: "register", export: "registerSCPv2Routes" },
+  { file: "routes-seller-intent.ts", mountPath: "/api/seller-intent", kind: "router", export: "default" },
+  // Free-distribution: per-route server-rendered <head> for public pages.
+  { file: "routes-seo-head.ts", mountPath: null, kind: "register", export: "registerSeoHeadRoutes" },
+  { file: "routes-sendgrid-events.ts", mountPath: null, kind: "register", export: "registerSendGridEventRoutes" },
+  { file: "routes-ses-events.ts", mountPath: null, kind: "register", export: "registerSesEventRoutes" },
+  { file: "routes-servicer.ts", mountPath: null, kind: "register", export: "registerServicerRoutes" },
+  { file: "routes-setup.ts", mountPath: "/api/founder/setup", kind: "router", export: "default" },
+  { file: "routes-skip-tracing.ts", mountPath: "/api/skip-tracing", kind: "router", export: "default" },
+  { file: "routes-solene-audit.ts", mountPath: null, kind: "register", export: "registerSoleneAuditRoutes" },
+  { file: "routes-solene-chat.ts", mountPath: null, kind: "register", export: "registerSoleneChatRoutes" },
+  { file: "routes-solene-page.ts", mountPath: null, kind: "register", export: "registerSolenePageRoutes" },
+  { file: "routes-soren-seo.ts", mountPath: null, kind: "register", export: "registerSorenSeoRoutes" },
+  { file: "routes-sovereign-integration.ts", mountPath: null, kind: "register", export: "registerSovereignIntegrationRoutes" },
+  { file: "routes-sub-processors.ts", mountPath: null, kind: "register", export: "registerSubProcessorRoutes" },
+  { file: "routes-subdivision-plans.ts", mountPath: null, kind: "register", export: "registerSubdivisionPlanRoutes" },
+  { file: "routes-subdivisions.ts", mountPath: null, kind: "register", export: "registerSubdivisionRoutes" },
+  { file: "routes-subscription.ts", mountPath: null, kind: "register", export: "registerSubscriptionRoutes" },
+  { file: "routes-support-customer-context.ts", mountPath: "/api/admin/support/customer-context", kind: "router", export: "default" },
+  { file: "routes-support-saved-replies.ts", mountPath: "/api/admin/support/saved-replies", kind: "router", export: "default" },
+  { file: "routes-support-tickets.ts", mountPath: null, kind: "register", export: "registerSupportTicketRoutes" },
+  { file: "routes-tax-certificates.ts", mountPath: null, kind: "register", export: "registerTaxCertificateRoutes" },
+  { file: "routes-tax-delinquent.ts", mountPath: "/api/tax-delinquent", kind: "router", export: "default" },
+  { file: "routes-tax-optimization.ts", mountPath: "/api/tax-optimization", kind: "router", export: "default" },
+  { file: "routes-tax-researcher.ts", mountPath: "/api/tax-researcher", kind: "router", export: "default" },
+  { file: "routes-tax-rules.ts", mountPath: null, kind: "register", export: "registerTaxRuleRoutes" },
+  { file: "routes-team-improvement.ts", mountPath: null, kind: "register", export: "registerTeamImprovementRoutes" },
+  { file: "routes-team-messaging.ts", mountPath: null, kind: "register", export: "registerTeamMessagingRoutes" },
+  { file: "routes-team-readiness.ts", mountPath: null, kind: "register", export: "registerTeamReadinessRoutes" },
+  { file: "routes-team-system-audit.ts", mountPath: null, kind: "register", export: "registerTeamSystemAuditRoutes" },
+  { file: "routes-tenant-theme.ts", mountPath: "/api/tenant-theme", kind: "router", export: "default" },
+  { file: "routes-territories.ts", mountPath: "/api/territories", kind: "router", export: "default" },
+  { file: "routes-title-partners.ts", mountPath: null, kind: "register", export: "registerTitlePartnerRoutes" },
+  { file: "routes-title-search.ts", mountPath: "/api/title-search", kind: "router", export: "default" },
+  { file: "routes-today.ts", mountPath: "/api/today", kind: "router", export: "default" },
+  { file: "routes-transaction-fees.ts", mountPath: "/api/transaction-fees", kind: "router", export: "default" },
+  { file: "routes-transparency.ts", mountPath: null, kind: "register", export: "registerTransparencyRoutes" },
+  { file: "routes-ui-state.ts", mountPath: "/api/ui-state", kind: "router", export: "default" },
+  { file: "routes-underwriting-defaults.ts", mountPath: null, kind: "register", export: "registerUnderwritingDefaultsRoutes" },
+  { file: "routes-unit-economics.ts", mountPath: null, kind: "register", export: "registerUnitEconomicsRoutes" },
+  { file: "routes-va-engine.ts", mountPath: null, kind: "register", export: "registerVAEngineRoutes" },
+  { file: "routes-vision-ai.ts", mountPath: "/api/vision-ai", kind: "router", export: "default" },
+  { file: "routes-vision-scan.ts", mountPath: "/api/properties", kind: "router", export: "default" },
+  { file: "routes-voice.ts", mountPath: "/api/voice", kind: "router", export: "default" },
+  { file: "routes-voice-learning.ts", mountPath: "/api/intelligence", kind: "router", export: "default" },
+  { file: "routes-well-known.ts", mountPath: null, kind: "register", export: "registerWellKnownRoutes" },
+  { file: "routes-white-label.ts", mountPath: "/api/white-label", kind: "router", export: "default" },
+  { file: "routes-wholesaler-dashboard.ts", mountPath: null, kind: "register", export: "registerWholesalerDashboardRoutes" },
+  { file: "routes-wholesaler-rules.ts", mountPath: null, kind: "register", export: "registerWholesalerRuleRoutes" },
+  { file: "routes-worker-heartbeat.ts", mountPath: null, kind: "register", export: "registerWorkerHeartbeatRoute" },
+  { file: "routes-zoning.ts", mountPath: "/api/zoning", kind: "router", export: "default" },
+];
+
+/**
+ * routes-*.ts files that are intentionally NOT mounted. SHRINK-ONLY: every
+ * entry is a liability (dead code or a forgotten mount). Each was verified
+ * non-mounted by grepping server/**.ts for its import/register symbol — none
+ * is referenced anywhere outside its own file/test. Resolve by either wiring
+ * the file into routes.ts (then move it to ROUTE_MANIFEST) or deleting it.
+ */
+export const KNOWN_NON_MOUNTED: Record<string, string> = {
+  // Exports registerApiKeyRoutes(app); never imported/called anywhere in
+  // server/. Orphaned API-key management surface — mount or delete.
+  "routes-api-keys.ts":
+    "Orphan: exports registerApiKeyRoutes but no caller in server/ — mount or delete.",
+  // Default-exports ssoRouter; never imported (no `from \"./routes-sso\"`)
+  // anywhere in server/. Orphaned SSO router — mount or delete.
+  "routes-sso.ts":
+    "Orphan: default-exports ssoRouter but no importer in server/ — mount or delete.",
+};

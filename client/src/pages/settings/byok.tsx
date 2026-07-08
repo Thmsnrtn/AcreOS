@@ -22,7 +22,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +41,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage } from "@/lib/error-utils";
 import { Trash2, KeyRound, ShieldCheck } from "lucide-react";
+import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface ChannelStatus {
   channel: string;
@@ -61,23 +63,25 @@ interface ByokGetResponse {
   }>;
 }
 
+// C1 legibility: lead with what the channel DOES in plain words; the
+// "Format:" fragment stays as an input hint for the technical half.
 const CHANNEL_LABELS: Record<string, { name: string; help: string; placeholder: string }> = {
   twilio: {
     name: "Twilio",
-    help: "SMS + voice. Format: accountSid:authToken:phoneNumber",
+    help: "Texts and calls. Format: accountSid:authToken:phoneNumber",
     placeholder: "ACxxxxxxxx:xxxxxxxx:+15551234567",
   },
-  telnyx: { name: "Telnyx", help: "SMS + voice (alt carrier).", placeholder: "KEYxxxxxxxxxxxxxxxxxxxx" },
-  sendgrid: { name: "SendGrid", help: "Transactional + marketing email.", placeholder: "SG.xxxxxxxxxx" },
-  ses: { name: "Amazon SES", help: "AWS-native transactional email.", placeholder: "AKIAxxxxxxxxxx" },
-  lob: { name: "Lob", help: "Direct mail printing + delivery.", placeholder: "live_xxxxxxxxxx" },
-  postgrid: { name: "PostGrid", help: "Direct mail (alt).", placeholder: "key_live_xxxxxxxxxx" },
-  openrouter: { name: "OpenRouter", help: "Multi-model AI gateway.", placeholder: "sk-or-v1-xxxxxxxx" },
-  anthropic: { name: "Anthropic", help: "Claude API direct.", placeholder: "sk-ant-xxxxxxxx" },
-  openai: { name: "OpenAI", help: "GPT API direct.", placeholder: "sk-xxxxxxxx" },
-  batch_skiptracing: { name: "BatchSkipTracing", help: "Skip-trace owner contact info.", placeholder: "xxxxxxxx-xxxx-xxxx" },
-  mapbox: { name: "Mapbox", help: "Maps + geocoding.", placeholder: "pk.xxxxxxxx" },
-  s3: { name: "S3 / R2", help: "Object storage. Format: accessKeyId:secretAccessKey:bucket", placeholder: "AKIA...:wJalr...:my-bucket" },
+  telnyx: { name: "Telnyx", help: "Texts and calls (alternate carrier).", placeholder: "KEYxxxxxxxxxxxxxxxxxxxx" },
+  sendgrid: { name: "SendGrid", help: "Email sending.", placeholder: "SG.xxxxxxxxxx" },
+  ses: { name: "Amazon SES", help: "Email sending (via your AWS account).", placeholder: "AKIAxxxxxxxxxx" },
+  lob: { name: "Lob", help: "Prints and mails your letters.", placeholder: "live_xxxxxxxxxx" },
+  postgrid: { name: "PostGrid", help: "Prints and mails your letters (alternate).", placeholder: "key_live_xxxxxxxxxx" },
+  openrouter: { name: "OpenRouter", help: "Powers Pax with your own AI account.", placeholder: "sk-or-v1-xxxxxxxx" },
+  anthropic: { name: "Anthropic", help: "Powers Pax with your own Claude account.", placeholder: "sk-ant-xxxxxxxx" },
+  openai: { name: "OpenAI", help: "Powers Pax with your own OpenAI account.", placeholder: "sk-xxxxxxxx" },
+  batch_skiptracing: { name: "BatchSkipTracing", help: "Finds owners' phone numbers and addresses.", placeholder: "xxxxxxxx-xxxx-xxxx" },
+  mapbox: { name: "Mapbox", help: "Maps and address lookups.", placeholder: "pk.xxxxxxxx" },
+  s3: { name: "S3 / R2", help: "Stores your files. Format: accessKeyId:secretAccessKey:bucket", placeholder: "AKIA...:wJalr...:my-bucket" },
 };
 
 export default function ByokSettingsPage() {
@@ -136,7 +140,7 @@ export default function ByokSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+            <ShieldCheck className="h-5 w-5 text-acr-pos" aria-hidden="true" />
             How this works
           </CardTitle>
         </CardHeader>
@@ -159,6 +163,9 @@ export default function ByokSettingsPage() {
       <Card className="mt-4">
         <CardHeader>
           <CardTitle>Channels</CardTitle>
+          <CardDescription>
+            Each row is one thing AcreOS does for you — texts, mail, email, AI — and whose account pays for it.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -183,7 +190,7 @@ export default function ByokSettingsPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{meta.name}</span>
                         {row.status === "byok" ? (
-                          <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-600">
+                          <Badge variant="default" className="bg-acr-pos text-acr-brand-ink hover:bg-acr-pos">
                             BYOK · …{row.fingerprint}
                           </Badge>
                         ) : (
@@ -193,7 +200,7 @@ export default function ByokSettingsPage() {
                       <div className="text-xs text-muted-foreground">
                         {meta.help}
                         {row.lastUsedAt && (
-                          <> · last used {new Date(row.lastUsedAt).toLocaleDateString()}</>
+                          <> · last used {formatDate(row.lastUsedAt)}</>
                         )}
                       </div>
                     </div>
@@ -252,10 +259,15 @@ export default function ByokSettingsPage() {
                 onChange={(e) => setPlaintext(e.target.value)}
               />
             </div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="byok-validate" className="text-sm">
-                Validate with provider before saving
-              </Label>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <Label htmlFor="byok-validate" className="text-sm">
+                  Check the key works before saving
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  We make one test call so a wrong key gets caught now, not the first time you try to send.
+                </p>
+              </div>
               <Switch
                 id="byok-validate"
                 checked={requireValidation}
@@ -265,7 +277,7 @@ export default function ByokSettingsPage() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpenChannel(null)}>
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               onClick={() => {

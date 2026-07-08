@@ -57,19 +57,31 @@ export function FAQ() {
           const open = openIdx === i;
           return (
             <div key={i} className={`lp-faq-item ${open ? "lp-faq-open" : ""}`}>
-              <button
-                className="lp-faq-q"
-                onClick={() => setOpenIdx(open ? null : i)}
-                aria-expanded={open}
-                aria-controls={`faq-a-${i}`}
-              >
-                <span>{it.q}</span>
-                <span className="lp-faq-icon" aria-hidden="true">
-                  {open ? "–" : "+"}
-                </span>
-              </button>
+              {/* Heading wrapper gives screen-reader users a navigable
+                  h3 per question (h2 section title → h3 questions);
+                  visual styling lives entirely on the button. */}
+              <h3 className="lp-faq-h">
+                <button
+                  type="button"
+                  id={`faq-q-${i}`}
+                  className="lp-faq-q"
+                  onClick={() => setOpenIdx(open ? null : i)}
+                  aria-expanded={open}
+                  aria-controls={`faq-a-${i}`}
+                >
+                  <span>{it.q}</span>
+                  <span className="lp-faq-icon" aria-hidden="true">
+                    {open ? "–" : "+"}
+                  </span>
+                </button>
+              </h3>
               {open && (
-                <div id={`faq-a-${i}`} className="lp-faq-a">
+                <div
+                  id={`faq-a-${i}`}
+                  role="region"
+                  aria-labelledby={`faq-q-${i}`}
+                  className="lp-faq-a"
+                >
                   {it.a}
                 </div>
               )}

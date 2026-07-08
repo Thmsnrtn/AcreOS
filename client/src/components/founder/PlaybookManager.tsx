@@ -25,6 +25,7 @@ import {
   ArrowRight,
   ListChecks,
 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 
 interface Playbook {
   id: number;
@@ -126,7 +127,7 @@ function PlaybookCard({ playbook }: { playbook: Playbook }) {
           <li><span className="tabular-nums">{playbook.totalExecutions}</span> runs</li>
           {playbook.successRate && <li><span className="tabular-nums">{playbook.successRate}%</span> success</li>}
           {playbook.lastExecutedAt && (
-            <li>Last: <time dateTime={playbook.lastExecutedAt} className="tabular-nums">{new Date(playbook.lastExecutedAt).toLocaleDateString()}</time></li>
+            <li>Last: <time dateTime={playbook.lastExecutedAt} className="tabular-nums">{formatDate(playbook.lastExecutedAt)}</time></li>
           )}
         </ul>
       )}
@@ -186,7 +187,7 @@ export function PlaybookManager() {
           <CardTitle className="text-base flex items-center gap-2">
             <BookOpen className="h-4 w-4" aria-hidden="true" /> Playbooks
             {pending.length > 0 && (
-              <Badge variant="outline" className="bg-amber-100 text-amber-800 ml-1 tabular-nums" aria-label={`${pending.length} awaiting approval`}>
+              <Badge variant="outline" className="bg-acr-warn-soft text-acr-warn ml-1 tabular-nums" aria-label={`${pending.length} awaiting approval`}>
                 {pending.length} awaiting approval
               </Badge>
             )}

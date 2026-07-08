@@ -24,9 +24,9 @@ const COLOR_MAP = {
   terracotta: { card: "bg-primary/5 dark:bg-primary/8", icon: "bg-primary/15 text-primary", spark: "hsl(var(--primary))" },
   sage: { card: "bg-accent/5 dark:bg-accent/8", icon: "bg-accent/15 text-accent", spark: "hsl(var(--accent))" },
   sand: { card: "bg-secondary/50", icon: "bg-muted text-muted-foreground", spark: "hsl(var(--muted-foreground))" },
-  emerald: { card: "bg-accent/5 dark:bg-accent/8", icon: "bg-accent/15 text-accent", spark: "#22c55e" },
-  blue: { card: "bg-primary/5 dark:bg-primary/8", icon: "bg-primary/15 text-primary", spark: "#3b82f6" },
-  purple: { card: "bg-primary/5 dark:bg-primary/8", icon: "bg-primary/15 text-primary", spark: "#8b5cf6" },
+  emerald: { card: "bg-accent/5 dark:bg-accent/8", icon: "bg-accent/15 text-accent", spark: "var(--acr-pos)" },
+  blue: { card: "bg-primary/5 dark:bg-primary/8", icon: "bg-primary/15 text-primary", spark: "hsl(var(--primary))" },
+  purple: { card: "bg-primary/5 dark:bg-primary/8", icon: "bg-primary/15 text-primary", spark: "hsl(var(--primary))" },
 };
 
 export function StatCard({
@@ -45,9 +45,9 @@ export function StatCard({
   const sparkColor =
     sparklineColor ??
     (trendDirection === "up"
-      ? "#22c55e"
+      ? "var(--acr-pos)"
       : trendDirection === "down"
-        ? "#ef4444"
+        ? "var(--acr-neg)"
         : defaultSparkColor);
 
   const trendColor =

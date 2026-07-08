@@ -843,6 +843,20 @@ export function classifyFromMessages(
   return classifyTaskComplexity(taskType, contentLength);
 }
 
+/**
+ * Thrown when no AI provider is configured (no OPENROUTER_API_KEY / OPENAI_API_KEY).
+ * This is an operational/config condition, not a code bug — route handlers should
+ * map it to a 503 (service temporarily unavailable), not a 500. `instanceof` this
+ * to distinguish "AI is turned off" from a genuine internal failure.
+ */
+export class NoAIProviderError extends Error {
+  readonly code = "NO_AI_PROVIDER";
+  constructor(message = "No AI provider configured — set OPENROUTER_API_KEY or OPENAI_API_KEY.") {
+    super(message);
+    this.name = "NoAIProviderError";
+  }
+}
+
 export function selectProviderAndModel(
   complexity: TaskComplexity,
   config: AIRouterConfig = {},
@@ -889,7 +903,7 @@ export function selectProviderAndModel(
         client: openai,
       };
     }
-    throw new Error("No AI provider available");
+    throw new NoAIProviderError();
   }
 
   // Default routing:
@@ -917,7 +931,7 @@ export function selectProviderAndModel(
     };
   }
 
-  throw new Error("No AI providers available - configure OPENROUTER_API_KEY or OPENAI_API_KEY");
+  throw new NoAIProviderError("No AI providers available - configure OPENROUTER_API_KEY or OPENAI_API_KEY");
 }
 
 export async function selectProviderAndModelAsync(

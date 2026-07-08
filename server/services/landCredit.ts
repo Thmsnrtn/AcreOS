@@ -74,6 +74,51 @@ interface ScoringFactors {
   };
 }
 
+// ── Shared scoring constants (Tier 3A) ──────────────────────────────────────
+// Exported pure pieces of the Land Credit Score methodology so the PUBLIC
+// partial-LCS path (server/services/publicParcelReport.ts) reuses the exact
+// same weights / 300–850 scale / grade thresholds as the in-app score. One
+// methodology, two coverage levels — never two scales.
+
+/**
+ * Published methodology version (mature-machine H3: "published, versioned
+ * methodology"). Rev this whenever the weights, scale mapping, or grade
+ * thresholds change — the public explainer (client/src/pages/landing/
+ * LandCreditScore.tsx via copy.ts) states the same version by hand; keep
+ * them in sync. Persisted with every public partial score so an old report
+ * is auditable against the methodology that produced it.
+ */
+export const LCS_METHODOLOGY_VERSION = "v1";
+
+/** Canonical dimension weights (must sum to 100). */
+export const LCS_DIMENSION_WEIGHTS = {
+  location: 25,
+  physical: 20,
+  legal: 15,
+  financial: 20,
+  environmental: 10,
+  market: 10,
+} as const;
+
+export type LcsGrade = 'A+' | 'A' | 'B+' | 'B' | 'C+' | 'C' | 'D' | 'F';
+
+/** Map a 0–100 weighted overall onto the 300–850 credit scale. */
+export function lcsCreditScale(overall0to100: number): number {
+  return Math.round(300 + (overall0to100 / 100) * 550);
+}
+
+/** Letter grade for a 300–850 credit score — single source of truth. */
+export function lcsGradeForScore(score: number): LcsGrade {
+  if (score >= 800) return 'A+';
+  if (score >= 740) return 'A';
+  if (score >= 700) return 'B+';
+  if (score >= 660) return 'B';
+  if (score >= 620) return 'C+';
+  if (score >= 580) return 'C';
+  if (score >= 500) return 'D';
+  return 'F';
+}
+
 interface CreditScoreConfidence {
   low: number;
   high: number;
@@ -93,15 +138,9 @@ interface CreditScore {
 }
 
 class LandCreditScoring {
-  // Scoring weights (must sum to 100)
-  private readonly WEIGHTS = {
-    location: 25,
-    physical: 20,
-    legal: 15,
-    financial: 20,
-    environmental: 10,
-    market: 10,
-  };
+  // Scoring weights (must sum to 100) — canonical copy exported above so the
+  // public partial-LCS path shares the identical methodology.
+  private readonly WEIGHTS = LCS_DIMENSION_WEIGHTS;
 
   /**
    * Calculate comprehensive land credit score
@@ -142,7 +181,7 @@ class LandCreditScoring {
       );
 
       // Convert to 300-850 scale (like FICO)
-      const creditScore = Math.round(300 + (overall / 100) * 550);
+      const creditScore = lcsCreditScale(overall);
 
       // Determine grade
       const grade = this.determineGrade(creditScore);
@@ -164,14 +203,15 @@ class LandCreditScoring {
       // Compute confidence based on how many dimensions have real data vs defaults
       const confidence = this.computeConfidence(factors, creditScore);
 
-      // Save score to database.
-      // TODO(tsc): land_credit_scores has no organizationId/score/factors/
-      // riskLevel/strengths/weaknesses/recommendations columns. Map to the real
-      // schema: discrete 0-100 sub-scores, overallScore (0-100), grade, and the
-      // scoreBreakdown blob. The rich factors/strengths data has no schema home
-      // and is only returned to the caller, not persisted.
+      // Save score to database. Parcel identity (apn/state/county, Tier 2A,
+      // migration 0152) keys cross-org cohort benchmarks WITHOUT linking back
+      // to organizations. The rich factors/strengths data still has no schema
+      // home and is only returned to the caller, not persisted.
       await db.insert(landCreditScores).values({
         propertyId: Number(propertyId),
+        apn: property.apn ?? null,
+        state: property.state ? String(property.state).trim().toUpperCase() : null,
+        county: property.county ?? null,
         liquidityScore: market.score,
         riskScore: environmental.score,
         developmentPotentialScore: physical.score,
@@ -535,17 +575,11 @@ class LandCreditScoring {
   }
 
   /**
-   * Convert numeric score to letter grade
+   * Convert numeric score to letter grade — delegates to the exported
+   * single-source-of-truth thresholds (shared with the public partial LCS).
    */
   private determineGrade(score: number): CreditScore['grade'] {
-    if (score >= 800) return 'A+';
-    if (score >= 740) return 'A';
-    if (score >= 700) return 'B+';
-    if (score >= 660) return 'B';
-    if (score >= 620) return 'C+';
-    if (score >= 580) return 'C';
-    if (score >= 500) return 'D';
-    return 'F';
+    return lcsGradeForScore(score);
   }
 
   /**
@@ -808,26 +842,37 @@ class LandCreditScoring {
   }
 
   /**
-   * Compare score to industry benchmarks.
+   * Compare score to network benchmarks.
    *
-   * 2026-06-10 (T0-12, elevation-blueprint-2026-06-10.md): the hardcoded
-   * per-type benchmark averages and state bonuses (invented numbers) were
-   * removed — fabricated facts violate the no-fabrication discipline. This
-   * is the live handler behind GET /api/land-credit/benchmark/:propertyId,
-   * so it now returns a typed insufficient-data result until real
-   * network-cohort percentiles exist (Tier-2 item 2A in the blueprint).
+   * 2026-06-10 (T0-12 → Tier 2A): the hardcoded per-type benchmark averages
+   * and state bonuses (invented numbers) were removed under T0-12. Tier 2A
+   * now delegates to the own-network cohort engine (latest score per parcel,
+   * state-keyed, k>=5 privacy floor). Below the floor this stays a typed
+   * insufficient-data result — never invented numbers.
    */
-  compareToIndustryBenchmarks(
-    _score: number,
-    _propertyType: string,
-    _state: string
-  ):
-    | { available: true; percentile: number; benchmarkAvg: number; benchmarkMedian: number; outperforms: boolean }
-    | { available: false; reason: string } {
+  async compareToIndustryBenchmarks(
+    score: number,
+    propertyType: string,
+    state: string
+  ): Promise<
+    | { available: true; percentile: number; benchmarkAvg: number; benchmarkMedian: number; outperforms: boolean; sampleSize: number; source: string }
+    | { available: false; reason: string }
+  > {
+    const { creditBenchmarkingService } = await import("./creditBenchmarking");
+    const comparison = await creditBenchmarkingService.compareToIndustry(score, propertyType, state);
+    if (!comparison.available) {
+      return { available: false, reason: comparison.reason };
+    }
     return {
-      available: false,
-      reason:
-        "Industry benchmarks are not computed yet — AcreOS only reports benchmarks derived from real scored transactions, and that dataset does not exist yet.",
+      available: true,
+      percentile: comparison.percentile,
+      // benchmarkAvg is reported as the cohort median — we do not store a mean
+      // and will not invent one; median is the honest central tendency here.
+      benchmarkAvg: comparison.benchmarks.median,
+      benchmarkMedian: comparison.benchmarks.median,
+      outperforms: comparison.vsMedian > 0,
+      sampleSize: comparison.benchmarks.sampleSize,
+      source: comparison.benchmarks.source,
     };
   }
 
@@ -909,7 +954,7 @@ class LandCreditScoring {
        environmental.score * this.WEIGHTS.environmental +
        market.score * this.WEIGHTS.market) / 100
     );
-    const creditScore = Math.round(300 + (overall / 100) * 550);
+    const creditScore = lcsCreditScale(overall);
 
     const improvementMap: Record<string, string> = {
       location: 'Target high-growth markets (TX, FL, GA) for better location scores. Proximity to highways and cities improves accessibility.',

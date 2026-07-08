@@ -227,6 +227,21 @@ export interface AcquisitionUtm {
   utm_content?: string;
   referrer?: string;
   landedAt?: string;
+  // Tier 2C — referral + tier context ride the same first-touch chain.
+  // `ref` is the referrer's referral code (?ref=CODE on any landing URL);
+  // the server also applies it to the referrals table at signup flush.
+  // `plan` / `billing` capture which pricing CTA the user clicked
+  // (?plan=pro&billing=yearly) so trial_to_paid cohorts can be segmented
+  // by stated intent vs. what they actually bought.
+  ref?: string;
+  plan?: string;
+  billing?: string;
+  // Tier 3A — the public parcel report that brought this user in. Format
+  // "ST/county-slug/APN" (e.g. "TX/travis/0123456789"), captured client-side
+  // from the /p/:state/:county/:apn pathname on first touch. Lets cohort
+  // analysis answer "which shared reports convert?" and lets onboarding
+  // carry the parcel into the new workspace.
+  parcel?: string;
 }
 
 export type UpsertUser = typeof users.$inferInsert;

@@ -11,6 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   MessageCircle, 
   Send, 
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TeamConversation, TeamMessage } from "@shared/schema";
+import { formatDate } from "@/lib/format";
 
 interface ConversationWithDetails extends TeamConversation {
   participantNames?: string[];
@@ -103,14 +105,17 @@ function ConversationList({
 
   if (isLoading) {
     return (
-      <div
-        role="status"
-        aria-busy="true"
-        aria-label="Loading conversation"
-        className="flex items-center justify-center h-40"
-      >
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
-        <span className="sr-only">Loading…</span>
+      <div role="status" aria-busy="true" aria-live="polite" className="p-3 space-y-2">
+        <span className="sr-only">Loading conversation</span>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 p-2">
+            <Skeleton announce={false} className="h-9 w-9 rounded-full shrink-0" />
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <Skeleton announce={false} className="h-4 w-1/2 max-w-40" />
+              <Skeleton announce={false} className="h-3 w-3/4 max-w-56" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -146,7 +151,7 @@ function ConversationList({
             {conversations.map((conv) => {
               const displayName = getConversationDisplayName(conv);
               const lastActivity = conv.lastMessageAt
-                ? new Date(conv.lastMessageAt).toLocaleDateString()
+                ? formatDate(conv.lastMessageAt)
                 : "No messages yet";
               return (
                 <li key={conv.id} className="list-none">
@@ -347,9 +352,11 @@ function ChatView({
 
       <ScrollArea className="flex-1 p-3">
         {isLoadingMessages ? (
-          <div className="flex items-center justify-center h-20" role="status" aria-busy="true" aria-label="Loading messages">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
-            <span className="sr-only">Loading messages…</span>
+          <div role="status" aria-busy="true" aria-live="polite" className="space-y-3">
+            <span className="sr-only">Loading messages</span>
+            <Skeleton announce={false} className="h-10 w-2/3 rounded-lg" />
+            <Skeleton announce={false} className="h-10 w-1/2 rounded-lg ml-auto" />
+            <Skeleton announce={false} className="h-10 w-3/5 rounded-lg" />
           </div>
         ) : sortedMessages.length === 0 ? (
           <div className="flex items-center justify-center h-20 text-muted-foreground" role="status">
@@ -519,9 +526,17 @@ function ConversationTrayContent({ onClose }: { onClose?: () => void }) {
 
   if (isSeatInfoLoading) {
     return (
-      <div className="flex items-center justify-center h-64" role="status" aria-busy="true" aria-label="Loading messaging settings">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" aria-hidden="true" />
-        <span className="sr-only">Loading…</span>
+      <div role="status" aria-busy="true" aria-live="polite" className="p-3 space-y-2">
+        <span className="sr-only">Loading messaging settings</span>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 p-2">
+            <Skeleton announce={false} className="h-9 w-9 rounded-full shrink-0" />
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <Skeleton announce={false} className="h-4 w-1/2 max-w-40" />
+              <Skeleton announce={false} className="h-3 w-3/4 max-w-56" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -579,7 +594,7 @@ export function ConversationTray() {
           <Button
             type="button"
             size="icon"
-            className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-[49] rounded-full shadow-lg safe-area-bottom"
+            className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-slot-tray rounded-full shadow-lg safe-area-bottom"
             aria-label="Open conversations"
             data-testid="button-open-conversations"
           >
@@ -602,7 +617,7 @@ export function ConversationTray() {
         <Button
           type="button"
           size="icon"
-          className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-[49] rounded-full shadow-lg safe-area-bottom"
+          className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-slot-tray rounded-full shadow-lg safe-area-bottom"
           onClick={() => setIsOpen(true)}
           aria-label="Open conversations"
           data-testid="button-open-conversations"
@@ -612,8 +627,8 @@ export function ConversationTray() {
       )}
 
       {isOpen && (
-        <section role="dialog" aria-label="Team messages" className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-[49] w-[360px] h-[500px] bg-background border rounded-card shadow-xl flex flex-col overflow-hidden safe-area-bottom">
-          <div className="absolute top-2 right-2 z-10">
+        <section role="dialog" aria-label="Team messages" className="fixed bottom-[176px] md:bottom-24 right-4 md:right-16 z-slot-tray w-[calc(100vw-2rem)] max-w-[360px] h-[500px] bg-background border rounded-card shadow-xl flex flex-col overflow-hidden safe-area-bottom">
+          <div className="absolute top-2 right-2 z-docked">
             <Button
               type="button"
               size="icon"

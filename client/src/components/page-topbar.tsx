@@ -109,22 +109,30 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
       // data-page-topbar lets the offline banner push us down by its
       // h-10 (40px) while it's visible. See index.css rule that pairs
       // with body[data-offline-banner='true']. Without this the sticky
-      // topbar (z-30) is covered by the fixed offline banner (z-[100]).
+      // topbar (z-sticky) is covered by the fixed offline banner (z-[100]).
       data-page-topbar
-      className="sticky top-0 z-30 flex items-center justify-between gap-4 px-4 md:px-6 h-14 backdrop-blur-md bg-background/80 border-b border-border"
+      // Bold Tahoe re-skin (Wave R0, §1.1 primary sticky chrome): layered glass
+      // chrome — `bg-surface-chrome` (.95 role, not the sheerer veil), the bold
+      // `backdrop-blur-lg` depth read, a softened `border-border/60` edge-of-light
+      // hairline, and `shadow-level-1` (Track-1, theme-neutral) so the bar casts a
+      // faint shadow onto the content beneath it and reads as a floating plane.
+      // `z-sticky` (the semantic page-topbar layer), never `z-sticky`. Visual-only:
+      // layout, sizing, and the offline-banner push (data-page-topbar) are
+      // unchanged. See docs/design/reskin-treatment.md.
+      className="sticky top-0 z-sticky flex items-center justify-between gap-4 px-4 md:px-6 h-14 backdrop-blur-lg bg-surface-chrome border-b border-border/60 shadow-level-1"
       role="banner"
     >
       {/* Breadcrumb / title */}
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
         {!isMobile && (
           <>
-            <Link href="/today" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+            <Link href="/today" className="inline-flex min-h-11 min-w-11 items-center justify-center -m-3 p-3 text-muted-foreground hover:text-foreground active:text-foreground transition-colors shrink-0">
               <Home className="w-4 h-4" aria-label="Home" />
             </Link>
             {crumbs?.map((c) => (
               <span key={c.href} className="flex items-center gap-1.5 shrink-0">
                 <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
-                <Link href={c.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Link href={c.href} className="inline-flex min-h-11 items-center -my-3 text-sm text-muted-foreground hover:text-foreground active:text-foreground transition-colors">
                   {c.label}
                 </Link>
               </span>
@@ -169,7 +177,7 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
           size="icon"
           onClick={toggleMode}
           aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-          className={cn("min-h-[44px] min-w-[44px] md:h-9 md:w-9 md:min-h-9 md:min-w-9")}
+          className={cn("min-h-[44px] min-w-[44px] pointer-fine:md:h-9 pointer-fine:md:w-9 pointer-fine:md:min-h-9 pointer-fine:md:min-w-9")}
         >
           {isDark ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />}
         </Button>
@@ -182,7 +190,7 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
           variant="ghost"
           size="icon"
           aria-label="Notifications"
-          className={cn("min-h-[44px] min-w-[44px] md:h-9 md:w-9 md:min-h-9 md:min-w-9")}
+          className={cn("min-h-[44px] min-w-[44px] pointer-fine:md:h-9 pointer-fine:md:w-9 pointer-fine:md:min-h-9 pointer-fine:md:min-w-9")}
         >
           <Link href="/decision-queue" data-testid="topbar-notifications">
             <Bell className="w-4 h-4" aria-hidden="true" />

@@ -270,7 +270,7 @@ export function SignatureCapture({
             <Button
               variant="outline"
               size="sm"
-              className="min-h-11 sm:min-h-9"
+              className="min-h-11 pointer-fine:sm:min-h-9"
               onClick={clearSignature}
               disabled={!hasSignature || disabled}
               data-testid="button-clear-signature"

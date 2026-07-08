@@ -49,6 +49,7 @@ import {
   Star,
   Loader2,
   HelpCircle,
+  Flame,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -62,9 +63,14 @@ import { PersonaMapStrip } from "@/components/maps/PersonaMapStrip";
 import { SampleParcelPreview } from "@/components/maps/SampleParcelPreview";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { deriveIntel, type PropertyIntelligence } from "@/pages/maps-intel";
+import { findStateWarning, isUplBlocked } from "@/lib/upl-gating";
+import { StateUplBanner } from "@/components/upl-gating-banner";
+import { usePaxRail } from "@/contexts/pax-rail-context";
+import { QueryErrorState } from "@/components/query-error-state";
 import { usePersona } from "@/hooks/use-persona";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
+import { MarketHeatPanel } from "@/components/maps/MarketHeatPanel";
 import {
   RadarChart,
   Radar,
@@ -216,6 +222,212 @@ function ScoreRing({ score, label, color }: { score: number; label: string; colo
   );
 }
 
+// ─── Inline Blind-Offer Composer (T3-3B) ───────────────────────────────────────
+//
+// The signature interaction: parcel → Pax-drafted blind offer → witnessed Send,
+// without ever leaving the Map slide-over. This is a WIRING of existing
+// primitives — it reuses the SAME engine (POST /api/data-intel/blind-offer, with
+// propertyId so the server federal-trust gate fires), the SAME UPL gate
+// (lib/upl-gating + StateUplBanner, shared with the full wizard), and the SAME
+// witnessed-send kernel (usePaxRail().openWithContext → Pax composes a
+// send_email tool call → frozen pending_actions row → the user taps the existing
+// "Approve & send" in pax-copilot-rail.tsx). There is NO send code here.
+
+/** Subset of the wizard's OfferReport we render inline. */
+interface InlineOfferReport {
+  state: string;
+  county: string;
+  recommendedTier: "aggressive" | "standard" | "competitive";
+  recommendedOfferTotal: number;
+  recommendationReason: string;
+  compAnalysis: { compCount: number };
+  letterVariables: { offerAmount: number; offerAmountWords: string };
+  marketContext: { usdaLandValuePerAcre: number };
+  warnings: string[];
+}
+
+function InlineBlindOfferComposer({ property }: { property: Property }) {
+  const [expanded, setExpanded] = useState(false);
+  const { openWithContext } = usePaxRail();
+
+  const state = property.state ?? "";
+  const county = property.county ?? "";
+  const acres = parseFloat(String(property.sizeAcres || "0"));
+  const uplWarning = findStateWarning(state);
+  const uplBlocked = isUplBlocked(state);
+  const parcelLabel = property.address || `${county}, ${state}`;
+
+  // The engine. KEEP propertyId in the body so the server's
+  // assertFeeSimpleOrThrow federal-trust gate runs (Indian-Country / federal
+  // trust parcels are blocked server-side). Only fires once expanded.
+  const {
+    data: report,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useQuery<InlineOfferReport>({
+    queryKey: ["/api/data-intel/blind-offer", property.id],
+    enabled: expanded,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+    queryFn: async () => {
+      const res = await fetch("/api/data-intel/blind-offer", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        // propertyId is REQUIRED here — it's what arms the federal-trust gate.
+        body: JSON.stringify({ state, county, targetAcres: acres, propertyId: property.id }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || body?.error || `Couldn't draft an offer (${res.status})`);
+      }
+      return res.json();
+    },
+  });
+
+  // Honesty: comps depend on paywalled ATTOM. When the engine returns zero
+  // comps it falls back to USDA land-value benchmarks — say so plainly, never
+  // imply comp-backed precision.
+  const noComps = !!report && report.compAnalysis.compCount === 0;
+
+  // P3 — the witnessed-send HANDOFF. Hands Pax the parcel context + an offer-
+  // amount-bearing starter prompt. Pax composes the send_email tool call, freezes
+  // it as a pending_actions row, and the user approves it via the existing
+  // "Approve & send" button. This function NEVER sends anything itself.
+  function handToPax() {
+    if (uplBlocked || !report) return;
+    const offer = usd(report.recommendedOfferTotal, { noCents: true });
+    openWithContext({
+      entityType: "property",
+      entityId: property.id,
+      entityName: parcelLabel,
+      starterPrompt:
+        `Draft a blind-offer email to the owner of ${parcelLabel} ` +
+        `(${county} County, ${state}) at ${offer} and prepare it for my approval. ` +
+        (noComps
+          ? `Note: this offer is modeled from USDA land values — no recent comps were available — so keep the language honest about that. `
+          : ``) +
+        (uplWarning?.severity === "warn"
+          ? `Include the assignment-disclosure paragraph required in ${state}. `
+          : ``) +
+        `Do not send it — freeze it for my review so I can approve and send.`,
+    });
+  }
+
+  if (!expanded) {
+    return (
+      <Button
+        size="sm"
+        className="h-8 text-xs"
+        onClick={() => setExpanded(true)}
+        data-testid="inline-blind-offer-open"
+      >
+        <DollarSign className="w-3 h-3 mr-1" aria-hidden="true" />
+        Make Offer
+      </Button>
+    );
+  }
+
+  return (
+    <div className="col-span-2 rounded-card border bg-muted/20 p-3 space-y-3" data-testid="inline-blind-offer">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+          <DollarSign className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+          Blind offer
+        </p>
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          aria-label="Collapse blind offer composer"
+          className="min-h-11 min-w-11 pointer-fine:sm:min-h-7 pointer-fine:sm:min-w-7 -my-1 flex items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+        >
+          <X className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+      </div>
+
+      {/* UPL gate — same banner + severity rule as the full wizard. */}
+      <StateUplBanner state={state} />
+
+      {uplBlocked ? (
+        // Block-severity state: no draft, no handoff. The banner above explains
+        // why; we only offer the licensed-path off-ramp (the full wizard's
+        // double-close flow).
+        <div className="text-xs text-muted-foreground">
+          For-fee assignment is blocked in {state}. Use the double-close flow in the{" "}
+          <Link href={`/blind-offer-wizard?propertyId=${property.id}`} className="text-primary underline">
+            full wizard
+          </Link>
+          .
+        </div>
+      ) : isLoading ? (
+        <div className="space-y-2" aria-busy="true">
+          <Skeleton className="h-7 w-32" announceText="Modeling your offer" />
+          <Skeleton className="h-3 w-full" announce={false} />
+          <Skeleton className="h-3 w-3/4" announce={false} />
+        </div>
+      ) : isError || !report ? (
+        <QueryErrorState
+          error={error instanceof Error ? error : null}
+          onRetry={() => refetch()}
+          isRetrying={isFetching}
+          title="Couldn't draft the offer"
+          description="The parcel, county and acreage are preserved. Most retries succeed."
+          testId="inline-blind-offer-error"
+        />
+      ) : (
+        <div className="space-y-2.5">
+          <div className="flex items-end gap-2">
+            <span className="text-xl font-bold text-acr-pos tabular-nums">
+              {usd(report.recommendedOfferTotal, { noCents: true })}
+            </span>
+            <Badge variant="outline" className="text-[9px] capitalize mb-0.5">
+              {report.recommendedTier}
+            </Badge>
+          </div>
+          {/* Honest precision framing. */}
+          {noComps ? (
+            <p className="text-micro text-acr-warn flex items-start gap-1">
+              <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" aria-hidden="true" />
+              Offer modeled from USDA land values ({usd(report.marketContext.usdaLandValuePerAcre, { noCents: true })}/ac);
+              no recent comps available.
+            </p>
+          ) : (
+            <p className="text-micro text-muted-foreground">
+              Anchored on {report.compAnalysis.compCount} recent comp{report.compAnalysis.compCount === 1 ? "" : "s"} + USDA land values.
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground leading-snug">{report.recommendationReason}</p>
+
+          {/* P3 — witnessed-send handoff. Disabled in block-severity states
+              (already short-circuited above; defensive guard kept). */}
+          <Button
+            size="sm"
+            className="w-full h-8 text-xs"
+            onClick={handToPax}
+            disabled={uplBlocked}
+            data-testid="inline-blind-offer-hand-to-pax"
+          >
+            <Sparkles className="w-3 h-3 mr-1" aria-hidden="true" />
+            Hand to Pax to send
+          </Button>
+          <p className="text-[10px] text-muted-foreground text-center">
+            Pax drafts it and freezes it for your approval — nothing sends until you tap “Approve &amp; send.”
+          </p>
+        </div>
+      )}
+
+      <Button asChild size="sm" variant="outline" className="w-full h-7 text-xs">
+        <Link href={`/blind-offer-wizard?propertyId=${property.id}`}>
+          Open full wizard
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
 function PropertyIntelligencePanel({
   property,
   onClose,
@@ -301,9 +513,14 @@ function PropertyIntelligencePanel({
       className={cn(
         "bg-card flex flex-col",
         isMobile
-          ? // Inside a bottom Sheet: fill its height, let the body scroll.
+          ? // Inside a bottom Sheet: fill its height, let the body scroll. The
+            // Sheet owns its own elevation, so no shadow here.
             "h-full min-h-0 overflow-hidden"
-          : "w-80 border-l overflow-y-auto flex-shrink-0",
+          : // Bold Tahoe re-skin (Wave R, §2.1 L1 elevated card): the desktop
+            // side rail is a solid content surface flanking the map, so it earns
+            // Track-2 `shadow-acr-2` (theme-aware ink shadow) to read as an
+            // elevated plane against the canvas. Solid card → never shadow-level-*.
+            "w-80 border-l overflow-y-auto flex-shrink-0 shadow-acr-2",
       )}
       style={
         isMobile
@@ -312,7 +529,9 @@ function PropertyIntelligencePanel({
       }
     >
       {/* Header */}
-      <div className="p-3 border-b bg-gradient-to-r from-primary/5 to-primary/10 flex items-start justify-between gap-2 sticky top-0 z-10">
+      {/* Bold Tahoe re-skin (Wave R, §4 depth): semantic `z-docked` (= the 10 it
+          already had) for the sticky panel header instead of the raw z-docked. */}
+      <div className="p-3 border-b bg-gradient-to-r from-primary/5 to-primary/10 flex items-start justify-between gap-2 sticky top-0 z-docked">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <Badge variant="outline" className="text-micro capitalize">
@@ -332,6 +551,34 @@ function PropertyIntelligencePanel({
             {property.county}, {property.state}
             {property.apn && <> · APN: {property.apn}</>}
           </p>
+          {/* Owner row (T3-3B) — honest-null. Only renders a name when the
+              enrichment/assessor lookup actually returned one; otherwise the
+              same "Not yet pulled · Check now" affordance every other intel
+              field uses. We NEVER fabricate an owner-of-record. */}
+          <div className="flex items-center gap-1.5 mt-1 min-w-0" data-testid="intel-owner-row">
+            <Users className="w-3 h-3 text-muted-foreground shrink-0" aria-hidden="true" />
+            {intel.ownerName ? (
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs font-medium truncate">{intel.ownerName}</span>
+                {intel.ownerOccupied === false && (
+                  <Badge variant="outline" className="text-[9px] shrink-0">Absentee</Badge>
+                )}
+                {intel.ownerSource && (
+                  <DataProvenanceChip
+                    source={intel.ownerSource}
+                    sourceAsOf={intel.sourceAsOf}
+                    classification="authoritative"
+                  />
+                )}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <span>Owner</span>
+                <span aria-hidden="true" className="text-muted-foreground/60">·</span>
+                <UnknownValue onCheck={handleCheckNow} checking={checking} compact />
+              </span>
+            )}
+          </div>
         </div>
         {/* On mobile the Sheet shell owns the close affordance (top-right X +
             swipe-down + scrim tap), so we suppress the panel's own button to
@@ -341,7 +588,7 @@ function PropertyIntelligencePanel({
             type="button"
             onClick={onClose}
             aria-label="Close property intelligence panel"
-            className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 -mr-1 -mt-1 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+            className="min-h-11 min-w-11 pointer-fine:sm:min-h-9 pointer-fine:sm:min-w-9 -mr-1 -mt-1 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -395,7 +642,6 @@ function PropertyIntelligencePanel({
               {acres > 0 && (
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {acres.toLocaleString()} acres
-                  {intel.daysOnMarket && ` · ${intel.daysOnMarket}d on market`}
                 </p>
               )}
             </div>
@@ -746,12 +992,11 @@ function PropertyIntelligencePanel({
         <div className="p-3 space-y-2">
           <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-1">Quick Actions</p>
           <div className="grid grid-cols-2 gap-1.5">
-            <Button asChild size="sm" className="h-8 text-xs">
-              <Link href={`/blind-offer-wizard?propertyId=${property.id}`}>
-                <DollarSign className="w-3 h-3 mr-1" />
-                Make Offer
-              </Link>
-            </Button>
+            {/* T3-3B — the inline blind-offer composer replaces the old
+                navigate-away "Make Offer" Link. Collapsed it's a button in
+                this slot; expanded it spans both columns (col-span-2) with the
+                drafted offer + the witnessed-send handoff to Pax. */}
+            <InlineBlindOfferComposer property={property} />
             <Button asChild size="sm" variant="outline" className="h-8 text-xs">
               <Link href={`/negotiation-copilot?propertyId=${property.id}`}>
                 <MessageSquare className="w-3 h-3 mr-1" />
@@ -833,6 +1078,10 @@ export default function MapsPage() {
   const [mapMode, setMapMode] = useState<"properties" | "deals">(personaDefaultMode);
   const [showBuyerDemandHeatmap, setShowBuyerDemandHeatmap] = useState(false);
   const [showPredictionHeatmap, setShowPredictionHeatmap] = useState(false);
+  // Tier 3F — cross-org data co-op layer. Lives INSIDE the Map door (five
+  // fixed doors): a panel of privacy-preserving county aggregates (k>=5
+  // floor server-side; below the floor the panel shows progress, never heat).
+  const [showMarketHeat, setShowMarketHeat] = useState(false);
   // RAFE (Tahoe Wave-2): "See a sample" — guarantees a first lookup never
   // returns empty by running a REAL enrichment on a curated data-rich parcel.
   const [samplePreviewOpen, setSamplePreviewOpen] = useState(false);
@@ -953,7 +1202,15 @@ export default function MapsPage() {
     <PageShell label="Maps">
       <div className="-mx-4 -my-8 md:-mx-8 md:-my-8">
         {/* Header bar */}
-        <div className="flex items-center gap-2 px-4 md:px-6 py-2.5 border-b bg-background/90 backdrop-blur-sm sticky top-0 z-10">
+        {/* Bold Tahoe re-skin (Wave R, §1.2 nested sticky chrome): this is the
+            map's own control bar, nested under the global PageTopbar — so it
+            takes the lighter `bg-surface-veil` (.80) translucency role so the
+            two planes read as distinct, the bold `backdrop-blur-lg` depth read,
+            and a softened `border-border/50` edge-of-light hairline. `z-docked`
+            (10) keeps the semantic layer it already had (z-docked). No shadow — it
+            sits under the primary topbar's shadow. Visual-only; layout/sizing
+            unchanged. See docs/design/reskin-treatment.md. */}
+        <div className="flex items-center gap-2 px-4 md:px-6 py-2.5 border-b border-border/50 bg-surface-veil backdrop-blur-lg sticky top-0 z-docked">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <MapPin className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
             <h1 className="text-section-h2 truncate">
@@ -991,6 +1248,11 @@ export default function MapsPage() {
             {showPredictionHeatmap && (
               <Badge className="text-micro shrink-0 bg-acr-brand-soft text-acr-brand hidden md:flex">
                 <TrendingUp className="w-2.5 h-2.5 mr-1" /> Prediction
+              </Badge>
+            )}
+            {showMarketHeat && (
+              <Badge className="text-micro shrink-0 bg-acr-heat-warm-soft text-acr-heat-warm hidden md:flex">
+                <Flame className="w-2.5 h-2.5 mr-1" /> Market heat
               </Badge>
             )}
           </div>
@@ -1092,14 +1354,14 @@ export default function MapsPage() {
               placeholder="Search…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-7 h-7 text-xs"
+              className="pl-7 h-7 pointer-coarse:min-h-11 text-xs"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
                 aria-label="Clear search"
-                className="absolute right-1 top-1/2 -translate-y-1/2 min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                className="absolute right-1 top-1/2 -translate-y-1/2 min-h-11 min-w-11 pointer-fine:sm:min-h-9 pointer-fine:sm:min-w-9 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
               >
                 <X className="w-3.5 h-3.5" aria-hidden="true" />
               </button>
@@ -1108,7 +1370,10 @@ export default function MapsPage() {
 
           {/* Status filter */}
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-32 h-7 text-xs hidden md:flex" aria-label="Filter by property status">
+            {/* h-7 keeps the toolbar dense for mouse users; pointer-coarse:min-h-11
+                holds the 44px Apple-HIG floor on touch tablets (min-height beats
+                height, so the floor wins on coarse pointers at any width). */}
+            <SelectTrigger className="w-32 h-7 pointer-coarse:min-h-11 text-xs hidden md:flex" aria-label="Filter by property status">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -1127,7 +1392,7 @@ export default function MapsPage() {
                 variant="outline"
                 size="sm"
                 aria-label="Open map filters"
-                className="gap-1.5 shrink-0 min-h-11 min-w-11 sm:min-h-9 sm:min-w-0 sm:h-7 text-xs px-2.5"
+                className="gap-1.5 shrink-0 min-h-11 min-w-11 sm:min-w-0 pointer-fine:sm:min-h-9 pointer-fine:sm:h-7 text-xs px-2.5"
               >
                 <SlidersHorizontal className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                 <span className="hidden sm:inline">Filters</span>
@@ -1238,11 +1503,22 @@ export default function MapsPage() {
                     </div>
                     <Switch id="layer-ml-prediction" checked={showPredictionHeatmap} onCheckedChange={setShowPredictionHeatmap} />
                   </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Flame className="w-3.5 h-3.5 text-acr-heat-warm" aria-hidden="true" />
+                      <div>
+                        <Label htmlFor="layer-market-heat" className="text-xs cursor-pointer">County market heat</Label>
+                        <p className="text-micro text-muted-foreground">Network aggregates per county.</p>
+                      </div>
+                    </div>
+                    <Switch id="layer-market-heat" checked={showMarketHeat} onCheckedChange={setShowMarketHeat} />
+                  </div>
                 </fieldset>
 
                 <Button variant="outline" className="w-full text-sm" onClick={() => {
                   setSearchQuery(""); setStatusFilter("all"); setMinAcres(0); setMaxAcres(10000);
                   setShowBuyerDemandHeatmap(false); setShowPredictionHeatmap(false);
+                  setShowMarketHeat(false);
                 }}>
                   Reset all filters
                 </Button>
@@ -1273,7 +1549,7 @@ export default function MapsPage() {
               <div className="h-full w-full p-3" aria-busy="true">
                 {/* Shape-matched map skeleton: full-bleed basemap area with a
                     pin cluster + a side strip standing in for the legend. */}
-                <Skeleton className="h-full w-full rounded-lg relative overflow-hidden" announceText="Loading property intelligence map">
+                <Skeleton className="h-full w-full rounded-card relative overflow-hidden" announceText="Loading property intelligence map">
                   <div className="absolute inset-0 flex items-center justify-center">
                     <MapPin className="w-10 h-10 text-muted-foreground/40" aria-hidden="true" />
                   </div>
@@ -1294,13 +1570,30 @@ export default function MapsPage() {
                   enable3DTerrain={false}
                   showControls
                 />
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-background/70 backdrop-blur-sm" role="status">
+                {/* Bold Tahoe re-skin (Wave R, §1.4/§4): this empty-state wash
+                    floats over the live basemap, so it takes the bold
+                    `backdrop-blur-lg` depth read (up from -sm) over the existing
+                    `bg-surface-sheer` scrim. Visual-only. */}
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-surface-sheer backdrop-blur-lg" role="status">
                   <div className="pointer-events-auto flex flex-col items-center max-w-sm">
                     <MapPin className="w-12 h-12 text-muted-foreground mb-4" aria-hidden="true" />
-                    <h3 className="font-semibold text-lg">No parcel coordinates yet</h3>
-                    <p className="text-muted-foreground text-sm mt-2">
-                      Click <strong>Fetch boundaries</strong> on the Inventory page to auto-geocode your properties, or add lat/lng manually on a parcel's Overview tab. Basemap shown above.
-                    </p>
+                    {/* W2.3: note personas think in collateral, not parcels —
+                        the zero-state speaks their language. */}
+                    {persona === "note_investor" || persona === "note_originator" || persona === "note_servicer" ? (
+                      <>
+                        <h3 className="font-semibold text-lg">No collateral on the map yet</h3>
+                        <p className="text-muted-foreground text-sm mt-2">
+                          When a note's collateral property has coordinates it appears here — soils, flood, and elevation intel included. Click <strong>Fetch boundaries</strong> on the Inventory page to auto-geocode, or add lat/lng on the property's Overview tab.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h3 className="font-semibold text-lg">No parcel coordinates yet</h3>
+                        <p className="text-muted-foreground text-sm mt-2">
+                          Click <strong>Fetch boundaries</strong> on the Inventory page to auto-geocode your properties, or add lat/lng manually on a parcel's Overview tab. Basemap shown above.
+                        </p>
+                      </>
+                    )}
                     {/* RAFE (Tahoe Wave-2): the data-aha is our differentiator,
                         but it shouldn't depend on the customer first having
                         geocoded parcels. "See a sample" runs a REAL free-data
@@ -1342,6 +1635,19 @@ export default function MapsPage() {
                 interactive
                 enable3DTerrain
                 showControls
+              />
+            )}
+
+            {/* Tier 3F — county market-heat layer panel. Overlays the map
+                canvas inside the Map door; toggled from Intelligence layers. */}
+            {showMarketHeat && (
+              <MarketHeatPanel
+                onClose={() => setShowMarketHeat(false)}
+                // Bold Tahoe re-skin (Wave R, §4 depth): keep the semantic
+                // stacking layer (`z-docked` = the 10 it already had) instead of
+                // the raw z-docked; the panel's own canvas-overlay glass + shadow is
+                // applied in MarketHeatPanel.tsx. Position/size unchanged.
+                className="absolute top-2 left-2 z-docked w-80 max-w-[calc(100%-1rem)] max-h-[calc(100%-1rem)]"
               />
             )}
           </div>

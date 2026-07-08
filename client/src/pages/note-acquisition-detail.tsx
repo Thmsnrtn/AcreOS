@@ -36,6 +36,8 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import type { NoteAcquisitionStage } from "@/pages/notes-pipeline";
+import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 interface ChecklistItem {
   done?: boolean;
@@ -92,13 +94,6 @@ function fmtUsd(cents: number | null | undefined): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(Math.round(cents / 100));
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 export default function NoteAcquisitionDetailPage() {
@@ -278,7 +273,7 @@ export default function NoteAcquisitionDetailPage() {
           cents={acq.bpoValueCents}
           onSave={(cents) => patchMutation.mutate({ bpoValueCents: cents } as any)}
           disabled={!!acq.promotedToNoteId}
-          hint={acq.bpoReceivedAt ? `Received ${fmtDate(acq.bpoReceivedAt)}` : undefined}
+          hint={acq.bpoReceivedAt ? `Received ${formatDate(acq.bpoReceivedAt)}` : undefined}
         />
       </div>
 
@@ -454,6 +449,7 @@ function PromoteDialog({ open, onOpenChange, acquisition, onPromoted }: {
   const [acquisitionDate, setAcquisitionDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [originalLender, setOriginalLender] = useState(acquisition.sourcedFrom ?? "");
 
+  // allow-no-invalidation: onSuccess hands off via onPromoted(noteId) — the parent navigates and refreshes
   const promoteMutation = useMutation({
     mutationFn: async () => {
       const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || "";
@@ -528,7 +524,7 @@ function PromoteDialog({ open, onOpenChange, acquisition, onPromoted }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button
             onClick={() => promoteMutation.mutate()}
             disabled={!noteNumber || !originalPrincipal || !acquisitionPrice || !currentBalance || !termMonths || !originationDate || !maturityDate || !acquisitionDate || promoteMutation.isPending}

@@ -54,9 +54,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 type Status =
   | "open"
@@ -143,13 +146,6 @@ const STEP_LABELS: Record<StepKey, string> = {
   judgment_entered: "Judgment entered",
   judgment_recorded: "Judgment recorded",
 };
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-}
 
 function daysFromToday(iso: string | null): number | null {
   if (!iso) return null;
@@ -254,7 +250,7 @@ function QuietTitleIndex() {
                       <div className="text-xs text-muted-foreground font-mono">{c.apn}</div>
                     </td>
                     <td className="px-3 py-2.5 text-xs">{STATUS_LABELS[c.status]}</td>
-                    <td className="px-3 py-2.5 text-xs">{fmtDate(c.deedRecordationDate)}</td>
+                    <td className="px-3 py-2.5 text-xs">{formatDate(c.deedRecordationDate)}</td>
                     <td className="px-3 py-2.5 text-xs">{c.attorneyName ?? "—"}</td>
                     <td className="px-3 py-2.5 text-xs font-mono">{c.courtCaseNumber ?? "—"}</td>
                   </tr>
@@ -273,7 +269,7 @@ function QuietTitleIndex() {
 function QuietTitleDetail({ caseId }: { caseId: string }) {
   useDocumentTitle("Quiet-title case — AcreOS");
 
-  const { data, isLoading } = useQuery<DetailResponse>({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<DetailResponse>({
     queryKey: ["/api/quiet-title/cases", caseId],
     queryFn: async () => {
       const res = await fetch(`/api/quiet-title/cases/${caseId}`, { credentials: "include" });
@@ -287,6 +283,23 @@ function QuietTitleDetail({ caseId }: { caseId: string }) {
       <PageShell>
         <Skeleton className="h-12 w-72 mb-4" />
         <Skeleton className="h-64" />
+      </PageShell>
+    );
+  }
+  if (isError) {
+    return (
+      <PageShell>
+        <Link href="/quiet-title">
+          <Button variant="ghost" size="sm" className="mb-3 -ml-2">
+            <ArrowLeft className="w-4 h-4 mr-1.5" aria-hidden="true" /> Back
+          </Button>
+        </Link>
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          isRetrying={isFetching}
+          testId="quiet-title-detail-error"
+        />
       </PageShell>
     );
   }
@@ -310,7 +323,7 @@ function QuietTitleDetail({ caseId }: { caseId: string }) {
             {c.state} · {c.county} <span className="font-mono text-base">{c.apn}</span>
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Deed recorded {fmtDate(c.deedRecordationDate)} · Status: {STATUS_LABELS[c.status]}
+            Deed recorded {formatDate(c.deedRecordationDate)} · Status: {STATUS_LABELS[c.status]}
           </p>
         </div>
         {c.courtCaseNumber && (
@@ -411,7 +424,7 @@ function StepRow({ step }: { step: Step }) {
         <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
           <span className="flex items-center gap-1">
             <Calendar className="w-3 h-3" aria-hidden="true" />
-            Required by {fmtDate(step.requiredByDate)}
+            Required by {formatDate(step.requiredByDate)}
           </span>
           {!isDone && days !== null && (
             <span className={days < 0 ? "text-acr-neg font-semibold" : days <= 7 ? "text-acr-warning" : ""}>
@@ -419,7 +432,7 @@ function StepRow({ step }: { step: Step }) {
             </span>
           )}
           {isDone && step.completedAt && (
-            <span>· Completed {fmtDate(step.completedAt)}</span>
+            <span>· Completed {formatDate(step.completedAt)}</span>
           )}
           {step.documentS3Key && (
             <span className="flex items-center gap-1">
@@ -513,7 +526,7 @@ function OpenCaseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{Verbs.CANCEL}</Button>
           <Button onClick={() => submit.mutate()} disabled={!certificateId || !deedDate || submit.isPending}>
             {submit.isPending ? "Opening…" : "Open case"}
           </Button>

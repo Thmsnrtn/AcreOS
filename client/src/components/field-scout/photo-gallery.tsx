@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { Verbs } from "@/lib/labels";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -256,14 +257,14 @@ export function PhotoGallery({
                         onClick={() => setEditingCaption(false)}
                         className="flex-1 text-xs text-muted-foreground"
                       >
-                        Cancel
+                        {Verbs.CANCEL}
                       </Button>
                       <Button
                         size="sm"
                         onClick={handleSaveCaption}
                         className="flex-1 text-xs bg-acr-pos hover:bg-acr-pos"
                       >
-                        Save
+                        {Verbs.SAVE}
                       </Button>
                     </div>
                   </div>

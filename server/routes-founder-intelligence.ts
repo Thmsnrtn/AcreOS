@@ -912,9 +912,10 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
         name: organizations.name,
         tier: organizations.subscriptionTier,
         createdAt: organizations.createdAt,
-        // TODO(tsc): organizations has no lastActiveAt column; updatedAt is the
-        // closest activity proxy (bumped on org-scoped writes).
-        lastActiveAt: organizations.updatedAt,
+        // Real last-activity timestamp, stamped by the getOrCreateOrg heartbeat.
+        // Falls back to updatedAt for orgs not yet stamped (avoids a misleading
+        // "no activity / high churn" reading during the backfill window).
+        lastActiveAt: sql<Date | null>`COALESCE(${organizations.lastActiveAt}, ${organizations.updatedAt})`,
       })
       .from(organizations)
       .where(
@@ -3685,7 +3686,7 @@ router.get("/customer-health/:orgId", requireFounder, async (req: Request, res: 
 router.get("/delegations", requireFounder, async (req: Request, res: Response) => {
   try {
     const { getActiveDelegations } = await import("./services/temporaryDelegation");
-    res.json({ delegations: getActiveDelegations() });
+    res.json({ delegations: await getActiveDelegations() });
   } catch (err: any) {
     Errors.internal(res, err);
   }
@@ -3699,7 +3700,7 @@ router.post("/delegations", requireFounder, async (req: Request, res: Response) 
     }
 
     const { grantTemporaryAuthority } = await import("./services/temporaryDelegation");
-    const delegation = grantTemporaryAuthority({
+    const delegation = await grantTemporaryAuthority({
       agentCodename,
       actions,
       toLevel,
@@ -3716,7 +3717,11 @@ router.post("/delegations", requireFounder, async (req: Request, res: Response) 
 router.delete("/delegations/:id", requireFounder, async (req: Request, res: Response) => {
   try {
     const { revokeDelegation } = await import("./services/temporaryDelegation");
-    const success = revokeDelegation(req.params.id);
+    const delegationId = Number.parseInt(req.params.id, 10);
+    if (!Number.isFinite(delegationId)) {
+      return Errors.badRequest(res, "delegation id must be numeric");
+    }
+    const success = await revokeDelegation(delegationId);
     res.json({ success, message: success ? "Delegation revoked" : "Delegation not found" });
   } catch (err: any) {
     Errors.internal(res, err);

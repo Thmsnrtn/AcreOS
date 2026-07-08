@@ -4,7 +4,7 @@
  * Lists acquired notes for the org with status pills, a status filter, and
  * per-row payer / balance / next payment / status. Foundation surface —
  * the BPO + tape diligence + Sophie agent expansion ride a follow-up PR
- * (see docs/exhaustive-completion/note-investor-followups.md).
+ * (see docs/archive/exhaustive-completion/note-investor-followups.md).
  *
  * Loading state uses Skeleton matching the table shape (per UI patterns
  * in CLAUDE.md). Empty state uses the canonical EmptyState with a
@@ -34,6 +34,7 @@ import { NotesImportDialog } from "@/components/notes-import-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useOrganization } from "@/hooks/use-organization";
 import { getTerm, personaForInvestorType } from "@/lib/personaVocabulary";
+import { Verbs } from "@/lib/labels";
 
 // Shape returned by GET /api/notes (mirrors acquiredNotes minus the encrypted TIN).
 interface AcquiredNoteRow {
@@ -270,7 +271,7 @@ export default function NotesPage() {
             Couldn't load notes. Please try again.
           </p>
           <Button variant="outline" onClick={() => refetch()} data-testid="notes-retry-button">
-            Retry
+            {Verbs.RETRY}
           </Button>
         </Card>
       ) : notes.length === 0 ? (
@@ -292,7 +293,50 @@ export default function NotesPage() {
         />
       ) : (
         <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Mobile: stacked note cards — the 5-column table side-scrolls at
+              phone widths. md+ renders the full table below. */}
+          <ul className="md:hidden divide-y divide-border" data-testid="list-notes-mobile">
+            {notes.map((note) => (
+              <li key={note.id}>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/notes/${note.id}`)}
+                  className="w-full text-left px-4 py-3 hover-elevate active:bg-muted/30"
+                  data-testid={`notes-card-${note.id}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{note.payerName}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {note.noteNumber}
+                        {note.payerAddress?.city && note.payerAddress?.state
+                          ? ` · ${note.payerAddress.city}, ${note.payerAddress.state}`
+                          : ""}
+                      </div>
+                    </div>
+                    <div className="font-mono font-medium tabular-nums shrink-0">
+                      {fmtUsd(note.currentBalanceCents)}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 mt-2">
+                    <StatusBadge
+                      status={statusKindFor(note.status)}
+                      label={statusLabel(note.status)}
+                      size="sm"
+                    />
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {note.status === "paid_off" || note.status === "sold"
+                        ? "—"
+                        : nextPaymentLabel(note)}
+                    </span>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {/* Desktop: full table. Hidden on mobile. */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                 <tr>

@@ -87,10 +87,10 @@ function useDictate(onResult: (text: string) => void) {
 function StatusPill({ status }: { status?: string | null }) {
   const s = (status ?? "new").toLowerCase();
   const tone =
-    s === "dead" ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
-    : s === "closed" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+    s === "dead" ? "bg-acr-neg-soft text-acr-neg"
+    : s === "closed" ? "bg-acr-pos-soft text-acr-pos"
     : s === "accepted" || s === "under_contract" || s === "qualified"
-      ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+      ? "bg-acr-warn-soft text-acr-warn"
       : s === "responded" || s === "negotiating" || s === "interested" || s === "contacted"
         ? "bg-primary/15 text-primary"
         : "bg-muted text-foreground";
@@ -230,7 +230,7 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
     <div className="min-h-[100dvh] bg-background pb-24" data-testid="mobile-lead-detail">
       {/* Sticky back nav — fixed so it survives the long notes scroll. */}
       <header
-        className="sticky top-0 z-20 bg-background/95 backdrop-blur-md border-b border-border px-2 py-2 flex items-center"
+        className="sticky top-0 z-dropdown bg-surface-chrome backdrop-blur-md border-b border-border px-2 py-2 flex items-center"
         style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)" }}
       >
         <button
@@ -381,7 +381,7 @@ export function MobileLeadDetail({ leadId }: MobileLeadDetailProps) {
                   aria-label={dictate.listening ? "Stop dictation" : "Dictate note"}
                   className={`absolute right-2 top-2 h-8 w-8 rounded-full flex items-center justify-center transition-colors ${
                     dictate.listening
-                      ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 animate-pulse"
+                      ? "bg-acr-neg-soft text-acr-neg animate-pulse"
                       : "text-muted-foreground hover:bg-muted active:bg-muted"
                   }`}
                 >

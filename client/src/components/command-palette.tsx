@@ -522,6 +522,7 @@ export function CommandPalette() {
   // discoverable from the palette so first-time founders find it.
   const { mode: personaMode, setMode: setPersonaMode } = usePersonaMode();
 
+  // allow-no-invalidation: AI answer lands in palette-local state (setAiResponse)
   const aiMutation = useMutation({
     mutationFn: async (question: string) => {
       const res = await apiRequest("POST", "/api/realtime/ask", { message: question });
@@ -757,14 +758,14 @@ export function CommandPalette() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={backdropFade}
-                className="fixed inset-0 z-[60] command-backdrop"
+                className="fixed inset-0 z-modal command-backdrop"
                 data-testid="command-palette-backdrop"
               />
             </DialogPrimitive.Overlay>
             <DialogPrimitive.Content
               aria-label="Command palette"
               onEscapeKeyDown={handleEscapeKeyDown}
-              className="fixed left-1/2 top-[14vh] z-[60] w-full max-w-[560px] -translate-x-1/2 p-4 outline-none"
+              className="fixed left-1/2 top-[14vh] z-modal w-full max-w-[560px] -translate-x-1/2 p-4 outline-none"
               data-testid="command-palette-dialog"
               asChild
             >
@@ -1326,7 +1327,7 @@ export function CommandPalette() {
                             <span>View system health</span>
                           </CommandItem>
                           <CommandItem
-                            onSelect={() => handleSelect("/founder/ai-costs")}
+                            onSelect={() => handleSelect("/founder/admin/costs?tab=ai-spend")}
                             data-testid="command-item-credits"
                             className="cursor-pointer"
                           >

@@ -106,6 +106,8 @@ npm run eval:gate -- --threshold 0.7 --json              # override the floor
 
 Without `ANTHROPIC_API_KEY` the gate exits 0 with a `SKIPPED` message (threshold not enforced against stub output).
 
+> **Founder action (GitHub repo settings — cannot be set from code):** the `eval-gate` job must be added as a **required status check** in branch protection for `main` (Settings → Branches → branch protection rule → "Require status checks to pass before merging" → add `eval-gate`). Until that box is checked, the gate runs on PRs but does not actually block merge — a failing eval can still be merged. Flagging here; this is a repo-settings step only the founder can enable.
+
 ## Scoring rules
 
 ### Shape

@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { motion } from "framer-motion";
 import { UserRoundCheck, Landmark, Bell, Check, MapPin } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelative } from "@/lib/format";
 
 // Mirrors the parcel_alerts row shape returned by GET /api/parcel-alerts.
 interface ParcelAlert {
@@ -121,8 +121,8 @@ export function ParcelAlerts() {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader className="pb-3">
+      <Card className="rounded-card shadow-acr-1">
+        <CardHeader className="pb-4">
           <CardTitle className="text-base">Parcel alerts</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -142,7 +142,7 @@ export function ParcelAlerts() {
 
   if (isError) {
     return (
-      <Card>
+      <Card className="rounded-card shadow-acr-1">
         <CardContent className="py-6">
           <QueryErrorState error={error ?? null} onRetry={() => refetch()} />
         </CardContent>
@@ -155,7 +155,7 @@ export function ParcelAlerts() {
 
   if (alerts.length === 0) {
     return (
-      <Card>
+      <Card className="rounded-card shadow-acr-1">
         <CardContent className="py-2">
           <EmptyState
             icon={Bell}
@@ -175,8 +175,8 @@ export function ParcelAlerts() {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+    <Card className="rounded-card shadow-acr-1">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-4">
         <CardTitle className="flex items-center gap-2 text-base">
           <Bell className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           Parcel alerts
@@ -212,7 +212,7 @@ export function ParcelAlerts() {
               <motion.li
                 key={a.id}
                 variants={staggerItem}
-                className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                className={`flex items-start gap-3 rounded-card border p-3 transition-colors ${
                   a.isRead ? "border-border bg-card" : "border-primary/30 bg-primary/5"
                 }`}
                 data-testid={`parcel-alert-${a.id}`}
@@ -239,13 +239,13 @@ export function ParcelAlerts() {
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="text-[11px] text-muted-foreground">
-                      {formatDistanceToNow(new Date(a.createdAt), { addSuffix: true })}
+                      {formatRelative(a.createdAt)}
                       {a.source ? ` · ${a.source}` : ""}
                     </span>
                     {href && (
                       <Link
                         href={href}
-                        className="text-[11px] font-medium text-primary underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
+                        className="inline-flex min-h-11 items-center px-2 -mx-2 -my-3.5 text-[11px] font-medium text-primary underline-offset-2 hover:underline active:underline focus-visible:underline focus-visible:outline-none"
                       >
                         View in pipeline
                       </Link>

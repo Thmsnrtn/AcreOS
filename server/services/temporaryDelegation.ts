@@ -6,17 +6,25 @@
  *
  * Delegations auto-expire. When they expire, authority reverts.
  * CEO can revoke delegations early.
+ *
+ * DB-BACKED (module-state audit 2026-07-07): this was a module-level Map,
+ * which on 2+ Fly machines meant a grant made on the app machine was
+ * invisible to the authority gate on the worker — where autonomous
+ * execution actually runs — and every deploy silently revoked everything.
+ * Delegations now live in `authority_delegations`; active = revoked_at IS NULL
+ * AND expires_at > now(). Failure posture: if the DB read fails, the gate
+ * sees NO delegation (fail toward less autonomy, never more).
  */
 
 import { db } from "../db";
-import { companyAgents } from "@shared/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { authorityDelegations, type AuthorityDelegation } from "@shared/schema";
+import { eq, and, gt, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
-interface Delegation {
-  id: string;
+export interface Delegation {
+  id: number;
   agentCodename: string;
-  elevatedActions: string[]; // which actions are elevated
+  elevatedActions: string[]; // which actions are elevated; ["*"] = all
   fromLevel: number;         // original authority level
   toLevel: number;           // elevated authority level (0 = full autonomy)
   expiresAt: Date;
@@ -25,115 +33,132 @@ interface Delegation {
   createdAt: Date;
 }
 
-// In-memory delegation store (backed by the authority gate checks)
-const activeDelegations: Map<string, Delegation> = new Map();
+function toDelegation(row: AuthorityDelegation): Delegation {
+  return {
+    id: row.id,
+    agentCodename: row.agentCodename,
+    elevatedActions: Array.isArray(row.elevatedActions) ? row.elevatedActions : ["*"],
+    fromLevel: row.fromLevel,
+    toLevel: row.toLevel,
+    expiresAt: row.expiresAt,
+    reason: row.reason,
+    isActive: row.revokedAt === null && row.expiresAt > new Date(),
+    createdAt: row.createdAt,
+  };
+}
 
 /**
  * Grant temporary authority elevation to an agent.
  */
-export function grantTemporaryAuthority(params: {
+export async function grantTemporaryAuthority(params: {
   agentCodename: string;
   actions?: string[];       // specific actions, or empty for all
   toLevel?: number;         // default: 0 (full autonomy)
   durationHours: number;
   reason: string;
-}): Delegation {
-  const id = `deleg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const delegation: Delegation = {
-    id,
-    agentCodename: params.agentCodename,
-    elevatedActions: params.actions || ["*"], // "*" means all actions
-    fromLevel: 2, // default: recommend+wait
-    toLevel: params.toLevel ?? 0, // default: full autonomy
-    expiresAt: new Date(Date.now() + params.durationHours * 60 * 60 * 1000),
-    reason: params.reason,
-    isActive: true,
-    createdAt: new Date(),
-  };
+}): Promise<Delegation> {
+  const [row] = await db
+    .insert(authorityDelegations)
+    .values({
+      agentCodename: params.agentCodename,
+      elevatedActions: params.actions && params.actions.length > 0 ? params.actions : ["*"],
+      fromLevel: 2, // default: recommend+wait
+      toLevel: params.toLevel ?? 0,
+      reason: params.reason,
+      expiresAt: new Date(Date.now() + params.durationHours * 60 * 60 * 1000),
+    })
+    .returning();
 
-  activeDelegations.set(id, delegation);
-  logger.info(`[Delegation] Granted: ${params.agentCodename} elevated to level ${delegation.toLevel} for ${params.durationHours}h. Reason: ${params.reason}`);
-
-  return delegation;
+  logger.info(
+    `[Delegation] Granted: ${params.agentCodename} elevated to level ${row.toLevel} for ${params.durationHours}h. Reason: ${params.reason}`,
+  );
+  return toDelegation(row);
 }
 
 /**
  * Check if an agent has a temporary delegation for a specific action.
  * Called by the authority gate before checking static authority config.
+ * FAIL SAFE: any DB error reads as "no delegation" — an unverifiable
+ * elevation must never grant autonomy.
  */
-export function checkTemporaryDelegation(agentCodename: string, action: string): {
+export async function checkTemporaryDelegation(
+  agentCodename: string,
+  action: string,
+): Promise<{
   hasDelegation: boolean;
   toLevel: number;
-  delegationId?: string;
+  delegationId?: number;
   reason?: string;
-} {
-  // Clean expired delegations
-  const now = new Date();
-  for (const [id, deleg] of activeDelegations) {
-    if (deleg.expiresAt <= now) {
-      deleg.isActive = false;
-      activeDelegations.delete(id);
-      logger.info(`[Delegation] Expired: ${deleg.agentCodename} delegation ${id}`);
+}> {
+  try {
+    const rows = await db
+      .select()
+      .from(authorityDelegations)
+      .where(
+        and(
+          eq(authorityDelegations.agentCodename, agentCodename),
+          isNull(authorityDelegations.revokedAt),
+          gt(authorityDelegations.expiresAt, new Date()),
+        ),
+      );
+    for (const row of rows) {
+      const actions = Array.isArray(row.elevatedActions) ? row.elevatedActions : [];
+      if (actions.includes("*") || actions.includes(action)) {
+        return {
+          hasDelegation: true,
+          toLevel: row.toLevel,
+          delegationId: row.id,
+          reason: row.reason,
+        };
+      }
     }
+  } catch (err) {
+    logger.warn("[Delegation] check failed — treating as no delegation (fail safe)", {
+      metadata: { agentCodename, error: err instanceof Error ? err.message : String(err) },
+    });
   }
-
-  // Find matching active delegation
-  for (const [id, deleg] of activeDelegations) {
-    if (deleg.agentCodename !== agentCodename || !deleg.isActive) continue;
-    if (deleg.elevatedActions.includes("*") || deleg.elevatedActions.includes(action)) {
-      return {
-        hasDelegation: true,
-        toLevel: deleg.toLevel,
-        delegationId: id,
-        reason: deleg.reason,
-      };
-    }
-  }
-
   return { hasDelegation: false, toLevel: 3 };
 }
 
 /**
  * Revoke a delegation early.
  */
-export function revokeDelegation(delegationId: string): boolean {
-  const deleg = activeDelegations.get(delegationId);
-  if (!deleg) return false;
-  deleg.isActive = false;
-  activeDelegations.delete(delegationId);
-  logger.info(`[Delegation] Revoked: ${deleg.agentCodename} delegation ${delegationId}`);
+export async function revokeDelegation(delegationId: number): Promise<boolean> {
+  const [row] = await db
+    .update(authorityDelegations)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(authorityDelegations.id, delegationId), isNull(authorityDelegations.revokedAt)))
+    .returning({ id: authorityDelegations.id, agentCodename: authorityDelegations.agentCodename });
+  if (!row) return false;
+  logger.info(`[Delegation] Revoked: ${row.agentCodename} delegation ${row.id}`);
   return true;
 }
 
 /**
  * Get all active delegations (for display in CEO dashboard).
  */
-export function getActiveDelegations(): Delegation[] {
-  const now = new Date();
-  const active: Delegation[] = [];
-
-  for (const [id, deleg] of activeDelegations) {
-    if (deleg.expiresAt <= now) {
-      activeDelegations.delete(id);
-      continue;
-    }
-    if (deleg.isActive) active.push(deleg);
-  }
-
-  return active;
+export async function getActiveDelegations(): Promise<Delegation[]> {
+  const rows = await db
+    .select()
+    .from(authorityDelegations)
+    .where(and(isNull(authorityDelegations.revokedAt), gt(authorityDelegations.expiresAt, new Date())));
+  return rows.map(toDelegation);
 }
 
 /**
  * Revoke all delegations for an agent.
  */
-export function revokeAllForAgent(agentCodename: string): number {
-  let revoked = 0;
-  for (const [id, deleg] of activeDelegations) {
-    if (deleg.agentCodename === agentCodename && deleg.isActive) {
-      deleg.isActive = false;
-      activeDelegations.delete(id);
-      revoked++;
-    }
-  }
-  return revoked;
+export async function revokeAllForAgent(agentCodename: string): Promise<number> {
+  const rows = await db
+    .update(authorityDelegations)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(authorityDelegations.agentCodename, agentCodename),
+        isNull(authorityDelegations.revokedAt),
+        gt(authorityDelegations.expiresAt, new Date()),
+      ),
+    )
+    .returning({ id: authorityDelegations.id });
+  return rows.length;
 }

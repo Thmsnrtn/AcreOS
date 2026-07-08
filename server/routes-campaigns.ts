@@ -21,11 +21,12 @@ import { Errors } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
 import { logger } from "./utils/logger";
 import { checkUsageLimit } from "./services/usageLimits";
+import { usageLimitGate, aiByokThresholdGate } from "./middleware/usageLimitGate";
 import { usageMeteringService, creditService } from "./services/credits";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { storage, db } from "./storage";
-import { eq, sql, and, gte } from "drizzle-orm";
+import { eq, sql, and, gte, desc } from "drizzle-orm";
 import { leads, deals, properties, campaignResponses, campaignDeliveryEvents } from "@shared/schema";
 import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
 
@@ -48,14 +49,21 @@ export function registerCampaignRoutes(app: Express): void {
     res.json(campaign);
   });
 
-  api.post("/api/campaigns", isAuthenticated, getOrCreateOrg, requirePermission("canCreateCampaign"), async (req, res) => {
+  api.post("/api/campaigns", isAuthenticated, getOrCreateOrg, requirePermission("canCreateCampaign"), usageLimitGate("campaigns"), async (req, res) => {
     try {
       const org = req.organization;
       const trackingCode = storage.generateTrackingCode();
-      const input = insertCampaignSchema.parse({ 
-        ...req.body, 
+      // The wizard submits untouched optional numeric/date inputs as "" —
+      // Postgres rejects '' for numeric/timestamp columns and the raw insert
+      // error surfaced as a bare 500 (WS1 interactive pass, 2026-07-07).
+      const body: Record<string, unknown> = { ...req.body };
+      for (const key of ["budget", "scheduledDate", "completedDate"]) {
+        if (body[key] === "") body[key] = null;
+      }
+      const input = insertCampaignSchema.parse({
+        ...body,
         organizationId: org.id,
-        trackingCode 
+        trackingCode
       });
       const campaign = await storage.createCampaign(input);
       
@@ -90,6 +98,46 @@ export function registerCampaignRoutes(app: Express): void {
 
     const responses = await storage.getCampaignResponses(org.id, campaignId);
     res.json(responses);
+  });
+
+  // C2 receipts (experience-legibility.md): the rows behind a campaign's
+  // "Sent" number — every delivery event with the lead it went to. The
+  // aggregate counts and this list read the same table, so the number and
+  // its evidence can never disagree.
+  api.get("/api/campaigns/:id/delivery-events", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
+    const campaignId = Number(req.params.id);
+    if (!Number.isFinite(campaignId)) return Errors.badRequest(res, "Invalid campaign ID");
+    const campaign = await storage.getCampaign(org.id, campaignId);
+    if (!campaign) return Errors.notFound(res, "Campaign");
+    try {
+      const rows = await db
+        .select({
+          at: campaignDeliveryEvents.sentAt,
+          channel: campaignDeliveryEvents.channel,
+          status: campaignDeliveryEvents.status,
+          leadFirst: leads.firstName,
+          leadLast: leads.lastName,
+          leadId: campaignDeliveryEvents.leadId,
+        })
+        .from(campaignDeliveryEvents)
+        .leftJoin(leads, eq(campaignDeliveryEvents.leadId, leads.id))
+        .where(eq(campaignDeliveryEvents.campaignId, campaignId))
+        .orderBy(desc(campaignDeliveryEvents.sentAt))
+        .limit(100);
+      res.json({
+        campaignId,
+        rows: rows.map((r) => ({
+          at: r.at ? new Date(r.at).toISOString() : null,
+          channel: r.channel,
+          status: r.status,
+          leadId: r.leadId,
+          leadName: [r.leadFirst, r.leadLast].filter(Boolean).join(" ") || null,
+        })),
+      });
+    } catch (error) {
+      Errors.internal(res, error instanceof Error ? error : new Error(String(error)));
+    }
   });
 
   // Get campaign analytics with response data
@@ -860,7 +908,9 @@ export function registerCampaignRoutes(app: Express): void {
           }
 
           const expectedDeliveryDate = result.expected_delivery_date ? new Date(result.expected_delivery_date) : undefined;
-          sendResults.push({ leadId: lead.id, success: true, lobId: result.id, expectedDeliveryDate, isTest: isTestMode });
+          // Trust the service's honest flag — the live-send interlock may
+          // have degraded a 'live' request to Lob's test environment.
+          sendResults.push({ leadId: lead.id, success: true, lobId: result.id, expectedDeliveryDate, isTest: result.isTestMode ?? isTestMode });
           lobJobIds.push(result.id);
 
           // Phase 3 Week 14 — Activation telemetry. First successfully-sent
@@ -959,16 +1009,23 @@ export function registerCampaignRoutes(app: Express): void {
         status: 'active',
       });
 
+      // Honest test-mode aggregate: the org may have REQUESTED live mode,
+      // but the live-send interlock can degrade the actual sends to Lob's
+      // test environment. Report what happened, not what was asked for.
+      const actuallyTestMode = successCount > 0
+        ? sendResults.every((r) => !r.success || r.isTest === true)
+        : isTestMode;
+
       res.json({
         success: true,
-        isTestMode,
+        isTestMode: actuallyTestMode,
         mailingOrderId: mailingOrder.id,
         piecesQueued: successCount,
         piecesFailed: failCount,
         totalCost: (costPerPiece * successCount) / 100,
         refunded: failCount > 0 ? (costPerPiece * failCount) / 100 : 0,
-        message: isTestMode
-          ? `${successCount} test mail pieces queued (no actual mail sent)${failCount > 0 ? `, ${failCount} failed` : ''}`
+        message: actuallyTestMode
+          ? `${successCount} test mail pieces queued (no physical mail was printed)${failCount > 0 ? `, ${failCount} failed` : ''}`
           : `${successCount} mail pieces sent${failCount > 0 ? `, ${failCount} failed (refunded)` : ''}`,
         warning: identityWarning,
         details: sendResults,
@@ -1207,14 +1264,24 @@ export function registerCampaignRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/campaigns/:id/optimize", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // W4.1 — the optimizer runs a gpt-4o call per invocation and used to be
+  // the only AI surface with NO turn meter at all: it never counted against
+  // ai_requests, never consulted the BYOK threshold, and billed platform
+  // COGS invisibly. Same gate stack as chat now.
+  api.post("/api/campaigns/:id/optimize", isAuthenticated, getOrCreateOrg, usageLimitGate("ai_requests"), aiByokThresholdGate(), async (req, res) => {
     try {
       const org = req.organization;
       const campaignId = parseInt(req.params.id);
-      
+
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) {
         return Errors.notFound(res, "Campaign");
+      }
+
+      try {
+        await storage.trackUsage(org.id, "ai_request");
+      } catch (err) {
+        logger.warn("[campaign-optimize] trackUsage failed (continuing)", err instanceof Error ? err : undefined);
       }
 
       const { campaignOptimizerService } = await import("./services/campaignOptimizer");
@@ -1336,9 +1403,20 @@ export function registerCampaignRoutes(app: Express): void {
       return Errors.badRequest(res, "Test mode not available - no test API key configured");
     }
     
-    // Update organization settings
-    const updatedSettings = { ...org.settings, mailMode: mode };
-    const updated = await storage.updateOrganization(org.id, { settings: updatedSettings });
+    // Update organization settings. 2026-07 audit: atomic jsonb_set on the
+    // single key — the old read-modify-write of the WHOLE settings object
+    // silently dropped any concurrently-written sibling key (last-write-wins
+    // clobber). Pattern from server/ai/supportAgent.ts.
+    const { db } = await import("./db");
+    const { organizations } = await import("@shared/schema");
+    const { sql: sqlTag, eq: eqOp } = await import("drizzle-orm");
+    await db
+      .update(organizations)
+      .set({
+        settings: sqlTag`jsonb_set(COALESCE(${organizations.settings}, '{}'), '{mailMode}', ${JSON.stringify(mode)}::jsonb)` as any,
+        updatedAt: new Date(),
+      })
+      .where(eqOp(organizations.id, org.id));
     
     res.json({ 
       success: true, 

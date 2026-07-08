@@ -24,17 +24,22 @@ import { ArrowLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { JsonLd } from "@/components/seo/JsonLd";
-import { OpenGraph } from "@/components/seo/OpenGraph";
+import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { emitMarketingTouch } from "@/lib/marketing-touch";
+import { SITE } from "@/lib/jsonld-schemas";
 
 import { getCountyContent } from "./county-registry";
 import { DataSnapshotBand } from "./DataSnapshotBand";
 import type { CountyLearnContent } from "./types";
 
-const SITE_URL = "https://acreos.io";
+const SITE_URL = SITE.url;
 
 function CountyNotFound() {
+  usePageMeta(
+    "County data",
+    "County-level free-data primers for land investors.",
+  );
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="max-w-md text-center space-y-4">
@@ -138,12 +143,8 @@ export default function CountyLandingPage() {
 
   const content = useMemo(() => getCountyContent(state, county), [state, county]);
 
-  usePageMeta(
-    content?.headline ?? "County data · AcreOS",
-    content?.metaDescription ??
-      "County-level free-data primers for land investors.",
-  );
-
+  // Title/description/OG/canonical are handled by SeoPageShell in the
+  // found branch; CountyNotFound sets its own fallback meta.
   useEffect(() => {
     if (!content) return;
     const artifactId = `learn-county:${content.stateSlug}:${content.countySlug}`;
@@ -163,43 +164,39 @@ export default function CountyLandingPage() {
   const placeName = `${content.countyName} County`;
 
   return (
-    <div className="min-h-screen bg-background">
-      <OpenGraph
-        url={canonicalUrl}
-        title={`${content.headline} · AcreOS`}
-        description={content.metaDescription}
-        type="article"
-      />
-      <JsonLd id={`county-article-${content.stateSlug}-${content.countySlug}`} data={schemas.article} />
-      <JsonLd id={`county-faq-${content.stateSlug}-${content.countySlug}`} data={schemas.faqPage} />
-      <JsonLd id={`county-breadcrumb-${content.stateSlug}-${content.countySlug}`} data={schemas.breadcrumbs} />
-
-      <div className="max-w-3xl mx-auto px-4 md:px-6 py-8 md:py-12 pb-24">
-        <nav aria-label="Breadcrumb" className="mb-6">
-          <Button asChild variant="ghost" size="sm" data-testid="button-county-back">
-            <Link href="/">
-              <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" />
-              Back to AcreOS
-            </Link>
-          </Button>
-        </nav>
-
-        <header className="space-y-3 mb-8">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground font-medium" data-testid="text-county-eyebrow">
-            {placeName} · {content.stateName}
-          </p>
-          <h1
-            className="text-3xl md:text-4xl font-semibold leading-tight tracking-tight"
-            data-testid="text-county-headline"
-          >
-            {content.headline}
-          </h1>
-          <p className="text-lg text-muted-foreground" data-testid="text-county-intro">
-            {content.intro}
-          </p>
-        </header>
-
-        <DataSnapshotBand snapshot={content.dataSnapshot} placeName={placeName} />
+    <SeoPageShell
+      title={content.headline}
+      titleTestId="text-county-headline"
+      description={content.metaDescription}
+      canonicalUrl={canonicalUrl}
+      ogType="article"
+      structuredData={
+        <>
+          <JsonLd id={`county-article-${content.stateSlug}-${content.countySlug}`} data={schemas.article} />
+          <JsonLd id={`county-faq-${content.stateSlug}-${content.countySlug}`} data={schemas.faqPage} />
+          <JsonLd id={`county-breadcrumb-${content.stateSlug}-${content.countySlug}`} data={schemas.breadcrumbs} />
+        </>
+      }
+      breadcrumb={
+        <Button asChild variant="ghost" size="sm" data-testid="button-county-back">
+          <Link href="/">
+            <ArrowLeft className="w-4 h-4 mr-2" aria-hidden="true" />
+            Back to AcreOS
+          </Link>
+        </Button>
+      }
+      eyebrow={
+        <p className="text-xs uppercase tracking-wide text-muted-foreground font-medium" data-testid="text-county-eyebrow">
+          {placeName} · {content.stateName}
+        </p>
+      }
+      intro={
+        <p className="text-lg text-muted-foreground" data-testid="text-county-intro">
+          {content.intro}
+        </p>
+      }
+    >
+      <DataSnapshotBand snapshot={content.dataSnapshot} placeName={placeName} />
 
         <section className="mb-10" data-testid="section-county-tools">
           <h2 className="text-xl font-semibold mb-3">Run it on a specific parcel</h2>
@@ -277,7 +274,6 @@ export default function CountyLandingPage() {
             county-level reference read and do not replace a parcel-level lookup.
           </p>
         </section>
-      </div>
-    </div>
+    </SeoPageShell>
   );
 }

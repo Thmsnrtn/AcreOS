@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { clientLogger } from "@/lib/clientLogger";
+import { formatDate } from "@/lib/format";
 
 interface ConversationRow {
   id: number;
@@ -46,7 +47,7 @@ function relativeTime(iso: string): string {
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 export function ConversationSidebar({

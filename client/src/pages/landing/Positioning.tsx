@@ -60,7 +60,10 @@ export function Positioning() {
   return (
     <section className="lp-positioning" aria-label="Who AcreOS is for">
       <div className="lp-positioning-inner">
-        <div className="lp-positioning-primary">{c.primary}</div>
+        {/* h2 so the section participates in the document outline
+            (h1 hero → h2 per section); visual style is unchanged —
+            .lp-positioning-primary fully owns font/size/margin. */}
+        <h2 className="lp-positioning-primary">{c.primary}</h2>
         <div className="lp-positioning-roadmap">{c.inProduct}</div>
 
         {/* Core tier — solid chips, no qualifier */}
