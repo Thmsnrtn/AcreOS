@@ -121,6 +121,20 @@ export default async function globalSetup() {
                '+14805550142', true, now(), 'e2e_seed')`,
       [orgId],
     );
+    // 4b-ii. Email-reply fixture (tests/e2e-mobile/wedge-email-reply.spec.ts):
+    //   a lead with a real email address so the synthetic inbound reply can
+    //   honestly come "from the seeded lead's email". The inbound handler
+    //   routes on the reply-to address (inbox+{leadId}-{hash}@…), which the
+    //   spec derives with the same HMAC recipe the server uses
+    //   (server/services/inboundEmailService.ts: INBOUND_EMAIL_HMAC_SECRET
+    //   || SESSION_SECRET). Distinct from the Wedge Seller so the two
+    //   journey specs never fight over one lead's status.
+    await client.query(
+      `INSERT INTO leads (organization_id, first_name, last_name, status, score, state, city, email)
+       VALUES ($1, 'Emmy', 'Replywell', 'contacted', 77, 'NM', 'Taos',
+               'emmy.replywell@seller-e2e.test')`,
+      [orgId],
+    );
     // The wedge journey models a PAYING customer. Since PR #112 the campaign
     // cap is genuinely enforced (free tier = 0 campaigns — intended product
     // behavior), so the default free-tier org can no longer create the
