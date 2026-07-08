@@ -119,7 +119,9 @@ describe("buildStepAwayReadiness", () => {
     const paging = r.checks.find((c) => c.key === "paging")!;
     expect(paging.status).toBe("action_needed");
     expect(paging.critical).toBe(true);
-    expect(r.headline).toContain("need you");
+    // Singular/plural aware since 2026-07-08 ("1 thing needs you" /
+    // "2 things need you").
+    expect(r.headline).toMatch(/needs? you/);
   });
 
   it("push-only (no email fallback) is a gap, not a pass", async () => {

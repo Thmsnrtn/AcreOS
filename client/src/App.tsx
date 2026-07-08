@@ -2099,9 +2099,13 @@ function AppContent() {
       {user && <Suspense fallback={null}><BetaActivationDetector /></Suspense>}
       {/* Hide the global PaxCopilotRail on /ai because that page has
           its own main-area chat UI ("AcreOS Assistant"). r3 Gabriel
-          caught the dual-chat-UI confusion (UX-R3-001). Elsewhere
-          the rail remains the primary conversational entry point. */}
-      {user && !location.startsWith("/ai") && (
+          caught the dual-chat-UI confusion (UX-R3-001). Also hidden on
+          /founder/*: the founder's conversational surface is Atlas
+          (the /founder shell + AtlasDock on subpages) — mounting the
+          customer copilot there stacked TWO chat FABs on every founder
+          door (mobile eyeball pass, 2026-07-08). Elsewhere the rail
+          remains the primary conversational entry point. */}
+      {user && !location.startsWith("/ai") && !location.startsWith("/founder") && (
         <Suspense fallback={null}>
           <PaxCopilotRail />
         </Suspense>
