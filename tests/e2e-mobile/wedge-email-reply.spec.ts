@@ -18,13 +18,15 @@
  *      processInboundEmail) routes on the reply-to address
  *      `inbox+{leadId}-{hash}@…`, verifies the per-lead hash, and writes:
  *        - a lead_emails row (direction='inbound'),
+ *        - an inbox_messages row (the Inbox door's email tab reads these),
  *        - lead.status = 'responded',
  *        - a lead_activities row (type='email_received').
  *      The spec asserts exactly those writes — nothing wishful.
  *   4. The customer-visible surfaces confirm it: the authenticated email
  *      thread API (GET /api/leads/:id/emails — what the DealInbox component
- *      reads), the unread-count API, and the /leads/:id page showing the
- *      "responded" status.
+ *      reads), the Inbox door's list API (GET /api/inbox) + its unread
+ *      count, the per-lead unread-count API, and the /leads/:id page
+ *      showing the "responded" status.
  *
  * WHICH AUTH PATH — and why HMAC, not SNS:
  *   Production receives mail via SES → SNS → HTTPS; that path verifies a
@@ -217,6 +219,23 @@ test.describe("wedge email-reply leg (inbound email → lead responded)", () => 
         expect(email.lead_id).toBe(lead.id);
       });
 
+      await test.step("inbox_messages row stored (Inbox door surface)", async () => {
+        const {
+          rows: [msg],
+        } = await db.query(
+          `SELECT sender_email, sender_name, subject, organization_id, lead_id, is_read
+           FROM inbox_messages WHERE message_id = $1`,
+          [messageId],
+        );
+        expect(msg, "handler must insert an inbox_messages row — without it the reply is invisible in the Inbox door").toBeTruthy();
+        expect(msg.sender_email).toBe(LEAD_EMAIL);
+        expect(msg.sender_name).toBe("Emmy Replywell");
+        expect(msg.subject).toBe(payload.subject);
+        expect(msg.organization_id).toBe(org.id);
+        expect(msg.lead_id).toBe(lead.id);
+        expect(msg.is_read).toBe(false);
+      });
+
       await test.step("lead flips to responded", async () => {
         await expect
           .poll(
@@ -253,6 +272,24 @@ test.describe("wedge email-reply leg (inbound email → lead responded)", () => 
         expect(mine, "thread must contain this run's inbound email").toBeTruthy();
         expect(mine!.direction).toBe("inbound");
         expect(mine!.fromEmail).toBe(LEAD_EMAIL);
+      });
+
+      await test.step("Inbox door API lists the reply with a live unread count", async () => {
+        // The Inbox page's email tab (client/src/pages/inbox.tsx) reads
+        // GET /api/inbox and its unread badge reads /api/inbox/unread-count.
+        const listRes = await page.request.get(`/api/inbox`);
+        expect(listRes.status(), await listRes.text()).toBe(200);
+        const inbox = await listRes.json();
+        const mine = (inbox as Array<{ messageId?: string; senderEmail?: string }>).find(
+          (m) => m.messageId === messageId,
+        );
+        expect(mine, "GET /api/inbox must list this run's reply").toBeTruthy();
+        expect(mine!.senderEmail).toBe(LEAD_EMAIL);
+
+        const countRes = await page.request.get(`/api/inbox/unread-count`);
+        expect(countRes.status(), await countRes.text()).toBe(200);
+        const { count } = await countRes.json();
+        expect(count).toBeGreaterThan(0);
       });
 
       await test.step("unread email count reflects the reply", async () => {

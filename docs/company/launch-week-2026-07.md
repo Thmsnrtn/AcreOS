@@ -65,7 +65,24 @@ makes an offer, and pays — zero errors, mobile and desktop.
       "executive", server normalizes the alias) + failed drafts actually
       restored to the composer; (6) plans/upgrade grid moved into the
       Billing tab where every server upgradeUrl deep-links.
-- [ ] Wedge E2E extended: email reply leg + billing upgrade journey.
+- [x] Wedge E2E extended (2026-07-08): email-reply leg proves the REAL
+      inbound webhook end to end (HMAC verified for real; unsigned +
+      mis-signed asserted 401) → lead_emails + inbox_messages rows,
+      lead→responded, activity, thread API, Inbox door API + unread
+      counts, /leads/:id surface. Billing-upgrade journey always asserts
+      the billing tab + pricing grid + available-plans error recovery,
+      and self-activates the real Stripe flow when STRIPE_SECRET_KEY
+      lands. Both green locally on pixel-5; run in CI e2e-mobile.
+      BONUS FIX the leg exposed: inbound lead emails were INVISIBLE in
+      the Inbox door (processInboundEmail wrote lead_emails only; the
+      Inbox email tab reads inbox_messages — zero writers). Now writes
+      the inbox_messages projection too; go/no-go recipe's "replies land
+      in Inbox" promise is true for email as well as SMS.
+      Noted, not fixed: (a) /settings#billing auto-opens the
+      Compare-plans dialog over the grid (product-look choice);
+      (b) processInboundEmail doesn't check `from` matches the lead's
+      email — acceptable: routing is per-lead-HMAC-gated, and real
+      sellers reply from unpredictable addresses.
 - [ ] Credentialed desktop signup E2E in CI (needs founder: Clerk test
       creds as GitHub Actions secrets).
 
