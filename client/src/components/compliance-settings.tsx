@@ -61,7 +61,7 @@ export function ComplianceSettings() {
           Compliance & data governance
         </h2>
         <p className="text-muted-foreground text-sm">
-          Manage audit logs, TCPA compliance, and data retention policies.
+          The paper trail: who did what, who's agreed to be contacted, and how long records are kept.
         </p>
       </div>
 
@@ -86,7 +86,7 @@ export function ComplianceSettings() {
           data-testid="button-tab-tcpa"
         >
           <PhoneOff className="w-4 h-4 mr-2" aria-hidden="true" />
-          TCPA compliance
+          Texting & calling consent
         </Button>
         <Button
           type="button"
@@ -183,13 +183,13 @@ function AuditLogViewer() {
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="audit-filter-entity">Entity type</Label>
+            <Label htmlFor="audit-filter-entity">Record type</Label>
             <Select value={filters.entityType || "all"} onValueChange={(v) => setFilters(f => ({ ...f, entityType: v === "all" ? "" : v, offset: 0 }))}>
               <SelectTrigger id="audit-filter-entity" className="w-[180px]" data-testid="select-audit-entity">
-                <SelectValue placeholder="All entities" />
+                <SelectValue placeholder="All records" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All entities</SelectItem>
+                <SelectItem value="all">All records</SelectItem>
                 <SelectItem value="lead">Lead</SelectItem>
                 <SelectItem value="property">Property</SelectItem>
                 <SelectItem value="deal">Deal</SelectItem>
@@ -510,11 +510,13 @@ function RetentionPoliciesPanel() {
     });
   };
 
+  // C1b legibility: the switch permanently deletes data — the copy must say
+  // so, not "enable retention policy".
   const policyItems = [
-    { key: "leads" as const, label: "Dead leads", description: "Leads marked as dead/unresponsive" },
-    { key: "closedDeals" as const, label: "Closed deals", description: "Deals that have been closed" },
-    { key: "auditLogs" as const, label: "Audit logs", description: "Historical audit log entries" },
-    { key: "communications" as const, label: "Communications", description: "Email and SMS records" },
+    { key: "leads" as const, label: "Auto-delete dead leads", description: "When this is on, leads marked dead are permanently deleted once they're older than the days you set." },
+    { key: "closedDeals" as const, label: "Auto-delete closed deals", description: "When this is on, closed deals are permanently deleted once they're older than the days you set." },
+    { key: "auditLogs" as const, label: "Auto-delete old audit records", description: "When this is on, audit-trail entries are permanently deleted once they're older than the days you set." },
+    { key: "communications" as const, label: "Auto-delete old emails and texts", description: "When this is on, email and text records are permanently deleted once they're older than the days you set." },
   ];
 
   return (
@@ -526,7 +528,7 @@ function RetentionPoliciesPanel() {
             Retention policies
           </CardTitle>
           <CardDescription>
-            Configure automatic data retention periods for compliance.
+            Each switch below permanently deletes old records on a schedule — off means we keep everything.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -560,15 +562,15 @@ function RetentionPoliciesPanel() {
                         onChange={(e) => handleUpdateDays(item.key, parseInt(e.target.value) || 365)}
                         className="w-20 tabular-nums"
                         disabled={!policies?.[item.key]?.enabled}
-                        aria-label={`${item.label} retention days`}
+                        aria-label={`${item.label}: delete after how many days`}
                         data-testid={`input-retention-${item.key}`}
                       />
-                      <span className="text-sm text-muted-foreground">days</span>
+                      <span className="text-sm text-muted-foreground">days, then deleted</span>
                     </div>
                     <Switch
                       checked={policies?.[item.key]?.enabled || false}
                       onCheckedChange={(checked) => handleTogglePolicy(item.key, checked)}
-                      aria-label={`Enable ${item.label} retention policy`}
+                      aria-label={item.label}
                       data-testid={`switch-${item.key}`}
                     />
                   </div>
