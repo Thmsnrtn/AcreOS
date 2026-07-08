@@ -25,17 +25,22 @@ ENV NODE_ENV="production"
 # the Fly machine (Rosy River C3), and server/routes-agent-prereqs.ts
 # health-checks `gh auth status`. So it can't be dropped from the final
 # stage — but the apt package (cli.github.com stable, v2.93.0) is compiled
-# with Go 1.26.3, whose stdlib carries CVE-2026-42504 (HIGH) +
-# CVE-2026-42507 / CVE-2026-27145 (MEDIUM) — all fixed in Go 1.26.4. No
-# upstream gh release has been rebuilt against 1.26.4 yet (v2.93.0 shipped
-# 2026-05-27), so we compile the SAME pinned gh release from source with
-# the patched toolchain. CGO_ENABLED=0 → static binary, no extra runtime
-# deps in the final stage. Bump GH_VERSION when upstream ships a release
-# built on a patched Go and this stage collapses to a version pin.
+# with an older Go whose stdlib trails security fixes, so we compile the
+# SAME pinned gh release from source with the current patched toolchain.
+# CGO_ENABLED=0 → static binary, no extra runtime deps in the final stage.
+# Bump GH_VERSION when upstream ships a release built on a patched Go and
+# this stage collapses to a version pin.
+#
+# TOOLCHAIN MAINTENANCE: every Go security release re-trips the Trivy image
+# gate for this binary (fix exists ⇒ ignore-unfixed doesn't exempt it).
+# History: 1.26.4 fixed CVE-2026-42504 et al (bumped 2026-06); 1.26.5
+# (released 2026-07-07, crypto/tls + os fixes) re-tripped the gate on every
+# main run within hours — bumped 2026-07-08. When the gate goes red with a
+# gobinary finding, check https://go.dev/doc/devel/release first.
 # (Known residual: in-toto-golang v0.9.0 is vendored by gh upstream —
 # GHSA-pmwq-pjrm-6p5r, MEDIUM, below the image scan's CRITICAL/HIGH gate;
 # clears when gh bumps the dep.)
-FROM golang:1.26.4-bookworm AS gh-build
+FROM golang:1.26.5-bookworm AS gh-build
 ARG GH_VERSION=v2.93.0
 RUN CGO_ENABLED=0 go install github.com/cli/cli/v2/cmd/gh@${GH_VERSION}
 
