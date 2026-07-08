@@ -202,7 +202,11 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     byokSupport: true,
     includedSeats: 10,
     maxSeats: 100,
-    seatPriceCents: 4000, // $40/seat
+    // $25/seat past the included 10 (was $40 — founder decision 2026-07-08:
+    // the marginal Scale seat cost DOUBLE the marginal Pro seat, taxing
+    // exactly the teams the tier is for. See
+    // docs/company/decision-memos/2026-07-08-founding-member-pricing.md).
+    seatPriceCents: 2500,
     creditPool: 8000,
     aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.scale,
   },
