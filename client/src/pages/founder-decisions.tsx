@@ -127,7 +127,10 @@ function DecisionRowCard({
       className="border rounded-card p-4 hover:bg-muted/30 transition-colors"
       data-testid={`decision-row-${row.id}`}
     >
-      <div className="flex items-start justify-between gap-4">
+      {/* flex-wrap: at phone widths the nowrap timestamp column can't fit
+          beside the flex-1 title and was clipped by the card edge (mobile
+          eyeball pass, 2026-07-08) — wrapping drops it to its own line. */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <button
           onClick={() => setExpanded((v) => !v)}
           className="flex-1 text-left"
@@ -324,7 +327,7 @@ function PendingActionCard({
   const busy = inFlight === action.id;
   return (
     <div className="border rounded-card p-4 bg-card" data-testid={`pending-action-${action.id}`}>
-      <div className="flex items-start justify-between gap-3 mb-2">
+      <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="text-micro uppercase">
             {action.handName.replace(/_/g, " ")}

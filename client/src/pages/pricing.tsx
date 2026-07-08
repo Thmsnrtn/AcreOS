@@ -114,6 +114,17 @@ const FEATURES: Feature[] = [
     pro: fmtSeats("pro"),
     scale: fmtSeats("scale"),
   },
+  {
+    // Credits are the tangible "data + mail allowance" each tier carries
+    // (1 credit ≈ $0.01 of provider cost — shared/billing/credit-weights.ts).
+    // Surfacing them here was part of the 2026-07-08 pricing decision:
+    // subscription buys adoption, credits carry the variable value.
+    name: "Data & mail credits / month",
+    free: fmtCount(TIER_LIMITS.free.creditPool),
+    starter: fmtCount(TIER_LIMITS.starter.creditPool),
+    pro: fmtCount(TIER_LIMITS.pro.creditPool),
+    scale: fmtCount(TIER_LIMITS.scale.creditPool),
+  },
   { name: "Data sources (6 free + 3 premium)", free: true, starter: true, pro: true, scale: true },
   { name: "AI deal intelligence", free: true, starter: true, pro: true, scale: true },
   { name: "Document generation", free: true, starter: true, pro: true, scale: true },
@@ -188,6 +199,18 @@ export default function PricingPage() {
           only when your deal volume earns them. Every paid plan includes a{" "}
           <span className="tabular-nums">14</span>-day free trial and a{" "}
           <span className="tabular-nums">30</span>-day money-back guarantee.
+        </p>
+        {/* Founding-member pricing — 2026-07-08 founder decision: launch
+            prices are held for the first cohort for as long as they stay
+            subscribed; list prices rise afterward. Honest mechanism: Stripe
+            subscriptions keep their price on later list changes. */}
+        <p
+          className="mt-4 max-w-2xl mx-auto text-sm font-medium text-primary"
+          data-testid="founding-member-note"
+        >
+          Founding-member pricing: these are launch prices. The first 25
+          customers keep them for as long as they stay subscribed — list
+          prices rise after that.
         </p>
 
         {/* Billing toggle */}

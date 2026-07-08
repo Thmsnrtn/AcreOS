@@ -224,6 +224,32 @@ Exit test: five hard CEO questions, every answer sourced.
 
 ## Status log
 
+- 2026-07-08 ~17:50Z — **Mobile cockpit eyeball pass DONE** (the last
+  non-founder-gated go/no-go amber): all four founder doors at 390px,
+  full-page screenshots reviewed by eye. Layout is solid — zero
+  horizontal overflow, honest empty states everywhere. Four real
+  defects found and fixed: (1) TWO chat FABs stacked on every door
+  (Solene bottom-right + Atlas trigger bottom-left) — one brain per
+  mobile surface now, Atlas trigger yields when the new founder UI is
+  active (desktop unchanged, prefill still opens the dock); (2) the
+  Story door's board report rendered raw markdown (literal #/##) —
+  typeset via a tiny line-grammar renderer (repo convention, no new
+  dependency); (3) "N thing(s) need you" machine-speak on the Letter +
+  Controls — real pluralization in stepAwayReadiness; (4) Decisions
+  cards clipped timestamps at phone width — rows wrap. Verified by
+  re-shooting all doors; suite 7981/7981.
+- 2026-07-08 ~16:30Z — **PR #113 MERGED (auto-merge per standing
+  authorization) + DEPLOYED as `bfde8f0`, verified in prod**:
+  `/api/version` = bfde8f0, anonymous `/api/transparency` = 200. All 20
+  checks green on the final head — including the Security workflow
+  (first green since 07-07; rekor CVE fixed) and CodeQL. Shipped:
+  transparency auth-order fix, deals/coach route fix, Inbox visibility
+  for inbound emails, iPad 44px touch targets, wedge E2E email-reply +
+  billing journeys, experience-legibility design doc. go/no-go
+  transparency amber flipped GREEN; remaining ambers are
+  founder-input-gated. Follow-up PR carries the founder-decided pricing
+  changes (founding-member framing, Scale seat $25, credits row —
+  decision memo 2026-07-08) + these doc flips.
 - 2026-07-08 ~14:30Z — **iPad touch-target defects fixed (real product
   bugs the E2E merge-gate caught)**: on ipad-mini (768px = md → desktop
   sidebar on a touch device) the sidebar's door links measured 20px tall

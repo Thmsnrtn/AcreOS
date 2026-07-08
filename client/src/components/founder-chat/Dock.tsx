@@ -54,6 +54,7 @@ import {
 } from "@/lib/motion-tokens";
 import { TOUCH_TARGET_PT } from "@/lib/spacing";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useNewFounderUI } from "@/lib/featureFlags";
 import { useFounderChat, type ChatPageContext } from "@/hooks/use-founder-chat";
 import { useFounderChatThreads } from "@/hooks/use-founder-chat-threads";
 import { Composer } from "@/components/founder-chat/Composer";
@@ -87,6 +88,14 @@ export interface DockProps {
 export function Dock({ pageContext, prefillMessage }: DockProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState<boolean>(false);
+  // One chat brain per mobile surface: when the new founder UI is on,
+  // FounderMobileBottomNav already mounts the Solene FAB (bottom-right)
+  // on every door — the Atlas trigger bubble stacked a SECOND chat entry
+  // (bottom-left) on phones (mobile eyeball pass, 2026-07-08). Hide the
+  // idle trigger there; a prefillMessage still opens the dock
+  // programmatically, and desktop keeps the trigger.
+  const newFounderUI = useNewFounderUI();
+  const hideTrigger = isMobile && newFounderUI;
 
   // Respect prefers-reduced-motion: the trigger bubble + panel slide
   // both collapse to instant when the OS reports reduce.
@@ -216,9 +225,10 @@ export function Dock({ pageContext, prefillMessage }: DockProps) {
 
   return (
     <>
-      {/* Trigger bubble — always rendered, hidden when dock is open
-          so we don't double up the surface. */}
-      {!open && (
+      {/* Trigger bubble — hidden when dock is open so we don't double up
+          the surface, and hidden on mobile under the new founder UI where
+          the Solene FAB is the one chat entry (see hideTrigger above). */}
+      {!open && !hideTrigger && (
         <motion.button
           type="button"
           onClick={() => setOpenPersisted(true)}
