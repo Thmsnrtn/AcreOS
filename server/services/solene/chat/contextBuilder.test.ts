@@ -64,6 +64,25 @@ vi.mock("../learningLoop", () => ({
   },
 }));
 
+// Strategy-doc + live-state injection (WS3) are covered by their own suite
+// (tests/unit/founderChatContext.test.ts); stub them out here so this file
+// keeps testing budget enforcement + the static/dynamic cache split in
+// isolation.
+vi.mock("./strategyDocs", () => ({
+  async buildStrategyBlocks() {
+    return [];
+  },
+}));
+
+vi.mock("./liveState", () => ({
+  async gatherLiveState() {
+    throw new Error("live state stubbed out in contextBuilder.test.ts");
+  },
+  renderLiveStateBlock() {
+    return "";
+  },
+}));
+
 import {
   buildChatContext,
   estimateTokens,

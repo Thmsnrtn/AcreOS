@@ -3455,8 +3455,13 @@ export const insertLeadSchema = createInsertSchema(leads).omit({
   // F-D23: drizzle-zod treats text columns as bare z.string() — invalid
   // emails like "not-an-email" sailed through to the DB. Tighten to email
   // format (still optional since the column is nullable for callers who
-  // only have a phone or just a parcel-owner name).
-  email: z.string().email().optional().nullable(),
+  // only have a phone or just a parcel-owner name). An untouched form field
+  // arrives as "" — that's an absent email, not an invalid one (WS1,
+  // 2026-07-07): coerce to null instead of 422ing the whole lead.
+  email: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+    z.string().email().optional().nullable(),
+  ),
 });
 export const insertLeadActivitySchema = createInsertSchema(leadActivities).omit({
   id: true, createdAt: true,

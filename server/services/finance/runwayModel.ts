@@ -305,8 +305,11 @@ async function liveMrrUsd(): Promise<number> {
   return cents / 100;
 }
 
-/** Live MRR in cents + paying-org count (shared by runway + the snapshot job). */
-async function liveMrrDetail(): Promise<{ cents: number; payingOrgs: number }> {
+/**
+ * Live MRR in cents + paying-org count (shared by runway + the snapshot job +
+ * the gate watcher, so every consumer reads the SAME source of truth).
+ */
+export async function liveMrrDetail(): Promise<{ cents: number; payingOrgs: number }> {
   const rows = await db
     .select({
       tier: organizations.subscriptionTier,

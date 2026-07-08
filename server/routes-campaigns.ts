@@ -49,14 +49,21 @@ export function registerCampaignRoutes(app: Express): void {
     res.json(campaign);
   });
 
-  api.post("/api/campaigns", isAuthenticated, getOrCreateOrg, requirePermission("canCreateCampaign"), async (req, res) => {
+  api.post("/api/campaigns", isAuthenticated, getOrCreateOrg, requirePermission("canCreateCampaign"), usageLimitGate("campaigns"), async (req, res) => {
     try {
       const org = req.organization;
       const trackingCode = storage.generateTrackingCode();
-      const input = insertCampaignSchema.parse({ 
-        ...req.body, 
+      // The wizard submits untouched optional numeric/date inputs as "" —
+      // Postgres rejects '' for numeric/timestamp columns and the raw insert
+      // error surfaced as a bare 500 (WS1 interactive pass, 2026-07-07).
+      const body: Record<string, unknown> = { ...req.body };
+      for (const key of ["budget", "scheduledDate", "completedDate"]) {
+        if (body[key] === "") body[key] = null;
+      }
+      const input = insertCampaignSchema.parse({
+        ...body,
         organizationId: org.id,
-        trackingCode 
+        trackingCode
       });
       const campaign = await storage.createCampaign(input);
       

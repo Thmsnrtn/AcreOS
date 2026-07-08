@@ -166,6 +166,11 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "autonomous_deal_machine", intervalMs: HOUR, critical: true },
   { name: "autonomous_health_monitor", intervalMs: HOUR, critical: true },
   { name: "customer_concentration", intervalMs: DAY, critical: false },
+  // Launch-Week WS4 — Gate-Watcher: daily 09:00 UTC evaluation of the
+  // machine-encoded roadmap gates (mature-machine §4 + phase triggers).
+  // Non-critical: a dark watcher delays a gate by days, it doesn't harm a
+  // customer — and the deadman still surfaces the absence as P2.
+  { name: "gate_watcher_daily", intervalMs: DAY, critical: false, cron: "0 9 * * *" },
   { name: "customer_unit_economics", intervalMs: DAY, critical: false },
   { name: "api_telemetry_rollup", intervalMs: DAY, critical: false },
   { name: "reserve_floor_check", intervalMs: DAY, critical: true },

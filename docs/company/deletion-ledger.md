@@ -83,3 +83,11 @@ correctness risks across 2+ machines. Disposition:
       (renders an erroring panel for non-founder customers today).
 - [ ] Remove the marketplace sidebar entry (`layout-sidebar.tsx:446`) —
       it advertises a flag that is off.
+
+## Executed deletions (log)
+
+- 2026-07-07 — `client/src/pages/founder/chat.tsx` (365 LOC) deleted. Orphan:
+  lazy-imported in App.tsx but no route ever mounted it; superseded by
+  `pages/founder/solene-chat.tsx` (the live founder chat face). Shared
+  `components/founder-chat/*` retained (used by solene-chat). Found by the
+  WS2 cockpit inventory.

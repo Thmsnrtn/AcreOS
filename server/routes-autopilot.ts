@@ -363,7 +363,7 @@ export function registerAutopilotRoutes(app: Express): void {
       }
       try {
         const { parseSteerCommand, handleSteer } = await import("./services/autopilot/steer");
-        const { setDomainLevel: setLvl, getDomainLevel, nextLevel } = await import(
+        const { setDomainLevel: setLvl, getDomainLevel, nextLevel, AUTOPILOT_DOMAINS } = await import(
           "./services/autopilot/domainAutonomy"
         );
         const { createStandingOrder } = await import("./services/autopilot/standingOrders");
@@ -392,6 +392,27 @@ export function registerAutopilotRoutes(app: Express): void {
               const [latest] = await getRecentStory(1);
               const trace = latest?.reasoningTrace as { narrative?: string } | null;
               return trace?.narrative ?? "Nothing's run yet — once the autopilot acts, I'll be able to explain each move.";
+            },
+            listDomains: () => AUTOPILOT_DOMAINS,
+            spend: async () => {
+              // Real ledger only — never an estimate. If either read fails we
+              // say so instead of guessing.
+              const { getMonthlyEnvelopeStatus, getSpendSummary } = await import(
+                "./services/solene/capitalTracker"
+              );
+              try {
+                const [week, env] = await Promise.all([
+                  getSpendSummary(7 * 24),
+                  getMonthlyEnvelopeStatus(),
+                ]);
+                return (
+                  `Last 7 days: $${week.totalUsd.toFixed(2)} across ${week.eventCount} events. ` +
+                  `Month-to-date: $${env.monthToDateUsd.toFixed(2)} of the $${env.envelopeUsd.toFixed(0)} envelope ` +
+                  `(${Math.round(env.percentUsed)}% used, status ${env.status}; projected $${env.projectedMonthlyUsd.toFixed(2)} for the month).`
+                );
+              } catch {
+                return "I can't read the spend ledger right now — no number rather than a guess.";
+              }
             },
           },
           getUserId(req),

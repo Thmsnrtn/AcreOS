@@ -37,8 +37,25 @@ makes an offer, and pays — zero errors, mobile and desktop.
       autonomy copy, orphan offer-wizard deleted. DEFER (ledgered): unify
       the two sitemap/robots generators (cosmetic — prod robots.txt has
       Allow:/); ui-state 404-by-design noise in telemetry.
-- [x] Fix wave 1 shipped through full CI (2026-07-07). Further waves as
-      the interactive-flow pass finds more.
+- [x] Fix wave 1 shipped through full CI (2026-07-07); merged as `5433a1d0`
+      and VERIFIED LIVE on acreos.io (env injection present on
+      /tools/parcel-check, /transparency renders).
+- [x] Interactive-flow pass driven with real browser clicks — 7 core flows
+      (2026-07-07): onboarding-v2 PASS; billing DEGRADED-HONEST (no local
+      Stripe keys, honest error card + retry); 5 real bugs found.
+- [x] Fix wave 2 (2026-07-08): (1) CRUD lists served stale from the
+      browser HTTP cache after create (success toast, invisible row) —
+      mutable collections stripped from httpCacheHeaders rules;
+      (2) campaign create 500 on blank budget (""→null coercion) + the
+      campaigns usage gate added incl. the missing counter in
+      checkUsageLimit; (3) org settings PATCH could never save (strict
+      schema lacked `settings`) — whitelist-and-merge, privileged keys
+      (simulationMode) never client-writable, failures now toast;
+      (4) lead create with untouched email field 422'd (""→null);
+      (5) Pax send 422'd on legacy agentRole "assistant" (client sends
+      "executive", server normalizes the alias) + failed drafts actually
+      restored to the composer; (6) plans/upgrade grid moved into the
+      Billing tab where every server upgradeUrl deep-links.
 - [ ] Wedge E2E extended: email reply leg + billing upgrade journey.
 - [ ] Credentialed desktop signup E2E in CI (needs founder: Clerk test
       creds as GitHub Actions secrets).
@@ -47,42 +64,77 @@ makes an offer, and pays — zero errors, mobile and desktop.
 
 Rule: every number is real or explicitly "no data yet." Mobile-first.
 
-- [ ] Inventory existing founder metric surfaces; identify the canonical
-      Pulse view and what it's missing.
-- [ ] Wire: MRR + WoW (mrr_snapshots), signups + activation funnel, wedge
-      events (mail out / replies / offers), AI spend vs every ceiling
-      (fuel gauges), CAC (marketing_spend), error rate, deploy status +
-      watchdog state, autonomy switch states.
-- [ ] No-fabrication sweep of founder surfaces (kill or label any
-      decorative metric).
-- [ ] Mobile pass on the cockpit.
+- [x] Inventory (2026-07-07): canonical Pulse = `/founder` (home.tsx, The
+      Letter door). Also found: money.tsx linked the routeless
+      `/founder/cost` (fixed → /founder/admin/costs, where cost.tsx lives
+      on as a tab); orphan founder/chat.tsx deleted (ledgered);
+      bridge.tsx's competing "canonical home" claim noted.
+- [x] No-fabrication fix (2026-07-08): the one fabrication on the
+      canonical Pulse — uptime hardcoded 99.9% / budget "green" with zero
+      telemetry — is gone. uptimePct nullable end-to-end (pulse, narrate,
+      one-line renders "uptime n/a"), envelopeStatus gains honest
+      "unknown", tiles render "no data yet". Tests pin it.
+- [x] Wired to the Pulse (2026-07-08): wedge tile row (outreach sent /
+      replies in / offers made, 7d — campaign_delivery_events, inbound
+      messages, offers), 5xx error rate over the durable 24h telemetry
+      window, deployed version under the Uptime tile. MRR+WoW, trials,
+      spend, envelope+runway were already real. CAC stays on
+      /founder/money unit-economics (its correct deep-panel home);
+      switch states live behind the Controls door.
+- [ ] Mobile pass on the cockpit (inventory verified responsive
+      primitives; needs an on-device eyeball pass).
 
 ## WS3 — The Brain (Solene as chief of staff)
 
 Exit test: five hard CEO questions, every answer sourced.
 
-- [ ] Verify current Anthropic model catalog + pricing (claude-api skill)
-      before touching models.ts; select best founder-chat tier within
-      cost ceilings.
-- [ ] Give founder chat retrieval/read access to the strategy layer
-      (CONSTITUTION, mature-machine, roadmap, deletion ledger, cost
-      audit, this doc) + live state (metrics, gates, trust ledger,
-      capital tracker).
-- [ ] Verify plain-language steer path end to end (pause/resume, spend
-      queries, status).
-- [ ] CEO Q&A eval: 5 hard questions, sourced answers, committed as an
-      eval so regressions get caught.
+- [x] Model catalog + pricing verified via claude-api skill (2026-07-08).
+      models.ts already correct (Opus 4.8 $5/$25, Haiku 4.5 $1/$5). Found +
+      fixed drift in solene-chat-config: STRATEGIC pointed at stale
+      claude-opus-4-7 (→ 4.8, same price, more capable) and carried the OLD
+      $15/$75 Opus price (3× cost over-attribution, tripping the $1/turn
+      cap early); fast tier carried Haiku-3.5 pricing (4× undercount).
+      Founder chat = Opus 4.8 within existing envelopes. DEFERRED
+      (post-launch, deliberate): Sonnet 5 exists at the same sticker
+      ($3/$15, intro $2/$10) with near-Opus agentic quality — but it
+      rejects non-default sampling params, changed tokenizer (~30% more
+      tokens/same text), and adaptive-thinking-by-default; a mid-launch
+      swap risks 400s at temperature call sites. Fable-tier ($10/$50,
+      30-day-retention requirement, refusal handling) also deferred —
+      Opus 4.8 is the right brain for the money this week.
+- [x] Strategy layer + live state wired into founder chat (2026-07-08):
+      contextBuilder gains `strategy_doc` blocks (company docs selected by
+      relevance, each labelled [SOURCE: docs/company/…] so answers cite)
+      and a `live_state` block (pulse, envelope, trust ledger, open asks,
+      runway — absent data rendered as explicit "unknown", never
+      invented). server/services/solene/chat/{strategyDocs,liveState}.ts.
+- [x] Steer path (2026-07-08): plain-language spend queries answer from
+      the REAL capital ledger (7-day + month-to-date vs envelope) with an
+      honest can't-read fallback; domain listing wired; pause/resume and
+      status verified through the existing steer verbs. Tests extended.
+- [x] CEO Q&A eval committed (2026-07-08): 5 hard questions mapped to the
+      sources that must ground each answer, asserted against the actual
+      context assembly (ceoQuestions.ts + founderChatContext.test.ts).
 
 ## WS4 — Gate-Watcher (self-birthing roadmap)
 
-- [ ] Machine-encode the autonomy switch schedule (mature-machine §4) +
-      phase triggers (Phase-1 runbook at $200 MRR held 30d; Telnyx at
-      $3k; Sentry rung at $500; switch eligibility at first cohort).
-- [ ] Watcher job: evaluates gate conditions on a sane cadence; ripened
-      gate → one-tap founder Decision with full context, or auto-execute
-      where the studio dial already says autoApprove.
-- [ ] Every gate evaluation logged (glass-box); no silent flips, ever;
-      hard-stops (pricing/legal/>$500/data deletion) remain permanent.
+- [x] Machine-encoded (2026-07-08): 14 gates in
+      server/services/autopilot/gateWatcher.ts — Phase-1 runbook ($200 MRR
+      held 30d, from real mrr_snapshots history; insufficient history =
+      gate stays closed, reason logged), Sentry rung ($500), Telnyx eval
+      ($3k), the full §4 switch ladder (support auto-resolve →
+      dunning/billing → deliverability → content/SEO → ads gated → ads
+      execute → self-patch PR → self-patch auto-merge → incident-response
+      GA), and the permanent hard-stop gate. MRR reads the SAME source as
+      runway (liveMrrDetail).
+- [x] Watcher job (2026-07-08): gate_watcher_daily in the job roster
+      (09:00 UTC, job-lock guarded, DISABLE_BACKGROUND_JOBS honored);
+      ripened gate → founderCollab one-tap Decision, auto-execute only
+      where the studio revenue-trigger dial says autoApprove; dedup state
+      in founder_settings (no new table/migration).
+- [x] Glass-box (2026-07-08): every evaluation logged + persisted for the
+      Story surface; hard-stops can NEVER auto-execute regardless of any
+      dial — pinned by test (gateWatcher.test.ts, 372 lines).
 
 ## WS5 — Launch drills + go/no-go
 
