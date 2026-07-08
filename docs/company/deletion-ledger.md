@@ -86,6 +86,29 @@ correctness risks across 2+ machines. Disposition:
 
 ## Executed deletions (log)
 
+- 2026-07-09 — **Remote branch prune** (founder-requested) — **BLOCKED,
+  needs founder's own credentials**. Seven stale branches were vetted for
+  deletion and their tip SHAs recorded below for recovery, but the actual
+  remote deletion is impossible from the agent environment: the session's
+  git proxy returns HTTP 403 on any delete refspec (`--delete` and
+  `:refs/heads/...` both), and the GitHub MCP toolset has no
+  branch-deletion capability. To execute, run locally with normal
+  credentials: `git push origin --delete <branch>` for each name below
+  (or delete via the GitHub branches UI). All are pre-history-rewrite
+  forks whose headline work verifiably exists in main by other routes
+  (craftStandard.ts, domainAutonomy.ts trust ledger, migrations
+  0164/0166, the shipped 4-tab mobile nav):
+  - `claude/production-polish-OveLf` @ be02be1e (2026-04-16)
+  - `mobile-shell-spike` @ 92a2427d (2026-05-26)
+  - `claude/app-elevation-optimization-y4pykr` @ f8a780cd (2026-06-14)
+  - `founder-autopilot` @ a19a59c9 (2026-06-15)
+  - `survey/platform-depth-2026-06-14` @ 54f2204f (2026-06-15)
+  - `calibration-status-2026-06-01` @ its "no data yet" log commit
+  - `calibration-status-2026-07-01` @ its "no data yet" log commit
+  KEPT: `claude/codebase-quality-audit-ko1u69` (5 unmerged commits of
+  real work — Inbox/Documents one-round-trip aggregates, LOB_API_KEY
+  health-check fix) — being rescued into main via the PR train, deleted
+  after it lands.
 - 2026-07-07 — `client/src/pages/founder/chat.tsx` (365 LOC) deleted. Orphan:
   lazy-imported in App.tsx but no route ever mounted it; superseded by
   `pages/founder/solene-chat.tsx` (the live founder chat face). Shared
