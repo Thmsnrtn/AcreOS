@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { db } from "../storage";
-import { leadEmails, leads, leadActivities } from "@shared/schema";
+import { leadEmails, leads, leadActivities, inboxMessages } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { activityLogger } from "./activityLogger";
@@ -105,6 +105,23 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
       inReplyTo: payload.inReplyTo || null,
     }).returning();
 
+    // Surface the reply in the Inbox door. lead_emails is the per-lead
+    // thread (DealInbox); the Inbox page's email tab reads GET /api/inbox →
+    // inbox_messages, so without this row the reply is invisible in the one
+    // place customers are told to watch for it.
+    await db.insert(inboxMessages).values({
+      organizationId: lead.organizationId,
+      senderEmail: payload.from,
+      senderName: [lead.firstName, lead.lastName].filter(Boolean).join(" ") || null,
+      recipientEmail: toAddr,
+      subject: payload.subject || null,
+      bodyText: payload.textBody || null,
+      bodyHtml: payload.htmlBody || null,
+      leadId,
+      messageId: payload.messageId || null,
+      inReplyToMessageId: payload.inReplyTo || null,
+    });
+
     // Mark lead as responded
     await db.update(leads).set({
       status: "responded",
@@ -112,6 +129,18 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
     }).where(
       and(eq(leads.id, leadId), eq(leads.organizationId, lead.organizationId))
     );
+
+    // TTFM companion metric — the org's first seller response. Idempotent
+    // FIRST-occurrence on (org, eventName); fire-and-forget.
+    try {
+      const { recordActivationEventAsync } = await import("./activation");
+      recordActivationEventAsync({
+        orgId: lead.organizationId,
+        userId: null,
+        eventName: "first_seller_response",
+        eventValue: { channel: "email", leadId },
+      });
+    } catch { /* non-fatal */ }
 
     // Log activity
     await activityLogger.logEmailSent(

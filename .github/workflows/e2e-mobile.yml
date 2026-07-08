@@ -45,8 +45,14 @@ jobs:
       # No Sentry source-map upload for the E2E build — not needed here.
       SENTRY_SOURCEMAPS: skip
       # The inbound-email webhook refuses to boot in production without one of
-      # these; we don't exercise email here, so require SNS-only (no secret).
+      # these. SNS-only mode satisfies the boot assertion, but the wedge
+      # email-reply leg (wedge-email-reply.spec.ts) exercises the webhook's
+      # HMAC fallback path for real — verifyInboundEmailSignature fail-closes
+      # (401) on that path without a secret, so a dummy one (>= 32 chars per
+      # secretsValidation) is provided. The spec signs its POST with this
+      # same value; no signature bypass exists — by design.
       INBOUND_EMAIL_SNS_ONLY: "1"
+      INBOUND_EMAIL_WEBHOOK_SECRET: e2e-dummy-inbound-email-webhook-secret-0123456789abcdef
       # Founder-positive E2E gating (Iris #182): bypass-auth must know which
       # email = founder. This MUST be the founder-only seed identity — NOT
       # e2e@acreos.test. Pointing it at the customer user made the entire
@@ -57,6 +63,14 @@ jobs:
       # + tests/e2e-mobile/global-setup.ts.
       FOUNDER_EMAIL: founder-e2e@acreos.test
       FOUNDER_EMAILS: founder-e2e@acreos.test
+      # Wedge journey (wedge-journey.spec.ts): the campaign send-sms route
+      # requires Twilio env to exist (it 400s otherwise), and the inbound
+      # webhook's signature verification is deliberately never bypassed —
+      # the spec signs its POST with this same dummy token. The seeded org
+      # runs simulationMode, so no real Twilio call can occur.
+      TWILIO_AUTH_TOKEN: e2e-dummy-twilio-token
+      TWILIO_ACCOUNT_SID: ACe2e00000000000000000000000000000
+      TWILIO_PHONE_NUMBER: "+15005550006"
 
     steps:
       - uses: actions/checkout@v6

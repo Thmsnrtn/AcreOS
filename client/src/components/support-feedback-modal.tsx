@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Send } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 type Category = "support" | "feedback" | "question";
 
@@ -78,6 +79,7 @@ export function SupportFeedbackModal({
     }
   }, [open, defaultCategory]);
 
+  // allow-no-invalidation: feedback submission — no cached query reads it
   const mutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/feedback", {
@@ -219,7 +221,7 @@ export function SupportFeedbackModal({
               onClick={() => onOpenChange(false)}
               disabled={mutation.isPending}
             >
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               type="submit"

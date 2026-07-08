@@ -64,6 +64,8 @@ export const CHAT_APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   "file_write",
   "git_commit",
   "bash",
+  "run_tests",
+  "typecheck",
 ]);
 
 /**

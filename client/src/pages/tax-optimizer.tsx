@@ -159,6 +159,7 @@ export default function TaxOptimizerPage() {
       }),
   });
 
+  // allow-no-invalidation: generated report renders from mutation.data — no cached query reads it
   const reportMutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", "/api/tax-optimizer/report", { taxYear: parseInt(taxYear) }).then(r => r.json()),
@@ -707,6 +708,7 @@ function RealEstateProfessionalPanel() {
   const [hasLog, setHasLog] = useState<boolean>(false);
   const [result, setResult] = useState<RealEstateProfessionalResult | null>(null);
 
+  // allow-no-invalidation: calculator result lands in component-local state (setResult)
   const mutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/tax-optimizer/re-professional", {

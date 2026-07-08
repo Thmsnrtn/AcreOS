@@ -16,6 +16,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, Target, BarChart3, CheckCircle, Loader2
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { Verbs } from "@/lib/labels";
 
 interface PriceRecommendation {
   id: number;
@@ -196,7 +197,7 @@ function RecommendationCard({ rec }: { rec: PriceRecommendation }) {
                 {recordOutcome.isPending ? <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" /> : "Save"}
               </Button>
               <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowOutcome(false)}>
-                Cancel
+                {Verbs.CANCEL}
               </Button>
             </div>
           </form>

@@ -291,6 +291,34 @@ export async function answerFounderAsk(
     answerFormat: format,
     chosenOptionId,
   });
+
+  // Learning-loop feedback: a yes/no answer to an autopilot ask is the founder's
+  // verdict (approve/decline) — accrete it onto the Experience Log. No-op for
+  // non-autopilot asks (no matching experience row). Best-effort.
+  if (format === "yes_no") {
+    const approved = answerText === "yes";
+    try {
+      const { recordFounderVerdict } = await import("../autopilot/experienceLog");
+      await recordFounderVerdict(input.askId, approved ? "approved" : "declined");
+    } catch (err) {
+      logger.warn(
+        "[founderCollab] autopilot verdict accrete failed",
+        err instanceof Error ? err : undefined,
+      );
+    }
+    // If this ask was a policy-induction proposal, resolve + apply it (write a
+    // standing order on stop-approval, bump autonomy on trust-approval). No-op
+    // otherwise.
+    try {
+      const { resolvePolicyProposalForAsk } = await import("../autopilot/policyInducer");
+      await resolvePolicyProposalForAsk(input.askId, approved);
+    } catch (err) {
+      logger.warn(
+        "[founderCollab] policy proposal resolution failed",
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
 }
 
 // ============================================
@@ -400,6 +428,62 @@ export async function expireOverdueAsks(): Promise<{ expired: number }> {
     );
     return { expired: 0 };
   }
+}
+
+/**
+ * The escalation ladder (wire-for-real: escalationLadder.ladderAction was dead).
+ * "Absence fails safe, never stuck": for each OPEN ask, the urgency+age+kind
+ * ladder decides wait / re-page / auto-resolve-to-the-safe-side. Only a
+ * DECISION (a yes/no go-no-go) auto-resolves — and only to TIMED_OUT (the safe
+ * side: the system did NOT act on an unapproved decision). A draft/proposal
+ * never auto-resolves (an unanswered draft is harmless — it just waits/re-pages).
+ *
+ * Re-page is debounced to fire ONCE as an ask crosses its re-page threshold this
+ * tick (no per-ask "last paged" column needed): re-page when
+ * repageHours ≤ ageHours < repageHours + tickWindowHours. Best-effort + total.
+ */
+export async function runAskEscalationLadder(
+  tickWindowHours = 0.5,
+): Promise<{ repaged: number; autoResolved: number }> {
+  let repaged = 0;
+  let autoResolved = 0;
+  try {
+    const { ladderAction, REPAGE_HOURS } = await import("../autopilot/escalationLadder");
+    const now = Date.now();
+    const open = await listOpenAsks();
+    for (const ask of open) {
+      const ageHours = (now - ask.askedAt.getTime()) / 3_600_000;
+      const urgency = (ask.urgency ?? "normal") as "urgent" | "normal" | "low";
+      const kind = ask.answerFormat === "yes_no" ? "decision" : "proposal";
+      const action = ladderAction({ urgency, ageHours, kind });
+      if (action.step === "auto_resolve_safe") {
+        await db
+          .update(soleneFounderAsks)
+          .set({ status: "timed_out" })
+          .where(eq(soleneFounderAsks.id, ask.id));
+        autoResolved += 1;
+        logger.info("[founderCollab] ask auto-resolved to safe side (escalation ladder)", {
+          metadata: { askId: ask.id, urgency, ageHours: Math.floor(ageHours), reason: action.reason },
+        });
+      } else if (action.step === "repage") {
+        const repageHours = REPAGE_HOURS[urgency] ?? 12;
+        if (ageHours >= repageHours && ageHours < repageHours + tickWindowHours) {
+          await sendSolenePage({
+            severity: urgency === "urgent" ? "critical" : "urgent",
+            subject: `Still waiting on you: ${ask.questionSummary.slice(0, 80)}`,
+            body: action.reason,
+          }).catch(() => {});
+          repaged += 1;
+        }
+      }
+    }
+    if (repaged || autoResolved) {
+      logger.info("[founderCollab] escalation ladder tick", { metadata: { repaged, autoResolved } });
+    }
+  } catch (err) {
+    logger.warn("[founderCollab] runAskEscalationLadder failed", err instanceof Error ? err : undefined);
+  }
+  return { repaged, autoResolved };
 }
 
 // ============================================

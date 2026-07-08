@@ -437,7 +437,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
                 ← Back
               </Button>
               <Button onClick={handleImport}>
-                Import {csvColumns.length > 0 ? "notes" : ""}
+                {Verbs.IMPORT} {csvColumns.length > 0 ? "notes" : ""}
               </Button>
             </>
           )}

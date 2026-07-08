@@ -38,6 +38,59 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 
+// W1.8 — subscription state + audit rows now commit in one db transaction.
+// Record what the tx wrote so tests can assert on it.
+const txState = vi.hoisted(() => ({ updates: [] as any[], inserts: [] as any[] }));
+
+vi.mock("../../server/db", () => {
+  const chain: any = {};
+  chain.from = () => chain;
+  chain.where = () => chain;
+  chain.limit = () => Promise.resolve([]);
+  chain.then = (res: any, rej: any) => Promise.resolve([]).then(res, rej);
+  const dbStub = {
+    select: () => chain,
+    insert: () => ({
+      values: () => ({
+        onConflictDoNothing: () => ({ returning: () => Promise.resolve([{ id: 1 }]) }),
+      }),
+    }),
+    update: () => ({ set: () => ({ where: () => Promise.resolve([]) }) }),
+    delete: () => ({ where: () => Promise.resolve([]) }),
+    execute: () => Promise.resolve({ rows: [] }),
+  };
+  const tx = {
+    update: () => ({
+      set: (vals: any) => ({
+        where: () => {
+          txState.updates.push(vals);
+          const q: any = Promise.resolve([]);
+          q.returning = () =>
+            Promise.resolve([{ subscriptionTier: "pro", billingInterval: "monthly" }]);
+          return q;
+        },
+      }),
+    }),
+    insert: () => ({
+      values: (vals: any) => {
+        txState.inserts.push(vals);
+        return Promise.resolve([]);
+      },
+    }),
+  };
+  return {
+    db: dbStub,
+    pool: { query: async () => ({ rows: [] }), on: () => {} },
+    replicaPool: { query: async () => ({ rows: [] }), on: () => {} },
+    dbReadOnly: dbStub,
+    dbReplica: null,
+    dbReplicaUnsafe: dbStub,
+    DB_ROLES: { primary: "primary", replica: "replica_ro" },
+    assertReplicaRoleAtBoundary: async () => ({ reported: null, matches: true }),
+    withTransaction: async (fn: any) => fn(tx),
+  };
+});
+
 vi.mock("../../server/services/credits", () => ({
   creditService: {
     applyCreditPackPurchase: vi.fn(() => ({ amountCents: 1000 })),
@@ -57,6 +110,8 @@ describe("WebhookHandlers", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    txState.updates.length = 0;
+    txState.inserts.length = 0;
 
     // Set up environment
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_test_secret";
@@ -193,9 +248,14 @@ describe("WebhookHandlers", () => {
 
       await WebhookHandlers.processWebhook(payload, "sig");
 
-      expect(storage.updateOrganization).toHaveBeenCalledWith(1, expect.objectContaining({
+      // W1.8: the downgrade now lands via the atomic tx, not storage.
+      expect(txState.updates).toContainEqual(expect.objectContaining({
         subscriptionTier: "free",
         subscriptionStatus: "cancelled",
+      }));
+      expect(txState.inserts).toContainEqual(expect.objectContaining({
+        eventType: "cancel",
+        organizationId: 1,
       }));
     });
   });

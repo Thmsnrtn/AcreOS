@@ -84,11 +84,11 @@ export function CookieConsentBanner() {
       // under the home-bar gesture zone (the previous bottom-2 had them
       // landing in iOS's tap-intercept area, making the banner feel
       // impossible to click out of on mobile).
-      // z-40 keeps it BELOW the mobile bottom nav (z-50) so it never covers the
+      // z-overlay keeps it BELOW the mobile bottom nav (z-floating) so it never covers the
       // tab bar. On mobile it sits ABOVE the 72px bottom nav (+ safe area) so it
       // doesn't bury primary CTAs like "Add lead"; on sm+ (no bottom nav) it
       // returns to the normal 8px offset.
-      className="fixed inset-x-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(48rem,calc(100vw-2rem))] z-40 rounded-xl border border-border/60 bg-surface-chrome backdrop-blur-sm p-4 pr-12 shadow-2xl bottom-[calc(72px+env(safe-area-inset-bottom,0px)+12px)] sm:bottom-[max(env(safe-area-inset-bottom,0px)+8px,8px)]"
+      className="fixed inset-x-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(48rem,calc(100vw-2rem))] z-overlay rounded-xl border border-border/60 bg-surface-chrome backdrop-blur-sm p-4 pr-12 shadow-2xl bottom-[calc(72px+env(safe-area-inset-bottom,0px)+12px)] sm:bottom-[max(env(safe-area-inset-bottom,0px)+8px,8px)]"
       data-testid="cookie-consent-banner"
     >
       {/* Explicit dismiss-for-now affordance — top-right X. Snoozes 24h. */}

@@ -402,6 +402,56 @@ export default function TodayPage() {
   const persona = usePersona();
   const todayLayout = getTodayLayout(persona);
 
+  // W2.3 — the brand-new-org empty state speaks the persona's language:
+  // note investors don't have "parcels", subdividers start from acreage,
+  // wholesalers from contracts. Copy + CTA targets only; layout is shared.
+  const emptyStateContent = (() => {
+    switch (persona) {
+      case "note_investor":
+      case "note_originator":
+      case "note_servicer":
+        return {
+          headline: "Ready to build your note book?",
+          subtitle:
+            "Import your note portfolio, add your first note, or explore with a realistic sample dataset — amortization schedules render automatically.",
+          primaryLabel: "Add your first note",
+          primaryHref: "/notes?action=new",
+          secondaryLabel: "Import your portfolio",
+          secondaryHref: "/finance",
+        };
+      case "subdivider":
+        return {
+          headline: "Ready to split your first parcel?",
+          subtitle:
+            "Add the parent acreage, or import a lead list of land owners — lots, permits, and county timelines light up from there.",
+          primaryLabel: "Add your acreage",
+          primaryHref: "/properties",
+          secondaryLabel: "Import leads",
+          secondaryHref: "/leads",
+        };
+      case "wholesaler":
+        return {
+          headline: "Ready to lock your first contract?",
+          subtitle:
+            "Import a seller list or add your first property — outreach, offers, and assignment tracking start from here.",
+          primaryLabel: "Add your first property",
+          primaryHref: "/properties",
+          secondaryLabel: "Import sellers",
+          secondaryHref: "/leads",
+        };
+      default:
+        return {
+          headline: "Ready to find your first deal?",
+          subtitle:
+            "Add a parcel, import a lead list, or explore with a realistic sample dataset — your workspace is yours to shape.",
+          primaryLabel: "Add your first parcel",
+          primaryHref: "/properties",
+          secondaryLabel: "Import leads",
+          secondaryHref: "/leads",
+        };
+    }
+  })();
+
   // ── Empty-state / welcome-back state machine (single pathway) ──────────
   const hasAnyData =
     (stats?.activeLeads ?? leads.length) > 0 ||
@@ -549,7 +599,7 @@ export default function TodayPage() {
         </div>
       </div>
 
-      {/* ── Empty-state: single pathway ──────────────────────────────── */}
+      {/* ── Empty-state: single pathway, persona-branched (W2.3) ─────── */}
       {showEmptyState && (
         <div className="space-y-4">
           <Card className="rounded-card border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 shadow-acr-2">
@@ -557,21 +607,21 @@ export default function TodayPage() {
               <div className="inline-flex items-center justify-center w-12 h-12 md:w-10 md:h-10 rounded-full bg-primary/10">
                 <Target className="w-6 h-6 md:w-5 md:h-5 text-primary" aria-hidden="true" />
               </div>
-              <h2 className="text-xl md:text-lg font-bold md:font-semibold">Ready to find your first deal?</h2>
+              <h2 className="text-xl md:text-lg font-bold md:font-semibold">{emptyStateContent.headline}</h2>
               <p className="text-muted-foreground md:text-sm max-w-md mx-auto leading-relaxed">
-                Add a parcel, import a lead list, or explore with a realistic sample dataset — your workspace is yours to shape.
+                {emptyStateContent.subtitle}
               </p>
               <div className="flex flex-wrap gap-2 justify-center pt-2">
                 <Button asChild size="sm" className="min-h-11 pointer-fine:sm:min-h-9">
-                  <Link href="/properties">
+                  <Link href={emptyStateContent.primaryHref}>
                     <Map className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                    Add your first parcel
+                    {emptyStateContent.primaryLabel}
                   </Link>
                 </Button>
                 <Button asChild size="sm" variant="outline" className="min-h-11 pointer-fine:sm:min-h-9">
-                  <Link href="/leads">
+                  <Link href={emptyStateContent.secondaryHref}>
                     <Users className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                    Import leads
+                    {emptyStateContent.secondaryLabel}
                   </Link>
                 </Button>
                 <Button

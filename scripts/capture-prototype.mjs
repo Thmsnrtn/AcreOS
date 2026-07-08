@@ -5,7 +5,7 @@
  * function to switch routes; toggles window.__founderMode for the
  * founder routes.
  *
- * Output: docs/exhaustive-completion/prototype-screenshots/<slug>-{1440,375}.png
+ * Output: docs/archive/exhaustive-completion/prototype-screenshots/<slug>-{1440,375}.png
  *
  * Prereq: prototype already running at http://localhost:8765/acreos/acreos.html
  *         (see Gap 1.0 instructions in the exhaustive completion prompt)
@@ -14,7 +14,7 @@ import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 
 const URL = "http://localhost:8765/acreos/acreos.html";
-const OUT = "docs/exhaustive-completion/prototype-screenshots";
+const OUT = "docs/archive/exhaustive-completion/prototype-screenshots";
 
 // Customer-visible canonical surfaces (no founder mode)
 const CUSTOMER = [

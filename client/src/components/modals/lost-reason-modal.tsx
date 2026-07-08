@@ -17,6 +17,7 @@ import { useModals } from "@/stores/modal-store";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 const REASONS = [
   { value: "seller_silent", label: "Seller went silent" },
@@ -135,7 +136,7 @@ export function LostReasonModal() {
             {submitMutation.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
             ) : null}
-            Save
+            {Verbs.SAVE}
           </Button>
         </div>
       </DialogContent>

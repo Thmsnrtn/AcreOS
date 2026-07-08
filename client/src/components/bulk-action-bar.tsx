@@ -59,7 +59,7 @@ export default function BulkActionBar({
   return (
     <aside
       aria-label={`Bulk actions for ${selectedCount} selected ${entityLabel}${selectedCount !== 1 ? "s" : ""}`}
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-200"
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-floating animate-in fade-in slide-in-from-bottom-4 duration-200"
     >
       <div className="flex items-center gap-2 bg-background border border-border rounded-xl shadow-lg px-4 py-3">
         {/* Count badge */}

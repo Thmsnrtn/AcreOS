@@ -2,7 +2,7 @@
  * /founder/readiness — Launch readiness checklist (extracted from
  * founder-dashboard.tsx).
  *
- * Per docs/exhaustive-completion/founder-dashboard-extraction-queue.md
+ * Per docs/archive/exhaustive-completion/founder-dashboard-extraction-queue.md
  * Extraction #2. Pure move; no behavior change. Preserves the
  * /api/founder/launch-readiness query key + the
  * "founder-readiness-dismissed" localStorage key.

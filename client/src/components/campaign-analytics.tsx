@@ -15,6 +15,7 @@ import {
   Target
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatRelative } from "@/lib/format";
 
 interface CampaignAnalyticsProps {
   campaignId: number;
@@ -289,7 +290,66 @@ export function CampaignAnalytics({ campaignId }: CampaignAnalyticsProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* C2 receipts (experience-legibility.md): the rows behind the Sent
+          number — same table the count reads, so they can never disagree. */}
+      <DeliveryReceipts campaignId={campaignId} />
     </div>
+  );
+}
+
+const SEND_CHANNEL_WORD: Record<string, string> = {
+  direct_mail: "Letter",
+  sms: "Text",
+  email: "Email",
+};
+
+function DeliveryReceipts({ campaignId }: { campaignId: number }) {
+  const { data, isLoading, error } = useQuery<{
+    rows: Array<{ at: string | null; channel: string; status: string; leadName: string | null }>;
+  }>({
+    queryKey: ['/api/campaigns', campaignId, 'delivery-events'],
+    staleTime: 30_000,
+  });
+  return (
+    <Card data-testid="campaign-delivery-receipts">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Every send</CardTitle>
+        <CardDescription>
+          Each piece this campaign has sent, newest first — the rows the Sent number is made of.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2" aria-busy="true">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+        ) : error ? (
+          <p className="text-sm text-muted-foreground">
+            Couldn't load the send list right now — the counts above still come from the same records.
+          </p>
+        ) : !data || data.rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="delivery-receipts-empty">
+            No sends yet. When this campaign sends its first piece, every one will be listed here.
+          </p>
+        ) : (
+          <ul className="space-y-2" role="list">
+            {data.rows.map((r, i) => (
+              <li key={i} className="flex items-baseline gap-2 text-sm">
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground w-20">
+                  {r.at ? formatRelative(r.at) : "—"}
+                </span>
+                <span className="min-w-0">
+                  {SEND_CHANNEL_WORD[r.channel] ?? r.channel} to {r.leadName ?? "a lead"}
+                  <span className="text-muted-foreground"> — {r.status}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -390,6 +390,7 @@ function TriggerPayoutDialog({ onSuccess }: { onSuccess: () => void }) {
   const bankId = useId();
   const noteId = useId();
 
+  // allow-no-invalidation: the parent's onSuccess prop invalidates /api/fees/payouts (see dialog usage)
   const triggerMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/fees/payouts/trigger", {
@@ -493,6 +494,7 @@ function SchedulePanel() {
   const minAmountId = useId();
   const enabledId = useId();
 
+  // allow-no-invalidation: schedule settings live in this form's local state — no query caches them
   const scheduleMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/fees/payouts/schedule", {

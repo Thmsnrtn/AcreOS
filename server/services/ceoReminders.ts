@@ -45,6 +45,11 @@ interface CEOReminder {
 }
 
 // In-memory store backed by systemMeta for persistence
+// MODULE-STATE PIN (audit 2026-07-07): the cache is per-process — a reminder
+// created via the app machine is stale on the worker until its next reload,
+// and concurrent writes can clobber each other's systemMeta flush. Acceptable
+// for a single-founder reminder list; revisit if it becomes load-bearing —
+// tracked in docs/company/deletion-ledger.md "Module-state residue".
 let reminders: CEOReminder[] = [];
 let loaded = false;
 
@@ -327,11 +332,12 @@ export async function getContextForReminder(reminder: CEOReminder): Promise<stri
         if (org.churnRiskScore !== undefined && org.churnRiskScore !== null) {
           parts.push(`Churn risk ${org.churnRiskScore}/100`);
         }
-        // TODO(tsc): organizations has no lastLoginAt column; using updatedAt
-        // as a recent-activity proxy until a login timestamp is added.
-        if (org.updatedAt) {
+        // Prefer the real activity heartbeat (lastActiveAt); fall back to
+        // updatedAt for orgs not yet stamped.
+        const activityAt = org.lastActiveAt ?? org.updatedAt;
+        if (activityAt) {
           const days = Math.floor(
-            (Date.now() - new Date(org.updatedAt).getTime()) / (24 * 60 * 60 * 1000),
+            (Date.now() - new Date(activityAt).getTime()) / (24 * 60 * 60 * 1000),
           );
           parts.push(`last activity ${days} day${days !== 1 ? "s" : ""} ago`);
         }

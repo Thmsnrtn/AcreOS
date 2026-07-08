@@ -133,6 +133,7 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // allow-no-invalidation: extraction fills the add-bid form's local state — nothing persisted yet
   const extractPdf = useMutation({
     mutationFn: async (file: File) => {
       const fd = new FormData();
@@ -171,6 +172,7 @@ export function BidsSection({ rehabId }: { rehabId: string }) {
     onError: (err: any) => toast({ title: "PDF extraction failed", description: err.message, variant: "destructive" }),
   });
 
+  // allow-no-invalidation: extraction fills the add-bid form's local state — nothing persisted yet
   const extract = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/rehabs/${rehabId}/bids/extract`, {

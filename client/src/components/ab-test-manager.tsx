@@ -22,6 +22,7 @@ import {
   Loader2, Plus, Trash2, ChevronRight
 } from "lucide-react";
 import { format } from "date-fns";
+import { Verbs } from "@/lib/labels";
 
 type AbTestWithVariants = AbTest & { variants: AbTestVariant[] };
 
@@ -56,9 +57,9 @@ const testTypeLabels: Record<string, string> = {
 };
 
 const confidenceBadge = (level: number) => {
-  if (level >= 99) return { label: '99%', variant: 'default' as const, color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' };
-  if (level >= 95) return { label: '95%', variant: 'secondary' as const, color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' };
-  if (level >= 90) return { label: '90%', variant: 'outline' as const, color: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' };
+  if (level >= 99) return { label: '99%', variant: 'default' as const, color: 'bg-acr-pos-soft text-acr-pos' };
+  if (level >= 95) return { label: '95%', variant: 'secondary' as const, color: 'bg-primary/10 text-primary' };
+  if (level >= 90) return { label: '90%', variant: 'outline' as const, color: 'bg-acr-warn-soft text-acr-warn' };
   return { label: 'Not significant', variant: 'outline' as const, color: 'bg-muted text-muted-foreground' };
 };
 
@@ -368,7 +369,7 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" className="min-h-11" onClick={() => setIsCreateDialogOpen(false)}>
-                    Cancel
+                    {Verbs.CANCEL}
                   </Button>
                   <Button
                     type="submit"
@@ -387,11 +388,11 @@ export function AbTestManager({ campaign, showCreateButton = true, onTestCreated
       )}
 
       {activeTest && (
-        <Card className="border-blue-200 dark:border-blue-800">
+        <Card className="border-acr-brand">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Play className="w-4 h-4 text-blue-500" aria-hidden="true" />
+                <Play className="w-4 h-4 text-acr-accent" aria-hidden="true" />
                 <CardTitle className="text-base">Active test</CardTitle>
               </div>
               <Badge className={statusColors.running}>Running</Badge>
@@ -528,7 +529,7 @@ function AbTestCard({
             <li
               key={variant.id}
               data-testid={`variant-card-${variant.id}`}
-              className={`p-4 rounded-card border ${isWinner ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/10' : 'border-border'}`}
+              className={`p-4 rounded-card border ${isWinner ? 'border-acr-pos bg-acr-pos-soft' : 'border-border'}`}
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -540,7 +541,7 @@ function AbTestCard({
                     <Badge variant="outline" className="text-xs">Control</Badge>
                   )}
                   {isWinner && (
-                    <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
+                    <Badge className="bg-acr-pos-soft text-acr-pos">
                       <Trophy className="w-3 h-3 mr-1" aria-hidden="true" />
                       Winner
                     </Badge>
@@ -740,7 +741,7 @@ export function AbTestHistoryList() {
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center gap-2 mb-2">
-                        <Trophy className="w-4 h-4 text-amber-500" aria-hidden="true" />
+                        <Trophy className="w-4 h-4 text-acr-warn" aria-hidden="true" />
                         <span className="font-medium">Winner: {winner?.name || '—'}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-4 text-sm">
@@ -751,7 +752,7 @@ export function AbTestHistoryList() {
                             <div key={v.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
                               <span className="flex items-center gap-2">
                                 {v.name}
-                                {v.id === test.winnerId && <Trophy className="w-3 h-3 text-amber-500" aria-hidden="true" />}
+                                {v.id === test.winnerId && <Trophy className="w-3 h-3 text-acr-warn" aria-hidden="true" />}
                               </span>
                               <span className="text-muted-foreground tabular-nums">{responseRate}% response</span>
                             </div>

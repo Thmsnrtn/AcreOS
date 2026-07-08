@@ -32,10 +32,13 @@ interface MobileCommandDrawerProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Door-referencing entries MUST use the five-door vocabulary (nav-items.ts):
+// the Finance door is /money (not /finance, the Note Register sub-page) and
+// the AI door is branded "Pax" everywhere else in the shell.
 const quickActions = [
   { href: "/settings", icon: Settings, label: "Settings", color: "text-muted-foreground" },
-  { href: "/ai", icon: Bot, label: "AI Hub", color: "text-acr-brand" },
-  { href: "/finance", icon: Banknote, label: "Finance", color: "text-acr-pos" },
+  { href: "/ai", icon: Bot, label: "Pax", color: "text-acr-brand" },
+  { href: "/money", icon: Banknote, label: "Finance", color: "text-acr-pos" },
   { href: "/campaigns", icon: Mail, label: "Marketing", color: "text-acr-accent" },
   { href: "/help", icon: HelpCircle, label: "Help", color: "text-acr-warn" },
 ];

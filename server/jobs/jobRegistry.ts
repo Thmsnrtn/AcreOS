@@ -146,10 +146,19 @@ export const JOB_ROSTER: JobRosterEntry[] = [
     disabledWhen: () => process.env.AUTONOMOUS_DECISION_EXECUTOR_DISABLED === "1" },
 
   { name: "finance_agent", intervalMs: 30 * MIN, critical: false },
+  // W5.1 — former bare setIntervals routed through the runtime (2026-07).
+  // The task processor auto-executes agent actions: critical.
+  { name: "autonomous_task_processor", intervalMs: 30 * 1000, critical: true },
+  { name: "atlas_pending_confirmation_nudge", intervalMs: MIN, critical: false },
+  // founder_digest took the job lock (job_health_logs rows existed) but was
+  // never rostered — locked yet invisible to the deadman. Daily send window
+  // gated inside an hourly tick; roster tracks the hourly tick.
+  { name: "founder_digest", intervalMs: HOUR, critical: false },
   { name: "api_queue", intervalMs: 10 * 1000, critical: false },
   { name: "alerting", intervalMs: HOUR, critical: true },
   { name: "digest", intervalMs: 6 * HOUR, critical: false },
   { name: "domain_audit", intervalMs: DAY, critical: false },
+  { name: "operator_cycle", intervalMs: DAY, critical: false },
   { name: "scheduled_tasks", intervalMs: MIN, critical: true },
   { name: "pax_scheduler", intervalMs: MIN, critical: true },
   { name: "pax_nudges", intervalMs: 6 * HOUR, critical: true },
@@ -157,12 +166,19 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "autonomous_deal_machine", intervalMs: HOUR, critical: true },
   { name: "autonomous_health_monitor", intervalMs: HOUR, critical: true },
   { name: "customer_concentration", intervalMs: DAY, critical: false },
+  // Launch-Week WS4 — Gate-Watcher: daily 09:00 UTC evaluation of the
+  // machine-encoded roadmap gates (mature-machine §4 + phase triggers).
+  // Non-critical: a dark watcher delays a gate by days, it doesn't harm a
+  // customer — and the deadman still surfaces the absence as P2.
+  { name: "gate_watcher_daily", intervalMs: DAY, critical: false, cron: "0 9 * * *" },
   { name: "customer_unit_economics", intervalMs: DAY, critical: false },
   { name: "api_telemetry_rollup", intervalMs: DAY, critical: false },
   { name: "reserve_floor_check", intervalMs: DAY, critical: true },
   { name: "parcel_delta_detector", intervalMs: 6 * HOUR, critical: false },
   { name: "founder_weekly_digest", intervalMs: WEEK, critical: false },
   { name: "cost_optimizer_weekly_digest", intervalMs: WEEK, critical: false },
+  // W4.5 — weekly MRR snapshot (Monday window shared with the digests).
+  { name: "mrr_snapshot_weekly", intervalMs: WEEK, critical: false },
   { name: "growth_automation", intervalMs: 6 * HOUR, critical: false },
   // Wall-clock daily 06:00 (local==UTC on the Fly worker). cron not yet consumed.
   { name: "churn_engine_daily", intervalMs: DAY, critical: true, cron: "0 6 * * *" },
@@ -197,6 +213,9 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "onboarding_sweeper", intervalMs: HOUR, critical: true },
   { name: "customer_letters_monthly", intervalMs: HOUR, critical: false },
   { name: "action_preview_sweeper", intervalMs: HOUR, critical: false },
+  { name: "dispatch_reaper", intervalMs: 10 * MIN, critical: false },
+  { name: "mail_flusher", intervalMs: 3 * MIN, critical: true },
+  { name: "proof_chain_audit", intervalMs: DAY, critical: true },
   { name: "strategic_proposals_weekly", intervalMs: WEEK, critical: false },
   // Wall-clock 1st-of-month 10:00 UTC. cron not yet consumed.
   { name: "strategic_proposals_monthly_synthesis", intervalMs: MONTH, critical: false, cron: "0 10 1 * *" },
@@ -219,7 +238,13 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "solene_audit_per_session", intervalMs: HOUR, critical: false },
   { name: "solene_morning_pulse", intervalMs: DAY, critical: false },
   { name: "solene_continuous_tick", intervalMs: 30 * MIN, critical: false },
+  { name: "solene_loop_watchdog", intervalMs: 30 * MIN, critical: false },
   { name: "solene_agent_claims_expiry", intervalMs: 5 * MIN, critical: false },
+  // Step-away gap #5 — taps frozen witnessed-send actions covered by a live
+  // founder-issued WitnessGrant. No-op with zero grants issued.
+  { name: "autopilot_auto_witness_sweep", intervalMs: 5 * MIN, critical: false },
+  // Step-away gap #6 — durable Stage-6 evolution regression check driver.
+  { name: "evolution_regression_scan", intervalMs: 10 * MIN, critical: false },
   { name: "solene_team_state_regenerator", intervalMs: 15 * MIN, critical: false },
   { name: "solene_weekly_retro", intervalMs: WEEK, critical: false },
   { name: "solene_failure_modes_seed", intervalMs: DAY, critical: false },

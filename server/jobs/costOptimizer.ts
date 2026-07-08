@@ -53,6 +53,11 @@ import { storage } from "../storage";
 import { logger } from "../utils/logger";
 import { scheduleSelfRescheduling } from "./scheduler";
 import crypto from "node:crypto";
+import {
+  FLY_BASE_COST_USD,
+  FLY_COST_PER_CUSTOMER_USD,
+  COMMS_COST_PER_CUSTOMER_USD,
+} from "../services/costModel";
 
 // ─── Tunable thresholds ─────────────────────────────────────────────────────
 
@@ -60,9 +65,9 @@ const ABUSE_PCT_OF_MRR = 0.30;                  // single-customer AI cost > 30%
 const SENTRY_FREE_TIER_EVENTS_PER_MONTH = 5_000; // Sentry free tier
 const SENTRY_DROP_THRESHOLD_PCT = 0.80;          // > 80% of free tier → recommend drop
 const PROFIT_MARGIN_FLOOR_PCT = 20;              // < 20% → emit system_alerts row
-const FLY_COST_PER_CUSTOMER_USD = 0.18;          // very rough estimate
-const FLY_BASE_COST_USD = 25.0;                  // baseline shared infra
-const COMMS_COST_PER_CUSTOMER_USD = 0.12;        // Lob + Twilio + SendGrid blended
+// Infra/comms constants live in services/costModel.ts (2026-07-07 cost
+// audit) so this optimizer and the financial forecaster can never disagree
+// about the platform's own cost floor again.
 
 const HAIKU_QUALITY_FLOOR_PCT = 95;              // sonnet→haiku only if eval ≥ this
 

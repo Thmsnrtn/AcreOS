@@ -9,11 +9,14 @@
     "build:analyze": "ANALYZE=1 tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "test": "vitest run",
+    "verify-receipt": "node scripts/verify-receipt.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "check": "NODE_OPTIONS=--max-old-space-size=6144 tsc --noEmit --incremental false && npm run lint:schema && npm run lint:no-fabrication && npm run lint:boundaries && npm run lint:ratchets && npm run lint:contract-adoption && npm run lint:org-fetch && npm run lint:css-hover && npm run lint:page-hex && npm run lint:prefetch-authority && npm run lint:date-format && npm run lint:zindex && npm run lint:translucency",
+    "check": "NODE_OPTIONS=--max-old-space-size=6144 tsc --noEmit --incremental false && npm run lint:schema && npm run lint:no-fabrication && npm run lint:boundaries && npm run lint:kernel-boundary && npm run lint:ratchets && npm run lint:contract-adoption && npm run lint:org-fetch && npm run lint:css-hover && npm run lint:page-hex && npm run lint:prefetch-authority && npm run lint:date-format && npm run lint:zindex && npm run lint:translucency && npm run lint:eslint-ratchet",
+    "lint:eslint-ratchet": "node scripts/lint-eslint-ratchet.mjs",
     "lint:no-fabrication": "node scripts/check-no-fabrication.mjs",
     "lint:boundaries": "node scripts/check-boundaries.mjs",
+    "lint:kernel-boundary": "node scripts/check-kernel-boundary.mjs",
     "lint:ratchets": "node scripts/ratchet.mjs",
     "lint:contract-adoption": "node scripts/check-contract-adoption.mjs",
     "lint:schema": "node scripts/check-org-leading-index.mjs",
@@ -149,7 +152,7 @@
     "drizzle-zod": "^0.8.3",
     "embla-carousel-react": "^8.6.0",
     "express": "^5.2.1",
-    "form-data": "4.0.5",
+    "form-data": "^4.0.6",
     "framer-motion": "^12.38.0",
     "i18next": "23.16.8",
     "input-otp": "^1.4.2",
@@ -161,7 +164,7 @@
     "mammoth": "^1.12.0",
     "mapbox-gl": "^3.20.0",
     "maplibre-gl": "4.7.1",
-    "multer": "^2.0.2",
+    "multer": "^2.2.0",
     "next-themes": "^0.4.6",
     "openai": "^6.33.0",
     "p-limit": "^7.3.0",
@@ -240,7 +243,13 @@
   "overrides": {
     "drizzle-kit": {
       "@esbuild-kit/esm-loader": "npm:tsx@^4.20.4"
-    }
+    },
+    "form-data": "^4.0.6",
+    "undici": "^7.28.0",
+    "dompurify": "^3.4.11",
+    "tar": "^7.5.16",
+    "protobufjs": "^7.6.3",
+    "@opentelemetry/core": "^2.8.0"
   },
   "engines": {
     "node": ">=22"

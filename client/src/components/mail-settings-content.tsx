@@ -57,6 +57,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Verbs } from "@/lib/labels";
 
 interface MailIdentity {
   id: number;
@@ -463,7 +464,7 @@ export function MailSettingsContent() {
                             data-testid={`menu-edit-${identity.id}`}
                           >
                             <Pencil className="w-4 h-4 mr-2" />
-                            Edit
+                            {Verbs.EDIT}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
@@ -472,7 +473,7 @@ export function MailSettingsContent() {
                             data-testid={`menu-delete-${identity.id}`}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
+                            {Verbs.DELETE}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -655,7 +656,7 @@ export function MailSettingsContent() {
                   onClick={closeFormDialog}
                   data-testid="button-cancel-form"
                 >
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
                 <Button type="submit" disabled={isMutating} data-testid="button-save-form">
                   {isMutating ? (

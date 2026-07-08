@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { e2eTestAuthEnabled } from "../auth/testAuth";
 import { logger } from "../utils/logger";
+import { Errors } from "../utils/errors";
 
 // Clerk Frontend API origin we proxy to. Cloudflare blocks the vanity
 // clerk.acreos.io (Error 1000), so the browser talks to /__clerk and we relay
@@ -140,9 +141,9 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
       // ERR_HTTP_HEADERS_SENT -> 500. Guard every terminal response path.
       if (res.headersSent || res.writableEnded) return;
       if (aborted) {
-        res.status(504).json({ error: "Gateway Timeout", message: "Clerk upstream timed out", statusCode: 504 });
+        Errors.gatewayTimeout(res, "Clerk upstream timed out — please try again.");
       } else {
-        res.status(502).json({ error: "Clerk proxy error" });
+        Errors.badGateway(res, "The Clerk authentication proxy hit an error — please try again.");
       }
     }
   };

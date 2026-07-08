@@ -17,7 +17,7 @@ const PopoverContent = React.forwardRef<
       align={align}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 w-72 rounded-2xl liquid-glass p-4 text-popover-foreground outline-none data-[state=open]:popover-spring data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 origin-[--radix-popover-content-transform-origin]",
+        "z-floating w-72 rounded-2xl liquid-glass p-4 text-popover-foreground outline-none data-[state=open]:popover-spring data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 origin-[--radix-popover-content-transform-origin]",
         className
       )}
       {...props}

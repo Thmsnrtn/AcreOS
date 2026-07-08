@@ -48,6 +48,7 @@ import {
 import { resolveParcel } from "./parcel/resolveParcel";
 import {
   LCS_DIMENSION_WEIGHTS,
+  LCS_METHODOLOGY_VERSION,
   lcsCreditScale,
   lcsGradeForScore,
 } from "./landCredit";
@@ -71,7 +72,9 @@ export const PUBLIC_REPORT_DAILY_HARD_CAP = Number(
   process.env.PUBLIC_REPORT_DAILY_HARD_CAP || 1000,
 );
 
-export const PUBLIC_LCS_MODEL_VERSION = "public-partial-v1";
+// Derives from the canonical methodology version (landCredit.ts) so a
+// methodology rev automatically revs every public report's stamp.
+export const PUBLIC_LCS_MODEL_VERSION = `public-partial-${LCS_METHODOLOGY_VERSION}`;
 
 /** Free geo categories pulled for the public report (all US-gov sources). */
 const REPORT_GEO_CATEGORIES = [

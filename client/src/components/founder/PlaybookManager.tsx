@@ -187,7 +187,7 @@ export function PlaybookManager() {
           <CardTitle className="text-base flex items-center gap-2">
             <BookOpen className="h-4 w-4" aria-hidden="true" /> Playbooks
             {pending.length > 0 && (
-              <Badge variant="outline" className="bg-amber-100 text-amber-800 ml-1 tabular-nums" aria-label={`${pending.length} awaiting approval`}>
+              <Badge variant="outline" className="bg-acr-warn-soft text-acr-warn ml-1 tabular-nums" aria-label={`${pending.length} awaiting approval`}>
                 {pending.length} awaiting approval
               </Badge>
             )}

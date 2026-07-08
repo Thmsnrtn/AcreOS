@@ -209,7 +209,7 @@ export default function CostEventInspector() {
                       <span
                         className={
                           a.deltaVsThisCents < 0
-                            ? "text-emerald-600 dark:text-emerald-400"
+                            ? "text-acr-pos"
                             : "text-destructive"
                         }
                       >

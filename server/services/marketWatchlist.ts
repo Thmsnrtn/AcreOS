@@ -56,7 +56,10 @@ export interface MarketAlert {
   read: boolean;
 }
 
-// In-memory store
+// MODULE-STATE PIN (audit 2026-07-07): per-process, in-memory — entries split
+// across machines, `nextAlertId` collides, everything resets on deploy. Fix
+// before load-bearing use: DB tables + sequences — tracked in
+// docs/company/deletion-ledger.md "Module-state residue".
 const watchlistEntries = new Map<string, WatchlistEntry>();
 const marketAlerts: MarketAlert[] = [];
 let nextAlertId = 1;

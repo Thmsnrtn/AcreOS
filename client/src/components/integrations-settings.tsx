@@ -35,6 +35,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Verbs } from "@/lib/labels";
 
 interface IntegrationConfig {
   provider: string;
@@ -324,7 +325,7 @@ function ConfigureDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={handleClose}>
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button
             type="submit"

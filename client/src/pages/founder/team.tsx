@@ -143,8 +143,14 @@ function AgentCard({
   const dormant = meta.phase !== "active";
   return (
     <motion.div variants={staggerItem}>
+      <Link
+        href={`/founder/dispatches?agent=${meta.codename}`}
+        className="block rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        aria-label={`View ${meta.displayName}'s dispatch history (${completedCount} completed in last 7 days)`}
+        data-testid={`team-card-link-${meta.codename}`}
+      >
       <Card
-        className={dormant ? "opacity-70" : ""}
+        className={`transition-colors hover:border-primary/60 ${dormant ? "opacity-70" : ""}`}
         data-testid={`team-card-${meta.codename}`}
       >
         <CardContent className="p-4 flex items-start gap-3">
@@ -188,6 +194,7 @@ function AgentCard({
           </div>
         </CardContent>
       </Card>
+      </Link>
     </motion.div>
   );
 }

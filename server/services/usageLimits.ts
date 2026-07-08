@@ -1,5 +1,5 @@
 import { db } from "../storage";
-import { organizations, leads, properties, notes, usageEvents } from "@shared/schema";
+import { organizations, leads, properties, notes, campaigns, usageEvents } from "@shared/schema";
 import { eq, and, gte, count, sum } from "drizzle-orm";
 // Lens 3 (Pricing Coherence): tier limits live in shared/billing so the
 // pricing page, upgrade modal, and server gate can never drift. Re-exported
@@ -88,6 +88,14 @@ async function getNoteCount(organizationId: number): Promise<number> {
   return result?.count ?? 0;
 }
 
+async function getCampaignCount(organizationId: number): Promise<number> {
+  const [result] = await db
+    .select({ count: count() })
+    .from(campaigns)
+    .where(eq(campaigns.organizationId, organizationId));
+  return result?.count ?? 0;
+}
+
 /**
  * Sum of Pax message turns ("ai_request" usage events) inside the current
  * calendar-month window.
@@ -150,6 +158,12 @@ export async function checkUsageLimit(
     case "ai_requests":
       current = await getMonthlyAiRequestCount(organizationId);
       break;
+    case "campaigns":
+      // Without this counter `current` fell through to 0, so a campaigns
+      // gate could never trip a paid tier's cap (WS1, 2026-07-07 — the same
+      // pass that added the missing usageLimitGate to POST /api/campaigns).
+      current = await getCampaignCount(organizationId);
+      break;
     default:
       current = 0;
   }
@@ -210,11 +224,12 @@ export async function getAllUsageLimits(
   const isFounder = options.isFounder ?? orgIsFounder;
   const limits = isFounder ? FOUNDER_TIER_LIMITS : TIER_LIMITS[tier];
 
-  const [leadCount, propertyCount, noteCount, aiRequestCount] = await Promise.all([
+  const [leadCount, propertyCount, noteCount, aiRequestCount, campaignCount] = await Promise.all([
     getLeadCount(organizationId),
     getPropertyCount(organizationId),
     getNoteCount(organizationId),
     getMonthlyAiRequestCount(organizationId),
+    getCampaignCount(organizationId),
   ]);
 
   // Tier 1I — BYOK threshold snapshot (reuses the same monthly turn count).
@@ -270,6 +285,11 @@ export async function getAllUsageLimits(
         current: aiRequestCount,
         limit: limits.ai_requests,
         percentage: calculatePercentage(aiRequestCount, limits.ai_requests),
+      },
+      campaigns: {
+        current: campaignCount,
+        limit: limits.campaigns,
+        percentage: calculatePercentage(campaignCount, limits.campaigns),
       },
     },
   };

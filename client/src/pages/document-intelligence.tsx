@@ -1,5 +1,5 @@
 import { useState, useId } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +50,9 @@ export default function DocumentIntelligencePage() {
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null);
   const [analysisResults, setAnalysisResults] = useState<any>(null);
 
+  const queryClient = useQueryClient();
+
+  // allow-no-invalidation: no cached document list on this page — the new doc is selected via setSelectedDocId
   const uploadMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/document-intelligence/upload", {
@@ -85,9 +88,14 @@ export default function DocumentIntelligencePage() {
       if (!res.ok) throw new Error((await res.json()).error);
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, docId) => {
       setAnalysisResults(data.analysis);
       toast({ title: "Analysis complete" });
+      // Processing writes key-terms / risks / summary server-side — the
+      // per-doc result queries are stale until invalidated.
+      queryClient.invalidateQueries({ queryKey: ["/api/document-intelligence/key-terms", docId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/document-intelligence/risks", docId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/document-intelligence/summary", docId] });
     },
     onError: (e: any) =>
       toast({
@@ -135,6 +143,7 @@ export default function DocumentIntelligencePage() {
     refetchSummary();
   };
 
+  // allow-no-invalidation: read-only semantic search — results render locally
   const searchMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/document-intelligence/search", {

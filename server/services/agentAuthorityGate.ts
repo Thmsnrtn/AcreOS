@@ -122,7 +122,7 @@ export async function checkAuthority(codename: string, action: string): Promise<
   // v5: Check for temporary CEO delegation before applying static authority
   try {
     const { checkTemporaryDelegation } = await import("./temporaryDelegation");
-    const delegation = checkTemporaryDelegation(codename, action);
+    const delegation = await checkTemporaryDelegation(codename, action);
     if (delegation.hasDelegation) {
       return {
         allowed: true,

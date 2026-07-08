@@ -238,6 +238,34 @@ export function registerFounderLetterRoutes(app: Express): void {
   }
 
   // GET /api/field-notes — PUBLIC archive (canonical 2026-06-06+).
+  // GET /sitemap-notes.xml — published field notes for crawlers (mirrors the
+  // /sitemap-reports.xml pattern). Submit in Search Console to accelerate
+  // indexing of autopilot-published + founder-authored notes.
+  app.get("/sitemap-notes.xml", async (_req: Request, res: Response) => {
+    try {
+      const base = process.env.PUBLIC_BASE_URL || "https://acreos.io";
+      const rows = await db
+        .select({ slug: communityLetters.slug, publishedAt: communityLetters.publishedAt })
+        .from(communityLetters)
+        .where(isNotNull(communityLetters.publishedAt))
+        .orderBy(desc(communityLetters.publishedAt))
+        .limit(5000);
+      const esc = (s: string) => s.replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" })[c] as string);
+      const urls = rows
+        .map((r) => {
+          const loc = esc(`${base}/field-notes/${r.slug}`);
+          const lastmod = r.publishedAt ? `<lastmod>${new Date(r.publishedAt).toISOString().slice(0, 10)}</lastmod>` : "";
+          return `  <url><loc>${loc}</loc>${lastmod}</url>`;
+        })
+        .join("\n");
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600");
+      return res.send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
   app.get("/api/field-notes", costClass("low"), listPublicFieldNotes);
 
   // GET /api/field-notes/:slug — PUBLIC single note (canonical).

@@ -55,7 +55,7 @@ function CompassOverlay({ direction }: { direction: Direction }) {
   const rotation = dirIdx * 90;
 
   return (
-    <div className="absolute top-4 right-4 z-10">
+    <div className="absolute top-4 right-4 z-docked">
       <div className="relative w-16 h-16">
         <div
           className="w-16 h-16 rounded-full border-2 border-white/60 bg-black/30 backdrop-blur flex items-center justify-center"
@@ -146,6 +146,7 @@ export function FieldScanner({ propertyId, onComplete }: FieldScannerProps) {
     return canvas.toDataURL("image/jpeg", 0.8);
   }, []);
 
+  // allow-no-invalidation: scan observations land in scanner-local state and the onComplete callback
   const scanMutation = useMutation({
     mutationFn: async (photos: string[]) => {
       const images = photos.map((p) => p.replace(/^data:image\/\w+;base64,/, ""));

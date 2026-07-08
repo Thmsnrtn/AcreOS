@@ -13,7 +13,7 @@
  * Total: 5 × 2 × 3 = 30 screenshots.
  *
  * Run: STORAGE_STATE=storageState.json node scripts/per-theme-visual-matrix.mjs
- * Output: docs/exhaustive-completion/auth-screenshots/theme-matrix/
+ * Output: docs/archive/exhaustive-completion/auth-screenshots/theme-matrix/
  */
 
 import { chromium } from "playwright";
@@ -23,8 +23,8 @@ import * as url from "url";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
-const OUT_DIR = path.join(ROOT, "docs/exhaustive-completion/auth-screenshots/theme-matrix");
-const REPORT_MD = path.join(ROOT, "docs/exhaustive-completion/THEME-MATRIX-RESULTS.md");
+const OUT_DIR = path.join(ROOT, "docs/archive/exhaustive-completion/auth-screenshots/theme-matrix");
+const REPORT_MD = path.join(ROOT, "docs/archive/exhaustive-completion/THEME-MATRIX-RESULTS.md");
 const HOST = process.env.AUDIT_HOST ?? "https://acreos.io";
 const VIEWPORT = { width: 1440, height: 900 };
 // Settle waits for networkidle (post-XHR/fetch quiet) before screenshot,
@@ -179,7 +179,7 @@ for (const r of results) {
   lines.push(`| ${r.theme} | ${r.mode} | ${r.page} | ${r.category} | ${r.httpStatus ?? "—"} | ${r.consoleErrors.length} | ${r.failedRequests.length} | ${note} |`);
 }
 lines.push(``);
-lines.push(`Screenshots in \`docs/exhaustive-completion/auth-screenshots/theme-matrix/\`.`);
+lines.push(`Screenshots in \`docs/archive/exhaustive-completion/auth-screenshots/theme-matrix/\`.`);
 lines.push(``);
 
 fs.writeFileSync(REPORT_MD, lines.join("\n"));

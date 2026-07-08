@@ -524,6 +524,10 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
+      // Perf audit 2026-07-04: queries that opt INTO an interval must not
+      // keep polling a backgrounded tab — roughly halves idle polling load
+      // (battery + server) across every interval query in the app.
+      refetchIntervalInBackground: false,
       refetchOnWindowFocus: false,
       staleTime: STALE_TIMES.medium,
       gcTime: CACHE_TIMES.medium,

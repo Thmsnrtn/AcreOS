@@ -99,8 +99,10 @@
   background: var(--acr-surface);
   text-decoration: none;
 }
-.ob-help:hover {
-  color: var(--acr-ink);
+@media (hover: hover) {
+  .ob-help:hover {
+    color: var(--acr-ink);
+  }
 }
 
 /* ────────────────────────────── progress strip */
@@ -293,9 +295,11 @@
   border-color: var(--acr-ink);
   padding: 14px 26px;
 }
-.ob-btn-primary:hover {
-  background: #000;
-  transform: translateY(-1px);
+@media (hover: hover) {
+  .ob-btn-primary:hover {
+    background: #000;
+    transform: translateY(-1px);
+  }
 }
 .ob-btn-primary:disabled {
   opacity: 0.4;
@@ -306,32 +310,40 @@
   color: var(--acr-ink-3);
   padding: 11px 14px;
 }
-.ob-btn-ghost:hover {
-  color: var(--acr-ink);
+@media (hover: hover) {
+  .ob-btn-ghost:hover {
+    color: var(--acr-ink);
+  }
 }
 .ob-btn-secondary {
   background: var(--acr-surface);
   color: var(--acr-ink);
   border-color: var(--acr-line);
 }
-.ob-btn-secondary:hover {
-  background: var(--acr-surface-2);
+@media (hover: hover) {
+  .ob-btn-secondary:hover {
+    background: var(--acr-surface-2);
+  }
 }
 .ob-btn-arrow::after {
   content: "→";
   font-weight: 400;
   transition: transform 0.15s;
 }
-.ob-btn-arrow:hover::after {
-  transform: translateX(2px);
+@media (hover: hover) {
+  .ob-btn-arrow:hover::after {
+    transform: translateX(2px);
+  }
 }
 .ob-btn-arrow-back::before {
   content: "←";
   font-weight: 400;
   transition: transform 0.15s;
 }
-.ob-btn-arrow-back:hover::before {
-  transform: translateX(-2px);
+@media (hover: hover) {
+  .ob-btn-arrow-back:hover::before {
+    transform: translateX(-2px);
+  }
 }
 .ob-btn:focus-visible {
   outline: none;
@@ -346,8 +358,10 @@
   border: 0;
   cursor: pointer;
 }
-.ob-skip:hover {
-  color: var(--acr-ink);
+@media (hover: hover) {
+  .ob-skip:hover {
+    color: var(--acr-ink);
+  }
 }
 
 .ob-meta {
@@ -417,9 +431,11 @@
   cursor: pointer;
   transition: all 0.15s;
 }
-.ob-pill:hover {
-  background: var(--acr-surface-2);
-  color: var(--acr-ink);
+@media (hover: hover) {
+  .ob-pill:hover {
+    background: var(--acr-surface-2);
+    color: var(--acr-ink);
+  }
 }
 .ob-pill.is-on {
   background: var(--acr-ink);
@@ -446,9 +462,11 @@
   flex-direction: column;
   gap: 6px;
 }
-.ob-card:hover {
-  background: var(--acr-bg-raised);
-  border-color: var(--acr-ink-4);
+@media (hover: hover) {
+  .ob-card:hover {
+    background: var(--acr-bg-raised);
+    border-color: var(--acr-ink-4);
+  }
 }
 .ob-card.is-on {
   border-color: var(--acr-brand);

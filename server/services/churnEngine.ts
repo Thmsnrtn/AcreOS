@@ -21,6 +21,7 @@ import {
   notes,
   properties,
   campaigns,
+  deals,
   supportCases,
   teamMembers,
   activityLog,
@@ -152,6 +153,22 @@ export async function detectMilestones(
   const newMilestones: MilestoneKey[] = [];
   const existing = new Set(currentMilestones);
 
+  // W4.5: FIRST_DEAL_CLOSED was declared (with referral-nudge copy waiting
+  // on it) but never in this detection list — the referral loop dead-ended
+  // at the single most celebratory moment in the product. Counting closed
+  // deals here covers every close path (route, autonomous machine, import).
+  const closedDealCount = await (async () => {
+    try {
+      const [row] = await db
+        .select({ n: count() })
+        .from(deals)
+        .where(and(eq(deals.organizationId, orgId), eq(deals.status, "closed")));
+      return Number(row?.n ?? 0);
+    } catch {
+      return 0;
+    }
+  })();
+
   const [lc, nc, pc, campaignCount] = await Promise.all([
     countRecords(leads, orgId),
     countRecords(notes, orgId),
@@ -165,6 +182,7 @@ export async function detectMilestones(
     [MILESTONES.FIRST_NOTE, nc >= 1],
     [MILESTONES.NOTES_10, nc >= 10],
     [MILESTONES.FIRST_CAMPAIGN_SENT, campaignCount >= 1],
+    [MILESTONES.FIRST_DEAL_CLOSED, closedDealCount >= 1],
   ];
 
   for (const [key, achieved] of checks) {

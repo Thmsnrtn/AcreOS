@@ -11,6 +11,7 @@ import { ArrowLeft } from "lucide-react";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { LandDealCalculator } from "@/components/tools/LandDealCalculator";
+import { EmbedToolCard } from "@/components/tools/EmbedToolCard";
 
 const TITLE = "Land Deal Calculator";
 const DESCRIPTION =
@@ -102,6 +103,7 @@ export default function CalculatorPage() {
             Free Parcel Check — flood, soil, elevation
           </Link>
         </nav>
+        <EmbedToolCard embedPath="/tools/calculator/embed" title="Land Deal Calculator" height={720} />
       </section>
     </main>
   );

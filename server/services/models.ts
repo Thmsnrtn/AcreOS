@@ -34,13 +34,23 @@ import { AI_COST_RATES, getRate, type AICostRate } from "./aiCostRates";
 //   Opus 4.8   — most capable; highest-stakes reasoning            $5 / $25
 //   Sonnet 4.6 — complex analysis / grounded synthesis            $3 / $15
 //   Haiku 4.5  — short lookups / restatement / formatting   (OpenRouter $0.80/$4)
+// Bare Anthropic-SDK ids (no `anthropic/` prefix) for the call sites that hit
+// the Anthropic API directly instead of OpenRouter (the Solene dispatch
+// runner, the pre-call constitutional checker). Kept in LOCKSTEP with MODELS
+// below by construction — the prefixed ids are derived from these.
+export const ANTHROPIC_MODELS = {
+  OPUS: "claude-opus-4-8",
+  SONNET: "claude-sonnet-4-6",
+  HAIKU: "claude-haiku-4-5-20251001",
+} as const;
+
 export const MODELS = {
   /** Tier 4 — highest-stakes reasoning. Pinned to the current best Opus. */
-  OPUS: "anthropic/claude-opus-4-8",
+  OPUS: `anthropic/${ANTHROPIC_MODELS.OPUS}`,
   /** Tier 3 — complex analysis, deal decisions, grounded synthesis. */
-  SONNET: "anthropic/claude-sonnet-4-6",
+  SONNET: `anthropic/${ANTHROPIC_MODELS.SONNET}`,
   /** Tier 2 — balanced reasoning / extraction / restatement. */
-  HAIKU: "anthropic/claude-haiku-4-5-20251001",
+  HAIKU: `anthropic/${ANTHROPIC_MODELS.HAIKU}`,
   /** Tier 1 — cheapest micro/templated tasks. */
   DEEPSEEK_CHAT: "deepseek/deepseek-chat",
   /** Tier 3R — step-by-step reasoning for valuation/financial models. */

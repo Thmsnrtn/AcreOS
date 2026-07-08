@@ -38,15 +38,41 @@ export const E2E_FOUNDER_USER_ID =
 export const E2E_FOUNDER_COOKIE = "e2e-founder";
 
 /**
+ * Prefix for the customer-persona suite. A `__session=e2e-persona-<slug>`
+ * cookie resolves to a STABLE, DISTINCT customer user id (`e2e_persona_<slug>`)
+ * so each of the 30 persona browser contexts auto-provisions its OWN isolated
+ * org via getOrCreateOrg — letting one Playwright run drive many genuinely
+ * separate tenants. The slug is sanitized to [a-z0-9_] so a hostile cookie
+ * can never inject anything into the resolved id. Still gated by
+ * e2eTestAuthEnabled() (never active on Fly). See tests/personas/.
+ */
+export const E2E_PERSONA_COOKIE_PREFIX = "e2e-persona-";
+
+/** The stable test user id a given persona slug resolves to. */
+export function personaTestUserId(slug: string): string {
+  const clean = slug.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return clean ? `e2e_persona_${clean}` : E2E_TEST_USER_ID;
+}
+
+/** The `__session` cookie value a persona slug should set to claim its identity. */
+export function personaCookieValue(slug: string): string {
+  return `${E2E_PERSONA_COOKIE_PREFIX}${slug}`;
+}
+
+/**
  * Pick the test identity for this request from its raw Cookie header.
  * Only meaningful when e2eTestAuthEnabled() — callers gate on that.
  */
 export function resolveTestUserId(cookieHeader: string | undefined): string {
   if (!cookieHeader) return E2E_TEST_USER_ID;
   const match = /(?:^|;\s*)__session=([^;]+)/.exec(cookieHeader);
-  return match?.[1] === E2E_FOUNDER_COOKIE
-    ? E2E_FOUNDER_USER_ID
-    : E2E_TEST_USER_ID;
+  const value = match?.[1];
+  if (!value) return E2E_TEST_USER_ID;
+  if (value === E2E_FOUNDER_COOKIE) return E2E_FOUNDER_USER_ID;
+  if (value.startsWith(E2E_PERSONA_COOKIE_PREFIX)) {
+    return personaTestUserId(value.slice(E2E_PERSONA_COOKIE_PREFIX.length));
+  }
+  return E2E_TEST_USER_ID;
 }
 
 /** True only in a non-Fly environment with the explicit E2E flag set. */

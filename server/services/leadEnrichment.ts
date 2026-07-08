@@ -153,8 +153,14 @@ export async function enrichLead(leadId: number, organizationId: number): Promis
     }
   }
 
-  // Get associated properties for ownership data
-  // TODO(tsc): leads has no propertyAddress column; use the lead's address field.
+  // Parcel/ownership columns inherited from a matched property-of-record
+  // (county GIS / Regrid data already landed on the property). Only set when
+  // the lead doesn't already carry the value.
+  const parcelCols: {
+    propertyAddress?: string;
+    county?: string;
+    estimatedValue?: string;
+  } = {};
   if (lead.address) {
     const orgProperties = await db.select().from(properties)
       .where(eq(properties.organizationId, organizationId))
@@ -166,18 +172,22 @@ export async function enrichLead(leadId: number, organizationId: number): Promis
 
     if (matchingProps.length > 0) {
       changes.propertyCount = matchingProps.length;
+      const prop = matchingProps[0];
+      if (!lead.propertyAddress && prop.address) parcelCols.propertyAddress = prop.address;
+      if (!lead.county && prop.county) parcelCols.county = prop.county;
+      if (!lead.estimatedValue && prop.assessedValue != null) parcelCols.estimatedValue = String(prop.assessedValue);
     }
   }
 
   changes.enrichedAt = new Date().toISOString();
   changes.enrichmentVersion = ENRICHMENT_VERSION;
 
-  // Store enrichment data (merge with existing)
+  // Store enrichment data (merge with existing) + the dedicated parcel columns.
   const existingEnrichment = (lead as any).enrichmentData as EnrichmentData | null || {};
   const newEnrichmentData = { ...existingEnrichment, ...changes };
 
   await db.update(leads)
-    .set({ enrichmentData: newEnrichmentData, updatedAt: new Date() } as any)
+    .set({ enrichmentData: newEnrichmentData, ...parcelCols, updatedAt: new Date() } as any)
     .where(eq(leads.id, leadId));
 
   return {

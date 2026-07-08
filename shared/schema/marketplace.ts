@@ -697,7 +697,13 @@ export const voiceCalls = pgTable("voice_calls", {
   sentimentScore: numeric("sentiment_score"), // -1 to 1
   motivationScore: numeric("motivation_score"), // 0 to 1 — seller motivation confidence
   objectiveAchieved: boolean("objective_achieved"),
-  
+
+  // Outcome tagging (also mirrored to agent_events for the activity feed).
+  outcome: text("outcome"), // e.g. interested, not_interested, callback, wrong_number, voicemail
+  outcomeNotes: text("outcome_notes"),
+  intent: text("intent"), // detected caller intent, surfaced in the post-call summary
+  updatedAt: timestamp("updated_at"),
+
   // Follow-up
   actionItems: jsonb("action_items").$type<string[]>(),
   scheduledAppointment: timestamp("scheduled_appointment"),

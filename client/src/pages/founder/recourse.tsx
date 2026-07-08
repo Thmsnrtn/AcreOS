@@ -104,6 +104,7 @@ function ReplyForm({ draft }: { draft: RecourseDraftRow }) {
     queryClient.invalidateQueries({ queryKey: [QUERY_ALL] });
   };
 
+  // allow-no-invalidation: onSuccess calls the local invalidate() helper (QUERY_OPEN + QUERY_ALL above)
   const generate = useMutation({
     mutationFn: async () => {
       const resp = await apiRequest(
@@ -131,6 +132,7 @@ function ReplyForm({ draft }: { draft: RecourseDraftRow }) {
     },
   });
 
+  // allow-no-invalidation: onSuccess calls the local invalidate() helper (QUERY_OPEN + QUERY_ALL above)
   const send = useMutation({
     mutationFn: async () => {
       const resp = await apiRequest(
@@ -164,6 +166,7 @@ function ReplyForm({ draft }: { draft: RecourseDraftRow }) {
     },
   });
 
+  // allow-no-invalidation: onSuccess calls the local invalidate() helper (QUERY_OPEN + QUERY_ALL above)
   const dismiss = useMutation({
     mutationFn: async () => {
       const resp = await apiRequest(

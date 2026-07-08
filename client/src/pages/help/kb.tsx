@@ -123,6 +123,7 @@ export function KnowledgeBaseBrowseInner({ showHeader = true }: { showHeader?: b
             }}
             className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-pressed={category === null}
+            aria-label="Show all categories"
             data-testid="kb-category-all"
           >
             <Badge
@@ -142,6 +143,7 @@ export function KnowledgeBaseBrowseInner({ showHeader = true }: { showHeader?: b
               }}
               className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-pressed={category === c}
+              aria-label={`Filter by ${c}`}
               data-testid={`kb-category-${c}`}
             >
               <Badge

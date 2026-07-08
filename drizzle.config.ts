@@ -16,7 +16,11 @@ if (!process.env.DATABASE_URL) {
 
 export default defineConfig({
   out: "./migrations",
-  schema: "./shared/schema.ts",
+  // 2026-07 DB audit: the old single-file value made drizzle-kit blind to
+  // every table in shared/schema/*.ts (74 files) — `generate`/`studio`
+  // could never diff them, which is how 90+ tables shipped with no
+  // migration. The glob covers the monolith AND the split modules.
+  schema: ["./shared/schema.ts", "./shared/schema/*.ts"],
   dialect: "postgresql",
   dbCredentials: {
     url: process.env.DATABASE_URL,

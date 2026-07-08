@@ -53,10 +53,10 @@ export async function getCustomerHealth(orgId: number): Promise<CustomerHealth |
 
   const now = new Date();
 
-  // Activity Score (0-100): based on login recency
-  // TODO(tsc): organizations has no lastLoginAt column, so login recency is unknown here
-  // (was always undefined at runtime). Treated as "no recent login" until a column exists.
-  const lastLogin = null as Date | null;
+  // Activity Score (0-100): based on activity recency. lastActiveAt is stamped
+  // by the getOrCreateOrg heartbeat; null means no recorded activity yet (→ 999
+  // days, the "cold" floor).
+  const lastLogin = org.lastActiveAt ? new Date(org.lastActiveAt) : null;
   const daysSinceLogin = lastLogin
     ? Math.floor((now.getTime() - lastLogin.getTime()) / (1000 * 60 * 60 * 24))
     : 999;

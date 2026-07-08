@@ -460,7 +460,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
             return;
           }
 
-          await smsServiceModule.handleIncomingSMS(
+          const inboundResult = await smsServiceModule.handleIncomingSMS(
             matchingOrg.organizationId,
             From,
             To,
@@ -468,6 +468,22 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
             MessageSid
           );
           logger.info(`[Twilio Webhook] Inbound SMS stored for org ${matchingOrg.organizationId}`);
+
+          // TTFM companion metric — the org's first seller response.
+          // Opt-keyword traffic (STOP/START) returned above, and W1.4 gates
+          // on a MATCHED lead — an unattached reply from an unknown number
+          // isn't proof a seller responded. Idempotent FIRST-occurrence.
+          if (inboundResult.leadId) {
+            try {
+              const { recordActivationEventAsync } = await import("./services/activation");
+              recordActivationEventAsync({
+                orgId: matchingOrg.organizationId,
+                userId: null,
+                eventName: "first_seller_response",
+                eventValue: { channel: "sms", leadId: inboundResult.leadId },
+              });
+            } catch { /* non-fatal */ }
+          }
         } catch (inboundError: any) {
           logger.error("[Twilio Webhook] Error storing inbound SMS", undefined, { metadata: { detail: inboundError.message } });
         }
@@ -763,12 +779,14 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         return res.status(400).json({ valid: false, message: "API key is required" });
       }
 
-      // Make a simple API call to verify the key works
-      const response = await fetch("https://api.regrid.com/api/v1/parcels", {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-      });
+      // Verify the key against a REAL endpoint. The old URL (api.regrid.com/v1)
+      // was the wrong host+version and 404'd, so this always returned
+      // valid:false even for good keys. Use the same v2 selector path the real
+      // lookups use; 401/403 means the key is bad, 2xx means it works.
+      const response = await fetch(
+        "https://app.regrid.com/api/v2/parcels/address?query=1600%20Pennsylvania%20Ave%20NW,%20Washington,%20DC&limit=1",
+        { headers: { Authorization: `Bearer ${apiKey}` } },
+      );
 
       res.json({ valid: response.ok });
     } catch (error) {

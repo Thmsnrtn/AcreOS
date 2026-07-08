@@ -37,6 +37,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { FlaskConical, Play, Pause, CheckCircle2, XCircle, Plus } from "lucide-react";
 import { relative } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { Verbs } from "@/lib/labels";
 
 interface Experiment {
   id: number;
@@ -449,7 +450,7 @@ function CreateExperimentDialog({ onClose }: { onClose: () => void }) {
           />
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={onClose}>{Verbs.CANCEL}</Button>
           <Button type="submit" disabled={create.isPending || !form.name}>
             {create.isPending ? "Creating…" : "Create"}
           </Button>

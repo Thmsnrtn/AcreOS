@@ -58,7 +58,7 @@ export const BridgeTile = forwardRef<HTMLDivElement, BridgeTileProps>(function B
           onClick={onDiscuss}
           aria-label={`Discuss ${label} with Atlas`}
           className={cn(
-            "absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full",
+            "absolute right-3 top-3 z-docked flex h-6 w-6 items-center justify-center rounded-full",
             "text-muted-foreground/60 transition-colors duration-150",
             "[@media(pointer:fine)]:hover:bg-white/[0.06] [@media(pointer:fine)]:hover:text-foreground/90",
             // Visible focus state — accessibility rule.

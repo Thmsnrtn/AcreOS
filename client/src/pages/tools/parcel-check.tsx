@@ -28,6 +28,7 @@ import { SPRINGS, useReducedMotionPreference, respectReducedMotion } from "@/lib
 import { emitMarketingTouch } from "@/lib/marketing-touch";
 import { getAnonymousId } from "@/lib/marketing-touch";
 import { listLearnRoutes } from "@/pages/learn/registry";
+import { EmbedToolCard } from "@/components/tools/EmbedToolCard";
 import { useParcelStream } from "@/components/parcels/use-parcel-stream";
 import {
   streamMeter,
@@ -575,16 +576,19 @@ function ParcelCheckSurface({ embed = false }: { embed?: boolean }) {
             · check your parcel
           </p>
         ) : (
-          <nav aria-label="Related free tools" className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-            <Link href="/tools/calculator" className="text-primary hover:underline">
-              Land Deal Calculator
-            </Link>
-            {learnLink && (
-              <Link href={learnLink.href} className="text-primary hover:underline">
-                {learnLink.label}
+          <>
+            <nav aria-label="Related free tools" className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              <Link href="/tools/calculator" className="text-primary hover:underline">
+                Land Deal Calculator
               </Link>
-            )}
-          </nav>
+              {learnLink && (
+                <Link href={learnLink.href} className="text-primary hover:underline">
+                  {learnLink.label}
+                </Link>
+              )}
+            </nav>
+            <EmbedToolCard embedPath="/tools/parcel-check/embed" title="Parcel Check" height={640} />
+          </>
         )}
       </section>
     </main>

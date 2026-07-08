@@ -113,6 +113,7 @@ import commentsRouter from "./routes-comments";
 // Phase 1: Communication features
 import { registerInboundEmailRoutes } from "./routes-inbound-email";
 import { registerSendGridEventRoutes } from "./routes-sendgrid-events";
+import { registerSesEventRoutes } from "./routes-ses-events";
 // Eleonora deliverability — Phase 1 §10 / Week 7-8.
 import { registerDeliverabilityRoutes } from "./routes-deliverability";
 
@@ -243,6 +244,7 @@ import { registerPaxAuditRoutes } from "./routes-pax-audit";
 import { registerSoleneAuditRoutes } from "./routes-solene-audit";
 import { registerSolenePageRoutes } from "./routes-solene-page";
 import { registerMorningPulseRoutes } from "./routes-morning-pulse";
+import { registerAutopilotRoutes } from "./routes-autopilot";
 import { registerSoleneChatRoutes } from "./routes-solene-chat";
 import { registerFounderMoneyRoutes } from "./routes-founder-money";
 import { registerAgentClaimsRoutes } from "./routes-agent-claims";
@@ -300,7 +302,7 @@ import { registerPlatformFeatureRoutes } from "./routes-platform-features";
 // reads or writes them.
 
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { organizations, leads, properties, deals, npsResponses, feedbackSubmissions, churnRiskScores } from "@shared/schema";
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
@@ -390,13 +392,42 @@ export async function registerRoutes(
   // Public feature flags endpoint — needed before Clerk middleware for sidebar rendering
   app.get("/api/config/features", async (_req, res) => {
     try {
-      const flags = await storage.getEnabledFeatureFlags();
-      const enabledKeys = flags.map((f: any) => f.key);
-      const enabledRoutes = flags.flatMap((f: any) => (f.controlledRoutes || []) as string[]);
-      res.json({ enabledKeys, enabledRoutes });
+      const { featureFlagService } = await import("./services/featureFlags");
+      const flags = await featureFlagService.getAll();
+      // enabled* keeps its historical semantics ('on' === enabled boolean).
+      // disabled* is the explicit deny-list: a flag whose state is 'off' is
+      // off for every audience, so the client can hide its routes even when
+      // ALL flags are off (previously indistinguishable from "flags unused",
+      // which made a full module freeze un-hideable in the nav). Tier/beta/
+      // founder-only states are deliberately in neither list — this endpoint
+      // has no user context to resolve them.
+      const enabledKeys = flags.filter((f) => f.state === "on").map((f) => f.key);
+      const enabledRoutes = flags
+        .filter((f) => f.state === "on")
+        .flatMap((f) => f.controlledRoutes);
+      const disabledKeys = flags.filter((f) => f.state === "off").map((f) => f.key);
+      // FROZEN routes (shared/feature-freeze.ts, deletion-ledger verdicts)
+      // are merged into the deny-list on BOTH paths so their hiding never
+      // depends on the flags table being seeded — the client also enforces
+      // this list locally, but older cached bundles get it from here.
+      const { FROZEN_ROUTES } = await import("@shared/feature-freeze");
+      const disabledRoutes = [
+        ...new Set([
+          ...flags.filter((f) => f.state === "off").flatMap((f) => f.controlledRoutes),
+          ...FROZEN_ROUTES,
+        ]),
+      ];
+      res.json({ enabledKeys, enabledRoutes, disabledKeys, disabledRoutes });
     } catch {
-      // On error, return all routes enabled so sidebar shows everything
-      res.json({ enabledKeys: [], enabledRoutes: [] });
+      // On error, return all routes enabled so the sidebar shows every REAL
+      // feature — but frozen doors stay denied even on this path.
+      const { FROZEN_ROUTES } = await import("@shared/feature-freeze");
+      res.json({
+        enabledKeys: [],
+        enabledRoutes: [],
+        disabledKeys: [],
+        disabledRoutes: [...FROZEN_ROUTES],
+      });
     }
   });
 
@@ -455,6 +486,26 @@ export async function registerRoutes(
   app.get("/api/healthz", (_req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
     res.status(200).json({ ok: true, uptime: process.uptime() });
+  });
+
+  // /api/health/uptime-probe — external uptime probe ingest (gold-standard
+  // outside-in reachability). A free GitHub Actions cron POSTs here every ~5min
+  // with a shared token; each call records an external uptime sample. Dormant
+  // until UPTIME_PROBE_TOKEN is set (returns 401 otherwise), so it's safe to
+  // ship off. Token-gated, not session-gated — it's called from CI, not a user.
+  app.post("/api/health/uptime-probe", async (req: Request, res: Response) => {
+    const configured = process.env.UPTIME_PROBE_TOKEN;
+    const provided = req.header("x-probe-token");
+    if (!configured || !provided || provided !== configured) {
+      return Errors.unauthorized(res);
+    }
+    try {
+      const { recordUptimeSample } = await import("./services/autopilot/uptime");
+      await recordUptimeSample("external");
+      return res.json({ ok: true });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
   });
 
   // /api/version — tiny endpoint for the client's stale-build self-heal.
@@ -526,13 +577,13 @@ export async function registerRoutes(
     try {
       const { email, vertical } = req.body;
       if (!email || !vertical) {
-        return res.status(400).json({ error: "Email and vertical are required" });
+        return Errors.badRequest(res, "Email and vertical are required");
       }
       const { adjacentVerticalsWaitlist } = await import("../shared/schema");
       await db.insert(adjacentVerticalsWaitlist).values({ email, vertical });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: "Failed to join waitlist" });
+      Errors.internal(res, err);
     }
   });
 
@@ -658,7 +709,7 @@ export async function registerRoutes(
     const { healthCheckService } = await import("./services/healthCheck");
     const service = await healthCheckService.checkService(req.params.service);
     if (!service) {
-      return res.status(404).json({ message: "Unknown service" });
+      return Errors.notFound(res, "service");
     }
     res.json(service);
   });
@@ -821,7 +872,7 @@ export async function registerRoutes(
         generatedAt: new Date().toISOString(),
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -844,7 +895,7 @@ export async function registerRoutes(
       const results = await fullTextSearch.search(org.id, query, limit);
       res.json({ results, query, total: results.length });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -967,7 +1018,7 @@ export async function registerRoutes(
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
       const leadsToDelete = await storage.getLeadsByIds(org.id, ids);
@@ -986,7 +1037,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Bulk delete preview error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to preview bulk delete" });
+      Errors.internal(res, error);
     }
   });
 
@@ -997,12 +1048,12 @@ export async function registerRoutes(
       const leadId = Number(req.params.id);
       
       if (isNaN(leadId)) {
-        return res.status(400).json({ message: "Invalid lead ID" });
+        return Errors.badRequest(res, "Invalid lead ID");
       }
       
       const existingLead = await storage.getLead(org.id, leadId);
       if (!existingLead) {
-        return res.status(404).json({ message: "Lead not found" });
+        return Errors.notFound(res, "lead");
       }
       
       const now = new Date();
@@ -1033,7 +1084,7 @@ export async function registerRoutes(
       });
     } catch (err) {
       logger.error("Mark contacted error", err instanceof Error ? err : undefined);
-      res.status(500).json({ message: "Failed to mark lead as contacted" });
+      Errors.internal(res, err);
     }
   });
 
@@ -1044,7 +1095,7 @@ export async function registerRoutes(
       const { primaryId, duplicateId } = req.body;
       
       if (!primaryId || !duplicateId) {
-        return res.status(400).json({ message: "Primary and duplicate lead IDs are required" });
+        return Errors.badRequest(res, "Primary and duplicate lead IDs are required");
       }
       
       const merged = await storage.mergeLeads(org.id, primaryId, duplicateId);
@@ -1056,7 +1107,7 @@ export async function registerRoutes(
       });
     } catch (err) {
       logger.error("Merge leads error", err instanceof Error ? err : undefined);
-      res.status(500).json({ message: "Failed to merge leads" });
+      Errors.internal(res, err);
     }
   });
 
@@ -1067,12 +1118,12 @@ export async function registerRoutes(
       const leadId = Number(req.params.id);
       
       if (isNaN(leadId)) {
-        return res.status(400).json({ message: "Invalid lead ID" });
+        return Errors.badRequest(res, "Invalid lead ID");
       }
       
       const existingLead = await storage.getLead(org.id, leadId);
       if (!existingLead) {
-        return res.status(404).json({ message: "Lead not found" });
+        return Errors.notFound(res, "lead");
       }
       
       const contactMethod = req.body.method || "manual"; // call, email, sms, manual
@@ -1114,7 +1165,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Record contact error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to record contact" });
+      Errors.internal(res, error);
     }
   });
 
@@ -1124,7 +1175,7 @@ export async function registerRoutes(
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
       const user = req.user as any;
@@ -1153,7 +1204,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Bulk delete leads error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to bulk delete leads" });
+      Errors.internal(res, error);
     }
   });
   
@@ -1165,7 +1216,7 @@ export async function registerRoutes(
       res.json(deletedLeads);
     } catch (error: any) {
       logger.error("Get deleted leads error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to get deleted leads" });
+      Errors.internal(res, error);
     }
   });
   
@@ -1176,7 +1227,7 @@ export async function registerRoutes(
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
       const user = req.user as any;
@@ -1198,7 +1249,7 @@ export async function registerRoutes(
       res.json({ restoredCount });
     } catch (error: any) {
       logger.error("Restore leads error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to restore leads" });
+      Errors.internal(res, error);
     }
   });
   
@@ -1209,7 +1260,7 @@ export async function registerRoutes(
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
       const user = req.user as any;
@@ -1231,7 +1282,7 @@ export async function registerRoutes(
       res.json({ deletedCount });
     } catch (error: any) {
       logger.error("Permanent delete leads error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to permanently delete leads" });
+      Errors.internal(res, error);
     }
   });
 
@@ -1260,6 +1311,23 @@ export async function registerRoutes(
 
   // Phase 2-4: Voice Learning, Context Profile, White-Label, Real-Time
   app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);
+  // GET /config answers BEFORE the feature gate (WS1 sweep, 2026-07-07):
+  // useWhiteLabel() fetches it on every authed page load, and with the
+  // white-label flag frozen the gate 404'd it — a guaranteed failed request
+  // per page view for every customer, polluting telemetry with noise. An
+  // honest "no white-label config" is a 200, not a 404; the mutating/admin
+  // routes stay behind the gate.
+  app.get('/api/white-label/config', isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { featureFlagService, buildFlagContext } = await import("./services/featureFlags");
+      const enabled = await featureFlagService.isEnabled("feature_white_label", buildFlagContext(req));
+      if (!enabled) return res.json({ config: null });
+    } catch {
+      return res.json({ config: null });
+    }
+    // Enabled (or founder bypass) — fall through to the gated mount below.
+    next();
+  });
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, featureGate("feature_white_label"), whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
   // Phase 0 hardening — per-user 60s sliding cap + per-org daily USD budget
@@ -1386,6 +1454,14 @@ export async function registerRoutes(
   const { registerPublicSignRoutes } = await import("./routes-public-sign");
   registerPublicSignRoutes(app);
 
+  // Public transparency report JSON (/api/transparency + /schema) — anonymous
+  // by design (linked from the public page + external auditors). Moved here
+  // from the tail of this function (2026-07-08): registered after the
+  // '/api' isAuthenticated catch-all below, the catch-all 401'd anonymous
+  // visitors before the handler ever ran — the exact trap this comment
+  // block documents for /api/docs and the e-sign routes.
+  registerTransparencyRoutes(app);
+
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
 
@@ -1406,39 +1482,48 @@ export async function registerRoutes(
       
       // Validate required fields
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
       if (!newStage || typeof newStage !== "string") {
-        return res.status(400).json({ message: "newStage is required" });
+        return Errors.badRequest(res, "newStage is required");
       }
       
-      // Validate stage is a valid deal stage
-      const validStages = ["negotiating", "offer_sent", "countered", "accepted", "in_escrow", "closed", "cancelled"];
-      if (!validStages.includes(newStage)) {
-        return res.status(400).json({ 
-          message: `Invalid stage. Must be one of: ${validStages.join(", ")}`,
-          validStages 
-        });
+      // Validate stage against the shared vocabulary (W3.4 — this route
+      // used to carry its own duplicated list and NO transition check,
+      // letting a bulk drag jump negotiating → closed around the state
+      // machine the single-deal routes enforce).
+      const { DEAL_STATUSES, validateDealTransition } = await import("@shared/lifecycle/pipeline-status");
+      if (!(DEAL_STATUSES as readonly string[]).includes(newStage)) {
+        return Errors.badRequest(res, `Invalid stage. Must be one of: ${DEAL_STATUSES.join(", ")}`, { validStages: DEAL_STATUSES });
       }
-      
+
       // Get the current state of all deals for safety/undo
       const existingDeals = await storage.getDealsByIds(org.id, ids);
-      
+
       // Check if any deals weren't found
       const foundIds = existingDeals.map(d => d.id);
       const missingIds = ids.filter((id: number) => !foundIds.includes(id));
-      
+
       if (missingIds.length > 0) {
-        return res.status(404).json({ 
-          message: `Some deals not found: ${missingIds.join(", ")}`,
-          missingIds 
-        });
+        return sendError(res, 404, "NOT_FOUND", `Some deals not found: ${missingIds.join(", ")}`, { missingIds });
       }
-      
+
       // Filter out deals that are already in the target stage
       const dealsToUpdate = existingDeals.filter(d => d.status !== newStage);
       const alreadyInStage = existingDeals.filter(d => d.status === newStage);
+
+      // Enforce the same per-deal transition rules as PUT /api/deals/:id.
+      const blocked = dealsToUpdate
+        .map(d => ({ id: d.id, error: validateDealTransition(d.status, newStage) }))
+        .filter((b): b is { id: number; error: string } => b.error !== null);
+      if (blocked.length > 0) {
+        return Errors.badRequest(
+          res,
+          `${blocked.length} deal(s) cannot move to "${newStage}": ${blocked[0].error}`,
+          { blocked },
+        );
+      }
       
       if (dealsToUpdate.length === 0) {
         return res.status(200).json({
@@ -1500,7 +1585,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Bulk stage update deals error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to bulk update deal stages" });
+      Errors.internal(res, error);
     }
   });
   
@@ -1511,15 +1596,13 @@ export async function registerRoutes(
       const { previousStates } = req.body;
       
       if (!Array.isArray(previousStates) || previousStates.length === 0) {
-        return res.status(400).json({ message: "previousStates must be a non-empty array" });
+        return Errors.badRequest(res, "previousStates must be a non-empty array");
       }
       
       // Validate structure of previousStates
       for (const state of previousStates) {
         if (!state.id || !state.previousStage) {
-          return res.status(400).json({ 
-            message: "Each previousState must have id and previousStage properties" 
-          });
+          return Errors.badRequest(res, "Each previousState must have id and previousStage properties");
         }
       }
       
@@ -1571,7 +1654,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Bulk stage undo error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to undo bulk stage update" });
+      Errors.internal(res, error);
     }
   });
 
@@ -1695,7 +1778,7 @@ export async function registerRoutes(
       const flags = await db.select().from(platformFeatureFlags).limit(1000);
       res.json(flags);
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to fetch feature flags" });
+      Errors.internal(res, err);
     }
   });
 
@@ -1705,7 +1788,7 @@ export async function registerRoutes(
       const { eq } = await import("drizzle-orm");
       const { enabled } = req.body;
       if (typeof enabled !== "boolean") {
-        return res.status(400).json({ message: "enabled (boolean) is required" });
+        return Errors.badRequest(res, "enabled (boolean) is required");
       }
       const [updated] = await db
         .update(platformFeatureFlags)
@@ -1713,11 +1796,11 @@ export async function registerRoutes(
         .where(eq(platformFeatureFlags.key, req.params.key))
         .returning();
       if (!updated) {
-        return res.status(404).json({ message: "Feature flag not found" });
+        return Errors.notFound(res, "feature flag");
       }
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to update feature flag" });
+      Errors.internal(res, err);
     }
   });
 
@@ -1792,6 +1875,16 @@ export async function registerRoutes(
     registerSovereignIntegrationRoutes(app);
     const { registerFounderIntegrationsRoutes } = await import("./routes-founder-integrations");
     registerFounderIntegrationsRoutes(app);
+    // Platform Connections — native connect-an-account infra: founder-entered
+    // credentials (encrypted, DB-first with env fallback), live verify, and
+    // the prewired OAuth flows for ad accounts.
+    const { registerConnectionsRoutes } = await import("./routes-connections");
+    registerConnectionsRoutes(app);
+    // Free-distribution: per-route server-rendered <head> for the public
+    // content surfaces (field-notes / compare / learn) — social cards and
+    // first-pass crawlers stop seeing the homepage head on every URL.
+    const { registerSeoHeadRoutes } = await import("./routes-seo-head");
+    registerSeoHeadRoutes(app);
     // Phase 7 Months 7: Hartwell title-partner API — POST /title-orders +
     // inbound webhook + ALTA Pillar 2 wire instructions + partner registry.
     const { registerTitlePartnerRoutes } = await import("./routes-title-partners");
@@ -1983,15 +2076,17 @@ export async function registerRoutes(
   // Epic H: Auto-Delinquent Scraper route
   app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     const { county, state } = req.body as { county: string; state: string };
-    if (!county || !state) return res.status(400).json({ error: "county and state are required" });
+    if (!county || !state) return Errors.badRequest(res, "county and state are required");
     const { findAutoScrapeSource, scrapeCountyDelinquentList } = await import("./services/delinquentListScraper");
     const source = findAutoScrapeSource(county, state);
     if (!source) {
-      return res.status(404).json({
-        error: "No automated source available for this county",
-        message: `Auto-scraping not yet available for ${county}, ${state}. Use manual CSV upload instead.`,
-        manualUploadUrl: "/api/import/tax-delinquent",
-      });
+      return sendError(
+        res,
+        404,
+        "NOT_FOUND",
+        `Auto-scraping not yet available for ${county}, ${state}. Use manual CSV upload instead.`,
+        { manualUploadUrl: "/api/import/tax-delinquent" },
+      );
     }
     const result = await scrapeCountyDelinquentList(source);
     res.json(result);
@@ -2040,9 +2135,9 @@ export async function registerRoutes(
   // ledger (dr_drills). GitHub Actions deploy.yml writes deploys here; the
   // founder records DR drills here after each quarterly run.
   registerAdminComplianceRoutes(app);
-  // Quinn (Chief of Alignment) — public /transparency stub + schema endpoint.
-  // Tahoe wave E9. UI ships in a future wave; the substrate is live.
-  registerTransparencyRoutes(app);
+  // Quinn (Chief of Alignment) — public transparency endpoints are
+  // registered EARLIER (before the '/api' isAuthenticated catch-all) so
+  // anonymous visitors reach them; see the block above epicServicesRouter.
   // Quinn + Rafe — "appeal the AI" recourse loop. Customer surface
   // (see a refusal-with-reason + file an appeal) and the founder review
   // surface (uphold/reverse with rationale, close the loop back to the
@@ -2224,6 +2319,9 @@ export async function registerRoutes(
   // snapshot + POST /refresh force re-compute. Backs the Today page's
   // live one-line; cron-fed by the 12:00 UTC + 30m continuous jobs.
   registerMorningPulseRoutes(app);
+  // Founder Autopilot — Trust Ledger control plane: GET the ledger + POST a
+  // sovereign domain-level override (pause/trust). The reversibility guarantee.
+  registerAutopilotRoutes(app);
   // Solene (Phase 2) — chat backend: SSE-streaming /api/founder/solene-chat/*
   // turn runner over OpenRouter with smart routing + prompt cache + tool
   // exec. Registration was missing from Wave 2 (shipped 2026-06-04) so the
@@ -2345,6 +2443,8 @@ export async function registerRoutes(
   registerInboundEmailRoutes(app);
   // SendGrid event webhook (Hessam §2.3) — Ed25519-signed delivery events
   registerSendGridEventRoutes(app);
+  // SES bounce/complaint webhook (Gap 4) — SNS-signed; feeds suppression list
+  registerSesEventRoutes(app);
   // Pillar 9.1 — Founder DLQ inspection + retry/discard endpoints.
   (await import("./routes-founder-dlq")).registerFounderDlqRoutes(app);
   // Tier 3F — data co-op: Map-door county market heat (customer) + quarterly
@@ -2377,12 +2477,12 @@ export async function registerRoutes(
     try {
       const { address1, address2, city, state, zip } = req.body;
       if (!address1 || !city || !state) {
-        return res.status(400).json({ message: "address1, city, and state are required" });
+        return Errors.badRequest(res, "address1, city, and state are required");
       }
       const result = await verifyAddress({ address1, address2, city, state, zip });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -2409,7 +2509,7 @@ export async function registerRoutes(
       res.json(tasks);
     } catch (error: any) {
       logger.error("Get tasks error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to fetch tasks" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2420,13 +2520,13 @@ export async function registerRoutes(
       
       const task = await storage.getTask(orgId, id);
       if (!task) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "task");
       }
       
       res.json(task);
     } catch (error: any) {
       logger.error("Get task error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to fetch task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2468,7 +2568,7 @@ export async function registerRoutes(
       res.status(201).json(task);
     } catch (error: any) {
       logger.error("Create task error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to create task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2480,7 +2580,7 @@ export async function registerRoutes(
       
       const existingTask = await storage.getTask(orgId, id);
       if (!existingTask) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "task");
       }
       
       const updates: any = { ...req.body };
@@ -2514,7 +2614,7 @@ export async function registerRoutes(
       res.json(task);
     } catch (error: any) {
       logger.error("Update task error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to update task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2525,7 +2625,7 @@ export async function registerRoutes(
       
       const task = await storage.getTask(orgId, id);
       if (!task) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "task");
       }
       
       const user = req.user as any;
@@ -2547,7 +2647,7 @@ export async function registerRoutes(
       res.json({ message: "Task deleted" });
     } catch (error: any) {
       logger.error("Delete task error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to delete task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2559,7 +2659,7 @@ export async function registerRoutes(
       
       const existingTask = await storage.getTask(orgId, id);
       if (!existingTask) {
-        return res.status(404).json({ message: "Task not found" });
+        return Errors.notFound(res, "task");
       }
       
       const completedTask = await storage.completeTask(id);
@@ -2581,7 +2681,7 @@ export async function registerRoutes(
       res.json({ completedTask });
     } catch (error: any) {
       logger.error("Complete task error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to complete task" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2598,7 +2698,7 @@ export async function registerRoutes(
       res.json({ processed: recurringTasksDue.length, created: createdTasks });
     } catch (error: any) {
       logger.error("Process recurring tasks error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to process recurring tasks" });
+      Errors.internal(res, error);
     }
   });
 
@@ -2650,7 +2750,7 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       logger.error("Get dashboard tasks summary error", error instanceof Error ? error : undefined);
-      res.status(500).json({ message: error.message || "Failed to fetch tasks summary" });
+      Errors.internal(res, error);
     }
   });
 

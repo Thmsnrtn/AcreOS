@@ -218,6 +218,25 @@ export class EnsembleCapExceededError extends Error {
   }
 }
 
+/**
+ * Thrown by the GATE (not the display) when month-to-date spend can't be read.
+ * The ensemble dispatch is the single largest cash lever, so its gate fails
+ * CLOSED: if we can't prove we're under the cap, we refuse the (fully
+ * recoverable, re-queueable) dispatch rather than risk an unbounded overspend.
+ * Distinct code so the runner can refuse gracefully + the message is honest
+ * (a read failure, not an actual cap breach). (re-audit iteration 2)
+ */
+export class EnsembleCapReadFailedError extends Error {
+  readonly code = "ENSEMBLE_CAP_READ_FAILED" as const;
+  constructor(detail: string) {
+    super(
+      `Ensemble cap could not be verified (MTD spend unreadable: ${detail}); ` +
+        `failing CLOSED — refusing dispatch until the read recovers.`,
+    );
+    this.name = "EnsembleCapReadFailedError";
+  }
+}
+
 /** Resolve the ensemble monthly cap in USD (env-overridable). */
 export function getEnsembleMonthlyCapUsd(): number {
   const raw = process.env.ENSEMBLE_MONTHLY_CAP_USD;
@@ -227,6 +246,44 @@ export function getEnsembleMonthlyCapUsd(): number {
   }
   // Fall back to the existing Solene envelope ($50 charter default).
   return parseEnvelopeEnv();
+}
+
+/**
+ * The absolute monthly-cap ceiling. An approved budget ramp can raise the cap up
+ * to here and no further — a hard guard so the compounding loop (each ramp +50%,
+ * founder-gated) can never run away even if every gate upstream failed open. Env
+ * `ENSEMBLE_MONTHLY_CAP_HARD_CEILING_USD` overrides; default = 10× the base cap,
+ * floored at $500.
+ */
+export function getEnsembleMonthlyCapHardCeilingUsd(): number {
+  const raw = process.env.ENSEMBLE_MONTHLY_CAP_HARD_CEILING_USD;
+  if (raw) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return Math.max(getEnsembleMonthlyCapUsd() * 10, 500);
+}
+
+/**
+ * The EFFECTIVE monthly cap the live loop should spend against: the base env/
+ * charter cap, raised by a founder-approved growth-budget override when one is
+ * set, and always clamped to the hard ceiling. This is how the company's first
+ * earned dollars actually widen its growth envelope. Async (reads the DB-backed
+ * override); never throws — any read error falls back to the base cap.
+ */
+export async function getEffectiveMonthlyCapUsd(): Promise<number> {
+  const base = getEnsembleMonthlyCapUsd();
+  try {
+    const { getEffectiveSettings } = await import("../autopilot/settings");
+    const override = (await getEffectiveSettings()).growthBudgetOverrideUsd;
+    if (override != null && Number.isFinite(override) && override > base) {
+      return Math.min(override, getEnsembleMonthlyCapHardCeilingUsd());
+    }
+  } catch {
+    // fall through to the base cap — the override is a discretionary lift, never
+    // load-bearing for safety (the gate below still binds on the base).
+  }
+  return base;
 }
 
 /** Month-to-date spend (UTC month) for a single capital-event type. */
@@ -256,19 +313,25 @@ export interface EnsembleCapStatus {
   capUsd: number;
   redThresholdUsd: number;
   exceeded: boolean;
+  /**
+   * True when MTD spend could not be read (DB error / non-finite). The DISPLAY
+   * treats this as "unknown" (shows $0, doesn't break the dashboard); the GATE
+   * (assertWithinEnsembleCap) treats it as a hard refusal — fail CLOSED.
+   * (re-audit iteration 2)
+   */
+  readFailed: boolean;
 }
 
 /**
- * Read the current ensemble (agent_dispatch) cap status.
+ * Read the current ensemble (agent_dispatch) cap status for DISPLAY.
  *
- * ENFORCE-when-known: the cap THROWS only when we can actually read MTD spend
- * AND it's a finite value at/over the red threshold. When the spend lookup
- * ERRORS (or returns a non-finite value), we LOG LOUDLY and fail OPEN — because
- * halting the *entire* autonomous ensemble on a transient DB read error is a
- * worse failure than a bounded overspend until the next successful read (the
- * enforcement resumes the instant the read recovers, and dispatch results write
- * to the same DB, so a sustained outage degrades the ensemble through other
- * paths anyway). This matches the customer-facing AI gates' fail-open posture.
+ * Display posture is fail-soft: on a read error it returns `readFailed:true`
+ * with a $0 placeholder so the dashboard never crashes. The ENFORCEMENT
+ * posture is separate and stricter — `assertWithinEnsembleCap` fails CLOSED on
+ * `readFailed`, because the ensemble dispatch is the largest cash lever and a
+ * refused dispatch is fully recoverable while an overspend is not. (Previously
+ * BOTH the display and the gate failed open, which contradicted the runner's
+ * "fails closed on DB error" comment — re-audit iteration 2 fixed that.)
  */
 export async function getEnsembleCapStatus(): Promise<EnsembleCapStatus> {
   const capUsd = getEnsembleMonthlyCapUsd();
@@ -278,31 +341,33 @@ export async function getEnsembleCapStatus(): Promise<EnsembleCapStatus> {
     monthToDateUsd = await getMonthToDateSpendForType("agent_dispatch");
   } catch (err) {
     logger.error(
-      "[capitalTracker] ensemble cap MTD lookup failed; failing OPEN (allowing dispatch) — enforcement resumes on read recovery",
+      "[capitalTracker] ensemble cap MTD lookup failed; DISPLAY shows unknown, GATE fails CLOSED",
       err instanceof Error ? err : undefined,
     );
-    return { monthToDateUsd: 0, capUsd, redThresholdUsd, exceeded: false };
+    return { monthToDateUsd: 0, capUsd, redThresholdUsd, exceeded: false, readFailed: true };
   }
-  // Guard against a non-finite read (e.g. a malformed SUM) — never let NaN/∞
-  // gate dispatches; treat it as "can't tell" → fail open with a loud log.
+  // Guard against a non-finite read (e.g. a malformed SUM) — treat as "can't
+  // tell" → readFailed (display soft, gate closed).
   if (!Number.isFinite(monthToDateUsd)) {
     logger.error(
-      `[capitalTracker] ensemble cap MTD spend was non-finite (${monthToDateUsd}); failing OPEN`,
+      `[capitalTracker] ensemble cap MTD spend was non-finite (${monthToDateUsd}); DISPLAY unknown, GATE fails CLOSED`,
     );
-    return { monthToDateUsd: 0, capUsd, redThresholdUsd, exceeded: false };
+    return { monthToDateUsd: 0, capUsd, redThresholdUsd, exceeded: false, readFailed: true };
   }
   return {
     monthToDateUsd,
     capUsd,
     redThresholdUsd,
     exceeded: monthToDateUsd >= redThresholdUsd,
+    readFailed: false,
   };
 }
 
 /**
  * Hard pre-dispatch gate. Throws EnsembleCapExceededError when month-to-date
- * agent_dispatch spend has crossed the RED threshold. Call BEFORE enqueuing
- * or running any new agent dispatch.
+ * agent_dispatch spend has crossed the RED threshold, OR
+ * EnsembleCapReadFailedError when spend can't be read (fail CLOSED). Call
+ * BEFORE enqueuing or running any new agent dispatch.
  *
  * @param opts.founderOverride — explicit per-dispatch bypass (default false).
  *        The DEFAULT (unbounded) path is now bounded.
@@ -317,7 +382,39 @@ export async function assertWithinEnsembleCap(opts?: {
     return;
   }
   const status = await getEnsembleCapStatus();
+  if (status.readFailed) {
+    // Largest cash lever + recoverable refusal ⇒ fail CLOSED. The founder can
+    // still force a dispatch via founderOverride if the DB is degraded.
+    throw new EnsembleCapReadFailedError("MTD spend lookup unavailable");
+  }
   if (status.exceeded) {
+    // A tripped cap is the autopilot silently stopping ALL paid dispatch work
+    // for the rest of the month — the founder must hear about it, not
+    // discover it. Alert-spine dedupe (one per month) keeps it from paging on
+    // every refused enqueue. Best-effort: the alert must never mask the
+    // refusal itself. (WS5 alert-spine drill, 2026-07-08: this was the one
+    // brake with no alarm attached.)
+    try {
+      const { raiseAlert } = await import("../alertSpine");
+      const month = new Date().toISOString().slice(0, 7);
+      await raiseAlert({
+        severity: "warning",
+        source: "ensemble_cap",
+        title: "Agent-dispatch spend cap tripped — autopilot paused paid dispatches",
+        detail:
+          `Month-to-date agent_dispatch spend $${status.monthToDateUsd.toFixed(2)} crossed the ` +
+          `red threshold $${status.redThresholdUsd.toFixed(2)} (cap $${status.capUsd.toFixed(2)}). ` +
+          `New dispatches are refused until the month rolls over or the founder overrides.`,
+        dedupeKey: `ensemble-cap-tripped:${month}`,
+        domain: "finance",
+        citedReason: "The kill-cap is a brake, not a mute — spend stopping must be as loud as spend running.",
+      });
+    } catch (alertErr) {
+      logger.warn(
+        "[capitalTracker] ensemble-cap alert failed (refusal still enforced)",
+        alertErr instanceof Error ? alertErr : undefined,
+      );
+    }
     throw new EnsembleCapExceededError(
       status.monthToDateUsd,
       status.redThresholdUsd,

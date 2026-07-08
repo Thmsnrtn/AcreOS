@@ -28,6 +28,7 @@ import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useToast } from "@/hooks/use-toast";
 import { ShieldCheck, Scale, CheckCircle2, Clock } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -152,7 +153,7 @@ function AppealForm({
           disabled={mutation.isPending}
           aria-label="Cancel appeal"
         >
-          Cancel
+          {Verbs.CANCEL}
         </Button>
       </div>
     </form>

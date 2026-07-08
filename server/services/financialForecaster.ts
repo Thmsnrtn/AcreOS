@@ -9,8 +9,10 @@
  */
 
 import { db } from "../db";
-import { organizations, payments, subscriptionEvents } from "@shared/schema";
+import { organizations, payments, subscriptionEvents, mrrSnapshots } from "@shared/schema";
 import { sql, gte, lte, count, sum, desc, eq, and } from "drizzle-orm";
+import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
+import { estimateMonthlyInfraUsd } from "./costModel";
 
 export interface MRRProjection {
   currentMRR: number;
@@ -60,9 +62,14 @@ export async function projectMRR(): Promise<MRRProjection> {
     const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
     const monthStr = monthStart.toISOString().slice(0, 7);
 
-    // Count active orgs with paid plans as of that month
-    const [result] = await db.select({
-      count: count(),
+    // Paid orgs that existed as of that month, with their CURRENT tier —
+    // priced through tier-pricing (the canonical source) instead of the old
+    // flat $49/org assumption, which undercounted Scale and overcounted
+    // Starter (2026-07-07 cost audit). Historical tier changes aren't
+    // reconstructed here; mrr_snapshots (below) is the true history as it
+    // accumulates.
+    const paidOrgs = await db.select({
+      subscriptionTier: organizations.subscriptionTier,
     })
       .from(organizations)
       .where(and(
@@ -70,11 +77,29 @@ export async function projectMRR(): Promise<MRRProjection> {
         sql`${organizations.subscriptionTier} IS NOT NULL AND ${organizations.subscriptionTier} != 'free' AND ${organizations.subscriptionTier} != ''`,
       ));
 
-    // Estimate MRR from active paid orgs (avg $49/mo assumption if no payment data)
-    const activeOrgs = Number(result?.count || 0);
-    const estimatedMRR = activeOrgs * 49; // Could be refined with actual payment data
+    const estimatedMRR = Math.round(
+      paidOrgs.reduce((cents, o) => cents + monthlyRevenueCentsFor(o.subscriptionTier), 0) / 100,
+    );
 
     monthlyData.push({ month: monthStr, mrr: estimatedMRR });
+  }
+
+  // Prefer the real weekly MRR snapshot (W4.5) for the current month when a
+  // fresh one exists — it reflects actual billing state, not tier inference.
+  try {
+    const [snapshot] = await db
+      .select()
+      .from(mrrSnapshots)
+      .orderBy(desc(mrrSnapshots.capturedAt))
+      .limit(1);
+    if (
+      snapshot &&
+      Date.now() - new Date(snapshot.capturedAt).getTime() < 14 * 24 * 60 * 60 * 1000
+    ) {
+      monthlyData[monthlyData.length - 1].mrr = Math.round(snapshot.mrrCents / 100);
+    }
+  } catch {
+    // Snapshot table unavailable — the tier-mix estimate above stands.
   }
 
   const currentMRR = monthlyData[monthlyData.length - 1]?.mrr || 0;
@@ -155,33 +180,61 @@ export async function calculateRunway(): Promise<RunwayResult> {
   const projection = await projectMRR();
   const monthlyRevenue = projection.currentMRR;
 
-  // Estimate monthly costs (AI spend + infrastructure)
-  // Use the ledger data resolver pattern
+  // AI spend: trailing 7 days annualised to a month, via the ledger resolver.
   const { resolveAgentData } = await import("./agentDataResolvers");
   const ledgerData = await resolveAgentData("ledger_finance").catch(() => ({}));
   const aiSpendWeekly = Number((ledgerData as any).aiSpend7dDollars || 0);
   const monthlyAISpend = aiSpendWeekly * 4.3;
 
-  // Rough monthly burn estimate (AI + estimated infra)
-  const monthlyBurn = monthlyAISpend + 200; // $200 base infra estimate
+  // Infra + comms: the shared cost model (costModel.ts) — the same numbers
+  // the nightly cost optimizer uses, replacing the old flat "$200 base"
+  // guess that roughly doubled the real idle floor (2026-07-07 cost audit).
+  const [payingCount] = await db.select({ c: count() })
+    .from(organizations)
+    .where(sql`${organizations.subscriptionTier} IS NOT NULL AND ${organizations.subscriptionTier} != 'free' AND ${organizations.subscriptionTier} != ''`);
+  const customers = Number(payingCount?.c || 0);
+
+  const monthlyBurn = monthlyAISpend + estimateMonthlyInfraUsd(customers);
   const netBurn = monthlyBurn - monthlyRevenue;
   const isProfitable = netBurn <= 0;
 
+  // Honest runway: months of cash ÷ net burn. There is no bank feed, so the
+  // numerator comes from the founder-set reserve (founder_settings key
+  // `finance.cash_reserve_usd`). Without it we say so instead of inventing
+  // a number — same no-fabrication stance as the null-CAC dashboard.
   let runwayMonths: number | null = null;
-  if (!isProfitable && monthlyBurn > 0) {
-    // Simple runway: assume some capital buffer (this is a rough estimate)
-    runwayMonths = Math.max(1, Math.round(monthlyRevenue / netBurn * -1 * 12));
+  let hasReserve = false;
+  if (!isProfitable && netBurn > 0) {
+    try {
+      const { getSetting } = await import("./settings");
+      const reserve = await getSetting<number>("finance.cash_reserve_usd", 0, {
+        scope: "global",
+        scopeRef: null,
+      });
+      if (typeof reserve === "number" && Number.isFinite(reserve) && reserve > 0) {
+        hasReserve = true;
+        runwayMonths = Math.max(0, Math.floor(reserve / netBurn));
+      }
+    } catch {
+      // Settings unavailable — runway stays null (unknown, not fabricated).
+    }
   }
 
   let recommendation: string;
   if (isProfitable) {
     recommendation = "You're profitable. Revenue exceeds costs.";
-  } else if (runwayMonths && runwayMonths > 12) {
-    recommendation = `Comfortable runway. You have roughly ${runwayMonths} months at current burn rate.`;
-  } else if (runwayMonths && runwayMonths > 6) {
-    recommendation = `Watch your burn. ~${runwayMonths} months of runway remaining.`;
+  } else if (runwayMonths !== null && runwayMonths > 12) {
+    recommendation = `Comfortable runway. Roughly ${runwayMonths} months of reserve at current net burn.`;
+  } else if (runwayMonths !== null && runwayMonths > 6) {
+    recommendation = `Watch your burn. ~${runwayMonths} months of reserve remaining.`;
+  } else if (runwayMonths !== null) {
+    recommendation = `Reserve covers ~${runwayMonths} months at current net burn — costs need attention.`;
+  } else if (hasReserve) {
+    recommendation = "Reserve set but net burn is zero — runway not meaningful.";
   } else {
-    recommendation = "Revenue is growing but costs need attention.";
+    recommendation =
+      `Net burn is $${Math.round(netBurn)}/mo. Set founder_settings key ` +
+      `finance.cash_reserve_usd to get a real runway figure — it is not estimated without one.`;
   }
 
   return { monthlyBurn, monthlyRevenue, netBurn, isProfitable, runwayMonths, recommendation };

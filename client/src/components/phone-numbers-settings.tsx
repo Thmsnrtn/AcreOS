@@ -26,6 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Verbs } from "@/lib/labels";
 
 interface PhoneNumber {
   id: number;
@@ -277,7 +278,7 @@ export function PhoneNumbersSettings() {
               </form>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                  Cancel
+                  {Verbs.CANCEL}
                 </Button>
                 <Button
                   type="button"

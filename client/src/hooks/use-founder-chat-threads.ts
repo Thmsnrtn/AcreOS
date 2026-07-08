@@ -63,7 +63,7 @@ export function useFounderChatThreads() {
       // when the caller (e.g. the "new thread" button) doesn't supply one.
       const threadTitle =
         input.title?.trim() ||
-        `Atlas — ${formatDate(new Date())}`;
+        `Founder chat — ${formatDate(new Date())}`;
       const res = await apiRequest("POST", "/api/founder/chat/threads", {
         threadTitle,
       });

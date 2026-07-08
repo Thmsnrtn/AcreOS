@@ -141,9 +141,7 @@ const FOUNDER_ROUTES = [
   "/founder/growth/campaigns",
   "/founder/telemetry",
   "/founder/integrations",
-  "/founder/ai-costs",
-  "/founder/cost-optimizer",
-  "/founder/unit-economics",
+  "/founder/admin/costs",
   "/founder/feedback",
   "/founder/agent-queue",
   "/founder/feed",
@@ -157,7 +155,6 @@ const FOUNDER_ROUTES = [
   "/founder/trends",
   "/founder/expansion",
   "/founder/experiments",
-  "/founder/providers",
   "/founder/todo",
 ] as const;
 

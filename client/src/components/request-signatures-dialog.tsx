@@ -42,6 +42,7 @@ import { Plus, Trash2, Send, Loader2, CheckCircle2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CopyButton } from "@/components/ui/copy-button";
+import { Verbs } from "@/lib/labels";
 
 interface SignerInput {
   name: string;
@@ -82,6 +83,7 @@ export function RequestSignaturesDialog({
   );
   const [links, setLinks] = useState<SigningLink[] | null>(null);
 
+  // allow-no-invalidation: onSuccess calls the parent's onSuccess prop, which refreshes the document view
   const mutation = useMutation({
     mutationFn: async () => {
       const clean = signers
@@ -259,7 +261,7 @@ export function RequestSignaturesDialog({
           ) : (
             <>
               <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={mutation.isPending}>
-                Cancel
+                {Verbs.CANCEL}
               </Button>
               <Button type="submit" form="request-signatures-form" disabled={mutation.isPending} aria-busy={mutation.isPending}>
                 {mutation.isPending ? (

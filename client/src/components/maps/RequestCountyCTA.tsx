@@ -46,6 +46,7 @@ export function RequestCountyCTA({
   const [county, setCounty] = useState(defaultCounty);
   const [submitted, setSubmitted] = useState(false);
 
+  // allow-no-invalidation: logs a coverage request — confirmation is local state (setSubmitted)
   const request = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", REQUEST_COUNTY_ENDPOINT, {

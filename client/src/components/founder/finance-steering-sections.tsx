@@ -66,6 +66,7 @@ import {
   type RecoveryTransferArgs,
 } from "@/hooks/use-finance";
 import { formatDate } from "@/lib/format";
+import { Verbs } from "@/lib/labels";
 
 const BUCKET_ORDER = [
   "tax_reserve",
@@ -769,7 +770,7 @@ function RecoveryActionsSection() {
               onClick={() => setConfirmOpen(false)}
               disabled={transfer.isPending}
             >
-              Cancel
+              {Verbs.CANCEL}
             </Button>
             <Button
               size="sm"

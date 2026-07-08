@@ -9,7 +9,7 @@
  * Payment ledger + amortization-schedule rendering use the existing
  * /api/notes/:id/payments and /api/notes/:id/amortization endpoints.
  * Loss-mit case files, BPO order, and Pax default-risk score ride
- * follow-up PRs (see docs/exhaustive-completion/note-investor-followups.md).
+ * follow-up PRs (see docs/archive/exhaustive-completion/note-investor-followups.md).
  */
 
 import { useState } from "react";
@@ -227,7 +227,7 @@ function ReconciliationCard({ noteId }: { noteId: string }) {
               <AlertCircle className="w-5 h-5 text-acr-warn" aria-hidden="true" />
             )}
             <h2 className="text-sm font-semibold">
-              {driftIsZero ? "Ledger reconciled" : "Ledger drift detected"}
+              {driftIsZero ? "Payments reconciled" : "Payment drift detected"}
             </h2>
             <span
               className="text-xs text-muted-foreground tabular-nums"

@@ -1009,6 +1009,54 @@ export function registerAdminRoutes(app: Express): void {
   });
 
   // Set founder status for an organization (founder admin only)
+  // ── Right-to-erasure: hard-delete an organization (2026-07 GDPR gap) ──────
+  // gdprService referenced deleteOrganization(orgId) for years but it never
+  // existed — erasure requests could not actually be satisfied. Founder-only,
+  // and the caller must type the org's EXACT name back (destructive-action
+  // ceremony). Residual tables (append-only audit, exotic FKs) are returned
+  // honestly, never silently skipped.
+  api.post("/api/admin/organizations/:id/delete", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const orgId = parseInt(req.params.id, 10);
+      if (!Number.isFinite(orgId) || orgId <= 0) {
+        return Errors.badRequest(res, "Invalid organization id");
+      }
+      const confirmSchema = z.object({ confirmName: z.string().min(1) });
+      const parsed = confirmSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [target] = await db
+        .select({ id: organizations.id, name: organizations.name, isFounder: organizations.isFounder })
+        .from(organizations)
+        .where(eq(organizations.id, orgId))
+        .limit(1);
+      if (!target) return Errors.notFound(res, "Organization");
+      if (target.isFounder) {
+        return Errors.badRequest(res, "Refusing to delete a founder organization");
+      }
+      if (parsed.data.confirmName !== target.name) {
+        return Errors.badRequest(
+          res,
+          "confirmName does not match the organization's exact name — deletion not performed",
+        );
+      }
+
+      const { deleteOrganization } = await import("./services/orgDeletion");
+      const result = await deleteOrganization(orgId);
+
+      res.json({
+        success: result.orgRowDeleted && result.residualTables.length === 0,
+        ...result,
+        note: result.residualTables.length > 0
+          ? "Erasure INCOMPLETE — residual tables require manual resolution (see server logs)."
+          : "Erasure complete. audit_events retained under GDPR Art. 17(3)(b); financial_ledger detached (org id nulled).",
+      });
+    } catch (err: any) {
+      logger.error("Org deletion error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
+    }
+  });
+
   api.post("/api/admin/set-founder", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const parsedFounder = setFounderSchema.safeParse(req.body);

@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Plus, MapPin, Star, Trash2, Pencil, Database, TrendingUp, Users, Target, Loader2 } from "lucide-react";
+import { Verbs } from "@/lib/labels";
 
 const countyFormSchema = insertTargetCountySchema.omit({ organizationId: true });
 type CountyFormValues = z.infer<typeof countyFormSchema>;
@@ -490,7 +491,7 @@ function CountyForm({
 
         <DialogFooter className="gap-2">
           <Button type="button" variant="outline" onClick={onCancel} data-testid="button-cancel">
-            Cancel
+            {Verbs.CANCEL}
           </Button>
           <Button type="submit" disabled={isPending} data-testid="button-submit">
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />}

@@ -398,6 +398,31 @@ describe("renderOneLine", () => {
       "Thu 2026-06-04 · $1,234 MRR · +3 trials · 99.9% uptime · 0/0 compliance · $4.21 week-cost · 2 decisions waiting · Horizon: 5 days",
     );
   });
+
+  it("HONESTY: unmeasured uptime reads 'uptime n/a' — never a fabricated 99.9%", async () => {
+    const { renderOneLine } = await import("./continuousLoop");
+    const oneLine = renderOneLine({
+      generatedAt: new Date("2026-06-04T12:00:00Z"),
+      dayLabel: "Thu 2026-06-04",
+      oneLine: "",
+      mrr: 0,
+      trials: 0,
+      uptimePct: null,
+      prodVersion: "abcd1234",
+      complianceOpenCount: 0,
+      weeklySpendUsd: 0,
+      decisionsWaitingCount: 0,
+      autonomyHorizonDays: 7,
+      envelopeStatus: "green",
+      dispatchesCompletedLast24h: 0,
+      dispatchesFlaggedLast24h: 0,
+      asksOpenCount: 0,
+      asksUrgentCount: 0,
+      agentActivity: [],
+    });
+    expect(oneLine).toContain("uptime n/a");
+    expect(oneLine).not.toContain("99.9");
+  });
 });
 
 // ---------------------------------------------------------------------------

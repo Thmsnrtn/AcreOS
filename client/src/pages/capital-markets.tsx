@@ -264,6 +264,7 @@ export default function CapitalMarketsPage() {
 
   const [matchForm, setMatchForm] = useState({ dealAmount: "", state: "", ltv: "" });
   const [matchResults, setMatchResults] = useState<any[]>([]);
+  // allow-no-invalidation: lender matches land in page-local state (setMatchResults)
   const matchMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/capital-markets/match-lenders", {

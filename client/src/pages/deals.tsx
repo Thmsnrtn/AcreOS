@@ -2,6 +2,7 @@ import { PageShell } from "@/components/page-shell";
 import { plural, usd } from "@/lib/format";
 import "./today.css";
 import { DealJourney } from "@/components/ui/deal-journey";
+import { DealCoach } from "@/components/deals/DealCoach";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useDeals, useDealsPaginated, useDealAggregates, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, useAdvanceDealStage, type BulkStageUpdateResult } from "@/hooks/use-deals";
@@ -73,6 +74,7 @@ import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { getDealNextAction, getDaysInStage, getDealUrgency, type DealNextAction } from "@/lib/deal-utils";
 import { DealDetailContent } from "@/components/deal-detail-content";
 import { SwipeableCard } from "@/components/mobile/SwipeableCard";
+import { Verbs } from "@/lib/labels";
 
 type DealWithProperty = Deal & { property?: Property };
 
@@ -609,6 +611,9 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
             </Card>
           </div>
 
+          {/* Deal Coach (D4) — autopilot next-best actions over the pipeline */}
+          <DealCoach />
+
           {/* Pipeline Health Bar — org-wide counts from /api/deals/aggregates (T0-10) */}
           {isAggregatesLoading ? (
             <div className="rounded-card border bg-card shadow-acr-1 p-4 space-y-2" role="status" aria-live="polite" aria-busy="true">
@@ -709,7 +714,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
               </div>
               <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:gap-2 md:ml-auto">
                 <Button variant="outline" className="min-h-[44px] pointer-fine:md:min-h-8" onClick={handleBulkExport} data-testid="button-bulk-export-deals">
-                  <Download className="w-4 h-4 mr-1" aria-hidden="true" /> Export
+                  <Download className="w-4 h-4 mr-1" aria-hidden="true" /> {Verbs.EXPORT}
                 </Button>
                 <Select
                   value={bulkTargetStage}
@@ -734,7 +739,7 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
                   Update stage
                 </Button>
                 <Button variant="destructive" className="min-h-[44px] pointer-fine:md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-deals">
-                  <Trash2 className="w-4 h-4 mr-1" aria-hidden="true" /> Delete
+                  <Trash2 className="w-4 h-4 mr-1" aria-hidden="true" /> {Verbs.DELETE}
                 </Button>
                 <Button variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedDealIds(new Set())} aria-label="Clear selection">
                   <X className="w-4 h-4" aria-hidden="true" />
@@ -1383,6 +1388,8 @@ interface PricingRecommendation {
 function DealForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateDeal();
   const { data: properties, isLoading: propertiesLoading } = useProperties();
+  // Persona-correct word for the priced artefact (Offer / Bid / Note terms).
+  const offerLabel = useTerm("entity.offer");
 
   const form = useForm<z.infer<typeof dealFormSchema>, unknown, z.infer<typeof dealFormSchema>>({
     resolver: zodResolver(dealFormSchema),
@@ -1473,7 +1480,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             name="offerAmount"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Offer amount</FormLabel>
+                <FormLabel>{offerLabel} amount</FormLabel>
                 <FormControl>
                   <div className="relative">
                     <span
@@ -1504,7 +1511,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
             name="offerDate"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Offer date</FormLabel>
+                <FormLabel>{offerLabel} date</FormLabel>
                 <FormControl>
                   <Input
                     type="date"

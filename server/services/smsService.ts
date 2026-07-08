@@ -32,7 +32,7 @@ import {
   sequenceEnrollments,
   activityLog,
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { commsRouter, type CommsRouter } from "./comms/router";
 import { twilioProvider } from "./comms/providers/twilio";
@@ -172,9 +172,77 @@ export class SmsService {
 export const smsService = new SmsService();
 
 /**
+ * TCPA gate-by-construction (roadmap W1.5, 2026-07 audit). The consent +
+ * quiet-hours checks used to live only in CALLERS (sequenceProcessor,
+ * communications) — any path that reached this sender directly (manual
+ * send, AI tools, the autopilot hand via sendSMSToLead) skipped them
+ * entirely. The gate now lives in the sender itself:
+ *   • recipient matches a LEAD in the org → full tcpaGateForSms (consent +
+ *     recipient-local quiet hours). Blocked → refuse, named reason.
+ *   • recipient matches no lead → allowed (customer/transactional traffic
+ *     like billing notices isn't seller marketing).
+ *   • consent state UNVERIFIABLE (db error) → FAIL CLOSED. A marketing SMS
+ *     with unprovable consent is a TCPA violation waiting for a plaintiff;
+ *     a delayed transactional SMS retries.
+ *   • DNC/litigator scrub (mature-machine H0 §6.1) — layered AFTER the
+ *     consent gate at this same choke point. INERT until the founder's
+ *     vendor decision configures DNC_SCRUB_PROVIDER; once configured,
+ *     litigator numbers block even with consent, DNC-listed numbers block
+ *     without express consent, and both traffic classes (lead-matched and
+ *     unmatched) get scrubbed. See services/compliance/dncScrub.ts.
+ */
+async function tcpaGateForRecipient(
+  organizationId: number,
+  to: string,
+): Promise<{ allowed: boolean; reason?: string }> {
+  const last10 = to.replace(/\D/g, "").slice(-10);
+  if (last10.length < 7) return { allowed: true }; // short codes / malformed — carrier will reject
+  try {
+    const candidates = await db
+      .select({ id: leads.id, phone: leads.phone })
+      .from(leads)
+      .where(eq(leads.organizationId, organizationId));
+    const matched = candidates.find((l) => {
+      const leadPhone = l.phone?.replace(/\D/g, "") || "";
+      if (leadPhone.length < 7) return false;
+      return leadPhone.slice(-10) === last10;
+    });
+    const { dncGateForSms } = await import("./compliance/dncScrub");
+    if (!matched) {
+      // Unmatched = transactional class. Scrub still applies when configured
+      // (litigator numbers block; scrub errors fail OPEN so billing flows).
+      const dnc = await dncGateForSms(organizationId, to, {
+        leadMatched: false,
+        hasConsent: false,
+      });
+      if (!dnc.allowed) return { allowed: false, reason: dnc.reason };
+      return { allowed: true };
+    }
+    const { tcpaGateForSms } = await import("./tcpaCompliance");
+    const consentGate = await tcpaGateForSms(matched.id, organizationId, to);
+    if (!consentGate.allowed) return consentGate;
+    // Reaching here means the lead has express consent (canSms requires it),
+    // so a DNC listing is lawfully overridden — the scrub's teeth on this
+    // path are the litigator list and the fail-closed error posture.
+    const dnc = await dncGateForSms(organizationId, to, {
+      leadMatched: true,
+      hasConsent: true,
+    });
+    if (!dnc.allowed) return { allowed: false, reason: dnc.reason };
+    return { allowed: true };
+  } catch (err) {
+    logger.error(
+      "[SMS] TCPA gate could not verify consent — refusing send (fail closed)",
+      err instanceof Error ? err : undefined,
+    );
+    return { allowed: false, reason: "consent state unverifiable — refusing to send" };
+  }
+}
+
+/**
  * Org-scoped SMS send. The Twilio adapter handles BYOK credential
- * resolution + sim-mode short-circuit; here we only need to post the
- * cost to the financial ledger after a real send succeeds.
+ * resolution + sim-mode short-circuit; here we gate for TCPA (see above)
+ * and post the cost to the financial ledger after a real send succeeds.
  */
 export async function sendOrgSMS(
   organizationId: number,
@@ -182,6 +250,13 @@ export async function sendOrgSMS(
   message: string,
   mediaUrls?: string[],
 ): Promise<SmsResult> {
+  const gate = await tcpaGateForRecipient(organizationId, to);
+  if (!gate.allowed) {
+    logger.warn(`[SMS] send to lead blocked by TCPA gate: ${gate.reason}`, {
+      metadata: { organizationId },
+    });
+    return { success: false, error: `TCPA gate: ${gate.reason}` };
+  }
   try {
     const result = await commsRouter.route({
       to,
@@ -280,6 +355,8 @@ export async function handleIncomingSMS(
   conversationId?: number;
   dbMessageId?: number;
   leadId?: number;
+  /** True when no lead matched — stored as an unattached reply for triage. */
+  unmatched?: boolean;
   error?: string;
 }> {
   const cleanPhone = fromPhone.replace(/\D/g, "");
@@ -382,6 +459,16 @@ export async function handleIncomingSMS(
         });
       } catch {}
     }
+    // Hands roadmap P0.2 — feed the autopilot perception bus so the brain
+    // perceives outbound-suppression pressure (best-effort, non-PII: count + org).
+    if (matchingLeads.length > 0) {
+      try {
+        const { recordSense } = await import("./autopilot/perception");
+        void recordSense("sms_opt_out", matchingLeads.length, { organizationId });
+      } catch {
+        /* perception is best-effort */
+      }
+    }
     logger.info(
       `[SMS] STOP received from ${fromPhone} — opted out ${matchingLeads.length} lead(s) across all channels`,
     );
@@ -449,13 +536,45 @@ export async function handleIncomingSMS(
   }
 
   if (!existingConversation) {
-    logger.info(
-      `[SMS] No matching lead found for phone ${fromPhone} in org ${organizationId}. Message not stored.`,
-    );
-    return {
-      success: false,
-      error: `No matching lead found for phone number ${fromPhone}. Consider creating a lead first.`,
-    };
+    // Roadmap W1.4: an unmatched inbound used to be logged and DISCARDED —
+    // a seller replying from a spouse's phone or a number skip-tracing never
+    // returned was a hot response, lost. Persist it for Inbox triage
+    // (attach-to-lead / create-lead), replay-deduped on the MessageSid.
+    try {
+      const { unattachedInboundMessages } = await import("@shared/schema/unattached-inbound");
+      await db
+        .insert(unattachedInboundMessages)
+        .values({
+          organizationId,
+          channel: "sms",
+          fromAddress: fromPhone,
+          toAddress: toPhone,
+          body,
+          externalId: messageSid,
+        })
+        // The dedup index is PARTIAL (… WHERE external_id IS NOT NULL,
+        // migration 0190). Postgres only matches ON CONFLICT to a partial
+        // index when the statement carries the same predicate — without it
+        // this insert throws 42P10 and the hot unattached reply is DROPPED.
+        // Caught by tests/e2e-mobile/wedge-journey.spec.ts, 2026-07-07.
+        .onConflictDoNothing({
+          target: unattachedInboundMessages.externalId,
+          where: sql`external_id IS NOT NULL`,
+        });
+      logger.info(
+        `[SMS] Inbound from ${fromPhone} matched no lead in org ${organizationId} — stored as unattached reply for triage.`,
+      );
+      return { success: true, unmatched: true };
+    } catch (err) {
+      logger.error(
+        "[SMS] failed to store unattached inbound message",
+        err instanceof Error ? err : undefined,
+      );
+      return {
+        success: false,
+        error: `No matching lead found for phone number ${fromPhone}, and the unattached-reply store failed.`,
+      };
+    }
   }
 
   // Webhook-replay defense: partial unique index on (external_id) makes
@@ -472,7 +591,16 @@ export async function handleIncomingSMS(
       status: "received",
       externalId: messageSid,
     })
-    .onConflictDoNothing({ target: messages.externalId })
+    // messages_external_id_unique is a PARTIAL index (… WHERE external_id
+    // IS NOT NULL, migration 0034). ON CONFLICT must repeat the predicate or
+    // Postgres rejects the statement (42P10) — which made EVERY matched
+    // inbound seller SMS throw, get caught upstream, and vanish while the
+    // webhook still returned 200 to Twilio. The dominant seller-reply
+    // channel was silently dead. Caught by the wedge-journey E2E, 2026-07-07.
+    .onConflictDoNothing({
+      target: messages.externalId,
+      where: sql`external_id IS NOT NULL`,
+    })
     .returning();
 
   const newMessage = insertedRows[0];
@@ -487,6 +615,23 @@ export async function handleIncomingSMS(
     .update(conversations)
     .set({ lastMessageAt: new Date(), status: "active" })
     .where(eq(conversations.id, existingConversation.id));
+
+  // Roadmap W1.4: the EMAIL inbound path flips the lead to "responded" (the
+  // signal Today's priority queue and the funnel read) — SMS, the dominant
+  // seller-reply channel, never did. Mirror it exactly.
+  if (leadId) {
+    try {
+      await db
+        .update(leads)
+        .set({ status: "responded", updatedAt: new Date() })
+        .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
+    } catch (err) {
+      logger.warn(
+        "[SMS] failed to mark lead responded (message stored fine)",
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
 
   return {
     success: true,

@@ -50,6 +50,11 @@ import { runWithRestoredTraceContext } from "./utils/queueTraceContext";
 import { initSentry, Sentry } from "./utils/sentry";
 import { instanceId } from "./utils/jobRuntime";
 import { requireEncryptionKey } from "./utils/validateEnv";
+// Founder Autopilot — the Solene founder-ops dispatch consumer. Separate queue
+// (solene_dispatch_queue) from the outbox + the customer-facing decision
+// executor, so this never double-dispatches against either.
+import { claimNextDispatch } from "./services/solene/dispatchQueue";
+import { runDispatch } from "./services/solene/dispatchRunner";
 
 // Initialize Sentry early so unhandled errors are reported.
 initSentry();
@@ -60,6 +65,13 @@ const POLL_INTERVAL_MS = parseInt(process.env.WORKER_POLL_INTERVAL_MS ?? "5000",
 const BATCH_SIZE = parseInt(process.env.WORKER_BATCH_SIZE ?? "10", 10);
 const MAX_ATTEMPTS = parseInt(process.env.WORKER_MAX_ATTEMPTS ?? "5", 10);
 const SHUTDOWN_GRACE_MS = parseInt(process.env.WORKER_SHUTDOWN_GRACE_MS ?? "30000", 10);
+
+// Founder Autopilot — Solene dispatch consumer. GATED OFF by default: this is
+// the wire that lets the autonomous brain's enqueued dispatches actually
+// EXECUTE (run an agent with tools). Turning it on is a deliberate founder
+// switch — now DB-backed (Control Center) with SOLENE_DISPATCH_ENABLED as the
+// safe-off default — never automatic on deploy.
+const SOLENE_DISPATCH_POLL_MS = parseInt(process.env.SOLENE_DISPATCH_POLL_MS ?? "5000", 10);
 
 // Event types this worker is responsible for. Must match what producers
 // (route handlers in server/routes-*.ts and the scheduler) emit.
@@ -317,6 +329,9 @@ async function handle1099BatchGenerate(
 
 let stopping = false;
 let inFlight = 0;
+// Founder-ops dispatches currently executing (tracked separately from outbox
+// `inFlight` so shutdown drains them too).
+let soleneInFlight = 0;
 
 /**
  * Atomically claim up to `BATCH_SIZE` rows: SELECT … FOR UPDATE SKIP LOCKED
@@ -337,7 +352,7 @@ async function claimBatch(): Promise<Array<{
     attempts: number;
   }>(sql`
     UPDATE outbox
-    SET status = 'running', attempts = attempts + 1
+    SET status = 'running', attempts = attempts + 1, claimed_at = now()
     WHERE id IN (
       SELECT id FROM outbox
       WHERE status IN ('pending', 'retry')
@@ -356,6 +371,50 @@ async function claimBatch(): Promise<Array<{
     payload: r.payload ?? {},
     attempts: r.attempts ?? 0,
   }));
+}
+
+// ── Orphan reaper ────────────────────────────────────────────────────────────
+// A worker killed mid-batch (OOM, deploy, kill -9) leaves its claimed rows in
+// status='running' forever: claimBatch only takes pending/retry, and before
+// this reaper existed NOTHING recovered them — the WS5 worker-kill drill
+// (2026-07-08) orphaned 196/200 rows permanently. Policy mirrors the dispatch
+// reaper's honesty split:
+//   • OUTWARD event types (emails, platform broadcasts) → 'failed', never
+//     requeued: the send may have partially fired, and at-most-once beats a
+//     double-send. Surfaced via the normal failed-row telemetry.
+//   • Internal compute types → requeued to 'retry' (bounded by MAX_ATTEMPTS,
+//     already incremented at claim time) or 'failed' once attempts exhaust.
+// claimed_at (migration 0199) is the staleness signal — created_at is enqueue
+// time and would mis-reap a backlog claimed right after downtime.
+const OUTWARD_EVENT_TYPES = new Set(["lifecycle_email", "cmo.broadcast"]);
+const REAP_RUNNING_TTL_MS = parseInt(process.env.WORKER_REAP_RUNNING_TTL_MS ?? String(30 * 60_000), 10);
+
+async function reapOrphanedOutbox(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - REAP_RUNNING_TTL_MS);
+    const res = await db.execute<{ id: number; event_type: string; new_status: string }>(sql`
+      UPDATE outbox
+      SET status = CASE
+            WHEN event_type IN (${sql.join([...OUTWARD_EVENT_TYPES].map((t) => sql`${t}`), sql`, `)}) THEN 'failed'
+            WHEN attempts >= ${MAX_ATTEMPTS} THEN 'failed'
+            ELSE 'retry'
+          END,
+          last_error_at = now(),
+          last_error_message = 'reaped: orphaned running row past ' || ${Math.round(REAP_RUNNING_TTL_MS / 60_000)} || 'min TTL (likely a worker crash mid-batch)'
+      WHERE status = 'running'
+        AND (claimed_at IS NULL OR claimed_at < ${cutoff})
+      RETURNING id, event_type, status AS new_status
+    `);
+    const list: any[] = (res as any)?.rows ?? [];
+    if (list.length > 0) {
+      const requeued = list.filter((r) => r.new_status === "retry").length;
+      logger.warn(
+        `[worker] reaped ${list.length} orphaned running outbox row(s): ${requeued} requeued, ${list.length - requeued} failed (at-most-once / attempts exhausted)`,
+      );
+    }
+  } catch (err) {
+    logger.warn("[worker] outbox orphan reap failed", err instanceof Error ? err : undefined);
+  }
 }
 
 async function markSent(id: number, _result: unknown): Promise<void> {
@@ -534,10 +593,27 @@ async function writeHeartbeat(): Promise<void> {
   }
 }
 
+let lastReapAt = 0;
+const REAP_INTERVAL_MS = 10 * 60_000;
+
 async function pollOnce(): Promise<void> {
   // Pulse first, every loop — independent of whether there is work to do, so a
   // quiet-but-alive worker still proves liveness to the external probe.
   await writeHeartbeat();
+  // Recover rows a crashed predecessor left in 'running' — immediately on the
+  // first poll after boot (the restart-after-crash case), then every 10 min.
+  if (Date.now() - lastReapAt > REAP_INTERVAL_MS) {
+    lastReapAt = Date.now();
+    await reapOrphanedOutbox();
+  }
+  // Append-only liveness sample (throttled to ~1/min internally) — the history
+  // gaps in this feed the real uptime % sense. Best-effort; never blocks work.
+  try {
+    const { recordUptimeSample } = await import("./services/autopilot/uptime");
+    await recordUptimeSample();
+  } catch {
+    /* observability write must never break the worker */
+  }
   const batch = await claimBatch();
   if (batch.length === 0) return;
   // Process serially within a tick — most handlers are CPU-bound (PDF
@@ -559,6 +635,99 @@ async function loop(): Promise<void> {
     }
     if (stopping) break;
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+  }
+}
+
+// ── Founder Autopilot — Solene dispatch consumer ─────────────────────────────
+// THE KEYSTONE WIRE. The autonomous brain (autoDispatch / founderBypass /
+// planProposals / the continuous loop) enqueues founder-ops work onto
+// `solene_dispatch_queue` — but until now nothing drained it (dispatchRunner
+// expected a `runSoleneDispatchLoop` that was never written, so every dispatch
+// sat queued forever). This loop is that consumer.
+//
+// Serial by design: runDispatch executes an agent with tools (incl. git
+// mutations), so two concurrent dispatches would race the working tree. We
+// claim ONE row (atomic FOR UPDATE SKIP LOCKED) and run it to completion —
+// runDispatch self-handles cost caps, completion, failure, and capital events.
+// Gated OFF by default (SOLENE_DISPATCH_ENABLED) so the wiring can ship without
+// anything acting autonomously yet.
+async function runSoleneDispatchLoop(): Promise<void> {
+  // The switch is DB-backed (Control Center) with SOLENE_DISPATCH_ENABLED as the
+  // safe-off default — so the consumer stays running and ACTIVATES within
+  // seconds of the founder flipping it on, no worker restart needed.
+  logger.info(`[worker] Solene dispatch consumer running — pollInterval=${SOLENE_DISPATCH_POLL_MS}ms`);
+  const { isDispatchEnabled } = await import("./services/autopilot/settings");
+  // While the switch is OFF (the default), back off to a slow idle poll so the
+  // dormant consumer adds ~zero load to the worker. It still activates within a
+  // minute of the founder flipping it on; only the active path uses the fast poll.
+  const SOLENE_IDLE_POLL_MS = 60_000;
+  while (!stopping) {
+    let claimed = false;
+    try {
+      if (!(await isDispatchEnabled())) {
+        await new Promise((r) => setTimeout(r, SOLENE_IDLE_POLL_MS));
+        continue;
+      }
+      const row = await claimNextDispatch();
+      if (row) {
+        claimed = true;
+        soleneInFlight++;
+        try {
+          const result = await runDispatch(row);
+          // Feedback edge: an autopilot dispatch's outcome earns (clean) or
+          // costs (failure) the domain's autonomy via the Trust Ledger. No-op
+          // for non-autopilot dispatches. Best-effort — never block the loop.
+          try {
+            // T1.2: record the mechanical result FIRST, then earn/lose autonomy
+            // on the RESOLVED vote (which now also respects any founder verdict +
+            // real consequence already on the row), not the raw dispatch boolean.
+            const { recordDispatchSignal, getVoteForDispatch } = await import("./services/autopilot/experienceLog");
+            await recordDispatchSignal(row.id, {
+              dispatchSuccess: result.success,
+              costUsd: result.costUsd,
+            });
+            const vote = (await getVoteForDispatch(row.id)) ?? undefined;
+            const { applyAutonomyFeedback } = await import("./services/autopilot/act");
+            await applyAutonomyFeedback({
+              sourceType: row.sourceType,
+              sourceId: row.sourceId,
+              success: result.success,
+              terminationReason: result.terminationReason,
+              vote,
+            });
+          } catch (fbErr) {
+            logger.warn("[worker] autonomy feedback failed", fbErr instanceof Error ? fbErr : undefined);
+          }
+          // The last-mile link: if this was an autopilot growth dispatch that
+          // emitted a publishable artifact, route it through the publish gate
+          // (gated by the publish switch + the 3-layer content gate + rate cap).
+          try {
+            const { maybePublishFromDispatch } = await import("./services/autopilot/publishArtifact");
+            const pub = await maybePublishFromDispatch({
+              sourceType: row.sourceType,
+              sourceId: row.sourceId,
+              success: result.success,
+              finalText: result.finalText,
+              dispatchId: row.id,
+            });
+            if (pub?.published) logger.info(`[worker] autopilot published artifact slug=${pub.slug}`);
+            else if (pub && pub.violations.length > 0) logger.warn(`[worker] autopilot publish blocked by gate: ${pub.violations.map((v) => v.code).join(",")}`);
+          } catch (pubErr) {
+            logger.warn("[worker] autopilot publish step failed", pubErr instanceof Error ? pubErr : undefined);
+          }
+        } finally {
+          soleneInFlight--;
+        }
+      }
+    } catch (err) {
+      logger.error("[worker] Solene dispatch cycle failed", err instanceof Error ? err : undefined);
+      Sentry.captureException(err);
+    }
+    if (stopping) break;
+    // Loop immediately to drain a backlog; only sleep when the queue is empty.
+    if (!claimed) {
+      await new Promise((r) => setTimeout(r, SOLENE_DISPATCH_POLL_MS));
+    }
   }
 }
 
@@ -587,14 +756,14 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   const deadline = Date.now() + SHUTDOWN_GRACE_MS;
-  while ((inFlight > 0 || scheduledInFlight().length > 0) && Date.now() < deadline) {
+  while ((inFlight > 0 || soleneInFlight > 0 || scheduledInFlight().length > 0) && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 250));
   }
 
   const stillRunning = scheduledInFlight();
-  if (inFlight > 0 || stillRunning.length > 0) {
+  if (inFlight > 0 || soleneInFlight > 0 || stillRunning.length > 0) {
     logger.warn(
-      `[worker] grace expired with ${inFlight} outbox job(s) and ${stillRunning.length} scheduled job(s) [${stillRunning.join(", ")}] still in flight; exiting anyway`,
+      `[worker] grace expired with ${inFlight} outbox job(s), ${soleneInFlight} dispatch(es), and ${stillRunning.length} scheduled job(s) [${stillRunning.join(", ")}] still in flight; exiting anyway`,
     );
   }
 
@@ -649,6 +818,9 @@ requireEncryptionKey();
 logger.info(`[worker] booting — pollInterval=${POLL_INTERVAL_MS}ms batchSize=${BATCH_SIZE} handlers=${HANDLED_EVENT_TYPES.join(",")}`);
 
 void loop();
+// Founder Autopilot — start the Solene dispatch consumer concurrently with the
+// outbox loop. No-ops (logs DORMANT and returns) unless SOLENE_DISPATCH_ENABLED.
+void runSoleneDispatchLoop();
 
 // Scheduled jobs — formerly gated off the app process by
 // DISABLE_BACKGROUND_JOBS. Now run here on the worker so onboarding

@@ -92,6 +92,7 @@ export function LandCreditScoreBand({
 
       <Subhead className="lp-lcs-subhead">{c.dimensionsTitle}</Subhead>
       <p className="lp-lcs-subsub">{c.dimensionsSub}</p>
+      <p className="lp-lcs-subsub">{c.methodologyNote}</p>
       <div className="lp-data-sources">
         {c.dimensions.map((d) => (
           <div key={d.name} className="lp-data-source">

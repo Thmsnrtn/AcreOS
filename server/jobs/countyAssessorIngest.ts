@@ -569,6 +569,17 @@ async function processCounty(
         .update(`${comp.apn}|${comp.county}|${comp.state}|${comp.salePrice}|${comp.saleDate}`)
         .digest("hex");
 
+      // W3.2 comps discipline: assessor last-sale records include
+      // non-market transfers — $1/$10 family deeds, quitclaims, estate
+      // conveyances — that are NOT arm's-length sales. Every row used to be
+      // stamped data_quality='high', is_outlier=false unconditionally,
+      // poisoning the AVM's comp set. Nominal total price or absurd
+      // price-per-acre is the classic signature; flag those rows so
+      // findComparables (which filters is_outlier/low quality) skips them.
+      const nominalTransfer = comp.salePrice < 1000 || comp.pricePerAcre < 50;
+      const dataQuality = nominalTransfer ? "low" : "high";
+      const isOutlier = nominalTransfer;
+
       try {
         // Use raw SQL insert to avoid schema type conflicts
         await db.execute(sql`
@@ -577,7 +588,7 @@ async function processCounty(
           VALUES
             (${hash}, ${comp.state}, ${comp.county}, 'land', ${String(comp.acreage)},
              ${String(comp.salePrice)}, ${String(comp.pricePerAcre.toFixed(2))},
-             ${comp.saleDate ? new Date(comp.saleDate) : new Date()}, 'high', false, ${comp.zoning || null})
+             ${comp.saleDate ? new Date(comp.saleDate) : new Date()}, ${dataQuality}, ${isOutlier}, ${comp.zoning || null})
           ON CONFLICT (transaction_hash) DO NOTHING
         `);
       } catch (err: any) {

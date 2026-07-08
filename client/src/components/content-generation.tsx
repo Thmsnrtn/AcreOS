@@ -211,6 +211,7 @@ interface GenerateCampaignCopyProps {
 export function GenerateCampaignCopy({ onGenerated, audienceDescription }: GenerateCampaignCopyProps) {
   const { toast } = useToast();
 
+  // allow-no-invalidation: generated copy is handed to the parent via onGenerated — nothing cached changes
   const generateMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/ai/generate-campaign-copy", {

@@ -112,7 +112,7 @@ function severityBadge(severity: Recommendation["severity"]) {
   }
   if (severity === "warning") {
     return (
-      <Badge variant="outline" className="gap-1 border-amber-500 text-amber-700 dark:text-amber-400">
+      <Badge variant="outline" className="gap-1 border-acr-warn text-acr-warn">
         <AlertTriangle className="h-3 w-3" aria-hidden="true" />
         Warning
       </Badge>
@@ -128,13 +128,13 @@ function severityBadge(severity: Recommendation["severity"]) {
 
 function marginColor(pct: number): string {
   if (pct < 20) return "text-destructive";
-  if (pct < 40) return "text-amber-600";
-  return "text-emerald-600";
+  if (pct < 40) return "text-acr-warn";
+  return "text-acr-pos";
 }
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default function FounderCostOptimizerPage() {
+export function CostOptimizerContent() {
   useDocumentTitle("Cost optimizer");
   const { toast } = useToast();
 
@@ -198,7 +198,7 @@ export default function FounderCostOptimizerPage() {
   }, [latest]);
 
   return (
-    <PageShell label="Cost optimiser">
+    <>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Self-tuning cost optimiser</h1>
@@ -271,9 +271,9 @@ export default function FounderCostOptimizerPage() {
           </div>
 
           {totals && totals.savings > 0 ? (
-            <Card className="mb-6 border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/30">
+            <Card className="mb-6 border-acr-pos/30 bg-acr-pos/5">
               <CardContent className="flex items-center gap-3 p-4 text-sm">
-                <TrendingUp className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+                <TrendingUp className="h-5 w-5 text-acr-pos" aria-hidden="true" />
                 <div>
                   <strong>Estimated savings if all open recommendations are applied: {fmtUsd(totals.savings)}/mo.</strong>
                   <span className="ml-2 text-muted-foreground">
@@ -351,7 +351,7 @@ export default function FounderCostOptimizerPage() {
                                 {rec.category.replace(/_/g, " ")}
                               </span>
                               {rec.estimatedSavingsUsd ? (
-                                <span className="text-xs text-emerald-600">
+                                <span className="text-xs text-acr-pos">
                                   est savings {fmtUsd(rec.estimatedSavingsUsd)}
                                 </span>
                               ) : null}
@@ -359,7 +359,7 @@ export default function FounderCostOptimizerPage() {
                             <div className="text-sm font-medium">{rec.title}</div>
                             <div className="mt-1 text-xs text-muted-foreground">{rec.detail}</div>
                             {rec.autoApplied ? (
-                              <div className="mt-2 flex items-center gap-1 text-xs text-emerald-600">
+                              <div className="mt-2 flex items-center gap-1 text-xs text-acr-pos">
                                 <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
                                 Applied
                                 {rec.appliedAt ? ` ${formatDateTime(rec.appliedAt)}` : ""}
@@ -410,6 +410,14 @@ export default function FounderCostOptimizerPage() {
           ))}
         </div>
       )}
+    </>
+  );
+}
+
+export default function FounderCostOptimizerPage() {
+  return (
+    <PageShell label="Cost optimiser">
+      <CostOptimizerContent />
     </PageShell>
   );
 }

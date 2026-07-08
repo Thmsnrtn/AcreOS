@@ -10,6 +10,22 @@ import { processUploadedImage } from "./services/imagePipeline";
 
 const fieldScoutRouter = Router();
 
+/**
+ * Visit duration in whole minutes, derived from the existing started_at /
+ * completed_at timestamps (no dedicated duration column needed). Returns null
+ * when either timestamp is missing or the interval is non-positive.
+ */
+export function visitDurationMinutes(
+  startedAt: Date | string | null | undefined,
+  completedAt: Date | string | null | undefined,
+): number | null {
+  if (!startedAt || !completedAt) return null;
+  const start = new Date(startedAt).getTime();
+  const end = new Date(completedAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  return Math.round((end - start) / 60000);
+}
+
 // ============================================================
 // HELPERS
 // ============================================================
@@ -411,8 +427,8 @@ fieldScoutRouter.post('/field-scout/reports', async (req: Request, res: Response
         v.propertyId || '',
         v.latitude,
         v.longitude,
-        // TODO(tsc): field_scout_visits has no duration column.
-        '',
+        // Duration (minutes) derived from started_at/completed_at.
+        visitDurationMinutes(v.startedAt, v.completedAt) ?? '',
         `"${(v.notes || '').replace(/"/g, '""')}"`,
         v.photos.length,
         v.createdAt ? new Date(v.createdAt).toISOString() : '',
@@ -468,7 +484,11 @@ fieldScoutRouter.post('/field-scout/reports', async (req: Request, res: Response
       }
       doc.text(`Location: ${visit.latitude}, ${visit.longitude}`, margin, y);
       y += lineHeight;
-      // TODO(tsc): field_scout_visits has no duration column to render here.
+      const durationMin = visitDurationMinutes(visit.startedAt, visit.completedAt);
+      if (durationMin !== null) {
+        doc.text(`Duration: ${durationMin} min`, margin, y);
+        y += lineHeight;
+      }
       doc.text(`Date: ${visit.createdAt ? new Date(visit.createdAt).toLocaleString() : 'N/A'}`, margin, y);
       y += lineHeight;
 

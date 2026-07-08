@@ -94,7 +94,7 @@ export function TeamGeneralChannel({ open, onClose }: TeamGeneralChannelProps) {
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent side="right" className="w-[400px] sm:w-[450px] flex flex-col p-0">
+      <SheetContent side="right" className="w-full max-w-[400px] sm:w-[450px] sm:max-w-[450px] flex flex-col p-0">
         <SheetHeader className="p-4 border-b">
           <div className="flex items-center justify-between">
             <SheetTitle className="flex items-center gap-2">
@@ -196,6 +196,7 @@ export function ShareToTeamButton({ entityType, entityId, entityLabel }: ShareTo
 
   const generalChannel = conversations?.find(c => c.name === "General" && !c.isDirect);
 
+  // allow-no-invalidation: posts into the general channel from an entity page — conversation views refetch on open/focus
   const shareMutation = useMutation({
     mutationFn: async () => {
       if (!generalChannel) throw new Error("No general channel");

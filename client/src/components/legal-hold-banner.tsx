@@ -44,10 +44,10 @@ export function LegalHoldBanner() {
       variant="destructive"
       role="alert"
       aria-live="polite"
-      className="mx-4 mt-2 border-red-500/60 bg-red-500/10"
+      className="mx-4 mt-2 border-acr-neg bg-acr-neg-soft"
       data-testid="legal-hold-banner"
     >
-      <ShieldAlert className="h-4 w-4 text-red-500" aria-hidden="true" />
+      <ShieldAlert className="h-4 w-4 text-acr-neg" aria-hidden="true" />
       <AlertTitle>Legal hold active</AlertTitle>
       <AlertDescription>
         {banner.message}
