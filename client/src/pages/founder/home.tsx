@@ -22,6 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
+import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd } from "@/lib/format";
 
@@ -94,6 +95,8 @@ export default function FounderHomePage() {
 
   return (
     <PageShell maxWidth="4xl" label="Your company">
+      {/* F1 — ambient liveness on every door (experience-legibility.md) */}
+      <div className="mb-4"><FounderPulseStrip /></div>
       {isLoading ? (
         <div className="space-y-4" aria-busy="true">
           <Skeleton className="h-24 w-full" />

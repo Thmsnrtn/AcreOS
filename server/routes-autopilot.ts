@@ -457,6 +457,43 @@ export function registerAutopilotRoutes(app: Express): void {
         const { getLatestMorningPulse } = await import("./services/solene/continuousLoop");
         const pulse = await getLatestMorningPulse();
 
+        // F1 pulse strip (experience-legibility.md): the brain's actual
+        // heartbeat is the solene_continuous_tick job (30-min cadence in
+        // jobRegistry) — read its latest successful run from job_runs.
+        // Honest null when it has never run (fresh env, jobs disabled);
+        // stale after 2 missed cadences, wired to the same reality the
+        // deadman watches.
+        const LOOP_JOB = "solene_continuous_tick";
+        const LOOP_CADENCE_MS = 30 * 60 * 1000;
+        let loop: {
+          lastCycleAt: string | null;
+          cadenceMs: number;
+          nextDueAt: string | null;
+          stale: boolean;
+        } = { lastCycleAt: null, cadenceMs: LOOP_CADENCE_MS, nextDueAt: null, stale: false };
+        try {
+          const { db } = await import("./storage");
+          const { jobRuns } = await import("@shared/schema");
+          const { and, desc, eq, isNotNull } = await import("drizzle-orm");
+          const [run] = await db
+            .select({ completedAt: jobRuns.completedAt })
+            .from(jobRuns)
+            .where(and(eq(jobRuns.jobName, LOOP_JOB), eq(jobRuns.status, "success"), isNotNull(jobRuns.completedAt)))
+            .orderBy(desc(jobRuns.completedAt))
+            .limit(1);
+          if (run?.completedAt) {
+            const last = new Date(run.completedAt);
+            loop = {
+              lastCycleAt: last.toISOString(),
+              cadenceMs: LOOP_CADENCE_MS,
+              nextDueAt: new Date(last.getTime() + LOOP_CADENCE_MS).toISOString(),
+              stale: Date.now() - last.getTime() > 2 * LOOP_CADENCE_MS,
+            };
+          }
+        } catch {
+          /* keep honest nulls */
+        }
+
         let supportThresholdLine: string | null = null;
         let supportThresholdPct: number | null = null;
         try {
@@ -480,6 +517,7 @@ export function registerAutopilotRoutes(app: Express): void {
         }
 
         return res.json({
+          loop,
           lastTickAt: pulse?.generatedAt ?? null,
           oneLine: pulse?.oneLine ?? null,
           mrr: pulse?.mrr ?? null,
