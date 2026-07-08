@@ -1454,6 +1454,14 @@ export async function registerRoutes(
   const { registerPublicSignRoutes } = await import("./routes-public-sign");
   registerPublicSignRoutes(app);
 
+  // Public transparency report JSON (/api/transparency + /schema) — anonymous
+  // by design (linked from the public page + external auditors). Moved here
+  // from the tail of this function (2026-07-08): registered after the
+  // '/api' isAuthenticated catch-all below, the catch-all 401'd anonymous
+  // visitors before the handler ever ran — the exact trap this comment
+  // block documents for /api/docs and the e-sign routes.
+  registerTransparencyRoutes(app);
+
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
 
@@ -2127,9 +2135,9 @@ export async function registerRoutes(
   // ledger (dr_drills). GitHub Actions deploy.yml writes deploys here; the
   // founder records DR drills here after each quarterly run.
   registerAdminComplianceRoutes(app);
-  // Quinn (Chief of Alignment) — public /transparency stub + schema endpoint.
-  // Tahoe wave E9. UI ships in a future wave; the substrate is live.
-  registerTransparencyRoutes(app);
+  // Quinn (Chief of Alignment) — public transparency endpoints are
+  // registered EARLIER (before the '/api' isAuthenticated catch-all) so
+  // anonymous visitors reach them; see the block above epicServicesRouter.
   // Quinn + Rafe — "appeal the AI" recourse loop. Customer surface
   // (see a refusal-with-reason + file an appeal) and the founder review
   // surface (uphold/reverse with rationale, close the loop back to the
