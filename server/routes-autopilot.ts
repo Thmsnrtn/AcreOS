@@ -539,6 +539,85 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── Wedge receipts — F3 of the experience-legibility cluster ────────────
+  // "No number without a tappable source": the Letter's Outreach/Replies/
+  // Offers tiles open the actual rows these counts are made of. Same tables
+  // and 7-day cutoff as the narrate.ts gatherer, formatted server-side into
+  // plain receipt lines so the client stays dumb and the wording stays in
+  // one place.
+  app.get(
+    "/api/founder/autopilot/receipts/wedge",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const metric = String(req.query.metric ?? "");
+      if (!["outreach", "replies", "offers"].includes(metric)) {
+        return Errors.badRequest(res, `Unknown metric "${metric}"`, {
+          allowed: ["outreach", "replies", "offers"],
+        });
+      }
+      try {
+        const { db } = await import("./db");
+        const { campaignDeliveryEvents, messages, offers, leads } = await import("@shared/schema");
+        const { and, desc, eq, gte } = await import("drizzle-orm");
+        const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const LIMIT = 50;
+        let rows: Array<{ at: string | null; line: string }> = [];
+        if (metric === "outreach") {
+          const out = await db
+            .select({
+              at: campaignDeliveryEvents.sentAt,
+              channel: campaignDeliveryEvents.channel,
+              status: campaignDeliveryEvents.status,
+              first: leads.firstName,
+              last: leads.lastName,
+            })
+            .from(campaignDeliveryEvents)
+            .leftJoin(leads, eq(campaignDeliveryEvents.leadId, leads.id))
+            .where(gte(campaignDeliveryEvents.sentAt, cutoff))
+            .orderBy(desc(campaignDeliveryEvents.sentAt))
+            .limit(LIMIT);
+          rows = out.map((r) => ({
+            at: r.at ? new Date(r.at).toISOString() : null,
+            line: `${r.channel === "direct_mail" ? "Letter" : r.channel === "sms" ? "Text" : "Email"} to ${[r.first, r.last].filter(Boolean).join(" ") || "a lead"} — ${r.status}`,
+          }));
+        } else if (metric === "replies") {
+          const out = await db
+            .select({ at: messages.createdAt, content: messages.content })
+            .from(messages)
+            .where(and(eq(messages.direction, "inbound"), gte(messages.createdAt, cutoff)))
+            .orderBy(desc(messages.createdAt))
+            .limit(LIMIT);
+          rows = out.map((r) => ({
+            at: r.at ? new Date(r.at).toISOString() : null,
+            line: `Reply: “${(r.content ?? "").slice(0, 80)}${(r.content ?? "").length > 80 ? "…" : ""}”`,
+          }));
+        } else {
+          const out = await db
+            .select({
+              at: offers.createdAt,
+              status: offers.status,
+              cash: offers.cashOffer,
+              first: leads.firstName,
+              last: leads.lastName,
+            })
+            .from(offers)
+            .leftJoin(leads, eq(offers.leadId, leads.id))
+            .where(gte(offers.createdAt, cutoff))
+            .orderBy(desc(offers.createdAt))
+            .limit(LIMIT);
+          rows = out.map((r) => ({
+            at: r.at ? new Date(r.at).toISOString() : null,
+            line: `Offer${r.cash ? ` $${Number(r.cash).toLocaleString("en-US")}` : ""} to ${[r.first, r.last].filter(Boolean).join(" ") || "a lead"} — ${r.status}`,
+          }));
+        }
+        return res.json({ metric, windowDays: 7, rows });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── The board report (wire-for-real: boardReport + okr) ─────────────────
   // The CEO-to-board summary: what the company did, how it's tracking
   // (OKR + decision quality), and the handful of things that need the founder.
