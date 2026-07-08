@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
+import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { staggerContainer, staggerItem } from "@/lib/animations";
@@ -172,6 +173,8 @@ export default function FounderAutopilotControlPage() {
 
   return (
     <PageShell maxWidth="4xl" label="Autopilot Control Center">
+      {/* F1 — ambient liveness on every door (experience-legibility.md) */}
+      <div className="mb-4"><FounderPulseStrip /></div>
       <div className="space-y-6">
         <header className="space-y-1">
           <div className="flex items-center gap-2">

@@ -58,10 +58,14 @@ that leaks a system term is a review defect.
 
 ## Queued work — Founder cluster (F)
 
-- [ ] **F1 — Pulse strip** in the founder layout, visible behind all
-      four doors. Sources: continuous-loop state (already persisted),
-      deadman staleness, today's action count. Cheapest, biggest trust
-      yield; build first.
+- [x] **F1 — Pulse strip** (2026-07-08): `FounderPulseStrip` behind all
+      four doors, fed by the `loop` block added to
+      `/api/founder/autopilot/live` (latest successful
+      `solene_continuous_tick` from job_runs + 30-min cadence). Three
+      honest states, all verified live at 390px: green "Last cycle 10m
+      ago · next ~20m · N actions (24h)", amber "Nothing has run since
+      3h ago — cycles are usually every 30m" (2 missed cadences), muted
+      "The brain hasn't run a cycle yet". Tap → Controls. Polls 60s.
 - [ ] **F2 — Controls rewrite** (`/founder/autopilot/control`):
       consequence-language relabel of every dial, dollar/time units,
       current-effect + last-fired line per control, three presets, and a

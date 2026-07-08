@@ -38,6 +38,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { dollars, relative } from "@/lib/format";
 import { CopyButton } from "@/components/ui/copy-button";
+import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 
 // ───────────── Types ─────────────
 
@@ -550,6 +551,8 @@ export default function FounderDecisionsPage() {
 
   return (
     <PageShell label="Autonomous decisions">
+      {/* F1 — ambient liveness on every door (experience-legibility.md) */}
+      <div className="mb-4"><FounderPulseStrip /></div>
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
