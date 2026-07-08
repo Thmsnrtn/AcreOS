@@ -192,6 +192,17 @@ Exit test: five hard CEO questions, every answer sourced.
 - [ ] DNC scrub vendor pick (seam ready; mail-first launch not blocked)
 - [ ] Meta ad account for the $5/day witnessed live test
 
+## Status log
+
+- 2026-07-08 ~02:15Z — **PR #112 merged (founder-authorized) and DEPLOYED
+  as `603522f6`**, verified live on acreos.io (`/api/version`). All five
+  workstreams' code is in production. Go/no-go verdict recorded in
+  `docs/company/go-no-go-2026-07.md`: **AMBER-GO, conditions met** — the
+  witnessed mail-first $5/day campaign is cleared. Post-deploy
+  verification found one regression (public transparency JSON auth-gated
+  by the /api catch-all) — fixed, prod-build-verified, shipping in PR
+  #113.
+
 *Maintenance: check items off in place with date + SHA. When all
 workstreams are green (or amber with founder-accepted reasons), record the
 go/no-go verdict here and close the week.*
