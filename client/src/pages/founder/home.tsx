@@ -11,6 +11,7 @@
  * Replaces the old /founder (Pulse) + /founder/autopilot (Letter) overviews,
  * which now redirect here. Built from the verified founder/autopilot.tsx patterns.
  */
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, Activity, BookOpen, Mic, SlidersHorizontal, Gauge, Newspaper, TrendingUp, LayoutGrid } from "lucide-react";
@@ -24,7 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatRelative } from "@/lib/format";
 
 interface FounderBrief {
   greeting: string;
@@ -85,6 +86,8 @@ const HUB = [
 
 export default function FounderHomePage() {
   useDocumentTitle("Your company · Founder");
+  // F3 receipts — which wedge tile's rows are open (null = none).
+  const [receiptMetric, setReceiptMetric] = useState<"outreach" | "replies" | "offers" | null>(null);
   const { data, isLoading, error, refetch } = useQuery<{ brief: FounderBrief }>({
     queryKey: ["/api/founder/solene/brief"],
     queryFn: async () => (await apiRequest("GET", "/api/founder/solene/brief")).json(),
@@ -188,22 +191,33 @@ export default function FounderHomePage() {
             />
           </motion.div>
 
-          {/* The wedge + platform health — the launch-week funnel at a glance */}
+          {/* The wedge + platform health — the launch-week funnel at a glance.
+              The three wedge tiles are receipts (F3): tap a number to open
+              the exact rows it counts. */}
           <motion.div variants={staggerItem} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <VitalStat
               label="Outreach (7d)"
               value={brief.vitalSign.wedge ? String(brief.vitalSign.wedge.outreachSent7d) : "—"}
-              sub={brief.vitalSign.wedge ? undefined : "no data yet"}
+              sub={brief.vitalSign.wedge ? "tap for the rows" : "no data yet"}
+              onClick={brief.vitalSign.wedge ? () => setReceiptMetric((m) => (m === "outreach" ? null : "outreach")) : undefined}
+              active={receiptMetric === "outreach"}
+              testId="tile-outreach-7d"
             />
             <VitalStat
               label="Replies (7d)"
               value={brief.vitalSign.wedge ? String(brief.vitalSign.wedge.replies7d) : "—"}
-              sub={brief.vitalSign.wedge ? undefined : "no data yet"}
+              sub={brief.vitalSign.wedge ? "tap for the rows" : "no data yet"}
+              onClick={brief.vitalSign.wedge ? () => setReceiptMetric((m) => (m === "replies" ? null : "replies")) : undefined}
+              active={receiptMetric === "replies"}
+              testId="tile-replies-7d"
             />
             <VitalStat
               label="Offers (7d)"
               value={brief.vitalSign.wedge ? String(brief.vitalSign.wedge.offers7d) : "—"}
-              sub={brief.vitalSign.wedge ? undefined : "no data yet"}
+              sub={brief.vitalSign.wedge ? "tap for the rows" : "no data yet"}
+              onClick={brief.vitalSign.wedge ? () => setReceiptMetric((m) => (m === "offers" ? null : "offers")) : undefined}
+              active={receiptMetric === "offers"}
+              testId="tile-offers-7d"
             />
             <VitalStat
               label="Errors (24h)"
@@ -212,6 +226,13 @@ export default function FounderHomePage() {
               sub={brief.vitalSign.errorRatePct == null ? "no traffic yet" : "5xx share of requests"}
             />
           </motion.div>
+
+          {/* F3 — the open receipt (rows behind the tapped tile) */}
+          {receiptMetric && (
+            <motion.div variants={staggerItem}>
+              <WedgeReceipts metric={receiptMetric} />
+            </motion.div>
+          )}
 
           {/* Talk to your company */}
           <motion.div variants={staggerItem}>
@@ -283,14 +304,73 @@ function StepAwayLine() {
   );
 }
 
-function VitalStat({ label, value, tone, sub, subTone }: { label: string; value: string; tone?: "amber" | "red"; sub?: string; subTone?: "amber" }) {
+function VitalStat({ label, value, tone, sub, subTone, onClick, active, testId }: { label: string; value: string; tone?: "amber" | "red"; sub?: string; subTone?: "amber"; onClick?: () => void; active?: boolean; testId?: string }) {
   const toneClass = tone === "red" ? "text-destructive" : tone === "amber" ? "text-[hsl(var(--acr-warn))]" : "";
   const subClass = subTone === "amber" ? "text-[hsl(var(--acr-warn))]" : "text-muted-foreground";
-  return (
-    <div className="rounded-lg border border-border bg-card p-3">
+  const body = (
+    <>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={`mt-0.5 text-base font-semibold tabular-nums ${toneClass}`}>{value}</p>
       {sub ? <p className={`mt-0.5 text-[11px] tabular-nums ${subClass}`}>{sub}</p> : null}
+    </>
+  );
+  // Tappable variant — F3 receipts: the tile IS the claim; tapping opens
+  // the rows the number is made of.
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-expanded={active}
+        data-testid={testId}
+        className={`rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 active:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "border-primary ring-1 ring-primary/20 bg-primary/5" : "border-border bg-card"}`}
+      >
+        {body}
+      </button>
+    );
+  }
+  return <div className="rounded-lg border border-border bg-card p-3">{body}</div>;
+}
+
+// ── F3 receipts — the rows behind a wedge tile's number ─────────────────────
+const RECEIPT_TITLE: Record<string, string> = {
+  outreach: "Every send in the last 7 days",
+  replies: "Every reply in the last 7 days",
+  offers: "Every offer in the last 7 days",
+};
+
+function WedgeReceipts({ metric }: { metric: "outreach" | "replies" | "offers" }) {
+  const { data, isLoading, isError } = useQuery<{ rows: Array<{ at: string | null; line: string }> }>({
+    queryKey: ["/api/founder/autopilot/receipts/wedge", metric],
+    queryFn: async () => {
+      const res = await fetch(`/api/founder/autopilot/receipts/wedge?metric=${metric}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`receipts ${res.status}`);
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+  return (
+    <div className="rounded-lg border border-border bg-card p-3" data-testid={`wedge-receipts-${metric}`}>
+      <p className="text-xs font-medium text-foreground mb-2">{RECEIPT_TITLE[metric]}</p>
+      {isLoading ? (
+        <div className="space-y-1.5" aria-busy="true">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+      ) : isError ? (
+        <p className="text-xs text-muted-foreground">Couldn't load the rows right now — the count above still comes from the same table.</p>
+      ) : !data || data.rows.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Nothing in the last 7 days — that number is a true zero.</p>
+      ) : (
+        <ul className="space-y-1.5" role="list">
+          {data.rows.map((r, i) => (
+            <li key={i} className="flex items-baseline gap-2 text-xs">
+              <span className="shrink-0 tabular-nums text-muted-foreground">{r.at ? formatRelative(r.at) : "—"}</span>
+              <span className="min-w-0 text-foreground">{r.line}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

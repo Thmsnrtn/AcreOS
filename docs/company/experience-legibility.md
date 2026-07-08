@@ -79,12 +79,18 @@ that leaks a system term is a review defect.
       consequence language (this door was rewritten before the cluster).
       REMAINING: per-control "last fired" lines (needs receipts data —
       lands with F3).
-- [ ] **F3 — Receipts**: expandable evidence on The Letter's claims and
-      vital signs; receipt chips on Solene chat replies that created
-      decisions/dispatches; optional show-the-work drawer (chat + Story)
-      reading the existing event/dispatch/trace tables. No new routes —
-      inline affordances inside the four doors; `/founder/admin/*`
-      remains the deep instrument panel.
+- [ ] **F3 — Receipts**: PARTIAL (2026-07-08). SHIPPED (F3a): the
+      Letter's wedge tiles are receipts — tapping Outreach/Replies/
+      Offers (7d) opens the exact rows the count is made of
+      (GET /api/founder/autopilot/receipts/wedge; same tables + cutoff
+      as the narrate gatherer, formatted server-side: "2d ago · Letter
+      to Emmy Replywell — sent" / the reply text itself / "Offer
+      $32,500 to Emmy Replywell — draft"). Honest empty: "Nothing in
+      the last 7 days — that number is a true zero." Verified
+      end-to-end in-browser (tap → rows → toggle off).
+      REMAINING (F3b): receipt chips on Solene chat replies;
+      show-the-work drawer (chat + Story); per-control "last fired"
+      lines on Controls.
 
 Acceptance: no number without a tappable source; no control without a
 consequence sentence; a stalled loop is visible on every surface within

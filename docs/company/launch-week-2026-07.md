@@ -224,6 +224,16 @@ Exit test: five hard CEO questions, every answer sourced.
 
 ## Status log
 
+- 2026-07-08 ~19:55Z — **The legibility cluster shipped in one evening.**
+  PR #114 merged + DEPLOYED (`dd23289` verified on acreos.io):
+  founding-member pricing live on /pricing, Scale seat $25, credits
+  row, mobile eyeball fixes. PR #115 merged (`6a9be28`, all 18 checks
+  green): F1 pulse strip (honest heartbeat behind all four doors) +
+  F2 postures (Cautious/Standard/Hands-off one-tap stances with
+  plain-language change preview). F3a (wedge receipts — the Letter's
+  Outreach/Replies/Offers numbers open their actual rows) verified and
+  queued as the next PR. Experience-legibility design doc tracks the
+  F3b remainders (Solene chat receipt chips, show-the-work drawer).
 - 2026-07-08 ~17:50Z — **Mobile cockpit eyeball pass DONE** (the last
   non-founder-gated go/no-go amber): all four founder doors at 390px,
   full-page screenshots reviewed by eye. Layout is solid — zero
