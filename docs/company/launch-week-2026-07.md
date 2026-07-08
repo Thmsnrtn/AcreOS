@@ -26,9 +26,18 @@ makes an offer, and pays — zero errors, mobile and desktop.
       /transparency JSON shadowing the page), the feature-flag fail-open,
       2 dead command-palette entries, 21 orphan routes (ledgered), dead
       buttons/copy. Interactive-flow + persona-variant passes still to do.
-- [ ] Same sweep for signup → onboarding-v2 → first value.
-- [ ] Billing surfaces: upgrade, seats, credits purchase, cancel, dunning
-      banners.
+- [x] Signup → onboarding-v2 → first value (2026-07-07, interactive
+      pass): full 3-step walk with real clicks — persona intro →
+      workspace → sample-data choice → "workspace ready" → lands on
+      /maps; every /api/onboarding/* call 200. PASS. (The CREDENTIALED
+      Clerk signup leg stays below, gated on founder test creds.)
+- [ ] Billing surfaces: PARTIAL (2026-07-08). Done: upgrade surface
+      verified honest without Stripe keys (error card + retry, no crash),
+      plans grid moved into the Billing tab (fix wave 2), dunning ladder
+      + banners exercised end-to-end at service level (WS5 drill), a
+      self-activating billing-upgrade E2E ships with the wedge extensions.
+      Remaining: credits purchase + cancel flows driven for real — needs
+      Stripe TEST keys in CI (founder input, arriving).
 - [x] Triage ledger written into this section + fix wave 1 (2026-07-07):
       FIX-NOW shipped — seo-head env injection, transparency route split,
       FROZEN_ROUTES code-enforced deny-list, white-label config 200,
