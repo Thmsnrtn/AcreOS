@@ -243,9 +243,9 @@
     },
     {
       "file": "server/storage.ts",
-      "line": 3007,
+      "line": 2872,
       "category": "id",
-      "note": "Random CAMP- campaign code character — entropy for a human-typeable code. (Line shifted 3009→3007 when auditRepo methods were extracted from the god-class, 3E Phase 1.)"
+      "note": "Random CAMP- campaign code character — entropy for a human-typeable code. (Line shifted 3007→2872 when the integrations/email-domains/phone-numbers CRUD was extracted to integrationsRepo.)"
     }
   ]
 }

@@ -38,7 +38,6 @@ import {
   usageRecords, creditTransactions,
   supportCases, supportMessages, supportActions, supportPlaybooks,
   dunningEvents, systemAlerts,
-  verifiedEmailDomains, provisionedPhoneNumbers, organizationIntegrations,
   activityEvents,
   campaignSequences, sequenceSteps, sequenceEnrollments,
   abTests, abTestVariants,
@@ -90,9 +89,6 @@ import {
   type SupportPlaybook,
   type DunningEvent, type InsertDunningEvent,
   type SystemAlert, type InsertSystemAlert,
-  type VerifiedEmailDomain, type InsertVerifiedEmailDomain,
-  type ProvisionedPhoneNumber, type InsertProvisionedPhoneNumber,
-  type OrganizationIntegration, type InsertOrganizationIntegration,
   type ActivityEvent, type InsertActivityEvent,
   type CampaignSequence, type InsertCampaignSequence,
   type SequenceStep, type InsertSequenceStep,
@@ -2810,140 +2806,9 @@ export class DatabaseStorage implements IStorage {
     return stats;
   }
 
-  // Organization Integrations CRUD
-  async getOrganizationIntegrations(orgId: number): Promise<OrganizationIntegration[]> {
-    return await db.select().from(organizationIntegrations)
-      .where(eq(organizationIntegrations.organizationId, orgId))
-      .orderBy(organizationIntegrations.provider);
-  }
-
-  async getOrganizationIntegration(orgId: number, provider: string): Promise<OrganizationIntegration | undefined> {
-    const [integration] = await db.select().from(organizationIntegrations)
-      .where(and(
-        eq(organizationIntegrations.organizationId, orgId),
-        eq(organizationIntegrations.provider, provider)
-      ));
-    return integration;
-  }
-
-  async upsertOrganizationIntegration(data: InsertOrganizationIntegration): Promise<OrganizationIntegration> {
-    const existing = await this.getOrganizationIntegration(data.organizationId, data.provider);
-    
-    if (existing) {
-      const [updated] = await db.update(organizationIntegrations)
-        .set({
-          ...data,
-          updatedAt: new Date(),
-        })
-        .where(eq(organizationIntegrations.id, existing.id))
-        .returning();
-      return updated;
-    } else {
-      const [created] = await db.insert(organizationIntegrations).values(data).returning();
-      return created;
-    }
-  }
-
-  async deleteOrganizationIntegration(orgId: number, provider: string): Promise<void> {
-    await db.delete(organizationIntegrations)
-      .where(and(
-        eq(organizationIntegrations.organizationId, orgId),
-        eq(organizationIntegrations.provider, provider)
-      ));
-  }
-
-  async findOrganizationIntegrationByCredential(
-    provider: string, 
-    credentialKey: string, 
-    credentialValue: string
-  ): Promise<OrganizationIntegration | undefined> {
-    const integrations = await db.select().from(organizationIntegrations)
-      .where(eq(organizationIntegrations.provider, provider));
-    
-    return integrations.find(integration => {
-      const credentials = integration.credentials as Record<string, unknown> | null;
-      return credentials && credentials[credentialKey] === credentialValue;
-    });
-  }
-
-  async updateIntegrationValidation(orgId: number, provider: string, validatedAt: Date | null, error: string | null): Promise<void> {
-    await db.update(organizationIntegrations)
-      .set({
-        lastValidatedAt: validatedAt,
-        validationError: error,
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(organizationIntegrations.organizationId, orgId),
-        eq(organizationIntegrations.provider, provider)
-      ));
-  }
-
-  // Verified Email Domains CRUD
-  async getVerifiedEmailDomains(orgId: number): Promise<VerifiedEmailDomain[]> {
-    return await db.select().from(verifiedEmailDomains)
-      .where(eq(verifiedEmailDomains.organizationId, orgId))
-      .orderBy(desc(verifiedEmailDomains.isDefault), verifiedEmailDomains.domain);
-  }
-
-  // Tier 1F: org-scoped by construction.
-  async getVerifiedEmailDomain(organizationId: number, id: number): Promise<VerifiedEmailDomain | undefined> {
-    return await forOrg(organizationId).findById(verifiedEmailDomains, id);
-  }
-
-  async createVerifiedEmailDomain(data: InsertVerifiedEmailDomain): Promise<VerifiedEmailDomain> {
-    const [domain] = await db.insert(verifiedEmailDomains).values(data).returning();
-    return domain;
-  }
-
-  async updateVerifiedEmailDomain(id: number, data: Partial<InsertVerifiedEmailDomain>, organizationId?: number): Promise<VerifiedEmailDomain> {
-    const conditions = [eq(verifiedEmailDomains.id, id)];
-    if (organizationId) conditions.push(eq(verifiedEmailDomains.organizationId, organizationId));
-    const [domain] = await db.update(verifiedEmailDomains)
-      .set({ ...data, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return domain;
-  }
-
-  async deleteVerifiedEmailDomain(id: number, organizationId?: number): Promise<void> {
-    const conditions = [eq(verifiedEmailDomains.id, id)];
-    if (organizationId) conditions.push(eq(verifiedEmailDomains.organizationId, organizationId));
-    await db.delete(verifiedEmailDomains).where(and(...conditions));
-  }
-
-  // Provisioned Phone Numbers CRUD
-  async getProvisionedPhoneNumbers(orgId: number): Promise<ProvisionedPhoneNumber[]> {
-    return await db.select().from(provisionedPhoneNumbers)
-      .where(eq(provisionedPhoneNumbers.organizationId, orgId))
-      .orderBy(desc(provisionedPhoneNumbers.isDefault), provisionedPhoneNumbers.phoneNumber);
-  }
-
-  // Tier 1F: org-scoped by construction.
-  async getProvisionedPhoneNumber(organizationId: number, id: number): Promise<ProvisionedPhoneNumber | undefined> {
-    return await forOrg(organizationId).findById(provisionedPhoneNumbers, id);
-  }
-
-  async createProvisionedPhoneNumber(data: InsertProvisionedPhoneNumber): Promise<ProvisionedPhoneNumber> {
-    const [phone] = await db.insert(provisionedPhoneNumbers).values(data).returning();
-    return phone;
-  }
-
-  async updateProvisionedPhoneNumber(id: number, data: Partial<InsertProvisionedPhoneNumber>, organizationId?: number): Promise<ProvisionedPhoneNumber> {
-    const conditions = [eq(provisionedPhoneNumbers.id, id)];
-    if (organizationId) conditions.push(eq(provisionedPhoneNumbers.organizationId, organizationId));
-    const [phone] = await db.update(provisionedPhoneNumbers)
-      .set({ ...data, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return phone;
-  }
-
-  async deleteProvisionedPhoneNumber(id: number, organizationId?: number): Promise<void> {
-    const conditions = [eq(provisionedPhoneNumbers.id, id)];
-    if (organizationId) conditions.push(eq(provisionedPhoneNumbers.organizationId, organizationId));
-    await db.delete(provisionedPhoneNumbers).where(and(...conditions));
-  }
+  // Organization Integrations / Verified Email Domains / Provisioned Phone
+  // Numbers CRUD extracted to server/storage/integrationsRepo.ts (mixed into
+  // the prototype below).
 
   // Campaign Responses CRUD
   async getCampaignResponses(orgId: number, campaignId?: number): Promise<CampaignResponse[]> {
@@ -7669,9 +7534,10 @@ import { dealRepo, type DealRepo } from "./storage/dealRepo";
 import { noteRepo, type NoteRepo } from "./storage/noteRepo";
 import { campaignRepo, type CampaignRepo } from "./storage/campaignRepo";
 import { auditRepo, type AuditRepo } from "./storage/auditRepo";
+import { integrationsRepo, type IntegrationsRepo } from "./storage/integrationsRepo";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo {}
+export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo {}
 
 Object.assign(
   DatabaseStorage.prototype,
@@ -7683,6 +7549,7 @@ Object.assign(
   noteRepo,
   campaignRepo,
   auditRepo,
+  integrationsRepo,
 );
 
 export const storage = new DatabaseStorage();
