@@ -14,7 +14,9 @@ export class StripeService {
     const stripe = await getUncachableStripeClient();
     return await stripeCircuitBreaker.call(() =>
       stripe.customers.create(
-        { email, name, metadata: { userId } },
+        // `app: 'acreos'` namespaces the customer in the shared account (see
+        // docs/stripe-shared-account.md); `userId` is our own back-reference.
+        { email, name, metadata: { app: 'acreos', userId } },
         { idempotencyKey: idempotencyKey('create_customer', userId, email) }
       )
     );

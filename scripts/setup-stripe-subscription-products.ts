@@ -158,6 +158,32 @@ const SPECS: ProductSpec[] = [
   },
 ];
 
+/**
+ * Derive the shared-account convention fields from an acreos_key.
+ * See docs/stripe-shared-account.md. `app_object` ∈ plan|seat|pack;
+ * `plan_key` is the stable key; `lookupBase` seeds price lookup_keys
+ * as `<lookupBase>_<monthly|yearly>`.
+ */
+function deriveConvention(acreosKey: string): {
+  appObject: "plan" | "seat" | "pack";
+  planKey: string;
+  lookupBase: string;
+} {
+  if (acreosKey.startsWith("tier_")) {
+    const planKey = acreosKey.slice("tier_".length);
+    return { appObject: "plan", planKey, lookupBase: `acreos_${planKey}` };
+  }
+  if (acreosKey.startsWith("seat_")) {
+    const planKey = acreosKey.slice("seat_".length);
+    return { appObject: "seat", planKey, lookupBase: `acreos_seat_${planKey}` };
+  }
+  if (acreosKey.startsWith("pack_")) {
+    const planKey = acreosKey.slice("pack_".length);
+    return { appObject: "pack", planKey, lookupBase: `acreos_pack_${planKey}` };
+  }
+  throw new Error(`Unrecognised acreos_key prefix: ${acreosKey}`);
+}
+
 async function findOrCreateProduct(spec: ProductSpec): Promise<Stripe.Product> {
   // Look up existing product by metadata.acreos_key (paginate; Stripe
   // doesn't support metadata.* in search outside specific account types,
@@ -180,13 +206,19 @@ async function findOrCreateProduct(spec: ProductSpec): Promise<Stripe.Product> {
     return { id: "prod_DRY_RUN_" + spec.acreosKey } as unknown as Stripe.Product;
   }
 
+  const conv = deriveConvention(spec.acreosKey);
   const product = await stripe.products.create({
     name: spec.name,
     description: spec.description,
+    statement_descriptor: "ACREOS",
     metadata: {
       ...spec.metadata,
       acreos_key: spec.acreosKey,
       acreos_product: "true",
+      // Shared-account convention (docs/stripe-shared-account.md)
+      app: "acreos",
+      app_object: conv.appObject,
+      plan_key: conv.planKey,
     },
   });
   console.log(`  created product: ${product.id} (${product.name})`);
@@ -197,6 +229,8 @@ async function findOrCreatePrice(
   productId: string,
   unitAmount: number,
   interval: "month" | "year",
+  planKey: string,
+  lookupBase: string,
 ): Promise<Stripe.Price> {
   if (DRY_RUN) {
     console.log(`    would create price: $${unitAmount / 100}/${interval} → product ${productId}`);
@@ -221,14 +255,22 @@ async function findOrCreatePrice(
     starting_after = page.data[page.data.length - 1].id;
   }
 
+  const period = interval === "year" ? "yearly" : "monthly";
   const price = await stripe.prices.create({
     product: productId,
     unit_amount: unitAmount,
     currency: "usd",
     recurring: { interval },
-    metadata: { billingPeriod: interval === "year" ? "yearly" : "monthly" },
+    lookup_key: `${lookupBase}_${period}`,
+    metadata: {
+      billingPeriod: period,
+      // Shared-account convention (docs/stripe-shared-account.md)
+      app: "acreos",
+      plan_key: planKey,
+      billing_period: period,
+    },
   });
-  console.log(`    created price: ${price.id} ($${unitAmount / 100}/${interval})`);
+  console.log(`    created price: ${price.id} ($${unitAmount / 100}/${interval}) [${lookupBase}_${period}]`);
   return price;
 }
 
@@ -240,9 +282,10 @@ async function main() {
 
   for (const spec of SPECS) {
     console.log(`→ ${spec.acreosKey}`);
+    const conv = deriveConvention(spec.acreosKey);
     const product = await findOrCreateProduct(spec);
-    const monthly = await findOrCreatePrice(product.id, spec.monthlyPriceCents, "month");
-    const yearly = await findOrCreatePrice(product.id, spec.yearlyPriceCents, "year");
+    const monthly = await findOrCreatePrice(product.id, spec.monthlyPriceCents, "month", conv.planKey, conv.lookupBase);
+    const yearly = await findOrCreatePrice(product.id, spec.yearlyPriceCents, "year", conv.planKey, conv.lookupBase);
     envOutputs.push(`${spec.envMonthly}=${monthly.id}`);
     envOutputs.push(`${spec.envYearly}=${yearly.id}`);
   }
