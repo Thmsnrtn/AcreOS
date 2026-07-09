@@ -66,7 +66,7 @@ that leaks a system term is a review defect.
       ago · next ~20m · N actions (24h)", amber "Nothing has run since
       3h ago — cycles are usually every 30m" (2 missed cadences), muted
       "The brain hasn't run a cycle yet". Tap → Controls. Polls 60s.
-- [ ] **F2 — Controls rewrite** (`/founder/autopilot/control`): PARTIAL
+- [x] **F2 — Controls rewrite** (`/founder/autopilot/control`): PARTIAL
       (2026-07-08). SHIPPED: the three postures — Cautious / Standard /
       Hands-off — as one-tap stances with live current-posture detection,
       a plain-language "This will change:" diff before applying, and
@@ -77,8 +77,11 @@ that leaks a system term is a review defect.
       (Cautious detected → confirm diff listed switch + 5 domains →
       Standard applied + detected). Note: most dials were ALREADY in
       consequence language (this door was rewritten before the cluster).
-      REMAINING: per-control "last fired" lines (needs receipts data —
-      lands with F3).
+      DONE (2026-07-08 eve): per-control "last fired" lines — every
+      Trust dial now shows when it last actually moved: "Trust granted
+      4h ago" or "Pulled back 20m ago — two sends bounced in a row"
+      (ledger lastPromotedAt/lastDemotedAt + demotion reason; latest
+      event wins). Verified in-browser both variants. F2 COMPLETE.
 - [ ] **F3 — Receipts**: PARTIAL (2026-07-08). SHIPPED (F3a): the
       Letter's wedge tiles are receipts — tapping Outreach/Replies/
       Offers (7d) opens the exact rows the count is made of
@@ -88,9 +91,20 @@ that leaks a system term is a review defect.
       $32,500 to Emmy Replywell — draft"). Honest empty: "Nothing in
       the last 7 days — that number is a true zero." Verified
       end-to-end in-browser (tap → rows → toggle off).
-      REMAINING (F3b): receipt chips on Solene chat replies;
-      show-the-work drawer (chat + Story); per-control "last fired"
-      lines on Controls.
+      DONE (F3b chat, 2026-07-09): receipt chips on Solene chat replies
+      + show-the-work disclosure. No server pipeline change needed —
+      chips derive client-side from the persisted tool_use/tool_result
+      pairs (`chatWork.ts`, pure + unit-tested): successful
+      record_decision → "Decision #214" → /founder/decisions;
+      dispatch → "Dispatch queued" → /founder/dispatches; frozen
+      witnessed-send → "Waiting for your approval" → /founder/decisions.
+      Failures/refusals never chip. Tool activity collapses behind
+      "Show the work (N steps)" (aria-wired); the raw tool-output
+      carrier rows no longer render as fake user bubbles. Verified
+      end-to-end in-browser (fixture conversation → chip → Decisions).
+      REMAINING (F3c, small): the same show-the-work treatment on the
+      Story door's run log — Story already lists runs; add the per-run
+      step drawer.
 
 Acceptance: no number without a tappable source; no control without a
 consequence sentence; a stalled loop is visible on every surface within

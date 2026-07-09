@@ -43,7 +43,8 @@ export interface AddressValidationResult {
 }
 
 function getLobApiKey(): string | null {
-  return process.env.LOB_LIVE_API_KEY || process.env.LOB_TEST_API_KEY || null;
+  // LOB_API_KEY is the generic name the rest of the mail stack accepts.
+  return process.env.LOB_LIVE_API_KEY || process.env.LOB_TEST_API_KEY || process.env.LOB_API_KEY || null;
 }
 
 /**

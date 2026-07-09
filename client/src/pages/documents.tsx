@@ -145,19 +145,34 @@ export default function DocumentsPage() {
   // every consumed value to an array at component-top via toArray().
   const toArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 
-  const { data: rawTemplates, isLoading: templatesLoading, isError: templatesError, refetch: refetchTemplates } = useQuery<DocumentTemplate[]>({
-    queryKey: ["/api/document-templates"],
-    queryFn: () => strictFetch("/api/document-templates"),
+  // W7 perf: the three page-owned lists (templates/documents/packages) load
+  // in ONE round trip via /api/documents/overview — the /api/today pattern.
+  // Every mutation that touches any of the three must invalidate the
+  // ["/api/documents/overview"] prefix alongside the legacy per-list keys
+  // (which detail surfaces elsewhere still read).
+  const { data: overview, isLoading: overviewLoading, isError: overviewError, refetch: refetchOverview } = useQuery<{
+    templates: DocumentTemplate[];
+    documents: GeneratedDocument[];
+    packages: DocumentPackage[];
+    generatedAt: string;
+  }>({
+    queryKey: ["/api/documents/overview"],
+    queryFn: async () => {
+      const res = await fetch("/api/documents/overview", { credentials: "include" });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      return res.json();
+    },
     retry: false,
   });
-  const templates = toArray<DocumentTemplate>(rawTemplates);
+  const templates = toArray<DocumentTemplate>(overview?.templates);
+  const templatesLoading = overviewLoading;
+  const templatesError = overviewError;
+  const refetchTemplates = refetchOverview;
 
-  const { data: rawDocuments, isLoading: documentsLoading, isError: documentsError, refetch: refetchDocuments } = useQuery<GeneratedDocument[]>({
-    queryKey: ["/api/generated-documents"],
-    queryFn: () => strictFetch("/api/generated-documents"),
-    retry: false,
-  });
-  const documents = toArray<GeneratedDocument>(rawDocuments);
+  const documents = toArray<GeneratedDocument>(overview?.documents);
+  const documentsLoading = overviewLoading;
+  const documentsError = overviewError;
+  const refetchDocuments = refetchOverview;
 
   const { data: rawDeals, isError: dealsError } = useQuery<Deal[]>({
     queryKey: ["/api/deals"],
@@ -173,12 +188,10 @@ export default function DocumentsPage() {
   });
   const properties = toArray<Property>(rawProperties);
 
-  const { data: rawPackages, isLoading: packagesLoading, isError: packagesError, refetch: refetchPackages } = useQuery<DocumentPackage[]>({
-    queryKey: ["/api/document-packages"],
-    queryFn: () => strictFetch("/api/document-packages"),
-    retry: false,
-  });
-  const packages = toArray<DocumentPackage>(rawPackages);
+  const packages = toArray<DocumentPackage>(overview?.packages);
+  const packagesLoading = overviewLoading;
+  const packagesError = overviewError;
+  const refetchPackages = refetchOverview;
 
   // W2-6: remember the window-scroll offset per route. `ready` follows the
   // ACTIVE tab's query — restoring before that tab's rows exist would clamp
@@ -190,14 +203,8 @@ export default function DocumentsPage() {
   useScrollRestoration(activeTabReady);
 
   useEffect(() => {
-    if (templatesError) toast({ title: "Couldn't load templates", description: "Check your connection and try again.", variant: "destructive" });
-  }, [templatesError, toast]);
-  useEffect(() => {
-    if (documentsError) toast({ title: "Couldn't load generated documents", description: "Check your connection and try again.", variant: "destructive" });
-  }, [documentsError, toast]);
-  useEffect(() => {
-    if (packagesError) toast({ title: "Couldn't load packages", description: "Check your connection and try again.", variant: "destructive" });
-  }, [packagesError, toast]);
+    if (overviewError) toast({ title: "Couldn't load documents", description: "Check your connection and try again.", variant: "destructive" });
+  }, [overviewError, toast]);
   useEffect(() => {
     if (dealsError) toast({ title: "Couldn't load deals", description: "Linking to a deal is unavailable right now.", variant: "destructive" });
   }, [dealsError, toast]);
@@ -227,6 +234,7 @@ export default function DocumentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/overview"] });
       queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] });
       refetchVersions();
       toast({ title: "Version restored successfully" });
@@ -246,6 +254,7 @@ export default function DocumentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/overview"] });
       setIsCreateTemplateOpen(false);
       templateForm.reset();
       toast({ title: "Template created successfully" });
@@ -284,6 +293,7 @@ export default function DocumentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/overview"] });
       toast({ title: "Template deleted" });
     },
     onError: (error: any) => {
@@ -297,6 +307,7 @@ export default function DocumentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/overview"] });
       setIsGenerateOpen(false);
       setSelectedTemplateForGenerate(null);
       setVariableValues({});
@@ -318,6 +329,7 @@ export default function DocumentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/document-packages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/overview"] });
       setIsCreatePackageOpen(false);
       resetPackageForm();
       toast({ title: "Package created successfully" });
@@ -343,6 +355,7 @@ export default function DocumentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/document-packages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/overview"] });
       setIsPackageDetailOpen(false);
       setSelectedPackage(null);
       toast({ title: "Package deleted" });
@@ -358,6 +371,7 @@ export default function DocumentsPage() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/document-packages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/overview"] });
       queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] });
       toast({ title: "Documents generated successfully", description: data?.message });
     },
@@ -1590,7 +1604,10 @@ export default function DocumentsPage() {
               role: s.role ?? "signer",
             }))
           }
-          onSuccess={() => queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] })}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/documents/overview"] });
+          }}
         />
       )}
 

@@ -136,6 +136,7 @@ function EmailMessageRow({
       return res.json();
     },
     listKeys: [["/api/inbox"]],
+    extraInvalidateKeys: [["/api/inbox/unified"]],
     getId: ({ id }) => id,
     buildPatch: ({ isStarred }) => ({ isStarred: !isStarred }),
     successToast: false,
@@ -149,7 +150,7 @@ function EmailMessageRow({
     listKeys: [["/api/inbox"]],
     getId: ({ id }) => id,
     buildPatch: () => ({ isArchived: true }),
-    extraInvalidateKeys: [["/api/inbox/unread-count"]],
+    extraInvalidateKeys: [["/api/inbox/unread-count"], ["/api/inbox/unified"]],
     successToast: { title: "Archived", description: "Moved to archive." },
   }, {
     onSuccess: () => onArchive?.(),
@@ -377,7 +378,7 @@ function EmailMessageDetail({
     listKeys: [["/api/inbox"]],
     getId: ({ id }) => id,
     buildPatch: () => ({ isRead: true }),
-    extraInvalidateKeys: [["/api/inbox/unread-count"]],
+    extraInvalidateKeys: [["/api/inbox/unread-count"], ["/api/inbox/unified"]],
     successToast: false,
   });
 
@@ -389,7 +390,7 @@ function EmailMessageDetail({
     listKeys: [["/api/inbox"]],
     getId: ({ id }) => id,
     buildPatch: () => ({ isRead: false }),
-    extraInvalidateKeys: [["/api/inbox/unread-count"]],
+    extraInvalidateKeys: [["/api/inbox/unread-count"], ["/api/inbox/unified"]],
     successToast: false,
   });
 
@@ -399,6 +400,7 @@ function EmailMessageDetail({
       return res.json();
     },
     listKeys: [["/api/inbox"]],
+    extraInvalidateKeys: [["/api/inbox/unified"]],
     getId: ({ id }) => id,
     buildPatch: ({ isStarred }) => ({ isStarred: !isStarred }),
     successToast: false,
@@ -412,7 +414,7 @@ function EmailMessageDetail({
     listKeys: [["/api/inbox"]],
     getId: ({ id }) => id,
     buildPatch: () => ({ isArchived: true }),
-    extraInvalidateKeys: [["/api/inbox/unread-count"]],
+    extraInvalidateKeys: [["/api/inbox/unread-count"], ["/api/inbox/unified"]],
     successToast: { title: "Message archived", description: "The message has been moved to archive." },
   }, {
     onSuccess: () => onBack(),
@@ -744,6 +746,7 @@ function SMSConversationDetail({
       setNewMessage("");
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversation.id, "messages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox/unified"] });
     },
     onError: (error: any) => {
       toast({
@@ -942,40 +945,40 @@ export default function InboxPage() {
   // Provide explicit queryFns that build the URL from the params object
   // via URLSearchParams. The object stays in the queryKey for cache
   // discrimination; only the URL build path needs to change.
+  // W7 perf: email messages + SMS conversations load in ONE round trip via
+  // /api/inbox/unified (the /api/today pattern). The channel filter rides
+  // in the queryKey/URL so a filtered view skips the other channel's fetch
+  // server-side — same behavior the two `enabled` gates used to provide.
+  // Mutations that touch either list must invalidate the
+  // ["/api/inbox/unified"] prefix alongside the legacy keys.
   const {
-    data: emailMessages = [],
-    isLoading: isLoadingEmail,
-    isError: isEmailError,
-    error: emailError,
-    isFetching: isEmailFetching,
-    refetch: refetchEmail,
-  } = useQuery<InboxMessage[]>({
-    queryKey: ["/api/inbox", emailQueryParams],
+    data: unifiedInbox,
+    isLoading: isLoadingUnified,
+    isError: isUnifiedError,
+    error: unifiedError,
+    isFetching: isUnifiedFetching,
+    refetch: refetchUnified,
+  } = useQuery<{ emails: InboxMessage[]; smsConversations: Conversation[] }>({
+    queryKey: ["/api/inbox/unified", { ...emailQueryParams, channel: channelFilter }],
     queryFn: async () => {
-      const qs = new URLSearchParams(emailQueryParams).toString();
-      const res = await fetch(`/api/inbox${qs ? `?${qs}` : ""}`, { credentials: "include" });
+      const qs = new URLSearchParams({ ...emailQueryParams, channel: channelFilter }).toString();
+      const res = await fetch(`/api/inbox/unified?${qs}`, { credentials: "include" });
       if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
       return res.json();
     },
-    enabled: channelFilter === "all" || channelFilter === "email",
   });
-
-  const {
-    data: smsConversations = [],
-    isLoading: isLoadingSms,
-    isError: isSmsError,
-    error: smsError,
-    isFetching: isSmsFetching,
-    refetch: refetchSms,
-  } = useQuery<Conversation[]>({
-    queryKey: ["/api/conversations", { channel: "sms" }],
-    queryFn: async () => {
-      const res = await fetch("/api/conversations?channel=sms", { credentials: "include" });
-      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
-      return res.json();
-    },
-    enabled: channelFilter === "all" || channelFilter === "sms",
-  });
+  const emailMessages = unifiedInbox?.emails ?? [];
+  const smsConversations = unifiedInbox?.smsConversations ?? [];
+  const isLoadingEmail = isLoadingUnified;
+  const isLoadingSms = isLoadingUnified;
+  const isEmailError = isUnifiedError;
+  const isSmsError = isUnifiedError;
+  const emailError = unifiedError;
+  const smsError = unifiedError;
+  const isEmailFetching = isUnifiedFetching;
+  const isSmsFetching = isUnifiedFetching;
+  const refetchEmail = refetchUnified;
+  const refetchSms = refetchUnified;
 
   const { data: unreadCountData } = useQuery<{ count: number }>({
     queryKey: ["/api/inbox/unread-count"],
@@ -1122,6 +1125,7 @@ export default function InboxPage() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inbox"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox/unified"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inbox/unread-count"] });
     },
   });

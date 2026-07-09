@@ -61,30 +61,30 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
   {
     id: "deals",
     label: "Deals",
-    description: "Deal pipeline and transaction events",
+    description: "Offers going out, sellers responding, closings coming up",
     events: [
       {
         id: "deal.offer_sent",
-        label: "Offer sent",
+        label: "An offer goes out",
         description: "When an offer letter is sent to a seller",
         defaultChannels: { email: true, sms: false, push: true, inApp: true },
       },
       {
         id: "deal.status_changed",
-        label: "Deal status changed",
-        description: "When a deal moves to a new stage",
+        label: "A deal moves forward",
+        description: "When one of your deals moves to a new stage",
         defaultChannels: { email: true, sms: false, push: true, inApp: true },
       },
       {
         id: "deal.closing_reminder",
-        label: "Closing reminder",
-        description: "3-day reminder before scheduled closing",
+        label: "A closing is 3 days away",
+        description: "A reminder 3 days before a scheduled closing",
         defaultChannels: { email: true, sms: true, push: true, inApp: true },
       },
       {
         id: "deal.counter_received",
-        label: "Counter offer received",
-        description: "When a seller sends a counter offer",
+        label: "A seller counters your offer",
+        description: "When a seller comes back with a different number",
         defaultChannels: { email: true, sms: true, push: true, inApp: true },
       },
     ],
@@ -92,30 +92,30 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
   {
     id: "leads",
     label: "Leads",
-    description: "Lead import, scoring, and follow-up events",
+    description: "New leads coming in, sellers replying, leads going quiet",
     events: [
       {
         id: "lead.imported",
-        label: "Lead imported",
-        description: "When new leads are imported (batch summary)",
+        label: "New leads finish importing",
+        description: "One summary when a batch of leads lands — not one alert per lead",
         defaultChannels: { email: false, sms: false, push: false, inApp: true },
       },
       {
         id: "lead.high_intent",
-        label: "High-intent seller detected",
-        description: "When AI detects a hot seller (score ≥ 80)",
+        label: "A seller looks ready to sell",
+        description: "When the AI thinks a seller is ready to act — the ones to call first",
         defaultChannels: { email: true, sms: true, push: true, inApp: true },
       },
       {
         id: "lead.aged_out",
-        label: "Lead aged out",
+        label: "A lead goes quiet",
         description: "When a lead has had no activity for 60+ days",
         defaultChannels: { email: false, sms: false, push: false, inApp: true },
       },
       {
         id: "lead.responded",
-        label: "Lead responded",
-        description: "When a lead replies to an outreach sequence",
+        label: "A seller replies",
+        description: "When a lead answers one of your letters, texts, or emails",
         defaultChannels: { email: true, sms: true, push: true, inApp: true },
       },
     ],
@@ -123,18 +123,18 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
   {
     id: "campaigns",
     label: "Campaigns",
-    description: "Marketing campaign events",
+    description: "Your letters, texts, and emails going out — and how they're doing",
     events: [
       {
         id: "campaign.send_complete",
-        label: "Send batch complete",
-        description: "When a campaign batch finishes sending",
+        label: "A campaign finishes sending",
+        description: "When a round of letters, texts, or emails has all gone out",
         defaultChannels: { email: true, sms: false, push: true, inApp: true },
       },
       {
         id: "campaign.low_performance",
-        label: "Low performance alert",
-        description: "When a campaign's open/response rate drops below threshold",
+        label: "A campaign is underperforming",
+        description: "When far fewer people than usual are opening or replying",
         defaultChannels: { email: true, sms: false, push: false, inApp: true },
       },
     ],
@@ -142,24 +142,24 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
   {
     id: "finance",
     label: "Finance",
-    description: "Notes, payments, and cash flow events",
+    description: "Payments on the notes you hold",
     events: [
       {
         id: "finance.payment_due",
-        label: "Payment due in 7 days",
-        description: "When a note payment is due in 7 days",
+        label: "A payment is due in 7 days",
+        description: "A heads-up one week before a note payment is due to you",
         defaultChannels: { email: true, sms: false, push: true, inApp: true },
       },
       {
         id: "finance.payment_missed",
-        label: "Payment missed",
-        description: "When a note payment is 3+ days past due",
+        label: "A payment is missed",
+        description: "When a note payment you're owed is 3+ days late",
         defaultChannels: { email: true, sms: true, push: true, inApp: true },
       },
       {
         id: "finance.note_paid_off",
-        label: "Note paid off",
-        description: "When a seller-financed note is fully paid",
+        label: "A note is paid off",
+        description: "When a buyer makes the final payment on a note you hold",
         defaultChannels: { email: true, sms: false, push: true, inApp: true },
       },
     ],
@@ -167,7 +167,7 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
   {
     id: "billing",
     label: "Billing",
-    description: "Subscription billing, dunning, and payment events",
+    description: "Your AcreOS subscription and card",
     events: [
       {
         // Phase 3 W10 — SMS leg of the AcreOS subscription dunning sequence.
@@ -175,8 +175,8 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
         // usually want a heads-up. Owners can flip sms → false to opt out.
         // Throttled to one SMS per dunning sequence regardless of preference.
         id: "billing.dunning_sms",
-        label: "Payment failed — SMS reminder",
-        description: "When a card is declined, send a single SMS on day 3 of dunning",
+        label: "Your card is declined — one text",
+        description: "If your card fails, we text you once (3 days in) so your account doesn't lapse",
         defaultChannels: { email: false, sms: true, push: false, inApp: false },
       },
     ],
@@ -184,24 +184,24 @@ export const NOTIFICATION_SCHEMA: NotificationCategory[] = [
   {
     id: "system",
     label: "System",
-    description: "Platform digest and AI insights",
+    description: "Weekly summaries, AI insights, and anything that breaks",
     events: [
       {
         id: "system.weekly_digest",
-        label: "Weekly performance digest",
-        description: "Weekly summary: deals, leads, revenue, KPIs",
+        label: "Your week in one email",
+        description: "A weekly summary of your deals, leads, and money",
         defaultChannels: { email: true, sms: false, push: false, inApp: false },
       },
       {
         id: "system.ai_insight",
-        label: "AI market insight",
-        description: "When Atlas detects a significant market opportunity",
+        label: "The AI spots an opportunity",
+        description: "When the AI finds a market opening worth a look",
         defaultChannels: { email: false, sms: false, push: true, inApp: true },
       },
       {
         id: "system.integration_error",
-        label: "Integration error",
-        description: "When a critical integration (Stripe, Twilio) fails",
+        label: "Something you rely on breaks",
+        description: "When a connected service fails — payments, texting — and needs attention",
         defaultChannels: { email: true, sms: false, push: true, inApp: true },
       },
     ],
