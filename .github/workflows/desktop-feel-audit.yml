@@ -94,7 +94,7 @@ jobs:
 
       - name: Upload audit results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-feel-audit-report
           path: |
@@ -132,7 +132,7 @@ jobs:
       # roadmap captures the regression even if Solene's page misses.
       - name: Open issue on RED
         if: steps.audit.outcome == 'failure'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo } = context.repo;
