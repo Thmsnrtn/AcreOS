@@ -1299,7 +1299,7 @@ export function PaxCopilotRail() {
                       </Select>
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent>Model: Auto uses smart routing · Fast = DeepSeek · Powerful = GPT-4o · Claude = Sonnet</TooltipContent>
+                  <TooltipContent>Auto picks the right brain for each question · Fast = quick answers · Powerful and Reasoning = deeper thinking, slower</TooltipContent>
                 </Tooltip>
                 {/* Conversation switcher toggle */}
                 <Tooltip>

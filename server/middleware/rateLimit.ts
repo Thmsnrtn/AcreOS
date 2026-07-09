@@ -94,7 +94,7 @@ type KeyFunction = (req: Request) => string;
  * See memory/feedback_rate_limit_ip_keying.md.
  */
 export const authAttemptKeyFunction: KeyFunction = (req: Request) => {
-  const body = (req as any).body ?? {};
+  const body = req.body ?? {};
   const submittedEmail =
     typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
   const submittedIdentifier =
@@ -103,7 +103,7 @@ export const authAttemptKeyFunction: KeyFunction = (req: Request) => {
       : "";
   if (submittedEmail) return `auth:email:${submittedEmail}`;
   if (submittedIdentifier) return `auth:id:${submittedIdentifier}`;
-  const userId = (req as any).user?.id;
+  const userId = req.user?.id;
   if (userId) return `auth:user:${userId}`;
   // Tier 1G: IP component via getClientIp — req.ip is the Cloudflare EDGE IP
   // behind trust-proxy=1; see server/utils/clientIp.ts for the hop analysis.
@@ -300,7 +300,7 @@ export function createRateLimiter(
  * Uses "ip:address" format for unauthenticated requests
  */
 export const authenticatedKeyFunction: KeyFunction = (req: Request) => {
-  const user = (req as any).user;
+  const user = req.user;
   if (user) {
     const userId = user?.id || user.id;
     if (userId) {

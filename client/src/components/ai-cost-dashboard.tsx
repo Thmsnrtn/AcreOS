@@ -130,12 +130,12 @@ export function AICostDashboard() {
           <div className="p-4 rounded-card bg-muted/50">
             <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
               <TrendingDown className="w-4 h-4" />
-              GPT-4o Cost
+              Without smart routing
             </div>
             <div className="text-2xl font-bold" data-testid="text-potential-cost">
               ${data.totalPotentialCost.toFixed(4)}
             </div>
-            <div className="text-xs text-muted-foreground">Without smart routing</div>
+            <div className="text-xs text-muted-foreground">What the same work would have cost</div>
           </div>
 
           <div className="p-4 rounded-card bg-acr-pos/10 border border-acr-pos/20">
@@ -159,7 +159,7 @@ export function AICostDashboard() {
               <div
                 className="h-48"
                 role="img"
-                aria-label={`AI cost by provider bar chart: ${providerChartData.map((d: any) => `${d.name} actual $${d.actualCost?.toFixed(4) ?? 0}, if GPT-4o $${d.potentialCost?.toFixed(4) ?? 0}`).join("; ")}`}
+                aria-label={`AI cost by provider bar chart: ${providerChartData.map((d: any) => `${d.name} actual $${d.actualCost?.toFixed(4) ?? 0}, without smart routing $${d.potentialCost?.toFixed(4) ?? 0}`).join("; ")}`}
               >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={providerChartData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
@@ -181,13 +181,13 @@ export function AICostDashboard() {
                         borderRadius: "8px",
                       }}
                       formatter={((value: number, name: string) => {
-                        return [`$${value.toFixed(4)}`, name === "actualCost" ? "Actual Cost" : "If GPT-4o"];
+                        return [`$${value.toFixed(4)}`, name === "actualCost" ? "Actual Cost" : "Without smart routing"];
                       }) as any}
                       labelStyle={{ color: "hsl(var(--foreground))" }}
                     />
                     <Legend />
                     <Bar dataKey="actualCost" name="Actual Cost" fill="hsl(85, 45%, 45%)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="potentialCost" name="If GPT-4o" fill="hsl(200, 70%, 50%)" radius={[4, 4, 0, 0]} opacity={0.5} />
+                    <Bar dataKey="potentialCost" name="Without smart routing" fill="hsl(200, 70%, 50%)" radius={[4, 4, 0, 0]} opacity={0.5} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

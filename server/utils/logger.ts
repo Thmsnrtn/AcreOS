@@ -126,12 +126,19 @@ function formatLogEntry(entry: LogEntry): string {
 // In development, use human-readable format for readability.
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
+// One physical line per entry: message text can carry user-provided values,
+// and an embedded newline would let a request forge extra log lines. JSON
+// already escapes them; the dev format interpolates raw text, so strip both.
+function toSingleLine(s: string): string {
+  return s.replace(/[\r\n\u2028\u2029]+/g, " ");
+}
+
 function serializeEntry(entry: LogEntry): string {
   if (IS_PRODUCTION) {
     // Structured JSON — one log line per entry for aggregator parsing
-    return JSON.stringify(entry);
+    return toSingleLine(JSON.stringify(entry));
   }
-  return formatLogEntry(entry);
+  return toSingleLine(formatLogEntry(entry));
 }
 
 // ─── Pillar 9.3 — per-request log budget ───────────────────────────────────

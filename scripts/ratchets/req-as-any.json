@@ -4,6 +4,6 @@
   "pattern": "\\(req as any\\)",
   "globs": ["server/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/*.spec.ts"],
-  "baselineCount": 73,
+  "baselineCount": 0,
   "direction": "down"
 }

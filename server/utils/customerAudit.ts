@@ -21,6 +21,7 @@
  */
 
 import type { Request } from "express";
+import { getClerkAuth } from "../types/request";
 import { db } from "../db";
 import { customerAuditLog } from "@shared/schema";
 import { redactByClassification } from "@shared/data-classification";
@@ -118,10 +119,10 @@ export async function customerAuditFromRequest(
     "actorUserId" | "actorEmail" | "ipAddress" | "userAgent"
   >,
 ): Promise<void> {
-  const user = (req as any).user as
-    | { id?: string; email?: string; clerkUserId?: string }
+  const user = req.user as
+    | { id?: string; email?: string | null; clerkUserId?: string | null }
     | undefined;
-  const auth = (req as any).auth as { userId?: string } | undefined;
+  const auth = getClerkAuth(req);
   const actorUserId =
     auth?.userId ?? user?.clerkUserId ?? user?.id ?? null;
   const fwd = req.headers["x-forwarded-for"];

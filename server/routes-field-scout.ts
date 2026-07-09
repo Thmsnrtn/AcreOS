@@ -104,7 +104,7 @@ fieldScoutRouter.get('/properties/parcel-lookup', async (req: Request, res: Resp
 
 fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (req: Request, res: Response) => {
   try {
-    const file = (req as any).file;
+    const file = req.file;
     if (!file) {
       return Errors.badRequest(res, 'No audio file provided. Upload as multipart field "audio".');
     }
@@ -114,7 +114,7 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
     if (openaiKey) {
       // Use OpenAI Whisper API for transcription
       try {
-        const blob = new Blob([file.buffer], { type: file.mimetype || 'audio/webm' });
+        const blob = new Blob([file.buffer as Buffer<ArrayBuffer>], { type: file.mimetype || 'audio/webm' });
         const formData = new FormData();
         formData.append('file', blob, file.originalname || 'audio.webm');
         formData.append('model', 'whisper-1');
@@ -179,18 +179,22 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
       return Errors.notFound(res, 'Lead');
     }
 
-    const files = (req as any).files as Express.Multer.File[] | undefined;
-    if (!files || files.length === 0) {
+    // multer's `.array()` yields an array, but the Request type unions it with
+    // the field-map form { field: File[] } — narrow explicitly so a tampered
+    // shape can't be indexed as an array (type confusion).
+    const files: Express.Multer.File[] = Array.isArray(req.files) ? req.files : [];
+    if (files.length === 0) {
       return Errors.badRequest(res, 'No photo files provided. Upload as multipart field "photos".');
     }
 
-    // Parse optional metadata from body (JSON array matching files by index)
-    let photoMeta: any[] = [];
-    if (req.body.metadata) {
+    // Parse optional metadata from body (JSON array matching files by index).
+    // Multipart fields arrive as string OR string[] when repeated — accept
+    // only a single JSON string that parses to an array, else ignore.
+    let photoMeta: unknown[] = [];
+    if (typeof req.body.metadata === 'string') {
       try {
-        photoMeta = typeof req.body.metadata === 'string'
-          ? JSON.parse(req.body.metadata)
-          : req.body.metadata;
+        const parsed = JSON.parse(req.body.metadata);
+        if (Array.isArray(parsed)) photoMeta = parsed;
       } catch {
         // ignore parse errors; metadata is optional
       }
@@ -201,7 +205,11 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const meta = photoMeta[i] || {};
+      const rawMeta = photoMeta[i];
+      const meta: Record<string, unknown> =
+        rawMeta && typeof rawMeta === 'object' && !Array.isArray(rawMeta)
+          ? (rawMeta as Record<string, unknown>)
+          : {};
 
       // Phase 8 Mo 12 — Yara §1: EXIF strip + SHA-256 + resize.
       // The validateFileMiddleware above already ran a JPEG-only marker
@@ -237,12 +245,14 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
       // path the surface API will resolve at read time.
       const filename = (file.originalname || `photo_${Date.now()}_${i}`).replace(/[^a-zA-Z0-9._-]/g, "_");
 
+      const parsedVisitId = meta.visitId != null ? parseInt(String(meta.visitId)) : NaN;
+
       const photoRecord = await storage.createFieldScoutPhoto({
         organizationId: org.id,
-        visitId: meta.visitId ? parseInt(meta.visitId) : 0,
+        visitId: Number.isFinite(parsedVisitId) ? parsedVisitId : 0,
         leadId,
         url: `/uploads/field-scout/${imageHash || filename}`,
-        caption: meta.caption ?? null,
+        caption: typeof meta.caption === "string" ? meta.caption : null,
         latitude: meta.latitude != null ? Number(meta.latitude) : null,
         longitude: meta.longitude != null ? Number(meta.longitude) : null,
         imageHash,

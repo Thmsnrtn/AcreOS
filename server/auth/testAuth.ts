@@ -27,6 +27,8 @@
  *    domain CI can't resolve).
  */
 
+import { logger } from "../utils/logger";
+
 export const E2E_TEST_USER_ID = process.env.E2E_TEST_USER_ID || "e2e_test_user";
 export const E2E_FOUNDER_USER_ID =
   process.env.E2E_FOUNDER_USER_ID || "e2e_founder_user";
@@ -86,8 +88,7 @@ export function e2eTestAuthEnabled(): boolean {
  */
 export function assertTestAuthSafe(): void {
   if (process.env.E2E_TEST_AUTH === "1" && process.env.FLY_APP_NAME) {
-    // eslint-disable-next-line no-console
-    console.error(
+    logger.error(
       "[FATAL] E2E_TEST_AUTH=1 detected on a Fly machine " +
         `(FLY_APP_NAME=${process.env.FLY_APP_NAME}). The test-auth bypass must ` +
         "never run on a deployed instance. Refusing to start.",

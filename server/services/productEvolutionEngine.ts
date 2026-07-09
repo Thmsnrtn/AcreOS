@@ -68,9 +68,9 @@ class ProductEvolutionEngine {
       // Revenue weight: sum of requesting orgs' subscription value
       let revenueWeightCents = 0;
       for (const req of reqs) {
-        if ((req as any).organizationId) {
+        if (req.organizationId) {
           const org = await db.query.organizations.findFirst({
-            where: eq(organizations.id, (req as any).organizationId),
+            where: eq(organizations.id, req.organizationId),
           });
           if (org) {
             revenueWeightCents += (org as any).monthlyPriceCents || 0;

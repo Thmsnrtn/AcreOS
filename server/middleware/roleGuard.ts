@@ -71,8 +71,8 @@ export function requireRole(allowedRoles: OrgRole[] | OrgRole, ...rest: OrgRole[
 
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const user = (req as any).user;
-      const org = (req as any).organization;
+      const user = req.user;
+      const org = req.organization;
 
       if (!user || !org) {
         return res.status(401).json({ message: "Authentication required" });
@@ -111,7 +111,7 @@ export function requireRole(allowedRoles: OrgRole[] | OrgRole, ...rest: OrgRole[
       }
 
       // Attach role to request for downstream use
-      (req as any).userRole = userRole;
+      (req as Request & { userRole?: OrgRole }).userRole = userRole;
       next();
     } catch (err: any) {
       res.status(500).json({ message: err.message });

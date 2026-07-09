@@ -217,7 +217,7 @@ export function registerBidEstimateRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const userId = getUserId(req);
-        const file = (req as any).file as { buffer: Buffer; size: number; originalname: string } | undefined;
+        const file = req.file;
         if (!file) return Errors.badRequest(res, "No PDF uploaded.");
 
         let pdfText: string;

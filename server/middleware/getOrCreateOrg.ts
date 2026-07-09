@@ -4,6 +4,7 @@ import { withTransaction } from "../db";
 import { and, eq, gt } from "drizzle-orm";
 import { organizations, teamMembers } from "@shared/schema";
 import { signupSignals } from "@shared/schema";
+import type { Organization } from "@shared/schema";
 import crypto from "crypto";
 import { logger } from "../utils/logger";
 import { Errors } from "../utils/errors";
@@ -11,6 +12,7 @@ import { signupLimiter } from "./authPathLimits";
 import { computeReqIpBucket, recordSignalsNotEmitted } from "./botSignals";
 import { subscriptionPauseGate } from "./subscriptionPauseGate";
 import { dunningAccessGate } from "./dunningAccessGate";
+import { getClerkAuth } from "../types/request";
 
 /**
  * Cookie name + options for the per-session "active organization" override.
@@ -73,7 +75,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // but only if the user is still a verified active member of that org.
   // A revoked seat cannot keep operating in someone else's org by holding
   // onto a stale cookie.
-  const activeOrgCookieRaw = (req as any).cookies?.[ACTIVE_ORG_COOKIE];
+  const activeOrgCookieRaw = req.cookies?.[ACTIVE_ORG_COOKIE];
   const activeOrgCookieId = activeOrgCookieRaw ? Number(activeOrgCookieRaw) : NaN;
   if (Number.isFinite(activeOrgCookieId) && activeOrgCookieId > 0) {
     try {
@@ -290,7 +292,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   req.organization = org;
   req.organizationId = org.id;
   // Legacy alias — will be removed once all route files use AuthenticatedRequest
-  (req as any).org = org;
+  (req as Request & { org?: Organization }).org = org;
 
   // Activity heartbeat: stamp lastActiveAt so churn/health signals reflect real
   // last-seen time (it was never written, so every org read as "no activity" /
@@ -317,7 +319,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // RS-6: same memo pattern, detects an email change in Clerk vs our
   // local DB row and alerts both addresses.
   try {
-    const sessionId = (req as any).auth?.sessionId ?? null;
+    const sessionId = getClerkAuth(req)?.sessionId ?? null;
     const ip = req.ip ?? null;
     const userAgent = (req.headers["user-agent"] as string) ?? null;
     void import("../services/loginAnomalyDetector").then((m) =>

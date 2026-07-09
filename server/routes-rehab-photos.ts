@@ -100,8 +100,11 @@ export function registerRehabPhotoRoutes(app: Express): void {
           .where(and(eq(rehabs.id, rehabId), eq(rehabs.organizationId, orgId)));
         if (!rehab) return Errors.notFound(res, "Rehab");
 
-        const files = (req as any).files as Express.Multer.File[] | undefined;
-        if (!files || files.length === 0) {
+        // multer's `.array()` yields an array, but the Request type unions it
+        // with the field-map form { field: File[] } — narrow explicitly so a
+        // tampered shape can't be indexed as an array (type confusion).
+        const files: Express.Multer.File[] = Array.isArray(req.files) ? req.files : [];
+        if (files.length === 0) {
           return Errors.badRequest(
             res,
             'No photo files provided. Upload as multipart field "photos".',
@@ -109,12 +112,13 @@ export function registerRehabPhotoRoutes(app: Express): void {
         }
 
         // Optional per-file metadata array.
-        let perFileMeta: any[] = [];
-        if (req.body?.metadata) {
+        // Multipart fields arrive as string OR string[] when repeated —
+        // accept only a single JSON string that parses to an array.
+        let perFileMeta: unknown[] = [];
+        if (typeof req.body?.metadata === "string") {
           try {
-            perFileMeta = typeof req.body.metadata === "string"
-              ? JSON.parse(req.body.metadata)
-              : req.body.metadata;
+            const parsed = JSON.parse(req.body.metadata);
+            if (Array.isArray(parsed)) perFileMeta = parsed;
           } catch {
             // ignore — metadata is optional
           }
@@ -131,7 +135,11 @@ export function registerRehabPhotoRoutes(app: Express): void {
         const inserted: typeof rehabPhotos.$inferSelect[] = [];
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
-          const meta = perFileMeta[i] || {};
+          const rawMeta = perFileMeta[i];
+          const meta: Record<string, unknown> =
+            rawMeta && typeof rawMeta === "object" && !Array.isArray(rawMeta)
+              ? (rawMeta as Record<string, unknown>)
+              : {};
 
           const tag = isValidTag(meta.tag) ? meta.tag : sharedTag;
           const lineItemId = (typeof meta.lineItemId === "string" && meta.lineItemId)

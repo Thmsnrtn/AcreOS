@@ -19,7 +19,7 @@ import { isAuthenticated } from "./auth";
 import { isFounderIdentity } from "./services/founder";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
-import type { AuthenticatedRequest } from "./types/request";
+import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import {
   listVersions,
   updateWeights,
@@ -31,7 +31,7 @@ import {
 
 function requireFounder(req: AuthenticatedRequest, res: any): boolean {
   const user = req.user as any;
-  const userId = (req as any).auth?.userId ?? user?.clerkUserId ?? null;
+  const userId = getClerkAuth(req)?.userId ?? user?.clerkUserId ?? null;
   const email = user?.email ?? null;
   if (!isFounderIdentity({ email, userId })) {
     Errors.notFound(res, "Resource");

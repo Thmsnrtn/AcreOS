@@ -43,7 +43,7 @@ import { isAuthenticated } from "./auth";
 import { isFounderIdentity } from "./services/founder";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
-import type { AuthenticatedRequest } from "./types/request";
+import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
 
 // ─── Clerk client (lazy, env-driven) ──────────────────────────────────────────
 const clerkClient = createClerkClient({
@@ -87,7 +87,7 @@ const transferOwnershipSchema = z.object({
  */
 export function requireFounderForRecovery(req: AuthenticatedRequest, res: Response): boolean {
   const user = req.user as any;
-  const userId = (req as any).auth?.userId ?? user?.clerkUserId ?? null;
+  const userId = getClerkAuth(req)?.userId ?? user?.clerkUserId ?? null;
   const email = user?.email ?? null;
 
   if (!isFounderIdentity({ email, userId })) {
@@ -110,7 +110,7 @@ async function writeAuditEvent(
 ): Promise<void> {
   try {
     const user = req.user as any;
-    const userId = (req as any).auth?.userId ?? user?.clerkUserId ?? null;
+    const userId = getClerkAuth(req)?.userId ?? user?.clerkUserId ?? null;
     const email = user?.email ?? null;
     const ip =
       (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ??

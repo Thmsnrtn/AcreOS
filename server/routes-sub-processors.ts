@@ -22,11 +22,11 @@ import { isAuthenticated } from "./auth";
 import { isFounderIdentity } from "./services/founder";
 import { Errors } from "./utils/errors";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
-import type { AuthenticatedRequest } from "./types/request";
+import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
 
 function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
   const user = req.user as any;
-  const userId = (req as any).auth?.userId ?? user?.clerkUserId ?? null;
+  const userId = getClerkAuth(req)?.userId ?? user?.clerkUserId ?? null;
   const email = user?.email ?? null;
   if (!isFounderIdentity({ email, userId })) {
     Errors.notFound(res, "Resource");

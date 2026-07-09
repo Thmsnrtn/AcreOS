@@ -107,11 +107,19 @@ export function maskValue(value: unknown): unknown {
     return value.map(maskValue);
   }
   if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = maskValue(v);
+    // Request bodies are attacker-controlled — never write their keys back
+    // onto an object we build (a "__proto__" key would be a property-injection
+    // vector). Round-trip through JSON instead: the replacer masks every
+    // string leaf, and native JSON.parse rebuilds the structure with all keys
+    // as safe own-properties. Circular / non-serializable inputs fall back to
+    // a placeholder rather than throwing (this runs only to build a log copy).
+    try {
+      return JSON.parse(
+        JSON.stringify(value, (_key, v) => (typeof v === "string" ? maskString(v) : v)),
+      );
+    } catch {
+      return "[unserializable]";
     }
-    return out;
   }
   return value;
 }
@@ -178,14 +186,15 @@ export function piiMaskingMiddleware(
   _res: Response,
   next: NextFunction
 ): void {
+  const maskedReq = req as Request & { maskedBody?: unknown; maskedQuery?: Record<string, unknown> };
   try {
     // Create a PII-safe copy of the body for logging purposes only
     if (req.body && typeof req.body === "object") {
-      (req as any).maskedBody = maskValue(req.body);
+      maskedReq.maskedBody = maskValue(req.body);
     } else if (typeof req.body === "string") {
-      (req as any).maskedBody = maskString(req.body);
+      maskedReq.maskedBody = maskString(req.body);
     } else {
-      (req as any).maskedBody = req.body;
+      maskedReq.maskedBody = req.body;
     }
 
     // Mask query string values for safe log snapshot
@@ -194,7 +203,7 @@ export function piiMaskingMiddleware(
       maskedQuery[k] =
         typeof v === "string" ? maskString(v) : maskValue(v);
     }
-    (req as any).maskedQuery = maskedQuery;
+    maskedReq.maskedQuery = maskedQuery;
   } catch {
     // Never let masking errors break the request
   }
