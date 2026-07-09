@@ -21,7 +21,11 @@ const state = vi.hoisted(() => ({
   ledgerSumCents: 0,
   runInserts: [] as any[],
   ruleInserts: [] as any[],
-  stripeInvoices: [] as Array<{ id: string; amount_paid: number }>,
+  // Shared-Stripe-account isolation (commit 4ad77411): reconciliation only
+  // counts invoices whose customer resolves to an AcreOS org. Each invoice
+  // carries a customer id; `acreosCustomers` decides which ones count.
+  stripeInvoices: [] as Array<{ id: string; amount_paid: number; customer: string }>,
+  acreosCustomers: new Set<string>(),
 }));
 
 vi.mock("../../server/db", () => {
@@ -87,6 +91,17 @@ vi.mock("stripe", () => ({
 const raiseAlert = vi.hoisted(() => vi.fn(async () => ({ paged: true, findingRecorded: true, systemAlertWritten: true })));
 vi.mock("../../server/services/alertSpine", () => ({ raiseAlert }));
 
+// Shared-account isolation: the reconciliation service resolves each invoice's
+// customer to an AcreOS org via storage.getOrganizationByStripeCustomerId.
+// Only customers in state.acreosCustomers resolve (count as AcreOS revenue).
+vi.mock("../../server/storage", () => ({
+  storage: {
+    getOrganizationByStripeCustomerId: vi.fn(async (id: string) =>
+      state.acreosCustomers.has(id) ? { id: 1, name: "AcreOS Test Org" } : undefined,
+    ),
+  },
+}));
+
 vi.mock("../../server/utils/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -117,6 +132,7 @@ beforeEach(() => {
   state.runInserts = [];
   state.ruleInserts = [];
   state.stripeInvoices = [];
+  state.acreosCustomers = new Set();
   raiseAlert.mockClear();
   // Dummy test-only value; never logged or asserted on by content.
   process.env.STRIPE_SECRET_KEY = "sk_test_dummy_for_unit_tests";
@@ -130,9 +146,11 @@ afterAll(() => {
 describe("Stripe-truth vs financial_ledger reconciliation", () => {
   it("raises CRITICAL via the alert spine on beyond-tolerance divergence — even a small one", async () => {
     state.rules = [ledgerRule()];
-    // Stripe truth: $49.00 collected. Ledger: only $46.50 landed (diff $2.50 —
-    // under the old $100 critical threshold, but the ledger rule always pages).
-    state.stripeInvoices = [{ id: "in_1", amount_paid: 4900 }];
+    // Stripe truth: $49.00 collected from an AcreOS customer. Ledger: only
+    // $46.50 landed (diff $2.50 — under the old $100 critical threshold, but
+    // the ledger rule always pages).
+    state.stripeInvoices = [{ id: "in_1", amount_paid: 4900, customer: "cus_acme" }];
+    state.acreosCustomers = new Set(["cus_acme"]);
     state.ledgerSumCents = 4650;
 
     const results = await runReconciliation();
@@ -158,7 +176,8 @@ describe("Stripe-truth vs financial_ledger reconciliation", () => {
 
   it("stays quiet when Stripe and the ledger agree within tolerance", async () => {
     state.rules = [ledgerRule()];
-    state.stripeInvoices = [{ id: "in_1", amount_paid: 4900 }];
+    state.stripeInvoices = [{ id: "in_1", amount_paid: 4900, customer: "cus_acme" }];
+    state.acreosCustomers = new Set(["cus_acme"]);
     state.ledgerSumCents = 4900; // exact match — every posting landed
 
     const results = await runReconciliation();
