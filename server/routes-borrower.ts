@@ -1059,21 +1059,27 @@ export function registerBorrowerRoutes(app: Express): void {
       //       /api/borrower/auth/exchange endpoint (for email-link
       //       landing pages that don't go through full /verify first)
       const ip = req.ip || req.socket.remoteAddress || "unknown";
-      const dbSessionToken =
-        req.cookies?.borrower_session ||
-        (req.headers["x-borrower-session"] as string | undefined);
-      const stmtCookie = req.cookies?.[STMT_COOKIE_NAME];
+      // Repeated headers arrive as string[] — accept only a single string.
+      const headerToken = req.headers["x-borrower-session"];
+      const dbSessionToken: string =
+        (typeof req.cookies?.borrower_session === "string" ? req.cookies.borrower_session : "") ||
+        (typeof headerToken === "string" ? headerToken : "");
+      const stmtCookie: string =
+        typeof req.cookies?.[STMT_COOKIE_NAME] === "string" ? req.cookies[STMT_COOKIE_NAME] : "";
 
       let noteIdFromSession: string | null = null;
 
-      if (dbSessionToken) {
+      // Both paths run their full cryptographic/DB verification on whatever
+      // the client sent (empty string verifies to invalid) — the token value
+      // never short-circuits a check, it is only ever an input to one.
+      if (dbSessionToken !== "") {
         const dbSession = await storage.getBorrowerSession(dbSessionToken);
         if (dbSession && new Date(dbSession.expiresAt) >= new Date()) {
           noteIdFromSession = String(dbSession.noteId);
         }
       }
 
-      if (!noteIdFromSession && stmtCookie) {
+      if (noteIdFromSession === null) {
         const verified = verifyBorrowerSession(stmtCookie, ip);
         if (verified.valid && verified.statementSetScope?.startsWith("note:")) {
           noteIdFromSession = verified.statementSetScope.slice("note:".length);

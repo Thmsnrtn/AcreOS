@@ -84,7 +84,9 @@ function useBrowserContextCapture(maxErrors = 20): BrowserContext {
     // eslint-disable-next-line no-console -- intentional capture
     console.error = (...args) => {
       try {
-        const message = args.map(a => safeStringify(a, 200)).join(' ');
+        // Error text can echo user input — collapse line breaks so one
+        // captured error can't masquerade as several breadcrumb entries.
+        const message = args.map(a => safeStringify(a, 200)).join(' ').replace(/[\r\n]+/g, ' ');
         errorsRef.current = [...errorsRef.current.slice(-(maxErrors - 1)), {
           type: "console",
           message: message.slice(0, 500),

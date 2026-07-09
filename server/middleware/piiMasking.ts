@@ -109,6 +109,10 @@ export function maskValue(value: unknown): unknown {
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      // Request bodies are attacker-controlled: a JSON key like "__proto__"
+      // is an own property after JSON.parse, and writing it here would set
+      // the prototype of `out` instead of a data property.
+      if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
       out[k] = maskValue(v);
     }
     return out;

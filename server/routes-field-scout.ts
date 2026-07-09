@@ -184,13 +184,14 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
       return Errors.badRequest(res, 'No photo files provided. Upload as multipart field "photos".');
     }
 
-    // Parse optional metadata from body (JSON array matching files by index)
-    let photoMeta: any[] = [];
-    if (req.body.metadata) {
+    // Parse optional metadata from body (JSON array matching files by index).
+    // Multipart fields arrive as string OR string[] when repeated — accept
+    // only a single JSON string that parses to an array, else ignore.
+    let photoMeta: unknown[] = [];
+    if (typeof req.body.metadata === 'string') {
       try {
-        photoMeta = typeof req.body.metadata === 'string'
-          ? JSON.parse(req.body.metadata)
-          : req.body.metadata;
+        const parsed = JSON.parse(req.body.metadata);
+        if (Array.isArray(parsed)) photoMeta = parsed;
       } catch {
         // ignore parse errors; metadata is optional
       }
@@ -201,7 +202,11 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const meta = photoMeta[i] || {};
+      const rawMeta = photoMeta[i];
+      const meta: Record<string, unknown> =
+        rawMeta && typeof rawMeta === 'object' && !Array.isArray(rawMeta)
+          ? (rawMeta as Record<string, unknown>)
+          : {};
 
       // Phase 8 Mo 12 — Yara §1: EXIF strip + SHA-256 + resize.
       // The validateFileMiddleware above already ran a JPEG-only marker
@@ -237,12 +242,14 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
       // path the surface API will resolve at read time.
       const filename = (file.originalname || `photo_${Date.now()}_${i}`).replace(/[^a-zA-Z0-9._-]/g, "_");
 
+      const parsedVisitId = meta.visitId != null ? parseInt(String(meta.visitId)) : NaN;
+
       const photoRecord = await storage.createFieldScoutPhoto({
         organizationId: org.id,
-        visitId: meta.visitId ? parseInt(meta.visitId) : 0,
+        visitId: Number.isFinite(parsedVisitId) ? parsedVisitId : 0,
         leadId,
         url: `/uploads/field-scout/${imageHash || filename}`,
-        caption: meta.caption ?? null,
+        caption: typeof meta.caption === "string" ? meta.caption : null,
         latitude: meta.latitude != null ? Number(meta.latitude) : null,
         longitude: meta.longitude != null ? Number(meta.longitude) : null,
         imageHash,
