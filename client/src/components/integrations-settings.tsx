@@ -26,7 +26,6 @@ import {
   Send,
   MapPin
 } from "lucide-react";
-import { SiSendgrid, SiTwilio } from "react-icons/si";
 import {
   Dialog,
   DialogContent,
@@ -54,7 +53,7 @@ const PROVIDERS = [
     id: 'sendgrid',
     name: 'SendGrid',
     description: 'Send professional emails from your verified domain',
-    icon: SiSendgrid,
+    icon: Mail,
     iconColor: 'text-acr-accent',
     apiKeyLabel: 'SendGrid API Key',
     helpUrl: 'https://docs.sendgrid.com/ui/account-and-settings/api-keys',
@@ -64,7 +63,7 @@ const PROVIDERS = [
     id: 'twilio',
     name: 'Twilio',
     description: 'Send SMS messages from your own phone number',
-    icon: SiTwilio,
+    icon: MessageSquare,
     iconColor: 'text-acr-neg',
     apiKeyLabel: 'Twilio Auth Token',
     helpUrl: 'https://www.twilio.com/docs/sms/api',
