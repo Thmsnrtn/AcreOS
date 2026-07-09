@@ -224,6 +224,25 @@ Exit test: five hard CEO questions, every answer sourced.
 
 ## Status log
 
+- 2026-07-09 ~03:00Z — **Main brought up to date + legibility cluster
+  CLOSED.** Eight PRs merged and deployed this night shift (verified
+  `a1283511` on acreos.io): #118 (C1b+C2), #119 (F2 last-fired lines,
+  F3b chat receipt chips + show-the-work, server notification copy in
+  customer words, 5 rescued codebase-quality-audit commits), and four
+  dependabot action bumps (#86/#97/#98/#105). PR #120 in flight
+  (upgrade-funnel deep-link FIX — the 429 toast's
+  /settings#billing?tier= link stranded customers on the Account tab;
+  req-as-any 73→0; provider-status card de-jargoned; checkout v7 —
+  lands #100 by hand). The #106 npm 87-package bump is fixed and
+  verified locally (bullmq/ioredis dedup, @types/pg explicit, react-
+  icons brand-icon removal, latent noop-tracer bug) — ships as the PR
+  after #120. Branch prune: 7 stale branches vetted + tip-SHAs
+  ledgered, but remote deletion is blocked from the agent environment
+  (git proxy 403s delete refspecs; dependabot commands also mangled by
+  the comment proxy) — needs one founder command, listed in
+  deletion-ledger.md. Legibility: F1–F3 and C1–C3 all closed; the only
+  remainder is the deliberate 7→4 settings-tab regroup, planned in
+  experience-legibility.md and queued for AFTER launch week.
 - 2026-07-08 ~19:55Z — **The legibility cluster shipped in one evening.**
   PR #114 merged + DEPLOYED (`dd23289` verified on acreos.io):
   founding-member pricing live on /pricing, Scale seat $25, credits
