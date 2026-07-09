@@ -107,15 +107,19 @@ export function maskValue(value: unknown): unknown {
     return value.map(maskValue);
   }
   if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      // Request bodies are attacker-controlled: a JSON key like "__proto__"
-      // is an own property after JSON.parse, and writing it here would set
-      // the prototype of `out` instead of a data property.
-      if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
-      out[k] = maskValue(v);
+    // Request bodies are attacker-controlled — never write their keys back
+    // onto an object we build (a "__proto__" key would be a property-injection
+    // vector). Round-trip through JSON instead: the replacer masks every
+    // string leaf, and native JSON.parse rebuilds the structure with all keys
+    // as safe own-properties. Circular / non-serializable inputs fall back to
+    // a placeholder rather than throwing (this runs only to build a log copy).
+    try {
+      return JSON.parse(
+        JSON.stringify(value, (_key, v) => (typeof v === "string" ? maskString(v) : v)),
+      );
+    } catch {
+      return "[unserializable]";
     }
-    return out;
   }
   return value;
 }

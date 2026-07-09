@@ -179,8 +179,11 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
       return Errors.notFound(res, 'Lead');
     }
 
-    const files = req.files as Express.Multer.File[] | undefined;
-    if (!files || files.length === 0) {
+    // multer's `.array()` yields an array, but the Request type unions it with
+    // the field-map form { field: File[] } — narrow explicitly so a tampered
+    // shape can't be indexed as an array (type confusion).
+    const files: Express.Multer.File[] = Array.isArray(req.files) ? req.files : [];
+    if (files.length === 0) {
       return Errors.badRequest(res, 'No photo files provided. Upload as multipart field "photos".');
     }
 
