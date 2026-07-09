@@ -73,7 +73,7 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage.ts::createPaxProjectFile",
   "server/storage.ts::deleteBorrowerSession",
   "server/storage.ts::deletePaxProjectFile",
-  "server/storage.ts::findOrganizationIntegrationByCredential",
+  "server/storage/integrationsRepo.ts::findOrganizationIntegrationByCredential",
   "server/storage.ts::getAbTestByCampaign",
   "server/storage.ts::getAdPostingsByProperty",
   "server/storage.ts::getAdminDashboardData",
