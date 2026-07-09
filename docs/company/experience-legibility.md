@@ -139,13 +139,32 @@ to tailor their experience.
       calling consent"; retention switches now SAY they permanently
       auto-delete records — the old "Enable retention policy" hid data
       loss; "Entity type" → "Record type") and ai-settings (all four
-      controls rewritten to consequence language). NOTED for follow-up:
-      notification EVENT copy comes from the server schema
-      (/api/notifications/preferences/schema) — sweep it server-side;
-      provider-settings.tsx is read-only but jargon-heavy (vendor/model
-      names, $/M tokens) if it stays customer-facing. The intent-based
-      tab REGROUP (4 buckets) still needs a deep-link migration plan —
-      deliberate, not rushed.
+      controls rewritten to consequence language).
+      DONE (2026-07-09): the two noted follow-ups shipped — the server
+      notification schema now describes every event as what happens in
+      the customer's world ("A seller looks ready to sell", "Your card
+      is declined — one text"; IDs/channels untouched), and the
+      Service Providers card was rewritten to answer the customer's two
+      real questions (is this channel ready / what does one send cost)
+      with the hardcoded model-name routing table deleted — it was
+      client copy that could drift from the real router. Sub-nickel
+      costs render in cents (a $0.008 text no longer rounds to $0.01).
+      The AI cost dashboard comparison column and the Pax model tooltip
+      also drop internal model names. Verified in-browser 8/8 at 390px.
+      REMAINING (C1c, deliberate): the 7→4 intent regroup. Plan: reuse
+      the proven LEGACY_TO_CANONICAL hash-rewrite mechanism from the
+      17→7 consolidation (settings.tsx). Proposed buckets: **You**
+      (account+security), **Your business** (organization+tax-
+      compliance), **Money** (billing), **How AcreOS works for you**
+      (notifications+integrations). Steps: (1) grep all `/settings#`
+      deep links in server emails/dunning/client CTAs and inventory
+      them; (2) extend LEGACY_TO_CANONICAL so every current + legacy
+      hash lands in the right new bucket (deep links must use the hash
+      form — query params are ignored, see the dunning-link postmortem
+      note in settings.tsx); (3) move tab contents without changing any
+      component; (4) e2e-pin one legacy hash per bucket. Do NOT ship
+      during launch week — it changes muscle memory for the first
+      cohort mid-onboarding; queue for the week after.
 - [x] **C2 — Campaign receipts** (2026-07-08 eve): the campaign
       analytics view gains an "Every send" card — each piece the
       campaign sent, newest first, from a new org-scoped
