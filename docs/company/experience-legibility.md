@@ -82,7 +82,7 @@ that leaks a system term is a review defect.
       4h ago" or "Pulled back 20m ago — two sends bounced in a row"
       (ledger lastPromotedAt/lastDemotedAt + demotion reason; latest
       event wins). Verified in-browser both variants. F2 COMPLETE.
-- [ ] **F3 — Receipts**: PARTIAL (2026-07-08). SHIPPED (F3a): the
+- [x] **F3 — Receipts**: COMPLETE (2026-07-09). SHIPPED (F3a): the
       Letter's wedge tiles are receipts — tapping Outreach/Replies/
       Offers (7d) opens the exact rows the count is made of
       (GET /api/founder/autopilot/receipts/wedge; same tables + cutoff
@@ -102,9 +102,11 @@ that leaks a system term is a review defect.
       "Show the work (N steps)" (aria-wired); the raw tool-output
       carrier rows no longer render as fake user bubbles. Verified
       end-to-end in-browser (fixture conversation → chip → Decisions).
-      REMAINING (F3c, small): the same show-the-work treatment on the
-      Story door's run log — Story already lists runs; add the per-run
-      step drawer.
+      Story-door check (2026-07-09): Story ALREADY has the drawer —
+      every action row expands into the full reasoning chain ("What I
+      saw / Options I weighed / What I remembered / My forecast / The
+      gate"), built before this cluster (same story as F2's dials). No
+      further work; F3 closed.
 
 Acceptance: no number without a tappable source; no control without a
 consequence sentence; a stalled loop is visible on every surface within
@@ -152,9 +154,12 @@ to tailor their experience.
       Honest empty: "No sends yet. When this campaign sends its first
       piece, every one will be listed here." Runtime-verified against
       the fixture campaign + 404 on foreign/missing campaign.
-- [ ] **C3 — Discipline check**: everything stays behind the five doors
-      + Settings; no new top-level surfaces. The legibility pass removes
-      confusion by rewording and regrouping, never by adding rooms.
+- [x] **C3 — Discipline check**: VERIFIED (2026-07-09). The whole
+      cluster (F1–F3, C1–C2) added zero new routes and touched zero nav
+      files (`nav-items.ts`, `layout-sidebar.tsx`, `founder-doors.ts`,
+      `App.tsx` all unchanged across the cluster's commits); the
+      `founderFourDoors` ratchet passes. Every new surface is a strip,
+      card, chip, or drawer inside an existing door — no new rooms.
 
 Acceptance: a first-week customer can state, for any toggle, what will
 happen if they flip it — verified by the settings copy alone (usability
