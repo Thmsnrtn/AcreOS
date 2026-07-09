@@ -26,12 +26,10 @@ export interface PaginatedResult<T> {
   pageSize: number;
   totalPages: number;
 }
-import { aiConversations, aiMessages } from "@shared/schema";
 import {
   organizations, teamMembers, orgCoOwners, leads, leadActivities, properties, deals,
   notes, payments, paymentReminders, campaigns, campaignOptimizations, campaignResponses, agentConfigs, agentTasks, conversations,
   messages, activityLog, usageEvents,
-  aiAgentProfiles, aiToolDefinitions, aiExecutionRuns, aiMemory,
   vaAgents, vaActions, vaBriefings, vaCalendarEvents, vaTemplates,
   dueDiligenceTemplates, dueDiligenceItems, dueDiligenceChecklists, dueDiligenceDossiers,
   checklistTemplates, dealChecklists,
@@ -1296,119 +1294,9 @@ export class DatabaseStorage implements IStorage {
     });
   }
   
-  // AI Agent Profiles
-  async getAiAgentProfiles() {
-    return await db.select().from(aiAgentProfiles).where(eq(aiAgentProfiles.isActive, true));
-  }
-  
-  async getAiAgentProfile(role: string) {
-    const [profile] = await db.select().from(aiAgentProfiles)
-      .where(and(eq(aiAgentProfiles.role, role), eq(aiAgentProfiles.isActive, true)));
-    return profile;
-  }
-  
-  // AI Tool Definitions
-  async getAiToolDefinitions() {
-    return await db.select().from(aiToolDefinitions);
-  }
-  
-  async getAiToolsByRole(role: string) {
-    const tools = await db.select().from(aiToolDefinitions);
-    return tools.filter(tool => 
-      tool.agentRoles === null || tool.agentRoles.includes(role)
-    );
-  }
-  
-  // AI Execution Runs
-  async getAiExecutionRuns(orgId: number) {
-    return await db.select().from(aiExecutionRuns)
-      .where(eq(aiExecutionRuns.organizationId, orgId))
-      .orderBy(desc(aiExecutionRuns.startedAt));
-  }
-  
-  async createAiExecutionRun(run: InsertAiExecutionRun) {
-    const [newRun] = await db.insert(aiExecutionRuns).values(run).returning();
-    return newRun;
-  }
-  
-  async updateAiExecutionRun(id: number, updates: Partial<AiExecutionRun>, organizationId?: number) {
-    const conditions = [eq(aiExecutionRuns.id, id)];
-    if (organizationId) conditions.push(eq(aiExecutionRuns.organizationId, organizationId));
-    const [updated] = await db.update(aiExecutionRuns)
-      .set(updates)
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  }
-  
-  // AI Memory
-  async getAiMemory(orgId: number) {
-    return await db.select().from(aiMemory)
-      .where(eq(aiMemory.organizationId, orgId))
-      .orderBy(desc(aiMemory.createdAt));
-  }
-  
-  async createAiMemory(memory: InsertAiMemory) {
-    const [newMemory] = await db.insert(aiMemory).values(memory).returning();
-    return newMemory;
-  }
-  
-  async deleteAiMemory(id: number, organizationId?: number) {
-    const conditions = [eq(aiMemory.id, id)];
-    if (organizationId) conditions.push(eq(aiMemory.organizationId, organizationId));
-    await db.delete(aiMemory).where(and(...conditions));
-  }
-
-  // AI Conversations (Command Center)
-  async getAiConversations(orgId: number) {
-    return await db.select().from(aiConversations)
-      .where(eq(aiConversations.organizationId, orgId))
-      .orderBy(desc(aiConversations.updatedAt));
-  }
-
-  // Tier 1F: org-scoped by construction — fetch-by-bare-id no longer typechecks.
-  async getAiConversation(organizationId: number, id: number) {
-    return await forOrg(organizationId).findById(aiConversations, id);
-  }
-
-  async createAiConversation(conv: { organizationId: number; userId: string; title: string; agentRole: string }) {
-    const [newConv] = await db.insert(aiConversations).values(conv).returning();
-    return newConv;
-  }
-
-  async updateAiConversation(id: number, updates: { title?: string }, organizationId?: number) {
-    const conditions = [eq(aiConversations.id, id)];
-    if (organizationId) conditions.push(eq(aiConversations.organizationId, organizationId));
-    const [updated] = await db.update(aiConversations)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  }
-
-  async deleteAiConversation(id: number, organizationId?: number) {
-    // First verify conversation belongs to org before deleting messages
-    if (organizationId) {
-      const [conv] = await db.select().from(aiConversations)
-        .where(and(eq(aiConversations.id, id), eq(aiConversations.organizationId, organizationId)));
-      if (!conv) return;
-    }
-    await db.delete(aiMessages).where(eq(aiMessages.conversationId, id));
-    const conditions = [eq(aiConversations.id, id)];
-    if (organizationId) conditions.push(eq(aiConversations.organizationId, organizationId));
-    await db.delete(aiConversations).where(and(...conditions));
-  }
-
-  async getAiMessages(conversationId: number) {
-    return await db.select().from(aiMessages)
-      .where(eq(aiMessages.conversationId, conversationId))
-      .orderBy(aiMessages.createdAt);
-  }
-
-  async createAiMessage(message: { conversationId: number; role: string; content: string; toolCalls?: any[]; mentionedEntities?: any[]; thinkingContent?: string }) {
-    const [newMessage] = await db.insert(aiMessages).values(message).returning();
-    return newMessage;
-  }
+  // AI command-center data layer (agent profiles / tool definitions /
+  // execution runs / memory / conversations + messages) extracted to
+  // server/storage/aiRepo.ts (mixed into the prototype below).
 
   // Pax data layer (knowledge base / projects / scheduled tasks / entity
   // search / connector instances) extracted to server/storage/paxRepo.ts
@@ -7157,9 +7045,10 @@ import { auditRepo, type AuditRepo } from "./storage/auditRepo";
 import { integrationsRepo, type IntegrationsRepo } from "./storage/integrationsRepo";
 import { commsRepo, type CommsRepo } from "./storage/commsRepo";
 import { paxRepo, type PaxRepo } from "./storage/paxRepo";
+import { aiRepo, type AiRepo } from "./storage/aiRepo";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo, PaxRepo {}
+export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo, PaxRepo, AiRepo {}
 
 Object.assign(
   DatabaseStorage.prototype,
@@ -7174,6 +7063,7 @@ Object.assign(
   integrationsRepo,
   commsRepo,
   paxRepo,
+  aiRepo,
 );
 
 export const storage = new DatabaseStorage();
