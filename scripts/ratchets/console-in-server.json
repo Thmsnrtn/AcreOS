@@ -10,6 +10,6 @@
     "**/*.spec.ts",
     "server/scripts/**"
   ],
-  "baselineCount": 7,
+  "baselineCount": 6,
   "direction": "down"
 }

@@ -41,8 +41,9 @@ async function requireApiKey(req: Request, res: Response, next: any) {
     if (!key) {
       return Errors.unauthorized(res);
     }
-    (req as any).apiKeyId = key.id;
-    (req as any).apiKeyProvider = key.provider;
+    const keyedReq = req as Request & { apiKeyId?: number; apiKeyProvider?: string };
+    keyedReq.apiKeyId = key.id;
+    keyedReq.apiKeyProvider = key.provider;
     next();
   } catch (err: any) {
     logger.error("API key validation error", err);

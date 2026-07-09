@@ -12,7 +12,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
-import { SpanStatusCode, SpanKind, context, propagation, trace } from "@opentelemetry/api";
+import { SpanStatusCode, SpanKind, context, propagation, trace, type Span } from "@opentelemetry/api";
 import { getTracer } from "../tracing";
 
 // ─── Span recording ──────────────────────────────────────────────────────────
@@ -119,9 +119,9 @@ export function tracingMiddleware(
   const spanId = spanContext.spanId || generateSpanId();
 
   // Attach to request for use in route handlers / other middleware
-  (req as any).traceId = traceId;
-  (req as any).spanId = spanId;
-  (req as any).activeSpan = span;
+  req.traceId = traceId;
+  req.spanId = spanId;
+  (req as Request & { activeSpan?: Span }).activeSpan = span;
 
   // Propagate trace context downstream (to fetch/axios calls made inside handlers)
   propagation.inject(spanCtx, req.headers as Record<string, string>);

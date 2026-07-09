@@ -5,7 +5,7 @@ import type { UserPermissionContext } from "../utils/permissions";
 
 /**
  * Express request with authenticated user, organization, and permission context.
- * Use this instead of `(req as any)` in all route handlers.
+ * Use this instead of untyped request casts in all route handlers.
  */
 export interface AuthenticatedRequest extends Request {
   user: User;
@@ -47,4 +47,21 @@ export function getOrganizationId(req: AuthenticatedRequest): number {
     throw new Error("Organization not found on request — is getOrCreateOrg middleware applied?");
   }
   return org.id;
+}
+
+/**
+ * Narrow view of Clerk's `req.auth` (populated by clerkMiddleware). Typed
+ * locally rather than via a global augmentation because Clerk SDK versions
+ * disagree on whether `auth` is a property or a callable.
+ */
+export interface ClerkRequestAuth {
+  userId?: string;
+  sessionId?: string;
+}
+
+/**
+ * Read Clerk's `req.auth` without an untyped request cast.
+ */
+export function getClerkAuth(req: Request): ClerkRequestAuth | undefined {
+  return (req as Request & { auth?: ClerkRequestAuth }).auth;
 }

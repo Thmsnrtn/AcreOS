@@ -99,7 +99,7 @@ export function complianceGate(checkType: "note" | "deal") {
       }
 
       // Attach warnings to request for downstream use
-      (req as any).complianceWarnings = warnings;
+      (req as Request & { complianceWarnings?: ComplianceWarning[] }).complianceWarnings = warnings;
       next();
     } catch (err) {
       // Compliance gate should never block normal operation on error

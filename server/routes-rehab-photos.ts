@@ -100,7 +100,7 @@ export function registerRehabPhotoRoutes(app: Express): void {
           .where(and(eq(rehabs.id, rehabId), eq(rehabs.organizationId, orgId)));
         if (!rehab) return Errors.notFound(res, "Rehab");
 
-        const files = (req as any).files as Express.Multer.File[] | undefined;
+        const files = req.files as Express.Multer.File[] | undefined;
         if (!files || files.length === 0) {
           return Errors.badRequest(
             res,

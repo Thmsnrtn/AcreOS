@@ -22,6 +22,7 @@
  */
 
 import type { Request } from "express";
+import { getClerkAuth } from "../types/request";
 import { logger } from "./logger";
 import { chainAndInsertAuditEvent } from "./auditEventsChain";
 
@@ -94,8 +95,8 @@ export async function auditLog(input: AuditLogInput): Promise<void> {
  * unauthenticated requests (DSAR intake) and authenticated ones.
  */
 export function actorFromRequest(req: Request): AuditActor {
-  const user = (req as any).user as { id?: string; email?: string; clerkUserId?: string } | undefined;
-  const auth = (req as any).auth as { userId?: string } | undefined;
+  const user = req.user as { id?: string; email?: string | null; clerkUserId?: string | null } | undefined;
+  const auth = getClerkAuth(req);
   const userId = auth?.userId ?? user?.clerkUserId ?? user?.id ?? null;
   const email = user?.email ?? null;
   const fwd = req.headers["x-forwarded-for"];

@@ -27,7 +27,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { getActiveHoldSummary, orgHasActiveHold } from "./services/legalHold";
-import type { AuthenticatedRequest } from "./types/request";
+import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
 
 // ─── Validation schemas ─────────────────────────────────────────────────────
 const placeHoldSchema = z.object({
@@ -46,7 +46,7 @@ const releaseHoldSchema = z.object({
 // ─── Founder gate ───────────────────────────────────────────────────────────
 function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
   const user = req.user;
-  const userId = (req as any).auth?.userId ?? user?.clerkUserId ?? null;
+  const userId = getClerkAuth(req)?.userId ?? user?.clerkUserId ?? null;
   const email = user?.email ?? null;
   if (!isFounderIdentity({ email, userId })) {
     Errors.notFound(res, "Resource");
@@ -57,7 +57,7 @@ function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
 
 function actorUserId(req: AuthenticatedRequest): string | null {
   const user = req.user;
-  const auth = (req as any).auth as { userId?: string } | undefined;
+  const auth = getClerkAuth(req);
   return user?.id ?? auth?.userId ?? null;
 }
 

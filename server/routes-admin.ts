@@ -36,7 +36,7 @@ import { isFounderIdentity } from "./services/founder";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { Errors } from "./utils/errors";
-import { getUserId, getOrganization, type AuthenticatedRequest } from "./types/request";
+import { getUserId, getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 
 // ── Zod validation schemas for admin endpoints ────────────────────────────────
 const createSupportCaseSchema = z.object({
@@ -697,7 +697,7 @@ export function registerAdminRoutes(app: Express): void {
     }
 
     const user = req.user as any;
-    const userId = (req as any).auth?.userId ?? user.clerkUserId ?? user.id ?? null;
+    const userId = getClerkAuth(req)?.userId ?? user.clerkUserId ?? user.id ?? null;
     const userEmail = user.email;
 
     if (isFounderIdentity({ email: userEmail, userId })) {

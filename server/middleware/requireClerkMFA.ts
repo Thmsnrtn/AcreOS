@@ -78,7 +78,7 @@ function isHighTrustPath(path: string): boolean {
 type MfaDecision = "pass" | "blocked_mfa_required" | "blocked_setup_required" | "blocked_no_session";
 
 /**
- * Narrow read of fields we care about — avoids `(req as any)` while staying
+ * Narrow read of fields we care about — avoids an untyped request cast while staying
  * resilient to differences between worktree TS versions of `req.auth` (some
  * Clerk express versions type it as a callable, others as a property).
  */

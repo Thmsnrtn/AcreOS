@@ -121,8 +121,8 @@ export function requireApiKey(requiredScope: ApiScope) {
     // Bridge to AuthenticatedRequest contract so downstream handlers
     // (and Errors.* helpers) can use req.organization / organizationId
     // without a second middleware.
-    (req as any).organization = org;
-    (req as any).organizationId = org.id;
+    req.organization = org;
+    req.organizationId = org.id;
 
     // Fire-and-forget usage log + lastUsedAt bump after the response
     // completes. We intentionally don't await — adding a DB round-trip

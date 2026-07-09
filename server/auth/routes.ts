@@ -93,7 +93,7 @@ export function registerAuthRoutes(app: Express): void {
     // isAuthenticated-gated, so the user object may be absent; in that
     // case we record the row as anonymous. Clerk webhooks remain the
     // authoritative source for session lifecycle.
-    const userForLogout = (req as any).user as { clerkUserId?: string; id?: string } | undefined;
+    const userForLogout = req.user as { clerkUserId?: string | null; id?: string } | undefined;
     const logoutTarget = userForLogout?.clerkUserId ?? userForLogout?.id ?? "anonymous";
     if (userForLogout?.clerkUserId) {
       loggedLoginThisProcess.delete(userForLogout.clerkUserId);

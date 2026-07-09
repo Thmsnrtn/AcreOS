@@ -547,13 +547,20 @@ export function encryptionMiddleware(
   _res: Response,
   next: NextFunction,
 ): void {
+  const encryptedReq = req as Request & {
+    encrypt?: typeof encrypt;
+    decrypt?: typeof decrypt;
+    isEncrypted?: typeof isEncrypted;
+    encryptFields?: typeof encryptFields;
+    decryptFields?: typeof decryptFields;
+  };
   try {
     getKey();
-    (req as any).encrypt = encrypt;
-    (req as any).decrypt = decrypt;
-    (req as any).isEncrypted = isEncrypted;
-    (req as any).encryptFields = encryptFields;
-    (req as any).decryptFields = decryptFields;
+    encryptedReq.encrypt = encrypt;
+    encryptedReq.decrypt = decrypt;
+    encryptedReq.isEncrypted = isEncrypted;
+    encryptedReq.encryptFields = encryptFields;
+    encryptedReq.decryptFields = decryptFields;
   } catch (err) {
     logger.error("[fieldEncryption] Encryption middleware error", err);
     if (process.env.NODE_ENV === "production") {

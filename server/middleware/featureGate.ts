@@ -33,7 +33,7 @@ export function requireFlag(flagKey: string) {
     if (tier === "enterprise") return next();
 
     try {
-      const ctx = buildFlagContext(req as any);
+      const ctx = buildFlagContext(req);
       // Prime isFounder if email matched but the request lacks organization.
       if (!ctx.isFounder && isFounderEmail(ctx.email)) ctx.isFounder = true;
       const enabled = await featureFlagService.isEnabled(flagKey, ctx);
