@@ -2810,128 +2810,9 @@ export class DatabaseStorage implements IStorage {
   // Numbers CRUD extracted to server/storage/integrationsRepo.ts (mixed into
   // the prototype below).
 
-  // Campaign Responses CRUD
-  async getCampaignResponses(orgId: number, campaignId?: number): Promise<CampaignResponse[]> {
-    const conditions = [eq(campaignResponses.organizationId, orgId)];
-    if (campaignId) {
-      conditions.push(eq(campaignResponses.campaignId, campaignId));
-    }
-    return await db.select().from(campaignResponses)
-      .where(and(...conditions))
-      .orderBy(desc(campaignResponses.responseDate));
-  }
-
-  // Tier 1F: org-scoped by construction.
-  async getCampaignResponse(organizationId: number, id: number): Promise<CampaignResponse | undefined> {
-    return await forOrg(organizationId).findById(campaignResponses, id);
-  }
-
-  async createCampaignResponse(data: InsertCampaignResponse): Promise<CampaignResponse> {
-    const [response] = await db.insert(campaignResponses).values(data).returning();
-    return response;
-  }
-
-  async updateCampaignResponse(id: number, data: Partial<InsertCampaignResponse>, organizationId?: number): Promise<CampaignResponse> {
-    const conditions = [eq(campaignResponses.id, id)];
-    if (organizationId) conditions.push(eq(campaignResponses.organizationId, organizationId));
-    const [response] = await db.update(campaignResponses)
-      .set({ ...data, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return response;
-  }
-
-  async deleteCampaignResponse(id: number, organizationId?: number): Promise<void> {
-    const conditions = [eq(campaignResponses.id, id)];
-    if (organizationId) conditions.push(eq(campaignResponses.organizationId, organizationId));
-    await db.delete(campaignResponses).where(and(...conditions));
-  }
-
-  async getCampaignByTrackingCode(trackingCode: string): Promise<Campaign | undefined> {
-    const [campaign] = await db.select().from(campaigns)
-      .where(eq(campaigns.trackingCode, trackingCode));
-    return campaign;
-  }
-
-  async getCampaignResponsesCount(campaignId: number): Promise<number> {
-    const [result] = await db.select({ count: count() }).from(campaignResponses)
-      .where(eq(campaignResponses.campaignId, campaignId));
-    return result?.count || 0;
-  }
-
-  async getResponsesCountByOrg(orgId: number): Promise<number> {
-    const [result] = await db.select({ count: count() }).from(campaignResponses)
-      .where(eq(campaignResponses.organizationId, orgId));
-    return result?.count || 0;
-  }
-
-  generateTrackingCode(): string {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let code = 'CAMP-';
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-  }
-
-  // Activity Events CRUD (Communication Timeline)
-  async getActivityEvents(
-    orgId: number, 
-    entityType: string, 
-    entityId: number,
-    eventTypes?: string[]
-  ): Promise<ActivityEvent[]> {
-    const conditions = [
-      eq(activityEvents.organizationId, orgId),
-      eq(activityEvents.entityType, entityType),
-      eq(activityEvents.entityId, entityId),
-    ];
-    
-    let query = db.select().from(activityEvents)
-      .where(and(...conditions))
-      .orderBy(desc(activityEvents.eventDate));
-    
-    const results = await query;
-    
-    if (eventTypes && eventTypes.length > 0) {
-      return results.filter(e => eventTypes.includes(e.eventType));
-    }
-    
-    return results;
-  }
-
-  async createActivityEvent(data: InsertActivityEvent): Promise<ActivityEvent> {
-    const [event] = await db.insert(activityEvents).values(data).returning();
-    return event;
-  }
-
-  async getActivityEventsByEntity(
-    orgId: number, 
-    entityType: string, 
-    entityId: number, 
-    limit?: number
-  ): Promise<ActivityEvent[]> {
-    let query = db.select().from(activityEvents)
-      .where(and(
-        eq(activityEvents.organizationId, orgId),
-        eq(activityEvents.entityType, entityType),
-        eq(activityEvents.entityId, entityId)
-      ))
-      .orderBy(desc(activityEvents.eventDate));
-    
-    if (limit) {
-      return await query.limit(limit);
-    }
-    
-    return await query;
-  }
-
-  async getRecentActivityEvents(orgId: number, limit: number = 50): Promise<ActivityEvent[]> {
-    return await db.select().from(activityEvents)
-      .where(eq(activityEvents.organizationId, orgId))
-      .orderBy(desc(activityEvents.eventDate))
-      .limit(limit);
-  }
+  // Campaign Responses CRUD (+ tracking-code lookup/generation) and Activity
+  // Events (Communication Timeline) extracted to server/storage/commsRepo.ts
+  // (mixed into the prototype below).
 
   // Campaign Sequences
   async getSequences(orgId: number): Promise<CampaignSequence[]> {
@@ -7535,9 +7416,10 @@ import { noteRepo, type NoteRepo } from "./storage/noteRepo";
 import { campaignRepo, type CampaignRepo } from "./storage/campaignRepo";
 import { auditRepo, type AuditRepo } from "./storage/auditRepo";
 import { integrationsRepo, type IntegrationsRepo } from "./storage/integrationsRepo";
+import { commsRepo, type CommsRepo } from "./storage/commsRepo";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo {}
+export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo {}
 
 Object.assign(
   DatabaseStorage.prototype,
@@ -7550,6 +7432,7 @@ Object.assign(
   campaignRepo,
   auditRepo,
   integrationsRepo,
+  commsRepo,
 );
 
 export const storage = new DatabaseStorage();

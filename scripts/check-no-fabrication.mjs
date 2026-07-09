@@ -73,6 +73,10 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
 const SERVER_DIR = join(REPO_ROOT, "server");
 const SERVICES_DIR = join(SERVER_DIR, "services");
+// The god-class server/storage.ts is being decomposed into mixin repos under
+// server/storage/*Repo.ts. Scan that dir too so fabrication coverage follows
+// the extracted data-access code instead of leaving a blind spot.
+const STORAGE_DIR = join(SERVER_DIR, "storage");
 const ALLOWLIST_PATH = join(__dirname, "no-fabrication.allowlist.json");
 
 // The non-deterministic source we flag. Kept as a single token so the message
@@ -110,6 +114,8 @@ function findScannedFiles() {
   // server/storage.ts
   const storage = join(SERVER_DIR, "storage.ts");
   if (existsSync(storage)) files.push(storage);
+  // server/storage/**/*.ts — the extracted mixin repos.
+  if (existsSync(STORAGE_DIR)) walkTsFiles(STORAGE_DIR, files);
   // server/services/**/*.ts
   walkTsFiles(SERVICES_DIR, files);
   return files.sort();
