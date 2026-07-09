@@ -117,7 +117,30 @@ export class WebhookHandlers {
    * never break payment processing (recordSense swallows its own errors and we
    * still `void` it). This is how the brain perceives revenue + churn pressure.
    */
+  /** True when a Stripe customer id resolves to one of our orgs. */
+  private static async isAcreosCustomer(customerId?: string | null): Promise<boolean> {
+    if (!customerId) return false;
+    try {
+      return !!(await storage.getOrganizationByStripeCustomerId(customerId));
+    } catch {
+      return false;
+    }
+  }
+
   private static emitRevenueSense(event: Stripe.Event): void {
+    // Shared live account: land sales + Foundry emit events here too. Only
+    // perceive events billed to an AcreOS org so their revenue/churn/dunning
+    // never pollutes the autopilot signal bus. Best-effort; unresolved → skip.
+    const obj = event.data.object as { customer?: string | { id: string } } | undefined;
+    const customerId =
+      typeof obj?.customer === 'string' ? obj.customer : obj?.customer?.id;
+    void WebhookHandlers.isAcreosCustomer(customerId).then((owned) => {
+      if (!owned) return;
+      WebhookHandlers.emitRevenueSenseOwned(event);
+    });
+  }
+
+  private static emitRevenueSenseOwned(event: Stripe.Event): void {
     try {
       switch (event.type) {
         case 'invoice.payment_failed': {

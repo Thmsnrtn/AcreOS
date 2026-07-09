@@ -17,6 +17,7 @@ import { db } from "../db";
 import { reconciliationRules, reconciliationRuns } from "@shared/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { storage } from "../storage";
 
 export interface ReconciliationResult {
   ruleId: string;
@@ -175,7 +176,11 @@ async function fetchStripeMtdPaidTotal(): Promise<number | null> {
     const Stripe = (await import("stripe")).default;
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const createdGte = Math.floor(utcMonthStart().getTime() / 1000);
-    let totalCents = 0;
+    // The account is SHARED with personal land sales + Foundry. Summing every
+    // paid invoice would fold their money into AcreOS revenue and false-page a
+    // divergence. Collect invoices first, then keep only those billed to an
+    // AcreOS org (customer → org via the same resolver every webhook uses).
+    const paid: Array<{ customer: string | null; amountPaid: number }> = [];
     let startingAfter: string | undefined;
     // Hard cap of 50 pages (5,000 invoices/month) as a runaway guard.
     for (let page = 0; page < 50; page++) {
@@ -185,10 +190,34 @@ async function fetchStripeMtdPaidTotal(): Promise<number | null> {
         limit: 100,
         ...(startingAfter ? { starting_after: startingAfter } : {}),
       });
-      totalCents += invoices.data.reduce((s, i) => s + (i.amount_paid ?? 0), 0);
+      for (const i of invoices.data) {
+        const customer =
+          typeof i.customer === "string" ? i.customer : (i.customer?.id ?? null);
+        paid.push({ customer, amountPaid: i.amount_paid ?? 0 });
+      }
       if (!invoices.has_more || invoices.data.length === 0) break;
       startingAfter = invoices.data[invoices.data.length - 1].id;
     }
+
+    const customerIds = [
+      ...new Set(paid.map((p) => p.customer).filter((c): c is string => !!c)),
+    ];
+    const acreosCustomers = new Set<string>();
+    await Promise.all(
+      customerIds.map(async (id) => {
+        try {
+          if (await storage.getOrganizationByStripeCustomerId(id)) {
+            acreosCustomers.add(id);
+          }
+        } catch {
+          /* unresolved customer → treated as non-AcreOS, excluded */
+        }
+      }),
+    );
+
+    const totalCents = paid
+      .filter((p) => p.customer && acreosCustomers.has(p.customer))
+      .reduce((s, p) => s + p.amountPaid, 0);
     return totalCents / 100;
   } catch (err) {
     logger.warn("[reconciliation] Stripe fetch failed", err instanceof Error ? err : undefined);

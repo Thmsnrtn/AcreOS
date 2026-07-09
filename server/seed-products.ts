@@ -65,8 +65,21 @@ const SUBSCRIPTION_PRODUCTS = [
 ];
 
 async function seedProducts() {
+  // QUARANTINED (2026-07 shared-account cleanup, see docs/stripe-shared-account.md).
+  // This legacy seeder creates bare-named "Starter/Pro/Scale" products, dedupes
+  // by NAME, and omits the `app`/`acreos_product` tags — three hazards in an
+  // account shared with Foundry and the personal land sales. The canonical
+  // seeder is scripts/setup-stripe-subscription-products.ts. Refuse to run
+  // unless explicitly forced.
+  if (process.env.ALLOW_LEGACY_SEED !== '1') {
+    logger.error(
+      'server/seed-products.ts is quarantined. Use scripts/setup-stripe-subscription-products.ts instead. ' +
+      'Set ALLOW_LEGACY_SEED=1 only if you truly need the legacy path.',
+    );
+    return;
+  }
   logger.info('Starting product seed...');
-  
+
   const stripe = await getUncachableStripeClient();
   
   for (const product of SUBSCRIPTION_PRODUCTS) {
