@@ -164,8 +164,23 @@ export default function Settings() {
   // toggles state via /founder/features.
   const autonomyFlag = useFlag("feature.autonomy-matrix");
 
+  // The upgrade-toast deep link is `/settings#billing?tier=pro` — the
+  // "?tier=" rides INSIDE the hash (there is no real query string), so the
+  // hash must be split before tab matching. Without this, that link landed
+  // on the Account tab with no plan comparison (broken upgrade funnel).
+  const getHashParts = (): { hash: string; tier: TierKey | null } => {
+    const raw = window.location.hash.replace("#", "");
+    const [hash, pseudoQuery] = raw.split("?");
+    const tierRaw = new URLSearchParams(pseudoQuery ?? "").get("tier");
+    const tier: TierKey | null =
+      tierRaw === "free" || tierRaw === "starter" || tierRaw === "pro" || tierRaw === "scale"
+        ? tierRaw
+        : null;
+    return { hash, tier };
+  };
+
   const getTabFromHash = (): TabValue => {
-    const hash = window.location.hash.replace("#", "");
+    const { hash } = getHashParts();
     // Legacy hashes from the 17-tab era — rewrite to canonical bucket.
     if (hash in LEGACY_TO_CANONICAL) {
       return LEGACY_TO_CANONICAL[hash];
@@ -178,25 +193,30 @@ export default function Settings() {
 
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
 
-  useEffect(() => {
-    // Auto-show plan comparison when arriving via #billing (from upgrade toast).
-    // Note: "billing" is now itself a canonical tab (no more "payments" alias).
-    const hash = window.location.hash.replace("#", "");
+  // Auto-show plan comparison when arriving via #billing (from the upgrade
+  // toast or a dunning email), highlighting the suggested tier when the
+  // link carries one. Note: "billing" is now itself a canonical tab.
+  const applyBillingIntent = () => {
+    const { hash, tier } = getHashParts();
     if (hash === "billing" || hash === "payments") {
+      if (tier) setPlanPickerHighlight(tier);
       setShowPlanComparison(true);
     }
+  };
+
+  useEffect(() => {
+    applyBillingIntent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.replace("#", "");
       setActiveTab(getTabFromHash());
-      if (hash === "billing" || hash === "payments") {
-        setShowPlanComparison(true);
-      }
+      applyBillingIntent();
     };
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   const handleTabChange = (value: string) => {

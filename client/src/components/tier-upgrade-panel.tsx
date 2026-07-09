@@ -311,12 +311,23 @@ interface PlanComparisonModalProps {
   highlightedTier?: TierKey | null;
 }
 
+const TIER_ORDER: Record<TierKey, number> = { free: 0, starter: 1, pro: 2, scale: 3 };
+
 export function PlanComparisonModal({ open, onClose, currentTier, highlightedTier }: PlanComparisonModalProps) {
+  // The highlight arrives from two directions: the cancellation flow nudging
+  // DOWN, and the usage-limit upgrade link (/settings#billing?tier=pro)
+  // nudging UP. Word the title by which way the suggested tier points.
+  const title =
+    !highlightedTier || TIER_ORDER[highlightedTier] === TIER_ORDER[currentTier]
+      ? "Compare plans"
+      : TIER_ORDER[highlightedTier] > TIER_ORDER[currentTier]
+        ? "Upgrade your plan"
+        : "Switch to a lighter plan";
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{highlightedTier ? "Switch to a lighter plan" : "Compare plans"}</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="sr-only">
             Compare Free, Starter, Pro, and Scale plan features and pricing.
           </DialogDescription>
