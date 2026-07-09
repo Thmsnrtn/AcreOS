@@ -681,9 +681,11 @@ app.use("/mcp", mcpLimiter);
 
   app.use(errorLoggingMiddleware);
 
-  // Sentry error handler — must come before the generic error handler
+  // Sentry error handler — must come before the generic error handler.
+  // @sentry/node's ExpressErrorMiddleware signature doesn't line up with
+  // this repo's express type overloads; the 4-arg shape is identical.
   if (process.env.SENTRY_DSN) {
-    app.use(Sentry.expressErrorHandler());
+    app.use(Sentry.expressErrorHandler() as unknown as express.ErrorRequestHandler);
   }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

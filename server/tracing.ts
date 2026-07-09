@@ -160,7 +160,9 @@ export function getTracer(): Tracer {
   };
   return {
     startSpan: (_name: string) => noopSpan,
-    startActiveSpan: (_name: string, fn: any) => fn(noopSpan),
+    // Real tracers accept (name, fn) | (name, options, fn) |
+    // (name, options, context, fn) — the callback is always last.
+    startActiveSpan: (_name: string, ...rest: any[]) => rest[rest.length - 1](noopSpan),
   } as any;
 }
 
