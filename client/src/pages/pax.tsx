@@ -772,11 +772,15 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
 
 // ─── Suggested Prompts ────────────────────────────────────────────────────────
 
+// Two ACTION prompts + two question prompts. Pax's differentiator is that it
+// DOES the work (draft offers, skip-trace — through the approval-freeze
+// pattern, nothing sends without your review), so the first impression must
+// advertise the worker, not just the analyst. (Five-lens audit, wedge #3.)
 const SUGGESTED_PROMPTS = [
+  { label: "Draft a blind offer on my hottest lead", icon: DollarSign },
+  { label: "Skip-trace my newest leads", icon: Flame },
   { label: "What's my pipeline worth?", icon: TrendingUp },
-  { label: "Help me analyze a deal", icon: DollarSign },
-  { label: "How's my note portfolio doing?", icon: CheckCircle2 },
-  { label: "What should I work on today?", icon: Flame },
+  { label: "What should I work on today?", icon: CheckCircle2 },
 ];
 
 function SuggestedPrompts() {

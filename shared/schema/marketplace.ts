@@ -510,9 +510,18 @@ export const landCreditScores = pgTable("land_credit_scores", {
   overallScore: integer("overall_score").notNull(),
   grade: text("grade").notNull(), // A+, A, B+, B, C+, C, D, F
   
-  // Detailed breakdown
+  // Detailed breakdown. Outcome loop (S2a): rows now persist the canonical
+  // six-dimension breakdown (numeric top-level dims + a rich `factors`
+  // object for the calibrator) alongside the legacy display keys. Older rows
+  // carry only the legacy shape — readers must treat every key as optional.
   scoreBreakdown: jsonb("score_breakdown").$type<{
     location: number;
+    physical?: number;
+    legal?: number;
+    financial?: number;
+    environmental?: number;
+    market?: number;
+    factors?: Record<string, { score: number; weight: number }>;
     characteristics: number;
     marketDemand: number;
     economicFactors: number;

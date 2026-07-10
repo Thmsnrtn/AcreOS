@@ -50,6 +50,14 @@ export interface FounderBriefInputs {
   openAsks: FounderDecisionCard[];
   /** The brain's single highest-value planned focus (observational in P0). */
   plannedFocus: RankedMove | null;
+  /**
+   * Whether the loop can actually ACT (dispatch) and think on schedule
+   * (cognition). null = the settings read failed — stay silent rather than
+   * claim a mode. Without this the Letter's "Right now I'm focused on…"
+   * read as operation even when both switches were off (observe-only),
+   * which is exactly the kind of implied capability the honesty rules ban.
+   */
+  operatingMode: { dispatchEnabled: boolean; cognitionEnabled: boolean } | null;
   /** Per-domain Trust Ledger standing, for the felt sense of earning. */
   trustLedger: Array<{
     domain: string;
@@ -192,8 +200,13 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
   const theWord = parts.join(" ");
 
   // ── The brain's focus, in plain language (observational in P0). ───────────
+  // Honest about MODE: when dispatch is off the loop only watches and drafts,
+  // so the focus line must say so instead of reading as operation.
+  const observeOnly = inp.operatingMode ? !inp.operatingMode.dispatchEnabled : false;
   const focusLine = inp.plannedFocus
-    ? `Right now I'm focused on: ${inp.plannedFocus.rationale}`
+    ? observeOnly
+      ? `I'm watching this in observe-only mode (nothing executes until you enable Dispatch in Controls): ${inp.plannedFocus.rationale}`
+      : `Right now I'm focused on: ${inp.plannedFocus.rationale}`
     : null;
 
   return {
@@ -410,12 +423,26 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
   const prodVersion =
     pulse?.prodVersion && pulse.prodVersion !== "unknown" ? pulse.prodVersion : null;
 
+  // Operating mode — read the real switches; null (silent) when unreadable.
+  let operatingMode: FounderBriefInputs["operatingMode"] = null;
+  try {
+    const { getEffectiveSettings } = await import("./settings");
+    const eff = await getEffectiveSettings(nowMs);
+    operatingMode = {
+      dispatchEnabled: eff.dispatchEnabled,
+      cognitionEnabled: eff.cognitionEnabled,
+    };
+  } catch {
+    operatingMode = null;
+  }
+
   return buildFounderBrief({
     partOfDay,
     founderName,
     pulse: safePulse,
     openAsks,
     plannedFocus,
+    operatingMode,
     trustLedger,
     learning,
     calibration,

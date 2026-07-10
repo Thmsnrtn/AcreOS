@@ -90,10 +90,11 @@ export async function onDealClosed(
 
     await recordScoreOutcome({
       propertyId: deal.propertyId,
-      lcsAtAcquisition: (lcs as any)?.totalScore ?? 0,
+      lcsAtAcquisition: (lcs as any)?.overallScore ?? 0,
       dealOutcome: outcome,
       profit,
       daysToSell,
+      organizationId: orgId,
     });
 
     logger.info("Deal outcome recorded for calibration", { dealId, outcome, profit });

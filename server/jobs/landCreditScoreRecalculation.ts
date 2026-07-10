@@ -91,8 +91,23 @@ async function recalculateProperty(
     marketabilityScore: Math.round(f.market.score ?? 50),
     overallScore: Math.round(newOverall),
     grade: scoreResult.grade,
+    // Canonical six-dimension breakdown + legacy display keys (S2a) — same
+    // shape calculateCreditScore persists, so calibration reads both paths.
     scoreBreakdown: {
       location: Math.round(f.location.score),
+      physical: Math.round(f.physical.score),
+      legal: Math.round(f.legal.score),
+      financial: Math.round(f.financial.score),
+      environmental: Math.round(f.environmental.score),
+      market: Math.round(f.market.score),
+      factors: {
+        location: { score: Math.round(f.location.score), weight: f.location.weight },
+        physical: { score: Math.round(f.physical.score), weight: f.physical.weight },
+        legal: { score: Math.round(f.legal.score), weight: f.legal.weight },
+        financial: { score: Math.round(f.financial.score), weight: f.financial.weight },
+        environmental: { score: Math.round(f.environmental.score), weight: f.environmental.weight },
+        market: { score: Math.round(f.market.score), weight: f.market.weight },
+      },
       characteristics: Math.round(f.physical.score),
       marketDemand: Math.round(f.market.score),
       economicFactors: Math.round(f.financial.score),

@@ -179,6 +179,8 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "cost_optimizer_weekly_digest", intervalMs: WEEK, critical: false },
   // W4.5 — weekly MRR snapshot (Monday window shared with the digests).
   { name: "mrr_snapshot_weekly", intervalMs: WEEK, critical: false },
+  // S2d — weekly LCS outcome-calibration sweep (same Monday window).
+  { name: "lcs_calibration_weekly", intervalMs: WEEK, critical: false },
   { name: "growth_automation", intervalMs: 6 * HOUR, critical: false },
   // Wall-clock daily 06:00 (local==UTC on the Fly worker). cron not yet consumed.
   { name: "churn_engine_daily", intervalMs: DAY, critical: true, cron: "0 6 * * *" },

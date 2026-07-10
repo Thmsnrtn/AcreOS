@@ -20,6 +20,7 @@ const base = (over: Partial<FounderBriefInputs> = {}): FounderBriefInputs => ({
   },
   openAsks: [],
   plannedFocus: null,
+  operatingMode: null,
   trustLedger: [],
   ...over,
 });
@@ -93,6 +94,36 @@ describe("autopilot narration engine — the Voice", () => {
       base({ plannedFocus: { priority: 5, domain: "ops", kind: "optimize", rationale: "tighten a playbook" } }),
     );
     expect(b.focusLine).toMatch(/tighten a playbook/);
+  });
+
+  it("HONESTY: in observe-only mode (dispatch off) the focus line says nothing executes — never reads as operation", () => {
+    const b = buildFounderBrief(
+      base({
+        plannedFocus: { priority: 5, domain: "ops", kind: "optimize", rationale: "tighten a playbook" },
+        operatingMode: { dispatchEnabled: false, cognitionEnabled: false },
+      }),
+    );
+    expect(b.focusLine).toMatch(/observe-only/i);
+    expect(b.focusLine).toMatch(/enable Dispatch in Controls/i);
+    expect(b.focusLine).toMatch(/tighten a playbook/);
+  });
+
+  it("with dispatch ON the focus line reads as active operation, no observe-only caveat", () => {
+    const b = buildFounderBrief(
+      base({
+        plannedFocus: { priority: 5, domain: "ops", kind: "optimize", rationale: "tighten a playbook" },
+        operatingMode: { dispatchEnabled: true, cognitionEnabled: true },
+      }),
+    );
+    expect(b.focusLine).toMatch(/^Right now I'm focused on/);
+    expect(b.focusLine).not.toMatch(/observe-only/i);
+  });
+
+  it("when the mode is UNREADABLE (null) the focus line stays neutral — never claims a mode", () => {
+    const b = buildFounderBrief(
+      base({ plannedFocus: { priority: 5, domain: "ops", kind: "optimize", rationale: "tighten a playbook" } }),
+    );
+    expect(b.focusLine).not.toMatch(/observe-only/i);
   });
 
   it("vitalSign mirrors the real pulse figures exactly", () => {
