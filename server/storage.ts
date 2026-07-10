@@ -28,7 +28,7 @@ export interface PaginatedResult<T> {
 }
 import {
   organizations, teamMembers, orgCoOwners, leads, leadActivities, properties, deals,
-  notes, payments, paymentReminders, campaigns, campaignOptimizations, campaignResponses, agentConfigs, agentTasks, conversations,
+  notes, payments, campaigns, campaignOptimizations, campaignResponses, agentConfigs, agentTasks, conversations,
   messages, activityLog, usageEvents,
   dueDiligenceChecklists, dueDiligenceDossiers,
   activityEvents,
@@ -1300,147 +1300,9 @@ export class DatabaseStorage implements IStorage {
   // server/storage/supportOpsRepo.ts (mixed into the prototype below).
 
 
-  // Payment Reminders (Finance Agent)
-  async getDelinquentNotes(orgId: number) {
-    const now = new Date();
-    return await db.select().from(notes)
-      .where(and(
-        eq(notes.organizationId, orgId),
-        eq(notes.status, "active"),
-        lte(notes.nextPaymentDate, now)
-      ))
-      .orderBy(notes.nextPaymentDate);
-  }
+  // Finance-agent payment-reminders data layer extracted to
+  // server/storage/paymentRemindersRepo.ts (mixed into the prototype below).
 
-  async getPendingReminders(limit = 50) {
-    const now = new Date();
-    return await db.select().from(paymentReminders)
-      .where(and(
-        eq(paymentReminders.status, "scheduled"),
-        lte(paymentReminders.scheduledFor, now)
-      ))
-      .orderBy(paymentReminders.scheduledFor)
-      .limit(limit);
-  }
-
-  async getRemindersForNote(noteId: number) {
-    return await db.select().from(paymentReminders)
-      .where(eq(paymentReminders.noteId, noteId))
-      .orderBy(desc(paymentReminders.createdAt));
-  }
-
-  async createPaymentReminder(reminder: InsertPaymentReminder) {
-    const [newReminder] = await db.insert(paymentReminders).values(reminder).returning();
-    return newReminder;
-  }
-
-  async updatePaymentReminder(id: number, updates: Partial<InsertPaymentReminder>, organizationId?: number) {
-    const conditions = [eq(paymentReminders.id, id)];
-    if (organizationId) conditions.push(eq(paymentReminders.organizationId, organizationId));
-    const [updated] = await db.update(paymentReminders)
-      .set(updates)
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  }
-
-  async markReminderSent(id: number, organizationId?: number) {
-    const conditions = [eq(paymentReminders.id, id)];
-    if (organizationId) conditions.push(eq(paymentReminders.organizationId, organizationId));
-    const [updated] = await db.update(paymentReminders)
-      .set({ status: "sent", sentAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  }
-
-  async getNotesNeedingReminders(orgId: number) {
-    const now = new Date();
-    const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-    
-    return await db.select().from(notes)
-      .where(and(
-        eq(notes.organizationId, orgId),
-        eq(notes.status, "active"),
-        lte(notes.nextPaymentDate, threeDaysFromNow),
-        or(
-          sql`${notes.lastReminderSentAt} IS NULL`,
-          lte(notes.lastReminderSentAt, threeDaysAgo)
-        )
-      ))
-      .orderBy(notes.nextPaymentDate);
-  }
-
-  async getNotesWithUpcomingPayments(orgId: number, daysAhead: number) {
-    const now = new Date();
-    const futureDate = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
-    
-    return await db.select().from(notes)
-      .where(and(
-        eq(notes.organizationId, orgId),
-        eq(notes.status, "active"),
-        gte(notes.nextPaymentDate, now),
-        lte(notes.nextPaymentDate, futureDate)
-      ))
-      .orderBy(notes.nextPaymentDate);
-  }
-
-  async getFinancePortfolioHealth(orgId: number) {
-    const activeNotes = await db.select().from(notes)
-      .where(and(
-        eq(notes.organizationId, orgId),
-        eq(notes.status, "active")
-      ));
-    
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-    
-    const remindersSent = await db.select({ count: count() })
-      .from(paymentReminders)
-      .where(and(
-        eq(paymentReminders.organizationId, orgId),
-        eq(paymentReminders.status, "sent"),
-        gte(paymentReminders.sentAt, startOfMonth)
-      ));
-    
-    const stats = {
-      totalActiveNotes: activeNotes.length,
-      totalBalance: activeNotes.reduce((sum, n) => sum + Number(n.currentBalance || 0), 0),
-      currentNotes: 0,
-      earlyDelinquent: 0,
-      delinquent: 0,
-      seriouslyDelinquent: 0,
-      defaultCandidates: 0,
-      remindersSentThisMonth: remindersSent[0]?.count || 0,
-      collectionsThisMonth: 0,
-    };
-    
-    for (const note of activeNotes) {
-      const delinquencyStatus = note.delinquencyStatus || "current";
-      switch (delinquencyStatus) {
-        case "current":
-          stats.currentNotes++;
-          break;
-        case "early_delinquent":
-          stats.earlyDelinquent++;
-          break;
-        case "delinquent":
-          stats.delinquent++;
-          break;
-        case "seriously_delinquent":
-          stats.seriouslyDelinquent++;
-          break;
-        case "default_candidate":
-          stats.defaultCandidates++;
-          stats.collectionsThisMonth++;
-          break;
-      }
-    }
-    
-    return stats;
-  }
 
   // Organization Integrations / Verified Email Domains / Provisioned Phone
   // Numbers CRUD extracted to server/storage/integrationsRepo.ts (mixed into
@@ -1460,150 +1322,9 @@ export class DatabaseStorage implements IStorage {
   // server/storage/customizationRepo.ts (mixed into the prototype below).
 
 
-  // Tasks (17.1, 17.2)
-  async getTasks(orgId: number, filters?: { status?: string; priority?: string; assignedTo?: number; entityType?: string; entityId?: number }): Promise<Task[]> {
-    let conditions = [eq(tasks.organizationId, orgId)];
-    
-    if (filters?.status) {
-      conditions.push(eq(tasks.status, filters.status));
-    }
-    if (filters?.priority) {
-      conditions.push(eq(tasks.priority, filters.priority));
-    }
-    if (filters?.assignedTo !== undefined) {
-      conditions.push(eq(tasks.assignedTo, filters.assignedTo));
-    }
-    if (filters?.entityType) {
-      conditions.push(eq(tasks.entityType, filters.entityType));
-    }
-    if (filters?.entityId !== undefined) {
-      conditions.push(eq(tasks.entityId, filters.entityId));
-    }
-    
-    return await db.select().from(tasks)
-      .where(and(...conditions))
-      .orderBy(desc(tasks.dueDate), desc(tasks.priority));
-  }
+  // Task-management data layer (task CRUD / recurring engine) extracted to
+  // server/storage/tasksRepo.ts (mixed into the prototype below).
 
-  async getTask(orgId: number, id: number): Promise<Task | undefined> {
-    const [task] = await db.select().from(tasks)
-      .where(and(eq(tasks.organizationId, orgId), eq(tasks.id, id)));
-    return task;
-  }
-
-  async createTask(task: InsertTask): Promise<Task> {
-    const [newTask] = await db.insert(tasks).values(task).returning();
-    await this.logActivity({
-      organizationId: task.organizationId,
-      action: "created",
-      entityType: "task",
-      entityId: newTask.id,
-      description: `Task "${newTask.title}" created`,
-    });
-    return newTask;
-  }
-
-  async updateTask(id: number, updates: Partial<InsertTask>, organizationId?: number): Promise<Task> {
-    const conditions = [eq(tasks.id, id)];
-    if (organizationId) conditions.push(eq(tasks.organizationId, organizationId));
-    const [updated] = await db.update(tasks)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  }
-
-  async deleteTask(id: number, organizationId?: number): Promise<void> {
-    const conditions = [eq(tasks.id, id)];
-    if (organizationId) conditions.push(eq(tasks.organizationId, organizationId));
-    await db.delete(tasks).where(and(...conditions));
-  }
-
-  async completeTask(id: number, organizationId?: number): Promise<Task> {
-    const conditions = [eq(tasks.id, id)];
-    if (organizationId) conditions.push(eq(tasks.organizationId, organizationId));
-    const [completed] = await db.update(tasks)
-      .set({
-        status: "completed",
-        completedAt: new Date(),
-        updatedAt: new Date()
-      })
-      .where(and(...conditions))
-      .returning();
-    
-    await this.logActivity({
-      organizationId: completed.organizationId,
-      action: "completed",
-      entityType: "task",
-      entityId: completed.id,
-      description: `Task "${completed.title}" completed`,
-    });
-    
-    return completed;
-  }
-
-  async getRecurringTasksDue(): Promise<Task[]> {
-    return await db.select().from(tasks)
-      .where(and(
-        eq(tasks.isRecurring, true),
-        eq(tasks.status, "completed"),
-        lte(tasks.nextOccurrence, new Date())
-      ));
-  }
-
-  async createNextRecurringTask(parentTask: Task): Promise<Task> {
-    const nextDueDate = this.calculateNextOccurrence(parentTask.dueDate, parentTask.recurrenceRule as string);
-    const nextNextOccurrence = this.calculateNextOccurrence(nextDueDate, parentTask.recurrenceRule as string);
-    
-    const newTask: InsertTask = {
-      organizationId: parentTask.organizationId,
-      title: parentTask.title,
-      description: parentTask.description,
-      dueDate: nextDueDate,
-      priority: parentTask.priority as "low" | "medium" | "high" | "urgent",
-      status: "pending",
-      assignedTo: parentTask.assignedTo,
-      createdBy: parentTask.createdBy,
-      entityType: parentTask.entityType as "lead" | "property" | "deal" | "none",
-      entityId: parentTask.entityId,
-      isRecurring: true,
-      recurrenceRule: parentTask.recurrenceRule,
-      nextOccurrence: nextNextOccurrence,
-      parentTaskId: parentTask.id,
-    };
-    
-    const [created] = await db.insert(tasks).values(newTask).returning();
-    
-    await db.update(tasks)
-      .set({ nextOccurrence: null })
-      .where(eq(tasks.id, parentTask.id));
-    
-    return created;
-  }
-
-  private calculateNextOccurrence(date: Date | null, rule: string): Date {
-    const baseDate = date ? new Date(date) : new Date();
-    const nextDate = new Date(baseDate);
-    
-    switch (rule) {
-      case "daily":
-        nextDate.setDate(nextDate.getDate() + 1);
-        break;
-      case "weekly":
-        nextDate.setDate(nextDate.getDate() + 7);
-        break;
-      case "monthly": {
-        const monthly = addMonths(nextDate, 1);
-        nextDate.setTime(monthly.getTime());
-        break;
-      }
-      case "yearly":
-        nextDate.setFullYear(nextDate.getFullYear() + 1);
-        break;
-    }
-    
-    return nextDate;
-  }
 
   // Audit Log (20.1), Data Retention (20.3) and TCPA Compliance (20.2) live in
   // server/storage/auditRepo.ts and are mixed into DatabaseStorage.prototype
@@ -5017,9 +4738,11 @@ import { dueDiligenceRepo, type DueDiligenceRepo } from "./storage/dueDiligenceR
 import { supportOpsRepo, type SupportOpsRepo } from "./storage/supportOpsRepo";
 import { sequencesRepo, type SequencesRepo } from "./storage/sequencesRepo";
 import { customizationRepo, type CustomizationRepo } from "./storage/customizationRepo";
+import { paymentRemindersRepo, type PaymentRemindersRepo } from "./storage/paymentRemindersRepo";
+import { tasksRepo, type TasksRepo } from "./storage/tasksRepo";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo, PaxRepo, AiRepo, AutomationRepo, MailRepo, VaRepo, DueDiligenceRepo, SupportOpsRepo, SequencesRepo, CustomizationRepo {}
+export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo, PaxRepo, AiRepo, AutomationRepo, MailRepo, VaRepo, DueDiligenceRepo, SupportOpsRepo, SequencesRepo, CustomizationRepo, PaymentRemindersRepo, TasksRepo {}
 
 Object.assign(
   DatabaseStorage.prototype,
@@ -5042,6 +4765,8 @@ Object.assign(
   supportOpsRepo,
   sequencesRepo,
   customizationRepo,
+  paymentRemindersRepo,
+  tasksRepo,
 );
 
 export const storage = new DatabaseStorage();
