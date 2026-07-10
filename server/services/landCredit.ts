@@ -143,6 +143,29 @@ class LandCreditScoring {
   private readonly WEIGHTS = LCS_DIMENSION_WEIGHTS;
 
   /**
+   * The org's calibrated dimension weights (percent, summing to ~100) when
+   * the outcome calibrator has adjusted them, else the methodology defaults.
+   * Fails SAFE to defaults on any read error — a broken calibrator must
+   * never take scoring down.
+   */
+  private async effectiveWeights(organizationId: number): Promise<Record<keyof typeof LCS_DIMENSION_WEIGHTS, number>> {
+    try {
+      const { getCurrentWeights } = await import("./lcsCalibrator");
+      const { weights } = await getCurrentWeights(organizationId);
+      const dims = Object.keys(LCS_DIMENSION_WEIGHTS) as Array<keyof typeof LCS_DIMENSION_WEIGHTS>;
+      // Only trust a complete, sane weight set (every dim present, positive,
+      // totalling ~100) — anything else falls back to the defaults.
+      const total = dims.reduce((t, d) => t + (Number(weights[d]) || 0), 0);
+      if (dims.every((d) => Number.isFinite(weights[d]) && weights[d] > 0) && total >= 90 && total <= 110) {
+        return Object.fromEntries(dims.map((d) => [d, weights[d]])) as Record<keyof typeof LCS_DIMENSION_WEIGHTS, number>;
+      }
+      return { ...LCS_DIMENSION_WEIGHTS };
+    } catch {
+      return { ...LCS_DIMENSION_WEIGHTS };
+    }
+  }
+
+  /**
    * Calculate comprehensive land credit score
    */
   async calculateCreditScore(
@@ -170,14 +193,21 @@ class LandCreditScoring {
       const environmental = await this.scoreEnvironmental(property);
       const market = await this.scoreMarket(property);
 
+      // Outcome loop (S2a): use the org's CALIBRATED dimension weights when
+      // the calibrator has real outcome-backed adjustments; fall back to the
+      // methodology defaults. Until now runLcsCalibration's output was
+      // orphaned — weights were computed from closed-deal outcomes but the
+      // scorer never read them back, so the "learning" never changed a score.
+      const weights = await this.effectiveWeights(Number(organizationId));
+
       // Calculate weighted overall score
       const overall = Math.round(
-        (location.score * this.WEIGHTS.location +
-         physical.score * this.WEIGHTS.physical +
-         legal.score * this.WEIGHTS.legal +
-         financial.score * this.WEIGHTS.financial +
-         environmental.score * this.WEIGHTS.environmental +
-         market.score * this.WEIGHTS.market) / 100
+        (location.score * weights.location +
+         physical.score * weights.physical +
+         legal.score * weights.legal +
+         financial.score * weights.financial +
+         environmental.score * weights.environmental +
+         market.score * weights.market) / 100
       );
 
       // Convert to 300-850 scale (like FICO)
@@ -189,12 +219,12 @@ class LandCreditScoring {
 
       // Analyze strengths and weaknesses
       const factors: ScoringFactors = {
-        location: { ...location, weight: this.WEIGHTS.location },
-        physical: { ...physical, weight: this.WEIGHTS.physical },
-        legal: { ...legal, weight: this.WEIGHTS.legal },
-        financial: { ...financial, weight: this.WEIGHTS.financial },
-        environmental: { ...environmental, weight: this.WEIGHTS.environmental },
-        market: { ...market, weight: this.WEIGHTS.market },
+        location: { ...location, weight: weights.location },
+        physical: { ...physical, weight: weights.physical },
+        legal: { ...legal, weight: weights.legal },
+        financial: { ...financial, weight: weights.financial },
+        environmental: { ...environmental, weight: weights.environmental },
+        market: { ...market, weight: weights.market },
       };
 
       const { strengths, weaknesses } = this.identifyStrengthsWeaknesses(factors);
@@ -205,8 +235,15 @@ class LandCreditScoring {
 
       // Save score to database. Parcel identity (apn/state/county, Tier 2A,
       // migration 0152) keys cross-org cohort benchmarks WITHOUT linking back
-      // to organizations. The rich factors/strengths data still has no schema
-      // home and is only returned to the caller, not persisted.
+      // to organizations.
+      //
+      // Outcome loop (S2a): scoreBreakdown now persists the CANONICAL
+      // six-dimension breakdown — top-level numeric dims (read by
+      // computeConfidenceIntervals via ->>dim::float) plus a rich `factors`
+      // object (read by runLcsCalibration via factors[dim].score) — alongside
+      // the legacy display keys. Before this the persisted keys matched
+      // NEITHER reader, so hasAllDims was always false and calibration could
+      // never reach its minimum sample.
       await db.insert(landCreditScores).values({
         propertyId: Number(propertyId),
         apn: property.apn ?? null,
@@ -219,7 +256,23 @@ class LandCreditScoring {
         overallScore: overall,
         grade,
         scoreBreakdown: {
+          // Canonical dims (numeric, top-level)
           location: location.score,
+          physical: physical.score,
+          legal: legal.score,
+          financial: financial.score,
+          environmental: environmental.score,
+          market: market.score,
+          // Rich per-dimension factors for the calibrator
+          factors: {
+            location: { score: location.score, weight: weights.location },
+            physical: { score: physical.score, weight: weights.physical },
+            legal: { score: legal.score, weight: weights.legal },
+            financial: { score: financial.score, weight: weights.financial },
+            environmental: { score: environmental.score, weight: weights.environmental },
+            market: { score: market.score, weight: weights.market },
+          },
+          // Legacy display keys (pre-S2a consumers)
           characteristics: physical.score,
           marketDemand: market.score,
           economicFactors: financial.score,

@@ -14,6 +14,8 @@ export interface ScoreOutcome {
   dealOutcome: "won" | "lost";
   profit: number;
   daysToSell: number;
+  /** Owning org — outcomes feed the org's own calibration. */
+  organizationId?: number;
 }
 
 export interface CalibrationResult {
@@ -24,7 +26,31 @@ export interface CalibrationResult {
 }
 
 export async function recordScoreOutcome(outcome: ScoreOutcome): Promise<void> {
-  // Store in memory/database for calibration
+  // S2b — this was a log-only no-op: nothing was written anywhere, so the
+  // outcome side of the LCS learning loop silently discarded every closed
+  // deal. Outcomes now persist as `lcs_outcome` rows in model_calibration_log
+  // (the calibration ledger), giving the loop an inspectable trail. The
+  // calibrator itself re-derives outcomes from deals + scores at run time —
+  // this row is the explicit event record, not a second source of truth.
+  try {
+    const { modelCalibrationLog } = await import("@shared/schema");
+    await db.insert(modelCalibrationLog).values({
+      organizationId: outcome.organizationId ?? null,
+      modelName: "lcs_outcome",
+      weights: {
+        lcsAtAcquisition: outcome.lcsAtAcquisition,
+        profit: outcome.profit,
+        daysToSell: outcome.daysToSell,
+        won: outcome.dealOutcome === "won" ? 1 : 0,
+        propertyId: outcome.propertyId,
+      },
+      sampleSize: 1,
+      adjusted: false,
+      reason: `deal ${outcome.dealOutcome} — property ${outcome.propertyId}`,
+    });
+  } catch (err) {
+    logger.error("Failed to persist score outcome", err instanceof Error ? err : undefined);
+  }
   logger.info("Score outcome recorded", {
     propertyId: outcome.propertyId,
     lcs: outcome.lcsAtAcquisition,

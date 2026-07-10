@@ -521,6 +521,29 @@ export function registerDealRoutes(app: Express): void {
 
       const deal = await storage.updateDeal(dealId, validated, undefined, org.id);
 
+      // Outcome loop (S2c): a deal reaching a terminal status feeds the LCS
+      // calibration loop automatically. This was previously reachable only
+      // through the manual /api/ml/record-outcome route, so in practice no
+      // closed deal ever recorded an outcome. Fire-and-forget — calibration
+      // must never block or fail the customer's update.
+      const terminalOutcome =
+        validated.status && validated.status !== existingDeal.status
+          ? validated.status === "closed"
+            ? ("won" as const)
+            : validated.status === "dead" || validated.status === "cancelled"
+              ? ("lost" as const)
+              : null
+          : null;
+      if (terminalOutcome) {
+        import("./services/outcomeCalibrationLoop")
+          .then(({ onDealClosed }) => onDealClosed(org.id, dealId, terminalOutcome))
+          .catch((err) =>
+            logger.warn("Deal outcome calibration hook failed (non-fatal)", {
+              metadata: { dealId, error: err instanceof Error ? err.message : String(err) },
+            }),
+          );
+      }
+
       const user = req.user as any;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({

@@ -980,6 +980,16 @@ function startFounderWeeklyDigestJob() {
           log(`MRR snapshot failed: ${err}`, 'mrr-snapshot');
         });
       }).catch(err => log(`MRR snapshot import failed: ${err}`, 'mrr-snapshot'));
+
+      // S2d — weekly LCS outcome calibration in the same Monday window.
+      // Previously calibration was reachable only through a manual route, so
+      // the score's learning loop never ran on real cadence. Separate lock;
+      // failure never blocks the digests.
+      import('../services/lcsCalibrator').then(({ runLcsCalibrationSweep }) => {
+        withJobLock('lcs_calibration_weekly', TTL_SECONDS, runLcsCalibrationSweep).catch(err => {
+          log(`LCS calibration sweep failed: ${err}`, 'lcs-calibration');
+        });
+      }).catch(err => log(`LCS calibration import failed: ${err}`, 'lcs-calibration'));
     }
   }, ONE_HOUR);
 }

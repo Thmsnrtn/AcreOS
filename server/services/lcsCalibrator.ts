@@ -187,6 +187,34 @@ function pearsonCorrelation(xs: number[], ys: number[]): number {
 
 // ── Core Calibration ────────────────────────────────────────────────
 
+/**
+ * Weekly sweep (S2d): run calibration for every org that closed a deal in
+ * the window. Until now runLcsCalibration was reachable ONLY through the
+ * manual /api/ml route, so calibration never actually ran on real cadence.
+ * Per-org failures are isolated — one bad org never stops the sweep.
+ */
+export async function runLcsCalibrationSweep(): Promise<{ orgsSwept: number; adjusted: number }> {
+  const sixMonthsAgo = new Date(Date.now() - 180 * 86400000);
+  const rows = await db
+    .selectDistinct({ organizationId: deals.organizationId })
+    .from(deals)
+    .where(and(gte(deals.updatedAt, sixMonthsAgo), sql`${deals.status} IN ('closed', 'closed_won', 'dead', 'cancelled')`));
+  let adjusted = 0;
+  for (const row of rows) {
+    if (!row.organizationId) continue;
+    try {
+      const result = await runLcsCalibration(row.organizationId);
+      if (result.adjusted) adjusted++;
+    } catch (err) {
+      logger.warn("[lcs-calibrator] sweep: org calibration failed", {
+        metadata: { organizationId: row.organizationId, error: err instanceof Error ? err.message : String(err) },
+      });
+    }
+  }
+  logger.info("[lcs-calibrator] weekly sweep complete", { metadata: { orgsSwept: rows.length, adjusted } });
+  return { orgsSwept: rows.length, adjusted };
+}
+
 export async function runLcsCalibration(orgId: number): Promise<CalibrationResult> {
   await ensureHydrated(orgId);
   const currentWeights = getWeightsForOrg(orgId);
@@ -236,16 +264,24 @@ export async function runLcsCalibration(orgId: number): Promise<CalibrationResul
 
       if (!lcs) continue;
 
-      const factors = (lcs as any).factors || (lcs as any).scoreBreakdown || {};
+      // S2a: canonical rows persist factors INSIDE scoreBreakdown (with
+      // numeric top-level dims beside it); accept the legacy shapes too.
+      const breakdown = ((lcs as any).scoreBreakdown ?? {}) as Record<string, unknown>;
+      const factors = ((breakdown.factors as Record<string, unknown>) ?? (lcs as any).factors ?? breakdown) as Record<string, any>;
       const accepted = parseFloat(deal.acceptedAmount || "0");
       const offer = parseFloat(deal.offerAmount || "0");
       const profit = accepted > 0 && offer > 0 ? accepted - offer : 0;
 
+      const dimScore = (dim: string): number | null => {
+        const d = factors[dim];
+        if (typeof d === "number" && Number.isFinite(d)) return d;
+        const sc = d?.score;
+        return typeof sc === "number" && Number.isFinite(sc) ? sc : null;
+      };
+
       let hasAllDims = true;
       for (const dim of DIMENSIONS) {
-        const dimData = factors[dim];
-        const score = dimData?.score ?? null;
-        if (score == null) {
+        if (dimScore(dim) == null) {
           hasAllDims = false;
           break;
         }
@@ -255,7 +291,7 @@ export async function runLcsCalibration(orgId: number): Promise<CalibrationResul
 
       profitValues.push(profit);
       for (const dim of DIMENSIONS) {
-        dimensionScores[dim].push(factors[dim]?.score ?? 50);
+        dimensionScores[dim].push(dimScore(dim) ?? 50);
       }
     }
 
