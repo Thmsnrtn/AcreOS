@@ -1631,9 +1631,50 @@ export async function executeTool(
           },
         });
 
+        // S2b — an offer that goes out must exist in the pipeline. Previously
+        // the letter was generated and the Deals board never learned about it
+        // (offer→deal was a manual re-entry). Upsert: reuse the property's
+        // open deal if one exists, else create one in offer_sent. Non-blocking
+        // — pipeline bookkeeping must never fail the letter itself.
+        let pipelineDealId: number | null = null;
+        if (result.success) {
+          try {
+            const { db: dbInstance } = await import("../db");
+            const { deals: dealsTable } = await import("@shared/schema");
+            const { and: andOp, eq: eqOp, sql: sqlTag } = await import("drizzle-orm");
+            const [openDeal] = await dbInstance
+              .select({ id: dealsTable.id })
+              .from(dealsTable)
+              .where(andOp(
+                eqOp(dealsTable.organizationId, org.id),
+                eqOp(dealsTable.propertyId, property.id),
+                sqlTag`${dealsTable.status} NOT IN ('closed', 'cancelled', 'deleted', 'dead')`,
+              ))
+              .limit(1);
+            if (openDeal) {
+              pipelineDealId = openDeal.id;
+            } else {
+              const newDeal = await storage.createDeal({
+                organizationId: org.id,
+                propertyId: property.id,
+                type: "acquisition",
+                status: "offer_sent",
+                offerAmount: String(args.offer_amount),
+                notes: `Auto-created from generated offer letter (${args.buyer_name}, $${args.offer_amount}).`,
+              } as any);
+              pipelineDealId = newDeal.id;
+              invalidateContextCache(org.id);
+            }
+          } catch (dealErr) {
+            logger.warn("[generate_offer_letter] pipeline deal upsert failed (non-fatal)", {
+              metadata: { propertyId: property.id, error: dealErr instanceof Error ? dealErr.message : String(dealErr) },
+            });
+          }
+        }
+
         return { 
           success: result.success, 
-          data: result.success ? { letter: result.letter, subject: result.subject } : undefined,
+          data: result.success ? { letter: result.letter, subject: result.subject, dealId: pipelineDealId } : undefined,
           error: result.error 
         };
       }
@@ -2195,6 +2236,20 @@ export async function executeTool(
             importance: 6,
           });
         } catch (_) { /* non-blocking */ }
+
+        // S2b — drafting an offer on a negotiating deal advances it to
+        // offer_sent (a legal state-machine transition) with the drafted
+        // amount, so the pipeline reflects the offer without manual re-entry.
+        // Any other status is left alone — never fight the state machine.
+        if (deal.status === "negotiating") {
+          try {
+            await storage.updateDeal(deal.id, { status: "offer_sent", offerAmount: String(args.offerAmount) } as any, undefined, org.id);
+          } catch (advErr) {
+            logger.warn("[draft_offer] deal advance to offer_sent failed (non-fatal)", {
+              metadata: { dealId: deal.id, error: advErr instanceof Error ? advErr.message : String(advErr) },
+            });
+          }
+        }
 
         invalidateContextCache(org.id);
         return {

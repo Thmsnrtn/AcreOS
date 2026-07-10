@@ -337,7 +337,10 @@ export default function PublicParcelReportPage() {
 
   async function handleShare() {
     if (!report) return;
-    const url = window.location.origin + window.location.pathname;
+    // Preserve referral attribution (?ref=) when re-sharing; drop other params.
+    const refParam = new URLSearchParams(window.location.search).get("ref");
+    const url = window.location.origin + window.location.pathname +
+      (refParam && /^[A-Za-z0-9_-]{1,16}$/.test(refParam) ? `?ref=${encodeURIComponent(refParam)}` : "");
     const shareTitle = `${report.countyLabel} County, ${report.state} — parcel ${report.apn}`;
     emitMarketingTouch({
       surface: "public:parcel-report",
@@ -366,8 +369,16 @@ export default function PublicParcelReportPage() {
     }
   }
 
+  // Referral loop (S2d): a share link may carry ?ref=CODE (appended when an
+  // AcreOS user shares the report). Propagate it into the signup CTA so the
+  // server-side UTM flush attributes the signup to the sharer — previously
+  // the comment here INTENDED a ref pattern but the href never carried one.
+  const inboundRef = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("ref")
+    : null;
   const signupHref =
-    "/auth?mode=register&utm_source=parcel-report&utm_medium=internal&utm_campaign=public_parcel_report";
+    "/auth?mode=register&utm_source=parcel-report&utm_medium=internal&utm_campaign=public_parcel_report" +
+    (inboundRef && /^[A-Za-z0-9_-]{1,16}$/.test(inboundRef) ? `&ref=${encodeURIComponent(inboundRef)}` : "");
 
   return (
     <main className="min-h-screen bg-background pb-24 lg:pb-0">

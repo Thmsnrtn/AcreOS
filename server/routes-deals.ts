@@ -543,6 +543,19 @@ export function registerDealRoutes(app: Express): void {
             }),
           );
       }
+      // Referral loop (S2d): a WON deal is the referred org's activation
+      // moment — reward the referral (idempotent; no-op when the org wasn't
+      // referred). Previously the reward endpoint had zero callers, so no
+      // referral ever converted.
+      if (terminalOutcome === "won") {
+        import("./services/referralReward")
+          .then(({ applyReferralRewardForOrg }) => applyReferralRewardForOrg(org.id))
+          .catch((err) =>
+            logger.warn("Referral reward hook failed (non-fatal)", {
+              metadata: { dealId, error: err instanceof Error ? err.message : String(err) },
+            }),
+          );
+      }
 
       const user = req.user as any;
       const userId = user?.id || user?.id;
