@@ -100,7 +100,9 @@ export interface TierLimits {
 // caps: starter ≈ $11.25 of $20 (56% of revenue — thin, watch it),
 // pro ≈ $15.50 of $49. Roadmap W4 also tracks that non-chat AI surfaces
 // bypass these thresholds entirely (they hit the per-org COGS ceilings in
-// aiCostCeiling.ts instead).
+// aiCostCeiling.ts instead). S3 follow-up: campaign optimize now mirrors
+// the tier ladder (campaignOptimizer.ts); document intelligence and agent
+// dispatches remain ceiling-only — extend pickPaxModelForOrg to them next.
 export const AI_TURNS_BYOK_THRESHOLDS: Record<SubscriptionTier, number | null> = {
   free: null,       // evaluation tier — the 75/mo ai_requests cap governs; no BYOK lane
   starter: 750,     // ~25 turns/day avg

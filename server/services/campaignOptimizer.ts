@@ -183,9 +183,24 @@ Respond in JSON format:
   ]
 }`;
 
+    // Margin guard (S3 follow-up): the optimizer used to hardcode gpt-4o for
+    // every org — the Scale/Pro tier-downgrade ladder covered ONLY Pax chat,
+    // so heavy free/capped orgs billed premium-model COGS invisibly here.
+    // Resolve the org's pax tier and mirror its ladder onto this client:
+    // free tier / soft-cap-downgraded orgs get the mini model. Fail-open to
+    // the default so a tier lookup hiccup never breaks optimization.
+    let model = "gpt-4o";
+    try {
+      const { pickPaxModelForOrg, PAX_MODEL_HAIKU } = await import("./paxModelTier");
+      const choice = await pickPaxModelForOrg(campaign.organizationId);
+      if (choice.tier === "free" || choice.isDowngraded || choice.model === PAX_MODEL_HAIKU) {
+        model = "gpt-4o-mini";
+      }
+    } catch { /* keep default */ }
+
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
         max_tokens: 1000,

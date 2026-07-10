@@ -1366,7 +1366,7 @@ interface SampleFixtureSet {
   notes: SampleNoteFixture[];
 }
 
-function noteDates(monthsPaid: number): {
+function noteDates(monthsPaid: number, nextPaymentInDays = 12): {
   startDate: Date;
   firstPaymentDate: Date;
   nextPaymentDate: Date;
@@ -1377,7 +1377,11 @@ function noteDates(monthsPaid: number): {
   const startDate = new Date(now);
   startDate.setMonth(startDate.getMonth() - monthsPaid);
   const firstPaymentDate = addMonths(new Date(startDate), 1);
-  const nextPaymentDate = addMonths(new Date(now), 1);
+  // Explicit day offset (S3 follow-up): the old addMonths(now, 1) put the
+  // next payment 30-31 days out — often JUST outside Today's 30-day cash
+  // window, so the sample book lit nothing on the Cash Strip. Negative =
+  // past due (a delinquent note's next payment is BEHIND it, not ahead).
+  const nextPaymentDate = new Date(now.getTime() + nextPaymentInDays * 24 * 60 * 60 * 1000);
   const maturityDate = new Date(startDate);
   maturityDate.setFullYear(maturityDate.getFullYear() + 5);
   return { startDate, firstPaymentDate, nextPaymentDate, maturityDate };
@@ -1444,9 +1448,9 @@ function buildNoteInvestorFixtures(orgId: number): SampleFixtureSet {
     { organizationId: orgId, type: "acquisition", status: "closed", offerAmount: "14200", acceptedAmount: "14200", notes: "Sample note purchase - bought a single performing note off a wholesale tape at ~0.78 of UPB.", propertyIndex: 0 },
   ];
 
-  const dCurrent = noteDates(14); // seasoned, performing
-  const dWatch = noteDates(8);
-  const dDelinquent = noteDates(20);
+  const dCurrent = noteDates(14, 12); // seasoned, performing — due in 12 days
+  const dWatch = noteDates(8, 25); // due toward the end of the 30-day window
+  const dDelinquent = noteDates(20, -38); // 38 days PAST due — matches the copy
   const notes: SampleNoteFixture[] = [
     { organizationId: orgId, originalPrincipal: "15500", currentBalance: "13100", interestRate: "10.5", termMonths: 84, monthlyPayment: "258.61", serviceFee: "15", lateFee: "25", gracePeriodDays: 10, ...dCurrent, status: "active", downPayment: "1550", downPaymentReceived: true, notes_text: "Sample performing note. Borrower current, 14 payments in. Yield holding.", atrExemptionCode: "business_purpose", propertyIndex: 0, borrowerLeadIndex: 0 },
     { organizationId: orgId, originalPrincipal: "18000", currentBalance: "16400", interestRate: "9.75", termMonths: 96, monthlyPayment: "246.18", serviceFee: "15", lateFee: "25", gracePeriodDays: 10, ...dWatch, status: "active", downPayment: "1800", downPaymentReceived: true, notes_text: "Sample watch-list note. Paid 9 days late twice — inside grace but trending. Worth a check-in call.", atrExemptionCode: "business_purpose", propertyIndex: 1, borrowerLeadIndex: 1 },

@@ -77,6 +77,42 @@ describe("buildSampleFixtures — cleanup contract (all personas)", () => {
   }
 });
 
+describe("buildSampleFixtures — the sample book lights Today's Cash Strip", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const daysFromNow = (d: Date) => (d.getTime() - Date.now()) / DAY;
+
+  it("land_flipper (default persona): the seller-financed note is due INSIDE the 30-day window", async () => {
+    // Today's pendingPayments30 sums active notes with nextPaymentDate 0-30
+    // days out. The old fixture dates (+1 calendar month) frequently landed
+    // on day 31 — a zeroed Cash Strip on first visit.
+    const f = await build("land_flipper");
+    const active = f.notes.filter((n) => n.status === "active");
+    expect(active.length).toBeGreaterThanOrEqual(1);
+    for (const n of active) {
+      const d = daysFromNow(n.nextPaymentDate);
+      expect(d).toBeGreaterThanOrEqual(0);
+      expect(d).toBeLessThanOrEqual(30);
+    }
+  });
+
+  it("note_investor: performing notes due in-window; the delinquent note is PAST due (copy says 38 days)", async () => {
+    const f = await build("note_investor");
+    const active = f.notes.filter((n) => n.status === "active");
+    const delinquent = f.notes.filter((n) => n.status === "delinquent");
+    expect(active.length).toBeGreaterThanOrEqual(2);
+    expect(delinquent.length).toBeGreaterThanOrEqual(1);
+    for (const n of active) {
+      const d = daysFromNow(n.nextPaymentDate);
+      expect(d).toBeGreaterThanOrEqual(0);
+      expect(d).toBeLessThanOrEqual(30);
+    }
+    for (const n of delinquent) {
+      // An honest delinquent note's next payment is BEHIND it.
+      expect(daysFromNow(n.nextPaymentDate)).toBeLessThan(0);
+    }
+  });
+});
+
 describe("buildSampleFixtures — persona shaping", () => {
   it("note_investor ships a serviced note book (notes present, mixed performance)", async () => {
     const f = await build("note_investor");
