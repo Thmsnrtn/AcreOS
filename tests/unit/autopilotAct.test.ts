@@ -58,6 +58,18 @@ describe("autopilot act() — judgment routed through governance", () => {
     expect(moveToPolicyAction(move({ kind: "grow_owned_channels" })).scope).toEqual({ kind: "platform" });
   });
 
+  it("S2e: binds the constitution gate at the move layer — toolCall is always populated", () => {
+    // Without a toolCall payload the compliance gate records "skipped" for
+    // every autopilot move. The move's intent (kind + rationale) is now
+    // screened BEFORE a dispatch is enqueued.
+    const a = moveToPolicyAction(move({ kind: "grow_owned_channels", rationale: "publish a guide" }));
+    expect(a.toolCall).toBeDefined();
+    expect(a.toolCall!.toolName).toBe("grow_owned_channels");
+    expect(a.toolCall!.toolInput).toMatchObject({ rationale: "publish a guide", domain: "growth" });
+    expect(a.toolCall!.agentRole).toBe("soren");
+    expect(a.toolCall!.dispatchId).toBeNull();
+  });
+
   it("every outward dispatch prompt carries the craft standard", () => {
     const p = dispatchPromptFor(move({ kind: "grow_owned_channels" }));
     expect(p).toMatch(/genuinely glad to have received it/i);

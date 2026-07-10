@@ -118,6 +118,20 @@ export function moveToPolicyAction(move: RankedMove): PolicyAction {
     actionKind: move.kind,
     scope: PLATFORM_SCOPE, // the autopilot operates AcreOS itself — its own single tenant
     isCustomerFacing,
+    // S2e — bind the constitution gate at the MOVE layer. Without a toolCall
+    // payload the compliance gate recorded "skipped" for every autopilot move
+    // (the stack only screens what it is handed), leaving constitution
+    // screening to the per-tool layer inside a running dispatch. Screening the
+    // move's intent (kind + rationale) here means a violating move is blocked
+    // and paged BEFORE a dispatch is enqueued — defense in depth, not a
+    // replacement for the per-tool screen. The quality/eval gate stays bound
+    // to generated OUTPUT at the dispatch layer — a move has no output yet.
+    toolCall: {
+      dispatchId: null,
+      toolName: move.kind,
+      toolInput: { rationale: move.rationale, domain: b.domain, isNetNew: move.isNetNew === true },
+      agentRole: b.agentRole,
+    },
   };
 }
 

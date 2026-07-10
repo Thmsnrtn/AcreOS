@@ -23,6 +23,8 @@ import { usePageMeta } from "@/hooks/use-document-title";
 
 interface PublicDealRoom {
   slug: string;
+  /** Sharing org's opaque referral code — attributes signups to the sharer. */
+  refCode?: string | null;
   dealType: string | null;
   status: string;
   sharedDocumentsCount: number;
@@ -39,6 +41,13 @@ function fmtDate(iso: string | null): string {
   } catch {
     return iso;
   }
+}
+
+/** Append the sharer's referral code to a signup href when present. */
+function withRef(href: string, refCode: string | null | undefined): string {
+  return refCode && /^[A-Za-z0-9_-]{1,16}$/.test(refCode)
+    ? `${href}&ref=${encodeURIComponent(refCode)}`
+    : href;
 }
 
 export default function DealRoomSharePage() {
@@ -81,7 +90,7 @@ export default function DealRoomSharePage() {
         <header className="mb-8 flex items-center justify-between">
           <Link href="/" className="font-semibold text-lg tracking-tight">AcreOS</Link>
           <Button asChild size="sm" variant="outline">
-            <a href="/auth?utm_source=deal-room-share&utm_campaign=loop&utm_content=header_cta">
+            <a href={withRef("/auth?utm_source=deal-room-share&utm_campaign=loop&utm_content=header_cta", room?.refCode)}>
               Sign up free
             </a>
           </Button>
@@ -174,7 +183,7 @@ export default function DealRoomSharePage() {
                 </ul>
                 <div className="flex flex-wrap gap-3">
                   <Button asChild size="lg">
-                    <a href={`/auth?utm_source=deal-room-share&utm_campaign=loop&utm_content=primary_cta&utm_term=${slug}`}>
+                    <a href={withRef(`/auth?utm_source=deal-room-share&utm_campaign=loop&utm_content=primary_cta&utm_term=${slug}`, room?.refCode)}>
                       Start free <ArrowRight className="w-4 h-4 ml-1.5" aria-hidden="true" />
                     </a>
                   </Button>

@@ -713,11 +713,34 @@ export function registerPublicDealRoomRoute(app: Express): void {
         .then(() => undefined)
         .catch(() => undefined);
 
+      // Referral loop (S2d): attribute conversions from this shared artifact
+      // to the sharing org. Resolve the first (seller-side) participant org's
+      // referral code and expose ONLY the opaque code — no org identity.
+      let refCode: string | null = null;
+      try {
+        const participants = Array.isArray(room.participants)
+          ? (room.participants as Array<{ organizationId?: number; role?: string }>)
+          : [];
+        const sharerOrgId =
+          participants.find((p) => p.role === "seller")?.organizationId ??
+          participants[0]?.organizationId;
+        if (sharerOrgId) {
+          const codeRows = await db.execute<{ referral_code: string }>(
+            sql`SELECT referral_code FROM users WHERE organization_id = ${sharerOrgId} AND referral_code IS NOT NULL LIMIT 1`,
+          );
+          const rows = Array.isArray(codeRows) ? codeRows : (codeRows as { rows?: Array<{ referral_code: string }> }).rows ?? [];
+          refCode = rows[0]?.referral_code ?? null;
+        }
+      } catch {
+        refCode = null; // attribution is best-effort — never break the public page
+      }
+
       // Sanitized projection — strip participants, internal notes, prices.
       // The viewer sees "a deal happened on AcreOS" + dealType + status +
       // documents-shared-count, NOT the actual price or PII.
       return res.json({
         slug,
+        refCode,
         dealType: room.dealType,
         status: room.status,
         sharedDocumentsCount: Array.isArray(room.sharedDocuments)
