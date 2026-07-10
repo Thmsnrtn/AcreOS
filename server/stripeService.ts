@@ -29,7 +29,7 @@ export class StripeService {
     cancelUrl: string,
     metadata?: Record<string, string>,
     trialDays?: number,
-    options?: { couponId?: string; allowPromoCodes?: boolean; enableAch?: boolean }
+    options?: { couponId?: string; allowPromoCodes?: boolean; enableAch?: boolean; subscriptionMetadata?: Record<string, string> }
   ) {
     const stripe = await getUncachableStripeClient();
     // Pillar 8.5 — yearly checkout adds ACH. ACH costs ~$0.80 vs Stripe's
@@ -61,6 +61,16 @@ export class StripeService {
     if (trialDays && trialDays > 0) {
       sessionConfig.subscription_data = {
         trial_period_days: trialDays,
+      };
+    }
+
+    // Stamp metadata onto the SUBSCRIPTION itself (not just the session) so
+    // later subscription.updated/deleted webhooks can tell what kind of
+    // subscription this is (e.g. a vertical-pack add-on vs the org's plan).
+    if (options?.subscriptionMetadata) {
+      sessionConfig.subscription_data = {
+        ...(sessionConfig.subscription_data ?? {}),
+        metadata: options.subscriptionMetadata,
       };
     }
 
