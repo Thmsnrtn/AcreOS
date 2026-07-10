@@ -68,7 +68,7 @@ const BASELINE_OFFENDERS = new Set([
   // they are not new code. getNoteByAccessToken is capability-based by design
   // (the token IS the auth for borrower-facing links); the other two take a
   // bare id from callers that org-verify upstream. Tighten when touched.
-  "server/storage.ts::createAutomationExecution",
+  "server/storage/automationRepo.ts::createAutomationExecution",
   "server/storage.ts::createMessage",
   "server/storage/paxRepo.ts::createPaxProjectFile",
   "server/storage.ts::deleteBorrowerSession",
@@ -104,7 +104,7 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage.ts::getSellerCommunicationsByLead",
   "server/storage.ts::getVaAction",
   "server/storage.ts::incrementMailingOrderPieces",
-  "server/storage.ts::markNotificationRead",
+  "server/storage/automationRepo.ts::markNotificationRead",
   "server/storage.ts::resolveAlert",
   "server/storage.ts::resolveAllAlerts",
   "server/storage.ts::seedSystemTemplates",
