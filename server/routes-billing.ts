@@ -300,6 +300,72 @@ export function registerBillingRoutes(app: Express): void {
     priceId: z.string().min(1, "priceId is required"),
   });
 
+  // ── Vertical-pack add-on checkout (S3) ─────────────────────────────────
+  // The packs were priced, tracked (org_vertical_packs) and P&L'd but had NO
+  // purchase path — /api/stripe/checkout takes one tier priceId only. This
+  // route sells a pack as its own subscription; the webhook activates the
+  // org_vertical_packs row on checkout completion, and pack subscriptions
+  // are metadata-tagged so the generic subscription handlers never mistake
+  // them for the org's plan.
+  const packCheckoutSchema = z.object({
+    packKey: z.enum(["note_investor", "buy_and_hold", "fix_and_flipper", "subdivision", "wholesale"]),
+    interval: z.enum(["monthly", "yearly"]).default("monthly"),
+  });
+
+  api.post("/api/billing/packs/checkout", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), idempotencyMiddleware, async (req, res) => {
+    try {
+      const { stripeService } = await import("./stripeService");
+      const { VERTICAL_PACKS } = await import("@shared/billing/tier-pricing");
+      const org = req.organization;
+      const parsed = packCheckoutSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.issues);
+      }
+      const { packKey, interval } = parsed.data;
+      const pack = VERTICAL_PACKS[packKey];
+      const priceId = interval === "yearly" ? pack.stripePriceIdYearly : pack.stripePriceIdMonthly;
+      if (!priceId) {
+        // Honest 503, mirroring requireStripePriceId for tiers — an
+        // unconfigured pack price is an ops gap, not a customer error.
+        return Errors.serviceUnavailable(
+          res,
+          `${pack.displayName} is not yet purchasable — its Stripe price is not configured.`,
+        );
+      }
+
+      let customerId = org.stripeCustomerId;
+      if (!customerId) {
+        customerId = await withTransaction(async () => {
+          const user = req.user as any;
+          const customer = await stripeService.createCustomer(user.email, user.id, org.name);
+          await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
+          return customer.id;
+        });
+      }
+
+      const packMetadata = {
+        type: "vertical_pack",
+        packKey,
+        interval,
+        organizationId: String(org.id),
+        app: "acreos",
+      };
+      const session = await stripeService.createCheckoutSession(
+        customerId,
+        priceId,
+        `${req.protocol}://${req.get('host')}/settings?pack=success`,
+        `${req.protocol}://${req.get('host')}/settings?pack=cancelled`,
+        packMetadata,
+        undefined, // packs never carry the first-subscription trial
+        { subscriptionMetadata: packMetadata },
+      );
+      return res.json({ url: session.url });
+    } catch (err: any) {
+      logger.error("[billing] pack checkout failed", err instanceof Error ? err : undefined);
+      return Errors.internal(res, err);
+    }
+  });
+
   api.post("/api/stripe/checkout", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), idempotencyMiddleware, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");

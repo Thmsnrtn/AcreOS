@@ -203,6 +203,11 @@ export class WebhookHandlers {
       if (session.metadata?.type === 'credit_purchase') {
         return WebhookHandlers.processCreditPurchase(session);
       }
+      // Vertical-pack add-on (S3) — MUST run before the generic subscription
+      // branch, or the pack sub would be recorded as the org's plan sub.
+      if (session.metadata?.type === 'vertical_pack') {
+        return WebhookHandlers.processVerticalPackPurchase(session);
+      }
 
       // Subscription checkout — eagerly record the subscription ID so the org
       // is updated even if customer.subscription.updated fires before we process it.
@@ -499,6 +504,14 @@ export class WebhookHandlers {
 
   static async processSubscriptionCancelled(subscription: Stripe.Subscription): Promise<void> {
     try {
+      // Vertical-pack guard (S3): a pack add-on cancelling must cancel the
+      // PACK, never downgrade the org's plan to free — without this guard the
+      // generic path below would nuke the whole subscription tier.
+      if (subscription.metadata?.type === 'vertical_pack') {
+        await WebhookHandlers.cancelVerticalPack(subscription);
+        return;
+      }
+
       const customerId = typeof subscription.customer === 'string'
         ? subscription.customer
         : subscription.customer?.id;
@@ -675,6 +688,12 @@ export class WebhookHandlers {
    */
   static async processSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
     try {
+      // Vertical-pack guard (S3): pack add-on subscriptions are managed via
+      // org_vertical_packs, never as the org's plan subscription.
+      if (subscription.metadata?.type === 'vertical_pack') {
+        return;
+      }
+
       const customerId = typeof subscription.customer === 'string'
         ? subscription.customer
         : subscription.customer?.id;
@@ -1181,6 +1200,96 @@ export class WebhookHandlers {
     } catch (err) {
       logger.error('Error processing credit purchase', err instanceof Error ? err : undefined);
       throw err;
+    }
+  }
+
+  /**
+   * Vertical-pack add-on activation (S3). The checkout session carries
+   * metadata {type:"vertical_pack", packKey, interval, organizationId}; on
+   * completion the org_vertical_packs row is upserted active so the pack's
+   * businessTypeOnly surfaces unlock. Idempotent on (organization, packKey).
+   */
+  static async processVerticalPackPurchase(session: Stripe.Checkout.Session): Promise<void> {
+    try {
+      const { organizationId, packKey, interval } = session.metadata || {};
+      if (!organizationId || !packKey) {
+        logger.error('[webhook] vertical_pack session missing organizationId/packKey metadata');
+        return;
+      }
+      const orgId = parseInt(organizationId, 10);
+      if (!Number.isFinite(orgId)) return;
+
+      const { VERTICAL_PACKS, packPriceCents } = await import('@shared/billing/tier-pricing');
+      const pack = (VERTICAL_PACKS as Record<string, { key: string }>)[packKey];
+      if (!pack) {
+        logger.error(`[webhook] vertical_pack session names unknown pack '${packKey}'`);
+        return;
+      }
+      const billingInterval = interval === 'yearly' ? 'yearly' : 'monthly';
+      const priceCents = packPriceCents(packKey as never, billingInterval as never);
+
+      // Resolve the subscription's item id for later per-item management.
+      let subscriptionItemId: string | null = null;
+      try {
+        const subId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
+        if (subId) {
+          const stripe = await getUncachableStripeClient();
+          const sub = await stripe.subscriptions.retrieve(subId);
+          subscriptionItemId = sub.items?.data?.[0]?.id ?? subId;
+        }
+      } catch {
+        subscriptionItemId = null; // best-effort — activation must not fail on this
+      }
+
+      const { orgVerticalPacks } = await import('@shared/schema');
+      await db
+        .insert(orgVerticalPacks)
+        .values({
+          organizationId: orgId,
+          packKey,
+          status: 'active',
+          activatedAt: new Date(),
+          billingInterval,
+          priceCents,
+          stripeSubscriptionItemId: subscriptionItemId,
+          notes: `Activated via checkout session ${session.id}`,
+        })
+        .onConflictDoUpdate({
+          target: [orgVerticalPacks.organizationId, orgVerticalPacks.packKey],
+          set: {
+            status: 'active',
+            activatedAt: new Date(),
+            cancelledAt: null,
+            cancelAt: null,
+            billingInterval,
+            priceCents,
+            stripeSubscriptionItemId: subscriptionItemId,
+            updatedAt: new Date(),
+          },
+        });
+
+      logger.info(`[webhook] vertical pack activated: org ${orgId}, pack ${packKey} (${billingInterval})`);
+    } catch (err) {
+      logger.error('[webhook] Error processing vertical pack purchase', err instanceof Error ? err : undefined);
+      throw err;
+    }
+  }
+
+  /** Mark a vertical pack cancelled from its subscription's metadata. */
+  static async cancelVerticalPack(subscription: Stripe.Subscription): Promise<void> {
+    try {
+      const { organizationId, packKey } = subscription.metadata || {};
+      const orgId = parseInt(organizationId ?? '', 10);
+      if (!Number.isFinite(orgId) || !packKey) return;
+      const { orgVerticalPacks } = await import('@shared/schema');
+      const { and, eq } = await import('drizzle-orm');
+      await db
+        .update(orgVerticalPacks)
+        .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(orgVerticalPacks.organizationId, orgId), eq(orgVerticalPacks.packKey, packKey)));
+      logger.info(`[webhook] vertical pack cancelled: org ${orgId}, pack ${packKey}`);
+    } catch (err) {
+      logger.error('[webhook] Error cancelling vertical pack', err instanceof Error ? err : undefined);
     }
   }
 
