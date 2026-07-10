@@ -26,6 +26,7 @@
  */
 
 import type { AutopilotDomain } from "./policyGate";
+import { HARD_STOP_SPEND_LIMIT_USD } from "./hardStops";
 
 /** The bounds a grant may never exceed. Every field is a CEILING / allowlist. */
 export interface WitnessGrantBounds {
@@ -96,8 +97,17 @@ export function evaluateWitnessGrant(grant: WitnessGrant, req: WitnessRequest, n
 
   if (!grant.bounds.domains.includes(req.domain)) return DENY(`domain "${req.domain}" not in grant`);
 
-  if (!(req.predictedCostUsd <= grant.bounds.maxCostUsd)) {
-    return DENY(`action cost $${req.predictedCostUsd} exceeds grant ceiling $${grant.bounds.maxCostUsd}`);
+  // The permanent >$500 spend hard-stop binds ABOVE any grant: a founder-issued
+  // grant whose maxCostUsd exceeds the hard-stop cannot authorize a spend past
+  // it. Previously grant ceilings were unclamped, so a generous grant could
+  // delegate a spend the hard-stop list says is never autonomous.
+  const effectiveCeiling = Math.min(grant.bounds.maxCostUsd, HARD_STOP_SPEND_LIMIT_USD);
+  if (!(req.predictedCostUsd <= effectiveCeiling)) {
+    return DENY(
+      effectiveCeiling < grant.bounds.maxCostUsd
+        ? `action cost $${req.predictedCostUsd} exceeds the permanent $${HARD_STOP_SPEND_LIMIT_USD} spend hard-stop (grant ceiling $${grant.bounds.maxCostUsd} is clamped to it)`
+        : `action cost $${req.predictedCostUsd} exceeds grant ceiling $${grant.bounds.maxCostUsd}`,
+    );
   }
   if (req.movesMoney && grant.bounds.denyMoney) return DENY("grant does not cover money-moving actions");
   if (req.isBroadcast && grant.bounds.denyBroadcast) return DENY("grant does not cover broadcasts");

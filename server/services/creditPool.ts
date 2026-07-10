@@ -147,6 +147,14 @@ export interface PoolDebitResult {
   reason?: "pool_exhausted" | "pool_debit_error";
   /** True when an active BYOK credential made this action free to the platform. */
   byokBypassed?: boolean;
+  /**
+   * Set when the monthly pool was exhausted but the org's PURCHASED credit
+   * balance (credit packs — organizations.creditBalance) funded the action
+   * instead. Before this overflow lane existed the two ledgers never
+   * reconciled: a customer who hit "pool used up" and bought a credit pack
+   * stayed blocked, because poolDebit never read creditBalance.
+   */
+  fundedBy?: "purchased_credits";
 }
 
 async function fetchOrgTier(
@@ -341,6 +349,53 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
           .where(eq(financialLedger.externalEventId, args.externalEventId))
           .limit(1);
         if (!replay) {
+          // ── Purchased-credit overflow ─────────────────────────────────
+          // The monthly pool is exhausted, but the org may hold PURCHASED
+          // credits (credit packs → organizations.creditBalance). Draw from
+          // that balance before refusing, so buying a pack actually relieves
+          // the wall that sent the customer to the purchase modal. The
+          // deduction is atomically guarded (balance >= amount) inside
+          // deductCredits; on success we still write the opex ledger row so
+          // per-org COGS stays honest.
+          const { creditService } = await import("./credits");
+          const overflowTx = await creditService
+            .deductCredits(args.organizationId, cents, `Pool overflow: ${args.action}`, {
+              source: "credit-pool-overflow",
+              action: args.action,
+              externalEventId: args.externalEventId,
+            })
+            .catch(() => null);
+          if (overflowTx) {
+            const recorded = await db
+              .insert(financialLedger)
+              .values({
+                organizationId: args.organizationId,
+                bucket: "opex_available",
+                category: "opex_spent",
+                amountCents: -cents,
+                feature,
+                provider,
+                externalEventId: args.externalEventId,
+                postedAt: new Date(),
+                postedBy: `system:credit-pool:${args.action}:purchased-overflow`,
+                notes: args.notes ?? null,
+              })
+              .onConflictDoNothing({ target: financialLedger.externalEventId })
+              .returning({ id: financialLedger.id });
+            logger.info("[credit-pool] pool exhausted — funded from purchased credit balance", {
+              metadata: { organizationId: args.organizationId, action: args.action, cents },
+            });
+            return {
+              allowed: true,
+              debitedCents: cents,
+              remaining: 0,
+              poolMonthly: poolMonthlyForGate,
+              ledgerRowId: recorded[0]?.id ?? null,
+              overPool: true,
+              fundedBy: "purchased_credits",
+            };
+          }
+
           logger.warn("[credit-pool] debit refused — pool exhausted (atomic gate)", {
             metadata: { organizationId: args.organizationId, action: args.action, poolMonthly: poolMonthlyForGate, tier },
           });
@@ -442,8 +497,10 @@ export function poolRefusalDetails(action: CreditAction, debit: PoolDebitResult)
     poolMonthly: debit.poolMonthly,
     byokAvailable: byokAvailableForAction(action),
     byokSettingsUrl: "/settings/byok",
+    purchaseAvailable: true,
+    purchaseUrl: "/usage",
     message:
-      "Your monthly AcreOS credit pool is used up. Add your own provider key in Settings → Your provider keys to keep going without limits, or wait for the monthly reset.",
+      "Your monthly AcreOS credit pool is used up. Buy a credit pack on the Usage page to keep going now, add your own provider key in Settings → Your provider keys, or wait for the monthly reset.",
   };
 }
 

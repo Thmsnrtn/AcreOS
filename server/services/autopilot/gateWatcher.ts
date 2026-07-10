@@ -45,20 +45,12 @@ import { logger } from "../../utils/logger";
 // Pure data — the hard-stop list and the gates
 // ============================================
 
-/**
- * The permanent hard-stops (mature-machine §1.4 + §4, final row): these
- * classes of action are NEVER autonomous, forever. Encoded as data so tests
- * can pin the list and so the ask bodies can cite it verbatim.
- */
-export const HARD_STOPS = [
-  "pricing_changes",
-  "legal_signing",
-  "spend_over_500_usd",
-  "customer_data_deletion",
-] as const;
-
-/** The ">$500 spend" hard-stop, as a machine constant (USD). */
-export const HARD_STOP_SPEND_LIMIT_USD = 500;
+// The hard-stop list + spend constant now live in ./hardStops (a PURE data
+// module) so pure policy code (witnessGrant, the hands registry) can enforce
+// them without importing this file's db/logger dependencies. Re-exported here
+// so existing callers keep working.
+import { HARD_STOPS, HARD_STOP_SPEND_LIMIT_USD } from "./hardStops";
+export { HARD_STOPS, HARD_STOP_SPEND_LIMIT_USD };
 
 export type GateConditionSpec =
   | { kind: "mrr_at_least"; thresholdCents: number }

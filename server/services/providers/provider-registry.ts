@@ -575,13 +575,20 @@ class ProviderRegistry {
     const action = creditActionForCategory(category);
     if (!action) return; // category has no paid-lookup weight — nothing to debit
 
-    // Idempotency anchor: provider + category + a stable input fingerprint.
+    // Idempotency anchor: provider + category + a stable input fingerprint,
+    // bucketed by UTC day. The old `Date.now()` suffix made every call unique,
+    // defeating poolDebit's externalEventId dedup entirely — request replays
+    // and double-fires wrote duplicate opex rows and inflated per-org COGS in
+    // unitEconomics. Day-bucketing collapses same-day duplicates of the same
+    // lookup into one ledger row while a genuine repeat lookup on a later day
+    // (a fresh provider charge) still records.
     const fingerprint = buildCacheKey(providerName, category, input);
+    const dayBucket = new Date().toISOString().slice(0, 10);
     await poolDebit({
       organizationId,
       action,
       units: 1,
-      externalEventId: `datalookup:${fingerprint}:${Date.now()}`,
+      externalEventId: `datalookup:${fingerprint}:${dayBucket}`,
       notes: `${providerName} ${category} lookup (${costCents}¢ provider cost)`,
       // Post-hoc COGS recorder: the paid lookup already happened, so the
       // ledger row must be written even when the pool is over — never gate.
