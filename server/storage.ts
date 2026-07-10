@@ -30,12 +30,9 @@ import {
   organizations, teamMembers, orgCoOwners, leads, leadActivities, properties, deals,
   notes, payments, campaigns, campaignOptimizations, campaignResponses, agentConfigs, agentTasks, conversations,
   messages, activityLog, usageEvents,
-  dueDiligenceChecklists, dueDiligenceDossiers,
+  dueDiligenceDossiers,
   activityEvents,
   tasks,
-  targetCounties,
-  offerLetters,
-  offerTemplates,
   skipTraces,
   propertyListings,
   parcelSnapshots,
@@ -1497,175 +1494,10 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  // Target Counties
-  async getTargetCounties(orgId: number) {
-    return db.select().from(targetCounties).where(eq(targetCounties.organizationId, orgId)).orderBy(targetCounties.priority, targetCounties.name);
-  }
+  // Acquisition-targeting data layer (target counties / offer letters +
+  // templates / enhanced DD checklist) extracted to
+  // server/storage/acquisitionRepo.ts (mixed into the prototype below).
 
-  async getTargetCounty(orgId: number, id: number) {
-    const [county] = await db.select().from(targetCounties).where(and(eq(targetCounties.id, id), eq(targetCounties.organizationId, orgId)));
-    return county;
-  }
-
-  async createTargetCounty(county: InsertTargetCounty) {
-    const [created] = await db.insert(targetCounties).values(county).returning();
-    return created;
-  }
-
-  async updateTargetCounty(id: number, updates: Partial<InsertTargetCounty>, organizationId?: number) {
-    const conditions = [eq(targetCounties.id, id)];
-    if (organizationId) conditions.push(eq(targetCounties.organizationId, organizationId));
-    const [updated] = await db.update(targetCounties).set({ ...updates, updatedAt: new Date() }).where(and(...conditions)).returning();
-    return updated;
-  }
-
-  async deleteTargetCounty(id: number, organizationId?: number) {
-    const conditions = [eq(targetCounties.id, id)];
-    if (organizationId) conditions.push(eq(targetCounties.organizationId, organizationId));
-    await db.delete(targetCounties).where(and(...conditions));
-  }
-
-  // Offer Letters
-  async getOfferLetters(orgId: number, filters?: { status?: string; batchId?: string }) {
-    const conditions = [eq(offerLetters.organizationId, orgId)];
-    if (filters?.status) {
-      conditions.push(eq(offerLetters.status, filters.status));
-    }
-    if (filters?.batchId) {
-      conditions.push(eq(offerLetters.batchId, filters.batchId));
-    }
-
-    return db.select().from(offerLetters)
-      .where(and(...conditions))
-      .orderBy(desc(offerLetters.createdAt));
-  }
-
-  async getOfferLetter(orgId: number, id: number) {
-    const [letter] = await db.select().from(offerLetters)
-      .where(and(eq(offerLetters.id, id), eq(offerLetters.organizationId, orgId)));
-    return letter;
-  }
-
-  async createOfferLetter(letter: InsertOfferLetter) {
-    const [created] = await db.insert(offerLetters).values(letter).returning();
-    return created;
-  }
-
-  async createOfferLettersBatch(letters: InsertOfferLetter[]) {
-    if (letters.length === 0) return [];
-    const created = await db.insert(offerLetters).values(letters).returning();
-    return created;
-  }
-
-  async updateOfferLetter(id: number, updates: Partial<InsertOfferLetter>, organizationId?: number) {
-    const conditions = [eq(offerLetters.id, id)];
-    if (organizationId) conditions.push(eq(offerLetters.organizationId, organizationId));
-    const [updated] = await db.update(offerLetters)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  }
-
-  async deleteOfferLetter(id: number, organizationId?: number) {
-    const conditions = [eq(offerLetters.id, id)];
-    if (organizationId) conditions.push(eq(offerLetters.organizationId, organizationId));
-    await db.delete(offerLetters).where(and(...conditions));
-  }
-
-  // Offer Templates
-  async getOfferTemplates(orgId: number) {
-    return db.select().from(offerTemplates)
-      .where(eq(offerTemplates.organizationId, orgId))
-      .orderBy(desc(offerTemplates.isDefault), offerTemplates.name);
-  }
-
-  async getOfferTemplate(orgId: number, id: number) {
-    const [template] = await db.select().from(offerTemplates)
-      .where(and(eq(offerTemplates.id, id), eq(offerTemplates.organizationId, orgId)));
-    return template;
-  }
-
-  async createOfferTemplate(template: InsertOfferTemplate) {
-    const [created] = await db.insert(offerTemplates).values(template).returning();
-    return created;
-  }
-
-  async updateOfferTemplate(id: number, updates: Partial<InsertOfferTemplate>, organizationId?: number) {
-    const conditions = [eq(offerTemplates.id, id)];
-    if (organizationId) conditions.push(eq(offerTemplates.organizationId, organizationId));
-    const [updated] = await db.update(offerTemplates)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  }
-
-  async deleteOfferTemplate(id: number, organizationId?: number) {
-    const conditions = [eq(offerTemplates.id, id)];
-    if (organizationId) conditions.push(eq(offerTemplates.organizationId, organizationId));
-    await db.delete(offerTemplates).where(and(...conditions));
-  }
-
-  // Due Diligence Checklists (Enhanced)
-  async getDueDiligenceChecklist(propertyId: number) {
-    const [checklist] = await db.select().from(dueDiligenceChecklists)
-      .where(eq(dueDiligenceChecklists.propertyId, propertyId));
-    return checklist;
-  }
-
-  async getOrCreateDueDiligenceChecklist(orgId: number, propertyId: number) {
-    const existing = await this.getDueDiligenceChecklist(propertyId);
-    if (existing) return existing;
-
-    const defaultItems = [
-      { id: "env-flood", category: "environmental", name: "Flood Zone Check", status: "pending", dataSource: "FEMA" },
-      { id: "env-wetlands", category: "environmental", name: "Wetlands Assessment", status: "pending", dataSource: "NWI" },
-      { id: "env-soil", category: "environmental", name: "Soil Analysis", status: "pending", dataSource: "USDA NRCS" },
-      { id: "env-epa", category: "environmental", name: "EPA Superfund Sites", status: "pending", dataSource: "EPA TRI" },
-      { id: "tax-history", category: "taxes", name: "Tax History Review", status: "pending", dataSource: "County Records" },
-      { id: "tax-back", category: "taxes", name: "Back Taxes Check", status: "pending", dataSource: "County Treasurer" },
-      { id: "tax-sale", category: "taxes", name: "Tax Sale Status", status: "pending", dataSource: "County Records" },
-      { id: "legal-hoa", category: "legal", name: "HOA/POA Check", status: "pending", dataSource: "Title Search" },
-      { id: "legal-deed", category: "legal", name: "Deed Restrictions", status: "pending", dataSource: "County Recorder" },
-      { id: "legal-easements", category: "legal", name: "Easements Review", status: "pending", dataSource: "Title Search" },
-      { id: "access-legal", category: "access", name: "Legal Access Verification", status: "pending", dataSource: "Survey/Plat" },
-      { id: "access-road", category: "access", name: "Road Type Assessment", status: "pending", dataSource: "Site Visit" },
-      { id: "access-maintenance", category: "access", name: "Road Maintenance Responsibility", status: "pending", dataSource: "County/HOA" },
-      { id: "util-electric", category: "utilities", name: "Electric Availability", status: "pending", dataSource: "Utility Provider" },
-      { id: "util-water", category: "utilities", name: "Water Access", status: "pending", dataSource: "Utility/Well Records" },
-      { id: "util-sewer", category: "utilities", name: "Sewer/Septic Status", status: "pending", dataSource: "Health Dept" },
-      { id: "util-internet", category: "utilities", name: "Internet Availability", status: "pending", dataSource: "ISP Check" },
-    ];
-
-    const [checklist] = await db.insert(dueDiligenceChecklists).values({
-      organizationId: orgId,
-      propertyId,
-      status: "in_progress",
-      completedPercent: 0,
-      items: defaultItems,
-    }).returning();
-    return checklist;
-  }
-
-  async updateDueDiligenceChecklist(id: number, updates: Partial<InsertDueDiligenceChecklist>, organizationId?: number) {
-    if (updates.items) {
-      const items = updates.items as any[];
-      const completedCount = items.filter(i => i.status === "passed" || i.status === "failed" || i.status === "skipped").length;
-      updates.completedPercent = Math.round((completedCount / items.length) * 100);
-      if (updates.completedPercent === 100) {
-        updates.status = "completed";
-        updates.completedAt = new Date();
-      }
-    }
-    const conditions = [eq(dueDiligenceChecklists.id, id)];
-    if (organizationId) conditions.push(eq(dueDiligenceChecklists.organizationId, organizationId));
-    const [updated] = await db.update(dueDiligenceChecklists)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  }
 
   // Skip Traces
   // R3: input_data and results carry PII (DOB hints, last-4 SSN, phones,
@@ -4740,9 +4572,10 @@ import { sequencesRepo, type SequencesRepo } from "./storage/sequencesRepo";
 import { customizationRepo, type CustomizationRepo } from "./storage/customizationRepo";
 import { paymentRemindersRepo, type PaymentRemindersRepo } from "./storage/paymentRemindersRepo";
 import { tasksRepo, type TasksRepo } from "./storage/tasksRepo";
+import { acquisitionRepo, type AcquisitionRepo } from "./storage/acquisitionRepo";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo, PaxRepo, AiRepo, AutomationRepo, MailRepo, VaRepo, DueDiligenceRepo, SupportOpsRepo, SequencesRepo, CustomizationRepo, PaymentRemindersRepo, TasksRepo {}
+export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo, PaxRepo, AiRepo, AutomationRepo, MailRepo, VaRepo, DueDiligenceRepo, SupportOpsRepo, SequencesRepo, CustomizationRepo, PaymentRemindersRepo, TasksRepo, AcquisitionRepo {}
 
 Object.assign(
   DatabaseStorage.prototype,
@@ -4767,6 +4600,7 @@ Object.assign(
   customizationRepo,
   paymentRemindersRepo,
   tasksRepo,
+  acquisitionRepo,
 );
 
 export const storage = new DatabaseStorage();
