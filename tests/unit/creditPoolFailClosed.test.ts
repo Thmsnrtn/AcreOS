@@ -25,6 +25,10 @@
  *   9. BYOK lookup error (gate)   → allowed:false, "pool_debit_error",
  *      never guesses the payer, no ledger write
  *  10. BYOK lookup error (record) → proceeds, COGS row still recorded
+ *
+ * Track A (2026-07) — refundPoolDebit reversal semantics: positive row keyed
+ * `${originalEventId}:refund`, onConflictDoNothing idempotency on the
+ * external_event_id unique index, silent no-op on junk amounts, never throws.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -43,6 +47,10 @@ const state = {
   /** Purchased-credit overflow (S1c): does creditBalance cover the debit? */
   purchasedCreditsCover: false,
   deductCalls: 0,
+  /** Rows passed to db.insert(...).values(...) — refund-shape assertions. */
+  insertedValues: [] as any[],
+  /** `target` passed to onConflictDoNothing — pins the idempotency column. */
+  conflictTargets: [] as any[],
 };
 
 function mockModules() {
@@ -110,14 +118,30 @@ function mockModules() {
           return Promise.resolve({ rows: [{ id: 42 }] });
         },
         insert: () => ({
-          values: () => ({
-            onConflictDoNothing: () => ({
-              returning: () => {
-                state.insertCalls += 1;
-                if (state.insertThrows) return Promise.reject(new Error("ledger down"));
-                return Promise.resolve([{ id: 42 }]);
-              },
-            }),
+          values: (v: any) => ({
+            // Two call shapes share this chain: the record-mode debit awaits
+            // .onConflictDoNothing().returning(), while refundPoolDebit
+            // awaits .onConflictDoNothing({target}) DIRECTLY — so the return
+            // must be a thenable that also carries .returning().
+            onConflictDoNothing: (conflictOpts?: { target?: unknown }) => {
+              const chain: any = {
+                returning: () => {
+                  state.insertCalls += 1;
+                  if (state.insertThrows) return Promise.reject(new Error("ledger down"));
+                  return Promise.resolve([{ id: 42 }]);
+                },
+                then: (resolve: any, reject: any) => {
+                  if (state.insertThrows) {
+                    return Promise.reject(new Error("ledger down")).then(resolve, reject);
+                  }
+                  state.insertCalls += 1;
+                  state.insertedValues.push(v);
+                  state.conflictTargets.push(conflictOpts?.target);
+                  return Promise.resolve().then(resolve, reject);
+                },
+              };
+              return chain;
+            },
           }),
         }),
       },
@@ -170,6 +194,8 @@ beforeEach(() => {
   state.replayRowExists = false;
   state.purchasedCreditsCover = false;
   state.deductCalls = 0;
+  state.insertedValues = [];
+  state.conflictTargets = [];
 });
 
 describe("poolDebit — fail-CLOSED semantics (Tier 1I)", () => {
@@ -357,5 +383,74 @@ describe("poolRefusalDetails — the 429 payload shape", () => {
     const { byokAvailableForAction } = await importPool();
     expect(byokAvailableForAction("parcel_lookup_paid")).toBe(false);
     expect(byokAvailableForAction("comps_lookup")).toBe(false);
+  });
+});
+
+describe("refundPoolDebit — Track A reversal semantics", () => {
+  // Callers (mail queue, mailFlusher) refund AFTER a provider submit fails
+  // mid-flight: the reversal must restore the pool balance (positive row),
+  // collapse on retries (unique externalEventId), and NEVER add a second
+  // failure to an already-failing request path.
+
+  it("writes a POSITIVE reversal row keyed `${originalEventId}:refund`", async () => {
+    const { refundPoolDebit } = await importPool();
+    await refundPoolDebit({
+      organizationId: 7,
+      originalEventId: "mail:queue:abc",
+      amountCents: 150,
+      reason: "postgrid submit failed",
+    });
+    expect(state.insertedValues).toHaveLength(1);
+    expect(state.insertedValues[0]).toMatchObject({
+      organizationId: 7,
+      bucket: "opex_available",
+      category: "opex_spent",
+      amountCents: 150, // positive — reverses the negative debit on the gauge SUM
+      feature: "refund",
+      externalEventId: "mail:queue:abc:refund",
+      postedBy: "system:credit-pool:refund",
+      notes: "postgrid submit failed",
+    });
+    expect(state.insertedValues[0].amountCents).toBeGreaterThan(0);
+  });
+
+  it("retry-idempotency is wired through onConflictDoNothing on externalEventId", async () => {
+    const { refundPoolDebit } = await importPool();
+    await refundPoolDebit({
+      organizationId: 7,
+      originalEventId: "mail:queue:abc",
+      amountCents: 150,
+      reason: "retry",
+    });
+    // The unique index on external_event_id is what makes a double refund a
+    // no-op in Postgres — pin that the conflict target is exactly that column.
+    expect(state.conflictTargets).toEqual(["fl.external_event_id"]);
+  });
+
+  it("non-positive or non-finite amounts are a silent no-op (no ledger write)", async () => {
+    const { refundPoolDebit } = await importPool();
+    for (const amountCents of [0, -25, NaN, Number.POSITIVE_INFINITY]) {
+      await refundPoolDebit({
+        organizationId: 7,
+        originalEventId: "mail:queue:bad",
+        amountCents,
+        reason: "bogus amount",
+      });
+    }
+    expect(state.insertedValues).toHaveLength(0);
+    expect(state.insertCalls).toBe(0);
+  });
+
+  it("NEVER throws — a ledger failure is swallowed (logged), the caller's original error stays primary", async () => {
+    state.insertThrows = true;
+    const { refundPoolDebit } = await importPool();
+    await expect(
+      refundPoolDebit({
+        organizationId: 7,
+        originalEventId: "mail:queue:down",
+        amountCents: 150,
+        reason: "ledger down during refund",
+      }),
+    ).resolves.toBeUndefined();
   });
 });
