@@ -86,7 +86,7 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage.ts::getCollectionEnrollmentsByNote",
   "server/storage.ts::getCollectionEnrollmentsBySequence",
   "server/storage.ts::getDocumentSignatures",
-  "server/storage.ts::getDueDiligenceChecklist",
+  "server/storage/acquisitionRepo.ts::getDueDiligenceChecklist",
   "server/storage.ts::getDueScheduledTasks",
   "server/storage/mailRepo.ts::getEmailSenderIdentityByEmail",
   "server/storage/supportOpsRepo.ts::getEscalatedCases",
