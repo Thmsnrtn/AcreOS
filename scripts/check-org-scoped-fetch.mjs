@@ -102,7 +102,7 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage.ts::getRemindersForNote",
   "server/storage.ts::getScheduledTask",
   "server/storage.ts::getSellerCommunicationsByLead",
-  "server/storage.ts::getVaAction",
+  "server/storage/vaRepo.ts::getVaAction",
   "server/storage/mailRepo.ts::incrementMailingOrderPieces",
   "server/storage/automationRepo.ts::markNotificationRead",
   "server/storage.ts::resolveAlert",
