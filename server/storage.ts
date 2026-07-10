@@ -130,19 +130,12 @@ import {
   type CollectionSequence, type InsertCollectionSequence,
   type CollectionEnrollment, type InsertCollectionEnrollment,
   type CountyResearch, type InsertCountyResearch,
-  buyerReservations,
   type BuyerReservation, type InsertBuyerReservation,
-  escrowChecklists,
   type EscrowChecklist, type InsertEscrowChecklist,
-  closingPackets,
   type ClosingPacket, type InsertClosingPacket,
-  autopayEnrollments,
   type AutopayEnrollment, type InsertAutopayEnrollment,
-  payoffQuotes,
   type PayoffQuote, type InsertPayoffQuote,
-  trustLedger,
   type TrustLedgerEntry, type InsertTrustLedger,
-  delinquencyEscalations,
   type DelinquencyEscalation, type InsertDelinquencyEscalation,
   playbookInstances,
   type PlaybookInstance, type InsertPlaybookInstance,
@@ -1611,269 +1604,11 @@ export class DatabaseStorage implements IStorage {
   // PHASE 4: CLOSING & SERVICING AUTOMATION
   // ============================================
 
-  // Buyer Reservations
-  async getBuyerReservations(organizationId: number): Promise<BuyerReservation[]> {
-    return await db.select().from(buyerReservations)
-      .where(eq(buyerReservations.organizationId, organizationId))
-      .orderBy(desc(buyerReservations.createdAt));
-  }
+  // Closing + servicing data layer (buyer reservations / escrow checklists /
+  // closing packets / autopay / payoff quotes / trust ledger / delinquency
+  // escalations) extracted to server/storage/closingServicingRepo.ts
+  // (mixed into the prototype below).
 
-  async getBuyerReservationById(organizationId: number, id: number): Promise<BuyerReservation | undefined> {
-    const [reservation] = await db.select().from(buyerReservations)
-      .where(and(eq(buyerReservations.id, id), eq(buyerReservations.organizationId, organizationId)));
-    return reservation;
-  }
-
-  async getBuyerReservationsByProperty(organizationId: number, propertyId: number): Promise<BuyerReservation[]> {
-    return await db.select().from(buyerReservations)
-      .where(and(eq(buyerReservations.propertyId, propertyId), eq(buyerReservations.organizationId, organizationId)))
-      .orderBy(desc(buyerReservations.createdAt));
-  }
-
-  async createBuyerReservation(data: InsertBuyerReservation): Promise<BuyerReservation> {
-    const [created] = await db.insert(buyerReservations).values(data).returning();
-    return created;
-  }
-
-  async updateBuyerReservation(organizationId: number, id: number, data: Partial<InsertBuyerReservation>): Promise<BuyerReservation | undefined> {
-    const [updated] = await db.update(buyerReservations)
-      .set(data)
-      .where(and(eq(buyerReservations.id, id), eq(buyerReservations.organizationId, organizationId)))
-      .returning();
-    return updated;
-  }
-
-  async deleteBuyerReservation(organizationId: number, id: number): Promise<boolean> {
-    const result = await db.delete(buyerReservations)
-      .where(and(eq(buyerReservations.id, id), eq(buyerReservations.organizationId, organizationId)));
-    return true;
-  }
-
-  // Escrow Checklists
-  async getEscrowChecklists(organizationId: number): Promise<EscrowChecklist[]> {
-    return await db.select().from(escrowChecklists)
-      .where(eq(escrowChecklists.organizationId, organizationId))
-      .orderBy(desc(escrowChecklists.createdAt));
-  }
-
-  async getEscrowChecklistById(organizationId: number, id: number): Promise<EscrowChecklist | undefined> {
-    const [checklist] = await db.select().from(escrowChecklists)
-      .where(and(eq(escrowChecklists.id, id), eq(escrowChecklists.organizationId, organizationId)));
-    return checklist;
-  }
-
-  async getEscrowChecklistByDeal(organizationId: number, dealId: number): Promise<EscrowChecklist | undefined> {
-    const [checklist] = await db.select().from(escrowChecklists)
-      .where(and(eq(escrowChecklists.dealId, dealId), eq(escrowChecklists.organizationId, organizationId)))
-      .limit(1);
-    return checklist;
-  }
-
-  async createEscrowChecklist(data: InsertEscrowChecklist): Promise<EscrowChecklist> {
-    const [created] = await db.insert(escrowChecklists).values(data).returning();
-    return created;
-  }
-
-  async updateEscrowChecklist(organizationId: number, id: number, data: Partial<InsertEscrowChecklist>): Promise<EscrowChecklist | undefined> {
-    const [updated] = await db.update(escrowChecklists)
-      .set({ ...data, updatedAt: new Date() })
-      .where(and(eq(escrowChecklists.id, id), eq(escrowChecklists.organizationId, organizationId)))
-      .returning();
-    return updated;
-  }
-
-  async deleteEscrowChecklist(organizationId: number, id: number): Promise<boolean> {
-    await db.delete(escrowChecklists)
-      .where(and(eq(escrowChecklists.id, id), eq(escrowChecklists.organizationId, organizationId)));
-    return true;
-  }
-
-  // Closing Packets
-  async getClosingPackets(organizationId: number): Promise<ClosingPacket[]> {
-    return await db.select().from(closingPackets)
-      .where(eq(closingPackets.organizationId, organizationId))
-      .orderBy(desc(closingPackets.createdAt));
-  }
-
-  async getClosingPacketById(organizationId: number, id: number): Promise<ClosingPacket | undefined> {
-    const [packet] = await db.select().from(closingPackets)
-      .where(and(eq(closingPackets.id, id), eq(closingPackets.organizationId, organizationId)));
-    return packet;
-  }
-
-  async getClosingPacketsByDeal(organizationId: number, dealId: number): Promise<ClosingPacket[]> {
-    return await db.select().from(closingPackets)
-      .where(and(eq(closingPackets.dealId, dealId), eq(closingPackets.organizationId, organizationId)))
-      .orderBy(desc(closingPackets.createdAt));
-  }
-
-  async createClosingPacket(data: InsertClosingPacket): Promise<ClosingPacket> {
-    const [created] = await db.insert(closingPackets).values(data).returning();
-    return created;
-  }
-
-  async updateClosingPacket(organizationId: number, id: number, data: Partial<InsertClosingPacket>): Promise<ClosingPacket | undefined> {
-    const [updated] = await db.update(closingPackets)
-      .set(data)
-      .where(and(eq(closingPackets.id, id), eq(closingPackets.organizationId, organizationId)))
-      .returning();
-    return updated;
-  }
-
-  async deleteClosingPacket(organizationId: number, id: number): Promise<boolean> {
-    await db.delete(closingPackets)
-      .where(and(eq(closingPackets.id, id), eq(closingPackets.organizationId, organizationId)));
-    return true;
-  }
-
-  // Autopay Enrollments
-  async getAutopayEnrollments(organizationId: number): Promise<AutopayEnrollment[]> {
-    return await db.select().from(autopayEnrollments)
-      .where(eq(autopayEnrollments.organizationId, organizationId))
-      .orderBy(desc(autopayEnrollments.createdAt));
-  }
-
-  async getAutopayEnrollmentById(organizationId: number, id: number): Promise<AutopayEnrollment | undefined> {
-    const [enrollment] = await db.select().from(autopayEnrollments)
-      .where(and(eq(autopayEnrollments.id, id), eq(autopayEnrollments.organizationId, organizationId)));
-    return enrollment;
-  }
-
-  async getAutopayEnrollmentByNote(organizationId: number, noteId: number): Promise<AutopayEnrollment | undefined> {
-    const [enrollment] = await db.select().from(autopayEnrollments)
-      .where(and(eq(autopayEnrollments.noteId, noteId), eq(autopayEnrollments.organizationId, organizationId)))
-      .limit(1);
-    return enrollment;
-  }
-
-  async getActiveAutopayEnrollments(organizationId: number): Promise<AutopayEnrollment[]> {
-    return await db.select().from(autopayEnrollments)
-      .where(and(
-        eq(autopayEnrollments.organizationId, organizationId),
-        eq(autopayEnrollments.status, "active")
-      ))
-      .orderBy(desc(autopayEnrollments.createdAt));
-  }
-
-  async createAutopayEnrollment(data: InsertAutopayEnrollment): Promise<AutopayEnrollment> {
-    const [created] = await db.insert(autopayEnrollments).values(data).returning();
-    return created;
-  }
-
-  async updateAutopayEnrollment(organizationId: number, id: number, data: Partial<InsertAutopayEnrollment>): Promise<AutopayEnrollment | undefined> {
-    const [updated] = await db.update(autopayEnrollments)
-      .set(data)
-      .where(and(eq(autopayEnrollments.id, id), eq(autopayEnrollments.organizationId, organizationId)))
-      .returning();
-    return updated;
-  }
-
-  async deleteAutopayEnrollment(organizationId: number, id: number): Promise<boolean> {
-    await db.delete(autopayEnrollments)
-      .where(and(eq(autopayEnrollments.id, id), eq(autopayEnrollments.organizationId, organizationId)));
-    return true;
-  }
-
-  // Payoff Quotes
-  async getPayoffQuotes(organizationId: number): Promise<PayoffQuote[]> {
-    return await db.select().from(payoffQuotes)
-      .where(eq(payoffQuotes.organizationId, organizationId))
-      .orderBy(desc(payoffQuotes.createdAt));
-  }
-
-  async getPayoffQuoteById(organizationId: number, id: number): Promise<PayoffQuote | undefined> {
-    const [quote] = await db.select().from(payoffQuotes)
-      .where(and(eq(payoffQuotes.id, id), eq(payoffQuotes.organizationId, organizationId)));
-    return quote;
-  }
-
-  async getPayoffQuotesByNote(organizationId: number, noteId: number): Promise<PayoffQuote[]> {
-    return await db.select().from(payoffQuotes)
-      .where(and(eq(payoffQuotes.noteId, noteId), eq(payoffQuotes.organizationId, organizationId)))
-      .orderBy(desc(payoffQuotes.createdAt));
-  }
-
-  async createPayoffQuote(data: InsertPayoffQuote): Promise<PayoffQuote> {
-    const [created] = await db.insert(payoffQuotes).values(data).returning();
-    return created;
-  }
-
-  async updatePayoffQuote(organizationId: number, id: number, data: Partial<InsertPayoffQuote>): Promise<PayoffQuote | undefined> {
-    const [updated] = await db.update(payoffQuotes)
-      .set(data)
-      .where(and(eq(payoffQuotes.id, id), eq(payoffQuotes.organizationId, organizationId)))
-      .returning();
-    return updated;
-  }
-
-  // Trust Ledger
-  async getTrustLedgerEntries(organizationId: number): Promise<TrustLedgerEntry[]> {
-    return await db.select().from(trustLedger)
-      .where(eq(trustLedger.organizationId, organizationId))
-      .orderBy(desc(trustLedger.createdAt));
-  }
-
-  async getTrustLedgerByNote(organizationId: number, noteId: number): Promise<TrustLedgerEntry[]> {
-    return await db.select().from(trustLedger)
-      .where(and(eq(trustLedger.noteId, noteId), eq(trustLedger.organizationId, organizationId)))
-      .orderBy(desc(trustLedger.createdAt));
-  }
-
-  async createTrustLedgerEntry(data: InsertTrustLedger): Promise<TrustLedgerEntry> {
-    const [created] = await db.insert(trustLedger).values(data).returning();
-    return created;
-  }
-
-  async getTrustBalance(organizationId: number): Promise<string> {
-    const [latest] = await db.select({ runningBalance: trustLedger.runningBalance })
-      .from(trustLedger)
-      .where(eq(trustLedger.organizationId, organizationId))
-      .orderBy(desc(trustLedger.createdAt))
-      .limit(1);
-    return latest?.runningBalance ?? "0";
-  }
-
-  // Delinquency Escalations
-  async getDelinquencyEscalations(organizationId: number): Promise<DelinquencyEscalation[]> {
-    return await db.select().from(delinquencyEscalations)
-      .where(eq(delinquencyEscalations.organizationId, organizationId))
-      .orderBy(desc(delinquencyEscalations.createdAt));
-  }
-
-  async getDelinquencyEscalationById(organizationId: number, id: number): Promise<DelinquencyEscalation | undefined> {
-    const [escalation] = await db.select().from(delinquencyEscalations)
-      .where(and(eq(delinquencyEscalations.id, id), eq(delinquencyEscalations.organizationId, organizationId)));
-    return escalation;
-  }
-
-  async getDelinquencyEscalationByNote(organizationId: number, noteId: number): Promise<DelinquencyEscalation | undefined> {
-    const [escalation] = await db.select().from(delinquencyEscalations)
-      .where(and(eq(delinquencyEscalations.noteId, noteId), eq(delinquencyEscalations.organizationId, organizationId)))
-      .limit(1);
-    return escalation;
-  }
-
-  async getActiveDelinquencyEscalations(organizationId: number): Promise<DelinquencyEscalation[]> {
-    return await db.select().from(delinquencyEscalations)
-      .where(and(
-        eq(delinquencyEscalations.organizationId, organizationId),
-        eq(delinquencyEscalations.status, "active")
-      ))
-      .orderBy(desc(delinquencyEscalations.createdAt));
-  }
-
-  async createDelinquencyEscalation(data: InsertDelinquencyEscalation): Promise<DelinquencyEscalation> {
-    const [created] = await db.insert(delinquencyEscalations).values(data).returning();
-    return created;
-  }
-
-  async updateDelinquencyEscalation(organizationId: number, id: number, data: Partial<InsertDelinquencyEscalation>): Promise<DelinquencyEscalation | undefined> {
-    const [updated] = await db.update(delinquencyEscalations)
-      .set({ ...data, updatedAt: new Date() })
-      .where(and(eq(delinquencyEscalations.id, id), eq(delinquencyEscalations.organizationId, organizationId)))
-      .returning();
-    return updated;
-  }
 
   // DD Assignments
   async getDDAssignments(organizationId: number): Promise<DdAssignment[]> {
@@ -2325,9 +2060,10 @@ import { platformOpsRepo, type PlatformOpsRepo } from "./storage/platformOpsRepo
 import { gisRepo, type GisRepo } from "./storage/gisRepo";
 import { agentWorkflowsRepo, type AgentWorkflowsRepo } from "./storage/agentWorkflowsRepo";
 import { vaEngineRepo, type VaEngineRepo } from "./storage/vaEngineRepo";
+import { closingServicingRepo, type ClosingServicingRepo } from "./storage/closingServicingRepo";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo, PaxRepo, AiRepo, AutomationRepo, MailRepo, VaRepo, DueDiligenceRepo, SupportOpsRepo, SequencesRepo, CustomizationRepo, PaymentRemindersRepo, TasksRepo, AcquisitionRepo, DocumentsRepo, EnrichmentRepo, AnalyticsRepo, PlatformOpsRepo, GisRepo, AgentWorkflowsRepo, VaEngineRepo {}
+export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo, PaxRepo, AiRepo, AutomationRepo, MailRepo, VaRepo, DueDiligenceRepo, SupportOpsRepo, SequencesRepo, CustomizationRepo, PaymentRemindersRepo, TasksRepo, AcquisitionRepo, DocumentsRepo, EnrichmentRepo, AnalyticsRepo, PlatformOpsRepo, GisRepo, AgentWorkflowsRepo, VaEngineRepo, ClosingServicingRepo {}
 
 Object.assign(
   DatabaseStorage.prototype,
@@ -2360,6 +2096,7 @@ Object.assign(
   gisRepo,
   agentWorkflowsRepo,
   vaEngineRepo,
+  closingServicingRepo,
 );
 
 export const storage = new DatabaseStorage();
