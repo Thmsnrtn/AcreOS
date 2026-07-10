@@ -5,6 +5,6 @@
   "globs": [
     "server/storage.ts"
   ],
-  "baselineCount": 3820,
+  "baselineCount": 3487,
   "direction": "down"
 }

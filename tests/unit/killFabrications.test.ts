@@ -153,8 +153,10 @@ describe("pipeline analytics honest-empty contract", () => {
     // methods must not contain Math.random().
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
+    // Wave 7 slice 16: the analytics methods moved from storage.ts into the
+    // analyticsRepo mixin — the guard follows the code.
     const src = await fs.readFile(
-      path.resolve(__dirname, "../../server/storage.ts"),
+      path.resolve(__dirname, "../../server/storage/analyticsRepo.ts"),
       "utf8",
     );
     const velocityIdx = src.indexOf("async getDealVelocity(");
@@ -162,10 +164,10 @@ describe("pipeline analytics honest-empty contract", () => {
     expect(velocityIdx).toBeGreaterThan(-1);
     expect(conversionIdx).toBeGreaterThan(-1);
 
-    // velocity runs from its declaration to getPipelineValue; conversion from
-    // its declaration to the next method (getAutomationRules).
+    // velocity runs from its declaration to getPipelineValue; conversion runs
+    // to the end of the file (it is the repo's final method).
     const velocityBlock = src.slice(velocityIdx, src.indexOf("async getPipelineValue("));
-    const conversionBlock = src.slice(conversionIdx, src.indexOf("async getAutomationRules("));
+    const conversionBlock = src.slice(conversionIdx);
     expect(velocityBlock.includes("Math.random")).toBe(false);
     expect(conversionBlock.includes("Math.random")).toBe(false);
     // And they explicitly return honest-empty per-stage arrays.
