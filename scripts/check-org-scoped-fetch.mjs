@@ -62,7 +62,7 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage/supportOpsRepo.ts::acknowledgeAlert",
   "server/storage/supportOpsRepo.ts::acknowledgeAllAlerts",
   "server/storage/platformOpsRepo.ts::cleanExpiredBorrowerSessions",
-  "server/storage.ts::countFieldScoutVisits",
+  "server/storage/growthConfigRepo.ts::countFieldScoutVisits",
   // createAutomationExecution / noteRepo entries below: pre-existing methods
   // that became VISIBLE when comment-masking fixed the parser (2026-06-10) —
   // they are not new code. getNoteByAccessToken is capability-based by design
@@ -90,10 +90,10 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage/agentWorkflowsRepo.ts::getDueScheduledTasks",
   "server/storage/mailRepo.ts::getEmailSenderIdentityByEmail",
   "server/storage/supportOpsRepo.ts::getEscalatedCases",
-  "server/storage.ts::getFieldScoutPhotosByLead",
-  "server/storage.ts::getFieldScoutPhotosByVisit",
-  "server/storage.ts::getFieldScoutVisit",
-  "server/storage.ts::getFieldScoutVisits",
+  "server/storage/growthConfigRepo.ts::getFieldScoutPhotosByLead",
+  "server/storage/growthConfigRepo.ts::getFieldScoutPhotosByVisit",
+  "server/storage/growthConfigRepo.ts::getFieldScoutVisit",
+  "server/storage/growthConfigRepo.ts::getFieldScoutVisits",
   "server/storage.ts::getMessages",
   "server/storage/gisRepo.ts::getParcelSnapshot",
   "server/storage/paxRepo.ts::getPaxScheduledTasksDue",
