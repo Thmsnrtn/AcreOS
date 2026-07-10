@@ -74,7 +74,7 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage.ts::deleteBorrowerSession",
   "server/storage/paxRepo.ts::deletePaxProjectFile",
   "server/storage/integrationsRepo.ts::findOrganizationIntegrationByCredential",
-  "server/storage.ts::getAbTestByCampaign",
+  "server/storage/sequencesRepo.ts::getAbTestByCampaign",
   "server/storage.ts::getAdPostingsByProperty",
   "server/storage/supportOpsRepo.ts::getAdminDashboardData",
   "server/storage.ts::getAgentFeedbackByTask",
