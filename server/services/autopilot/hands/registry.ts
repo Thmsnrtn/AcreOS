@@ -12,6 +12,7 @@
  */
 import type { HandSpec, HandSchema, HandResult, HandContext } from "./types";
 import { logger } from "../../../utils/logger";
+import { matchHardStopHand } from "../hardStops";
 
 const REGISTRY = new Map<string, HandSpec>();
 
@@ -36,6 +37,19 @@ export function registerHand(spec: HandSpec): void {
   if (spec.name !== spec.schema.name) {
     throw new Error(
       `hand name mismatch: spec.name=${spec.name} schema.name=${spec.schema.name}`,
+    );
+  }
+  // Hard-stop classes (pricing changes / legal signing / customer-data
+  // deletion) may NEVER gain an actuator — witnessed or not. Until now this
+  // was enforced only by absence ("no such hand exists"); this boot-throw
+  // makes it structural ("no such hand CAN register"), mirroring the
+  // witnessed-send invariant below.
+  const hardStop = matchHardStopHand(spec.name, spec.schema.description);
+  if (hardStop) {
+    throw new Error(
+      `[autopilot/hands] refusing to register '${spec.name}': it matches the ` +
+        `permanent hard-stop class '${hardStop}' (pricing/legal/customer-data ` +
+        `deletion actions are never autonomous, forever — mature-machine §1.4).`,
     );
   }
   if (requiresWitnessByInvariant(spec) && !spec.requiresApproval) {

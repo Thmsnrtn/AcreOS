@@ -1060,7 +1060,7 @@ class LandCreditScoring {
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(120, 120, 120);
-    doc.text("Powered by AcreOS — 18 data sources analyzed", margin, y);
+    doc.text(`Powered by AcreOS — Land Credit Score methodology ${LCS_METHODOLOGY_VERSION}`, margin, y);
     y += 0.15;
     doc.setDrawColor(180, 160, 120);
     doc.setLineWidth(0.015);
@@ -1203,7 +1203,7 @@ class LandCreditScoring {
     y += 0.3;
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
-    doc.text("Powered by AcreOS — 18 data sources analyzed", margin, 10.2);
+    doc.text(`Powered by AcreOS — Land Credit Score methodology ${LCS_METHODOLOGY_VERSION}`, margin, 10.2);
 
     return Buffer.from(doc.output("arraybuffer"));
   }

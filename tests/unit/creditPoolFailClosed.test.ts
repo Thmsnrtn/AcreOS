@@ -40,6 +40,9 @@ const state = {
   /** Simulates a pre-existing financial_ledger row for the externalEventId
    *  (the idempotent-replay disambiguation SELECT in the atomic gate). */
   replayRowExists: false,
+  /** Purchased-credit overflow (S1c): does creditBalance cover the debit? */
+  purchasedCreditsCover: false,
+  deductCalls: 0,
 };
 
 function mockModules() {
@@ -121,6 +124,17 @@ function mockModules() {
     };
   });
 
+  // S1c purchased-credit overflow — poolDebit dynamic-imports this on a
+  // gate refusal to try the org's purchased creditBalance before refusing.
+  vi.doMock("../../server/services/credits", () => ({
+    creditService: {
+      deductCredits: async () => {
+        state.deductCalls += 1;
+        return state.purchasedCreditsCover ? { id: 9 } : null;
+      },
+    },
+  }));
+
   vi.doMock("../../server/services/byok/toggle", () => ({
     isByokEnabled: async () => {
       if (state.byokThrows) throw new Error("byok lookup down");
@@ -154,6 +168,8 @@ beforeEach(() => {
   state.insertThrows = false;
   state.insertCalls = 0;
   state.replayRowExists = false;
+  state.purchasedCreditsCover = false;
+  state.deductCalls = 0;
 });
 
 describe("poolDebit — fail-CLOSED semantics (Tier 1I)", () => {
@@ -228,6 +244,28 @@ describe("poolDebit — fail-CLOSED semantics (Tier 1I)", () => {
     expect(r.reason).toBe("pool_exhausted");
     expect(r.overPool).toBe(true);
     expect(state.insertCalls).toBe(0);
+    // S1c: the purchased-credit overflow lane was TRIED before refusing.
+    expect(state.deductCalls).toBe(1);
+  });
+
+  it("pool exhausted + purchased credits cover it → allowed, fundedBy purchased_credits, COGS row written", async () => {
+    // S1c — the two credit ledgers finally reconcile: a customer who bought a
+    // credit pack is no longer blocked by the exhausted monthly pool.
+    state.usedAbsCents = 2500;
+    state.purchasedCreditsCover = true;
+    const { poolDebit } = await importPool();
+    const r = await poolDebit({
+      organizationId: 7,
+      action: "ai_turn_avg",
+      units: 1,
+      externalEventId: "t:overflow:1",
+    });
+    expect(r.allowed).toBe(true);
+    expect(r.fundedBy).toBe("purchased_credits");
+    expect(r.overPool).toBe(true);
+    expect(r.debitedCents).toBe(2);
+    expect(state.deductCalls).toBe(1);
+    expect(state.insertCalls).toBe(1); // opex row still recorded — COGS stays honest
   });
 
   it("normal under-pool debit is allowed and writes a ledger row", async () => {
@@ -309,6 +347,9 @@ describe("poolRefusalDetails — the 429 payload shape", () => {
     expect(details.resourceType).toBe("credit_pool");
     expect(details.byokAvailable).toBe(true);
     expect(details.byokSettingsUrl).toBe("/settings/byok");
+    // S1c: the refusal now advertises the credit-pack purchase path too.
+    expect(details.purchaseAvailable).toBe(true);
+    expect(details.purchaseUrl).toBe("/usage");
     expect(details.message.length).toBeGreaterThan(0);
   });
 

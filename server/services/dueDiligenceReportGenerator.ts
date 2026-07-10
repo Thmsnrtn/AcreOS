@@ -422,7 +422,9 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
   );
 
   doc.setFontSize(7);
-  doc.text("Powered by AcreOS — 18 data sources analyzed", margin, 10.3);
+  // Honest count: the footer claims exactly the sources enumerated on the
+  // Data Sources & Methodology page above — never a marketing number.
+  doc.text(`Powered by AcreOS — ${sources.length} data sources analyzed`, margin, 10.3);
 
   const pdf = Buffer.from(doc.output("arraybuffer"));
 

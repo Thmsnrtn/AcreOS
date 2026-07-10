@@ -52,6 +52,16 @@ describe("evaluateWitnessGrant — fails CLOSED on every violation", () => {
   it("domain not covered", () => expect(evaluateWitnessGrant(grant(), req({ domain: "finance" }), NOW).authorized).toBe(false));
   it("over the per-action cost ceiling", () =>
     expect(evaluateWitnessGrant(grant(), req({ predictedCostUsd: 11 }), NOW).authorized).toBe(false));
+  it("the permanent $500 spend hard-stop clamps even a generous grant ceiling", () => {
+    // A founder-issued grant with maxCostUsd $10,000 must NOT authorize a
+    // $501 spend — the >$500 hard-stop binds above every grant, forever.
+    const generous = grant({ bounds: { ...grant().bounds, maxCostUsd: 10_000 } });
+    const v = evaluateWitnessGrant(generous, req({ predictedCostUsd: 501 }), NOW);
+    expect(v.authorized).toBe(false);
+    expect(v.reason).toContain("hard-stop");
+    // ...while a $499 spend under the same generous grant is still evaluable.
+    expect(evaluateWitnessGrant(generous, req({ predictedCostUsd: 499 }), NOW).authorized).toBe(true);
+  });
   it("money denied when denyMoney is set", () =>
     expect(evaluateWitnessGrant(grant({ bounds: { ...grant().bounds, domains: ["finance"], denyMoney: true } }), req({ domain: "finance", movesMoney: true }), NOW).authorized).toBe(false));
   it("broadcast denied when denyBroadcast is set", () =>

@@ -59,6 +59,21 @@ describe("buildSampleFixtures — cleanup contract (all personas)", () => {
         expect(prop.organizationId).toBe(ORG);
       }
     });
+
+    it(`'${persona}': every property carries plausible coordinates — the Map door filters out coordinate-less parcels, and the onboarding finish CTA lands on /maps`, async () => {
+      const f = await build(persona);
+      for (const prop of f.properties) {
+        const lat = Number(prop.latitude);
+        const lng = Number(prop.longitude);
+        expect(Number.isFinite(lat), `${prop.apn} latitude`).toBe(true);
+        expect(Number.isFinite(lng), `${prop.apn} longitude`).toBe(true);
+        // Continental-US sanity bounds — catches swapped lat/lng and 0,0.
+        expect(lat).toBeGreaterThan(24);
+        expect(lat).toBeLessThan(50);
+        expect(lng).toBeGreaterThan(-125);
+        expect(lng).toBeLessThan(-66);
+      }
+    });
   }
 });
 

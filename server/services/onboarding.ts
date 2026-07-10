@@ -789,6 +789,10 @@ Generate 3 helpful tips for this step.`,
           address: "123 Sample Parcel Rd",
           city: "Sedona",
           zip: "86336",
+          // Representative Sedona-area coordinates — the Map door filters out
+          // coordinate-less parcels, so a sample parcel must carry lat/lng.
+          latitude: "34.8697",
+          longitude: "-111.7610",
           sizeAcres: "5.2",
           status: "prospect",
           marketValue: "45000",
@@ -1302,6 +1306,15 @@ interface SamplePropertyFixture {
   listPrice: string;
   description: string;
   highlights: string[];
+  /**
+   * Representative coordinates of the fixture's stated locality. REQUIRED:
+   * the Map door filters out coordinate-less parcels entirely, and the
+   * onboarding finish CTA ("Make your first offer") lands on /maps — a
+   * sample parcel without lat/lng renders zero pins and dead-ends the
+   * activation moment the wizard is built around.
+   */
+  latitude: string;
+  longitude: string;
   /** Index into the fixture leads array that owns/sells this property. */
   sellerLeadIndex?: number;
 }
@@ -1385,9 +1398,9 @@ function buildLandFlipperFixtures(orgId: number): SampleFixtureSet {
   ];
 
   const properties: SamplePropertyFixture[] = [
-    { organizationId: orgId, apn: "SAMPLE-001-234", legalDescription: "Lot 5, Block A, Sunset Acres", county: "Travis", state: "TX", address: "Tract 5 FM 2222", city: "Austin", zip: "78730", sizeAcres: "5.25", zoning: "Agricultural", terrain: "rolling", roadAccess: "paved", status: "owned", assessedValue: "15000", marketValue: "25000", purchasePrice: "12000", listPrice: "29900", description: "Beautiful 5+ acre parcel with mature trees and rolling terrain. Great for homesite or recreational use.", highlights: ["Road frontage", "Mature trees", "Electric available"], sellerLeadIndex: 0 },
-    { organizationId: orgId, apn: "SAMPLE-002-567", legalDescription: "Lot 12, Desert Vista Estates", county: "Maricopa", state: "AZ", address: "N Desert Vista Road", city: "Surprise", zip: "85374", sizeAcres: "2.5", zoning: "Residential", terrain: "flat", roadAccess: "gravel", status: "listed", assessedValue: "8000", marketValue: "18000", purchasePrice: "6500", listPrice: "19900", description: "Level 2.5 acre lot perfect for manufactured or stick-built home. Mountain views!", highlights: ["Mountain views", "Level lot", "Near town"], sellerLeadIndex: 1 },
-    { organizationId: orgId, apn: "SAMPLE-003-890", legalDescription: "Parcel B, Mountain Creek Ranch", county: "El Paso", state: "CO", address: "County Road 47", city: "Peyton", zip: "80831", sizeAcres: "10.0", zoning: "Agricultural", terrain: "mountainous", roadAccess: "dirt", status: "under_contract", assessedValue: "22000", marketValue: "45000", purchasePrice: "18000", listPrice: "49900", description: "Stunning 10 acre mountain property with Pikes Peak views. Perfect for off-grid living.", highlights: ["Pikes Peak views", "Creek frontage", "Wildlife"] },
+    { organizationId: orgId, apn: "SAMPLE-001-234", latitude: "30.3752", longitude: "-97.8331", legalDescription: "Lot 5, Block A, Sunset Acres", county: "Travis", state: "TX", address: "Tract 5 FM 2222", city: "Austin", zip: "78730", sizeAcres: "5.25", zoning: "Agricultural", terrain: "rolling", roadAccess: "paved", status: "owned", assessedValue: "15000", marketValue: "25000", purchasePrice: "12000", listPrice: "29900", description: "Beautiful 5+ acre parcel with mature trees and rolling terrain. Great for homesite or recreational use.", highlights: ["Road frontage", "Mature trees", "Electric available"], sellerLeadIndex: 0 },
+    { organizationId: orgId, apn: "SAMPLE-002-567", latitude: "33.6529", longitude: "-112.3830", legalDescription: "Lot 12, Desert Vista Estates", county: "Maricopa", state: "AZ", address: "N Desert Vista Road", city: "Surprise", zip: "85374", sizeAcres: "2.5", zoning: "Residential", terrain: "flat", roadAccess: "gravel", status: "listed", assessedValue: "8000", marketValue: "18000", purchasePrice: "6500", listPrice: "19900", description: "Level 2.5 acre lot perfect for manufactured or stick-built home. Mountain views!", highlights: ["Mountain views", "Level lot", "Near town"], sellerLeadIndex: 1 },
+    { organizationId: orgId, apn: "SAMPLE-003-890", latitude: "38.9958", longitude: "-104.4836", legalDescription: "Parcel B, Mountain Creek Ranch", county: "El Paso", state: "CO", address: "County Road 47", city: "Peyton", zip: "80831", sizeAcres: "10.0", zoning: "Agricultural", terrain: "mountainous", roadAccess: "dirt", status: "under_contract", assessedValue: "22000", marketValue: "45000", purchasePrice: "18000", listPrice: "49900", description: "Stunning 10 acre mountain property with Pikes Peak views. Perfect for off-grid living.", highlights: ["Pikes Peak views", "Creek frontage", "Wildlife"] },
   ];
 
   const deals: SampleDealFixture[] = [
@@ -1419,9 +1432,9 @@ function buildNoteInvestorFixtures(orgId: number): SampleFixtureSet {
   // Each note is secured by a parcel; properties carry status="owned" because
   // the note investor holds paper on land they've already conveyed.
   const properties: SamplePropertyFixture[] = [
-    { organizationId: orgId, apn: "SAMPLE-N01-118", legalDescription: "Lot 7, Block C, Sandhill Acres", county: "Marion", state: "FL", address: "44 Sandhill Trail", city: "Ocala", zip: "34470", sizeAcres: "1.25", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "owned", assessedValue: "9000", marketValue: "16000", purchasePrice: "7000", listPrice: "0", description: "Collateral parcel for a performing seller-financed note. Borrower current.", highlights: ["Performing note collateral", "Paved access"], sellerLeadIndex: 0 },
-    { organizationId: orgId, apn: "SAMPLE-N02-227", legalDescription: "Tract 3, Mesquite Flats", county: "Lubbock", state: "TX", address: "1208 Mesquite Way", city: "Lubbock", zip: "79410", sizeAcres: "3.0", zoning: "Agricultural", terrain: "flat", roadAccess: "gravel", status: "owned", assessedValue: "11000", marketValue: "21000", purchasePrice: "8500", listPrice: "0", description: "Collateral parcel for a note on the watch list — borrower paid 9 days late twice this year.", highlights: ["Note collateral", "Watch-list borrower"], sellerLeadIndex: 1 },
-    { organizationId: orgId, apn: "SAMPLE-N03-336", legalDescription: "Parcel A, Red Rock Mesa", county: "Montezuma", state: "CO", address: "9 Red Rock Loop", city: "Cortez", zip: "81321", sizeAcres: "5.0", zoning: "Agricultural", terrain: "rolling", roadAccess: "dirt", status: "owned", assessedValue: "14000", marketValue: "27000", purchasePrice: "10000", listPrice: "0", description: "Collateral parcel for a delinquent note — 38 days past due, loss-mitigation outreach in progress.", highlights: ["Note collateral", "Delinquent — loss mit"], sellerLeadIndex: 2 },
+    { organizationId: orgId, apn: "SAMPLE-N01-118", latitude: "29.1992", longitude: "-82.0931", legalDescription: "Lot 7, Block C, Sandhill Acres", county: "Marion", state: "FL", address: "44 Sandhill Trail", city: "Ocala", zip: "34470", sizeAcres: "1.25", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "owned", assessedValue: "9000", marketValue: "16000", purchasePrice: "7000", listPrice: "0", description: "Collateral parcel for a performing seller-financed note. Borrower current.", highlights: ["Performing note collateral", "Paved access"], sellerLeadIndex: 0 },
+    { organizationId: orgId, apn: "SAMPLE-N02-227", latitude: "33.5670", longitude: "-101.8783", legalDescription: "Tract 3, Mesquite Flats", county: "Lubbock", state: "TX", address: "1208 Mesquite Way", city: "Lubbock", zip: "79410", sizeAcres: "3.0", zoning: "Agricultural", terrain: "flat", roadAccess: "gravel", status: "owned", assessedValue: "11000", marketValue: "21000", purchasePrice: "8500", listPrice: "0", description: "Collateral parcel for a note on the watch list — borrower paid 9 days late twice this year.", highlights: ["Note collateral", "Watch-list borrower"], sellerLeadIndex: 1 },
+    { organizationId: orgId, apn: "SAMPLE-N03-336", latitude: "37.3528", longitude: "-108.5773", legalDescription: "Parcel A, Red Rock Mesa", county: "Montezuma", state: "CO", address: "9 Red Rock Loop", city: "Cortez", zip: "81321", sizeAcres: "5.0", zoning: "Agricultural", terrain: "rolling", roadAccess: "dirt", status: "owned", assessedValue: "14000", marketValue: "27000", purchasePrice: "10000", listPrice: "0", description: "Collateral parcel for a delinquent note — 38 days past due, loss-mitigation outreach in progress.", highlights: ["Note collateral", "Delinquent — loss mit"], sellerLeadIndex: 2 },
   ];
 
   // No acquisition/disposition deals — a note investor's pipeline is the book,
@@ -1456,8 +1469,8 @@ function buildWholesalerFixtures(orgId: number): SampleFixtureSet {
   ];
 
   const properties: SamplePropertyFixture[] = [
-    { organizationId: orgId, apn: "SAMPLE-W01-441", legalDescription: "Lot 9, Block 2, Harwood Addition", county: "Franklin", state: "OH", address: "812 Harwood St", city: "Columbus", zip: "43201", sizeAcres: "0.18", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "under_contract", assessedValue: "78000", marketValue: "135000", purchasePrice: "92000", listPrice: "104000", description: "Sample wholesale deal. 3/1 needing cosmetic rehab. Under contract at $92k, assigning to a cash buyer.", highlights: ["Under contract", "Assignment in flight", "ARV ~$165k"], sellerLeadIndex: 0 },
-    { organizationId: orgId, apn: "SAMPLE-W02-552", legalDescription: "Unit 4, Lakeview Court Condos", county: "Shelby", state: "TN", address: "55 Lakeview Ct", city: "Memphis", zip: "38103", sizeAcres: "0.05", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "lead", assessedValue: "61000", marketValue: "98000", purchasePrice: "0", listPrice: "0", description: "Sample lead. Tired-landlord condo, seller exploring a quick cash exit. Pre-offer.", highlights: ["Tired landlord", "Pre-offer"], sellerLeadIndex: 1 },
+    { organizationId: orgId, apn: "SAMPLE-W01-441", latitude: "39.9900", longitude: "-82.9990", legalDescription: "Lot 9, Block 2, Harwood Addition", county: "Franklin", state: "OH", address: "812 Harwood St", city: "Columbus", zip: "43201", sizeAcres: "0.18", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "under_contract", assessedValue: "78000", marketValue: "135000", purchasePrice: "92000", listPrice: "104000", description: "Sample wholesale deal. 3/1 needing cosmetic rehab. Under contract at $92k, assigning to a cash buyer.", highlights: ["Under contract", "Assignment in flight", "ARV ~$165k"], sellerLeadIndex: 0 },
+    { organizationId: orgId, apn: "SAMPLE-W02-552", latitude: "35.1421", longitude: "-90.0520", legalDescription: "Unit 4, Lakeview Court Condos", county: "Shelby", state: "TN", address: "55 Lakeview Ct", city: "Memphis", zip: "38103", sizeAcres: "0.05", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "lead", assessedValue: "61000", marketValue: "98000", purchasePrice: "0", listPrice: "0", description: "Sample lead. Tired-landlord condo, seller exploring a quick cash exit. Pre-offer.", highlights: ["Tired landlord", "Pre-offer"], sellerLeadIndex: 1 },
   ];
 
   const deals: SampleDealFixture[] = [
@@ -1480,8 +1493,8 @@ function buildFixAndFlipFixtures(orgId: number): SampleFixtureSet {
   ];
 
   const properties: SamplePropertyFixture[] = [
-    { organizationId: orgId, apn: "SAMPLE-F01-771", legalDescription: "Lot 14, Birchwood Estates", county: "Wake", state: "NC", address: "330 Birchwood Dr", city: "Raleigh", zip: "27601", sizeAcres: "0.25", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "owned", assessedValue: "188000", marketValue: "245000", purchasePrice: "165000", listPrice: "0", description: "Sample flip mid-rehab. Bought at $165k, ~$38k rehab budget, ARV ~$285k. Kitchen + 2 baths in progress.", highlights: ["Mid-rehab", "ARV ~$285k", "Holding cost ~$1.4k/mo"], sellerLeadIndex: 0 },
-    { organizationId: orgId, apn: "SAMPLE-F02-882", legalDescription: "Lot 6, Magnolia Court", county: "Mecklenburg", state: "NC", address: "77 Magnolia St", city: "Charlotte", zip: "28202", sizeAcres: "0.21", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "listed", assessedValue: "210000", marketValue: "299000", purchasePrice: "182000", listPrice: "299000", description: "Sample completed flip, listed for resale. Rehab done, on market 11 days, 2 showings scheduled.", highlights: ["Rehab complete", "Listed for resale", "11 days on market"], sellerLeadIndex: 1 },
+    { organizationId: orgId, apn: "SAMPLE-F01-771", latitude: "35.7743", longitude: "-78.6336", legalDescription: "Lot 14, Birchwood Estates", county: "Wake", state: "NC", address: "330 Birchwood Dr", city: "Raleigh", zip: "27601", sizeAcres: "0.25", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "owned", assessedValue: "188000", marketValue: "245000", purchasePrice: "165000", listPrice: "0", description: "Sample flip mid-rehab. Bought at $165k, ~$38k rehab budget, ARV ~$285k. Kitchen + 2 baths in progress.", highlights: ["Mid-rehab", "ARV ~$285k", "Holding cost ~$1.4k/mo"], sellerLeadIndex: 0 },
+    { organizationId: orgId, apn: "SAMPLE-F02-882", latitude: "35.2271", longitude: "-80.8431", legalDescription: "Lot 6, Magnolia Court", county: "Mecklenburg", state: "NC", address: "77 Magnolia St", city: "Charlotte", zip: "28202", sizeAcres: "0.21", zoning: "Residential", terrain: "flat", roadAccess: "paved", status: "listed", assessedValue: "210000", marketValue: "299000", purchasePrice: "182000", listPrice: "299000", description: "Sample completed flip, listed for resale. Rehab done, on market 11 days, 2 showings scheduled.", highlights: ["Rehab complete", "Listed for resale", "11 days on market"], sellerLeadIndex: 1 },
   ];
 
   const deals: SampleDealFixture[] = [

@@ -43,6 +43,43 @@ describe("autopilot hand registry", () => {
       registerHand(makeHand({ name: "a", schema: { name: "b", description: "", input_schema: {} } })),
     ).toThrow(/name mismatch/);
   });
+
+  it("REFUSES to register a hand implementing a hard-stop class — even witnessed", () => {
+    // Hard-stops (pricing changes / legal signing / customer-data deletion)
+    // may never gain an actuator. Enforced at boot, not by convention.
+    const hardStopNames = [
+      "pricing_change",
+      "update_pricing",
+      "legal_sign_contract",
+      "sign_agreement",
+      "delete_customer_data",
+      "customer_data_purge",
+    ];
+    for (const name of hardStopNames) {
+      expect(() =>
+        registerHand(
+          makeHand({
+            name,
+            requiresApproval: true, // a founder tap does NOT rescue a hard-stop class
+            schema: { name, description: "does the thing", input_schema: { type: "object", properties: {} } },
+          }),
+        ),
+        `expected '${name}' to be refused`,
+      ).toThrow(/hard-stop/);
+    }
+    // ...and a matching DESCRIPTION is caught even when the name is innocuous.
+    expect(() =>
+      registerHand(
+        makeHand({
+          name: "adjust_tier",
+          requiresApproval: true,
+          schema: { name: "adjust_tier", description: "change pricing for a tier", input_schema: { type: "object", properties: {} } },
+        }),
+      ),
+    ).toThrow(/hard-stop/);
+    // Ordinary hands are unaffected.
+    expect(() => registerHand(makeHand())).not.toThrow();
+  });
 });
 
 describe("executor-layer witnessed-send wall (the invariant)", () => {
