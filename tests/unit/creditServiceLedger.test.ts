@@ -27,12 +27,26 @@
  *       double-grant lock: on conflict the balance bump is explicitly
  *       reversed inside the same transaction and the call returns null;
  *     - an unknown tier grants nothing.
+ *
+ *   hasEnoughCredits (FRAUD-011, slice 4)
+ *     - active-trial orgs get AI chat WITHOUT balance, but capped at a
+ *       cumulative $5 of trial debits — at the cap allowed, a cent over
+ *       refused; expired/absent trials fall through to the balance check.
+ *
+ *   checkAutoTopUp (slice 4)
+ *     - pure decision, no charge (the Stripe wire is founder-gated):
+ *       disabled/missing org → never; enabled + balance under the
+ *       threshold → top-up with the org's configured amount (defaults
+ *       200¢ threshold / 2500¢ amount); at-or-above threshold → no-op.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const state = {
-  founderRow: { isFounder: false } as any,
+  /** The org row db.query.organizations.findFirst returns (null = missing). */
+  orgRow: { isFounder: false } as any,
+  /** Cumulative ABS(debit) cents the trial-cap SUM query reports. */
+  trialDebitsCents: 0,
   /** rows returned by tx.update(...).returning() — the balance bump. */
   txUpdateRows: [{ newBalance: 5000 }] as any[],
   /** guarded deduct: the WHERE matched no row (insufficient balance). */
@@ -80,9 +94,15 @@ vi.mock("../../server/db", () => {
     db: {
       query: {
         organizations: {
-          findFirst: async () => state.founderRow,
+          findFirst: async () => state.orgRow,
         },
       },
+      // The FRAUD-011 trial-cap SUM(ABS(debits)) aggregate.
+      select: (_projection?: any) => ({
+        from: () => ({
+          where: () => Promise.resolve([{ totalDebits: state.trialDebitsCents }]),
+        }),
+      }),
       insert: (_table: any) => ({
         values: (v: any) => ({
           returning: () => {
@@ -103,10 +123,11 @@ vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { creditService } from "../../server/services/credits";
+import { creditService, usageMeteringService } from "../../server/services/credits";
 
 beforeEach(() => {
-  state.founderRow = { isFounder: false };
+  state.orgRow = { isFounder: false };
+  state.trialDebitsCents = 0;
   state.txUpdateRows = [{ newBalance: 5000 }];
   state.txUpdateNoRow = false;
   state.txUpdateCalls = 0;
@@ -168,7 +189,7 @@ describe("deductCredits — the WHERE-guarded debit the overflow lane relies on"
   });
 
   it("founder orgs bypass — zero-amount row tagged founderBypass, no balance touch", async () => {
-    state.founderRow = { isFounder: true };
+    state.orgRow = { isFounder: true };
     const result = await creditService.deductCredits(1, 300, "founder action");
     expect(result).toMatchObject({ amountCents: 0, balanceAfterCents: 999999999 });
     expect(state.dbInsertValues[0].metadata).toMatchObject({ founderBypass: true });
@@ -204,5 +225,82 @@ describe("applyMonthlyAllowance — DEFECT-0007 double-grant lock", () => {
     const row = await creditService.applyMonthlyAllowance(7, "bogus" as any);
     expect(row).toBeNull();
     expect(state.txCount).toBe(0);
+  });
+});
+
+describe("hasEnoughCredits — the FRAUD-011 trial spending cap", () => {
+  const activeTrial = () => ({
+    isFounder: false,
+    trialEndsAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+    subscriptionTier: "free",
+    creditBalance: "0",
+  });
+
+  it("founders always have enough", async () => {
+    state.orgRow = { isFounder: true };
+    expect(await creditService.hasEnoughCredits(1, 999999)).toBe(true);
+  });
+
+  it("an active trial allows spend WITHOUT balance — up to the $5 cap", async () => {
+    state.orgRow = activeTrial(); // zero balance, but in trial
+    state.trialDebitsCents = 0;
+    expect(await creditService.hasEnoughCredits(7, 100)).toBe(true);
+  });
+
+  it("the cap is a strict boundary: exactly AT $5 allowed, a cent over refused", async () => {
+    state.orgRow = activeTrial();
+    state.trialDebitsCents = 400;
+    expect(await creditService.hasEnoughCredits(7, 100)).toBe(true); // 400+100 = 500, at cap
+    expect(await creditService.hasEnoughCredits(7, 101)).toBe(false); // 501 — over, refused
+  });
+
+  it("an EXPIRED trial falls through to the real balance check (no free lane)", async () => {
+    state.orgRow = {
+      isFounder: false,
+      trialEndsAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+      subscriptionTier: "free",
+      creditBalance: "300",
+    };
+    state.trialDebitsCents = 0; // cap would allow it — but the trial is over
+    expect(await creditService.hasEnoughCredits(7, 200)).toBe(true); // balance covers
+    expect(await creditService.hasEnoughCredits(7, 400)).toBe(false); // balance doesn't
+  });
+
+  it("no trial at all → plain balance check", async () => {
+    state.orgRow = { isFounder: false, trialEndsAt: null, creditBalance: "150" };
+    expect(await creditService.hasEnoughCredits(7, 150)).toBe(true);
+    expect(await creditService.hasEnoughCredits(7, 151)).toBe(false);
+  });
+});
+
+describe("checkAutoTopUp — decision only, never a charge", () => {
+  it("a missing org never tops up", async () => {
+    state.orgRow = null;
+    expect(await usageMeteringService.checkAutoTopUp(7)).toEqual({ shouldTopUp: false, amountCents: 0 });
+  });
+
+  it("disabled auto-top-up never tops up, however low the balance", async () => {
+    state.orgRow = { autoTopUpEnabled: false, creditBalance: "0" };
+    expect(await usageMeteringService.checkAutoTopUp(7)).toEqual({ shouldTopUp: false, amountCents: 0 });
+  });
+
+  it("enabled + balance under the default 200¢ threshold → top up the default 2500¢", async () => {
+    state.orgRow = { autoTopUpEnabled: true, creditBalance: "100" };
+    expect(await usageMeteringService.checkAutoTopUp(7)).toEqual({ shouldTopUp: true, amountCents: 2500 });
+  });
+
+  it("the org's configured threshold and amount are honored", async () => {
+    state.orgRow = {
+      autoTopUpEnabled: true,
+      creditBalance: "500",
+      autoTopUpThresholdCents: 1000,
+      autoTopUpAmountCents: 5000,
+    };
+    expect(await usageMeteringService.checkAutoTopUp(7)).toEqual({ shouldTopUp: true, amountCents: 5000 });
+  });
+
+  it("at or above the threshold → no top-up", async () => {
+    state.orgRow = { autoTopUpEnabled: true, creditBalance: "200" }; // exactly at default threshold
+    expect(await usageMeteringService.checkAutoTopUp(7)).toEqual({ shouldTopUp: false, amountCents: 0 });
   });
 });
