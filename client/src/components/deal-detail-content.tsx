@@ -28,6 +28,7 @@ import {
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { ActivityTimeline } from "@/components/activity-timeline";
+import { DealNextAction } from "@/components/deals/DealNextAction";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { DealCalculator, type AnalysisResults } from "@/components/deal-calculator";
@@ -290,8 +291,15 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
         </div>
 
         <div className="p-4 md:p-6">
-          <Tabs defaultValue="details" className="space-y-4 md:space-y-6">
+          {/* W6.2c — the track IS the spine of a deal: Timeline is the first
+              tab and the default, so opening a deal answers "what happened,
+              what next" before showing form fields. */}
+          <Tabs defaultValue="timeline" className="space-y-4 md:space-y-6">
             <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+              <TabsTrigger value="timeline" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-timeline">
+                <Clock className="w-4 h-4" aria-hidden="true" />
+                <span className="sr-only sm:not-sr-only sm:inline">Timeline</span>
+              </TabsTrigger>
               <TabsTrigger value="details" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-details">
                 <FileText className="w-4 h-4" aria-hidden="true" />
                 <span className="sr-only sm:not-sr-only sm:inline">Details</span>
@@ -299,10 +307,6 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
               <TabsTrigger value="documents" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-documents">
                 <Package className="w-4 h-4" aria-hidden="true" />
                 <span className="sr-only sm:not-sr-only sm:inline">Docs</span>
-              </TabsTrigger>
-              <TabsTrigger value="timeline" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-timeline">
-                <Clock className="w-4 h-4" aria-hidden="true" />
-                <span className="sr-only sm:not-sr-only sm:inline">Timeline</span>
               </TabsTrigger>
               <TabsTrigger value="checklist" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-checklist">
                 <ClipboardCheck className="w-4 h-4" aria-hidden="true" />
@@ -758,11 +762,15 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
               )}
             </TabsContent>
 
-            <TabsContent value="timeline" className="space-y-6">
+            <TabsContent value="timeline" className="space-y-4">
               {/* W6.2 — the single track: /track unions events across the
-                  deal, its property, and the seller lead, so this timeline
-                  reads lead → mail → response → offer → contract → close
-                  instead of only the deal's own slice. */}
+                  deal, its property, and the seller lead PLUS the real
+                  source tables (offers, inbound comms, campaign responses,
+                  mail pieces — W6.2b), so this timeline reads
+                  lead → mail → response → offer → contract → close
+                  instead of only the deal's own slice. The coach banner
+                  (W6.2c) answers "so what do I do next?" at the top. */}
+              <DealNextAction dealId={deal.id} />
               <ActivityTimeline
                 entityType="deal"
                 entityId={deal.id}

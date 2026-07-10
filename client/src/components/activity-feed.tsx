@@ -6,7 +6,7 @@ import {
   FileText, Package, PhoneOutgoing, PhoneIncoming, StickyNote,
   ArrowRightCircle, DollarSign, Upload, Filter, Loader2,
   Users, Building2, Briefcase, Activity, ExternalLink,
-  CheckSquare, ListPlus, ListChecks
+  CheckSquare, ListPlus, ListChecks, Send, Eye, Reply, Inbox
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +43,11 @@ const eventTypeIcons: Record<ActivityEventType, typeof Mail> = {
   task_completed: CheckSquare,
   task_created: ListPlus,
   task_updated: ListChecks,
+  // W6.2b — synthetic track events mapped from the real source tables.
+  offer_sent: Send,
+  offer_viewed: Eye,
+  offer_response: Reply,
+  response_received: Inbox,
 };
 
 const eventTypeColors: Record<ActivityEventType, string> = {
@@ -62,6 +67,10 @@ const eventTypeColors: Record<ActivityEventType, string> = {
   task_completed: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
   task_created: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
   task_updated: "bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft dark:text-acr-warn",
+  offer_sent: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
+  offer_viewed: "bg-acr-brand-soft text-acr-brand dark:bg-acr-brand-soft dark:text-acr-brand",
+  offer_response: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
+  response_received: "bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft dark:text-acr-pos",
 };
 
 const entityTypeIcons: Record<string, typeof Users> = {
