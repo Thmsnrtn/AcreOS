@@ -139,11 +139,8 @@ import {
   type DelinquencyEscalation, type InsertDelinquencyEscalation,
   playbookInstances,
   type PlaybookInstance, type InsertPlaybookInstance,
-  ddAssignments,
   type DdAssignment, type InsertDdAssignment,
-  swotReports,
   type SwotReport, type InsertSwotReport,
-  goNogoMemos,
   type GoNogoMemo, type InsertGoNogoMemo,
   platformFeatureFlags,
   type PlatformFeatureFlag, type InsertPlatformFeatureFlag,
@@ -1610,120 +1607,10 @@ export class DatabaseStorage implements IStorage {
   // (mixed into the prototype below).
 
 
-  // DD Assignments
-  async getDDAssignments(organizationId: number): Promise<DdAssignment[]> {
-    return await db.select().from(ddAssignments)
-      .where(eq(ddAssignments.organizationId, organizationId))
-      .orderBy(desc(ddAssignments.createdAt));
-  }
+  // Property-evaluation data layer (DD assignments / SWOT reports /
+  // go/no-go memos) extracted to server/storage/evaluationRepo.ts
+  // (mixed into the prototype below).
 
-  async getDDAssignmentById(organizationId: number, id: number): Promise<DdAssignment | undefined> {
-    const [assignment] = await db.select().from(ddAssignments)
-      .where(and(eq(ddAssignments.id, id), eq(ddAssignments.organizationId, organizationId)));
-    return assignment;
-  }
-
-  async getDDAssignmentsByProperty(organizationId: number, propertyId: number): Promise<DdAssignment[]> {
-    return await db.select().from(ddAssignments)
-      .where(and(eq(ddAssignments.propertyId, propertyId), eq(ddAssignments.organizationId, organizationId)))
-      .orderBy(desc(ddAssignments.createdAt));
-  }
-
-  async getPendingDDAssignments(organizationId: number): Promise<DdAssignment[]> {
-    return await db.select().from(ddAssignments)
-      .where(and(
-        eq(ddAssignments.organizationId, organizationId),
-        eq(ddAssignments.status, "pending")
-      ))
-      .orderBy(desc(ddAssignments.createdAt));
-  }
-
-  async createDDAssignment(data: InsertDdAssignment): Promise<DdAssignment> {
-    const [created] = await db.insert(ddAssignments).values(data).returning();
-    return created;
-  }
-
-  async updateDDAssignment(organizationId: number, id: number, data: Partial<InsertDdAssignment>): Promise<DdAssignment | undefined> {
-    const [updated] = await db.update(ddAssignments)
-      .set(data)
-      .where(and(eq(ddAssignments.id, id), eq(ddAssignments.organizationId, organizationId)))
-      .returning();
-    return updated;
-  }
-
-  async deleteDDAssignment(organizationId: number, id: number): Promise<boolean> {
-    await db.delete(ddAssignments)
-      .where(and(eq(ddAssignments.id, id), eq(ddAssignments.organizationId, organizationId)));
-    return true;
-  }
-
-  // SWOT Reports
-  async getSwotReports(organizationId: number): Promise<SwotReport[]> {
-    return await db.select().from(swotReports)
-      .where(eq(swotReports.organizationId, organizationId))
-      .orderBy(desc(swotReports.createdAt));
-  }
-
-  async getSwotReportById(organizationId: number, id: number): Promise<SwotReport | undefined> {
-    const [report] = await db.select().from(swotReports)
-      .where(and(eq(swotReports.id, id), eq(swotReports.organizationId, organizationId)));
-    return report;
-  }
-
-  async getSwotReportByProperty(organizationId: number, propertyId: number): Promise<SwotReport | undefined> {
-    const [report] = await db.select().from(swotReports)
-      .where(and(eq(swotReports.propertyId, propertyId), eq(swotReports.organizationId, organizationId)))
-      .orderBy(desc(swotReports.createdAt))
-      .limit(1);
-    return report;
-  }
-
-  async createSwotReport(data: InsertSwotReport): Promise<SwotReport> {
-    const [created] = await db.insert(swotReports).values(data).returning();
-    return created;
-  }
-
-  async updateSwotReport(organizationId: number, id: number, data: Partial<InsertSwotReport>): Promise<SwotReport | undefined> {
-    const [updated] = await db.update(swotReports)
-      .set(data)
-      .where(and(eq(swotReports.id, id), eq(swotReports.organizationId, organizationId)))
-      .returning();
-    return updated;
-  }
-
-  // Go/No-Go Memos
-  async getGoNogoMemos(organizationId: number): Promise<GoNogoMemo[]> {
-    return await db.select().from(goNogoMemos)
-      .where(eq(goNogoMemos.organizationId, organizationId))
-      .orderBy(desc(goNogoMemos.createdAt));
-  }
-
-  async getGoNogoMemoById(organizationId: number, id: number): Promise<GoNogoMemo | undefined> {
-    const [memo] = await db.select().from(goNogoMemos)
-      .where(and(eq(goNogoMemos.id, id), eq(goNogoMemos.organizationId, organizationId)));
-    return memo;
-  }
-
-  async getGoNogoMemoByProperty(organizationId: number, propertyId: number): Promise<GoNogoMemo | undefined> {
-    const [memo] = await db.select().from(goNogoMemos)
-      .where(and(eq(goNogoMemos.propertyId, propertyId), eq(goNogoMemos.organizationId, organizationId)))
-      .orderBy(desc(goNogoMemos.createdAt))
-      .limit(1);
-    return memo;
-  }
-
-  async createGoNogoMemo(data: InsertGoNogoMemo): Promise<GoNogoMemo> {
-    const [created] = await db.insert(goNogoMemos).values(data).returning();
-    return created;
-  }
-
-  async updateGoNogoMemo(organizationId: number, id: number, data: Partial<InsertGoNogoMemo>): Promise<GoNogoMemo | undefined> {
-    const [updated] = await db.update(goNogoMemos)
-      .set(data)
-      .where(and(eq(goNogoMemos.id, id), eq(goNogoMemos.organizationId, organizationId)))
-      .returning();
-    return updated;
-  }
 
   // Playbook Instances
   async getPlaybookInstances(organizationId: number): Promise<PlaybookInstance[]> {
@@ -2061,9 +1948,10 @@ import { gisRepo, type GisRepo } from "./storage/gisRepo";
 import { agentWorkflowsRepo, type AgentWorkflowsRepo } from "./storage/agentWorkflowsRepo";
 import { vaEngineRepo, type VaEngineRepo } from "./storage/vaEngineRepo";
 import { closingServicingRepo, type ClosingServicingRepo } from "./storage/closingServicingRepo";
+import { evaluationRepo, type EvaluationRepo } from "./storage/evaluationRepo";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo, PaxRepo, AiRepo, AutomationRepo, MailRepo, VaRepo, DueDiligenceRepo, SupportOpsRepo, SequencesRepo, CustomizationRepo, PaymentRemindersRepo, TasksRepo, AcquisitionRepo, DocumentsRepo, EnrichmentRepo, AnalyticsRepo, PlatformOpsRepo, GisRepo, AgentWorkflowsRepo, VaEngineRepo, ClosingServicingRepo {}
+export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo, PaxRepo, AiRepo, AutomationRepo, MailRepo, VaRepo, DueDiligenceRepo, SupportOpsRepo, SequencesRepo, CustomizationRepo, PaymentRemindersRepo, TasksRepo, AcquisitionRepo, DocumentsRepo, EnrichmentRepo, AnalyticsRepo, PlatformOpsRepo, GisRepo, AgentWorkflowsRepo, VaEngineRepo, ClosingServicingRepo, EvaluationRepo {}
 
 Object.assign(
   DatabaseStorage.prototype,
@@ -2097,6 +1985,7 @@ Object.assign(
   agentWorkflowsRepo,
   vaEngineRepo,
   closingServicingRepo,
+  evaluationRepo,
 );
 
 export const storage = new DatabaseStorage();
