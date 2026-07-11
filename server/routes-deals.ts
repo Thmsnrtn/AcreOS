@@ -246,14 +246,16 @@ export function registerDealRoutes(app: Express): void {
       if (!deal) return Errors.notFound(res, "Deal");
 
       const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
-      const events = await storage.getActivityEvents(org.id, "deal", dealId, eventTypes);
+      const events: any[] = await storage.getActivityEvents(org.id, "deal", dealId, eventTypes);
 
+      let sellerLeadId: number | null = null;
       if (deal.propertyId) {
         try {
           const propertyEvents = await storage.getActivityEvents(org.id, "property", deal.propertyId, eventTypes);
           events.push(...propertyEvents);
           const property = await storage.getProperty(org.id, deal.propertyId);
           if (property?.sellerId) {
+            sellerLeadId = property.sellerId;
             const leadEvents = await storage.getActivityEvents(org.id, "lead", property.sellerId, eventTypes);
             events.push(...leadEvents);
           }
@@ -262,7 +264,25 @@ export function registerDealRoutes(app: Express): void {
         }
       }
 
-      const seen = new Set<number>();
+      // W6.2b — the real sources. offers / seller_communications /
+      // campaign_responses / mail_shipment_pieces never wrote
+      // activity_events, so without this the "single track" was mostly
+      // stage changes and notes. Mapped at query time (string ids — can't
+      // collide with the serial ids above); best-effort like the rest.
+      try {
+        const { getStitchedSourceEvents } = await import("./services/dealTrack");
+        const sourceEvents = await getStitchedSourceEvents(org.id, {
+          leadId: sellerLeadId,
+          propertyId: deal.propertyId,
+        });
+        events.push(
+          ...(eventTypes ? sourceEvents.filter((e) => eventTypes.includes(e.eventType)) : sourceEvents),
+        );
+      } catch {
+        // Same stance: the activity_events track still returns.
+      }
+
+      const seen = new Set<number | string>();
       const merged = events
         .filter((e: any) => (seen.has(e.id) ? false : (seen.add(e.id), true)))
         .sort((a: any, b: any) => {

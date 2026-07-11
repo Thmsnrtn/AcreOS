@@ -4825,6 +4825,14 @@ export const ACTIVITY_EVENT_TYPES = {
   task_created: { name: "Task Created", icon: "ListTodo", color: "blue" },
   task_updated: { name: "Task Updated", icon: "ClipboardEdit", color: "amber" },
   task_completed: { name: "Task Completed", icon: "CheckCircle2", color: "green" },
+  // W6.2b — synthetic track events. The deal /track endpoint maps the REAL
+  // source tables (offers, seller_communications, campaign_responses,
+  // mail_shipment_pieces) into the timeline at query time; these types name
+  // the mapped rows. They are never persisted to activity_events.
+  offer_sent: { name: "Offer Sent", icon: "Send", color: "blue" },
+  offer_viewed: { name: "Offer Viewed", icon: "Eye", color: "purple" },
+  offer_response: { name: "Offer Response", icon: "Reply", color: "green" },
+  response_received: { name: "Response Received", icon: "Inbox", color: "green" },
 } as const;
 
 export type ActivityEventType = keyof typeof ACTIVITY_EVENT_TYPES;
