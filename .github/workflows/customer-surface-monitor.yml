@@ -63,8 +63,13 @@ jobs:
       CI: "true"
       SENTRY_SOURCEMAPS: skip
       INBOUND_EMAIL_SNS_ONLY: "1"
-      FOUNDER_EMAIL: e2e@acreos.test
-      FOUNDER_EMAILS: e2e@acreos.test
+      # Must match the founder identity global-setup seeds
+      # (founder-e2e@acreos.test). This previously pointed at the CUSTOMER
+      # email, so the e2e-founder cookie resolved to a NON-founder — every
+      # founder surface 404'd in this workflow and the founder-side checks
+      # were vacuous (2026-07-11 sweep; e2e-mobile.yml already had it right).
+      FOUNDER_EMAIL: founder-e2e@acreos.test
+      FOUNDER_EMAILS: founder-e2e@acreos.test
 
     steps:
       - uses: actions/checkout@v7
