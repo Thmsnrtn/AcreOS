@@ -247,6 +247,16 @@ export function registerPropertyRoutes(app: Express): void {
     },
   );
 
+  // export — registered BEFORE /api/properties/:id so the literal path wins (2026-07-11 route-order sweep).
+  api.get("/api/properties/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
+    const csv = await exportPropertiesToCSV(org.id);
+    const date = new Date().toISOString().split("T")[0];
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="properties-${date}.csv"`);
+    res.send(csv);
+  });
+
   api.get("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const id = Number(req.params.id);
@@ -624,14 +634,6 @@ export function registerPropertyRoutes(app: Express): void {
     }
   });
   
-  api.get("/api/properties/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = req.organization;
-    const csv = await exportPropertiesToCSV(org.id);
-    const date = new Date().toISOString().split("T")[0];
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename="properties-${date}.csv"`);
-    res.send(csv);
-  });
   
   api.post("/api/properties/import", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
     try {

@@ -378,6 +378,54 @@ export function registerSoleneChatRoutes(app: Express): void {
           typeof conversationIdRaw === "string"
             ? parseIdParam(conversationIdRaw)
             : null;
+
+        // Window mode — the CostFooter asks for ?windowDays=30 (all-thread
+        // spend by tier). This mode existed only in the client until the
+        // 2026-07-11 sweep found every footer render 400ing; the summary
+        // is computed from real solene_messages usage rows, tier inferred
+        // from the recorded model id (unknown models bucket as "other").
+        const windowDaysRaw = req.query.windowDays;
+        if (conversationId === null && typeof windowDaysRaw === "string") {
+          const windowDays = Number.parseInt(windowDaysRaw, 10);
+          if (!Number.isFinite(windowDays) || windowDays <= 0 || windowDays > 365) {
+            return Errors.badRequest(res, "windowDays must be 1–365");
+          }
+          const { db } = await import("./db");
+          const { soleneMessages } = await import("@shared/schema");
+          const { gte } = await import("drizzle-orm");
+          const { CHAT_MODELS } = await import("@shared/schema/solene-chat-config");
+          const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+          const rows = await db
+            .select({
+              modelUsed: soleneMessages.modelUsed,
+              estimatedCostUsd: soleneMessages.estimatedCostUsd,
+            })
+            .from(soleneMessages)
+            .where(gte(soleneMessages.sentAt, since));
+
+          const tierForModel = (model: string | null): string => {
+            if (!model) return "other";
+            if (model === CHAT_MODELS.STRATEGIC) return "strategic";
+            if (model === CHAT_MODELS.CONVERSATIONAL) return "conversational";
+            if (model === CHAT_MODELS.CODE) return "code";
+            if (model === CHAT_MODELS.FAST || model === CHAT_MODELS.CLASSIFIER) return "fast";
+            return "other";
+          };
+
+          const byTier: Record<string, { totalCostUsd: number; turnCount: number }> = {};
+          let totalCostUsd = 0;
+          for (const row of rows) {
+            const cost = row.estimatedCostUsd != null ? Number(row.estimatedCostUsd) : 0;
+            if (!Number.isFinite(cost) || cost <= 0) continue;
+            const tier = tierForModel(row.modelUsed);
+            byTier[tier] = byTier[tier] ?? { totalCostUsd: 0, turnCount: 0 };
+            byTier[tier].totalCostUsd += cost;
+            byTier[tier].turnCount += 1;
+            totalCostUsd += cost;
+          }
+          return res.json({ byTier, totalCostUsd, windowDays });
+        }
+
         if (conversationId === null) {
           return Errors.badRequest(
             res,

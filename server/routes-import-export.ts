@@ -92,6 +92,150 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
+  // notes — registered BEFORE /api/import/:entityType so the literal path wins (2026-07-11 route-order sweep).
+  api.post("/api/import/notes", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+    try {
+      const org = req.organization;
+
+      if (!req.file) {
+        return Errors.badRequest(res, "No file uploaded");
+      }
+
+      const csvString = req.file.buffer.toString("utf-8");
+      const data = parseCSV(csvString);
+
+      if (data.length > MAX_CSV_IMPORT_ROWS) {
+        return res.status(400).json({
+          message: `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller files.`,
+        });
+      }
+
+      // Optional user-provided field map (JSON-encoded in request body)
+      let userFieldMap: Record<string, string> | undefined;
+      if (req.body?.fieldMap) {
+        try {
+          userFieldMap = JSON.parse(req.body.fieldMap);
+        } catch {
+          // ignore malformed fieldMap
+        }
+      }
+
+      // Intent fork — 'acquired' (default) targets acquired_notes; 'originated'
+      // targets the legacy notes table for self-originated paper. Note
+      // investors per persona walkthrough are 75%+ acquired, so default
+      // matches the dominant case.
+      const intent = req.body?.intent === "originated" ? "originated" : "acquired";
+
+      const result = intent === "acquired"
+        ? await importAcquiredNotesFromCSV(data, org.id, userFieldMap)
+        : await importNotesFromCSV(data, org.id, userFieldMap);
+
+      const user = req.user as any;
+      const userId = user?.id || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "import",
+        entityType: intent === "acquired" ? "acquired_notes" : "notes",
+        entityId: 0,
+        changes: {
+          before: {},
+          after: {
+            intent,
+            totalRows: data.length,
+            imported: result.successCount,
+            errors: result.errorCount,
+          },
+          fields: ["import"],
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      }).catch(() => {}); // non-blocking
+
+      res.json(result);
+    } catch (error: any) {
+      logger.error("[import/notes] Error", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  // communications — registered BEFORE /api/import/:entityType so the literal path wins (2026-07-11 route-order sweep).
+  // POST /api/import/communications — CSV with leadEmail,channel,body,sentAt,direction
+  api.post(
+    "/api/import/communications",
+    isAuthenticated,
+    getOrCreateOrg,
+    uploadJobCsv.single("file"),
+    validateCSV,
+    async (req, res) => {
+      try {
+        const org = req.organization!;
+        const user = req.user as any;
+        const userId = user?.id || user?.id;
+        if (!req.file) return Errors.badRequest(res, "No file uploaded");
+        if (req.file.size > HARD_BYTE_CAP) {
+          return Errors.badRequest(res, "File exceeds size cap");
+        }
+        const job = await createImportJob({
+          organizationId: org.id,
+          userId,
+          kind: "communications",
+          filename: req.file.originalname,
+          payload: req.file.buffer,
+        });
+        res.status(202).json({
+          jobId: job.id,
+          status: job.status,
+          totalRows: job.totalRows,
+          kind: job.kind,
+        });
+      } catch (error: any) {
+        if (typeof error?.message === "string" && error.message.includes("exceeds maximum")) {
+          return Errors.badRequest(res, error.message ?? "Bad request");
+        }
+        logger.error("[import/communications] error", error);
+        Errors.internal(res, error);
+      }
+    }
+  );
+
+  // documents — registered BEFORE /api/import/:entityType so the literal path wins (2026-07-11 route-order sweep).
+  // POST /api/import/documents — ZIP whose entries are matched to leads/properties by filename
+  api.post(
+    "/api/import/documents",
+    isAuthenticated,
+    getOrCreateOrg,
+    uploadJobZip.single("file"),
+    async (req, res) => {
+      try {
+        const org = req.organization!;
+        const user = req.user as any;
+        const userId = user?.id || user?.id;
+        if (!req.file) return Errors.badRequest(res, "No ZIP uploaded");
+        // ZIP magic check: PK\x03\x04
+        const buf = req.file.buffer;
+        if (buf.length < 4 || buf.readUInt32LE(0) !== 0x04034b50) {
+          return Errors.badRequest(res, "Uploaded file is not a ZIP archive");
+        }
+        const job = await createImportJob({
+          organizationId: org.id,
+          userId,
+          kind: "documents",
+          filename: req.file.originalname,
+          payload: req.file.buffer,
+        });
+        res.status(202).json({
+          jobId: job.id,
+          status: job.status,
+          kind: job.kind,
+        });
+      } catch (error: any) {
+        logger.error("[import/documents] error", error);
+        Errors.internal(res, error);
+      }
+    }
+  );
+
   // Phase 4 Week 15-16 (Magdalena §1): this route now uses the larger-file
   // multer middleware (50 MB) and branches:
   //   - rows ≤ MAX_CSV_IMPORT_ROWS (500): run synchronously, return the
@@ -206,68 +350,55 @@ export function registerImportExportRoutes(app: Express): void {
     });
   });
 
-  api.post("/api/import/notes", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
+
+  // backup — registered BEFORE /api/export/:entityType so the literal path wins (2026-07-11 route-order sweep).
+  /**
+   * @deprecated Use POST /api/export/everything which returns a real ZIP
+   * with the full entity set + attachments. This endpoint returns a JSON
+   * envelope ("backup_*.json") which is harder for other CRMs to consume.
+   * Sunset: 2026-07-02. Tobiah §1 (Phase 4 Week 15-16).
+   */
+  api.get("/api/export/backup", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
+      const backup = await createBackupZip(org.id);
+      res.setHeader("X-Deprecation", "true");
+      res.setHeader("X-Deprecation-Replacement", "POST /api/export/everything");
+      res.setHeader("X-Deprecation-Sunset", "2026-07-02");
 
-      if (!req.file) {
-        return Errors.badRequest(res, "No file uploaded");
-      }
-
-      const csvString = req.file.buffer.toString("utf-8");
-      const data = parseCSV(csvString);
-
-      if (data.length > MAX_CSV_IMPORT_ROWS) {
-        return res.status(400).json({
-          message: `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller files.`,
-        });
-      }
-
-      // Optional user-provided field map (JSON-encoded in request body)
-      let userFieldMap: Record<string, string> | undefined;
-      if (req.body?.fieldMap) {
-        try {
-          userFieldMap = JSON.parse(req.body.fieldMap);
-        } catch {
-          // ignore malformed fieldMap
-        }
-      }
-
-      // Intent fork — 'acquired' (default) targets acquired_notes; 'originated'
-      // targets the legacy notes table for self-originated paper. Note
-      // investors per persona walkthrough are 75%+ acquired, so default
-      // matches the dominant case.
-      const intent = req.body?.intent === "originated" ? "originated" : "acquired";
-
-      const result = intent === "acquired"
-        ? await importAcquiredNotesFromCSV(data, org.id, userFieldMap)
-        : await importNotesFromCSV(data, org.id, userFieldMap);
-
-      const user = req.user as any;
-      const userId = user?.id || user?.id;
-      await storage.createAuditLogEntry({
-        organizationId: org.id,
-        userId,
-        action: "import",
-        entityType: intent === "acquired" ? "acquired_notes" : "notes",
-        entityId: 0,
-        changes: {
-          before: {},
-          after: {
-            intent,
-            totalRows: data.length,
-            imported: result.successCount,
-            errors: result.errorCount,
-          },
-          fields: ["import"],
+      const jsonResponse = {
+        metadata: {
+          organizationId: org.id,
+          organizationName: org.name,
+          exportedAt: new Date().toISOString(),
         },
-        ipAddress: req.ip || req.socket?.remoteAddress,
-        userAgent: req.headers["user-agent"],
-      }).catch(() => {}); // non-blocking
+        files: backup.files.map((f) => ({
+          name: f.name,
+          content: f.content,
+        })),
+      };
 
-      res.json(result);
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="backup_${org.slug}_${new Date().toISOString().split("T")[0]}.json"`
+      );
+      res.send(JSON.stringify(jsonResponse, null, 2));
     } catch (error: any) {
-      logger.error("[import/notes] Error", error);
+      logger.error("Backup error", error);
+      Errors.internal(res, error);
+    }
+  });
+
+  // jobs — registered BEFORE /api/export/:entityType so the literal path wins (2026-07-11 route-order sweep).
+  api.get("/api/export/jobs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization!;
+      const limit = Math.min(50, parseInt((req.query.limit as string) || "25", 10));
+      const jobs = await listExportJobs(org.id, limit);
+      res.json({ jobs });
+    } catch (error: any) {
+      logger.error("[export/jobs list] error", error);
       Errors.internal(res, error);
     }
   });
@@ -361,43 +492,6 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  /**
-   * @deprecated Use POST /api/export/everything which returns a real ZIP
-   * with the full entity set + attachments. This endpoint returns a JSON
-   * envelope ("backup_*.json") which is harder for other CRMs to consume.
-   * Sunset: 2026-07-02. Tobiah §1 (Phase 4 Week 15-16).
-   */
-  api.get("/api/export/backup", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const backup = await createBackupZip(org.id);
-      res.setHeader("X-Deprecation", "true");
-      res.setHeader("X-Deprecation-Replacement", "POST /api/export/everything");
-      res.setHeader("X-Deprecation-Sunset", "2026-07-02");
-
-      const jsonResponse = {
-        metadata: {
-          organizationId: org.id,
-          organizationName: org.name,
-          exportedAt: new Date().toISOString(),
-        },
-        files: backup.files.map((f) => ({
-          name: f.name,
-          content: f.content,
-        })),
-      };
-
-      res.setHeader("Content-Type", "application/json");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="backup_${org.slug}_${new Date().toISOString().split("T")[0]}.json"`
-      );
-      res.send(JSON.stringify(jsonResponse, null, 2));
-    } catch (error: any) {
-      logger.error("Backup error", error);
-      Errors.internal(res, error);
-    }
-  });
 
   // ============================================
   // COMPLIANCE (20.1, 20.2, 20.3)
@@ -651,80 +745,7 @@ export function registerImportExportRoutes(app: Express): void {
   // synchronous (≤500 rows) and job-backed (>500 rows) execution. See the
   // route at line ~94 for details.
 
-  // POST /api/import/communications — CSV with leadEmail,channel,body,sentAt,direction
-  api.post(
-    "/api/import/communications",
-    isAuthenticated,
-    getOrCreateOrg,
-    uploadJobCsv.single("file"),
-    validateCSV,
-    async (req, res) => {
-      try {
-        const org = req.organization!;
-        const user = req.user as any;
-        const userId = user?.id || user?.id;
-        if (!req.file) return Errors.badRequest(res, "No file uploaded");
-        if (req.file.size > HARD_BYTE_CAP) {
-          return Errors.badRequest(res, "File exceeds size cap");
-        }
-        const job = await createImportJob({
-          organizationId: org.id,
-          userId,
-          kind: "communications",
-          filename: req.file.originalname,
-          payload: req.file.buffer,
-        });
-        res.status(202).json({
-          jobId: job.id,
-          status: job.status,
-          totalRows: job.totalRows,
-          kind: job.kind,
-        });
-      } catch (error: any) {
-        if (typeof error?.message === "string" && error.message.includes("exceeds maximum")) {
-          return Errors.badRequest(res, error.message ?? "Bad request");
-        }
-        logger.error("[import/communications] error", error);
-        Errors.internal(res, error);
-      }
-    }
-  );
 
-  // POST /api/import/documents — ZIP whose entries are matched to leads/properties by filename
-  api.post(
-    "/api/import/documents",
-    isAuthenticated,
-    getOrCreateOrg,
-    uploadJobZip.single("file"),
-    async (req, res) => {
-      try {
-        const org = req.organization!;
-        const user = req.user as any;
-        const userId = user?.id || user?.id;
-        if (!req.file) return Errors.badRequest(res, "No ZIP uploaded");
-        // ZIP magic check: PK\x03\x04
-        const buf = req.file.buffer;
-        if (buf.length < 4 || buf.readUInt32LE(0) !== 0x04034b50) {
-          return Errors.badRequest(res, "Uploaded file is not a ZIP archive");
-        }
-        const job = await createImportJob({
-          organizationId: org.id,
-          userId,
-          kind: "documents",
-          filename: req.file.originalname,
-          payload: req.file.buffer,
-        });
-        res.status(202).json({
-          jobId: job.id,
-          status: job.status,
-          kind: job.kind,
-        });
-      } catch (error: any) {
-        logger.error("[import/documents] error", error);
-        Errors.internal(res, error);
-      }
-    }
-  );
 
   // GET /api/import/jobs — list recent jobs for current org
   api.get("/api/import/jobs", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -794,17 +815,6 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  api.get("/api/export/jobs", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization!;
-      const limit = Math.min(50, parseInt((req.query.limit as string) || "25", 10));
-      const jobs = await listExportJobs(org.id, limit);
-      res.json({ jobs });
-    } catch (error: any) {
-      logger.error("[export/jobs list] error", error);
-      Errors.internal(res, error);
-    }
-  });
 
   api.get("/api/export/jobs/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

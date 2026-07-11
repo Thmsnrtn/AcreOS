@@ -15,7 +15,7 @@
  */
 
 import type { Express, Response } from "express";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   teamSystemAuditRuns,
@@ -68,7 +68,10 @@ export function registerTeamSystemAuditRoutes(app: Express): void {
             count: sql<number>`COUNT(*)::int`,
           })
           .from(teamSystemAuditFindings)
-          .where(sql`${teamSystemAuditFindings.runId} = ANY(${runIds})`)
+          // inArray, not raw `= ANY(${jsArray})` — drizzle binds a JS array
+          // param in a shape Postgres rejects, which 500'd /founder/build
+          // whenever at least one audit run existed (2026-07-11 sweep).
+          .where(inArray(teamSystemAuditFindings.runId, runIds))
           .groupBy(
             teamSystemAuditFindings.runId,
             teamSystemAuditFindings.dimension,

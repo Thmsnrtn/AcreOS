@@ -483,19 +483,31 @@ export default function PortfolioOptimizerPage() {
           <MetricCard
             label="Annual cash flow"
             value={formatDollar(metrics.totalCashFlow)}
-            sub={`${((metrics.totalCashFlow / metrics.totalValue) * 100).toFixed(1)}% yield`}
+            sub={
+              metrics.totalValue > 0
+                ? `${((metrics.totalCashFlow / metrics.totalValue) * 100).toFixed(1)}% yield`
+                : "No valuation yet"
+            }
             icon={<Activity className="w-5 h-5" aria-hidden="true" />}
           />
+          {/* avgAppreciation / diversificationScore are NULL until holdings
+              carry valuations — the API is honest about missing data, so the
+              cards must be too (this crashed the whole page via ErrorBoundary
+              on sparse portfolios, 2026-07-11 sweep). */}
           <MetricCard
             label="Avg appreciation"
-            value={`${metrics.avgAppreciation.toFixed(1)}%`}
+            value={metrics.avgAppreciation != null ? `${metrics.avgAppreciation.toFixed(1)}%` : "—"}
             sub="Annual weighted avg"
             icon={<TrendingUp className="w-5 h-5" aria-hidden="true" />}
           />
           <MetricCard
             label="Sharpe ratio"
-            value={metrics.sharpeRatio.toFixed(2)}
-            sub={`Diversification: ${Math.round(metrics.diversificationScore)}/100`}
+            value={metrics.sharpeRatio != null ? metrics.sharpeRatio.toFixed(2) : "—"}
+            sub={
+              metrics.diversificationScore != null
+                ? `Diversification: ${Math.round(metrics.diversificationScore)}/100`
+                : "Diversification: —"
+            }
             icon={<Percent className="w-5 h-5" aria-hidden="true" />}
           />
         </dl>

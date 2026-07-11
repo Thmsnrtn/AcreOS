@@ -51,6 +51,19 @@ async function gatePropertyParam(req: AuthenticatedRequest, res: Response): Prom
   return propertyId;
 }
 
+  // ready — registered BEFORE /:propertyId so the literal path wins (2026-07-11 route-order sweep).
+// Properties ready for disposition
+router.get("/ready", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const orgId = getOrganizationId(req);
+    const properties = await dispositionOptimizerService.getPropertiesReadyForDisposition(orgId);
+    res.json({ properties });
+  } catch (err) {
+    logger.error("disposition.ready failed", err instanceof Error ? err : undefined);
+    Errors.internal(res, err);
+  }
+});
+
 // Full recommendation for a property
 router.get("/:propertyId", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -151,16 +164,5 @@ router.post("/:propertyId/compare", isAuthenticated, getOrCreateOrg, async (req:
   }
 });
 
-// Properties ready for disposition
-router.get("/ready", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const orgId = getOrganizationId(req);
-    const properties = await dispositionOptimizerService.getPropertiesReadyForDisposition(orgId);
-    res.json({ properties });
-  } catch (err) {
-    logger.error("disposition.ready failed", err instanceof Error ? err : undefined);
-    Errors.internal(res, err);
-  }
-});
 
 export default router;

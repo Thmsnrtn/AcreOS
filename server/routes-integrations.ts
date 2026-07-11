@@ -973,6 +973,27 @@ export function registerIntegrationRoutes(app: Express): void {
     }
   });
 
+  // recommend-sample-size — registered BEFORE /api/ab-tests/:id so the literal path wins (2026-07-11 route-order sweep).
+  // Get recommended sample size
+  api.get("/api/ab-tests/recommend-sample-size", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const baselineRate = parseFloat(req.query.baselineRate as string) || 0.05;
+      const minEffect = parseFloat(req.query.minEffect as string) || 0.05;
+      
+      const sampleSize = recommendMinSampleSize(baselineRate, minEffect);
+      
+      res.json({ 
+        recommendedSampleSize: sampleSize,
+        baselineRate,
+        minimumDetectableEffect: minEffect,
+        confidenceLevel: 0.95,
+        power: 0.80
+      });
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  });
+
   // Get single A/B test with variants
   api.get("/api/ab-tests/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -1195,25 +1216,6 @@ export function registerIntegrationRoutes(app: Express): void {
     }
   });
 
-  // Get recommended sample size
-  api.get("/api/ab-tests/recommend-sample-size", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const baselineRate = parseFloat(req.query.baselineRate as string) || 0.05;
-      const minEffect = parseFloat(req.query.minEffect as string) || 0.05;
-      
-      const sampleSize = recommendMinSampleSize(baselineRate, minEffect);
-      
-      res.json({ 
-        recommendedSampleSize: sampleSize,
-        baselineRate,
-        minimumDetectableEffect: minEffect,
-        confidenceLevel: 0.95,
-        power: 0.80
-      });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
 
   // Add variant to existing test
   api.post("/api/ab-tests/:id/variants", isAuthenticated, getOrCreateOrg, async (req, res) => {

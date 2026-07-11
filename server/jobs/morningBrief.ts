@@ -21,7 +21,7 @@
  * cleanly without spinning up the full SSE stream.
  */
 
-import { and, desc, eq, gte, isNotNull, sql, sum } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, sql, sum } from "drizzle-orm";
 import { db } from "../db";
 import {
   aiConversations,
@@ -347,7 +347,7 @@ async function computePerOrgMargin(
       ? await db
           .select({ id: organizations.id, name: organizations.name })
           .from(organizations)
-          .where(sql`${organizations.id} = ANY(${ids})`)
+          .where(inArray(organizations.id, ids))
       : [];
     const nameMap = new Map(orgNames.map((r) => [r.id, r.name ?? `Org ${r.id}`]));
     return revenueRows

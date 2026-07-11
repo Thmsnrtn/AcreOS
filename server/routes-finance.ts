@@ -133,11 +133,32 @@ export function registerFinanceRoutes(app: Express): void {
     }
   });
 
-  api.get("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // export — registered BEFORE /api/notes/:id so the literal path wins (2026-07-11 route-order sweep).
+  api.get("/api/notes/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
+    const csv = await exportNotesToCSV(org.id);
+    const date = new Date().toISOString().split("T")[0];
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="notes-${date}.csv"`);
+    res.send(csv);
+  });
+
+  // delinquent — registered BEFORE /api/notes/:id so the literal path wins (2026-07-11 route-order sweep).
+  api.get("/api/notes/delinquent", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
+    const delinquentNotes = await storage.getDelinquentNotes(org.id);
+    res.json(delinquentNotes);
+  });
+
+  api.get("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res, next) => {
     const org = req.organization;
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) {
-      return Errors.notFound(res, "Note");
+      // Not a numeric note id — fall through so LATER literal routes under
+      // /api/notes/* (e.g. insurance-watch, registered by routes-notes.ts
+      // AFTER this file in routes.ts) can match. Returning 404 here
+      // swallowed them cross-file (2026-07-11 sweep).
+      return next();
     }
     const note = await storage.getNote(org.id, id);
     if (!note) return Errors.notFound(res, "Note");
@@ -532,14 +553,6 @@ export function registerFinanceRoutes(app: Express): void {
     res.status(204).send();
   });
   
-  api.get("/api/notes/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = req.organization;
-    const csv = await exportNotesToCSV(org.id);
-    const date = new Date().toISOString().split("T")[0];
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename="notes-${date}.csv"`);
-    res.send(csv);
-  });
   
   // Calculate payment helper endpoint
   api.post("/api/notes/calculate-payment", isAuthenticated, async (req, res) => {
@@ -556,11 +569,6 @@ export function registerFinanceRoutes(app: Express): void {
   // FINANCE AGENT - DELINQUENCY & REMINDERS
   // ============================================
   
-  api.get("/api/notes/delinquent", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = req.organization;
-    const delinquentNotes = await storage.getDelinquentNotes(org.id);
-    res.json(delinquentNotes);
-  });
 
   api.get("/api/notes/:id/reminders", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;

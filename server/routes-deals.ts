@@ -403,6 +403,17 @@ export function registerDealRoutes(app: Express): void {
     }
   });
 
+  // handoffs — registered BEFORE /api/deals/:id so the literal path wins (2026-07-11 route-order sweep).
+  // GET /api/deals/handoffs — list all handoffs for the org
+  app.get("/api/deals/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const handoffs = await getAllHandoffs(req.organization.id);
+      res.json(handoffs);
+    } catch (err: any) {
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
+    }
+  });
+
   api.get("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const deal = await storage.getDeal(org.id, Number(req.params.id));
@@ -2301,15 +2312,6 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   // Deal Handoff Workflow (T55)
   // -----------------------------------------------------------------------
 
-  // GET /api/deals/handoffs — list all handoffs for the org
-  app.get("/api/deals/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const handoffs = await getAllHandoffs(req.organization.id);
-      res.json(handoffs);
-    } catch (err: any) {
-      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
-    }
-  });
 
   // GET /api/deals/:dealId/handoffs — handoffs for a specific deal
   app.get("/api/deals/:dealId/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {

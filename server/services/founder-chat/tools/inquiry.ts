@@ -11,7 +11,7 @@
  */
 
 import { z } from "zod";
-import { and, desc, eq, gte, sql, sum } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql, sum } from "drizzle-orm";
 import {
   financialLedger,
   organizations,
@@ -136,7 +136,7 @@ registerTool({
     const orgIds = orgRevenueRows.map((r) => r.orgId).filter((id): id is number => id != null);
     const orgRows = orgIds.length
       ? await db.select({ id: organizations.id, name: organizations.name, tier: organizations.subscriptionTier })
-          .from(organizations).where(sql`${organizations.id} = ANY(${orgIds})`)
+          .from(organizations).where(inArray(organizations.id, orgIds))
       : [];
     const orgMeta = new Map(orgRows.map((r) => [r.id, { name: r.name ?? "Unknown", tier: r.tier ?? "free" }]));
     let perOrg = orgRevenueRows

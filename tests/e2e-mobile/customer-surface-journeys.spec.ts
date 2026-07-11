@@ -404,6 +404,56 @@ async function checkpoint(
 // JOURNEY 1 — Founder daily loop
 // ────────────────────────────────────────────────────────────────────────────
 
+test.describe("J0: founder four doors", () => {
+  // The FOUNDER surface (not the customer doors J1 walks under a founder's
+  // hat). These four routes are the founder's entire primary nav
+  // (FOUNDER_DOORS in client/src/lib/founder-doors.ts) and were NEVER
+  // walked in CI — which is how a browser-crashing shared/ module blanked
+  // Decisions/Controls in production before any monitor noticed
+  // (2026-07-11 founder report). Selected by the e2e-founder cookie
+  // (server/auth/testAuth.ts), whose seeded email global-setup points
+  // FOUNDER_EMAILS at.
+  test("letter → decisions → controls → story", async ({ page, baseURL }, testInfo) => {
+    const meta = resolveProjectMeta(testInfo);
+    await applyProjectTheme(page, meta);
+    const ctx = attachListeners(page);
+    const { hostname } = new URL(baseURL!);
+    await page.context().addCookies([
+      { name: "__session", value: "e2e-founder", domain: hostname, path: "/" },
+    ]);
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem("acreos_cookie_consent", "declined");
+      } catch {
+        /* banner shows, journey degrades visibly */
+      }
+    });
+
+    const doors: Array<{ name: string; path: string }> = [
+      { name: "letter", path: "/founder" },
+      { name: "decisions", path: "/founder/decisions" },
+      { name: "controls", path: "/founder/autopilot/control" },
+      { name: "story", path: "/founder/autopilot/story" },
+    ];
+
+    for (const door of doors) {
+      await page.goto(door.path, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(POST_NAV_SETTLE_MS);
+      await checkpoint(page, ctx, `j0-${door.name}`, testInfo);
+      // A founder door must never resolve to the SPA 404 — that's what a
+      // guard failure or route regression looks like from the founder's seat.
+      const bodyText = await probeEvaluate(
+        page,
+        () => (document.body?.innerText || "").trim(),
+      );
+      expect(
+        bodyText.includes("LOST THE TRAIL"),
+        `${door.path} rendered the 404 page — door is broken for the founder`,
+      ).toBe(false);
+    }
+  });
+});
+
 test.describe("J1: founder daily loop", () => {
   test("login → today → map → deals → money → pax → settings gear → inbox → settings", async ({
     page,

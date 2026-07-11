@@ -25,6 +25,108 @@ import { logger } from "./utils/logger";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 
 export function registerPublicSignRoutes(app: Express): void {
+  // consent — registered BEFORE /api/public/sign/:docId so the literal path wins (2026-07-11 route-order sweep).
+  app.post("/api/public/sign/consent", async (req, res) => {
+    try {
+      const {
+        docId: docIdRaw,
+        s: signerId,
+        t: token,
+        consentedHardwareRequirements,
+        consentedPaperCopyRight,
+        consentedWithdrawalRight,
+        consentedContactUpdate,
+        consentedScope,
+        disclosureVersion,
+      } = req.body || {};
+      const docId = parseInt(String(docIdRaw), 10);
+      if (!Number.isFinite(docId) || !signerId || !token) {
+        return Errors.badRequest(res, "Missing doc, signer, or token");
+      }
+      if (!verifySigningToken(docId, String(signerId), String(token))) {
+        return res.status(403).json({ error: "Invalid or expired signing link" });
+      }
+      // All five disclosures must be true — the legal minimum.
+      if (
+        consentedHardwareRequirements !== true ||
+        consentedPaperCopyRight !== true ||
+        consentedWithdrawalRight !== true ||
+        consentedContactUpdate !== true ||
+        consentedScope !== true
+      ) {
+        return Errors.badRequest(
+          res,
+          "All five §101(c) disclosures must be acknowledged before consent can be recorded.",
+        );
+      }
+      // The disclosure version the client posts must match the server's
+      // current version. Mismatch usually means the client cached an old
+      // version of the dialog; the client will refetch on next mount.
+      const version =
+        typeof disclosureVersion === "string" && disclosureVersion.length > 0
+          ? disclosureVersion
+          : ESIGN_DISCLOSURE_VERSION;
+      if (version !== ESIGN_DISCLOSURE_VERSION) {
+        return Errors.badRequest(
+          res,
+          `Disclosure version mismatch — expected ${ESIGN_DISCLOSURE_VERSION}, got ${version}.`,
+        );
+      }
+
+      const [doc] = await db
+        .select({
+          signers: generatedDocuments.signers,
+          organizationId: generatedDocuments.organizationId,
+        })
+        .from(generatedDocuments)
+        .where(eq(generatedDocuments.id, docId))
+        .limit(1);
+      if (!doc) return Errors.notFound(res, "Document");
+      const signers = (doc.signers || []) as Array<{ id: string; email?: string }>;
+      const signer = signers.find((s) => s.id === String(signerId));
+      if (!signer) {
+        return res.status(403).json({ error: "Invalid or expired signing link" });
+      }
+
+      const [row] = await db
+        .insert(signingConsentAudit)
+        .values({
+          userId: null,
+          organizationId: doc.organizationId,
+          signerEmail: signer.email ?? null,
+          documentId: docId,
+          disclosureVersion: version,
+          consentedHardwareRequirements: true,
+          consentedPaperCopyRight: true,
+          consentedWithdrawalRight: true,
+          consentedContactUpdate: true,
+          consentedScope: true,
+          ipAddress: req.ip || (req.headers["x-forwarded-for"] as string) || null,
+          userAgent: (req.headers["user-agent"] as string) || null,
+        })
+        .returning({ id: signingConsentAudit.id });
+
+      logger.info("esign.consent.captured", {
+        consentAuditId: row?.id,
+        documentId: docId,
+        signerEmail: signer.email ?? null,
+        disclosureVersion: version,
+      });
+
+      res.json({
+        success: true,
+        consentAuditId: row?.id ?? null,
+        disclosureVersion: version,
+      });
+    } catch (error: any) {
+      logger.error(
+        "Public sign consent capture error",
+        error instanceof Error ? error : undefined,
+      );
+      Errors.internal(res, error);
+    }
+  });
+
   // GET /api/public/sign/:docId?s={signerId}&t={token}
   app.get("/api/public/sign/:docId", async (req, res) => {
     try {
@@ -267,104 +369,4 @@ export function registerPublicSignRoutes(app: Express): void {
     }
   });
 
-  app.post("/api/public/sign/consent", async (req, res) => {
-    try {
-      const {
-        docId: docIdRaw,
-        s: signerId,
-        t: token,
-        consentedHardwareRequirements,
-        consentedPaperCopyRight,
-        consentedWithdrawalRight,
-        consentedContactUpdate,
-        consentedScope,
-        disclosureVersion,
-      } = req.body || {};
-      const docId = parseInt(String(docIdRaw), 10);
-      if (!Number.isFinite(docId) || !signerId || !token) {
-        return Errors.badRequest(res, "Missing doc, signer, or token");
-      }
-      if (!verifySigningToken(docId, String(signerId), String(token))) {
-        return res.status(403).json({ error: "Invalid or expired signing link" });
-      }
-      // All five disclosures must be true — the legal minimum.
-      if (
-        consentedHardwareRequirements !== true ||
-        consentedPaperCopyRight !== true ||
-        consentedWithdrawalRight !== true ||
-        consentedContactUpdate !== true ||
-        consentedScope !== true
-      ) {
-        return Errors.badRequest(
-          res,
-          "All five §101(c) disclosures must be acknowledged before consent can be recorded.",
-        );
-      }
-      // The disclosure version the client posts must match the server's
-      // current version. Mismatch usually means the client cached an old
-      // version of the dialog; the client will refetch on next mount.
-      const version =
-        typeof disclosureVersion === "string" && disclosureVersion.length > 0
-          ? disclosureVersion
-          : ESIGN_DISCLOSURE_VERSION;
-      if (version !== ESIGN_DISCLOSURE_VERSION) {
-        return Errors.badRequest(
-          res,
-          `Disclosure version mismatch — expected ${ESIGN_DISCLOSURE_VERSION}, got ${version}.`,
-        );
-      }
-
-      const [doc] = await db
-        .select({
-          signers: generatedDocuments.signers,
-          organizationId: generatedDocuments.organizationId,
-        })
-        .from(generatedDocuments)
-        .where(eq(generatedDocuments.id, docId))
-        .limit(1);
-      if (!doc) return Errors.notFound(res, "Document");
-      const signers = (doc.signers || []) as Array<{ id: string; email?: string }>;
-      const signer = signers.find((s) => s.id === String(signerId));
-      if (!signer) {
-        return res.status(403).json({ error: "Invalid or expired signing link" });
-      }
-
-      const [row] = await db
-        .insert(signingConsentAudit)
-        .values({
-          userId: null,
-          organizationId: doc.organizationId,
-          signerEmail: signer.email ?? null,
-          documentId: docId,
-          disclosureVersion: version,
-          consentedHardwareRequirements: true,
-          consentedPaperCopyRight: true,
-          consentedWithdrawalRight: true,
-          consentedContactUpdate: true,
-          consentedScope: true,
-          ipAddress: req.ip || (req.headers["x-forwarded-for"] as string) || null,
-          userAgent: (req.headers["user-agent"] as string) || null,
-        })
-        .returning({ id: signingConsentAudit.id });
-
-      logger.info("esign.consent.captured", {
-        consentAuditId: row?.id,
-        documentId: docId,
-        signerEmail: signer.email ?? null,
-        disclosureVersion: version,
-      });
-
-      res.json({
-        success: true,
-        consentAuditId: row?.id ?? null,
-        disclosureVersion: version,
-      });
-    } catch (error: any) {
-      logger.error(
-        "Public sign consent capture error",
-        error instanceof Error ? error : undefined,
-      );
-      Errors.internal(res, error);
-    }
-  });
 }

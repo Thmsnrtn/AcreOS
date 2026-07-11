@@ -3,7 +3,7 @@ import {
   landCreditScores,
   properties,
 } from "@shared/schema";
-import { eq, and, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2026-06-10 (T0-12, docs/internal/roadmap/elevation-blueprint-2026-06-10.md):
@@ -339,7 +339,7 @@ export class CreditBenchmarkingService {
   }> {
     const scores = await db.select()
       .from(landCreditScores)
-      .where(sql`${landCreditScores.propertyId} = ANY(${propertyIds})`);
+      .where(inArray(landCreditScores.propertyId, propertyIds));
 
     const results = scores.map(s => ({
       propertyId: s.propertyId,

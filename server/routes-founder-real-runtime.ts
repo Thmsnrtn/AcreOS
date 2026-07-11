@@ -44,6 +44,12 @@ export function registerFounderV12Routes(app: Express) {
     catch (err: any) { Errors.internal(res, err); }
   });
 
+  // dashboard — registered BEFORE /api/founder/v12/runtime/:codename so the literal path wins (2026-07-11 route-order sweep).
+  app.get("/api/founder/v12/runtime/dashboard", async (_req, res) => {
+    try { res.json(await agentLifecycleRuntimeService.getRuntimeDashboard()); }
+    catch (err: any) { Errors.internal(res, err); }
+  });
+
   app.get("/api/founder/v12/runtime/:codename", async (req, res) => {
     try { res.json(await agentLifecycleRuntimeService.getState(req.params.codename)); }
     catch (err: any) { Errors.internal(res, err); }
@@ -71,10 +77,6 @@ export function registerFounderV12Routes(app: Express) {
     catch (err: any) { Errors.internal(res, err); }
   });
 
-  app.get("/api/founder/v12/runtime/dashboard", async (_req, res) => {
-    try { res.json(await agentLifecycleRuntimeService.getRuntimeDashboard()); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
 
   // ─── 2. Event Mesh ────────────────────────────────────────────────────
 
@@ -186,6 +188,12 @@ export function registerFounderV12Routes(app: Express) {
     catch (err: any) { Errors.internal(res, err); }
   });
 
+  // stats — registered BEFORE /api/founder/v12/sagas/:sagaId so the literal path wins (2026-07-11 route-order sweep).
+  app.get("/api/founder/v12/sagas/stats", async (_req, res) => {
+    try { res.json(await sagaOrchestratorService.getStats()); }
+    catch (err: any) { Errors.internal(res, err); }
+  });
+
   app.get("/api/founder/v12/sagas/:sagaId", async (req, res) => {
     try { res.json(await sagaOrchestratorService.getById(req.params.sagaId)); }
     catch (err: any) { Errors.internal(res, err); }
@@ -196,10 +204,6 @@ export function registerFounderV12Routes(app: Express) {
     catch (err: any) { Errors.internal(res, err); }
   });
 
-  app.get("/api/founder/v12/sagas/stats", async (_req, res) => {
-    try { res.json(await sagaOrchestratorService.getStats()); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
 
   // ─── 5. Agent Version Control ─────────────────────────────────────────
 

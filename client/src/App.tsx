@@ -1698,7 +1698,10 @@ function Router() {
         {() => <Redirect to="/settings" />}
       </Route>
       <Route path="/dunning">
-        {() => <ProtectedRoute component={DunningManagerPage} />}
+        {/* The dunning API is founder-only (requireFounder on the whole
+            router, P1-5) — a customer reaching this page saw every panel
+            404 (2026-07-11 sweep). Gate the page like its API. */}
+        {() => <FounderProtectedRoute component={DunningManagerPage} />}
       </Route>
       {/* /freedom-meter, /night-cap, /evening-review removed (Lens 4
           Fix 4) — see lazy-import notes. Page files deleted. */}

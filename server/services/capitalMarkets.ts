@@ -7,7 +7,7 @@ import {
   notes,
   properties 
 } from '../../shared/schema';
-import { eq, and, desc, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { logger } from "../utils/logger";
 
 interface NotePooling {
@@ -40,7 +40,7 @@ class CapitalMarkets {
       const pooledNotes = await db.query.notes.findMany({
         where: and(
           eq(notes.organizationId, organizationId),
-          sql`${notes.id} = ANY(${noteIds})`
+          inArray(notes.id, noteIds)
         ),
       });
 

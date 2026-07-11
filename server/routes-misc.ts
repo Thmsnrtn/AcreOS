@@ -634,6 +634,19 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     }
   });
   
+  // stats — registered BEFORE /api/jobs/:id so the literal path wins (2026-07-11 route-order sweep).
+  // Get job queue statistics (admin only)
+  api.get("/api/jobs/stats", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
+    try {
+      const { jobQueueService } = await import("./services/jobQueue");
+      const stats = jobQueueService.getStats();
+      
+      res.json(stats);
+    } catch (error: any) {
+      Errors.internal(res, error);
+    }
+  });
+
   // Get job status by ID
   api.get("/api/jobs/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -667,17 +680,6 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     }
   });
   
-  // Get job queue statistics (admin only)
-  api.get("/api/jobs/stats", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
-    try {
-      const { jobQueueService } = await import("./services/jobQueue");
-      const stats = jobQueueService.getStats();
-      
-      res.json(stats);
-    } catch (error: any) {
-      Errors.internal(res, error);
-    }
-  });
 
   // ============================================
   // BYOK (BRING YOUR OWN KEY) SETTINGS

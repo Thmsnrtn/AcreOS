@@ -2,7 +2,6 @@ import { useState, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -19,18 +18,60 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { usd } from "@/lib/format";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
-interface PnLReport {
-  year: number;
+// The REAL /api/portfolio-pnl/:year contract (server/services/portfolioPnl.ts).
+// This page previously declared an imagined shape (totalRevenue/roi at the
+// top level): the payload parsed as truthy, every field read undefined, and
+// `report.roi.toFixed` crashed the whole page via ErrorBoundary
+// (2026-07-11 full-app sweep).
+interface PnlPeriod {
+  label: string; // "2025-Q3" or "2025-09"
+  acquisitionCost: number;
+  saleProceeds: number;
+  interestIncome: number;
+  otherIncome: number;
   totalRevenue: number;
-  totalCost: number;
   grossProfit: number;
-  netProfit: number;
-  roi: number;
-  propertiesSold: number;
-  avgSalePrice: number;
-  avgHoldingPeriodDays: number;
-  topPerformers?: Array<{ propertyId: number; netProfit: number; roi: number }>;
-  byQuarter?: Array<{ quarter: number; revenue: number; profit: number }>;
+  grossMargin: number;
+  dealsAcquired: number;
+  dealsSold: number;
+}
+
+interface PnLReport {
+  orgId: number;
+  periods: PnlPeriod[];
+  totals: {
+    acquisitionCost: number;
+    saleProceeds: number;
+    interestIncome: number;
+    totalRevenue: number;
+    netProfit: number;
+    cocReturn: number; // netProfit / acquisitionCost, as a 0–1 ratio
+    irr: number | null;
+  };
+}
+
+/** Derive the page's view fields from the real report — no fabrication:
+ *  anything the server doesn't measure renders as "—", never invented. */
+function toView(report: PnLReport) {
+  const t = report.totals;
+  const dealsSold = report.periods.reduce((s, p) => s + (p.dealsSold || 0), 0);
+  return {
+    totalRevenue: t.totalRevenue,
+    totalCost: t.acquisitionCost,
+    grossProfit: t.totalRevenue - t.acquisitionCost,
+    netProfit: t.netProfit,
+    roi: Number.isFinite(t.cocReturn) ? t.cocReturn * 100 : 0,
+    irr: t.irr,
+    dealsSold,
+    avgSalePrice: dealsSold > 0 ? t.saleProceeds / dealsSold : null,
+    byQuarter: report.periods
+      .filter((p) => /-Q\d$/.test(p.label))
+      .map((p) => ({
+        quarter: Number(p.label.slice(-1)),
+        revenue: p.totalRevenue,
+        profit: p.grossProfit,
+      })),
+  };
 }
 
 function StatCard({
@@ -71,7 +112,11 @@ export default function PortfolioPnLPage() {
 
   const { data: periodsData } = useQuery<{ years: number[] }>({
     queryKey: ["/api/portfolio-pnl/periods"],
-    queryFn: () => fetch("/api/portfolio-pnl/periods").then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/portfolio-pnl/periods", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load periods (${res.status})`);
+      return res.json();
+    },
   });
 
   const {
@@ -83,13 +128,20 @@ export default function PortfolioPnLPage() {
     isRefetching,
   } = useQuery<{ report: PnLReport }>({
     queryKey: ["/api/portfolio-pnl", selectedYear],
-    queryFn: () => fetch(`/api/portfolio-pnl/${selectedYear}`).then(r => r.json()),
+    // Throw on !ok — the old `.then(r => r.json())` parsed error BODIES as
+    // data, so a 4xx rendered the crash path instead of the error state.
+    queryFn: async () => {
+      const res = await fetch(`/api/portfolio-pnl/${selectedYear}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load P&L (${res.status})`);
+      return res.json();
+    },
   });
 
   const report = reportData?.report;
+  const view = report ? toView(report) : null;
   const years = periodsData?.years ?? [currentYear];
 
-  const roiIsPositive = report ? report.roi >= 0 : true;
+  const roiIsPositive = view ? view.roi >= 0 : true;
 
   return (
     <PageShell>
@@ -129,7 +181,7 @@ export default function PortfolioPnLPage() {
           description="We hit a snag loading your portfolio profit and loss. Your data is safe — try again."
           testId="portfolio-pnl-query-error"
         />
-      ) : !report ? (
+      ) : !view ? (
         <div className="text-center py-16 text-muted-foreground">
           <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-30" aria-hidden="true" />
           <p>No P&amp;L data available for <span className="tabular-nums">{selectedYear}</span>.</p>
@@ -140,27 +192,27 @@ export default function PortfolioPnLPage() {
           <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard
               label="Total revenue"
-              value={usd(report.totalRevenue)}
+              value={usd(view.totalRevenue)}
               icon={DollarSign}
               trend="up"
             />
             <StatCard
               label="Net profit"
-              value={usd(report.netProfit)}
+              value={usd(view.netProfit)}
               icon={roiIsPositive ? TrendingUp : TrendingDown}
               trend={roiIsPositive ? "up" : "down"}
             />
             <StatCard
-              label="ROI"
-              value={`${report.roi.toFixed(1)}%`}
+              label="Cash-on-cash return"
+              value={`${view.roi.toFixed(1)}%`}
               icon={Percent}
               trend={roiIsPositive ? "up" : "down"}
             />
             <StatCard
-              label="Properties sold"
-              value={String(report.propertiesSold)}
+              label="Deals sold"
+              value={String(view.dealsSold)}
               icon={BarChart3}
-              subtext={`Avg ${usd(report.avgSalePrice)} each`}
+              subtext={view.avgSalePrice != null ? `Avg ${usd(view.avgSalePrice)} each` : undefined}
             />
           </dl>
 
@@ -172,10 +224,10 @@ export default function PortfolioPnLPage() {
               <CardContent>
                 <dl className="space-y-2">
                   {[
-                    { label: "Total revenue", value: report.totalRevenue, type: "income" },
-                    { label: "Total cost (acquisition + holding)", value: -report.totalCost, type: "expense" },
-                    { label: "Gross profit", value: report.grossProfit, type: "result", bold: true },
-                    { label: "Net profit", value: report.netProfit, type: "result", bold: true },
+                    { label: "Total revenue (sales + interest)", value: view.totalRevenue, type: "income" },
+                    { label: "Acquisition cost", value: -view.totalCost, type: "expense" },
+                    { label: "Gross profit", value: view.grossProfit, type: "result", bold: true },
+                    { label: "Net profit", value: view.netProfit, type: "result", bold: true },
                   ].map(({ label, value, type, bold }) => (
                     <div key={label} className={`flex justify-between items-center text-sm ${bold ? "font-semibold pt-2 border-t" : ""}`}>
                       <dt className={type === "expense" ? "text-muted-foreground" : ""}>{label}</dt>
@@ -195,10 +247,10 @@ export default function PortfolioPnLPage() {
               <CardContent>
                 <dl className="space-y-3">
                   {[
-                    { label: "Return on investment", value: `${report.roi.toFixed(1)}%` },
-                    { label: "Avg sale price", value: usd(report.avgSalePrice) },
-                    { label: "Avg holding period", value: `${report.avgHoldingPeriodDays} days` },
-                    { label: "Properties transacted", value: String(report.propertiesSold) },
+                    { label: "Cash-on-cash return", value: `${view.roi.toFixed(1)}%` },
+                    { label: "Annualized IRR (estimate)", value: view.irr != null ? `${(view.irr * 100).toFixed(1)}%` : "—" },
+                    { label: "Avg sale price", value: view.avgSalePrice != null ? usd(view.avgSalePrice) : "—" },
+                    { label: "Deals sold", value: String(view.dealsSold) },
                   ].map(({ label, value }) => (
                     <div key={label} className="flex justify-between items-center">
                       <dt className="text-sm text-muted-foreground">{label}</dt>
@@ -210,14 +262,14 @@ export default function PortfolioPnLPage() {
             </Card>
           </div>
 
-          {report.byQuarter && report.byQuarter.length > 0 && (
+          {view.byQuarter.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Quarterly breakdown</CardTitle>
               </CardHeader>
               <CardContent>
                 <ul className="grid grid-cols-4 gap-2" aria-label="Quarterly revenue and profit">
-                  {report.byQuarter.map(q => (
+                  {view.byQuarter.map(q => (
                     <li key={q.quarter} className="text-center p-3 rounded-card border bg-muted/30">
                       <p className="text-xs text-muted-foreground mb-1">Q<span className="tabular-nums">{q.quarter}</span></p>
                       <p className="text-sm font-medium tabular-nums">{usd(q.revenue)}</p>
@@ -227,29 +279,6 @@ export default function PortfolioPnLPage() {
                     </li>
                   ))}
                 </ul>
-              </CardContent>
-            </Card>
-          )}
-
-          {report.topPerformers && report.topPerformers.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Top performing properties</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ol className="space-y-2" aria-label="Top performing properties by ROI">
-                  {report.topPerformers.map((p, i) => (
-                    <li key={p.propertyId} className="flex items-center justify-between text-sm gap-3 flex-wrap">
-                      <span className="text-muted-foreground">
-                        #<span className="tabular-nums">{i + 1}</span> · Property <span className="tabular-nums">{p.propertyId}</span>
-                      </span>
-                      <div className="flex items-center gap-3">
-                        <Badge variant="secondary" className="text-xs tabular-nums">{p.roi.toFixed(1)}% ROI</Badge>
-                        <span className="text-acr-pos font-medium tabular-nums">{usd(p.netProfit)}</span>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
               </CardContent>
             </Card>
           )}

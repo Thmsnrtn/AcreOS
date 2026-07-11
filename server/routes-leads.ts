@@ -296,15 +296,9 @@ export function registerLeadRoutes(app: Express): void {
     res.json(agingLeads);
   });
 
-  api.get("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = req.organization;
-    const leadId = Number(req.params.id);
-    if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
-    const lead = await storage.getLead(org.id, leadId);
-    if (!lead) return Errors.notFound(res, "Lead");
-    res.json(lead);
-  });
-  
+  // duplicate-clusters — registered BEFORE /api/leads/:id so the literal
+  // path wins; the :id matcher was capturing "duplicate-clusters" and
+  // 400ing the dedupe page (2026-07-11 full-app sweep).
   // Batch dedupe scan — find every cluster of likely-duplicate leads
   // across the org. Result sorted by cluster size so operators work
   // highest-leverage merges first. Used by /leads/dedupe UI.
@@ -318,6 +312,26 @@ export function registerLeadRoutes(app: Express): void {
       Errors.internal(res, err);
     }
   });
+
+  // export — registered BEFORE /api/leads/:id so the literal path wins (2026-07-11 route-order sweep).
+  api.get("/api/leads/export", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
+    const org = req.organization;
+    const csv = await exportLeadsToCSV(org.id);
+    const date = new Date().toISOString().split("T")[0];
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="leads-${date}.csv"`);
+    res.send(csv);
+  });
+
+  api.get("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
+    const leadId = Number(req.params.id);
+    if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
+    const lead = await storage.getLead(org.id, leadId);
+    if (!lead) return Errors.notFound(res, "Lead");
+    res.json(lead);
+  });
+  
 
   // Check for duplicate leads before creating
   api.post("/api/leads/check-duplicates", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -1293,14 +1307,6 @@ export function registerLeadRoutes(app: Express): void {
     });
   });
   
-  api.get("/api/leads/export", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
-    const org = req.organization;
-    const csv = await exportLeadsToCSV(org.id);
-    const date = new Date().toISOString().split("T")[0];
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename="leads-${date}.csv"`);
-    res.send(csv);
-  });
   
   api.post("/api/leads/import", isAuthenticated, getOrCreateOrg, upload.single("file"), validateCSV, async (req, res) => {
     try {

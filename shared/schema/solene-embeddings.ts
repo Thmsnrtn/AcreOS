@@ -205,7 +205,10 @@ export const EMBEDDED_SNIPPET_TRUNCATION_SUFFIX = "… [truncated]";
 // cohere-embed-v3). Override via env var; consumers should read from here,
 // not from process.env directly, so tests can stub a single surface.
 export const EMBEDDING_DIM: number = (() => {
-  const raw = process.env.EMBEDDING_DIM;
+  // Browser-safe: shared/ is bundled client-side too, and bare `process`
+  // throws at module evaluation in the browser (the 2026-07-11 founder
+  // blank-page class of bug). Browsers always get the 1024 default.
+  const raw = typeof process !== "undefined" && process.env ? process.env.EMBEDDING_DIM : undefined;
   if (!raw) return 1024;
   const parsed = parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return 1024;
