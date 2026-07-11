@@ -234,13 +234,28 @@ Verdicts from the investor lens: **Notes = deep and real. Rental,
 Subdivision = real. Fix-and-flip = real math, built for houses (off-thesis
 for land). Wholesale = thinnest — no assignment-contract mechanic.**
 
-1. Wholesale gets its defining mechanic: assignment-of-contract + assignment
-   fee doc flow (the e-sign + doc systems already exist to build on).
-2. A deal-centric pipeline view stitching lead → mail → response → offer →
-   contract → close with next-best-action (everything exists; nothing shows
-   it as one track).
-3. Reposition fix-and-flip as an improved-property module rather than
-   pretending it's land math.
+1. **DONE (PR #155, 2026-07-11)** — Wholesale gets its defining mechanic:
+   assignment-of-contract + assignment fee doc flow. The backend
+   (contract_assignments + state-legality rules + Assignment Contract
+   template + compliance gate + e-sign) predated this; the AssignmentPanel
+   in the deal's Docs tab made it one visible flow.
+2. **DONE (PR #154, 2026-07-11)** — A deal-centric pipeline view stitching
+   lead → mail → response → offer → contract → close with next-best-action.
+   /api/deals/:id/track now maps the four real source tables (offers,
+   inbound seller comms, campaign responses, mail pieces) into the timeline
+   at query time; Timeline is the deal's default tab with a DealNextAction
+   banner fed by the deal-coach engine.
+3. **SCOPED → founder decision (see Founder decisions needed #4)** —
+   Reposition fix-and-flip as an improved-property module rather than
+   pretending it's land math. Scoping found the concrete mechanism:
+   `BUSINESS_TYPE_TO_INVESTOR_TYPE` maps `fix_and_flip: "land"` (the coarse
+   fork that selects data/tools), so flip orgs are served land comps, land
+   AVM, and land due diligence under house labels. Fixing it honestly means
+   a third investorType ("improved") that forks the data plane — blocked on
+   a residential-comps data source (no license yet; the AVM stance is
+   refuse-not-fabricate) and on the vertical-conveyor sequencing call.
+   Copy-only repositioning without the data fork would be a label change
+   pretending to be a fix.
 
 ## Wave 7 — Platform debt + autopilot ladder (continuous, interleaved)
 
@@ -268,6 +283,14 @@ for land). Wholesale = thinnest — no assignment-contract mechanic.**
 2. **Free-tier first send** (Wave 2.1) — capped free send vs. upgrade CTA.
 3. **Sales-data license** (Wave 3.1) — seed real comps per county; until
    then the AVM stays refuse-not-fabricate.
+4. **Fix-and-flip data plane** (Wave 6.3) — repositioning fix-and-flip as
+   an improved-property module requires a third investorType ("improved")
+   and a residential-comps data source. Decide whether fix-and-flip (a)
+   waits on the vertical conveyor until a residential data license exists,
+   (b) gets demoted from "beta" to "waitlist" until then, or (c) keeps
+   shipping on land data with an explicit in-product disclaimer. The
+   underwriting math itself (70%-rule flip analysis) is correct — the
+   dishonesty risk is in the comps/AVM/due-diligence data behind it.
 
 ## Do not regress (verified strengths, all four lenses)
 
