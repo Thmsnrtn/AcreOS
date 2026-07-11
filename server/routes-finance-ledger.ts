@@ -14,7 +14,7 @@
  */
 
 import { Router, type Response } from "express";
-import { and, desc, eq, gte, sql, sum } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql, sum } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
 import {
@@ -287,7 +287,7 @@ router.get("/contribution-margin", async (_req: AuthenticatedRequest, res: Respo
             tier: organizations.subscriptionTier,
           })
           .from(organizations)
-          .where(sql`${organizations.id} = ANY(${orgIds})`)
+          .where(inArray(organizations.id, orgIds))
       : [];
 
     const orgMeta = new Map<number, { name: string; tier: string }>();

@@ -14,7 +14,7 @@ import {
   type AgentSession,
   type AgentSessionStep,
 } from "@shared/schema";
-import { eq, and, desc, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { SkillRegistry } from "./agent-skills";
 import { logger } from "../utils/logger";
 import { validateUrl, SSRFBlockedError } from "../middleware/fileUploadSecurity";
@@ -445,7 +445,7 @@ class AgentOrchestrationService {
           .where(
             and(
               eq(agentSessionSteps.sessionId, step.sessionId),
-              sql`${agentSessionSteps.stepNumber} = ANY(${step.dependsOnSteps})`
+              inArray(agentSessionSteps.stepNumber, step.dependsOnSteps)
             )
           );
 

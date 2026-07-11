@@ -212,7 +212,7 @@ export function AnalyticsContent() {
     leadConversionRate: number;
     conversionChange: number;
   }>({
-    queryKey: ['/api/analytics/executive', dateRange],
+    queryKey: [`/api/analytics/executive?range=${dateRange}`],
   });
 
   const { data: revenue, isLoading: loadingRevenue } = useQuery<{
@@ -221,7 +221,7 @@ export function AnalyticsContent() {
     avgDealSize: number;
     projectedRevenue: number;
   }>({
-    queryKey: ['/api/analytics/revenue', dateRange],
+    queryKey: [`/api/analytics/revenue?range=${dateRange}`],
   });
 
   const { data: leads, isLoading: loadingLeads } = useQuery<{
@@ -232,7 +232,7 @@ export function AnalyticsContent() {
     leadsBySource: { source: string; count: number }[];
     leadsByStatus: { status: string; count: number }[];
   }>({
-    queryKey: ['/api/analytics/leads', dateRange],
+    queryKey: [`/api/analytics/leads?range=${dateRange}`],
   });
 
   const { data: deals, isLoading: loadingDeals } = useQuery<{
@@ -243,7 +243,7 @@ export function AnalyticsContent() {
     dealsByStage: { stage: string; count: number; value: number }[];
     avgDealValue: number;
   }>({
-    queryKey: ['/api/analytics/deals', dateRange],
+    queryKey: [`/api/analytics/deals?range=${dateRange}`],
   });
 
   const { data: campaigns, isLoading: loadingCampaigns } = useQuery<{
@@ -252,7 +252,7 @@ export function AnalyticsContent() {
     totalResponses: number;
     avgResponseRate: number;
   }>({
-    queryKey: ['/api/analytics/campaigns', dateRange],
+    queryKey: [`/api/analytics/campaigns?range=${dateRange}`],
   });
 
   const { data: pipeline, isLoading: loadingPipeline } = useQuery<{
@@ -268,7 +268,7 @@ export function AnalyticsContent() {
     bottleneckStage: string | null;
     sampleSize?: number;
   }>({
-    queryKey: ['/api/analytics/velocity', dateRange],
+    queryKey: [`/api/analytics/velocity?range=${dateRange}`],
   });
 
   const { data: conversions, isLoading: loadingConversions } = useQuery<{
@@ -277,7 +277,7 @@ export function AnalyticsContent() {
     lossReasons: { reason: string; count: number }[];
     sampleSize?: number;
   }>({
-    queryKey: ['/api/analytics/conversions', dateRange],
+    queryKey: [`/api/analytics/conversions?range=${dateRange}`],
   });
 
   const handleExportReport = () => {

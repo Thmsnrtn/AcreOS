@@ -139,13 +139,13 @@ export default function SellerIntentPage() {
   const [leadId, setLeadId] = useState("");
 
   const { data: hotLeads, isLoading } = useQuery<{ predictions: SellerIntentPrediction[] }>({
-    queryKey: ["/api/seller-intent/hot"],
-    queryFn: () => fetch("/api/seller-intent/hot").then(r => r.json()),
+    queryKey: ["/api/seller-intent/hot-leads"],
+    queryFn: () => fetch("/api/seller-intent/hot-leads").then(r => { if (!r.ok) throw new Error(`Failed (${r.status})`); return r.json(); }),
   });
 
   const { data: prediction } = useQuery<{ prediction: SellerIntentPrediction }>({
     queryKey: ["/api/seller-intent", leadId],
-    queryFn: () => fetch(`/api/seller-intent/${leadId}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/seller-intent/${leadId}`).then(r => { if (!r.ok) throw new Error(`Failed (${r.status})`); return r.json(); }),
     enabled: !!leadId,
   });
 
@@ -154,7 +154,7 @@ export default function SellerIntentPage() {
     onSuccess: () => {
       toast({ title: "Seller intent analysis complete" });
       qc.invalidateQueries({ queryKey: ["/api/seller-intent", leadId] });
-      qc.invalidateQueries({ queryKey: ["/api/seller-intent/hot"] });
+      qc.invalidateQueries({ queryKey: ["/api/seller-intent/hot-leads"] });
     },
     onError: () =>
       toast({

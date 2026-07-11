@@ -20,6 +20,11 @@ router.get("/", async (_req: Request, res: Response) => {
   res.status(501).json({ error: "KPI metrics endpoint not implemented" });
 });
 
+  // export — registered BEFORE /:id so the literal path wins (2026-07-11 route-order sweep).
+router.get("/export", async (_req: Request, res: Response) => {
+  res.status(501).json({ error: "KPI export endpoint not implemented" });
+});
+
 router.get("/:id", async (_req: Request, res: Response) => {
   res.status(501).json({ error: "KPI detail endpoint not implemented" });
 });
@@ -28,8 +33,5 @@ router.post("/targets", async (_req: Request, res: Response) => {
   res.status(501).json({ error: "KPI targets endpoint not implemented" });
 });
 
-router.get("/export", async (_req: Request, res: Response) => {
-  res.status(501).json({ error: "KPI export endpoint not implemented" });
-});
 
 export default router;

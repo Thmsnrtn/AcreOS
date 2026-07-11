@@ -42,6 +42,31 @@ export function registerCampaignRoutes(app: Express): void {
     res.json(campaigns);
   });
   
+  // analytics — registered BEFORE /api/campaigns/:id so the literal path wins (2026-07-11 route-order sweep).
+  api.get("/api/campaigns/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { campaignOptimizerService } = await import("./services/campaignOptimizer");
+      const analytics = await campaignOptimizerService.getCampaignAnalytics(org.id);
+      res.json(analytics);
+    } catch (error: any) {
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to get campaign analytics"));
+    }
+  });
+
+  // overlap-report — registered BEFORE /api/campaigns/:id so the literal path wins (2026-07-11 route-order sweep).
+  // GET /api/campaigns/overlap-report
+  api.get("/api/campaigns/overlap-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { campaignOverlapDetector } = await import("./services/campaignOverlapDetector");
+      const org = req.organization;
+      const report = await campaignOverlapDetector.generateOverlapReport(org.id);
+      res.json(report);
+    } catch (e: any) {
+      Errors.internal(res, e instanceof Error ? e : new Error(e.message));
+    }
+  });
+
   api.get("/api/campaigns/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const campaign = await storage.getCampaign(org.id, Number(req.params.id));
@@ -498,6 +523,23 @@ export function registerCampaignRoutes(app: Express): void {
     }
   });
 
+  // reorder — registered BEFORE /api/sequences/:id/steps/:stepId so the literal path wins (2026-07-11 route-order sweep).
+  api.put("/api/sequences/:id/steps/reorder", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = req.organization;
+    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    if (!sequence) return Errors.notFound(res, "Sequence");
+
+    const parsed = reorderStepsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return Errors.validationFailed(res, parsed.error.issues);
+    }
+    const { stepIds } = parsed.data;
+    await storage.reorderSequenceSteps(sequence.id, stepIds);
+    
+    const steps = await storage.getSequenceSteps(sequence.id);
+    res.json(steps);
+  });
+
   // Update a step
   api.put("/api/sequences/:id/steps/:stepId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -533,21 +575,6 @@ export function registerCampaignRoutes(app: Express): void {
     stepIds: z.array(z.number().int().positive()).min(1, "stepIds must be a non-empty array"),
   });
 
-  api.put("/api/sequences/:id/steps/reorder", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = req.organization;
-    const sequence = await storage.getSequence(org.id, Number(req.params.id));
-    if (!sequence) return Errors.notFound(res, "Sequence");
-
-    const parsed = reorderStepsSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return Errors.validationFailed(res, parsed.error.issues);
-    }
-    const { stepIds } = parsed.data;
-    await storage.reorderSequenceSteps(sequence.id, stepIds);
-    
-    const steps = await storage.getSequenceSteps(sequence.id);
-    res.json(steps);
-  });
 
   // ============================================
   // SEQUENCE ENROLLMENTS
@@ -1190,16 +1217,6 @@ export function registerCampaignRoutes(app: Express): void {
   // CAMPAIGN OPTIMIZATIONS
   // ============================================
   
-  api.get("/api/campaigns/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const { campaignOptimizerService } = await import("./services/campaignOptimizer");
-      const analytics = await campaignOptimizerService.getCampaignAnalytics(org.id);
-      res.json(analytics);
-    } catch (error: any) {
-      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to get campaign analytics"));
-    }
-  });
   
   api.get("/api/campaigns/:id/optimizations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -2271,16 +2288,5 @@ export function registerCampaignRoutes(app: Express): void {
     }
   });
 
-  // GET /api/campaigns/overlap-report
-  api.get("/api/campaigns/overlap-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const { campaignOverlapDetector } = await import("./services/campaignOverlapDetector");
-      const org = req.organization;
-      const report = await campaignOverlapDetector.generateOverlapReport(org.id);
-      res.json(report);
-    } catch (e: any) {
-      Errors.internal(res, e instanceof Error ? e : new Error(e.message));
-    }
-  });
 
 }

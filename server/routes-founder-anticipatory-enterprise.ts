@@ -270,17 +270,19 @@ export function registerFounderV11Routes(app: Express) {
     catch (err: any) { Errors.internal(res, err); }
   });
 
-  app.get("/api/founder/v11/governor/:codename", async (req, res) => {
-    try { res.json(await agentResourceGovernorService.getQuota(req.params.codename)); }
-    catch (err: any) { Errors.internal(res, err); }
-  });
-
+  // events — registered BEFORE /api/founder/v11/governor/:codename so the literal path wins (2026-07-11 route-order sweep).
   app.get("/api/founder/v11/governor/events", async (req, res) => {
     try {
       const agent = req.query.agent as string | undefined;
       res.json(await agentResourceGovernorService.getRecentEvents(agent));
     } catch (err: any) { Errors.internal(res, err); }
   });
+
+  app.get("/api/founder/v11/governor/:codename", async (req, res) => {
+    try { res.json(await agentResourceGovernorService.getQuota(req.params.codename)); }
+    catch (err: any) { Errors.internal(res, err); }
+  });
+
 
   // ─── 6. Decision Causality Graph ───────────────────────────────────────
 

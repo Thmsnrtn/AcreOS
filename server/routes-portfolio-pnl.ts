@@ -27,6 +27,14 @@ router.get("/", isAuthenticated, getOrCreateOrg, async (req: Request, res: Respo
   }
 });
 
+  // periods — registered BEFORE /:year so the literal path wins (2026-07-11 route-order sweep).
+// List available reporting years (current year minus 5)
+router.get("/periods", isAuthenticated, getOrCreateOrg, (req: Request, res: Response) => {
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 6 }, (_, i) => currentYear - i);
+  res.json({ years });
+});
+
 // P&L for a specific year
 router.get("/:year", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
@@ -42,11 +50,5 @@ router.get("/:year", isAuthenticated, getOrCreateOrg, async (req: Request, res: 
   }
 });
 
-// List available reporting years (current year minus 5)
-router.get("/periods", isAuthenticated, getOrCreateOrg, (req: Request, res: Response) => {
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 6 }, (_, i) => currentYear - i);
-  res.json({ years });
-});
 
 export default router;

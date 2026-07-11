@@ -22,6 +22,31 @@ import { Errors } from "./utils/errors";
 const router = Router();
 
 
+  // accuracy — registered BEFORE /:leadId so the literal path wins (2026-07-11 route-order sweep).
+// Model accuracy stats
+router.get("/accuracy", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const accuracy = await sellerIntentPredictorService.analyzeAccuracy(org.id);
+    res.json({ accuracy });
+  } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+  // hot-leads — registered BEFORE /:leadId so the literal path wins (2026-07-11 route-order sweep).
+// Hot leads (high intent) for the organization
+router.get("/hot-leads", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const minScore = parseFloat((req.query.minScore as string) || "60");
+    const predictions = await sellerIntentPredictorService.getLeadPredictions(org.id, minScore);
+    res.json({ predictions });
+  } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
 // Full intent prediction for a lead
 router.get("/:leadId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
@@ -133,27 +158,6 @@ router.post("/:leadId/outcome", isAuthenticated, getOrCreateOrg, async (req: Req
   }
 });
 
-// Model accuracy stats
-router.get("/accuracy", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const accuracy = await sellerIntentPredictorService.analyzeAccuracy(org.id);
-    res.json({ accuracy });
-  } catch (err: any) {
-    Errors.internal(res, err);
-  }
-});
 
-// Hot leads (high intent) for the organization
-router.get("/hot-leads", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
-  try {
-    const org = req.organization;
-    const minScore = parseFloat((req.query.minScore as string) || "60");
-    const predictions = await sellerIntentPredictorService.getLeadPredictions(org.id, minScore);
-    res.json({ predictions });
-  } catch (err: any) {
-    Errors.internal(res, err);
-  }
-});
 
 export default router;

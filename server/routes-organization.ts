@@ -812,16 +812,31 @@ export function registerOrganizationRoutes(app: Express): void {
         });
       }
       
-      const { getUncachableStripeClient } = await import("./stripeClient");
-      const stripe = await getUncachableStripeClient();
-      
-      const prices = await stripe.prices.search({
-        query: `metadata['type']:'seat_addon' AND metadata['tier']:'${tier}' AND active:'true'`,
-      });
-      
+      // Stripe being unconfigured/unreachable must not 500 the Settings
+      // page — pricing is informational here. Degrade to "not available"
+      // (2026-07-11 sweep: this 500'd /settings whenever STRIPE_SECRET_KEY
+      // was absent — which it is until the founder provisions keys).
+      let prices;
+      try {
+        const { getUncachableStripeClient } = await import("./stripeClient");
+        const stripe = await getUncachableStripeClient();
+        prices = await stripe.prices.search({
+          query: `metadata['type']:'seat_addon' AND metadata['tier']:'${tier}' AND active:'true'`,
+        });
+      } catch (stripeErr) {
+        logger.warn(
+          "Seat pricing unavailable — Stripe not configured/reachable",
+          stripeErr instanceof Error ? stripeErr : undefined,
+        );
+        return res.json({
+          canPurchaseSeats: false,
+          message: "Seat purchases aren't available right now.",
+        });
+      }
+
       const monthlyPrice = prices.data.find((p) => p.recurring?.interval === "month");
       const yearlyPrice = prices.data.find((p) => p.recurring?.interval === "year");
-      
+
       res.json({
         canPurchaseSeats: true,
         tier,

@@ -17,6 +17,15 @@
 // (a single FAST-tier call decides which tier the real query lands on).
 // ============================================================================
 
+// shared/ is bundled into the BROWSER too (barrel imports from client pages
+// pull this module into lazy chunks). Bare `process.env` throws
+// "process is not defined" at module evaluation in the browser — which
+// blanked every founder page whose chunk included this file (2026-07-11
+// founder report). Same guard pattern as shared/billing/tier-pricing.ts:
+// env overrides apply on the server; browsers always get the defaults.
+const env: Record<string, string | undefined> =
+  typeof process !== "undefined" && process.env ? process.env : {};
+
 export const CHAT_MODELS = {
   /**
    * Strategic / hard / final-answer-quality matters.
@@ -26,18 +35,18 @@ export const CHAT_MODELS = {
    * server/services/models.ts ANTHROPIC_MODELS.OPUS (shared/ can't import
    * server/, so the ID is duplicated by necessity).
    */
-  STRATEGIC: process.env.SOLENE_CHAT_STRATEGIC_MODEL ?? "anthropic/claude-opus-4-8",
+  STRATEGIC: env.SOLENE_CHAT_STRATEGIC_MODEL ?? "anthropic/claude-opus-4-8",
   /** Conversational / drafting / most things. */
   CONVERSATIONAL:
-    process.env.SOLENE_CHAT_CONVERSATIONAL_MODEL ?? "anthropic/claude-sonnet-4-6",
+    env.SOLENE_CHAT_CONVERSATIONAL_MODEL ?? "anthropic/claude-sonnet-4-6",
   /** Classification / parsing / lookup. */
   FAST:
-    process.env.SOLENE_CHAT_FAST_MODEL ?? "anthropic/claude-haiku-4-5-20251001",
+    env.SOLENE_CHAT_FAST_MODEL ?? "anthropic/claude-haiku-4-5-20251001",
   /** Code-heavy tasks (refactors, deep code reading). */
-  CODE: process.env.SOLENE_CHAT_CODE_MODEL ?? "anthropic/claude-sonnet-4-6",
+  CODE: env.SOLENE_CHAT_CODE_MODEL ?? "anthropic/claude-sonnet-4-6",
   /** Classifier — the cheap model that decides which tier to route to. */
   CLASSIFIER:
-    process.env.SOLENE_CHAT_CLASSIFIER_MODEL ??
+    env.SOLENE_CHAT_CLASSIFIER_MODEL ??
     "anthropic/claude-haiku-4-5-20251001",
 } as const;
 

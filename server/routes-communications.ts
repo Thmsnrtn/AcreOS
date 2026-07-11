@@ -979,6 +979,111 @@ export function registerCommunicationRoutes(app: Express): void {
     });
   });
 
+  // analytics — registered BEFORE /api/workflows/:id so the literal path wins (2026-07-11 route-order sweep).
+  // GET /api/workflows/analytics - Workflow usage stats
+  api.get("/api/workflows/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+
+      // Total workflows and active/inactive counts
+      const allWorkflows = await db
+        .select({
+          id: workflows.id,
+          name: workflows.name,
+          isActive: workflows.isActive,
+          createdAt: workflows.createdAt,
+          updatedAt: workflows.updatedAt,
+        })
+        .from(workflows)
+        .where(eq(workflows.organizationId, org.id))
+        .orderBy(desc(workflows.updatedAt));
+
+      const totalWorkflows = allWorkflows.length;
+      const activeCount = allWorkflows.filter(w => w.isActive).length;
+      const inactiveCount = totalWorkflows - activeCount;
+
+      // Recent workflow runs (last 50 across all workflows)
+      const recentRuns = await db
+        .select({
+          id: workflowRuns.id,
+          workflowId: workflowRuns.workflowId,
+          status: workflowRuns.status,
+          startedAt: workflowRuns.startedAt,
+          completedAt: workflowRuns.completedAt,
+          error: workflowRuns.error,
+        })
+        .from(workflowRuns)
+        .innerJoin(workflows, eq(workflowRuns.workflowId, workflows.id))
+        .where(eq(workflows.organizationId, org.id))
+        .orderBy(desc(workflowRuns.startedAt))
+        .limit(50);
+
+      // Run counts per workflow
+      const runCountMap: Record<number, { total: number; succeeded: number; failed: number }> = {};
+      for (const run of recentRuns) {
+        if (!runCountMap[run.workflowId]) {
+          runCountMap[run.workflowId] = { total: 0, succeeded: 0, failed: 0 };
+        }
+        runCountMap[run.workflowId].total++;
+        if (run.status === "completed") runCountMap[run.workflowId].succeeded++;
+        if (run.status === "failed") runCountMap[run.workflowId].failed++;
+      }
+
+      // Enrich workflows with run stats
+      const workflowsWithStats = allWorkflows.map(w => ({
+        ...w,
+        runCount: runCountMap[w.id]?.total ?? 0,
+        successCount: runCountMap[w.id]?.succeeded ?? 0,
+        failureCount: runCountMap[w.id]?.failed ?? 0,
+        successRate: runCountMap[w.id]?.total
+          ? Math.round((runCountMap[w.id].succeeded / runCountMap[w.id].total) * 100)
+          : null,
+      }));
+
+      // Most recently triggered (workflows that have runs, sorted by latest run)
+      const workflowLastRun: Record<number, string | null> = {};
+      for (const run of recentRuns) {
+        if (!workflowLastRun[run.workflowId] && run.startedAt) {
+          workflowLastRun[run.workflowId] = run.startedAt.toISOString();
+        }
+      }
+
+      const mostRecentlyTriggered = workflowsWithStats
+        .filter(w => workflowLastRun[w.id])
+        .sort((a, b) => {
+          const aTime = workflowLastRun[a.id] ? new Date(workflowLastRun[a.id]!).getTime() : 0;
+          const bTime = workflowLastRun[b.id] ? new Date(workflowLastRun[b.id]!).getTime() : 0;
+          return bTime - aTime;
+        })
+        .slice(0, 5)
+        .map(w => ({ ...w, lastTriggeredAt: workflowLastRun[w.id] }));
+
+      // Overall run statistics
+      const totalRuns = recentRuns.length;
+      const successfulRuns = recentRuns.filter(r => r.status === "completed").length;
+      const failedRuns = recentRuns.filter(r => r.status === "failed").length;
+      const overallSuccessRate = totalRuns > 0 ? Math.round((successfulRuns / totalRuns) * 100) : null;
+
+      res.json({
+        summary: {
+          totalWorkflows,
+          activeCount,
+          inactiveCount,
+          totalRuns,
+          successfulRuns,
+          failedRuns,
+          overallSuccessRate,
+        },
+        workflows: workflowsWithStats,
+        mostRecentlyTriggered,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Workflow analytics error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch workflow analytics"));
+    }
+  });
+
   // GET /api/workflows/:id - Get single workflow
   api.get("/api/workflows/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -1208,109 +1313,6 @@ export function registerCommunicationRoutes(app: Express): void {
     }
   });
 
-  // GET /api/workflows/analytics - Workflow usage stats
-  api.get("/api/workflows/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-
-      // Total workflows and active/inactive counts
-      const allWorkflows = await db
-        .select({
-          id: workflows.id,
-          name: workflows.name,
-          isActive: workflows.isActive,
-          createdAt: workflows.createdAt,
-          updatedAt: workflows.updatedAt,
-        })
-        .from(workflows)
-        .where(eq(workflows.organizationId, org.id))
-        .orderBy(desc(workflows.updatedAt));
-
-      const totalWorkflows = allWorkflows.length;
-      const activeCount = allWorkflows.filter(w => w.isActive).length;
-      const inactiveCount = totalWorkflows - activeCount;
-
-      // Recent workflow runs (last 50 across all workflows)
-      const recentRuns = await db
-        .select({
-          id: workflowRuns.id,
-          workflowId: workflowRuns.workflowId,
-          status: workflowRuns.status,
-          startedAt: workflowRuns.startedAt,
-          completedAt: workflowRuns.completedAt,
-          error: workflowRuns.error,
-        })
-        .from(workflowRuns)
-        .innerJoin(workflows, eq(workflowRuns.workflowId, workflows.id))
-        .where(eq(workflows.organizationId, org.id))
-        .orderBy(desc(workflowRuns.startedAt))
-        .limit(50);
-
-      // Run counts per workflow
-      const runCountMap: Record<number, { total: number; succeeded: number; failed: number }> = {};
-      for (const run of recentRuns) {
-        if (!runCountMap[run.workflowId]) {
-          runCountMap[run.workflowId] = { total: 0, succeeded: 0, failed: 0 };
-        }
-        runCountMap[run.workflowId].total++;
-        if (run.status === "completed") runCountMap[run.workflowId].succeeded++;
-        if (run.status === "failed") runCountMap[run.workflowId].failed++;
-      }
-
-      // Enrich workflows with run stats
-      const workflowsWithStats = allWorkflows.map(w => ({
-        ...w,
-        runCount: runCountMap[w.id]?.total ?? 0,
-        successCount: runCountMap[w.id]?.succeeded ?? 0,
-        failureCount: runCountMap[w.id]?.failed ?? 0,
-        successRate: runCountMap[w.id]?.total
-          ? Math.round((runCountMap[w.id].succeeded / runCountMap[w.id].total) * 100)
-          : null,
-      }));
-
-      // Most recently triggered (workflows that have runs, sorted by latest run)
-      const workflowLastRun: Record<number, string | null> = {};
-      for (const run of recentRuns) {
-        if (!workflowLastRun[run.workflowId] && run.startedAt) {
-          workflowLastRun[run.workflowId] = run.startedAt.toISOString();
-        }
-      }
-
-      const mostRecentlyTriggered = workflowsWithStats
-        .filter(w => workflowLastRun[w.id])
-        .sort((a, b) => {
-          const aTime = workflowLastRun[a.id] ? new Date(workflowLastRun[a.id]!).getTime() : 0;
-          const bTime = workflowLastRun[b.id] ? new Date(workflowLastRun[b.id]!).getTime() : 0;
-          return bTime - aTime;
-        })
-        .slice(0, 5)
-        .map(w => ({ ...w, lastTriggeredAt: workflowLastRun[w.id] }));
-
-      // Overall run statistics
-      const totalRuns = recentRuns.length;
-      const successfulRuns = recentRuns.filter(r => r.status === "completed").length;
-      const failedRuns = recentRuns.filter(r => r.status === "failed").length;
-      const overallSuccessRate = totalRuns > 0 ? Math.round((successfulRuns / totalRuns) * 100) : null;
-
-      res.json({
-        summary: {
-          totalWorkflows,
-          activeCount,
-          inactiveCount,
-          totalRuns,
-          successfulRuns,
-          failedRuns,
-          overallSuccessRate,
-        },
-        workflows: workflowsWithStats,
-        mostRecentlyTriggered,
-        generatedAt: new Date().toISOString(),
-      });
-    } catch (error: any) {
-      logger.error("Workflow analytics error", error instanceof Error ? error : undefined);
-      Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch workflow analytics"));
-    }
-  });
 
   // ============================================
   // SCHEDULED TASKS ROUTES

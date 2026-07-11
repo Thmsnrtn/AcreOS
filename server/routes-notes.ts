@@ -675,6 +675,94 @@ export function registerNoteRoutes(app: Express): void {
     },
   );
 
+  // insurance-watch — registered BEFORE /api/notes/:id so the literal path
+  // wins; the :id matcher was capturing "insurance-watch" and 404ing the
+  // tax-readiness insurance panel (2026-07-11 full-app sweep).
+  // GET /api/notes/insurance-watch
+  // Returns notes whose insurance_status is not 'verified', plus notes
+  // whose insurance_expires_at falls within the next 60 days.
+  app.get(
+    "/api/notes/insurance-watch",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const today = new Date();
+        const horizon = new Date(today.getTime() + 60 * 86_400_000);
+        const horizonIso = horizon.toISOString().slice(0, 10);
+        const todayIso = today.toISOString().slice(0, 10);
+
+        const rows = await db
+          .select({
+            id: acquiredNotes.id,
+            noteNumber: acquiredNotes.noteNumber,
+            payerName: acquiredNotes.payerName,
+            insuranceStatus: acquiredNotes.insuranceStatus,
+            insuranceCarrier: acquiredNotes.insuranceCarrier,
+            insurancePolicyNumber: acquiredNotes.insurancePolicyNumber,
+            insuranceExpiresAt: acquiredNotes.insuranceExpiresAt,
+            currentBalanceCents: acquiredNotes.currentBalanceCents,
+          })
+          .from(acquiredNotes)
+          .where(and(
+            eq(acquiredNotes.organizationId, orgId),
+            sql`(${acquiredNotes.insuranceStatus} <> 'verified' OR (${acquiredNotes.insuranceExpiresAt} IS NOT NULL AND ${acquiredNotes.insuranceExpiresAt} <= ${horizonIso} AND ${acquiredNotes.insuranceExpiresAt} >= ${todayIso}))`,
+          ))
+          .orderBy(acquiredNotes.insuranceExpiresAt);
+
+        return res.json({ notes: rows, horizonIso });
+      } catch (err) {
+        logger.error("notes.insurance-watch failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // escrow-disbursements — registered BEFORE /api/notes/:id so the literal path wins (2026-07-11 route-order sweep).
+  // GET /api/notes/escrow-disbursements?withinDays=60
+  // Linnea's "tax disbursements due in the next 60 days" view.
+  app.get(
+    "/api/notes/escrow-disbursements",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const withinDays = Math.min(365, Math.max(1, parseInt(String(req.query.withinDays ?? "60"), 10) || 60));
+        const today = new Date();
+        const horizon = new Date(today.getTime() + withinDays * 86_400_000);
+        const horizonIso = horizon.toISOString().slice(0, 10);
+
+        const rows = await db
+          .select({
+            id: acquiredNotes.id,
+            noteNumber: acquiredNotes.noteNumber,
+            payerName: acquiredNotes.payerName,
+            taxEscrowBalanceCents: acquiredNotes.taxEscrowBalanceCents,
+            taxDisbursementDueDate: acquiredNotes.taxDisbursementDueDate,
+            taxDisbursementAmountCents: acquiredNotes.taxDisbursementAmountCents,
+            taxAuthorityName: acquiredNotes.taxAuthorityName,
+          })
+          .from(acquiredNotes)
+          .where(and(
+            eq(acquiredNotes.organizationId, orgId),
+            eq(acquiredNotes.taxEscrowEnabled, true),
+            sql`${acquiredNotes.taxDisbursementDueDate} IS NOT NULL`,
+            sql`${acquiredNotes.taxDisbursementDueDate} <= ${horizonIso}`,
+          ))
+          .orderBy(acquiredNotes.taxDisbursementDueDate);
+
+        return res.json({ notes: rows, withinDays, horizonIso });
+      } catch (err) {
+        logger.error("notes.escrow-disbursements failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── Detail ───────────────────────────────────────────────────────────────
   app.get(
     "/api/notes/:id",
@@ -1541,89 +1629,7 @@ export function registerNoteRoutes(app: Express): void {
   );
 
   // ── Compliance watch lists ───────────────────────────────────────────────
-  // GET /api/notes/insurance-watch
-  // Returns notes whose insurance_status is not 'verified', plus notes
-  // whose insurance_expires_at falls within the next 60 days.
-  app.get(
-    "/api/notes/insurance-watch",
-    isAuthenticated,
-    getOrCreateOrg,
-    ownerOrAdmin,
-    async (req: AuthenticatedRequest, res: Response) => {
-      try {
-        const orgId = getOrganizationId(req);
-        const today = new Date();
-        const horizon = new Date(today.getTime() + 60 * 86_400_000);
-        const horizonIso = horizon.toISOString().slice(0, 10);
-        const todayIso = today.toISOString().slice(0, 10);
 
-        const rows = await db
-          .select({
-            id: acquiredNotes.id,
-            noteNumber: acquiredNotes.noteNumber,
-            payerName: acquiredNotes.payerName,
-            insuranceStatus: acquiredNotes.insuranceStatus,
-            insuranceCarrier: acquiredNotes.insuranceCarrier,
-            insurancePolicyNumber: acquiredNotes.insurancePolicyNumber,
-            insuranceExpiresAt: acquiredNotes.insuranceExpiresAt,
-            currentBalanceCents: acquiredNotes.currentBalanceCents,
-          })
-          .from(acquiredNotes)
-          .where(and(
-            eq(acquiredNotes.organizationId, orgId),
-            sql`(${acquiredNotes.insuranceStatus} <> 'verified' OR (${acquiredNotes.insuranceExpiresAt} IS NOT NULL AND ${acquiredNotes.insuranceExpiresAt} <= ${horizonIso} AND ${acquiredNotes.insuranceExpiresAt} >= ${todayIso}))`,
-          ))
-          .orderBy(acquiredNotes.insuranceExpiresAt);
-
-        return res.json({ notes: rows, horizonIso });
-      } catch (err) {
-        logger.error("notes.insurance-watch failed", err instanceof Error ? err : undefined);
-        return Errors.internal(res, err);
-      }
-    },
-  );
-
-  // GET /api/notes/escrow-disbursements?withinDays=60
-  // Linnea's "tax disbursements due in the next 60 days" view.
-  app.get(
-    "/api/notes/escrow-disbursements",
-    isAuthenticated,
-    getOrCreateOrg,
-    ownerOrAdmin,
-    async (req: AuthenticatedRequest, res: Response) => {
-      try {
-        const orgId = getOrganizationId(req);
-        const withinDays = Math.min(365, Math.max(1, parseInt(String(req.query.withinDays ?? "60"), 10) || 60));
-        const today = new Date();
-        const horizon = new Date(today.getTime() + withinDays * 86_400_000);
-        const horizonIso = horizon.toISOString().slice(0, 10);
-
-        const rows = await db
-          .select({
-            id: acquiredNotes.id,
-            noteNumber: acquiredNotes.noteNumber,
-            payerName: acquiredNotes.payerName,
-            taxEscrowBalanceCents: acquiredNotes.taxEscrowBalanceCents,
-            taxDisbursementDueDate: acquiredNotes.taxDisbursementDueDate,
-            taxDisbursementAmountCents: acquiredNotes.taxDisbursementAmountCents,
-            taxAuthorityName: acquiredNotes.taxAuthorityName,
-          })
-          .from(acquiredNotes)
-          .where(and(
-            eq(acquiredNotes.organizationId, orgId),
-            eq(acquiredNotes.taxEscrowEnabled, true),
-            sql`${acquiredNotes.taxDisbursementDueDate} IS NOT NULL`,
-            sql`${acquiredNotes.taxDisbursementDueDate} <= ${horizonIso}`,
-          ))
-          .orderBy(acquiredNotes.taxDisbursementDueDate);
-
-        return res.json({ notes: rows, withinDays, horizonIso });
-      } catch (err) {
-        logger.error("notes.escrow-disbursements failed", err instanceof Error ? err : undefined);
-        return Errors.internal(res, err);
-      }
-    },
-  );
 
   // ── Ownership splits (pool / fractional) ─────────────────────────────────
   // GET    /api/notes/:id/splits

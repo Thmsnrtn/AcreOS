@@ -101,8 +101,13 @@ export function registerAccountSecurityRoutes(app: Express): void {
                 isCurrent: s.id === currentSessionId,
               }));
             } catch (err) {
+              // Clerk unreachable/unconfigured must not 500 the whole
+              // security page — the session list is informational. Empty
+              // list + degraded flag keeps the page alive (2026-07-11
+              // sweep: this 500'd /account/security whenever Clerk creds
+              // were absent — which they are until provisioned).
               logger.error("[account-security] Clerk getSessionList failed", err as Error);
-              return Errors.internal(res, err);
+              return res.json({ sessions: [], degraded: true });
             }
           }
         }

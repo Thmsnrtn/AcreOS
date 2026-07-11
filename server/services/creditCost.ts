@@ -39,7 +39,15 @@ export async function creditCost(action: CreditAction): Promise<number> {
     // Defensive: founder_settings is JSONB so a malformed write could
     // return a non-number. Fall back to the constant rather than
     // billing wrongly.
-    return typeof value === "number" && Number.isFinite(value) && value >= 0
+    //
+    // ZERO IS THE SENTINEL, not a price: settingsSeeder.ts seeds every
+    // credits.weight.* row as 0 documented as "0 = use the canonical
+    // constant from shared/billing/credit-weights.ts". This comparison
+    // previously accepted 0 (`value >= 0`), so the seeded sentinel
+    // OVERRODE every compiled weight and every metered action cost 0¢ —
+    // the pool gate never engaged and COGS ran unmetered (found by the
+    // 2026-07-11 full-app sweep). A founder override must be > 0.
+    return typeof value === "number" && Number.isFinite(value) && value > 0
       ? value
       : fallback;
   } catch {

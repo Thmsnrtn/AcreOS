@@ -124,6 +124,134 @@ export function registerContractorRoutes(app: Express): void {
     }
   });
 
+  // 1099-NEC batch routes — registered BEFORE /api/contractors/:id so the
+  // literal path wins; the :id matcher was capturing "1099-nec-batch" and
+  // 404ing the whole 1099 surface (2026-07-11 full-app sweep).
+  // 1099-NEC batch preview — list contractors over $600 for the year.
+  app.get("/api/contractors/1099-nec-batch", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const parsedYear = parseInt(String(req.query.taxYear ?? new Date().getFullYear()), 10);
+      const taxYear = Number.isFinite(parsedYear) ? parsedYear : new Date().getFullYear();
+
+      const rows = await db.execute(sql`
+        SELECT c.id, c.name, c.business_name, c.legal_entity_name, c.email, c.address, c.tax_id_encrypted, c.tax_id_type,
+               COALESCE(SUM(p.amount_cents), 0) AS total_cents
+        FROM contractors c
+        LEFT JOIN contractor_payments p
+          ON p.contractor_id = c.id
+         AND p.organization_id = c.organization_id
+         AND p.tax_year = ${taxYear}
+         AND p.excluded_from_1099 = false
+        WHERE c.organization_id = ${orgId}
+        GROUP BY c.id, c.name, c.business_name, c.legal_entity_name, c.email, c.address, c.tax_id_encrypted, c.tax_id_type
+        HAVING COALESCE(SUM(p.amount_cents), 0) >= ${NEC_THRESHOLD_CENTS}
+        ORDER BY total_cents DESC
+      `);
+
+      const contractorList = ((rows as any).rows ?? []).map((r: any) => {
+        const issues: string[] = [];
+        if (!r.tax_id_encrypted) issues.push("missing tax ID");
+        if (!r.legal_entity_name && !r.name) issues.push("missing legal name");
+        if (!r.address || !r.address.line1) issues.push("missing address");
+        return {
+          id: r.id,
+          name: r.legal_entity_name ?? r.business_name ?? r.name,
+          totalCents: Number(r.total_cents) || 0,
+          taxIdMasked: maskTaxId(r.tax_id_encrypted, r.tax_id_type),
+          email: r.email,
+          issues,
+          ready: issues.length === 0,
+        };
+      });
+
+      return res.json({
+        taxYear,
+        thresholdCents: NEC_THRESHOLD_CENTS,
+        contractorCount: contractorList.length,
+        readyCount: contractorList.filter((c: any) => c.ready).length,
+        blockedCount: contractorList.filter((c: any) => !c.ready).length,
+        contractors: contractorList,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // 1099-NEC batch generate — emit one PDF per ready contractor, base64-encoded.
+  app.post("/api/contractors/1099-nec-batch", isAuthenticated, getOrCreateOrg, requireRole(["owner", "admin"]), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+      const taxYear = parseInt(String(req.query.taxYear ?? req.body?.taxYear ?? new Date().getFullYear()), 10);
+
+      const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId));
+      if (!org) return Errors.notFound(res, "Organization");
+
+      const orgTaxAddress = (org as any).taxAddress ?? null;
+      const payerAddress = orgTaxAddress ?? {
+        line1: "(payer address not configured)", city: "—", state: "—", zip: "—",
+      };
+
+      const rows = await db.execute(sql`
+        SELECT c.id, c.name, c.business_name, c.legal_entity_name, c.email, c.address, c.tax_id_encrypted, c.tax_id_type,
+               COALESCE(SUM(p.amount_cents), 0) AS total_cents
+        FROM contractors c
+        LEFT JOIN contractor_payments p
+          ON p.contractor_id = c.id
+         AND p.organization_id = c.organization_id
+         AND p.tax_year = ${taxYear}
+         AND p.excluded_from_1099 = false
+        WHERE c.organization_id = ${orgId}
+        GROUP BY c.id, c.name, c.business_name, c.legal_entity_name, c.email, c.address, c.tax_id_encrypted, c.tax_id_type
+        HAVING COALESCE(SUM(p.amount_cents), 0) >= ${NEC_THRESHOLD_CENTS}
+      `);
+
+      const eligible = ((rows as any).rows ?? []).filter((r: any) =>
+        r.tax_id_encrypted && r.address?.line1 && (r.legal_entity_name || r.name)
+      );
+
+      const forms: Array<{ contractorId: string; name: string; pdfBase64: string }> = [];
+      for (const r of eligible) {
+        const form: Nec1099Form = {
+          taxYear,
+          payer: {
+            name: (org as any).legalEntityName ?? org.name ?? "Payer",
+            address: payerAddress,
+            phone: (org as any).phone ?? undefined,
+            taxIdMasked: maskTaxId((org as any).ein ?? null, "ein"),
+          },
+          recipient: {
+            name: r.name,
+            legalEntityName: r.legal_entity_name ?? r.business_name ?? undefined,
+            address: r.address,
+            taxIdMasked: maskTaxId(r.tax_id_encrypted, r.tax_id_type),
+          },
+          nonemployeeCompensationCents: Number(r.total_cents) || 0,
+        };
+        const pdf = generate1099NecPdf(form);
+        forms.push({
+          contractorId: r.id,
+          name: form.recipient.legalEntityName ?? form.recipient.name,
+          pdfBase64: pdf.toString("base64"),
+        });
+      }
+
+      logger.info("[FF-3] 1099-NEC batch generated", {
+        orgId, userId, taxYear, formCount: forms.length, eligibleCount: eligible.length,
+      });
+
+      return res.json({
+        taxYear,
+        formCount: forms.length,
+        forms,
+        warning: "Recipient copies (Copy B). Paper IRS filing requires red-ink Copy A — use IRS FIRE / IRIS for electronic filing.",
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
   // Detail
   app.get("/api/contractors/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -282,128 +410,4 @@ export function registerContractorRoutes(app: Express): void {
     }
   });
 
-  // 1099-NEC batch preview — list contractors over $600 for the year.
-  app.get("/api/contractors/1099-nec-batch", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const orgId = getOrganizationId(req);
-      const parsedYear = parseInt(String(req.query.taxYear ?? new Date().getFullYear()), 10);
-      const taxYear = Number.isFinite(parsedYear) ? parsedYear : new Date().getFullYear();
-
-      const rows = await db.execute(sql`
-        SELECT c.id, c.name, c.business_name, c.legal_entity_name, c.email, c.address, c.tax_id_encrypted, c.tax_id_type,
-               COALESCE(SUM(p.amount_cents), 0) AS total_cents
-        FROM contractors c
-        LEFT JOIN contractor_payments p
-          ON p.contractor_id = c.id
-         AND p.organization_id = c.organization_id
-         AND p.tax_year = ${taxYear}
-         AND p.excluded_from_1099 = false
-        WHERE c.organization_id = ${orgId}
-        GROUP BY c.id, c.name, c.business_name, c.legal_entity_name, c.email, c.address, c.tax_id_encrypted, c.tax_id_type
-        HAVING COALESCE(SUM(p.amount_cents), 0) >= ${NEC_THRESHOLD_CENTS}
-        ORDER BY total_cents DESC
-      `);
-
-      const contractorList = ((rows as any).rows ?? []).map((r: any) => {
-        const issues: string[] = [];
-        if (!r.tax_id_encrypted) issues.push("missing tax ID");
-        if (!r.legal_entity_name && !r.name) issues.push("missing legal name");
-        if (!r.address || !r.address.line1) issues.push("missing address");
-        return {
-          id: r.id,
-          name: r.legal_entity_name ?? r.business_name ?? r.name,
-          totalCents: Number(r.total_cents) || 0,
-          taxIdMasked: maskTaxId(r.tax_id_encrypted, r.tax_id_type),
-          email: r.email,
-          issues,
-          ready: issues.length === 0,
-        };
-      });
-
-      return res.json({
-        taxYear,
-        thresholdCents: NEC_THRESHOLD_CENTS,
-        contractorCount: contractorList.length,
-        readyCount: contractorList.filter((c: any) => c.ready).length,
-        blockedCount: contractorList.filter((c: any) => !c.ready).length,
-        contractors: contractorList,
-      });
-    } catch (err) {
-      return Errors.internal(res, err);
-    }
-  });
-
-  // 1099-NEC batch generate — emit one PDF per ready contractor, base64-encoded.
-  app.post("/api/contractors/1099-nec-batch", isAuthenticated, getOrCreateOrg, requireRole(["owner", "admin"]), async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const orgId = getOrganizationId(req);
-      const userId = getUserId(req);
-      const taxYear = parseInt(String(req.query.taxYear ?? req.body?.taxYear ?? new Date().getFullYear()), 10);
-
-      const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId));
-      if (!org) return Errors.notFound(res, "Organization");
-
-      const orgTaxAddress = (org as any).taxAddress ?? null;
-      const payerAddress = orgTaxAddress ?? {
-        line1: "(payer address not configured)", city: "—", state: "—", zip: "—",
-      };
-
-      const rows = await db.execute(sql`
-        SELECT c.id, c.name, c.business_name, c.legal_entity_name, c.email, c.address, c.tax_id_encrypted, c.tax_id_type,
-               COALESCE(SUM(p.amount_cents), 0) AS total_cents
-        FROM contractors c
-        LEFT JOIN contractor_payments p
-          ON p.contractor_id = c.id
-         AND p.organization_id = c.organization_id
-         AND p.tax_year = ${taxYear}
-         AND p.excluded_from_1099 = false
-        WHERE c.organization_id = ${orgId}
-        GROUP BY c.id, c.name, c.business_name, c.legal_entity_name, c.email, c.address, c.tax_id_encrypted, c.tax_id_type
-        HAVING COALESCE(SUM(p.amount_cents), 0) >= ${NEC_THRESHOLD_CENTS}
-      `);
-
-      const eligible = ((rows as any).rows ?? []).filter((r: any) =>
-        r.tax_id_encrypted && r.address?.line1 && (r.legal_entity_name || r.name)
-      );
-
-      const forms: Array<{ contractorId: string; name: string; pdfBase64: string }> = [];
-      for (const r of eligible) {
-        const form: Nec1099Form = {
-          taxYear,
-          payer: {
-            name: (org as any).legalEntityName ?? org.name ?? "Payer",
-            address: payerAddress,
-            phone: (org as any).phone ?? undefined,
-            taxIdMasked: maskTaxId((org as any).ein ?? null, "ein"),
-          },
-          recipient: {
-            name: r.name,
-            legalEntityName: r.legal_entity_name ?? r.business_name ?? undefined,
-            address: r.address,
-            taxIdMasked: maskTaxId(r.tax_id_encrypted, r.tax_id_type),
-          },
-          nonemployeeCompensationCents: Number(r.total_cents) || 0,
-        };
-        const pdf = generate1099NecPdf(form);
-        forms.push({
-          contractorId: r.id,
-          name: form.recipient.legalEntityName ?? form.recipient.name,
-          pdfBase64: pdf.toString("base64"),
-        });
-      }
-
-      logger.info("[FF-3] 1099-NEC batch generated", {
-        orgId, userId, taxYear, formCount: forms.length, eligibleCount: eligible.length,
-      });
-
-      return res.json({
-        taxYear,
-        formCount: forms.length,
-        forms,
-        warning: "Recipient copies (Copy B). Paper IRS filing requires red-ink Copy A — use IRS FIRE / IRIS for electronic filing.",
-      });
-    } catch (err) {
-      return Errors.internal(res, err);
-    }
-  });
 }

@@ -292,7 +292,14 @@ export function registerBillingRoutes(app: Express): void {
       }));
       res.json(result);
     } catch (err: any) {
-      Errors.internal(res, err);
+      // Stripe unconfigured/unreachable must not 500 the Settings page —
+      // the plan catalog is display-only here. An empty list renders as
+      // "no plans available" until keys are provisioned (2026-07-11 sweep).
+      logger.warn(
+        "[billing] /api/stripe/products unavailable — returning empty catalog",
+        err instanceof Error ? err : undefined,
+      );
+      res.json([]);
     }
   });
 

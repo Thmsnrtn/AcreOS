@@ -78,6 +78,9 @@ function mockModules() {
     inArray: (a: any, b: any) => ({ op: "inArray", a, b }),
     sql: Object.assign((strings: TemplateStringsArray, ..._vals: any[]) => ({ op: "sql", strings }), {
       raw: (s: string) => ({ op: "sql.raw", s }),
+      // The atomic gate builds its feature filter with sql.join (the raw
+      // `= ANY(${arr})` form binds a record param Postgres rejects).
+      join: (chunks: unknown[], sep: unknown) => ({ op: "sql.join", chunks, sep }),
     }),
   }));
 

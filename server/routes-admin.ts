@@ -4247,28 +4247,26 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .from(aiTelemetryEvents)
         .where(gte(aiTelemetryEvents.createdAt, oneDayAgo));
 
-      const totalCalls = events.length;
-      const totalCostCents = events.reduce((sum, e) => sum + Number(e.estimatedCostCents || 0), 0);
-      const avgLatency = events.length > 0
+      const totalCallsToday = events.length;
+      const totalCostTodayCents = Math.round(
+        events.reduce((sum, e) => sum + Number(e.estimatedCostCents || 0), 0),
+      );
+      const avgLatencyMs = events.length > 0
         ? Math.round(events.reduce((sum, e) => sum + (e.latencyMs || 0), 0) / events.length)
         : 0;
       const cacheHits = events.filter((e: any) => e.cacheHit).length;
-      const cacheHitRate = events.length > 0 ? ((cacheHits / events.length) * 100).toFixed(1) : "0";
+      const cacheHitRate = events.length > 0 ? cacheHits / events.length : 0;
 
-      const modelCounts: Record<string, number> = {};
-      const complexityCounts: Record<string, number> = {};
-      for (const e of events) {
-        modelCounts[e.model] = (modelCounts[e.model] || 0) + 1;
-        if (e.complexity) complexityCounts[e.complexity] = (complexityCounts[e.complexity] || 0) + 1;
-      }
-
+      // Contract = the AiStats interface in founder-ai-observatory.tsx (its
+      // only consumer). The old payload used different key names
+      // (totalCalls/totalCostDollars) — the page read undefined and crashed
+      // on .toLocaleString() every time stats loaded (2026-07-11 sweep).
+      // Cents as integers per the W3.3 money rule; cacheHitRate is 0–1.
       res.json({
-        totalCalls,
-        totalCostDollars: (totalCostCents / 100).toFixed(2),
-        avgLatencyMs: avgLatency,
+        totalCallsToday,
+        totalCostTodayCents,
+        avgLatencyMs,
         cacheHitRate,
-        modelDistribution: modelCounts,
-        complexityDistribution: complexityCounts,
       });
     } catch (err: any) {
       Errors.internal(res, err);

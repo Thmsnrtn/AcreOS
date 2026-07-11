@@ -318,6 +318,18 @@ export function registerFounderStudioDialRoutes(app: Express) {
     }
   });
 
+  // calibrate — registered BEFORE /api/founder/studio/credits/:action so the literal path wins (2026-07-11 route-order sweep).
+  app.post("/api/founder/studio/credits/calibrate", ...guards, async (req, res: Response) => {
+    // No credit_ledger table yet — return a structured 422 so the UI can
+    // disable the button with an explanation rather than silently saving
+    // bogus weights. Once observed-cost data exists this becomes a real
+    // p90 calculation across the last 30 days.
+    return Errors.validationFailed(
+      res,
+      "Auto-calibration requires 30 days of credit_ledger data, which has not yet been collected.",
+    );
+  });
+
   app.post("/api/founder/studio/credits/:action", ...guards, async (req, res: Response) => {
     const action = req.params.action as CreditAction;
     if (!(action in CREDIT_WEIGHTS)) {
@@ -353,16 +365,6 @@ export function registerFounderStudioDialRoutes(app: Express) {
     }
   });
 
-  app.post("/api/founder/studio/credits/calibrate", ...guards, async (req, res: Response) => {
-    // No credit_ledger table yet — return a structured 422 so the UI can
-    // disable the button with an explanation rather than silently saving
-    // bogus weights. Once observed-cost data exists this becomes a real
-    // p90 calculation across the last 30 days.
-    return Errors.validationFailed(
-      res,
-      "Auto-calibration requires 30 days of credit_ledger data, which has not yet been collected.",
-    );
-  });
 
   // ── Revenue trigger ladder ─────────────────────────────────────────────
   app.get("/api/founder/studio/triggers", ...guards, async (_req, res: Response) => {

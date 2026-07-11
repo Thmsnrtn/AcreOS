@@ -332,7 +332,12 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
           FROM financial_ledger
           WHERE organization_id = ${args.organizationId}
             AND category = 'opex_spent'
-            AND feature = ANY(${uniqueFeatures}::text[])
+            -- Parameterized IN via sql.join — NOT \`= ANY(\${arr}::text[])\`:
+            -- drizzle binds a JS array as a record param, which Postgres
+            -- rejects ("cannot cast type record to text[]"), so the gate
+            -- query THREW on every call and fail-closed refused every
+            -- metered action (found 2026-07-11 full-app sweep).
+            AND feature IN (${sql.join(uniqueFeatures.map((f) => sql`${f}`), sql`, `)})
             AND posted_at >= ${monthStart}
         ) < ${poolMonthlyForGate}
         ON CONFLICT (external_event_id) DO NOTHING

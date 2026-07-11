@@ -13,7 +13,7 @@
  */
 
 import type { Express, Response } from "express";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import { paxAuditRuns, paxAuditFindings } from "@shared/schema/pax-audit";
 import { isAuthenticated, requireFounder } from "./auth";
@@ -57,7 +57,7 @@ export function registerPaxAuditRoutes(app: Express): void {
             count: sql<number>`COUNT(*)::int`,
           })
           .from(paxAuditFindings)
-          .where(sql`${paxAuditFindings.runId} = ANY(${runIds})`)
+          .where(inArray(paxAuditFindings.runId, runIds))
           .groupBy(paxAuditFindings.runId, paxAuditFindings.severity);
 
         const findingsByRun = new Map<
