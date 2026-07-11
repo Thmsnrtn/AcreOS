@@ -29,6 +29,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { DealNextAction } from "@/components/deals/DealNextAction";
+import { AssignmentPanel } from "@/components/deals/AssignmentPanel";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DealJourney } from "@/components/ui/deal-journey";
 import { DealCalculator, type AnalysisResults } from "@/components/deal-calculator";
@@ -665,6 +666,10 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
             </TabsContent>
 
             <TabsContent value="documents" className="space-y-4 md:space-y-6">
+              {/* W6.1 — the wholesaler's assignment-of-contract flow. Renders
+                  only for wholesaler orgs (or when assignment records already
+                  exist on this deal) — the panel self-gates. */}
+              <AssignmentPanel dealId={deal.id} propertyId={deal.propertyId} />
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-medium text-sm md:text-base">Document packages</h3>
                 <Button aria-label="Copy link" asChild size="sm" className="min-h-[44px]" data-testid="button-create-package-from-deal">
