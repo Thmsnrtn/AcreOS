@@ -17,6 +17,10 @@ concurrency:
   group: release-watchdog
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: read # in-flight deploy suppression queries the deploy.yml runs
+
 jobs:
   check-release-freshness:
     name: Compare origin/main to live deployed SHA
@@ -61,8 +65,29 @@ jobs:
           elif [ "$DEPLOYED" = "$EXPECTED" ]; then
             echo "status=match" >> "$GITHUB_OUTPUT"
           else
-            echo "status=diverged" >> "$GITHUB_OUTPUT"
+            # Divergence is NORMAL while the deploy pipeline is still rolling
+            # the new tip out (test gate + build + Fly rollout ≈ 20–40 min;
+            # the hourly tick regularly lands inside that window — 2026-07-11
+            # the founder got a STALE page two minutes after the deploy
+            # STARTED). Before alarming, ask GitHub whether a deploy.yml run
+            # for the expected SHA is queued or in progress; if so this is a
+            # deploy in flight, not a stale release. A FAILED or absent
+            # deploy still alerts — that is the wolf this dog exists for.
+            DEPLOY_RUNS="$(curl --fail --silent --show-error --max-time 20 \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs?head_sha=${EXPECTED}&per_page=1" \
+              || echo '{}')"
+            RUN_STATUS="$(printf '%s' "$DEPLOY_RUNS" | jq -r '.workflow_runs[0].status // "none"')"
+            echo "Deploy run for expected SHA: status=$RUN_STATUS"
+            if [ "$RUN_STATUS" = "queued" ] || [ "$RUN_STATUS" = "in_progress" ] || [ "$RUN_STATUS" = "waiting" ] || [ "$RUN_STATUS" = "pending" ]; then
+              echo "status=deploy-in-flight" >> "$GITHUB_OUTPUT"
+            else
+              echo "status=diverged" >> "$GITHUB_OUTPUT"
+            fi
           fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
@@ -79,7 +104,9 @@ jobs:
       #
       # 🔑 FOUNDER ACTION: gh secret set DEPLOY_ALERT_WEBHOOK --body "<url>"
       - name: Alert on stale / unreachable release
-        if: steps.resolve.outputs.status != 'match'
+        # deploy-in-flight is the healthy merge→rollout window — no alert;
+        # the NEXT hourly tick alarms if the deploy failed to land.
+        if: steps.resolve.outputs.status != 'match' && steps.resolve.outputs.status != 'deploy-in-flight'
         env:
           DEPLOY_ALERT_WEBHOOK: ${{ secrets.DEPLOY_ALERT_WEBHOOK }}
           STATUS: ${{ steps.resolve.outputs.status }}
