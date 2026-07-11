@@ -292,14 +292,18 @@ export function registerBillingRoutes(app: Express): void {
       }));
       res.json(result);
     } catch (err: any) {
-      // Stripe unconfigured/unreachable must not 500 the Settings page —
-      // the plan catalog is display-only here. An empty list renders as
-      // "no plans available" until keys are provisioned (2026-07-11 sweep).
+      // Stripe unconfigured/unreachable: FAIL (503, not a silent empty
+      // catalog) — the billing page's designed degraded state is the
+      // "Couldn't load plans" error card with a working retry, and
+      // billing-upgrade-journey.spec.ts pins that contract. An empty-array
+      // response here made the plans section render blank-but-"healthy",
+      // which is less honest than the error card. 503 replaces the old
+      // raw 500 (same client behavior; truthful status).
       logger.warn(
-        "[billing] /api/stripe/products unavailable — returning empty catalog",
+        "[billing] /api/stripe/products unavailable",
         err instanceof Error ? err : undefined,
       );
-      res.json([]);
+      Errors.serviceUnavailable(res, "Plan catalog is unavailable right now.");
     }
   });
 
