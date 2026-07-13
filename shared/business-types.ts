@@ -88,7 +88,13 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "fix_and_flip",
     label: "Fix-and-flip",
     shortDescription: "Buy distressed houses, renovate, resell.",
-    maturity: "beta",
+    // Founder decision 2026-07-11 (roadmap Founder decision #4): demoted
+    // beta → roadmap (waitlist) until a RESIDENTIAL comps/data source
+    // exists — the investorType fork maps fix_and_flip to the LAND data
+    // plane, so flip customers were getting land comps/AVM/due-diligence
+    // under house labels. The 70%-rule underwriting math stays available;
+    // existing fix_and_flip orgs keep their surfaces.
+    maturity: "roadmap",
     workflowTemplateIds: ["tpl_fix_flip_rehab_kickoff"],
     spotlightModules: ["properties", "deals"],
     integrations: ["stripe"],

@@ -119,7 +119,11 @@ const CORE_CHOICES = [
 // single source of truth for vertical metadata).
 const SECONDARY_CHOICES: { value: BusinessType; label: string; description: string; icon: typeof Map }[] = [
   { value: "residential_wholesaler", label: "Residential Wholesaler", icon: Home, description: "Find distressed homes and assign contracts to cash buyers." },
-  { value: "fix_and_flip", label: "Fix & Flip", icon: Hammer, description: "Acquire, renovate, and resell properties for profit." },
+  // Founder decision 2026-07-11: fix-and-flip waitlisted until a residential
+  // comps source exists — selectable (never silently remap a choice, per the
+  // 2026-06-05 audit), but the copy is honest that valuations run on land
+  // data today. Same pattern as subdivider (roadmap-maturity yet selectable).
+  { value: "fix_and_flip", label: "Fix & Flip (waitlist)", icon: Hammer, description: "Renovate-and-resell tools are waitlisted — comps and valuations currently use land data, not residential." },
   { value: "buy_and_hold", label: "Buy & Hold", icon: Key, description: "Build a long-term rental portfolio for passive income." },
   { value: "short_term_rental", label: "Short-Term Rental", icon: Palmtree, description: "Acquire and manage Airbnb, VRBO, and vacation rentals." },
   { value: "multifamily", label: "Multifamily", icon: Building2, description: "Invest in apartment buildings and 5+ unit properties." },

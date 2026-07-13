@@ -40,17 +40,19 @@ const CORE_TYPES = [
   "Note investors",
 ] as const;
 
-// beta:    fix_and_flip, residential_wholesaler, tax_lien_deed
+// beta:    residential_wholesaler, tax_lien_deed
 // (Real workflows + onboarding; DriveMode/CourthouseMode routing pending Iris)
 const BETA_TYPES = [
-  "Fix-and-flippers",
   "Wholesalers",
   "Tax-delinquent buyers",
 ] as const;
 
-// roadmap: subdivider (shakiest — Finance generic, Pax falls to developer),
+// roadmap: fix_and_flip (founder decision 2026-07-11 — waitlisted until a
+//          residential comps source exists; flip math ran on LAND data),
+//          subdivider (shakiest — Finance generic, Pax falls to developer),
 //          buy_and_hold (UI suppressed in registry)
 const ROADMAP_TYPES = [
+  "Fix-and-flippers",
   "Subdividers",
   "Buy-and-hold landlords",
 ] as const;
