@@ -55,6 +55,11 @@ const USDA_CDL_URL = "https://nassgeodata.gmu.edu/arcgis/rest/services/CropScape
 const USDA_CLU_URL = "https://gis.sc.egov.usda.gov/appgeodb/rest/services/common_land_unit/MapServer";
 const USGS_HILLSHADE_URL = "https://carto.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer";
 const USGS_TOPO_URL = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer";
+// Open-Data Phase 1 (docs/company/open-data-program.md): wetlands + soil
+// overlays. Both public-domain federal services, verified 2026-07-13.
+const USFWS_NWI_URL = "https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer";
+const USDA_SSURGO_WMS_TILES =
+  "https://SDMDataAccess.sc.egov.usda.gov/Spatial/SDM.wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=MapunitPoly&STYLES=&SRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE";
 
 const LAYER_STORAGE_KEY = "property-map-layers";
 
@@ -75,6 +80,8 @@ const HEAVY_RASTER_LAYERS = [
   "usgsHillshade",
   "hypsometricHillshade",
   "slopeGradient",
+  "nwiWetlands",
+  "ssurgoSoils",
 ] as const;
 type HeavyRasterLayer = (typeof HEAVY_RASTER_LAYERS)[number];
 
@@ -95,6 +102,8 @@ const OVERLAY_SOURCE_LABELS: Record<string, string> = {
   "usda-cdl": "USDA Cropland",
   "usda-clu": "USDA Farm Units",
   "usgs-hillshade": "USGS Hillshade",
+  "nwi-wetlands": "USFWS Wetlands",
+  "ssurgo-soils": "USDA Soil Survey",
 };
 
 type MeasurementMode = "none" | "distance" | "area";
@@ -653,6 +662,8 @@ interface LayerState {
   usgsHillshade: boolean;
   hypsometricHillshade: boolean;
   slopeGradient: boolean;
+  nwiWetlands: boolean;
+  ssurgoSoils: boolean;
 }
 
 const DEFAULT_LAYER_STATE: LayerState = {
@@ -667,6 +678,8 @@ const DEFAULT_LAYER_STATE: LayerState = {
   usgsHillshade: false,
   hypsometricHillshade: false,
   slopeGradient: false,
+  nwiWetlands: false,
+  ssurgoSoils: false,
 };
 
 function loadLayerState(): LayerState {
@@ -1288,6 +1301,32 @@ export function PropertyMap({
     if (map.current.getLayer(`${id}-layer`)) map.current.setLayoutProperty(`${id}-layer`, "visibility", "none");
   }, []);
 
+  // Same lifecycle as addArcGISOverlayLayer but for WMS endpoints, which take
+  // a complete GetMap tile template instead of an ArcGIS /export suffix.
+  const addWmsOverlayLayer = useCallback((id: string, tileTemplate: string, attribution: string) => {
+    if (!map.current) return;
+    markLayerStatus(id, "loading");
+    if (map.current.getLayer(`${id}-layer`)) {
+      map.current.setLayoutProperty(`${id}-layer`, "visibility", "visible");
+      return;
+    }
+    if (!map.current.getSource(id)) {
+      map.current.addSource(id, {
+        type: "raster",
+        tiles: [tileTemplate],
+        tileSize: 256,
+        attribution,
+      });
+    }
+    const firstSymbolId = map.current.getStyle()?.layers?.find(l => l.type === "symbol")?.id;
+    map.current.addLayer({
+      id: `${id}-layer`,
+      type: "raster",
+      source: id,
+      paint: { "raster-opacity": 0.6, "raster-fade-duration": 0 },
+    }, firstSymbolId);
+  }, [markLayerStatus]);
+
   // Retry a failed overlay: drop the source/layer so the next add re-fetches
   // tiles from scratch, clear the one-toast guard, then re-add.
   const retryLayer = useCallback((sourceId: string) => {
@@ -1307,8 +1346,12 @@ export function PropertyMap({
       addArcGISOverlayLayer("usda-clu", USDA_CLU_URL);
     } else if (sourceId === "usgs-hillshade") {
       addArcGISOverlayLayer("usgs-hillshade", USGS_HILLSHADE_URL);
+    } else if (sourceId === "nwi-wetlands") {
+      addArcGISOverlayLayer("nwi-wetlands", USFWS_NWI_URL);
+    } else if (sourceId === "ssurgo-soils") {
+      addWmsOverlayLayer("ssurgo-soils", USDA_SSURGO_WMS_TILES, "USDA NRCS SSURGO");
     }
-  }, [markLayerStatus, addFemaFloodLayer, addZoningLayer, addArcGISOverlayLayer]);
+  }, [markLayerStatus, addFemaFloodLayer, addZoningLayer, addArcGISOverlayLayer, addWmsOverlayLayer]);
 
   /** Honest per-layer status chip: spinner while loading, check when ready,
    *  a retry button on error. Color from tokens; aria text never color-only. */
@@ -2208,6 +2251,18 @@ export function PropertyMap({
 
   useEffect(() => {
     if (!mapLoaded || !map.current) return;
+    if (layerState.nwiWetlands) addArcGISOverlayLayer("nwi-wetlands", USFWS_NWI_URL);
+    else removeArcGISOverlayLayer("nwi-wetlands");
+  }, [layerState.nwiWetlands, mapLoaded, addArcGISOverlayLayer, removeArcGISOverlayLayer]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    if (layerState.ssurgoSoils) addWmsOverlayLayer("ssurgo-soils", USDA_SSURGO_WMS_TILES, "USDA NRCS SSURGO");
+    else removeArcGISOverlayLayer("ssurgo-soils");
+  }, [layerState.ssurgoSoils, mapLoaded, addWmsOverlayLayer, removeArcGISOverlayLayer]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
     togglePropertyHeatmap(layerState.propertyHeatmap);
   }, [layerState.propertyHeatmap, mapLoaded, togglePropertyHeatmap]);
 
@@ -2816,6 +2871,7 @@ export function PropertyMap({
                 femaFloodZone: layerState.femaFloodZone && layerStatus["fema-flood"] === "ready",
                 zoningDistricts: layerState.zoningDistricts && layerStatus["zoning-land-use"] === "ready",
                 slopeGradient: layerState.slopeGradient,
+                nwiWetlands: layerState.nwiWetlands && layerStatus["nwi-wetlands"] === "ready",
               }}
             />
           </div>
@@ -2850,6 +2906,19 @@ export function PropertyMap({
                           FEMA Flood Zones
                         </Label>
                         {layerState.femaFloodZone && renderLayerStatusChip("fema-flood")}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="nwi-wetlands"
+                          checked={layerState.nwiWetlands}
+                          onCheckedChange={(checked) => updateLayerState({ nwiWetlands: !!checked })}
+                          data-testid="checkbox-nwi-wetlands"
+                        />
+                        <Label htmlFor="nwi-wetlands" className="text-sm flex items-center gap-2 cursor-pointer flex-1">
+                          USFWS Wetlands
+                        </Label>
+                        {layerState.nwiWetlands && renderLayerStatusChip("nwi-wetlands")}
                       </div>
 
                       <div className="space-y-2">
@@ -3005,6 +3074,20 @@ export function PropertyMap({
                           Common Land Units
                         </Label>
                         {layerState.usdaClu && renderLayerStatusChip("usda-clu")}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="ssurgo-soils"
+                          checked={layerState.ssurgoSoils}
+                          onCheckedChange={(checked) => updateLayerState({ ssurgoSoils: !!checked })}
+                          data-testid="checkbox-ssurgo-soils"
+                        />
+                        <Label htmlFor="ssurgo-soils" className="text-sm cursor-pointer flex items-center gap-1 flex-1">
+                          <Tractor className="h-3 w-3 text-muted-foreground" />
+                          Soil Survey (SSURGO)
+                        </Label>
+                        {layerState.ssurgoSoils && renderLayerStatusChip("ssurgo-soils")}
                       </div>
 
                       <Separator className="my-3" />

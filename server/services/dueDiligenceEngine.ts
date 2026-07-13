@@ -4,10 +4,11 @@
  * Runs parallel automated checks against free government APIs:
  * - FEMA NFHL: Flood zone designation
  * - USFWS NWI: Wetlands coverage percentage
- * - EPA ECHO: Superfund/environmental hazard proximity
+ * - EPA FRS (SEMS) + Envirofacts RCRA: Superfund/environmental hazard proximity
  * - OpenStreetMap Overpass: Road access proximity
- * - USDA Web Soil Survey: Soil type, farmland classification
- * - USGS Elevation: Topography/slope
+ * - USDA Web Soil Survey / SSURGO: Soil type, farmland classification
+ * - USGS EPQS (3DEP): Elevation + real multi-point slope
+ * - FEMA National Risk Index: wildfire + 18-hazard composite risk
  *
  * All APIs are free with no key required.
  * Results are cached 30 days in the database.
@@ -128,6 +129,20 @@ export interface SoilSSURGOResult {
   acreScoreImpact: number; // +100 if NCCPI>0.6; -100 if hydric>50%
 }
 
+export interface NationalRiskIndexResult {
+  status: "done" | "error";
+  county: string | null;
+  state: string | null;
+  compositeScore: number | null; // 0-100 national percentile
+  compositeRating: string | null; // "Very Low" … "Very High"
+  expectedAnnualLossRating: string | null;
+  socialVulnerabilityRating: string | null;
+  communityResilienceRating: string | null;
+  // Hazards this county rates "Relatively High" or "Very High" on
+  elevatedHazards: string[];
+  risk: RiskLevel;
+}
+
 export interface AutoDDReport {
   propertyId: number;
   lat: number;
@@ -152,6 +167,7 @@ export interface AutoDDReport {
     endangeredSpecies?: EndangeredSpeciesResult;
     wildfireRisk?: WildfireRiskResult;
     soilSSURGO?: SoilSSURGOResult;
+    nationalRisk?: NationalRiskIndexResult;
   };
   redFlags: string[];
   greenFlags: string[];
@@ -375,29 +391,36 @@ async function checkWetlands(lat: number, lng: number, acreage: number | null): 
 
 // ============================================
 // EPA ENVIRONMENTAL CHECK
-// Uses EPA ECHO API (free, no key)
+// Superfund counts come from EPA FRS get_facilities filtered to the SEMS
+// program (the actual Superfund enterprise system); RCRA hazardous-waste
+// facilities from Envirofacts supplement the nearest-hazard signal.
+// Both are free, no key.
 // ============================================
 
 async function checkEnvironmental(lat: number, lng: number): Promise<EnvironmentalResult> {
-  try {
-    const url = `https://data.epa.gov/efservice/RCRA_FACILITIES/LATITUDE82/${lat - 0.1}:${lat + 0.1}/LONGITUDE82/${lng - 0.1}:${lng + 0.1}/rows/0:20/JSON`;
+  const [superfund, rcra] = await Promise.allSettled([
+    checkSuperfund(lat, lng),
+    checkRcraFacilities(lat, lng),
+  ]);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+  const sems = superfund.status === "fulfilled" ? superfund.value : null;
+  const rcraSite = rcra.status === "fulfilled" ? rcra.value : null;
 
-    const resp = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
+  // Both sources unreachable → the check failed; never report "clean".
+  if ((!sems || sems.status === "error") && !rcraSite) {
+    return {
+      status: "error",
+      superfundSitesWithin1Mile: 0,
+      superfundSitesWithin5Miles: 0,
+      nearestHazardName: null,
+      nearestHazardDistanceMiles: null,
+      risk: "unknown",
+    };
+  }
 
-    if (!resp.ok) {
-      // Try Superfund directly
-      return await checkSuperfund(lat, lng);
-    }
-
-    const data = await resp.json();
-    const sites = Array.isArray(data) ? data : [];
-
-    if (sites.length === 0) {
-      return {
+  const result: EnvironmentalResult = sems && sems.status === "done"
+    ? { ...sems }
+    : {
         status: "done",
         superfundSitesWithin1Mile: 0,
         superfundSitesWithin5Miles: 0,
@@ -405,46 +428,107 @@ async function checkEnvironmental(lat: number, lng: number): Promise<Environment
         nearestHazardDistanceMiles: null,
         risk: "low",
       };
+
+  // Fold in the nearest RCRA facility if it is closer than the nearest
+  // Superfund site (or the only hazard found).
+  if (rcraSite && (result.nearestHazardDistanceMiles === null || rcraSite.distanceMiles < result.nearestHazardDistanceMiles)) {
+    result.nearestHazardName = rcraSite.name;
+    result.nearestHazardDistanceMiles = Math.round(rcraSite.distanceMiles * 10) / 10;
+    if (rcraSite.distanceMiles <= 1 && result.risk === "low") result.risk = "medium";
+  }
+
+  return result;
+}
+
+interface NearestFacility {
+  name: string;
+  distanceMiles: number;
+}
+
+async function checkRcraFacilities(lat: number, lng: number): Promise<NearestFacility | null> {
+  const url = `https://data.epa.gov/efservice/RCRA_FACILITIES/LATITUDE82/${lat - 0.1}:${lat + 0.1}/LONGITUDE82/${lng - 0.1}:${lng + 0.1}/rows/0:20/JSON`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  const resp = await fetch(url, { signal: controller.signal });
+  clearTimeout(timeout);
+
+  if (!resp.ok) throw new Error(`Envirofacts RCRA ${resp.status}`);
+  const data = await resp.json();
+  const sites = Array.isArray(data) ? data : [];
+
+  let nearest: NearestFacility | null = null;
+  for (const s of sites) {
+    const siteLat = parseFloat(s.LATITUDE82 || "");
+    const siteLng = parseFloat(s.LONGITUDE82 || "");
+    if (!Number.isFinite(siteLat) || !Number.isFinite(siteLng)) continue;
+    const d = haversineDistanceMiles(lat, lng, siteLat, siteLng);
+    if (!nearest || d < nearest.distanceMiles) {
+      nearest = { name: s.FAC_NAME || "RCRA facility", distanceMiles: d };
     }
+  }
+  return nearest;
+}
 
-    const within1Mile = sites.filter((s: any) => {
-      const siteLat = parseFloat(s.LATITUDE82 || "0");
-      const siteLng = parseFloat(s.LONGITUDE82 || "0");
-      return haversineDistanceMiles(lat, lng, siteLat, siteLng) <= 1;
-    }).length;
+/**
+ * Real Superfund proximity via EPA FRS `get_facilities` filtered to the
+ * SEMS program (Superfund Enterprise Management System). Radius search in
+ * miles; response shape is `Results.FRSFacility[]` with string
+ * Latitude83/Longitude83. Verified live 2026-07-13.
+ */
+async function checkSuperfund(lat: number, lng: number): Promise<EnvironmentalResult> {
+  try {
+    const url = `https://ofmpub.epa.gov/frs_public2/frs_rest_services.get_facilities?latitude83=${lat}&longitude83=${lng}&search_radius=5&pgm_sys_acrnm=SEMS&output=JSON`;
 
-    const within5Mile = sites.filter((s: any) => {
-      const siteLat = parseFloat(s.LATITUDE82 || "0");
-      const siteLng = parseFloat(s.LONGITUDE82 || "0");
-      return haversineDistanceMiles(lat, lng, siteLat, siteLng) <= 5;
-    }).length;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!resp.ok) throw new Error(`EPA FRS ${resp.status}`);
+
+    const data = await resp.json();
+    const facilities: any[] = data?.Results?.FRSFacility || [];
+
+    let within1Mile = 0;
+    let within5Miles = 0;
+    let nearest: NearestFacility | null = null;
+
+    for (const f of facilities) {
+      const siteLat = parseFloat(f.Latitude83 || "");
+      const siteLng = parseFloat(f.Longitude83 || "");
+      if (!Number.isFinite(siteLat) || !Number.isFinite(siteLng)) continue;
+      const d = haversineDistanceMiles(lat, lng, siteLat, siteLng);
+      if (d <= 1) within1Mile++;
+      if (d <= 5) within5Miles++;
+      if (!nearest || d < nearest.distanceMiles) {
+        nearest = { name: f.FacilityName || "Superfund site", distanceMiles: d };
+      }
+    }
 
     let risk: RiskLevel = "low";
     if (within1Mile > 0) risk = "high";
-    else if (within5Mile > 0) risk = "medium";
+    else if (within5Miles > 0) risk = "medium";
 
     return {
       status: "done",
       superfundSitesWithin1Mile: within1Mile,
-      superfundSitesWithin5Miles: within5Mile,
-      nearestHazardName: sites[0]?.FAC_NAME || null,
-      nearestHazardDistanceMiles: within1Mile > 0 ? haversineDistanceMiles(lat, lng, parseFloat(sites[0]?.LATITUDE82 || "0"), parseFloat(sites[0]?.LONGITUDE82 || "0")) : null,
+      superfundSitesWithin5Miles: within5Miles,
+      nearestHazardName: nearest?.name ?? null,
+      nearestHazardDistanceMiles: nearest ? Math.round(nearest.distanceMiles * 10) / 10 : null,
       risk,
     };
   } catch {
-    return { status: "done", superfundSitesWithin1Mile: 0, superfundSitesWithin5Miles: 0, nearestHazardName: null, nearestHazardDistanceMiles: null, risk: "low" };
+    // Source unreachable — report the failure, never a clean result.
+    return {
+      status: "error",
+      superfundSitesWithin1Mile: 0,
+      superfundSitesWithin5Miles: 0,
+      nearestHazardName: null,
+      nearestHazardDistanceMiles: null,
+      risk: "unknown",
+    };
   }
-}
-
-async function checkSuperfund(lat: number, lng: number): Promise<EnvironmentalResult> {
-  return {
-    status: "done",
-    superfundSitesWithin1Mile: 0,
-    superfundSitesWithin5Miles: 0,
-    nearestHazardName: null,
-    nearestHazardDistanceMiles: null,
-    risk: "low",
-  };
 }
 
 // ============================================
@@ -539,44 +623,80 @@ async function checkRoadAccess(lat: number, lng: number): Promise<RoadAccessResu
 // Uses USGS National Map Elevation Point Query Service (free)
 // ============================================
 
-async function checkElevation(lat: number, lng: number): Promise<ElevationResult> {
+async function queryElevationFeet(lat: number, lng: number): Promise<number | null> {
   try {
     const url = `https://epqs.nationalmap.gov/v1/json?x=${lng}&y=${lat}&wkid=4326&units=Feet&includeDate=false`;
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
-
     const resp = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
-
-    if (!resp.ok) throw new Error(`USGS API ${resp.status}`);
-
+    if (!resp.ok) return null;
     const data = await resp.json();
-    const elevFeet = data.value ? parseFloat(data.value) : null;
+    const v = data.value !== undefined && data.value !== null ? parseFloat(data.value) : NaN;
+    return Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
 
-    if (!elevFeet) {
-      return { status: "done", elevationFeet: null, slope: "unknown", risk: "unknown" };
-    }
+/**
+ * Real slope from 3DEP: sample the parcel center plus four points ~150 m
+ * out (N/S/E/W) against the USGS Elevation Point Query Service (1 m DEM
+ * under the hood) and take the steepest center-to-offset gradient.
+ * Cross-parcel grade at 150 m spacing understates short micro-slopes but
+ * honestly classifies buildability — which is what land buyers ask.
+ * Falls back to "unknown" (never a guess) when fewer than two offsets
+ * resolve.
+ */
+async function checkElevation(lat: number, lng: number): Promise<ElevationResult> {
+  const SPACING_METERS = 150;
+  const dLat = SPACING_METERS / 111_320; // meters → degrees latitude
+  const dLng = SPACING_METERS / (111_320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
 
-    // We can't determine slope from a single point, but we can flag extreme elevations
-    let slope = "unknown";
-    let risk: RiskLevel = "low";
+  const [center, north, south, east, west] = await Promise.all([
+    queryElevationFeet(lat, lng),
+    queryElevationFeet(lat + dLat, lng),
+    queryElevationFeet(lat - dLat, lng),
+    queryElevationFeet(lat, lng + dLng),
+    queryElevationFeet(lat, lng - dLng),
+  ]);
 
-    if (elevFeet < 0) {
-      slope = "below sea level";
-      risk = "high";
-    } else if (elevFeet > 8000) {
-      slope = "high altitude";
+  if (center === null) {
+    return { status: "error", elevationFeet: null, slope: "unknown", risk: "unknown" };
+  }
+
+  const runFeet = SPACING_METERS * 3.28084;
+  const gradients = [north, south, east, west]
+    .filter((v): v is number => v !== null)
+    .map((v) => (Math.abs(v - center) / runFeet) * 100);
+
+  let slope = "unknown";
+  let risk: RiskLevel = "low";
+
+  if (gradients.length >= 2) {
+    const maxGradePercent = Math.max(...gradients);
+    if (maxGradePercent < 3) {
+      slope = "flat (<3%)";
+      risk = "low";
+    } else if (maxGradePercent < 8) {
+      slope = "gentle (3-8%)";
+      risk = "low";
+    } else if (maxGradePercent < 15) {
+      slope = "moderate (8-15%)";
       risk = "medium";
     } else {
-      slope = "normal";
-      risk = "low";
+      slope = "steep (>15%)";
+      risk = "high";
     }
-
-    return { status: "done", elevationFeet: Math.round(elevFeet), slope, risk };
-  } catch {
-    return { status: "done", elevationFeet: null, slope: "unknown", risk: "unknown" };
+  } else {
+    risk = "unknown";
   }
+
+  // Extreme-elevation flags retain their old severity regardless of grade.
+  if (center < 0) risk = "high";
+  else if (center > 8000 && risk === "low") risk = "medium";
+
+  return { status: "done", elevationFeet: Math.round(center), slope, risk };
 }
 
 // ============================================
@@ -771,29 +891,45 @@ async function checkEndangeredSpecies(lat: number, lng: number): Promise<Endange
 // FEMA National Risk Index API (free, no key)
 // ============================================
 
+/**
+ * FEMA NRI counties ArcGIS FeatureServer — point-in-polygon query.
+ * The old `hazards.fema.gov/nri/api/county` endpoint is dead (redirects to
+ * a fema.gov page, then 403s), which made this check silently return
+ * "unknown" in production. This FeatureServer is the live NRI distribution
+ * channel; verified 2026-07-13.
+ */
+const NRI_COUNTIES_QUERY_URL =
+  "https://services.arcgis.com/XG15cJAlne2vxtgt/arcgis/rest/services/National_Risk_Index_Counties/FeatureServer/0/query";
+
+async function queryNriCounty(lat: number, lng: number, outFields: string): Promise<Record<string, any> | null> {
+  const url = `${NRI_COUNTIES_QUERY_URL}?geometry=${lng},${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=${encodeURIComponent(outFields)}&returnGeometry=false&f=json`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  const resp = await fetch(url, { signal: controller.signal });
+  clearTimeout(timeout);
+  if (!resp.ok) throw new Error(`FEMA NRI ${resp.status}`);
+  const data = await resp.json();
+  if (data.error) throw new Error(`FEMA NRI query error ${data.error.code ?? ""}`);
+  return data?.features?.[0]?.attributes ?? null;
+}
+
 async function checkWildfireRisk(lat: number, lng: number, state: string): Promise<WildfireRiskResult> {
   try {
-    // Use FEMA NRI county-level wildfire risk via NRI API
-    const url = `https://hazards.fema.gov/nri/api/county?lat=${lat}&lng=${lng}`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const resp = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
-
-    if (!resp.ok) throw new Error(`FEMA NRI ${resp.status}`);
-    const data = await resp.json();
-    const nriData = Array.isArray(data) ? data[0] : data;
+    const nriData = await queryNriCounty(lat, lng, "WFIR_RISKR,WFIR_RISKS");
 
     // WFIR_RISKR: Wildfire Risk Rating from FEMA NRI
-    const riskRating = nriData?.WFIR_RISKR || nriData?.properties?.WFIR_RISKR || "";
-    const riskScore = Number(nriData?.WFIR_RISKS || nriData?.properties?.WFIR_RISKS || 0);
+    const riskRating = nriData?.WFIR_RISKR || "";
+    const riskScore = Number(nriData?.WFIR_RISKS || 0);
 
+    // NRI rating vocabulary: "Very Low" | "Relatively Low" |
+    // "Relatively Moderate" | "Relatively High" | "Very High"
+    // (plus "No Rating"/"Insufficient Data"). The old exact-match list
+    // missed the "Relatively …" forms entirely.
     let wildfireRisk: WildfireRiskResult["wildfireRisk"] = "unknown";
     if (riskRating === "Very High") wildfireRisk = "very_high";
-    else if (riskRating === "High") wildfireRisk = "high";
-    else if (riskRating === "Medium" || riskRating === "Moderate") wildfireRisk = "moderate";
-    else if (riskRating === "Low" || riskRating === "Very Low" || riskRating === "Relatively Low") wildfireRisk = "low";
+    else if (riskRating.includes("High")) wildfireRisk = "high";
+    else if (riskRating.includes("Moderate") || riskRating.includes("Medium")) wildfireRisk = "moderate";
+    else if (riskRating.includes("Low")) wildfireRisk = "low";
 
     const offerAdjustment = wildfireRisk === "very_high" ? -15 : wildfireRisk === "high" ? -8 : 0;
 
@@ -805,6 +941,107 @@ async function checkWildfireRisk(lat: number, lng: number, state: string): Promi
     };
   } catch {
     return { status: "done", wildfireRisk: "unknown", fireBehaviorClass: null, offerAdjustment: 0 };
+  }
+}
+
+// ============================================
+// OPEN-DATA PHASE 1: FEMA NRI COMPOSITE RISK
+// Same FeatureServer as wildfire; surfaces the full 18-hazard county
+// profile (composite score/rating, expected annual loss, social
+// vulnerability, community resilience, elevated hazards) instead of
+// wildfire alone. Free, no key. See docs/company/open-data-program.md.
+// ============================================
+
+const NRI_HAZARD_FIELDS: Record<string, string> = {
+  AVLN_RISKR: "Avalanche",
+  CFLD_RISKR: "Coastal Flooding",
+  CWAV_RISKR: "Cold Wave",
+  DRGT_RISKR: "Drought",
+  ERQK_RISKR: "Earthquake",
+  HAIL_RISKR: "Hail",
+  HWAV_RISKR: "Heat Wave",
+  HRCN_RISKR: "Hurricane",
+  ISTM_RISKR: "Ice Storm",
+  LNDS_RISKR: "Landslide",
+  LTNG_RISKR: "Lightning",
+  RFLD_RISKR: "Riverine Flooding",
+  SWND_RISKR: "Strong Wind",
+  TRND_RISKR: "Tornado",
+  TSUN_RISKR: "Tsunami",
+  VLCN_RISKR: "Volcanic Activity",
+  WFIR_RISKR: "Wildfire",
+  WNTW_RISKR: "Winter Weather",
+};
+
+export async function checkNationalRisk(lat: number, lng: number): Promise<NationalRiskIndexResult> {
+  try {
+    const fields = [
+      "COUNTY",
+      "STATE",
+      "RISK_SCORE",
+      "RISK_RATNG",
+      "EAL_RATNG",
+      "SOVI_RATNG",
+      "RESL_RATNG",
+      ...Object.keys(NRI_HAZARD_FIELDS),
+    ].join(",");
+
+    const attrs = await queryNriCounty(lat, lng, fields);
+    if (!attrs) {
+      // Point outside NRI coverage (e.g. territories) — no data is not an error.
+      return {
+        status: "done",
+        county: null,
+        state: null,
+        compositeScore: null,
+        compositeRating: null,
+        expectedAnnualLossRating: null,
+        socialVulnerabilityRating: null,
+        communityResilienceRating: null,
+        elevatedHazards: [],
+        risk: "unknown",
+      };
+    }
+
+    const compositeRating: string = attrs.RISK_RATNG || "";
+    const elevatedHazards = Object.entries(NRI_HAZARD_FIELDS)
+      .filter(([field]) => {
+        const r: string = attrs[field] || "";
+        return r === "Very High" || r === "Relatively High";
+      })
+      .map(([, label]) => label);
+
+    let risk: RiskLevel = "unknown";
+    if (compositeRating === "Very High") risk = "critical";
+    else if (compositeRating.includes("High")) risk = "high";
+    else if (compositeRating.includes("Moderate")) risk = "medium";
+    else if (compositeRating.includes("Low")) risk = "low";
+
+    return {
+      status: "done",
+      county: attrs.COUNTY || null,
+      state: attrs.STATE || null,
+      compositeScore: Number.isFinite(Number(attrs.RISK_SCORE)) ? Math.round(Number(attrs.RISK_SCORE) * 10) / 10 : null,
+      compositeRating: compositeRating || null,
+      expectedAnnualLossRating: attrs.EAL_RATNG || null,
+      socialVulnerabilityRating: attrs.SOVI_RATNG || null,
+      communityResilienceRating: attrs.RESL_RATNG || null,
+      elevatedHazards,
+      risk,
+    };
+  } catch {
+    return {
+      status: "error",
+      county: null,
+      state: null,
+      compositeScore: null,
+      compositeRating: null,
+      expectedAnnualLossRating: null,
+      socialVulnerabilityRating: null,
+      communityResilienceRating: null,
+      elevatedHazards: [],
+      risk: "unknown",
+    };
   }
 }
 
@@ -925,7 +1162,8 @@ function scoreChecks(checks: AutoDDReport["checks"]): { score: number; risk: Ris
     redFlags.push(`Environmental hazard within 1 mile: ${checks.environmental.nearestHazardName}`);
   } else if (checks.environmental.risk === "medium") {
     score -= 8; offerAdjustment -= 5;
-  } else {
+  } else if (checks.environmental.status === "done" && checks.environmental.risk === "low") {
+    // Only claim a clean result when the sources actually answered.
     greenFlags.push("No environmental hazards nearby");
   }
 
@@ -1001,7 +1239,7 @@ export async function runAutoDueDiligence(
 ): Promise<AutoDDReport> {
   // Run all checks in parallel (core + Epic B/D additions)
   const [floodZone, wetlands, environmental, roadAccess, soil, elevation,
-         landCover, blmAdjacency, endangeredSpecies, wildfireRisk, soilSSURGO] = await Promise.allSettled([
+         landCover, blmAdjacency, endangeredSpecies, wildfireRisk, soilSSURGO, nationalRisk] = await Promise.allSettled([
     checkFloodZone(lat, lng),
     checkWetlands(lat, lng, acreage || null),
     checkEnvironmental(lat, lng),
@@ -1015,6 +1253,8 @@ export async function runAutoDueDiligence(
     checkWildfireRisk(lat, lng, state || ""),
     // Epic D: SSURGO replaces basic soil survey
     checkSoilSSURGO(lat, lng),
+    // Open-Data Phase 1: FEMA NRI 18-hazard composite
+    checkNationalRisk(lat, lng),
   ]);
 
   const resolve = <T>(r: PromiseSettledResult<T>, fallback: T): T =>
@@ -1032,6 +1272,7 @@ export async function runAutoDueDiligence(
     endangeredSpecies: resolve(endangeredSpecies, { status: "error" as const, speciesCount: 0, hasListedSpecies: false, speciesNames: [], riskLevel: "none" as const }),
     wildfireRisk: resolve(wildfireRisk, { status: "error" as const, wildfireRisk: "unknown" as const, fireBehaviorClass: null, offerAdjustment: 0 }),
     soilSSURGO: resolve(soilSSURGO, { status: "error" as const, dominantSoilName: null, farmlandClassification: null, drainage: null, hydricPercent: 0, nccpiScore: null, risk: "unknown" as RiskLevel, acreScoreImpact: 0 }),
+    nationalRisk: resolve(nationalRisk, { status: "error" as const, county: null, state: null, compositeScore: null, compositeRating: null, expectedAnnualLossRating: null, socialVulnerabilityRating: null, communityResilienceRating: null, elevatedHazards: [], risk: "unknown" as RiskLevel }),
   };
   const { score, risk, redFlags, greenFlags, offerAdjustment } = scoreChecks(checks);
 
@@ -1055,6 +1296,17 @@ export async function runAutoDueDiligence(
   }
   if (checks.soilSSURGO?.hydricPercent && checks.soilSSURGO.hydricPercent > 50) {
     redFlags.push(`High hydric soil content (${checks.soilSSURGO.hydricPercent}%) — wetland risk, development limited`);
+  }
+  if (checks.nationalRisk?.status === "done" && checks.nationalRisk.compositeRating) {
+    const nri = checks.nationalRisk;
+    if (nri.risk === "critical" || nri.risk === "high") {
+      const hazards = nri.elevatedHazards.length ? ` (elevated: ${nri.elevatedHazards.slice(0, 4).join(", ")})` : "";
+      redFlags.push(`FEMA National Risk Index rates ${nri.county} County "${nri.compositeRating}" for natural hazards${hazards}`);
+    } else if (nri.risk === "low" && nri.elevatedHazards.length === 0) {
+      greenFlags.push(`FEMA National Risk Index rates ${nri.county} County "${nri.compositeRating}" — no elevated natural hazards`);
+    } else if (nri.elevatedHazards.length > 0) {
+      redFlags.push(`Elevated natural-hazard exposure per FEMA NRI: ${nri.elevatedHazards.slice(0, 4).join(", ")}`);
+    }
   }
 
   const additionalOfferAdj = (checks.wildfireRisk?.offerAdjustment || 0);
