@@ -185,15 +185,124 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  // Get auto-top-up settings
+  // Get auto-top-up settings. cardOnFile is resolved live from Stripe (the
+  // SetupIntent flow below is what puts a card there); when Stripe is
+  // unconfigured we say so honestly instead of guessing.
   api.get("/api/credits/auto-top-up", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const org = req.organization;
+      let cardOnFile = false;
+      let cardBrand: string | null = null;
+      let cardLast4: string | null = null;
+      let stripeConfigured = true;
+      if (org.stripeCustomerId) {
+        try {
+          const { getUncachableStripeClient } = await import("./stripeClient");
+          const stripe = await getUncachableStripeClient();
+          const pms = await stripe.paymentMethods.list({ customer: org.stripeCustomerId, type: "card", limit: 1 });
+          const pm = pms?.data?.[0];
+          if (pm?.card) {
+            cardOnFile = true;
+            cardBrand = pm.card.brand ?? null;
+            cardLast4 = pm.card.last4 ?? null;
+          }
+        } catch {
+          stripeConfigured = false;
+        }
+      } else {
+        try {
+          const { getUncachableStripeClient } = await import("./stripeClient");
+          await getUncachableStripeClient();
+        } catch {
+          stripeConfigured = false;
+        }
+      }
       res.json({
         enabled: org.autoTopUpEnabled || false,
         thresholdCents: org.autoTopUpThresholdCents || 200,
         amountCents: org.autoTopUpAmountCents || 2500,
+        // D2: the permanent per-charge ceiling, so the UI can show it.
+        hardCapCents: 50_000,
+        cardOnFile,
+        cardBrand,
+        cardLast4,
+        stripeConfigured,
       });
+    } catch (error: any) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // D2 — card-on-file step 1: create a SetupIntent (usage: off_session) so
+  // the client can collect a card with Stripe Elements. Creates the Stripe
+  // customer if the org doesn't have one yet.
+  api.post("/api/credits/auto-top-up/setup-intent", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
+    try {
+      const org = req.organization;
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      let stripe;
+      try {
+        stripe = await getUncachableStripeClient();
+      } catch {
+        return Errors.serviceUnavailable(res, "Billing isn't configured yet — card setup is unavailable right now.");
+      }
+
+      let customerId = org.stripeCustomerId;
+      if (!customerId) {
+        const { stripeService } = await import("./stripeService");
+        customerId = await withTransaction(async () => {
+          const user = req.user as any;
+          const customer = await stripeService.createCustomer(user.email || "", user.id, org.name);
+          await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
+          return customer.id;
+        });
+      }
+
+      const setupIntent = await stripe.setupIntents.create({
+        customer: customerId,
+        usage: "off_session",
+        payment_method_types: ["card"],
+        metadata: { organizationId: String(org.id), kind: "auto_top_up_card" },
+      });
+      res.json({ clientSecret: setupIntent.client_secret });
+    } catch (error: any) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // D2 — card-on-file step 2: after the client confirms the SetupIntent,
+  // register the resulting payment method as the customer's default so the
+  // off-session auto-top-up charge can find it.
+  const paymentMethodSchema = z.object({ paymentMethodId: z.string().min(1) });
+  api.post("/api/credits/auto-top-up/payment-method", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
+    try {
+      const parsed = paymentMethodSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const org = req.organization;
+      if (!org.stripeCustomerId) {
+        return Errors.badRequest(res, "No billing profile yet — create the card setup first.");
+      }
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      let stripe;
+      try {
+        stripe = await getUncachableStripeClient();
+      } catch {
+        return Errors.serviceUnavailable(res, "Billing isn't configured yet — card setup is unavailable right now.");
+      }
+
+      // Verify the payment method actually belongs to this org's customer
+      // (the SetupIntent attached it) before making it the default —
+      // otherwise any authenticated org could point itself at a foreign pm id.
+      const pm = await stripe.paymentMethods.retrieve(parsed.data.paymentMethodId);
+      if (!pm || (pm as any).customer !== org.stripeCustomerId) {
+        return Errors.badRequest(res, "That card isn't attached to your billing profile.");
+      }
+
+      await stripe.customers.update(org.stripeCustomerId, {
+        invoice_settings: { default_payment_method: parsed.data.paymentMethodId },
+      });
+      res.json({ ok: true, cardBrand: (pm as any).card?.brand ?? null, cardLast4: (pm as any).card?.last4 ?? null });
     } catch (error: any) {
       Errors.internal(res, error);
     }

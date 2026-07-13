@@ -132,17 +132,11 @@ export class CreditService {
       return null;
     }
 
-    // Check if auto-top-up should trigger after deduction (outside transaction,
-    // non-critical side effect that should not roll back the deduction).
-    // checkAutoTopUp lives on UsageMeteringService, not CreditService.
-    usageMeteringService.checkAutoTopUp(organizationId).then(({ shouldTopUp, amountCents: topUpAmount }) => {
-      if (shouldTopUp) {
-        logger.info(`[credits] Auto-top-up triggered for org ${organizationId}: ${topUpAmount}¢`);
-        // Auto-top-up would create a Stripe charge here — log for now
-        // TODO: Wire to Stripe PaymentIntent when billing is fully configured
-      }
-    }).catch((err: unknown) => {
-      logger.error("[credits] Auto-top-up check failed", err instanceof Error ? err : undefined);
+    // D2 (founder decision 2026-07-11): auto-top-up executes for real after a
+    // deduction (outside the transaction — a top-up failure must never roll
+    // back the deduction). All guards live inside executeAutoTopUp.
+    usageMeteringService.executeAutoTopUp(organizationId).catch((err: unknown) => {
+      logger.error("[credits] Auto-top-up execution failed", err instanceof Error ? err : undefined);
     });
 
     return result;
@@ -487,6 +481,172 @@ export class UsageMeteringService {
     }
 
     return { shouldTopUp: false, amountCents: 0 };
+  }
+
+  // D2 (founder decision 2026-07-11): execute the auto-top-up for real.
+  //
+  // Rules, in order:
+  //   - Customer settings decide IF and HOW MUCH (autoTopUpEnabled /
+  //     threshold / amount) — but the permanent $500/action hard-stop binds
+  //     ABOVE customer config: no single auto charge ever exceeds $500.
+  //   - Idempotent per dip: skip if an auto top-up was charged in the last
+  //     hour (the ledger is the guard), and the Stripe idempotency key is
+  //     keyed to (org, hour) so even a race can't double-charge.
+  //   - Off-session PaymentIntent against the customer's card on file
+  //     (SetupIntent flow in routes-billing.ts). No card → honest skip.
+  //   - Credits are added ONLY after the charge succeeds. Every outcome is
+  //     Letter-visible via logActivity and the customer gets a receipt
+  //     (success) or an action-needed email (decline).
+  //   - Idles silently while Stripe is unconfigured; live with the keys.
+  async executeAutoTopUp(organizationId: number): Promise<{ executed: boolean; reason: string }> {
+    const AUTO_TOP_UP_HARD_STOP_CENTS = 50_000; // $500/action — permanent house hard-stop
+
+    const { shouldTopUp, amountCents: configuredCents } = await this.checkAutoTopUp(organizationId);
+    if (!shouldTopUp) return { executed: false, reason: "not_triggered" };
+
+    let stripe: any;
+    try {
+      const { getUncachableStripeClient } = await import("../stripeClient");
+      stripe = await getUncachableStripeClient();
+    } catch {
+      logger.info(`[credits] Auto-top-up idle for org ${organizationId} — Stripe not configured yet (D2 goes live with keys)`);
+      return { executed: false, reason: "stripe_unconfigured" };
+    }
+
+    const amountCents = Math.min(configuredCents, AUTO_TOP_UP_HARD_STOP_CENTS);
+
+    // Ledger-based idempotency: one auto charge per org per hour, max.
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const [recent] = await db
+      .select({ id: creditTransactions.id })
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.organizationId, organizationId),
+          eq(creditTransactions.type, "topup"),
+          sql`${creditTransactions.metadata} ->> 'auto' = 'true'`,
+          sql`${creditTransactions.createdAt} >= ${oneHourAgo}`,
+        ),
+      )
+      .limit(1);
+    if (recent) return { executed: false, reason: "recent_auto_topup" };
+
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, organizationId),
+    });
+    if (!org?.stripeCustomerId) {
+      logger.warn(`[credits] Auto-top-up skipped for org ${organizationId} — no Stripe customer/card on file`);
+      return { executed: false, reason: "no_card_on_file" };
+    }
+
+    // Resolve the card on file (set by the SetupIntent flow).
+    let paymentMethodId: string | null = null;
+    try {
+      const customer = await stripe.customers.retrieve(org.stripeCustomerId);
+      paymentMethodId =
+        (customer as any)?.invoice_settings?.default_payment_method ?? null;
+      if (!paymentMethodId) {
+        const pms = await stripe.paymentMethods.list({ customer: org.stripeCustomerId, type: "card", limit: 1 });
+        paymentMethodId = pms?.data?.[0]?.id ?? null;
+      }
+    } catch (err: any) {
+      logger.warn(`[credits] Auto-top-up card lookup failed for org ${organizationId}: ${err?.message}`);
+      return { executed: false, reason: "card_lookup_failed" };
+    }
+    if (!paymentMethodId) {
+      logger.warn(`[credits] Auto-top-up skipped for org ${organizationId} — no card on file`);
+      return { executed: false, reason: "no_card_on_file" };
+    }
+
+    // Receipt recipient: the owner's email (organizations has no email column).
+    let recipientEmail: string | null = null;
+    try {
+      const { users } = await import("@shared/models/auth");
+      const [owner] = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.clerkUserId, org.ownerId))
+        .limit(1);
+      recipientEmail = owner?.email ?? null;
+    } catch {
+      recipientEmail = null;
+    }
+
+    const hourBucket = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
+    try {
+      const intent = await stripe.paymentIntents.create(
+        {
+          amount: amountCents,
+          currency: "usd",
+          customer: org.stripeCustomerId,
+          payment_method: paymentMethodId,
+          off_session: true,
+          confirm: true,
+          description: `AcreOS credit auto-top-up ($${(amountCents / 100).toFixed(2)})`,
+          metadata: { organizationId: String(organizationId), kind: "auto_top_up" },
+        },
+        { idempotencyKey: `auto-topup:${organizationId}:${hourBucket}` },
+      );
+
+      // Credits land ONLY after the charge succeeded.
+      await creditService.addCredits(organizationId, amountCents, "topup", "Auto-top-up (card on file)", {
+        auto: "true",
+        paymentIntentId: intent.id,
+      } as any);
+
+      logger.info(`[credits] Auto-top-up SUCCEEDED for org ${organizationId}: ${amountCents}¢ (pi ${intent.id})`);
+      const { logActivity } = await import("./systemActivityLogger");
+      logActivity({
+        orgId: organizationId,
+        job: "billing",
+        action: "auto_top_up_succeeded",
+        summary: `Auto-top-up charged $${(amountCents / 100).toFixed(2)} to the card on file and credited the balance`,
+        metadata: { amountCents, paymentIntentId: intent.id },
+      }).catch(() => {});
+
+      // Receipt — best-effort, never blocks the credit.
+      try {
+        const { emailService } = await import("./emailService");
+        if (recipientEmail) {
+          await emailService.sendEmail({
+            to: recipientEmail,
+            subject: `Receipt: $${(amountCents / 100).toFixed(2)} AcreOS credit top-up`,
+            html: `<p>Hi ${org.name},</p><p>Your credit balance dropped below your auto-top-up threshold, so we charged your card on file <strong>$${(amountCents / 100).toFixed(2)}</strong> and credited your balance. You can adjust or disable auto-top-up any time in Settings → Billing.</p>`,
+            text: `Hi ${org.name},\n\nYour credit balance dropped below your auto-top-up threshold, so we charged your card on file $${(amountCents / 100).toFixed(2)} and credited your balance.\n\nAdjust or disable auto-top-up any time in Settings → Billing.`,
+          });
+        }
+      } catch (mailErr) {
+        logger.warn(`[credits] Auto-top-up receipt email failed for org ${organizationId}`);
+      }
+
+      return { executed: true, reason: "charged" };
+    } catch (err: any) {
+      const reason = (err?.message || String(err)).slice(0, 200);
+      logger.warn(`[credits] Auto-top-up charge FAILED for org ${organizationId}: ${reason}`);
+      const { logActivity } = await import("./systemActivityLogger");
+      logActivity({
+        orgId: organizationId,
+        job: "billing",
+        action: "auto_top_up_failed",
+        summary: `Auto-top-up charge failed — ${reason}`,
+        metadata: { amountCents, reason },
+      }).catch(() => {});
+
+      try {
+        const { emailService } = await import("./emailService");
+        if (recipientEmail) {
+          await emailService.sendEmail({
+            to: recipientEmail,
+            subject: "Action needed: your AcreOS auto-top-up didn't go through",
+            html: `<p>Hi ${org.name},</p><p>We tried to top up your credit balance from your card on file, but the charge didn't go through. Your balance was not changed and you were not charged. Please update your card in Settings → Billing to keep auto-top-up working.</p>`,
+            text: `Hi ${org.name},\n\nWe tried to top up your credit balance from your card on file, but the charge didn't go through. You were not charged. Update your card in Settings → Billing to keep auto-top-up working.`,
+          });
+        }
+      } catch {
+        /* best-effort */
+      }
+      return { executed: false, reason: "charge_failed" };
+    }
   }
 
   // Apply monthly tier allowance to organization
