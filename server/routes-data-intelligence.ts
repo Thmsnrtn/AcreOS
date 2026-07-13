@@ -56,19 +56,25 @@ function getUser(req: Request) { return req.user; }
 router.get("/county-snapshot/:state/:county", async (req: Request, res: Response) => {
   try {
     const { buildCountyAgSnapshot, getCachedLandTrend } = await import("./services/usdaNassService");
-    const { buildCountyOpportunityProfile } = await import("./services/censusDataService");
+    const { buildCountyOpportunityProfile, getCountyFips } = await import("./services/censusDataService");
     const { computeCountyOpportunityScore, generateCountyIntelligenceReport } = await import("./services/countyOpportunityScore");
+    const { getPermitTrend } = await import("./services/openData/countyMarketSignals");
     const { state, county } = req.params;
 
-    const [nassSnapshot, trend, censusProfile] = await Promise.allSettled([
+    // Ingested Census BPS annual data (county_building_permits) beats the
+    // hardcoded placeholder — but only when both years actually exist.
+    const fips = getCountyFips(state, county);
+    const [nassSnapshot, trend, censusProfile, bpsPermitTrend] = await Promise.allSettled([
       buildCountyAgSnapshot(state, county),
       getCachedLandTrend(state, county),
       buildCountyOpportunityProfile(state, county),
+      fips ? getPermitTrend(fips.stateFips, fips.countyFips) : Promise.resolve(null),
     ]);
 
     const nassData = nassSnapshot.status === "fulfilled" ? nassSnapshot.value : null;
     const trendData = trend.status === "fulfilled" ? trend.value : null;
     const censusData = censusProfile.status === "fulfilled" ? censusProfile.value : null;
+    const permitTrend = bpsPermitTrend.status === "fulfilled" ? bpsPermitTrend.value : null;
 
     // County opportunity score
     const countyScore = computeCountyOpportunityScore({
@@ -88,7 +94,7 @@ router.get("/county-snapshot/:state/:county", async (req: Request, res: Response
       estimatedInvestorMailingCount: 10,
       recentPriceIncreasePercent: trendData?.oneYearChangePercent || 3,
       populationGrowthRate: censusData?.demographics?.populationChangePercent || 1,
-      permitCountTrend: censusData?.permits ? 5 : 0,
+      permitCountTrend: permitTrend?.trendPercent ?? (censusData?.permits ? 5 : 0),
       distanceToNearestMetroMiles: 80,
       hasRecentInfrastructureAnnouncement: false,
       hasRecentEmployerAnnouncement: false,
