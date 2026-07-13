@@ -327,6 +327,19 @@ Operational calls (same session):
    rules.
 7. **Listing syndication** — **build the backend now** (channel model +
    status/sync endpoints the existing page expects). Build task D7.
+8. **Arming Checklist Tier 1** (kernel-restructure directive, decided
+   2026-07-13) — **ARM all of Tier 1**: dispatch, publish, cognition,
+   self-patch master switches (one-shot NULL-guarded migration 0203 — a
+   founder OFF is never overridden), the 3 keyless federal ETL jobs
+   (IRS migration / BPS permits / QCEW wages), LLM judges + strict
+   compliance mode (fly.toml env). Self-patch motor additionally awaits
+   GITHUB_TOKEN/GITHUB_REPOSITORY (founder to set) + earned OPS trust.
+   **Tier 3 deferred with revisit triggers**: autonomous customer-email
+   executor → after week-4 retention data exists; Meta ad activation →
+   after ~10 manually-acquired customers + week-4 retention (Ignition
+   Protocol); LOB live mail → first real customer send need; witness
+   grants → per-grant founder issuance by design. Verification memo:
+   docs/internal/solene-kernel-restructure-verification.md.
 
 ## Do not regress (verified strengths, all four lenses)
 
