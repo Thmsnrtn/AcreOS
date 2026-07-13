@@ -7730,6 +7730,33 @@ const STATEMENTS = [
    VALUES
      ('bls_qcew_employment_v1', 'bls_qcew_employment_v1', 'https://data.bls.gov/cew/data/api', 'year', '0 6 1 * *', false, false)
    ON CONFLICT ("job_name") DO NOTHING`,
+
+  // Arming Checklist Tier 1 (migration 0203, founder decision 2026-07-13).
+  // ONE-SHOT: skipped once the platform_settings marker exists, and master
+  // switches are set only from the never-decided NULL state — a founder OFF
+  // (explicit false, e.g. panicStop()) is never overridden by deploy re-runs.
+  `DO $$
+   BEGIN
+     IF NOT EXISTS (
+       SELECT 1 FROM "platform_settings"
+       WHERE "key" = 'arming.tier1.2026_07_13' AND "scope" = 'global'
+     ) THEN
+       INSERT INTO "autopilot_settings" ("id") VALUES (1) ON CONFLICT ("id") DO NOTHING;
+       UPDATE "autopilot_settings" SET "dispatch_enabled"   = true, "updated_by" = 'arming-tier1-2026-07-13'
+         WHERE "id" = 1 AND "dispatch_enabled" IS NULL;
+       UPDATE "autopilot_settings" SET "publish_enabled"    = true, "updated_by" = 'arming-tier1-2026-07-13'
+         WHERE "id" = 1 AND "publish_enabled" IS NULL;
+       UPDATE "autopilot_settings" SET "cognition_enabled"  = true, "updated_by" = 'arming-tier1-2026-07-13'
+         WHERE "id" = 1 AND "cognition_enabled" IS NULL;
+       UPDATE "autopilot_settings" SET "self_patch_enabled" = true, "updated_by" = 'arming-tier1-2026-07-13'
+         WHERE "id" = 1 AND "self_patch_enabled" IS NULL;
+       UPDATE "etl_jobs" SET "is_active" = true, "updated_at" = now()
+         WHERE "job_name" IN ('irs_soi_migration_v1', 'census_bps_permits_v1', 'bls_qcew_employment_v1')
+           AND "is_active" = false;
+       INSERT INTO "platform_settings" ("key", "scope", "value", "default_value")
+         VALUES ('arming.tier1.2026_07_13', 'global', '"executed"'::jsonb, '"executed"'::jsonb);
+     END IF;
+   END $$`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

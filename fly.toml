@@ -21,6 +21,16 @@ primary_region = 'iad'
 [env]
   NODE_ENV = 'production'
   PORT = '5000'
+  # Arming Checklist Tier 1 (founder decision 2026-07-13; see
+  # docs/internal/solene-kernel-restructure-verification.md). Both are
+  # env-read flags, non-secret, so they live here for auditability:
+  # - SCP_LLM_JUDGES_ENABLED adds the fails-closed LLM-judge gauntlet to
+  #   every evolution delta (needs ANTHROPIC_API_KEY, already a Fly secret).
+  # - COMPLIANCE_STRICT_MODE makes usury/Dodd-Frank violations BLOCK
+  #   instead of warn — strictly safer.
+  # SOLENE_PANIC_STOP (secret, machine-unwritable) overrides everything.
+  SCP_LLM_JUDGES_ENABLED = 'true'
+  COMPLIANCE_STRICT_MODE = 'true'
 
 # ──────────────────────────────────────────────────────────────────────
 # Process groups — Wave: cost. The customer-facing app machines stay
