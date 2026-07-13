@@ -315,8 +315,16 @@ Operational calls (same session):
    the ladder is not burned pre-keys. 7 unit tests pin the rules.
 6. **Auto-top-up** — **wire fully per customer settings**, with the
    permanent $500/action hard-stop still binding above customer config and
-   a card-on-file (SetupIntent) step added to top-up settings. Build task
-   D2; live once Stripe keys exist.
+   a card-on-file (SetupIntent) step added to top-up settings. **BUILT
+   2026-07-13 (D2):** `executeAutoTopUp` in credits.ts fires after every
+   deduction — off-session PaymentIntent against the card on file, amount
+   = min(customer config, $500 hard-stop), ledger-based one-charge-per-hour
+   idempotency + Stripe idempotency key, credits land only after the
+   charge succeeds, receipt/decline emails to the owner, every outcome
+   Letter-visible. Card-on-file via SetupIntent routes in
+   routes-billing.ts (setup-intent → payment-method, with ownership
+   verification). Idles until Stripe keys exist. 8 unit tests pin the
+   rules.
 7. **Listing syndication** — **build the backend now** (channel model +
    status/sync endpoints the existing page expects). Build task D7.
 
