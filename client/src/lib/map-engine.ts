@@ -44,11 +44,14 @@ export function getMapEngine(): MapEngine {
 /**
  * Style URL matrix. Mapbox URLs require a token; MapLibre URLs do not.
  *
- * MapLibre defaults use Stadia's free tier (1× million tiles/month, no
- * attribution requirements beyond the standard OSM line). Stadia keys are
- * optional — the URLs work without a key but Stadia may rate-limit at
- * scale. Set VITE_STADIA_API_KEY for production. To self-host instead,
- * point these at your own Protomaps PMTiles endpoint.
+ * ⚠️ License reality check (open-data-program.md, 2026-07-13): Stadia's
+ * free tier is explicitly NON-COMMERCIAL ("development, evaluation, and
+ * non-commercial use" — docs.stadiamaps.com/limits). These Stadia URLs are
+ * acceptable only behind the VITE_MAP_ENGINE=maplibre preview flag with a
+ * PAID Stadia key, never as an unkeyed production default. The Phase-2
+ * renderer swap must land with self-hosted Protomaps PMTiles (or
+ * OpenFreeMap as fallback) replacing these defaults — see
+ * docs/company/open-data-program.md Phase 4.
  */
 export const STYLE_URLS: Record<MapEngine, Record<MapStyleName, string>> = {
   mapbox: {
@@ -82,7 +85,8 @@ function stadiaUrl(style: string): string {
 export function isMapEngineConfigured(): boolean {
   const engine = getMapEngine();
   if (engine === "maplibre") {
-    // MapLibre + Stadia free tier works without a key.
+    // Tiles load without a key, but see the license note on STYLE_URLS —
+    // unkeyed Stadia is not a lawful production configuration.
     return true;
   }
   const token =
