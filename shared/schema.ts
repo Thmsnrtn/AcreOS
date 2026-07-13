@@ -6206,6 +6206,12 @@ export const countyGisEndpoints = pgTable("county_gis_endpoints", {
     taxAmount?: string;
     legalDescription?: string;
     zoning?: string;
+    // Tier 2A widened facts — gisWidenedFacts() in parcel.ts already reads
+    // these mapping keys; declared here so seeds can set them type-safely.
+    marketValue?: string;
+    taxStatus?: string;
+    lastSalePrice?: string;
+    lastSaleDate?: string;
   }>(),
   
   // Status
