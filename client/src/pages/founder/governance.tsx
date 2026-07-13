@@ -45,17 +45,19 @@ function NegotiationCard({ negotiation }: { negotiation: any }) {
 
   const resolveMutation = useMutation({
     mutationFn: async (resolution: string) => {
-      const res = await fetch(`/api/founder/v11/negotiation/${negotiation.id}/resolve`, {
+      // Real server route (routes-founder-anticipatory-enterprise.ts): CEO
+      // override — the old /negotiation/:id/resolve path never existed.
+      const res = await fetch(`/api/founder/v11/negotiations/${negotiation.id}/override`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resolution }),
+        body: JSON.stringify({ override: resolution }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to resolve negotiation");
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/founder/v11/negotiation/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/founder/v11/negotiations/active"] });
     },
     onError: () =>
       toast({

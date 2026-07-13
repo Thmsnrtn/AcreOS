@@ -881,6 +881,53 @@ export function registerOutreachMailRoutes(app: Express): void {
     },
   );
 
+  // GET /api/outreach/mail/templates — the compose page's template picker
+  // (with response-rate badges). There is no mail-template store yet:
+  // templateId on mail_shipments is a bare integer chosen by the composer.
+  // So the honest list is the templates this org has ACTUALLY USED, with
+  // real per-template outcome stats; name falls back to the most recent
+  // shipment label that used it. responseRate is a 0–1 fraction (the
+  // client multiplies by 100).
+  app.get(
+    "/api/outreach/mail/templates",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const orgId = getOrganizationId(req);
+      try {
+        const rows = await db
+          .select({
+            templateId: mailShipments.templateId,
+            campaigns: sql<number>`count(distinct ${mailShipments.id})::int`,
+            sends: sql<number>`coalesce(sum(${mailShipments.pieceCount}), 0)::int`,
+            responses: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}) + sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
+            latestLabel: sql<string | null>`(array_agg(${mailShipments.label} order by ${mailShipments.queuedAt} desc))[1]`,
+          })
+          .from(mailShipments)
+          .leftJoin(mailShipmentPieces, eq(mailShipmentPieces.shipmentId, mailShipments.id))
+          .where(
+            and(
+              eq(mailShipments.organizationId, orgId),
+              sql`${mailShipments.templateId} IS NOT NULL`,
+            ),
+          )
+          .groupBy(mailShipments.templateId);
+
+        res.json(
+          rows.map((r) => ({
+            id: r.templateId as number,
+            name: r.latestLabel || `Template #${r.templateId}`,
+            campaigns: r.campaigns,
+            sends: r.sends,
+            ...(r.sends > 0 ? { responseRate: r.responses / r.sends } : {}),
+          })),
+        );
+      } catch (err) {
+        Errors.internal(res, err);
+      }
+    },
+  );
+
   // GET /api/outreach/mail/results/compare-templates?days=90
   app.get(
     "/api/outreach/mail/results/compare-templates",

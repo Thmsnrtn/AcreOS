@@ -26,6 +26,7 @@ import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { Errors } from "./utils/errors";
+import rateLimit from "express-rate-limit";
 
 // Phase 4 Week 15-16 (Magdalena §1): the synchronous /api/import/:entityType
 // handler still rejects CSVs above this limit so legacy clients see a clear
@@ -44,6 +45,25 @@ const uploadJobZip = createUploadMiddleware({ maxSizeMB: 100, allowedTypes: ["zi
 // Safety cap so we never queue an obviously-broken CSV. Mirrors the worker's
 // own check; placed here so we 400 before stashing the payload to disk.
 const HARD_BYTE_CAP = 75 * 1024 * 1024;
+
+// Bulk-export cap for the generic /api/export/* family. The per-entity
+// paths (/api/leads/export, …) are already capped in server/index.ts, but
+// /api/export/backup, /api/export/:entityType, and /api/export/everything
+// were not — the exact burst pattern account takeovers exhibit (RS-7).
+// Runs AFTER getOrCreateOrg so the key is the real org, not "unknown-org".
+// Job-status polling (/api/export/jobs*) is deliberately NOT limited.
+const bulkExportLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: any) => {
+    const orgId = req.organization?.id ?? "unknown-org";
+    const userId = req.user?.id ?? req.ip ?? "unknown-user";
+    return `bulk-export:${orgId}:${userId}`;
+  },
+  message: { message: "Bulk-export rate limit exceeded. Per-org daily cap is 5. Email support@acreos.io for one-off lifts." },
+});
 
 export function registerImportExportRoutes(app: Express): void {
   const api = app;
@@ -358,7 +378,7 @@ export function registerImportExportRoutes(app: Express): void {
    * envelope ("backup_*.json") which is harder for other CRMs to consume.
    * Sunset: 2026-07-02. Tobiah §1 (Phase 4 Week 15-16).
    */
-  api.get("/api/export/backup", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/export/backup", isAuthenticated, getOrCreateOrg, bulkExportLimiter, async (req, res) => {
     try {
       const org = req.organization;
       const backup = await createBackupZip(org.id);
@@ -412,7 +432,7 @@ export function registerImportExportRoutes(app: Express): void {
    *
    * Tobiah §1 (Phase 4 Week 15-16).
    */
-  api.get("/api/export/:entityType", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/export/:entityType", isAuthenticated, getOrCreateOrg, bulkExportLimiter, async (req, res) => {
     try {
       const org = req.organization;
       const entityType = req.params.entityType as "leads" | "properties" | "deals" | "notes";
@@ -787,7 +807,7 @@ export function registerImportExportRoutes(app: Express): void {
     includeAttachments: z.boolean().optional(),
   });
 
-  api.post("/api/export/everything", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/export/everything", isAuthenticated, getOrCreateOrg, bulkExportLimiter, async (req, res) => {
     try {
       const org = req.organization!;
       const user = req.user as any;
