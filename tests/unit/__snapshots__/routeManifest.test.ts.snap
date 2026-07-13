@@ -252,6 +252,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-support-customer-context.ts",
   "routes-support-saved-replies.ts",
   "routes-support-tickets.ts",
+  "routes-syndication.ts",
   "routes-tax-certificates.ts",
   "routes-tax-delinquent.ts",
   "routes-tax-optimization.ts",

@@ -28,6 +28,7 @@ export interface OverlayLegendActive {
   femaFloodZone?: boolean;
   zoningDistricts?: boolean; // USGS NLCD land cover
   slopeGradient?: boolean;
+  nwiWetlands?: boolean; // USFWS National Wetlands Inventory
 }
 
 interface LegendBand {
@@ -55,6 +56,17 @@ const NLCD_BANDS: LegendBand[] = [
   { color: "#dcca8f", label: "Pasture / hay", desc: "Grassland & managed pasture" },
   { color: "#5475a8", label: "Open water", desc: "Lakes, rivers, ponds" },
   { color: "#b8d9eb", label: "Wetlands", desc: "Woody & emergent herbaceous wetlands" },
+];
+
+// USFWS NWI wetlands palette — fixed published data encoding, read from the
+// service's own renderer (Wetlands MapServer layer 0 drawingInfo, 2026-07-13).
+// Abbreviated to the classes land buyers hit most.
+const NWI_BANDS: LegendBand[] = [
+  { color: "#7fc319", label: "Emergent", desc: "Freshwater emergent wetland (marsh, wet meadow)" },
+  { color: "#008737", label: "Forested/shrub", desc: "Freshwater forested or shrub wetland" },
+  { color: "#678bc0", label: "Pond", desc: "Freshwater pond" },
+  { color: "#008fbf", label: "Riverine", desc: "River & stream channels" },
+  { color: "#66c2a5", label: "Estuarine", desc: "Estuarine and marine wetland" },
 ];
 
 // Slope gradient — OUR paint, so resolved from design tokens.
@@ -98,6 +110,7 @@ export function OverlayLegend({ active }: { active: OverlayLegendActive }) {
   if (active.femaFloodZone) sections.push({ title: "Flood zones", source: "FEMA NFHL", bands: FEMA_BANDS });
   if (active.zoningDistricts) sections.push({ title: "Land cover", source: "USGS NLCD", bands: NLCD_BANDS });
   if (active.slopeGradient) sections.push({ title: "Slope", source: "USGS 3DEP", bands: SLOPE_BANDS });
+  if (active.nwiWetlands) sections.push({ title: "Wetlands", source: "USFWS NWI", bands: NWI_BANDS });
 
   const count = sections.length;
   if (count === 0) return null;

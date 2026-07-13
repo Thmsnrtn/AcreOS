@@ -291,6 +291,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-support-customer-context.ts", mountPath: "/api/admin/support/customer-context", kind: "router", export: "default" },
   { file: "routes-support-saved-replies.ts", mountPath: "/api/admin/support/saved-replies", kind: "router", export: "default" },
   { file: "routes-support-tickets.ts", mountPath: null, kind: "register", export: "registerSupportTicketRoutes" },
+  { file: "routes-syndication.ts", mountPath: null, kind: "register", export: "registerSyndicationRoutes" },
   { file: "routes-tax-certificates.ts", mountPath: null, kind: "register", export: "registerTaxCertificateRoutes" },
   { file: "routes-tax-delinquent.ts", mountPath: "/api/tax-delinquent", kind: "router", export: "default" },
   { file: "routes-tax-optimization.ts", mountPath: "/api/tax-optimization", kind: "router", export: "default" },

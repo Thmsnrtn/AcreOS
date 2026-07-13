@@ -277,6 +277,7 @@ import { registerMlSnapshotsRoutes } from "./routes-ml-snapshots";
 import { registerEtlRoutes } from "./routes-etl";
 import { registerPromptVersionsRoutes } from "./routes-prompt-versions";
 import { registerEliteFeatureRoutes } from "./routes-elite-features";
+import { registerSyndicationRoutes } from "./routes-syndication";
 import { registerCoreAIRoutes } from "./routes-core-ai";
 import { registerAutonomousAgentRoutes } from "./routes-autonomous-agent";
 import { registerIntegrationRoutes } from "./routes-integrations";
@@ -2464,6 +2465,9 @@ export async function registerRoutes(
 
   // ─── Elite Features (Tax Escrow, E-Signing, DD Engine, Meta Ads, Actum, Syndication, Bookkeeping, VA) ──
   await registerEliteFeatureRoutes(app);
+
+  // ─── Syndication channel model (D7): status, sync-all, channel toggle/sync ──
+  registerSyndicationRoutes(app);
 
   // Enhancement routes (300 elite improvements)
   {

@@ -26,6 +26,7 @@
  */
 
 import { db } from "../db";
+import { logger } from "../utils/logger";
 
 const NASS_BASE = "https://quickstats.nass.usda.gov/api/api_GET/";
 const NASS_KEY = process.env.USDA_NASS_API_KEY || "";
@@ -87,9 +88,17 @@ interface NassApiRow {
 // Core NASS API Fetch
 // ---------------------------------------------------------------------------
 
+let warnedUnkeyed = false;
+
 async function fetchNassData(params: Record<string, string>): Promise<NassApiRow[]> {
   if (!NASS_KEY) {
-    // Return mock data for development without API key
+    // Unkeyed = no data, and downstream consumers (land-value trends, blind
+    // offer anchors) silently degrade. Say so once per process instead of
+    // failing quietly — the key is a free signup, see open-data-program.md.
+    if (!warnedUnkeyed) {
+      warnedUnkeyed = true;
+      logger.warn("USDA_NASS_API_KEY not set — NASS land values, cash rents, and blind-offer anchors are degraded. Key is free: https://quickstats.nass.usda.gov/api");
+    }
     return [];
   }
 
