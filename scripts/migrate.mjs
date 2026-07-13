@@ -7647,6 +7647,21 @@ const STATEMENTS = [
   // time; created_at is enqueue time and would mis-reap a claimed backlog.
   `ALTER TABLE outbox ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP`,
   `CREATE INDEX IF NOT EXISTS outbox_running_claimed_idx ON outbox (claimed_at) WHERE status = 'running'`,
+
+  // Syndication channel states (migration 0200, founder decision D7) — the
+  // per-org half of the listing-syndication channel model; the catalog
+  // (names, env keys) lives in code.
+  `CREATE TABLE IF NOT EXISTS "syndication_channel_states" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+     "channel_id" text NOT NULL,
+     "enabled" boolean NOT NULL DEFAULT false,
+     "last_sync_at" timestamp,
+     "last_sync_error" text,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "syndication_channel_states_org_channel_idx" ON "syndication_channel_states" ("organization_id", "channel_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

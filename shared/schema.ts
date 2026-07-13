@@ -7125,6 +7125,29 @@ export const insertPropertyListingSchema = createInsertSchema(propertyListings).
 export type InsertPropertyListing = z.infer<typeof insertPropertyListingSchema>;
 export type PropertyListing = typeof propertyListings.$inferSelect;
 
+// Per-org on/off + sync bookkeeping for each syndication channel (founder
+// decision D7, 2026-07-11: build the syndication backend now). The channel
+// CATALOG lives in code (listingSyndication.PLATFORMS — names, env keys,
+// API availability); this table stores only what varies per org: whether
+// the channel is enabled, when it last synced, and the last honest error.
+// One row per (org, channel); channels with no row are disabled.
+// Migration 0200. Mirrors scripts/migrate.mjs.
+export const syndicationChannelStates = pgTable("syndication_channel_states", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  channelId: text("channel_id").notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  lastSyncAt: timestamp("last_sync_at"),
+  lastSyncError: text("last_sync_error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("syndication_channel_states_org_channel_idx").on(table.organizationId, table.channelId),
+]);
+
+export type SyndicationChannelState = typeof syndicationChannelStates.$inferSelect;
+export type InsertSyndicationChannelState = typeof syndicationChannelStates.$inferInsert;
+
 // ============================================
 // DOCUMENTS: TEMPLATES & E-SIGNATURES
 // ============================================
