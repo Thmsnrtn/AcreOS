@@ -305,8 +305,14 @@ three operational calls made the same day:
 Operational calls (same session):
 
 5. **Dunning retries** — **auto-retry + notify** (day-1/3/7 ladder,
-   unattended, every attempt in The Letter/Story). Build task D1; executes
-   real retries once Stripe keys exist.
+   unattended, every attempt in The Letter/Story). **BUILT 2026-07-13
+   (D1):** `processAutoRetries` in dunning.ts runs inside the 6-hourly
+   sweeper — attempts the outstanding invoice on days 1/3/7
+   (DUNNING_CONFIG.autoRetryScheduleDays), one attempt per rung
+   (tracked in the event's notification log), success resolves as
+   auto_recovered + clears dunning state, every attempt Letter-visible
+   via logActivity. Idles with one log line until Stripe keys exist —
+   the ladder is not burned pre-keys. 7 unit tests pin the rules.
 6. **Auto-top-up** — **wire fully per customer settings**, with the
    permanent $500/action hard-stop still binding above customer config and
    a card-on-file (SetupIntent) step added to top-up settings. Build task

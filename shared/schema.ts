@@ -4608,6 +4608,12 @@ export type DunningEvent = typeof dunningEvents.$inferSelect;
 // Default dunning configuration per tier
 export const DUNNING_CONFIG = {
   retryScheduleDays: [3, 5, 7, 14], // Days after initial failure to retry
+  // D1 (founder decision 2026-07-11): unattended auto-retry ladder — the
+  // dunning sweeper attempts the outstanding invoice itself on these days
+  // after the initial failure (distinct from retryScheduleDays, which
+  // mirrors Stripe's own smart-retry schedule for stage math). Every
+  // attempt is Letter-visible via the activity log.
+  autoRetryScheduleDays: [1, 3, 7],
   gracePeriodDays: 3, // Full access for first 3 days
   warningPeriodDays: 7, // Warning stage days 4-7
   restrictedPeriodDays: 14, // Restricted access days 8-14
