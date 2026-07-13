@@ -25,7 +25,10 @@ function useMemorySearch(query: string, memoryType: string) {
       if (!query || query.length < 2) return [];
       const params = new URLSearchParams({ q: query, type: memoryType });
       const res = await fetch(`/api/founder/v13/memory/search?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`Memory search failed (${res.status})`);
+      // No server route exists for cross-agent memory search yet (only
+      // per-codename /memory/episodes and /memory/facts) — return empty
+      // instead of an error card. See task #34 sweep follow-ups.
+      if (!res.ok) return [];
       return res.json();
     },
     enabled: query.length >= 2,
