@@ -9,6 +9,8 @@
  * - USDA Web Soil Survey / SSURGO: Soil type, farmland classification
  * - USGS EPQS (3DEP): Elevation + real multi-point slope
  * - FEMA National Risk Index: wildfire + 18-hazard composite risk
+ * - USGS Seismic Design (ASCE 7-16): Ss/S1 spectral accelerations + seismic design category
+ * - NWS api.weather.gov: recent severe-weather alerts (30-day look-back — NOT a storm climatology)
  *
  * All APIs are free with no key required.
  * Results are cached 30 days in the database.
@@ -143,6 +145,25 @@ export interface NationalRiskIndexResult {
   risk: RiskLevel;
 }
 
+export interface SeismicResult {
+  status: "done" | "error";
+  ss: number | null; // short-period (0.2 s) spectral acceleration, g
+  s1: number | null; // 1 s spectral acceleration, g
+  designCategory: string | null; // ASCE 7-16 seismic design category A–F
+  risk: RiskLevel;
+}
+
+export interface WeatherAlertsResult {
+  status: "done" | "error";
+  windowDays: number; // look-back window the sample covers
+  alertCount: number; // Severe+Extreme alerts covering this point in the window
+  extremeCount: number;
+  severeCount: number;
+  topEvents: string[]; // distinct event names, most recent first
+  truncated: boolean; // sample hit the API page limit — counts are "at least"
+  risk: RiskLevel;
+}
+
 export interface AutoDDReport {
   propertyId: number;
   lat: number;
@@ -168,6 +189,9 @@ export interface AutoDDReport {
     wildfireRisk?: WildfireRiskResult;
     soilSSURGO?: SoilSSURGOResult;
     nationalRisk?: NationalRiskIndexResult;
+    // Open-Data Phase 5 additions
+    seismic?: SeismicResult;
+    weatherAlerts?: WeatherAlertsResult;
   };
   redFlags: string[];
   greenFlags: string[];
@@ -1138,6 +1162,174 @@ export async function checkSoilSSURGO(lat: number, lng: number): Promise<SoilSSU
 }
 
 // ============================================
+// OPEN-DATA PHASE 5: USGS SEISMIC DESIGN (ASCE 7-16)
+// earthquake.usgs.gov/ws/building-codes/{edition}/calculate (free, no key)
+// ============================================
+
+/**
+ * USGS seismic design values for the parcel point. The historical
+ * `/ws/designmaps/asce7-16.json` path is gone (redirects to an NSHMP 404
+ * page); the live path — the one the SEAOC/OSHPD production client at
+ * seismicmaps.org calls — is
+ * `/ws/building-codes/asce7-16/calculate?latitude=&longitude=&riskCategory=&siteClass=&title=`.
+ * Response shape: `{ request: { status: "success", … }, response: { data:
+ * { ss, s1, sdc, sds, sd1, … } } }` where ss/s1 are short-period / 1 s
+ * spectral accelerations (g) and sdc is the seismic design category A–F.
+ *
+ * Contract verified against the seismicmaps.org client 2026-07-13, but the
+ * USGS NSHMP backend was mid-outage that day (nginx served the docs SPA as
+ * a static fallback for every service path, `/ws/nshmp/*` 502'd, staging
+ * origin unreachable) — so this parses defensively: a non-JSON body, a
+ * non-"success" request status, or a payload missing both ss/s1 and sdc
+ * all land in the honest error state, never a fabricated result.
+ */
+async function checkSeismicDesign(lat: number, lng: number): Promise<SeismicResult> {
+  const errorResult: SeismicResult = { status: "error", ss: null, s1: null, designCategory: null, risk: "unknown" };
+  try {
+    const url = `https://earthquake.usgs.gov/ws/building-codes/asce7-16/calculate?latitude=${safeCoord(lat, "lat")}&longitude=${safeCoord(lng, "lng")}&riskCategory=II&siteClass=D&title=acreos`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const resp = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!resp.ok) throw new Error(`USGS designmaps ${resp.status}`);
+    // During backend outages the USGS origin serves its HTML docs app with
+    // a 200 — treat anything that isn't JSON as a failed check.
+    const contentType = resp.headers.get("content-type") || "";
+    if (!contentType.includes("json")) throw new Error("USGS designmaps returned non-JSON payload");
+
+    const data = await resp.json();
+    if (data?.request?.status && data.request.status !== "success") {
+      throw new Error(`USGS designmaps request status ${data.request.status}`);
+    }
+
+    const d = data?.response?.data;
+    const ss = Number.isFinite(Number(d?.ss)) ? Number(d.ss) : null;
+    const s1 = Number.isFinite(Number(d?.s1)) ? Number(d.s1) : null;
+    const rawSdc = typeof d?.sdc === "string" ? d.sdc.trim().toUpperCase() : "";
+    const designCategory = /^[A-F]$/.test(rawSdc) ? rawSdc : null;
+
+    // Nothing usable in the payload → failed check, not a clean parcel.
+    if (ss === null && s1 === null && designCategory === null) {
+      throw new Error("USGS designmaps response missing ss/s1/sdc");
+    }
+
+    let risk: RiskLevel = "unknown";
+    if (designCategory === "A" || designCategory === "B") risk = "low";
+    else if (designCategory === "C") risk = "medium";
+    else if (designCategory === "D") risk = "high";
+    else if (designCategory === "E" || designCategory === "F") risk = "critical";
+
+    return {
+      status: "done",
+      ss: ss !== null ? Math.round(ss * 1000) / 1000 : null,
+      s1: s1 !== null ? Math.round(s1 * 1000) / 1000 : null,
+      designCategory,
+      risk,
+    };
+  } catch {
+    return errorResult;
+  }
+}
+
+// ============================================
+// OPEN-DATA PHASE 5: NWS RECENT SEVERE-WEATHER ALERTS
+// api.weather.gov/alerts (free, no key)
+// ============================================
+
+const WEATHER_ALERTS_WINDOW_DAYS = 30;
+const WEATHER_ALERTS_PAGE_LIMIT = 50;
+
+/**
+ * Recent Severe/Extreme NWS alerts covering the parcel point over the last
+ * 30 days. HONESTY NOTE: this is deliberately NOT named "storm history" —
+ * no keyless per-point NOAA storm-climatology service exists (NCEI Storm
+ * Events is bulk CSV / county-level only; probed the NCEI/NCDC and NOAA
+ * mapservices ArcGIS catalogs 2026-07-13 and none carries a storm-events
+ * layer). What api.weather.gov gives per-point is recent alert activity,
+ * so that is exactly what this check claims. Long-term severe-weather
+ * exposure is covered county-level by the FEMA NRI check (tornado, hail,
+ * strong wind, hurricane…).
+ *
+ * Verified live 2026-07-13: `?point=<lat>,<lng>&status=actual&severity=
+ * Severe,Extreme&start=&end=&limit=` returns GeoJSON features with
+ * properties.event/severity/sent. `pagination.next` is present even on the
+ * final page, so truncation is detected by hitting the page limit instead.
+ */
+async function checkWeatherAlerts(lat: number, lng: number): Promise<WeatherAlertsResult> {
+  const errorResult: WeatherAlertsResult = {
+    status: "error",
+    windowDays: WEATHER_ALERTS_WINDOW_DAYS,
+    alertCount: 0,
+    extremeCount: 0,
+    severeCount: 0,
+    topEvents: [],
+    truncated: false,
+    risk: "unknown",
+  };
+  try {
+    const end = new Date();
+    const start = new Date(end.getTime() - WEATHER_ALERTS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const url =
+      `https://api.weather.gov/alerts?point=${safeCoord(lat, "lat")},${safeCoord(lng, "lng")}` +
+      `&status=actual&severity=Severe,Extreme` +
+      `&start=${start.toISOString()}&end=${end.toISOString()}&limit=${WEATHER_ALERTS_PAGE_LIMIT}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const resp = await fetch(url, {
+      headers: {
+        // NWS asks every client to identify itself.
+        "User-Agent": "acreos-duediligence/1.0",
+        Accept: "application/geo+json",
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!resp.ok) throw new Error(`NWS alerts ${resp.status}`);
+    const data = await resp.json();
+    const features: any[] = Array.isArray(data?.features) ? data.features : [];
+
+    let extremeCount = 0;
+    let severeCount = 0;
+    const events: string[] = [];
+    for (const f of features) {
+      const severity = f?.properties?.severity;
+      if (severity === "Extreme") extremeCount++;
+      else if (severity === "Severe") severeCount++;
+      const event = f?.properties?.event;
+      if (event && !events.includes(event)) events.push(event);
+    }
+
+    // One severe thunderstorm warning a month is unremarkable across most
+    // of the US — only repeated severe activity or any Extreme-severity
+    // alert (tornado emergency tier) rises above "low". This is a recency
+    // signal, not a climatology, and it feeds flags only (no score weight).
+    let risk: RiskLevel = "low";
+    if (extremeCount > 0) risk = "high";
+    else if (severeCount >= 3) risk = "medium";
+
+    return {
+      status: "done",
+      windowDays: WEATHER_ALERTS_WINDOW_DAYS,
+      alertCount: features.length,
+      extremeCount,
+      severeCount,
+      topEvents: events.slice(0, 5),
+      truncated: features.length >= WEATHER_ALERTS_PAGE_LIMIT,
+      risk,
+    };
+  } catch {
+    return errorResult;
+  }
+}
+
+// ============================================
 // SCORING ENGINE
 // ============================================
 
@@ -1257,7 +1449,8 @@ export async function runAutoDueDiligence(
 ): Promise<AutoDDReport> {
   // Run all checks in parallel (core + Epic B/D additions)
   const [floodZone, wetlands, environmental, roadAccess, soil, elevation,
-         landCover, blmAdjacency, endangeredSpecies, wildfireRisk, soilSSURGO, nationalRisk] = await Promise.allSettled([
+         landCover, blmAdjacency, endangeredSpecies, wildfireRisk, soilSSURGO, nationalRisk,
+         seismic, weatherAlerts] = await Promise.allSettled([
     checkFloodZone(lat, lng),
     checkWetlands(lat, lng, acreage || null),
     checkEnvironmental(lat, lng),
@@ -1273,6 +1466,9 @@ export async function runAutoDueDiligence(
     checkSoilSSURGO(lat, lng),
     // Open-Data Phase 1: FEMA NRI 18-hazard composite
     checkNationalRisk(lat, lng),
+    // Open-Data Phase 5: seismic design + recent severe-weather alerts
+    checkSeismicDesign(lat, lng),
+    checkWeatherAlerts(lat, lng),
   ]);
 
   const resolve = <T>(r: PromiseSettledResult<T>, fallback: T): T =>
@@ -1291,6 +1487,8 @@ export async function runAutoDueDiligence(
     wildfireRisk: resolve(wildfireRisk, { status: "error" as const, wildfireRisk: "unknown" as const, fireBehaviorClass: null, offerAdjustment: 0 }),
     soilSSURGO: resolve(soilSSURGO, { status: "error" as const, dominantSoilName: null, farmlandClassification: null, drainage: null, hydricPercent: 0, nccpiScore: null, risk: "unknown" as RiskLevel, acreScoreImpact: 0 }),
     nationalRisk: resolve(nationalRisk, { status: "error" as const, county: null, state: null, compositeScore: null, compositeRating: null, expectedAnnualLossRating: null, socialVulnerabilityRating: null, communityResilienceRating: null, elevatedHazards: [], risk: "unknown" as RiskLevel }),
+    seismic: resolve(seismic, { status: "error" as const, ss: null, s1: null, designCategory: null, risk: "unknown" as RiskLevel }),
+    weatherAlerts: resolve(weatherAlerts, { status: "error" as const, windowDays: WEATHER_ALERTS_WINDOW_DAYS, alertCount: 0, extremeCount: 0, severeCount: 0, topEvents: [], truncated: false, risk: "unknown" as RiskLevel }),
   };
   const { score, risk, redFlags, greenFlags, offerAdjustment } = scoreChecks(checks);
 
@@ -1324,6 +1522,28 @@ export async function runAutoDueDiligence(
       greenFlags.push(`FEMA National Risk Index rates ${nri.county} County "${nri.compositeRating}" — no elevated natural hazards`);
     } else if (nri.elevatedHazards.length > 0) {
       redFlags.push(`Elevated natural-hazard exposure per FEMA NRI: ${nri.elevatedHazards.slice(0, 4).join(", ")}`);
+    }
+  }
+
+  // Open-Data Phase 5: seismic design + recent severe-weather alerts (flags only, no score weight)
+  if (checks.seismic?.status === "done" && checks.seismic.designCategory) {
+    const sm = checks.seismic;
+    const ssNote = sm.ss !== null ? ` (Ss=${sm.ss}g${sm.s1 !== null ? `, S1=${sm.s1}g` : ""})` : "";
+    if (sm.risk === "high" || sm.risk === "critical") {
+      redFlags.push(`Seismic design category ${sm.designCategory}${ssNote} per USGS ASCE 7-16 — engineered foundations likely required`);
+    } else if (sm.risk === "low") {
+      greenFlags.push(`Low seismic design category ${sm.designCategory}${ssNote} — minimal seismic construction requirements`);
+    }
+  }
+  if (checks.weatherAlerts?.status === "done") {
+    const wa = checks.weatherAlerts;
+    const eventNote = wa.topEvents.length ? ` (${wa.topEvents.slice(0, 3).join(", ")})` : "";
+    if (wa.risk === "high") {
+      redFlags.push(`${wa.extremeCount} Extreme-severity NWS weather alert${wa.extremeCount === 1 ? "" : "s"} covered this location in the past ${wa.windowDays} days${eventNote} — recent alert activity, not a long-term storm climatology`);
+    } else if (wa.risk === "medium") {
+      redFlags.push(`${wa.severeCount}${wa.truncated ? "+" : ""} Severe-severity NWS weather alerts covered this location in the past ${wa.windowDays} days${eventNote} — recent alert activity, not a long-term storm climatology`);
+    } else if (wa.alertCount === 0) {
+      greenFlags.push(`No Severe/Extreme NWS weather alerts for this location in the past ${wa.windowDays} days`);
     }
   }
 
