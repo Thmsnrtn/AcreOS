@@ -32,9 +32,10 @@ export const countyGisProvider: DataProvider = {
   name: "county-gis",
   displayName: "County GIS (free, direct)",
   categories: SUPPORTED_CATEGORIES,
-  // The underlying lookupFromCountyGIS resolves the (state, county) from
-  // the input itself, so we accept the three input variants that carry
-  // those fields. Owner-name lookups don't carry a county, so they're
+  // apn/address inputs resolve (state, county) themselves via
+  // lookupFromCountyGIS; coordinates go through the statewide
+  // point-intersection path (lookupFromCountyGISByPoint, Open-Data
+  // Phase 3). Owner-name lookups don't carry a county, so they're
   // excluded — they'll route to a paid provider as before.
   supportedInputTypes: ["coordinates", "address", "apn"],
   tierRequired: "free",
@@ -71,6 +72,32 @@ export const countyGisProvider: DataProvider = {
   async lookup(category: DataCategory, input: LookupInput): Promise<LookupResult> {
     const start = Date.now();
 
+    // Coordinate inputs: FREE statewide point-intersection lookup against
+    // the county = "*" statewide rows (Open-Data Phase 3). A point sits in
+    // exactly one parcel, so no state/county/apn is needed up front.
+    if (input.type === "coordinates") {
+      const { lookupFromCountyGISByPoint } = await import("../parcel");
+      const pointResult = await lookupFromCountyGISByPoint(input.latitude, input.longitude);
+      if (!pointResult || !pointResult.found || !pointResult.parcel) {
+        // No seeded statewide service covers this point. Throw so the
+        // registry's tiered-fallback picks the next provider.
+        throw new Error("county-gis: no statewide GIS match at these coordinates");
+      }
+      return {
+        provider: "county-gis",
+        category,
+        confidence: 80,
+        costCents: 0,
+        fetchedAt: new Date(),
+        cached: false,
+        latencyMs: Date.now() - start,
+        data: pointResult.parcel,
+        source: "County GIS",
+        sourceAsOf: null,
+        classification: "authoritative",
+      };
+    }
+
     // Resolve state + county + apn from whatever input shape we got.
     let state: string | undefined;
     let county: string | undefined;
@@ -83,9 +110,6 @@ export const countyGisProvider: DataProvider = {
       state = input.state;
       // address input has no county — try to infer by city is too lossy;
       // bail to next provider.
-    } else if (input.type === "coordinates") {
-      state = input.state;
-      county = input.county;
     }
 
     if (!state || !county || !apn) {

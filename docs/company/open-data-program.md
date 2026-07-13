@@ -110,6 +110,20 @@ provider order so free states never hit the paid path (gap #5, and the
 after the first (L). Order by market priority: FL → NC → TN → AR → MT first
 (land-deal volume), then the rest.
 
+**Delivered 2026-07-13 (lookup seam, not bulk ETL):** seven statewide
+services (FL, MT, NC, WA, NJ, AR, TN) were live-verified and seeded into
+`county_gis_endpoints` as `county = "*"` statewide rows
+(`server/services/statewideParcelEndpoints.ts`, seeded by
+`seedCountyGisEndpoints` at startup). Coordinate lookups now hit a FREE
+ArcGIS point-intersection query (`lookupFromCountyGISByPoint`) before
+Regrid, both in `lookupParcelByCoordinates` and via the county-gis
+provider (priority 5) in the registry. APN lookups intentionally keep
+per-county rows (APN uniqueness across counties in one statewide layer is
+not guaranteed; a point is unambiguous). Bulk-ingest into
+`parcel_snapshots` via `etlOrchestrator` remains open, as do NY
+(polygons only cover ~38 counties) and OR/KS/WI/UT/MD/VT/MA
+(unverified public REST coverage this pass).
+
 ### Phase 4 — Map quality + independence track
 
 The full recipe with costs/licensing is in `open-data-maps.md` §"Recommended

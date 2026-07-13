@@ -7,7 +7,13 @@
 
 import { db } from "../db";
 import { countyGisEndpoints, type InsertParcelSnapshot } from "@shared/schema";
-import { eq, and, ilike } from "drizzle-orm";
+import { eq, and, ilike, inArray } from "drizzle-orm";
+import {
+  STATEWIDE_COUNTY,
+  STATEWIDE_PARCEL_ENDPOINTS,
+  statesForPoint,
+  buildArcgisPointQueryParams,
+} from "./statewideParcelEndpoints";
 import { storage } from "../storage";
 import { logger } from '../utils/logger';
 import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observation-log";
@@ -332,6 +338,68 @@ export async function lookupFromCountyGIS(
 }
 
 /**
+ * Convert one ArcGIS feature (attributes + polygon/point geometry) into
+ * our parcel shape using the endpoint's field mappings. Shared by the
+ * APN where-clause path and the point-intersection path.
+ */
+function arcgisFeatureToParcel(
+  feature: ArcGISFeature,
+  endpoint: typeof countyGisEndpoints.$inferSelect,
+  fallbackApn: string
+): NonNullable<ParcelLookupResult["parcel"]> {
+  const attrs = feature.attributes;
+  const mappings = (endpoint.fieldMappings as Record<string, string>) || {};
+  const apnField = endpoint.apnField || "APN";
+  const data = {
+    regridId: "",
+    owner: String(attrs[mappings.owner || endpoint.ownerField || "OWNER"] || "Unknown"),
+    ownerAddress: String(attrs[mappings.address || "SITUS"] || ""),
+    taxAmount: String(attrs[mappings.taxAmount || "TAXAMT"] || ""),
+    lastUpdated: new Date().toISOString(),
+    acres: attrs[mappings.acres || "ACRES"] as number | undefined,
+    // Statewide rows carry the "*" sentinel — never report it as a county name.
+    county: endpoint.county === STATEWIDE_COUNTY ? undefined : endpoint.county,
+    state: endpoint.state,
+    ...gisWidenedFacts(attrs, mappings),
+  };
+  const apn = String(attrs[mappings.apn || apnField] || fallbackApn);
+
+  if (feature.geometry?.rings) {
+    const rings = feature.geometry.rings;
+    // Convert boundary coordinates from Web Mercator to WGS84 if needed
+    const normalizedRings = normalizePolygonRings(rings);
+
+    let centroid = { lat: 0, lng: 0 };
+    const firstRing = rings[0] || [];
+    if (firstRing.length > 0) {
+      let sumX = 0, sumY = 0;
+      for (const coord of firstRing) {
+        sumX += coord[0];
+        sumY += coord[1];
+      }
+      // Convert from Web Mercator if needed
+      centroid = normalizeCoordinates(sumY / firstRing.length, sumX / firstRing.length);
+    }
+
+    return {
+      apn,
+      boundary: { type: "Polygon" as const, coordinates: normalizedRings },
+      centroid,
+      data,
+    };
+  }
+
+  // Point geometry (or none): normalize from potential Web Mercator format
+  const normalized = normalizeCoordinates(feature.geometry?.y || 0, feature.geometry?.x || 0);
+  return {
+    apn,
+    boundary: { type: "Polygon" as const, coordinates: [] },
+    centroid: normalized,
+    data,
+  };
+}
+
+/**
  * Query ArcGIS REST endpoint for parcel data
  */
 async function queryArcGISEndpoint(
@@ -380,78 +448,7 @@ async function queryArcGISEndpoint(
       }
       
       if (data.features && data.features.length > 0) {
-        const feature = data.features[0];
-        const attrs = feature.attributes;
-        const mappings = (endpoint.fieldMappings as Record<string, string>) || {};
-        
-        let geometry: ParcelLookupResult["parcel"];
-        let centroid = { lat: 0, lng: 0 };
-        
-        if (feature.geometry?.rings) {
-          const rings = feature.geometry.rings;
-          // Convert boundary coordinates from Web Mercator to WGS84 if needed
-          const normalizedRings = normalizePolygonRings(rings);
-          geometry = {
-            apn: String(attrs[mappings.apn || apnField] || apn),
-            boundary: {
-              type: "Polygon" as const,
-              coordinates: normalizedRings,
-            },
-            centroid: { lat: 0, lng: 0 },
-            data: {
-              regridId: "",
-              owner: String(attrs[mappings.owner || endpoint.ownerField || "OWNER"] || "Unknown"),
-              ownerAddress: String(attrs[mappings.address || "SITUS"] || ""),
-              taxAmount: String(attrs[mappings.taxAmount || "TAXAMT"] || ""),
-              lastUpdated: new Date().toISOString(),
-              acres: attrs[mappings.acres || "ACRES"] as number | undefined,
-              county: endpoint.county,
-              state: endpoint.state,
-              ...gisWidenedFacts(attrs, mappings),
-            },
-          };
-
-          const firstRing = rings[0] || [];
-          if (firstRing.length > 0) {
-            let sumX = 0, sumY = 0;
-            for (const coord of firstRing) {
-              sumX += coord[0];
-              sumY += coord[1];
-            }
-            const rawCentroid = {
-              lng: sumX / firstRing.length,
-              lat: sumY / firstRing.length,
-            };
-            // Convert from Web Mercator if needed
-            centroid = normalizeCoordinates(rawCentroid.lat, rawCentroid.lng);
-          }
-          geometry.centroid = centroid;
-        } else {
-          // Normalize coordinates from potential Web Mercator format
-          const rawLat = feature.geometry?.y || 0;
-          const rawLng = feature.geometry?.x || 0;
-          const normalized = normalizeCoordinates(rawLat, rawLng);
-          
-          geometry = {
-            apn: String(attrs[mappings.apn || apnField] || apn),
-            boundary: {
-              type: "Polygon" as const,
-              coordinates: [],
-            },
-            centroid: normalized,
-            data: {
-              regridId: "",
-              owner: String(attrs[mappings.owner || endpoint.ownerField || "OWNER"] || "Unknown"),
-              ownerAddress: String(attrs[mappings.address || "SITUS"] || ""),
-              taxAmount: String(attrs[mappings.taxAmount || "TAXAMT"] || ""),
-              lastUpdated: new Date().toISOString(),
-              acres: attrs[mappings.acres || "ACRES"] as number | undefined,
-              county: endpoint.county,
-              state: endpoint.state,
-              ...gisWidenedFacts(attrs, mappings),
-            },
-          };
-        }
+        const geometry = arcgisFeatureToParcel(data.features[0], endpoint, apn);
 
         logger.info("[CountyGIS] Found parcel", { metadata: { county: endpoint.county, state: endpoint.state } });
         
@@ -486,6 +483,101 @@ async function queryArcGISEndpoint(
     
     return null;
   }
+}
+
+/**
+ * FREE point-intersection parcel lookup against seeded STATEWIDE GIS
+ * endpoints (Open-Data Program Phase 3). Rows with county = "*" cover a
+ * whole state; a coordinate is routed to candidate states via bounding
+ * box, then each candidate's ArcGIS layer is queried with a point
+ * geometry (a point sits in exactly one parcel, so — unlike an APN
+ * where-clause — a statewide layer is unambiguous). Returns null when no
+ * seeded statewide service covers the point, so callers fall through to
+ * the existing paid path.
+ */
+export async function lookupFromCountyGISByPoint(
+  lat: number,
+  lng: number
+): Promise<ParcelLookupResult | null> {
+  if (!isValidLatLng(lat, lng)) return null;
+
+  const candidateStates = statesForPoint(lat, lng);
+  if (candidateStates.length === 0) return null;
+
+  let endpoints: (typeof countyGisEndpoints.$inferSelect)[] = [];
+  try {
+    endpoints = await db
+      .select()
+      .from(countyGisEndpoints)
+      .where(
+        and(
+          inArray(countyGisEndpoints.state, candidateStates),
+          eq(countyGisEndpoints.county, STATEWIDE_COUNTY),
+          eq(countyGisEndpoints.isActive, true)
+        )
+      );
+  } catch (error) {
+    logger.error("[CountyGIS] Statewide endpoint query error", error);
+    return null;
+  }
+
+  for (const endpoint of endpoints) {
+    if (endpoint.endpointType !== "arcgis_rest" && endpoint.endpointType !== "arcgis_feature") {
+      continue;
+    }
+    try {
+      const baseUrl = endpoint.baseUrl.replace(/\/$/, "");
+      const layerId = endpoint.layerId || "0";
+      const params = buildArcgisPointQueryParams(
+        lat,
+        lng,
+        endpoint.additionalParams as Record<string, string> | null
+      );
+      const url = `${baseUrl}/${layerId}/query?${params.toString()}`;
+      logger.debug("[CountyGIS] Statewide point query", {
+        metadata: { state: endpoint.state, url: url.substring(0, 100) },
+      });
+
+      const response = await fetchGeo(url, { headers: { Accept: "application/json" } });
+      if (!response.ok) continue;
+
+      const data = await response.json() as ArcGISResponse;
+      if (data.error) {
+        logger.warn("[CountyGIS] Statewide point query API error", {
+          metadata: { state: endpoint.state, message: data.error.message },
+        });
+        continue;
+      }
+      if (!data.features || data.features.length === 0) continue;
+
+      const parcel = arcgisFeatureToParcel(data.features[0], endpoint, "");
+      logger.info("[CountyGIS] Found parcel via statewide point query (FREE)", {
+        metadata: { state: endpoint.state },
+      });
+
+      await db
+        .update(countyGisEndpoints)
+        .set({ lastVerified: new Date(), isVerified: true, errorCount: 0 })
+        .where(eq(countyGisEndpoints.id, endpoint.id));
+
+      return { found: true, source: "county_gis", parcel };
+    } catch (error) {
+      logger.error(
+        "[CountyGIS] Statewide point query error",
+        error instanceof Error ? error : undefined,
+        { metadata: { state: endpoint.state } }
+      );
+      await db
+        .update(countyGisEndpoints)
+        .set({
+          errorCount: (endpoint.errorCount || 0) + 1,
+          lastError: error instanceof Error ? error.message : String(error),
+        })
+        .where(eq(countyGisEndpoints.id, endpoint.id));
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -965,15 +1057,24 @@ export async function lookupParcelByCoordinates(
   lat: number,
   lng: number
 ): Promise<ParcelLookupResult> {
+  // Step 1: FREE statewide GIS point-intersection (Open-Data Phase 3) —
+  // in seeded free-parcel states this answers before any paid provider.
+  const statewideResult = await lookupFromCountyGISByPoint(lat, lng);
+  if (statewideResult?.found) {
+    logger.info("[Parcel] Found via statewide GIS point query (FREE)");
+    return statewideResult;
+  }
+
+  // Step 2: Regrid (paid fallback)
   const token = process.env.REGRID_API_KEY;
-  
+
   if (!token) {
     return {
       found: false,
       error: "Regrid API key not configured. Please add REGRID_API_KEY to secrets.",
     };
   }
-  
+
   try {
     // Tier 1E credential hygiene: key in the Authorization header, not the URL.
     const url = `https://app.regrid.com/api/v2/parcels/point?lat=${lat}&lon=${lng}&return_geometry=true`;
@@ -1736,7 +1837,7 @@ export async function seedCountyGisEndpoints(): Promise<{ added: number; skipped
   
   let added = 0;
   let skipped = 0;
-  
+
   for (const endpoint of endpoints) {
     const existing = await db
       .select()
@@ -1748,7 +1849,7 @@ export async function seedCountyGisEndpoints(): Promise<{ added: number; skipped
         )
       )
       .limit(1);
-    
+
     if (existing.length === 0) {
       await db.insert(countyGisEndpoints).values({
         ...endpoint,
@@ -1762,7 +1863,37 @@ export async function seedCountyGisEndpoints(): Promise<{ added: number; skipped
       skipped++;
     }
   }
-  
+
+  // STATEWIDE rows (Open-Data Phase 3): one county="*" row per state with a
+  // live-verified free statewide parcel service. Same idempotency check as
+  // the county rows — (state, "*") exists ⇒ skip. isVerified starts false and
+  // flips on the first successful live hit, like every other seeded row.
+  for (const endpoint of STATEWIDE_PARCEL_ENDPOINTS) {
+    const existing = await db
+      .select()
+      .from(countyGisEndpoints)
+      .where(
+        and(
+          eq(countyGisEndpoints.state, endpoint.state),
+          eq(countyGisEndpoints.county, endpoint.county)
+        )
+      )
+      .limit(1);
+
+    if (existing.length === 0) {
+      await db.insert(countyGisEndpoints).values({
+        ...endpoint,
+        isActive: true,
+        isVerified: false,
+        contributedBy: "system",
+      });
+      added++;
+      logger.info("[Seed] Added statewide endpoint", { metadata: { state: endpoint.state } });
+    } else {
+      skipped++;
+    }
+  }
+
   return { added, skipped };
 }
 

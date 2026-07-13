@@ -89,6 +89,10 @@ export const regridProvider: DataProvider = {
 
     let data: unknown;
     let confidence = 75;
+    // lookupParcelByCoordinates/ByAPN run their own free tiers (statewide/
+    // county GIS, cache) before Regrid. When the answer came from a free
+    // source, report zero cost — never bill a free hit as a Regrid call.
+    let answeredByFreeSource = false;
 
     // Delegate to existing comps/parcel services that already handle Regrid API
     switch (category) {
@@ -98,6 +102,7 @@ export const regridProvider: DataProvider = {
           const result = await lookupParcelByCoordinates(input.latitude, input.longitude);
           data = result.parcel ?? null;
           confidence = result.found ? 85 : 20;
+          answeredByFreeSource = result.found && result.source !== "regrid";
         } else if (input.type === "apn") {
           const { lookupParcelByAPN } = await import("../parcel");
           // lookupParcelByAPN takes a combined "state/county" path, not
@@ -106,6 +111,7 @@ export const regridProvider: DataProvider = {
           const result = await lookupParcelByAPN(input.apn, stateCountyPath);
           data = result.parcel ?? null;
           confidence = result.found ? 90 : 20;
+          answeredByFreeSource = result.found && result.source !== "regrid";
         } else {
           throw new Error(`Regrid parcel_data does not support input type: ${input.type}`);
         }
@@ -136,6 +142,7 @@ export const regridProvider: DataProvider = {
           const result = await lookupParcelByCoordinates(input.latitude, input.longitude);
           data = result.parcel?.data ?? null;
           confidence = result.found ? 80 : 20;
+          answeredByFreeSource = result.found && result.source !== "regrid";
         } else {
           throw new Error(`Regrid ${category} does not support input type: ${input.type}`);
         }
@@ -150,7 +157,7 @@ export const regridProvider: DataProvider = {
       provider: "regrid",
       category,
       confidence,
-      costCents: this.costPerLookupCents(category),
+      costCents: answeredByFreeSource ? 0 : this.costPerLookupCents(category),
       fetchedAt: new Date(),
       cached: false,
       latencyMs: Date.now() - start,
