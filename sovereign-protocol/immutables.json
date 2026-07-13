@@ -1,7 +1,45 @@
 {
   "$schema": "./immutables.schema.json",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Canonical machine-readable source of truth for both immutable lists. Hand-edit ONLY this file; the duplicate hand-written copies in server/services/* and shared/schema/* now import from sovereign-protocol/immutables.ts (which re-exports this JSON). The hash-asserting test in tests/unit/sovereign-protocol-immutables.test.ts pins the SHA-256 of this file — if anyone edits it without updating the fixture, CI fails. Amendment process: see sovereign-protocol/constitution.md §AMENDMENTS.",
+  "objective": {
+    "doc": "Machine-readable objective function (constitutional amendment, founder directive 2026-07-13). The constitution's prohibitions say what agents must never do; this block says what the system is FOR, so every planner/tick/judge can rank work by it. Enforcement seams are referenced, never duplicated. Amendment discipline identical to the rest of this file: CEO-only, hash-pinned, commit message must reference 'constitutional amendment'.",
+    "primeObjective": "AcreOS must generate revenue sufficient to support the founder's livelihood with the minimum sustainable draw on his attention. The scarce resource is FOUNDER-MINUTES. System health = founder decisions required per week trending down while revenue-relevant output trends up.",
+    "phase": {
+      "current": "phase_0",
+      "currentDescription": "Pre-revenue launch: Stripe unkeyed, $0 billable MRR. Every initiative is judged by rankingFunction below.",
+      "gates": [
+        { "id": "phase_1", "condition": "MRR >= $200 held 30 days", "unlocks": "phase-1 launch runbook items" },
+        { "id": "g1", "condition": "25 paying customers", "unlocks": "cohort-gated expansion items" },
+        { "id": "g2", "condition": "100 paying customers", "unlocks": "per mature-machine.md" },
+        { "id": "g3", "condition": "~500 paying customers", "unlocks": "per mature-machine.md" }
+      ],
+      "machineCheck": "server/services/autopilot/gateWatcher.ts (GATES array, live MRR + mrr_snapshots)",
+      "prose": "docs/company/mature-machine.md"
+    },
+    "rankingFunction": [
+      { "rank": 1, "criterion": "time_to_revenue_impact" },
+      { "rank": 2, "criterion": "retention_risk_to_paying_users" },
+      { "rank": 3, "criterion": "founder_minutes_saved" },
+      { "rank": 4, "criterion": "all_else" }
+    ],
+    "killCriteria": "Any initiative with no plausible effect on a paying user's decision within 30 days is deferred, with a logged revisit trigger. Deferral is recorded in the decision ledger (docs/company/roadmap-*.md) or The Letter.",
+    "founderMinutesBudget": {
+      "classABDecisionsPerWeek": 5,
+      "direction": "ratchet_down_only",
+      "decisionClasses": {
+        "A": "Reaches the founder promptly: constitutional amendments, irreversible spend above ceiling, legal/compliance exposure, pricing, anything touching panic-stop or trust physics.",
+        "B": "Batched into the weekly Letter: trust promotions/demotions, budget ramps, deferrals with triggers, arming checklists.",
+        "C": "Never reaches the founder: inside earned autonomy, reversible within one cycle, or answerable from evidence files. A Class-C escalation is a DEFECT — patch the evidence file so it never recurs."
+      }
+    },
+    "cognitionBudget": {
+      "rule": "System token/API spend is capped as a fraction of MRR — the system may only think as much as customers pay for.",
+      "fractionOfMrr": null,
+      "fractionNote": "Fraction is founder-set (not yet chosen — setting it is a Class A decision). Until set, and throughout phase_0, the existing enforcement seam governs: capitalTracker's hard monthly ceiling + margin guards.",
+      "enforcementSeam": "server/services/autopilot (capitalTracker.getEffectiveMonthlyCapUsd; FINANCIAL_HARD_CAP_CENTS)"
+    }
+  },
   "sovereignPrinciples": {
     "doc": "sovereign-protocol/constitution.md — the 10 immutable principles that govern AcreOS's internal autonomous agents. Self-modification engine cannot change them.",
     "items": [

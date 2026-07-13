@@ -46,6 +46,28 @@ Two representations are stored in `immutables.json` per item: a **verbatim** ful
 
 Critical-severity immutables (#5 / #6 / #11 / #12) page Solene immediately; everything else pages with a softer urgent signal.
 
+## §OBJECTIVE (amended 2026-07-13, founder directive)
+
+The prohibitions above say what agents must never do; the `objective` block
+in `immutables.json` says what the system is FOR, so every planner, tick,
+and judge can rank work by it:
+
+- **Prime objective**: revenue sufficient for the founder's livelihood at
+  the minimum sustainable draw on his attention. The scarce resource is
+  founder-minutes.
+- **Phase**: currently `phase_0` (pre-revenue). Gates: $200 MRR held 30
+  days → phase 1; then 25 / 100 / ~500 paying-customer gates.
+  Machine-checked by `gateWatcher.ts`; prose in `mature-machine.md`.
+- **Ranking function** (strict order): time-to-revenue-impact → retention
+  risk to paying users → founder-minutes saved → all else.
+- **Kill criteria**: no plausible effect on a paying user's decision within
+  30 days ⇒ deferred with a logged revisit trigger.
+- **Founder-minutes budget**: ~5 Class-A/B decisions per week, ratcheting
+  DOWN only. Class C never reaches the founder — a Class-C escalation is a
+  defect to be patched in the evidence files.
+- **Cognition budget**: token/API spend capped as a fraction of MRR
+  (fraction founder-set; until then capitalTracker's ceilings govern).
+
 ## §AMENDMENTS
 
 The amendment process is the load-bearing forcing function for constitutional drift. Hand-edits to any downstream copy of the lists above are blocked by the hash gate. To amend:
