@@ -488,12 +488,123 @@ class DunningService {
   }
 
   // -------------------------------------------------------------------
+  // D1 (founder decision 2026-07-11): unattended auto-retry ladder.
+  //
+  // The sweeper itself attempts payment of the outstanding invoice on
+  // days 1/3/7 after the initial failure (DUNNING_CONFIG.autoRetryScheduleDays)
+  // — previously retries only happened when a human clicked "retry" in the
+  // dunning panel. Rules:
+  //   - Skips entirely (one log line) while Stripe is unconfigured, so the
+  //     ladder isn't burned before keys exist; goes live with the keys.
+  //   - One attempt per ladder day, tracked in the event's
+  //     notificationsSent array (type "auto_retry_d<N>", channel "stripe")
+  //     so a 6-hourly sweep can't double-fire a day.
+  //   - Every attempt — success or failure — is Letter/Story-visible via
+  //     logActivity(job: "dunning").
+  //   - Success resolves the event (resolutionType "auto_recovered") and
+  //     clears the org's dunning state, same as the webhook path.
+  // -------------------------------------------------------------------
+
+  async processAutoRetries(now: Date = new Date()): Promise<void> {
+    let stripe: any;
+    try {
+      const { getUncachableStripeClient } = await import("../stripeClient");
+      stripe = await getUncachableStripeClient();
+    } catch {
+      logger.info("[Dunning] Auto-retry ladder idle — Stripe not configured yet (D1 goes live with keys)");
+      return;
+    }
+
+    const orgsInDunning = await this.getActiveDunningOrgs();
+    for (const org of orgsInDunning) {
+      try {
+        if (!org.dunningStartedAt) continue;
+        const daysSinceFailure = Math.floor(
+          (now.getTime() - new Date(org.dunningStartedAt).getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        const allEvents = await storage.getDunningEvents(org.id);
+        const latestEvent = allEvents.filter(
+          (e) => (e.status === "pending" || e.status === "scheduled_retry") && e.stripeInvoiceId,
+        )[0];
+        if (!latestEvent) continue;
+
+        const sent = latestEvent.notificationsSent || [];
+        const attemptedDays = new Set(
+          sent
+            .filter((n: any) => typeof n.type === "string" && n.type.startsWith("auto_retry_d"))
+            .map((n: any) => Number(n.type.slice("auto_retry_d".length))),
+        );
+        const dueDay = DUNNING_CONFIG.autoRetryScheduleDays.find(
+          (d) => daysSinceFailure >= d && !attemptedDays.has(d),
+        );
+        if (dueDay === undefined) continue;
+
+        const attemptMarker = {
+          type: `auto_retry_d${dueDay}`,
+          sentAt: now.toISOString(),
+          channel: "stripe",
+        };
+
+        try {
+          await stripe.invoices.pay(latestEvent.stripeInvoiceId!);
+
+          await storage.updateDunningEvent(latestEvent.id, {
+            status: "resolved",
+            resolvedAt: now,
+            resolutionType: "auto_recovered",
+            retryCount: (latestEvent.retryCount ?? 0) + 1,
+            notificationsSent: [...sent, attemptMarker],
+          } as any);
+          await storage.updateOrganization(org.id, {
+            dunningStage: "none",
+            dunningStartedAt: null,
+            lastPaymentFailedAt: null,
+          });
+
+          logger.info(`[Dunning] Auto-retry day ${dueDay} SUCCEEDED for org ${org.id} (invoice ${latestEvent.stripeInvoiceId})`);
+          logActivity({
+            orgId: org.id,
+            job: "dunning",
+            action: "auto_retry_succeeded",
+            summary: `Dunning auto-retry (day ${dueDay}) recovered the outstanding invoice`,
+            metadata: { day: dueDay, invoiceId: latestEvent.stripeInvoiceId, eventId: latestEvent.id },
+          }).catch(() => {});
+        } catch (payErr: any) {
+          const reason = (payErr?.message || String(payErr)).slice(0, 200);
+          await storage.updateDunningEvent(latestEvent.id, {
+            retryCount: (latestEvent.retryCount ?? 0) + 1,
+            notificationsSent: [...sent, attemptMarker],
+          } as any);
+
+          logger.warn(`[Dunning] Auto-retry day ${dueDay} failed for org ${org.id}: ${reason}`);
+          logActivity({
+            orgId: org.id,
+            job: "dunning",
+            action: "auto_retry_failed",
+            summary: `Dunning auto-retry (day ${dueDay}) failed — ${reason}`,
+            metadata: { day: dueDay, invoiceId: latestEvent.stripeInvoiceId, eventId: latestEvent.id, reason },
+          }).catch(() => {});
+        }
+      } catch (orgErr) {
+        logger.error(`[Dunning] Auto-retry processing error for org ${org.id}`, undefined, { metadata: { detail: orgErr } });
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------
   // Scheduled task processor (wired into server startup interval)
   // -------------------------------------------------------------------
 
   async processScheduledTasks(): Promise<void> {
     try {
       logger.info("[Dunning] Processing scheduled dunning tasks...");
+
+      // D1: attempt the unattended retry ladder first, so a recovered org
+      // drops out of dunning before this cycle sends it another notice.
+      await this.processAutoRetries().catch((err) =>
+        logger.error("[Dunning] Auto-retry pass failed (continuing with notifications)", err),
+      );
 
       const orgsInDunning = await this.getActiveDunningOrgs();
       const now = new Date();
