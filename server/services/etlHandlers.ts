@@ -24,6 +24,10 @@
  *      annual files (Open-Data Program 2.2). Latest 3 available years →
  *      upserts `county_building_permits`. Watermark: the survey year.
  *
+ *   5. `bls_qcew_employment_v1` — BLS QCEW annual county employment +
+ *      wages (Open-Data Program 2.3, keyless leg). Latest 3 available
+ *      years → upserts `county_employment_wages`. Watermark: the data year.
+ *
  * Both handlers expose a `_runtime` object that lets unit tests inject a
  * canned page-iterator (so we can verify watermark + DLQ behaviour
  * without hitting the real upstream).
@@ -36,6 +40,7 @@ import {
   parcelSnapshots,
   countyMigrationSummary,
   countyBuildingPermits,
+  countyEmploymentWages,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { fetchGeo } from "./providers/fetchGeo";
@@ -917,6 +922,226 @@ export const censusBpsPermitsEtlHandler: EtlProviderHandler & {
   },
 };
 
+// ─── BLS QCEW county employment & wages (Open-Data Program 2.3) ─────────────
+
+const BLS_QCEW_BASE = "https://data.bls.gov/cew/data/api";
+
+/** One upsert row for county_employment_wages (payload of an EtlRecord). */
+export interface QcewCountyRow {
+  stateFips: string;
+  countyFips: string;
+  year: number;
+  /** Annual avg of monthly employment; null when BLS-suppressed. */
+  avgEmployment: number | null;
+  /** Annual avg weekly wage in whole dollars; null when BLS-suppressed. */
+  avgWeeklyWage: number | null;
+  /** Annual avg establishment count (published even under suppression). */
+  establishments: number | null;
+}
+
+/** QCEW numeric cells are non-negative integers; anything else is drift. */
+function qcewCell(field: string, line: string): number {
+  const t = field.trim();
+  if (!/^\d+$/.test(t)) {
+    throw new Error(`BLS QCEW CSV: unparseable numeric "${t}" in row: ${line}`);
+  }
+  return parseInt(t, 10);
+}
+
+/** QCEW quotes string columns and leaves numerics bare; strip the quotes. */
+function qcewField(field: string): string {
+  const t = field.trim();
+  return t.startsWith('"') && t.endsWith('"') ? t.slice(1, -1) : t;
+}
+
+/**
+ * Parse one BLS QCEW annual-averages open-data slice
+ * (`{year}/a/industry/10.csv` — industry 10 = "total, all industries",
+ * every area in one ~3.5 MB file) down to per-county rows.
+ *
+ * Format (verified empirically 2026-07-13 against the live 2023/2024/2025
+ * files): 38 columns, string columns quoted, numerics bare, no embedded
+ * commas. We key columns off the header rather than fixed positions so a
+ * benign column addition doesn't silently mis-key.
+ *
+ * Row selection — how non-county aggregates are excluded:
+ *   - own_code=0 (total covered) + agglvl_code=70 (county, total, all
+ *     ownerships). The file also carries national (10/11), MSA/CSA
+ *     (30/40/41), statewide (50/51), MicroSA (80) and per-ownership county
+ *     (71) rows — all skipped by this predicate alone.
+ *   - area_fips must be 5 digits (belt-and-braces: MSA codes like "C1010"
+ *     are non-numeric) and splits as state(2)+county(3).
+ *   - county 999 ("unknown or undefined" within a state) and 000 rollups
+ *     are not counties — skipped.
+ *
+ * disclosure_code 'N' means BLS suppressed the county: employment/wage are
+ * PUBLISHED AS ZEROS, so we store NULL instead — never a fake zero. The
+ * establishment count is published even for suppressed counties and is kept.
+ */
+export function parseQcewAnnualCsv(csv: string, year: number): QcewCountyRow[] {
+  const lines = csv.split(/\r?\n/);
+  const header = (lines[0] ?? "").split(",").map((c) => qcewField(c).toLowerCase());
+  const col = (name: string): number => {
+    const i = header.indexOf(name);
+    if (i === -1) {
+      throw new Error(
+        `BLS QCEW CSV: missing column "${name}" in header "${lines[0]}" — upstream format drift`,
+      );
+    }
+    return i;
+  };
+  const iArea = col("area_fips");
+  const iOwn = col("own_code");
+  const iAgg = col("agglvl_code");
+  const iYear = col("year");
+  const iDisclosure = col("disclosure_code");
+  const iEstabs = col("annual_avg_estabs");
+  const iEmplvl = col("annual_avg_emplvl");
+  const iWklyWage = col("annual_avg_wkly_wage");
+
+  const rows: QcewCountyRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const cols = line.split(",");
+    if (cols.length !== header.length) {
+      throw new Error(`BLS QCEW CSV: expected ${header.length} columns, got ${cols.length}: ${line}`);
+    }
+    // County, total covered, all ownerships — everything else (national,
+    // state, MSA, per-ownership detail) is a rollup we must not double-count.
+    if (qcewField(cols[iOwn]) !== "0" || qcewField(cols[iAgg]) !== "70") continue;
+
+    const areaFips = qcewField(cols[iArea]);
+    if (!/^\d{5}$/.test(areaFips)) continue; // MSA/CSA codes like "C1010"
+    const stateFips = areaFips.slice(0, 2);
+    const countyFips = areaFips.slice(2);
+    if (countyFips === "999" || countyFips === "000") continue; // not counties
+
+    const rowYear = qcewCell(qcewField(cols[iYear]), line);
+    if (rowYear !== year) {
+      throw new Error(
+        `BLS QCEW CSV: row year ${rowYear} does not match file year ${year}: ${line}`,
+      );
+    }
+
+    const suppressed = qcewField(cols[iDisclosure]) === "N";
+    rows.push({
+      stateFips,
+      countyFips,
+      year: rowYear,
+      avgEmployment: suppressed ? null : qcewCell(qcewField(cols[iEmplvl]), line),
+      avgWeeklyWage: suppressed ? null : qcewCell(qcewField(cols[iWklyWage]), line),
+      establishments: qcewCell(qcewField(cols[iEstabs]), line),
+    });
+  }
+  return rows;
+}
+
+/** How many annual files to ingest per run — the wage/employment trends need a baseline. */
+const QCEW_YEARS_TO_INGEST = 3;
+/** How far back to probe before concluding the upstream layout changed. */
+const QCEW_MAX_PROBE_YEARS = 6;
+
+export const blsQcewEmploymentEtlHandler: EtlProviderHandler & {
+  _runtime: {
+    download: (url: string) => Promise<string | null>;
+    now: () => Date;
+  };
+} = {
+  name: "bls_qcew_employment_v1",
+  _runtime: {
+    // ~3.5 MB per file; generous per-attempt timeout.
+    download: (url) => fetchPublicCsv(url, 120_000),
+    now: () => new Date(),
+  },
+
+  async *fetch(opts: EtlFetchOpts): AsyncGenerator<EtlRecord, void, void> {
+    const rt = blsQcewEmploymentEtlHandler._runtime;
+    const base = (opts.sourceUrl ?? BLS_QCEW_BASE).replace(/\/$/, "");
+    // QCEW publishes the annual file with the Q4 release (~6 months after
+    // year end), so last calendar year is the newest possible.
+    const lastCompleteYear = rt.now().getUTCFullYear() - 1;
+
+    // Latest QCEW_YEARS_TO_INGEST published annual files, probing newest-first.
+    const found: Array<{ year: number; text: string }> = [];
+    for (
+      let year = lastCompleteYear;
+      year > lastCompleteYear - QCEW_MAX_PROBE_YEARS && found.length < QCEW_YEARS_TO_INGEST;
+      year--
+    ) {
+      // Watermark is the newest ingested data year — once we're below it
+      // the remaining files are already in the table.
+      if (opts.since && year <= parseInt(String(opts.since), 10)) break;
+      const text = await rt.download(`${base}/${year}/a/industry/10.csv`);
+      if (text !== null) found.push({ year, text });
+    }
+    if (found.length === 0) {
+      if (opts.since) {
+        logger.info(`[etl:bls_qcew] no annual file newer than watermark — skipping`, {
+          metadata: { since: String(opts.since) },
+        });
+        return;
+      }
+      throw new Error(
+        `[etl:bls_qcew] no annual industry-10 file found under ${base} in the last ${QCEW_MAX_PROBE_YEARS} years`,
+      );
+    }
+
+    // Oldest first so the watermark lands on the newest year at run end.
+    found.sort((a, b) => a.year - b.year);
+    for (const { year, text } of found) {
+      const rows = parseQcewAnnualCsv(text, year);
+      logger.info(`[etl:bls_qcew] parsed ${rows.length} county rows for ${year}`, {
+        metadata: { year, counties: rows.length },
+      });
+      for (const row of rows) {
+        yield {
+          externalId: `qcew_${row.stateFips}${row.countyFips}_${row.year}`,
+          updatedAt: String(row.year),
+          payload: row as unknown as Record<string, unknown>,
+        };
+      }
+    }
+  },
+
+  async upsert(record: EtlRecord, tx: DrizzleDb): Promise<{ action: UpsertAction }> {
+    const r = record.payload as unknown as QcewCountyRow;
+    const [existing] = await tx
+      .select({ id: countyEmploymentWages.id })
+      .from(countyEmploymentWages)
+      .where(
+        and(
+          eq(countyEmploymentWages.stateFips, r.stateFips),
+          eq(countyEmploymentWages.countyFips, r.countyFips),
+          eq(countyEmploymentWages.year, r.year),
+        ),
+      )
+      .limit(1);
+
+    const values = {
+      avgEmployment: r.avgEmployment,
+      avgWeeklyWage: r.avgWeeklyWage,
+      establishments: r.establishments,
+    };
+
+    if (existing) {
+      await tx
+        .update(countyEmploymentWages)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(countyEmploymentWages.id, existing.id));
+      return { action: "updated" };
+    }
+
+    await tx.insert(countyEmploymentWages).values({
+      stateFips: r.stateFips,
+      countyFips: r.countyFips,
+      year: r.year,
+      ...values,
+    });
+    return { action: "inserted" };
+  },
+};
+
 // ─── Bootstrap registration ─────────────────────────────────────────────────
 
 let registered = false;
@@ -931,5 +1156,6 @@ export function registerReferenceEtlHandlers(): void {
   registerEtlHandler(femaEtlHandler.name, femaEtlHandler);
   registerEtlHandler(irsSoiMigrationEtlHandler.name, irsSoiMigrationEtlHandler);
   registerEtlHandler(censusBpsPermitsEtlHandler.name, censusBpsPermitsEtlHandler);
+  registerEtlHandler(blsQcewEmploymentEtlHandler.name, blsQcewEmploymentEtlHandler);
   registered = true;
 }

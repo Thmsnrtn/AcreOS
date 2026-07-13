@@ -1,11 +1,13 @@
 /**
- * Open-Data Program 2.1/2.2 — IRS SOI migration + Census BPS permits ETL.
+ * Open-Data Program 2.1/2.2/2.3 — IRS SOI migration + Census BPS permits +
+ * BLS QCEW employment/wages ETL.
  *
  * Covers the pure CSV parsers (sample lines below are REAL rows fetched from
  * the live upstreams on 2026-07-13 — countyinflow2223.csv,
- * countyoutflow2223.csv, co2023a.txt), the inflow/outflow join, and the
- * handlers' year-probing + watermark-skip behaviour via `_runtime` injection.
- * No Postgres needed — upsert paths are exercised by the orchestrator tests.
+ * countyoutflow2223.csv, co2023a.txt, cew/data/api/2023/a/industry/10.csv),
+ * the inflow/outflow join, and the handlers' year-probing + watermark-skip
+ * behaviour via `_runtime` injection. No Postgres needed — upsert paths are
+ * exercised by the orchestrator tests.
  */
 
 import { describe, it, expect } from "vitest";
@@ -14,10 +16,13 @@ import {
   parseIrsMigrationCsv,
   joinIrsMigrationFlows,
   parseCensusBpsCountyCsv,
+  parseQcewAnnualCsv,
   irsSoiMigrationEtlHandler,
   censusBpsPermitsEtlHandler,
+  blsQcewEmploymentEtlHandler,
   type CountyMigrationUpsertRow,
   type BpsCountyPermitRow,
+  type QcewCountyRow,
 } from "../../server/services/etlHandlers";
 import type { EtlRecord } from "../../server/services/etlOrchestrator";
 
@@ -41,6 +46,27 @@ const IRS_OUTFLOW_SAMPLE = [
   "01,001,97,000,AL,Autauga County Total Migration-US,1888,3759,115092",
   "01,001,01,001,AL,Autauga County Non-migrants,20045,43150,1531683",
   "01,003,96,000,AL,Baldwin County Total Migration-US and Foreign,5593,9559,398374",
+].join("\n");
+
+// Real rows from https://data.bls.gov/cew/data/api/2023/a/industry/10.csv
+// (fetched 2026-07-13). One of each shape the parser must handle: national
+// (agglvl 10), statewide (50), MSA (80, non-numeric area code), a normal
+// county total (70/own 0), per-ownership county detail (71), a BLS-suppressed
+// county (disclosure_code 'N', zeros published), and the XX999
+// "unknown or undefined" pseudo-county.
+const QCEW_HEADER =
+  '"area_fips","own_code","industry_code","agglvl_code","size_code","year","qtr","disclosure_code","annual_avg_estabs","annual_avg_emplvl","total_annual_wages","taxable_annual_wages","annual_contributions","annual_avg_wkly_wage","avg_annual_pay","lq_disclosure_code","lq_annual_avg_estabs","lq_annual_avg_emplvl","lq_total_annual_wages","lq_taxable_annual_wages","lq_annual_contributions","lq_annual_avg_wkly_wage","lq_avg_annual_pay","oty_disclosure_code","oty_annual_avg_estabs_chg","oty_annual_avg_estabs_pct_chg","oty_annual_avg_emplvl_chg","oty_annual_avg_emplvl_pct_chg","oty_total_annual_wages_chg","oty_total_annual_wages_pct_chg","oty_taxable_annual_wages_chg","oty_taxable_annual_wages_pct_chg","oty_annual_contributions_chg","oty_annual_contributions_pct_chg","oty_annual_avg_wkly_wage_chg","oty_annual_avg_wkly_wage_pct_chg","oty_avg_annual_pay_chg","oty_avg_annual_pay_pct_chg"';
+
+const QCEW_SAMPLE = [
+  QCEW_HEADER,
+  '"US000","0","10","10","0","2023","A","",11866306,153140899,11081267615470,2060050025538,33934089306,1392,72360,"",1.00,1.00,1.00,1.00,1.00,1.00,1.00,"",346994,3.0,3115244,2.1,581530580376,5.5,58316375704,2.9,-873042501,-2.5,46,3.4,2374,3.4',
+  '"01000","0","10","50","0","2023","A","",156469,2075785,124099716050,17637800447,112679192,1150,59784,"",1.00,1.00,1.00,1.00,1.00,1.00,1.00,"",7490,5.0,49683,2.5,7985214728,6.9,336329051,1.9,-106205238,-48.5,48,4.4,2475,4.3',
+  '"C1010","0","10","80","0","2023","A","",1710,21020,1101748734,252824106,1756320,1008,52414,"",1.00,1.00,1.00,1.00,1.00,1.00,1.00,"",27,1.6,202,1.0,28421890,2.6,3347823,1.3,15202,0.9,17,1.7,856,1.7',
+  '"01001","0","10","70","0","2023","A","",1073,11871,591550069,90113485,642214,958,49832,"",1.00,1.00,1.00,1.00,1.00,1.00,1.00,"",53,5.2,336,2.9,54267839,10.1,1933187,2.2,-522704,-44.9,62,6.9,3254,7.0',
+  '"01001","5","10","71","0","2023","A","",1011,9330,454329752,89969485,641926,936,48696,"",0.97,0.92,0.89,1.02,1.01,0.97,0.97,"",51,5.3,312,3.5,44432217,10.8,1929954,2.2,-522006,-44.8,62,7.1,3242,7.1',
+  '"48453","0","10","70","0","2023","A","",52273,904044,82263307633,8984819936,142188003,1750,90995,"",1.00,1.00,1.00,1.00,1.00,1.00,1.00,"",291,0.6,27050,3.1,4618268488,5.9,-121863620,-1.3,-41006197,-22.4,47,2.8,2460,2.8',
+  '"32011","0","10","70","0","2023","A","N",53,0,0,0,0,0,0,"N",1.00,0,0,0,0,0,0,"N",-3,-5.4,0,0,0,0,0,0,0,0,0,0,0,0',
+  '"01999","0","10","70","0","2023","A","",20285,82339,7063534651,995888673,9492160,1650,85786,"",1.00,1.00,1.00,1.00,1.00,1.00,1.00,"",822,4.2,5271,6.8,750418477,11.9,27264251,2.8,-6476037,-40.6,75,4.8,3869,4.7',
 ].join("\n");
 
 const BPS_SAMPLE = [
@@ -280,6 +306,140 @@ describe("censusBpsPermitsEtlHandler.fetch", () => {
     };
     await expect(collect(censusBpsPermitsEtlHandler.fetch({ since: null }))).rejects.toThrow(
       /no county annual file/,
+    );
+  });
+});
+
+// ─── BLS QCEW parser ─────────────────────────────────────────────────────────
+
+describe("parseQcewAnnualCsv", () => {
+  it("keeps only county totals (own 0 / agglvl 70) and skips XX999 pseudo-counties", () => {
+    const rows = parseQcewAnnualCsv(QCEW_SAMPLE, 2023);
+    // National (10), statewide (50), MSA (80/"C1010"), per-ownership county
+    // (71), and 01999 "unknown or undefined" are all excluded.
+    expect(rows).toEqual([
+      {
+        stateFips: "01",
+        countyFips: "001",
+        year: 2023,
+        avgEmployment: 11871,
+        avgWeeklyWage: 958,
+        establishments: 1073,
+      },
+      {
+        stateFips: "48",
+        countyFips: "453",
+        year: 2023,
+        avgEmployment: 904044,
+        avgWeeklyWage: 1750,
+        establishments: 52273,
+      },
+      // Eureka County NV — BLS-suppressed (next test).
+      {
+        stateFips: "32",
+        countyFips: "011",
+        year: 2023,
+        avgEmployment: null,
+        avgWeeklyWage: null,
+        establishments: 53,
+      },
+    ]);
+  });
+
+  it("maps BLS suppression (disclosure_code 'N') to null instead of the published zeros", () => {
+    const rows = parseQcewAnnualCsv(QCEW_SAMPLE, 2023);
+    const eureka = rows.find((r) => r.stateFips === "32" && r.countyFips === "011");
+    expect(eureka?.avgEmployment).toBeNull();
+    expect(eureka?.avgWeeklyWage).toBeNull();
+    // Establishment counts are published even for suppressed counties.
+    expect(eureka?.establishments).toBe(53);
+  });
+
+  it("throws on header drift (missing column) instead of mis-keying", () => {
+    expect(() => parseQcewAnnualCsv("nope,not,a,qcew,header\n", 2023)).toThrow(/missing column/);
+  });
+
+  it("throws when a row's year doesn't match the file year", () => {
+    expect(() => parseQcewAnnualCsv(QCEW_SAMPLE, 2022)).toThrow(/does not match/);
+  });
+
+  it("throws on a row with the wrong column count instead of guessing", () => {
+    const csv = [QCEW_HEADER, '"01001","0","10","70","0","2023"'].join("\n");
+    expect(() => parseQcewAnnualCsv(csv, 2023)).toThrow(/expected 38 columns/);
+  });
+
+  it("throws on a non-numeric cell instead of coercing", () => {
+    const bad = QCEW_SAMPLE.replace(",1073,11871,", ",1073,junk,");
+    expect(() => parseQcewAnnualCsv(bad, 2023)).toThrow(/unparseable/);
+  });
+});
+
+// ─── BLS QCEW handler fetch flow (via _runtime injection) ───────────────────
+
+describe("blsQcewEmploymentEtlHandler.fetch", () => {
+  const NOW_2026 = new Date("2026-07-13T00:00:00Z");
+
+  function qcewFileFor(year: number): string {
+    // Same real 2023 rows, re-dated so the parser's year check passes.
+    return QCEW_SAMPLE.replaceAll('"2023"', `"${year}"`);
+  }
+
+  it("ingests the latest 3 available years, oldest first", async () => {
+    const available = new Set([2025, 2024, 2023, 2022]);
+    const requested: string[] = [];
+    blsQcewEmploymentEtlHandler._runtime = {
+      now: () => NOW_2026,
+      download: async (url) => {
+        requested.push(url);
+        const m = url.match(/\/(\d{4})\/a\/industry\/10\.csv$/);
+        const year = m ? parseInt(m[1], 10) : NaN;
+        return available.has(year) ? qcewFileFor(year) : null;
+      },
+    };
+    const records = await collect(blsQcewEmploymentEtlHandler.fetch({ since: null }));
+    // 3 counties per file × 3 years (2023, 2024, 2025) — 2022 not probed.
+    expect(records).toHaveLength(9);
+    expect((records[0].payload as unknown as QcewCountyRow).year).toBe(2023);
+    expect(records[0].updatedAt).toBe("2023");
+    expect(records.at(-1)?.updatedAt).toBe("2025");
+    expect(records[0].externalId).toBe("qcew_01001_2023");
+    expect(requested).toHaveLength(3);
+  });
+
+  it("stops probing at the watermark and ingests only newer years", async () => {
+    blsQcewEmploymentEtlHandler._runtime = {
+      now: () => NOW_2026,
+      download: async (url) => {
+        const m = url.match(/\/(\d{4})\/a\/industry\/10\.csv$/);
+        return m ? qcewFileFor(parseInt(m[1], 10)) : null;
+      },
+    };
+    const records = await collect(blsQcewEmploymentEtlHandler.fetch({ since: "2024" }));
+    expect(records).toHaveLength(3); // 2025 only
+    expect(records.every((r) => r.updatedAt === "2025")).toBe(true);
+  });
+
+  it("skips cheaply when the watermark already covers the newest year", async () => {
+    const requested: string[] = [];
+    blsQcewEmploymentEtlHandler._runtime = {
+      now: () => NOW_2026,
+      download: async (url) => {
+        requested.push(url);
+        return null;
+      },
+    };
+    const records = await collect(blsQcewEmploymentEtlHandler.fetch({ since: "2025" }));
+    expect(records).toHaveLength(0);
+    expect(requested).toHaveLength(0);
+  });
+
+  it("fails loudly on a cold start when nothing is published", async () => {
+    blsQcewEmploymentEtlHandler._runtime = {
+      now: () => NOW_2026,
+      download: async () => null,
+    };
+    await expect(collect(blsQcewEmploymentEtlHandler.fetch({ since: null }))).rejects.toThrow(
+      /no annual industry-10 file/,
     );
   });
 });
