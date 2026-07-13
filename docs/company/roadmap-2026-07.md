@@ -278,19 +278,37 @@ for land). Wholesale = thinnest — no assignment-contract mechanic.**
 
 ## Founder decisions needed (blocking specific items)
 
-1. **DNC/litigator scrub vendor** (Wave 1.5) — pick one (e.g., DNC.com,
-   Contact Center Compliance); cold SMS without it is live TCPA exposure.
-2. **Free-tier first send** (Wave 2.1) — capped free send vs. upgrade CTA.
-3. **Sales-data license** (Wave 3.1) — seed real comps per county; until
-   then the AVM stays refuse-not-fabricate.
-4. **Fix-and-flip data plane** (Wave 6.3) — repositioning fix-and-flip as
-   an improved-property module requires a third investorType ("improved")
-   and a residential-comps data source. Decide whether fix-and-flip (a)
-   waits on the vertical conveyor until a residential data license exists,
-   (b) gets demoted from "beta" to "waitlist" until then, or (c) keeps
-   shipping on land data with an explicit in-product disclaimer. The
-   underwriting math itself (70%-rule flip analysis) is correct — the
-   dishonesty risk is in the comps/AVM/due-diligence data behind it.
+All four decided by the founder 2026-07-11 (multiple-choice session), plus
+three operational calls made the same day:
+
+1. **DNC/litigator scrub vendor** (Wave 1.5) — **DECIDED: research first.**
+   Comparison delivered same day; recommendation = Searchbug (pay-as-you-go,
+   federal+state DNC, litigators, FCC RND) at launch volume, with TCPA
+   Litigator List's 600K-record litigator DB as a possible second source
+   later. Note: DNC.com and DNCScrub are BOTH Contact Center Compliance.
+   Awaiting founder's vendor confirmation + account; cold SMS stays off.
+2. **Free-tier first send** (Wave 2.1) — **DECIDED: capped free first
+   send.** One hard-capped batch per org, once ever, booked as acquisition
+   COGS. (Build task D4.)
+3. **Sales-data license** (Wave 3.1) — **DECIDED: defer to the revenue
+   trigger.** Refuse-not-fabricate holds; buy county-by-county when paying
+   customers' counties demand it.
+4. **Fix-and-flip data plane** (Wave 6.3) — **DECIDED: option (b), demoted
+   beta → roadmap/waitlist** until a residential-comps source exists.
+   Registry + landing tiers + onboarding copy updated; existing
+   fix_and_flip orgs keep their surfaces; the 70%-rule math stays.
+
+Operational calls (same session):
+
+5. **Dunning retries** — **auto-retry + notify** (day-1/3/7 ladder,
+   unattended, every attempt in The Letter/Story). Build task D1; executes
+   real retries once Stripe keys exist.
+6. **Auto-top-up** — **wire fully per customer settings**, with the
+   permanent $500/action hard-stop still binding above customer config and
+   a card-on-file (SetupIntent) step added to top-up settings. Build task
+   D2; live once Stripe keys exist.
+7. **Listing syndication** — **build the backend now** (channel model +
+   status/sync endpoints the existing page expects). Build task D7.
 
 ## Do not regress (verified strengths, all four lenses)
 
