@@ -8724,6 +8724,42 @@ export const countyBuildingPermits = pgTable("county_building_permits", {
 
 export type CountyBuildingPermitsRow = typeof countyBuildingPermits.$inferSelect;
 
+// ── 0202 — County employment & wages (Open-Data Program Phase 2.3) ──────────
+// county_employment_wages: BLS QCEW annual county averages from the keyless
+// open-data slice (data.bls.gov/cew/data/api/{year}/a/industry/10.csv,
+// industry 10 = total all industries). Filtered to own_code=0 +
+// agglvl_code=70 (county, total covered, all ownerships) — national/state/
+// MSA rollups, per-ownership detail, and the XX999 "unknown or undefined"
+// pseudo-counties never land here. BLS-suppressed counties (disclosure_code
+// 'N', published as zeros) store NULL employment/wage — nulls are honest;
+// establishment counts stay published even under suppression and are kept.
+// Ingested by the bls_qcew_employment_v1 ETL job (server/services/
+// etlHandlers.ts); read via server/services/openData/countyMarketSignals.ts.
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0202_county_employment_wages.sql.
+export const countyEmploymentWages = pgTable("county_employment_wages", {
+  id: serial("id").primaryKey(),
+  stateFips: text("state_fips").notNull(),
+  countyFips: text("county_fips").notNull(),
+  year: integer("year").notNull(),
+  // Annual average of monthly employment levels (QCEW annual_avg_emplvl).
+  avgEmployment: integer("avg_employment"),
+  // Annual average weekly wage in whole dollars (QCEW annual_avg_wkly_wage).
+  avgWeeklyWage: integer("avg_weekly_wage"),
+  // Annual average establishment count (QCEW annual_avg_estabs).
+  establishments: integer("establishments"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  byFipsYear: uniqueIndex("county_employment_wages_fips_year_idx").on(
+    table.stateFips,
+    table.countyFips,
+    table.year,
+  ),
+}));
+
+export type CountyEmploymentWagesRow = typeof countyEmploymentWages.$inferSelect;
+
 export const customerConcentration = pgTable("customer_concentration", {
   id: serial("id").primaryKey(),
   computedAt: timestamp("computed_at").defaultNow().notNull(),

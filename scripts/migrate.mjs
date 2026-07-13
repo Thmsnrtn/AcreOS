@@ -7705,6 +7705,31 @@ const STATEMENTS = [
      ('irs_soi_migration_v1', 'irs_soi_migration_v1', 'https://www.irs.gov/pub/irs-soi', 'filing_year', '0 4 1 * *', false, false),
      ('census_bps_permits_v1', 'census_bps_permits_v1', 'https://www2.census.gov/econ/bps/County', 'year', '0 5 1 * *', false, false)
    ON CONFLICT ("job_name") DO NOTHING`,
+
+  // County employment & wages (migration 0202, Open-Data Program Phase 2.3
+  // keyless leg) — PLATFORM-GLOBAL reference data: BLS QCEW annual county
+  // averages (own_code=0 + agglvl_code=70 slice of the keyless open-data
+  // CSV), the economic-durability leg of county scoring. BLS-suppressed
+  // counties (disclosure_code 'N') store NULL employment/wage — nulls are
+  // honest.
+  `CREATE TABLE IF NOT EXISTS "county_employment_wages" (
+     "id" serial PRIMARY KEY,
+     "state_fips" text NOT NULL,
+     "county_fips" text NOT NULL,
+     "year" integer NOT NULL,
+     "avg_employment" integer,
+     "avg_weekly_wage" integer,
+     "establishments" integer,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "county_employment_wages_fips_year_idx" ON "county_employment_wages" ("state_fips", "county_fips", "year")`,
+  // Seeded DISABLED like the 0201 pair — free keyless federal CSV, the
+  // founder /etl UI flips it on.
+  `INSERT INTO "etl_jobs" ("job_name", "provider_name", "source_url", "watermark_column", "schedule", "is_active", "soft_delete_on_missing")
+   VALUES
+     ('bls_qcew_employment_v1', 'bls_qcew_employment_v1', 'https://data.bls.gov/cew/data/api', 'year', '0 6 1 * *', false, false)
+   ON CONFLICT ("job_name") DO NOTHING`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
