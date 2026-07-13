@@ -389,6 +389,21 @@ async function checkWetlands(lat: number, lng: number, acreage: number | null): 
   }
 }
 
+/**
+ * Coordinate sanitizer for URLs. Property lat/lng ultimately comes from
+ * request bodies, so it must never reach a fetch URL as a raw string —
+ * force it through numeric validation + fixed-precision formatting so the
+ * interpolated value can only ever be a plain number.
+ */
+function safeCoord(value: number, kind: "lat" | "lng"): string {
+  const n = Number(value);
+  const limit = kind === "lat" ? 90 : 180;
+  if (!Number.isFinite(n) || Math.abs(n) > limit) {
+    throw new Error(`Invalid ${kind} coordinate`);
+  }
+  return n.toFixed(6);
+}
+
 // ============================================
 // EPA ENVIRONMENTAL CHECK
 // Superfund counts come from EPA FRS get_facilities filtered to the SEMS
@@ -446,7 +461,9 @@ interface NearestFacility {
 }
 
 async function checkRcraFacilities(lat: number, lng: number): Promise<NearestFacility | null> {
-  const url = `https://data.epa.gov/efservice/RCRA_FACILITIES/LATITUDE82/${lat - 0.1}:${lat + 0.1}/LONGITUDE82/${lng - 0.1}:${lng + 0.1}/rows/0:20/JSON`;
+  const la = Number(safeCoord(lat, "lat"));
+  const lo = Number(safeCoord(lng, "lng"));
+  const url = `https://data.epa.gov/efservice/RCRA_FACILITIES/LATITUDE82/${(la - 0.1).toFixed(6)}:${(la + 0.1).toFixed(6)}/LONGITUDE82/${(lo - 0.1).toFixed(6)}:${(lo + 0.1).toFixed(6)}/rows/0:20/JSON`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
@@ -478,7 +495,7 @@ async function checkRcraFacilities(lat: number, lng: number): Promise<NearestFac
  */
 async function checkSuperfund(lat: number, lng: number): Promise<EnvironmentalResult> {
   try {
-    const url = `https://ofmpub.epa.gov/frs_public2/frs_rest_services.get_facilities?latitude83=${lat}&longitude83=${lng}&search_radius=5&pgm_sys_acrnm=SEMS&output=JSON`;
+    const url = `https://ofmpub.epa.gov/frs_public2/frs_rest_services.get_facilities?latitude83=${safeCoord(lat, "lat")}&longitude83=${safeCoord(lng, "lng")}&search_radius=5&pgm_sys_acrnm=SEMS&output=JSON`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
@@ -625,7 +642,7 @@ async function checkRoadAccess(lat: number, lng: number): Promise<RoadAccessResu
 
 async function queryElevationFeet(lat: number, lng: number): Promise<number | null> {
   try {
-    const url = `https://epqs.nationalmap.gov/v1/json?x=${lng}&y=${lat}&wkid=4326&units=Feet&includeDate=false`;
+    const url = `https://epqs.nationalmap.gov/v1/json?x=${safeCoord(lng, "lng")}&y=${safeCoord(lat, "lat")}&wkid=4326&units=Feet&includeDate=false`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
     const resp = await fetch(url, { signal: controller.signal });
@@ -670,8 +687,8 @@ async function checkElevation(lat: number, lng: number): Promise<ElevationResult
     .filter((v): v is number => v !== null)
     .map((v) => (Math.abs(v - center) / runFeet) * 100);
 
-  let slope = "unknown";
-  let risk: RiskLevel = "low";
+  let slope: string;
+  let risk: RiskLevel;
 
   if (gradients.length >= 2) {
     const maxGradePercent = Math.max(...gradients);
@@ -689,6 +706,7 @@ async function checkElevation(lat: number, lng: number): Promise<ElevationResult
       risk = "high";
     }
   } else {
+    slope = "unknown";
     risk = "unknown";
   }
 
@@ -902,7 +920,7 @@ const NRI_COUNTIES_QUERY_URL =
   "https://services.arcgis.com/XG15cJAlne2vxtgt/arcgis/rest/services/National_Risk_Index_Counties/FeatureServer/0/query";
 
 async function queryNriCounty(lat: number, lng: number, outFields: string): Promise<Record<string, any> | null> {
-  const url = `${NRI_COUNTIES_QUERY_URL}?geometry=${lng},${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=${encodeURIComponent(outFields)}&returnGeometry=false&f=json`;
+  const url = `${NRI_COUNTIES_QUERY_URL}?geometry=${safeCoord(lng, "lng")},${safeCoord(lat, "lat")}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=${encodeURIComponent(outFields)}&returnGeometry=false&f=json`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   const resp = await fetch(url, { signal: controller.signal });
