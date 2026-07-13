@@ -289,7 +289,11 @@ three operational calls made the same day:
    Awaiting founder's vendor confirmation + account; cold SMS stays off.
 2. **Free-tier first send** (Wave 2.1) — **DECIDED: capped free first
    send.** One hard-capped batch per org, once ever, booked as acquisition
-   COGS. (Build task D4.)
+   COGS. **BUILT 2026-07-13 (D4):** the 5-piece lifetime cap + refusal
+   payloads shipped in W2.1 (routes-outreach-mail.ts); the flusher now
+   books each free-tier send's real postage into marketing_spend
+   (campaignRef `free_first_send:ship=<id>`, actuals-only, idempotent) so
+   CAC math sees it. SMS lane stays dark until the DNC scrub is keyed.
 3. **Sales-data license** (Wave 3.1) — **DECIDED: defer to the revenue
    trigger.** Refuse-not-fabricate holds; buy county-by-county when paying
    customers' counties demand it.

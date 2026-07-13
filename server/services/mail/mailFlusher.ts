@@ -22,7 +22,7 @@
 
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { mailShipments, mailShipmentPieces } from "@shared/schema";
+import { mailShipments, mailShipmentPieces, marketingSpend, organizations } from "@shared/schema";
 import { MailRouter, type MailShipment, type MailPiece, type MailShipmentSpeed } from "./router";
 import { refundPoolDebit } from "../creditPool";
 import { logger } from "../../utils/logger";
@@ -97,6 +97,52 @@ async function refundShipment(ship: FlushShipment, reason: string): Promise<void
   );
 }
 
+/**
+ * D4 (founder decision 2026-07-11): a FREE-tier org's send rides the capped
+ * free first-send allowance, so its real postage cost is OUR acquisition
+ * spend — book it into the marketing_spend ledger (channel "other",
+ * campaignRef tags it machine-readably) so CAC math sees it. Actuals only:
+ * booked on successful send, from the locked quote total, never at queue
+ * time. Idempotent per shipment via the campaignRef tag. Best-effort — a
+ * ledger hiccup must never fail a sent shipment.
+ */
+async function bookFreeSendAcquisitionCogs(ship: FlushShipment): Promise<void> {
+  try {
+    const [org] = await db
+      .select({ tier: organizations.subscriptionTier })
+      .from(organizations)
+      .where(eq(organizations.id, ship.organizationId));
+    if (((org?.tier ?? "free").toLowerCase()) !== "free") return;
+
+    const [row] = await db
+      .select({ totalCents: mailShipments.totalCents })
+      .from(mailShipments)
+      .where(eq(mailShipments.id, ship.id));
+    const totalCents = row?.totalCents ?? 0;
+    if (totalCents <= 0) return;
+
+    const campaignRef = `free_first_send:ship=${ship.id}`;
+    const existing = await db
+      .select({ id: marketingSpend.id })
+      .from(marketingSpend)
+      .where(eq(marketingSpend.campaignRef, campaignRef));
+    if (existing.length > 0) return;
+
+    await db.insert(marketingSpend).values({
+      channel: "other",
+      amountCents: totalCents,
+      spentAt: new Date(),
+      source: "autopilot",
+      campaignRef,
+      note: `Free first-send postage (D4 acquisition COGS) — org ${ship.organizationId}, shipment ${ship.id}`,
+    });
+  } catch (err) {
+    logger.error("[mailFlusher] free-send COGS booking failed (send unaffected)", err instanceof Error ? err : undefined, {
+      metadata: { shipmentId: ship.id },
+    });
+  }
+}
+
 /** Send one claimed shipment through the router; writeback or fail+refund. */
 async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
   const pieces = await db
@@ -133,6 +179,7 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
       .update(mailShipments)
       .set({ status: "sent", sentAt: new Date(), provider: route.chosenProvider })
       .where(eq(mailShipments.id, ship.id));
+    await bookFreeSendAcquisitionCogs(ship);
     logger.info(`[mailFlusher] sent shipment ${ship.id} (${pieces.length} pieces via ${route.chosenProvider})`);
     return "sent";
   } catch (err) {
