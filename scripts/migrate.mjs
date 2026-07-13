@@ -7662,6 +7662,49 @@ const STATEMENTS = [
      "updated_at" timestamp NOT NULL DEFAULT now()
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "syndication_channel_states_org_channel_idx" ON "syndication_channel_states" ("organization_id", "channel_id")`,
+
+  // County market signals (migration 0201, Open-Data Program Phase 2.1/2.2) —
+  // PLATFORM-GLOBAL reference data (no organization_id, like marketing_spend):
+  // IRS SOI county migration totals + Census BPS county building permits,
+  // feeding the County Opportunity Score. Suppressed IRS values (-1) are
+  // stored NULL — nulls are honest.
+  `CREATE TABLE IF NOT EXISTS "county_migration_summary" (
+     "id" serial PRIMARY KEY,
+     "state_fips" text NOT NULL,
+     "county_fips" text NOT NULL,
+     "filing_year" text NOT NULL,
+     "inflow_returns" integer,
+     "inflow_individuals" integer,
+     "inflow_agi_thousands" bigint,
+     "outflow_returns" integer,
+     "outflow_individuals" integer,
+     "outflow_agi_thousands" bigint,
+     "net_returns" integer,
+     "net_agi_thousands" bigint,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "county_migration_summary_fips_year_idx" ON "county_migration_summary" ("state_fips", "county_fips", "filing_year")`,
+  `CREATE TABLE IF NOT EXISTS "county_building_permits" (
+     "id" serial PRIMARY KEY,
+     "state_fips" text NOT NULL,
+     "county_fips" text NOT NULL,
+     "year" integer NOT NULL,
+     "total_units" integer NOT NULL,
+     "single_family_units" integer NOT NULL,
+     "multi_family_units" integer NOT NULL,
+     "created_at" timestamp NOT NULL DEFAULT now(),
+     "updated_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "county_building_permits_fips_year_idx" ON "county_building_permits" ("state_fips", "county_fips", "year")`,
+  // Unlike the 0070 seed (excluded above — operator credentials), these two
+  // jobs hit free keyless federal CSVs, so seeding them DISABLED here is
+  // safe: no stub credentials, and the founder /etl UI flips them on.
+  `INSERT INTO "etl_jobs" ("job_name", "provider_name", "source_url", "watermark_column", "schedule", "is_active", "soft_delete_on_missing")
+   VALUES
+     ('irs_soi_migration_v1', 'irs_soi_migration_v1', 'https://www.irs.gov/pub/irs-soi', 'filing_year', '0 4 1 * *', false, false),
+     ('census_bps_permits_v1', 'census_bps_permits_v1', 'https://www2.census.gov/econ/bps/County', 'year', '0 5 1 * *', false, false)
+   ON CONFLICT ("job_name") DO NOTHING`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

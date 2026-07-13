@@ -8656,6 +8656,68 @@ export const marketingSpend = pgTable("marketing_spend", {
 
 export type MarketingSpendEntry = typeof marketingSpend.$inferSelect;
 
+// ── 0201 — County market signals (Open-Data Program Phase 2.1/2.2) ──────────
+// PLATFORM-GLOBAL reference data (no organization_id, like marketing_spend)
+// feeding the County Opportunity Score. Ingested by the irs_soi_migration_v1 /
+// census_bps_permits_v1 ETL jobs (server/services/etlHandlers.ts); read via
+// server/services/openData/countyMarketSignals.ts.
+//
+// county_migration_summary: one row per (county, IRS filing year 'YYZZ').
+// Values come from the IRS-published per-county "Total Migration-US and
+// Foreign" summary rows — never summed from suppressed pair detail. AGI is
+// in thousands of dollars as published; IRS-suppressed values (-1) are NULL.
+//
+// Mirrors scripts/migrate.mjs STATEMENTS + migrations/0201_county_market_signals.sql.
+export const countyMigrationSummary = pgTable("county_migration_summary", {
+  id: serial("id").primaryKey(),
+  stateFips: text("state_fips").notNull(),
+  countyFips: text("county_fips").notNull(),
+  // IRS filing-year pair label, e.g. '2122' = tax years 2021→2022.
+  filingYear: text("filing_year").notNull(),
+  inflowReturns: integer("inflow_returns"),
+  inflowIndividuals: integer("inflow_individuals"),
+  inflowAgiThousands: bigint("inflow_agi_thousands", { mode: "number" }),
+  outflowReturns: integer("outflow_returns"),
+  outflowIndividuals: integer("outflow_individuals"),
+  outflowAgiThousands: bigint("outflow_agi_thousands", { mode: "number" }),
+  netReturns: integer("net_returns"),
+  netAgiThousands: bigint("net_agi_thousands", { mode: "number" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  byFipsYear: uniqueIndex("county_migration_summary_fips_year_idx").on(
+    table.stateFips,
+    table.countyFips,
+    table.filingYear,
+  ),
+}));
+
+export type CountyMigrationSummaryRow = typeof countyMigrationSummary.$inferSelect;
+
+// county_building_permits: Census BPS annual county permit UNITS (co{YYYY}a.txt).
+// single_family = 1-unit structures; multi_family = 2 + 3-4 + 5+ unit
+// structures; total = the sum. Covers permit-issuing places only — rural
+// non-permitting counties are simply absent (never estimated here).
+export const countyBuildingPermits = pgTable("county_building_permits", {
+  id: serial("id").primaryKey(),
+  stateFips: text("state_fips").notNull(),
+  countyFips: text("county_fips").notNull(),
+  year: integer("year").notNull(),
+  totalUnits: integer("total_units").notNull(),
+  singleFamilyUnits: integer("single_family_units").notNull(),
+  multiFamilyUnits: integer("multi_family_units").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  byFipsYear: uniqueIndex("county_building_permits_fips_year_idx").on(
+    table.stateFips,
+    table.countyFips,
+    table.year,
+  ),
+}));
+
+export type CountyBuildingPermitsRow = typeof countyBuildingPermits.$inferSelect;
+
 export const customerConcentration = pgTable("customer_concentration", {
   id: serial("id").primaryKey(),
   computedAt: timestamp("computed_at").defaultNow().notNull(),

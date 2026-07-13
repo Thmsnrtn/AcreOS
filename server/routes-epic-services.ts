@@ -115,6 +115,8 @@ router.get("/county-opportunity/:state/:county", async (req: Request, res: Respo
     const { db } = await import("./db");
     const { countyMarkets } = await import("@shared/schema");
     const { eq, and } = await import("drizzle-orm");
+    const { getCountyFips } = await import("./services/censusDataService");
+    const { getPermitTrend } = await import("./services/openData/countyMarketSignals");
     const { state, county } = req.params;
 
     // Fetch county market data
@@ -123,6 +125,11 @@ router.get("/county-opportunity/:state/:county", async (req: Request, res: Respo
       .from(countyMarkets)
       .where(and(eq(countyMarkets.state, state.toUpperCase()), eq(countyMarkets.county, county)))
       .limit(1);
+
+    // Ingested Census BPS annual data (county_building_permits) beats the
+    // hardcoded default — only used when both trend years actually exist.
+    const fips = getCountyFips(state, county);
+    const permitTrend = fips ? await getPermitTrend(fips.stateFips, fips.countyFips) : null;
 
     // Build input from available data + defaults
     const input = {
@@ -142,7 +149,7 @@ router.get("/county-opportunity/:state/:county", async (req: Request, res: Respo
       estimatedInvestorMailingCount: 10,
       recentPriceIncreasePercent: 5,
       populationGrowthRate: 3,
-      permitCountTrend: 5,
+      permitCountTrend: permitTrend?.trendPercent ?? 5,
       distanceToNearestMetroMiles: 80,
       hasRecentInfrastructureAnnouncement: false,
       hasRecentEmployerAnnouncement: false,
