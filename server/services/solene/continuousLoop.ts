@@ -28,6 +28,7 @@ import {
 import { logger } from "../../utils/logger";
 import { sensesFromPulse, rankMoves, applyObjectiveWeighting, type RankedMove } from "../autopilot/decide";
 import { planAndAct } from "../autopilot/act";
+import { FOUNDER_MINUTES_BUDGET } from "@sovereign/immutables";
 
 /**
  * Master switch for the autopilot HANDS lives in the DB (autopilot/settings,
@@ -69,6 +70,13 @@ export interface MorningPulseSnapshot {
   decisionsWaitingCount: number;
   autonomyHorizonDays: number;
   envelopeStatus: "green" | "amber" | "red";
+
+  // Kernel-restructure step 5 (founder directive 2026-07-13): the two
+  // numbers every cycle opens with. Budget is constitutional
+  // (FOUNDER_MINUTES_BUDGET); consumption is null — not zero — when the
+  // metric read failed, so the one-line never fabricates restraint.
+  founderDecisionsUsedThisWeek: number | null;
+  founderDecisionsBudget: number;
 
   // Activity summary (last 24h).
   dispatchesCompletedLast24h: number;
@@ -163,6 +171,21 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
     );
   }
 
+  // Tick metric (b) — founder decisions consumed vs. the constitutional
+  // budget (kernel-restructure step 5). Best-effort: a failed read reports
+  // null (unmeasured), never a flattering zero. The budget itself is static
+  // constitutional data, so it is always known.
+  let founderDecisionsUsedThisWeek: number | null = null;
+  try {
+    const { getTickMetric } = await import("./tickMetric");
+    founderDecisionsUsedThisWeek = (await getTickMetric(generatedAt)).founderDecisionsThisWeek;
+  } catch (err) {
+    logger.warn(
+      "[continuousLoop] tick-metric read failed; reporting decisions-used as unmeasured",
+      err instanceof Error ? err : undefined,
+    );
+  }
+
   const snapshot: MorningPulseSnapshot = {
     generatedAt,
     dayLabel,
@@ -176,6 +199,8 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
     decisionsWaitingCount: collab.openCount,
     autonomyHorizonDays,
     envelopeStatus: capital.envelopeStatus,
+    founderDecisionsUsedThisWeek,
+    founderDecisionsBudget: FOUNDER_MINUTES_BUDGET.classABDecisionsPerWeek,
     dispatchesCompletedLast24h: dispatchActivity.completedLast24h,
     dispatchesFlaggedLast24h: dispatchActivity.flaggedLast24h,
     asksOpenCount: collab.openCount,
@@ -197,10 +222,13 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
 // ============================================================================
 
 export function renderOneLine(snapshot: MorningPulseSnapshot): string {
-  // Format per the team_solene brief:
+  // Format per the team_solene brief, extended by kernel-restructure step 5:
   //   "{Day} {Date} · ${MRR} MRR · +{N} trials · {X.X}% uptime ·
   //    {N}/{N} compliance · ${X.XX} week-cost · {N} decisions waiting ·
-  //    Horizon: {D} days"
+  //    {X}/{B} decisions used · Horizon: {D} days"
+  // The line has no hard character cap (it renders on the founder Today page
+  // and in the cron log), but it stays a single " · "-joined sentence — one
+  // segment per number, no prose.
   const mrr = Math.round(snapshot.mrr).toLocaleString();
   const uptime = snapshot.uptimePct != null ? `${snapshot.uptimePct.toFixed(1)}% uptime` : "uptime n/a";
   const spend = snapshot.weeklySpendUsd.toFixed(2);
@@ -208,6 +236,12 @@ export function renderOneLine(snapshot: MorningPulseSnapshot): string {
   // both numerator and denominator are the open count, matching the
   // 0/0 → "all clear" shape).
   const complianceFrac = `${snapshot.complianceOpenCount}/${snapshot.complianceOpenCount}`;
+  // Founder decisions consumed vs. the constitutional weekly budget.
+  // Unmeasured (failed read) renders honestly as n/a, never as 0/5.
+  const decisionsUsed =
+    snapshot.founderDecisionsUsedThisWeek != null
+      ? `${snapshot.founderDecisionsUsedThisWeek}/${snapshot.founderDecisionsBudget} decisions used`
+      : "decisions used n/a";
   return [
     `${snapshot.dayLabel}`,
     `$${mrr} MRR`,
@@ -216,6 +250,7 @@ export function renderOneLine(snapshot: MorningPulseSnapshot): string {
     `${complianceFrac} compliance`,
     `$${spend} week-cost`,
     `${snapshot.decisionsWaitingCount} decisions waiting`,
+    decisionsUsed,
     `Horizon: ${snapshot.autonomyHorizonDays} days`,
   ].join(" · ");
 }
@@ -300,6 +335,14 @@ function hydrateRow(row: SoleneMorningPulseRow): MorningPulseSnapshot {
       blob.envelopeStatus === "amber" || blob.envelopeStatus === "red"
         ? blob.envelopeStatus
         : "green",
+    // Legacy rows predate the tick metric — null (unmeasured), never 0.
+    founderDecisionsUsedThisWeek:
+      typeof blob.founderDecisionsUsedThisWeek === "number"
+        ? blob.founderDecisionsUsedThisWeek
+        : null,
+    founderDecisionsBudget: Number(
+      blob.founderDecisionsBudget ?? FOUNDER_MINUTES_BUDGET.classABDecisionsPerWeek,
+    ),
     dispatchesCompletedLast24h: Number(blob.dispatchesCompletedLast24h ?? 0),
     dispatchesFlaggedLast24h: Number(blob.dispatchesFlaggedLast24h ?? 0),
     asksOpenCount: Number(blob.asksOpenCount ?? 0),
@@ -323,6 +366,30 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
   // Dispatch backlog (queued-but-not-run) feeds the brain's grow-gate so it
   // never piles more outward work onto an already-saturated queue.
   let dispatchBacklog = 0;
+
+  // Kernel-restructure step 5 (founder directive 2026-07-13): every cycle
+  // OPENS with the two numbers — (a) customer-visible/revenue-relevant
+  // outcomes shipped this week, (b) founder decisions consumed vs. the
+  // constitutional budget. A machine graded only on restraint optimizes for
+  // restraint. Best-effort: a failed read logs "unmeasured", never zero.
+  try {
+    const { getTickMetric } = await import("./tickMetric");
+    const metric = await getTickMetric(ranAt);
+    logger.info("[continuousLoop] tick: cycle metric", {
+      metadata: {
+        revenueRelevantShippedThisWeek: metric.revenueRelevantShippedThisWeek,
+        shippedBreakdown: metric.shippedBreakdown,
+        founderDecisionsThisWeek: metric.founderDecisionsThisWeek,
+        founderDecisionsBudget: metric.founderDecisionsBudget,
+        budgetSource: metric.budgetSource,
+      },
+    });
+  } catch (err) {
+    logger.warn(
+      "[continuousLoop] tick: cycle metric read failed — the two numbers are unmeasured this cycle (not zero)",
+      err instanceof Error ? err : undefined,
+    );
+  }
 
   // Refresh the morning pulse if the latest row is older than 6 hours
   // (this is the between-cron safety net; the daily 12:00 UTC job is
