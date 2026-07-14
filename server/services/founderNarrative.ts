@@ -62,6 +62,14 @@ export interface MonthlySummary {
    * never a fabricated number.
    */
   calibrationParagraph: string;
+  /**
+   * Horizon A4 — one honest paragraph on cognition ROI: real dispatch spend
+   * vs. value with a REAL join back to a dispatch (computeCognitionRoi).
+   * Always shows both numbers; unattributed spend is named as unattributed
+   * (a measurement gap), never implied to be measured value. Reads
+   * "unmeasured" on a failed read.
+   */
+  cognitionParagraph: string;
   agents: Array<{
     codename: string;
     decisionsOwned: number;
@@ -118,7 +126,7 @@ export async function generateMonthlyLetter(monthKey?: string): Promise<{
     tickMetricLine =
       "Shipped for customers this week: unmeasured (metric read failed this cycle). " +
       `Founder decisions consumed: unmeasured of ${FOUNDER_MINUTES_BUDGET.classABDecisionsPerWeek} budget. ` +
-      "Verified: unmeasured. Outcome ledger (90d): unmeasured.";
+      "Verified: unmeasured. Outcome ledger (90d): unmeasured. Cognition (30d): unmeasured.";
   }
   const letterMarkdown = openWithTickMetric(prose.markdown, tickMetricLine);
 
@@ -386,6 +394,21 @@ async function buildSummary(
       "Calibration: unmeasured this month (outcome-ledger read failed) — no number is quoted rather than a guessed one.";
   }
 
+  // Horizon A4 — the cognition-ROI paragraph: what cognition cost and what
+  // it verifiably earned. Same posture as calibration: a failed read says
+  // "unmeasured" — never a fabricated number.
+  let cognitionParagraph: string;
+  try {
+    const { computeCognitionRoi } = await import("./solene/cognitionRoi");
+    cognitionParagraph = buildCognitionParagraph(await computeCognitionRoi(30));
+  } catch (err: any) {
+    logger.warn("[founderNarrative] cognition-ROI read failed — reporting unmeasured", {
+      metadata: { error: err?.message },
+    });
+    cognitionParagraph =
+      "Cognition: unmeasured this month (spend/value read failed) — no number is quoted rather than a guessed one.";
+  }
+
   // Pull synthesized strategic moves for next month, if any.
   // The letter is written FOR month N but looks AHEAD to month N+1,
   // so we peek at synthesized proposals targeted at the upcoming month.
@@ -429,6 +452,7 @@ async function buildSummary(
       netNegative,
     },
     calibrationParagraph,
+    cognitionParagraph,
     agents,
     pendingProposals: proposalRows.length,
     openDecisionsNeedingFounder: Number(openDecisionsRow[0]?.c ?? 0),
@@ -478,6 +502,61 @@ export function buildCalibrationParagraph(
 }
 
 /**
+ * Horizon A4 — below this attributed share, the paragraph says plainly that
+ * most cognition spend is not yet attributable to a measured outcome.
+ */
+const COGNITION_LOW_ATTRIBUTION_SHARE = 0.5;
+
+/**
+ * One honest paragraph on cognition ROI for The Letter: spend, attributed
+ * value, the best and worst sourceType by attributed value, and — whenever
+ * attribution coverage is thin — the plain sentence that most spend is not
+ * yet attributable. Value here is ONLY what joined back to a real dispatch
+ * (recovered cents); nothing is imputed. Exported for unit tests. Pure.
+ */
+export function buildCognitionParagraph(roi: {
+  spentUsd: number;
+  attributedValueUsd: number;
+  attributedDispatches: number;
+  totalDispatches: number;
+  bySourceType: Array<{ sourceType: string; spentUsd: number; attributedValueUsd: number }>;
+}): string {
+  if (roi.totalDispatches === 0 && roi.attributedDispatches === 0) {
+    return "Cognition: no agent-dispatch spend recorded in the trailing 30 days, so there is nothing to attribute yet.";
+  }
+
+  const head =
+    `Cognition: $${roi.spentUsd.toFixed(2)} spent on agent dispatches in the trailing 30 days → ` +
+    `$${roi.attributedValueUsd.toFixed(2)} in attributed value ` +
+    `(${roi.attributedDispatches} of ${roi.totalDispatches} dispatches have a real dollar outcome joined back).`;
+
+  const ranked = roi.bySourceType
+    .filter((s) => s.attributedValueUsd > 0)
+    .sort((a, b) => b.attributedValueUsd - a.attributedValueUsd);
+  let sources: string;
+  if (ranked.length === 0) {
+    sources = " No source of work has attributed value yet.";
+  } else if (ranked.length === 1) {
+    sources = ` All attributed value came through ${ranked[0].sourceType} ($${ranked[0].attributedValueUsd.toFixed(2)}).`;
+  } else {
+    const top = ranked[0];
+    const bottom = ranked[ranked.length - 1];
+    sources =
+      ` Most attributed value: ${top.sourceType} ($${top.attributedValueUsd.toFixed(2)}); ` +
+      `least: ${bottom.sourceType} ($${bottom.attributedValueUsd.toFixed(2)}).`;
+  }
+
+  const share =
+    roi.totalDispatches > 0 ? roi.attributedDispatches / roi.totalDispatches : 0;
+  const honesty =
+    roi.attributedDispatches === 0 || share < COGNITION_LOW_ATTRIBUTION_SHARE
+      ? " Most of this spend is not yet attributable to a measured dollar outcome — that is a measurement gap, reported as such: it is not evidence the work was worthless, and not license to assume it was valuable."
+      : "";
+
+  return head + sources + honesty;
+}
+
+/**
  * Call Opus to turn the structured summary into the one-page letter.
  * The system prompt fixes the voice and structure so the result is
  * consistent month to month.
@@ -523,6 +602,7 @@ function buildNarrativeContext(s: MonthlySummary): string {
   if (s.outcomes.avgScore != null) lines.push(`- Avg score (−2..+2): ${s.outcomes.avgScore.toFixed(2)}`);
   lines.push(`- Net positive: ${s.outcomes.netPositive} · net negative: ${s.outcomes.netNegative}`);
   lines.push(`- ${s.calibrationParagraph}`);
+  lines.push(`- ${s.cognitionParagraph}`);
   lines.push("");
   lines.push(`TOP HIGHLIGHTS (what worked):`);
   for (const h of s.topHighlights) lines.push(`- ${h}`);
@@ -587,6 +667,8 @@ function buildFallbackLetter(s: MonthlySummary): string {
     `The system handled ${s.decisions.total} decisions this month. ${s.decisions.autoResolved} were resolved autonomously, ${s.decisions.escalated} were escalated or are still in the queue, ${s.decisions.founderReversed} you reversed, and ${s.decisions.guardrailBlocked} were stopped by safety rails.`,
     "",
     s.calibrationParagraph,
+    "",
+    s.cognitionParagraph,
     "",
     `## What worked`,
     "",

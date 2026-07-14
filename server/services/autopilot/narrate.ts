@@ -92,6 +92,13 @@ export interface FounderBriefInputs {
   errorRatePct?: number | null;
   /** Deployed version (short SHA) from the pulse. null when unknown. */
   prodVersion?: string | null;
+  /**
+   * Token-economy decision scoring, today (tokenEconomyScorer's daily
+   * summary — the L5.27 pulse wire-in, landed with Horizon A4). Real counts
+   * of prospective dispatches scored against expected value; null when the
+   * summary was unreadable — the sentence is omitted, never invented.
+   */
+  scoring?: { totalScored: number; averageScore: number; deferredCount: number } | null;
 }
 
 export interface FounderBrief {
@@ -190,6 +197,14 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
   if (inp.pulse.dispatchesFlaggedLast24h > 0) {
     parts.push(
       `${cap(countNoun(inp.pulse.dispatchesFlaggedLast24h, "item was", "items were"))} flagged for review and ${inp.pulse.dispatchesFlaggedLast24h === 1 ? "is" : "are"} being handled.`,
+    );
+  }
+
+  // Decision scoring (Horizon A4) — one sentence, only when something was
+  // genuinely scored today. Real counts from the scorer's daily summary.
+  if (inp.scoring && inp.scoring.totalScored > 0) {
+    parts.push(
+      `I scored ${countNoun(inp.scoring.totalScored, "prospective dispatch", "prospective dispatches")} against expected value today (average score ${inp.scoring.averageScore.toFixed(2)}, ${inp.scoring.deferredCount} deferred).`,
     );
   }
 
@@ -423,6 +438,21 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
   const prodVersion =
     pulse?.prodVersion && pulse.prodVersion !== "unknown" ? pulse.prodVersion : null;
 
+  // Decision scoring, today — the tokenEconomyScorer daily summary (the
+  // L5.27 pulse wire-in). Best-effort: unreadable → null → sentence omitted.
+  let scoring: FounderBriefInputs["scoring"] = null;
+  try {
+    const { getDailyScoringSummary } = await import("../solene/tokenEconomyScorer");
+    const s = await getDailyScoringSummary();
+    scoring = {
+      totalScored: s.totalScored,
+      averageScore: s.averageScore,
+      deferredCount: s.deferredCount,
+    };
+  } catch {
+    scoring = null;
+  }
+
   // Operating mode — read the real switches; null (silent) when unreadable.
   let operatingMode: FounderBriefInputs["operatingMode"] = null;
   try {
@@ -451,6 +481,7 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     wedge,
     errorRatePct,
     prodVersion,
+    scoring,
   });
 }
 

@@ -158,8 +158,15 @@ export class WebhookHandlers {
             // autopilot dunning action that targeted this invoice (no-op unless
             // a witnessed dunning_action stamped target_ref="invoice:<id>").
             if (inv.id) {
+              // Horizon A4 — realized-value join: thread the REAL recovered
+              // cents through to the experience row (not just the boolean),
+              // so cognition ROI can attribute actual dollars to the dispatch
+              // that earned them. Never estimated — this is Stripe's number.
               void import('./services/autopilot/experienceLog').then(({ recordConsequenceByTarget }) =>
-                recordConsequenceByTarget(`invoice:${inv.id}`, { paymentRecovered: true }),
+                recordConsequenceByTarget(`invoice:${inv.id}`, {
+                  paymentRecovered: true,
+                  recoveredCents: Number(inv.amount_paid ?? 0),
+                }),
               ).catch(() => {});
             }
           }

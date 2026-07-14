@@ -97,34 +97,67 @@ vi.mock("@shared/schema/solene-dispatch", async () => {
 });
 
 vi.mock("../../db", () => {
+  // Shared write path: the insert now returns the new row id via `.returning`
+  // (Horizon A4 — the dispatch_id backfill needs the id), so the mock supports
+  // both the awaited `.values(...).returning(...)` chain and a bare await.
+  const performInsert = (table: any, row: any): number | null => {
+    if (table !== SCORE_EVENTS_TABLE) return null;
+    if (throwOnScoreInsert) throw new Error("simulated db failure");
+    const id = nextScoreEventId++;
+    SCORE_EVENTS.push({
+      id,
+      scoredAt: row.scoredAt ?? new Date(),
+      dispatchId: row.dispatchId ?? null,
+      agentRole: row.agentRole,
+      promptSummary: row.promptSummary,
+      estimatedCostUsd: String(row.estimatedCostUsd),
+      estimatedValueUsd:
+        row.estimatedValueUsd === null || row.estimatedValueUsd === undefined
+          ? null
+          : String(row.estimatedValueUsd),
+      historicalSuccessRate: String(row.historicalSuccessRate),
+      envelopeStatusAtDecision: row.envelopeStatusAtDecision,
+      score: String(row.score),
+      recommendation: row.recommendation,
+      rationale: row.rationale,
+    });
+    return id;
+  };
+
   const db = {
     insert: (table: any) => ({
-      values: (row: any) => {
-        if (table === SCORE_EVENTS_TABLE) {
-          if (throwOnScoreInsert) {
-            return Promise.reject(new Error("simulated db failure"));
+      values: (row: any) => ({
+        returning: (_cols: any) => {
+          try {
+            const id = performInsert(table, row);
+            return Promise.resolve(id == null ? [] : [{ id }]);
+          } catch (err) {
+            return Promise.reject(err);
           }
-          SCORE_EVENTS.push({
-            id: nextScoreEventId++,
-            scoredAt: row.scoredAt ?? new Date(),
-            dispatchId: row.dispatchId ?? null,
-            agentRole: row.agentRole,
-            promptSummary: row.promptSummary,
-            estimatedCostUsd: String(row.estimatedCostUsd),
-            estimatedValueUsd:
-              row.estimatedValueUsd === null ||
-              row.estimatedValueUsd === undefined
-                ? null
-                : String(row.estimatedValueUsd),
-            historicalSuccessRate: String(row.historicalSuccessRate),
-            envelopeStatusAtDecision: row.envelopeStatusAtDecision,
-            score: String(row.score),
-            recommendation: row.recommendation,
-            rationale: row.rationale,
-          });
-        }
-        return Promise.resolve();
-      },
+        },
+        // Legacy bare-await path (no .returning) — kept thenable.
+        then(onFulfilled: any, onRejected: any) {
+          try {
+            performInsert(table, row);
+            return Promise.resolve().then(onFulfilled, onRejected);
+          } catch (err) {
+            return Promise.reject(err).then(onFulfilled, onRejected);
+          }
+        },
+      }),
+    }),
+    update: (table: any) => ({
+      set: (patch: any) => ({
+        where: (pred: any) => {
+          if (table === SCORE_EVENTS_TABLE) {
+            const row = SCORE_EVENTS.find((r) => r.id === pred?.val);
+            if (row && patch.dispatchId !== undefined) {
+              row.dispatchId = patch.dispatchId;
+            }
+          }
+          return Promise.resolve();
+        },
+      }),
     }),
     select: (_projection?: any) => {
       // Two distinct shapes:
@@ -207,6 +240,7 @@ import {
   scoreDispatchProposal,
   listRecentScores,
   getDailyScoringSummary,
+  backfillScoreEventDispatchId,
 } from "./tokenEconomyScorer";
 import {
   DECISION_SCORE_THRESHOLDS,
@@ -486,6 +520,39 @@ describe("scoreDispatchProposal — persistence", () => {
     ).resolves.toBeDefined();
     await new Promise((r) => setImmediate(r));
     expect(SCORE_EVENTS).toHaveLength(0);
+  });
+
+  it("returns the persisted row id as scoreEventId (Horizon A4 backfill handle)", async () => {
+    const result = await scoreDispatchProposal({
+      agentRole: "iris",
+      promptText: "x",
+      estimatedTokens: { input: 1000, output: 1000 },
+      expectedValueUsd: 100,
+    });
+    expect(result.scoreEventId).toBe(SCORE_EVENTS[0].id);
+  });
+
+  it("reports scoreEventId null when persistence fails (still never throws)", async () => {
+    throwOnScoreInsert = true;
+    const result = await scoreDispatchProposal({
+      agentRole: "iris",
+      promptText: "x",
+      estimatedTokens: { input: 1000, output: 1000 },
+      expectedValueUsd: 100,
+    });
+    expect(result.scoreEventId).toBeNull();
+  });
+
+  it("backfillScoreEventDispatchId sets dispatch_id on the persisted event (the documented UPDATE pattern)", async () => {
+    const result = await scoreDispatchProposal({
+      agentRole: "iris",
+      promptText: "x",
+      estimatedTokens: { input: 1000, output: 1000 },
+      expectedValueUsd: 100,
+    });
+    expect(SCORE_EVENTS[0].dispatchId).toBeNull();
+    await backfillScoreEventDispatchId(result.scoreEventId!, 777);
+    expect(SCORE_EVENTS[0].dispatchId).toBe(777);
   });
 
   it("truncates promptSummary to 500 chars", async () => {
