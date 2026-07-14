@@ -79,15 +79,17 @@ vi.mock("./failureModeLibrary", () => ({
   ) => loadFailureModePreambleForMock(role, plannedFiles),
 }));
 
-// Tier 2D — learning-loop RAG wire-in. Stub the retriever (DB + embeddings)
-// but keep the REAL buildRetrievedMemoriesPromptBlock so the test proves the
-// genuine render path puts retrieved lessons into the prompt.
-const retrieveRelevantMemoriesMock = vi.fn();
-vi.mock("./learningLoop", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./learningLoop")>();
+// Tier 2D / Jarvis 2.4 — cross-namespace memory RAG wire-in. Stub the
+// retriever (DB + embeddings) but keep the REAL buildMultiNamespacePromptBlock
+// so the test proves the genuine render path puts retrieved memories into the
+// prompt.
+const retrieveCrossNamespaceMemoriesMock = vi.fn();
+vi.mock("./memoryRetrieval", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./memoryRetrieval")>();
   return {
     ...actual,
-    retrieveRelevantMemories: (q: unknown) => retrieveRelevantMemoriesMock(q),
+    retrieveCrossNamespaceMemories: (q: unknown) =>
+      retrieveCrossNamespaceMemoriesMock(q),
   };
 });
 
@@ -136,10 +138,11 @@ beforeEach(async () => {
   loadFailureModePreambleForMock.mockResolvedValue(
     "_No failure modes on file. Operate per CLAUDE.md engineering standards._",
   );
-  retrieveRelevantMemoriesMock.mockReset();
-  retrieveRelevantMemoriesMock.mockResolvedValue({
+  retrieveCrossNamespaceMemoriesMock.mockReset();
+  retrieveCrossNamespaceMemoriesMock.mockResolvedValue({
     retrievalEventId: -1,
     retrieved: [],
+    byNamespace: {},
     latencyMs: 1,
   });
   // Reset module cache so the env-driven TEAM_STATE_PATH constant is
@@ -371,9 +374,7 @@ describe("buildSystemPrompt", () => {
     const failureIdx = prompt.indexOf(
       "# Failure-mode library — patterns to avoid",
     );
-    const lessonsIdx = prompt.indexOf(
-      "# Relevant past lessons (learning-loop RAG)",
-    );
+    const lessonsIdx = prompt.indexOf("# Relevant historical context");
     const modeIdx = prompt.indexOf("# Solene autonomous-dispatch mode");
     const hardRulesIdx = prompt.indexOf("## Hard rules");
     const briefIdx = prompt.indexOf("## Your role brief");
@@ -471,27 +472,30 @@ describe("buildSystemPrompt", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// Tier 2D — learning-loop RAG wire-in regression
+// Tier 2D / Jarvis 2.4 — cross-namespace memory RAG wire-in regression
 // ─────────────────────────────────────────────────────────────────────────
 
-describe("buildSystemPrompt — learning-loop RAG wire-in (Tier 2D)", () => {
-  it("retrieved lessons reach the prompt via the real render path", async () => {
-    retrieveRelevantMemoriesMock.mockResolvedValueOnce({
+describe("buildSystemPrompt — cross-namespace memory RAG wire-in (Tier 2D / 2.4)", () => {
+  it("retrieved memories reach the prompt via the real render path", async () => {
+    retrieveCrossNamespaceMemoriesMock.mockResolvedValueOnce({
       retrievalEventId: 17,
       retrieved: [
         {
+          namespace: "feedback_memory",
           sourceRef: "feedback-credential-value-handling",
           contentSnippet:
             "RAG_LESSON_SNIPPET_A — credential values must never appear in tool output.",
           similarityScore: 0.8421,
         },
         {
-          sourceRef: "feedback-rate-limit-ip-keying",
+          namespace: "founder_precedent",
+          sourceRef: "founder_precedent:decision:41",
           contentSnippet:
-            "RAG_LESSON_SNIPPET_B — never key rate limiters purely by IP.",
+            "RAG_RULING_SNIPPET_B — founder ruled vendor lock-in clauses get rejected.",
           similarityScore: 0.7611,
         },
       ],
+      byNamespace: { feedback_memory: 1, founder_precedent: 1 },
       latencyMs: 12,
     });
     const mod = await import("./dispatchRunner");
@@ -504,26 +508,24 @@ describe("buildSystemPrompt — learning-loop RAG wire-in (Tier 2D)", () => {
     );
 
     // The retriever must be consulted with the dispatch's brief + role + id.
-    expect(retrieveRelevantMemoriesMock).toHaveBeenCalledTimes(1);
-    expect(retrieveRelevantMemoriesMock).toHaveBeenCalledWith({
+    expect(retrieveCrossNamespaceMemoriesMock).toHaveBeenCalledTimes(1);
+    expect(retrieveCrossNamespaceMemoriesMock).toHaveBeenCalledWith({
       queryText: "IRIS — harden the auth rate limiter.",
       queryingAgentRole: "iris",
       queryDispatchId: 123,
     });
 
-    // The real buildRetrievedMemoriesPromptBlock output must be in the prompt.
-    expect(prompt).toContain("# Relevant past lessons (learning-loop RAG)");
-    expect(prompt).toContain("## Relevant past corrections (n=2)");
-    expect(prompt).toContain(
-      "### feedback-credential-value-handling — similarity 0.8421",
-    );
+    // The real buildMultiNamespacePromptBlock output must be in the prompt:
+    // one top header + one subsection per namespace, in render order.
+    expect(prompt).toContain("# Relevant historical context (n=2)");
+    expect(prompt).toContain("## Past feedback memories (1)");
+    expect(prompt).toContain("**feedback-credential-value-handling**");
     expect(prompt).toContain("RAG_LESSON_SNIPPET_A");
-    expect(prompt).toContain(
-      "### feedback-rate-limit-ip-keying — similarity 0.7611",
-    );
-    expect(prompt).toContain("RAG_LESSON_SNIPPET_B");
+    expect(prompt).toContain("## Past founder rulings (1)");
+    expect(prompt).toContain("**founder_precedent:decision:41**");
+    expect(prompt).toContain("RAG_RULING_SNIPPET_B");
 
-    // Lessons land in the STATIC prefix (cached) — between failure modes
+    // Memories land in the STATIC prefix (cached) — between failure modes
     // and the dispatch-mode preamble.
     const parts = await mod.buildSystemPromptParts(
       "IRIS — harden the auth rate limiter.",
@@ -532,34 +534,33 @@ describe("buildSystemPrompt — learning-loop RAG wire-in (Tier 2D)", () => {
       2.5,
       900_000,
     );
-    expect(parts.staticPrefix).toContain(
-      "# Relevant past lessons (learning-loop RAG)",
-    );
+    expect(parts.staticPrefix).toContain("# Relevant historical context");
   });
 
-  it("renders the explicit no-lessons fallback when retrieval is empty", async () => {
-    retrieveRelevantMemoriesMock.mockResolvedValueOnce({
+  it("renders the explicit no-memories fallback when retrieval is empty", async () => {
+    retrieveCrossNamespaceMemoriesMock.mockResolvedValueOnce({
       retrievalEventId: -1,
       retrieved: [],
+      byNamespace: {},
       latencyMs: 3,
     });
     const mod = await import("./dispatchRunner");
     const prompt = await mod.buildSystemPrompt("soren brief", "soren", 1, 1, 60_000);
-    expect(prompt).toContain("# Relevant past lessons (learning-loop RAG)");
+    expect(prompt).toContain("# Relevant historical context (memory RAG)");
     expect(prompt).toContain(
-      "_No relevant past corrections retrieved for this task._",
+      "_No relevant past lessons, rulings, or decisions retrieved for this task._",
     );
   });
 
   it("degrades to the fallback when the retriever rejects — never blocks dispatch", async () => {
-    retrieveRelevantMemoriesMock.mockRejectedValueOnce(
+    retrieveCrossNamespaceMemoriesMock.mockRejectedValueOnce(
       new Error("pgvector unavailable"),
     );
     const mod = await import("./dispatchRunner");
     const prompt = await mod.buildSystemPrompt("soren brief", "soren", 1, 1, 60_000);
-    expect(prompt).toContain("# Relevant past lessons (learning-loop RAG)");
+    expect(prompt).toContain("# Relevant historical context (memory RAG)");
     expect(prompt).toContain(
-      "_No relevant past corrections retrieved for this task._",
+      "_No relevant past lessons, rulings, or decisions retrieved for this task._",
     );
     // The rest of the prompt still assembles.
     expect(prompt).toContain("# Solene autonomous-dispatch mode");

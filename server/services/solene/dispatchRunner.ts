@@ -34,9 +34,9 @@ import { listActiveClaims } from "./agentClaims";
 import { loadAgentIdentityBlock } from "./agentIdentity";
 import { loadFailureModePreambleFor } from "./failureModeLibrary";
 import {
-  retrieveRelevantMemories,
-  buildRetrievedMemoriesPromptBlock,
-} from "./learningLoop";
+  retrieveCrossNamespaceMemories,
+  buildMultiNamespacePromptBlock,
+} from "./memoryRetrieval";
 import { recordCapitalEvent } from "./capitalTracker";
 import {
   completeDispatch,
@@ -372,9 +372,13 @@ export async function buildSystemPromptParts(
   // plannedFiles is unavailable at this layer (the model decides what to
   // touch via tool_use mid-turn), so the failure-mode preamble falls back
   // to the top-3 critical/high modes for every dispatch.
-  // retrieveRelevantMemories never throws by contract, but the .catch keeps
-  // prompt assembly alive even if that contract regresses — a missed lesson
-  // must never block a dispatch.
+  // retrieveCrossNamespaceMemories never throws by contract, but the .catch
+  // keeps prompt assembly alive even if that contract regresses — a missed
+  // lesson must never block a dispatch. Cross-namespace (Jarvis 2.4, G4 fix):
+  // dispatched agents see founder rulings, past decisions, and audit findings
+  // alongside feedback corrections — not just the feedback_memory silo.
+  // Platform scope (no organizationId): dispatches are Level-1 work per
+  // docs/company/three-level-boundary.md.
   const [
     teamStatePreamble,
     activeClaimsBlock,
@@ -386,7 +390,7 @@ export async function buildSystemPromptParts(
     loadActiveClaimsBlock(dispatchId),
     loadAgentIdentityBlock(role),
     loadFailureModePreambleFor(role, undefined),
-    retrieveRelevantMemories({
+    retrieveCrossNamespaceMemories({
       queryText: brief,
       queryingAgentRole: role,
       queryDispatchId: dispatchId,
@@ -396,8 +400,8 @@ export async function buildSystemPromptParts(
   ]);
 
   const retrievedLessonsBlock =
-    buildRetrievedMemoriesPromptBlock(retrievedLessons) ||
-    "_No relevant past corrections retrieved for this task._";
+    buildMultiNamespacePromptBlock(retrievedLessons) ||
+    "_No relevant past lessons, rulings, or decisions retrieved for this task._";
 
   const staticPrefix = [
     "# Team-state preamble (auto-generated, 15-min refresh)",
@@ -416,9 +420,12 @@ export async function buildSystemPromptParts(
     "",
     failureModeBlock,
     "",
-    "# Relevant past lessons (learning-loop RAG)",
-    "",
-    retrievedLessonsBlock,
+    // buildMultiNamespacePromptBlock emits its own "# Relevant historical
+    // context" header + per-namespace subsections; the fallback line below
+    // needs the header supplied here.
+    retrievedLessonsBlock.startsWith("#")
+      ? retrievedLessonsBlock
+      : `# Relevant historical context (memory RAG)\n\n${retrievedLessonsBlock}`,
     "",
     "# Solene autonomous-dispatch mode",
     "",
@@ -763,8 +770,10 @@ export async function runDispatch(
     const blockOpen = systemPrompt.indexOf(
       "# Failure-mode library — patterns to avoid",
     );
+    // Matches both the real cross-namespace block header ("… (n=X)") and the
+    // empty-retrieval fallback ("… (memory RAG)") — prefix match by indexOf.
     const blockClose = systemPrompt.indexOf(
-      "# Relevant past lessons (learning-loop RAG)",
+      "# Relevant historical context",
     );
     if (blockOpen === -1 || blockClose === -1) return 0;
     const block = systemPrompt.slice(blockOpen, blockClose);
