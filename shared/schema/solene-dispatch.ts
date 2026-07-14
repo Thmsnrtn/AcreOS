@@ -237,6 +237,34 @@ export const DISPATCH_SOURCE_TYPES = [
 ] as const;
 export type SoleneDispatchSourceType = (typeof DISPATCH_SOURCE_TYPES)[number];
 
+// ============================================
+// READ-ONLY DISPATCH LANES — Horizon A5 (connections sweep).
+// Audit/verification lanes OBSERVE, never mutate. Until A5 this was a
+// comment-only contract (the CP2 verify prompt says "Do NOT modify any
+// files" but nothing removed the tools); now it is STRUCTURAL: for these
+// sourceTypes the worker strips every mutating tool from the toolset
+// (dispatchToolExecutor.getDispatchToolSchemas({ readOnly: true })) AND the
+// executor rejects mutating tool calls outright even if the model
+// hallucinates one (fail closed with a logged refusal; the dispatch
+// continues). See dispatchRunner.ts, which derives the flag from the queue
+// row's sourceType.
+//   verify           — CP2 outcome verification (read-only observer).
+//   self_audit_drift — Horizon A5 weekly connections sweep (contradictions /
+//                      forgotten precedents / stale doctrine). Findings are
+//                      persisted as a blob + a Letter paragraph — never an
+//                      interrupt, never a write.
+// ============================================
+export const READ_ONLY_DISPATCH_SOURCE_TYPES = [
+  "verify",
+  "self_audit_drift",
+] as const satisfies readonly SoleneDispatchSourceType[];
+
+/** True when dispatches of this sourceType must run with the read-only
+ *  toolset (no file_write / git_commit / bash / run_tests / outward hands). */
+export function isReadOnlyDispatchSourceType(sourceType: string): boolean {
+  return (READ_ONLY_DISPATCH_SOURCE_TYPES as readonly string[]).includes(sourceType);
+}
+
 export const DISPATCH_AGENT_ROLES = [
   "iris",
   "soren",

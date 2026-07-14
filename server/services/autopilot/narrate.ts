@@ -99,6 +99,14 @@ export interface FounderBriefInputs {
    * summary was unreadable — the sentence is omitted, never invented.
    */
   scoring?: { totalScored: number; averageScore: number; deferredCount: number } | null;
+  /**
+   * Horizon A5 — the latest weekly connections sweep's PARSED finding count.
+   * One sentence in the pulse when findings exist; SILENT when none, when no
+   * sweep has run, or when the blob was unreadable/unparseable (the Letter's
+   * connections paragraph carries the honest detail — the pulse never
+   * interrupts and never pads). null = omit the sentence.
+   */
+  sweep?: { findingsCount: number } | null;
 }
 
 export interface FounderBrief {
@@ -205,6 +213,16 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
   if (inp.scoring && inp.scoring.totalScored > 0) {
     parts.push(
       `I scored ${countNoun(inp.scoring.totalScored, "prospective dispatch", "prospective dispatches")} against expected value today (average score ${inp.scoring.averageScore.toFixed(2)}, ${inp.scoring.deferredCount} deferred).`,
+    );
+  }
+
+  // Connections sweep (Horizon A5) — one sentence, ONLY when the last sweep
+  // parsed real findings. Silence otherwise: no sweep / zero findings /
+  // unreadable blob all say nothing here (never an interrupt, never padding);
+  // The Letter carries the detail.
+  if (inp.sweep && inp.sweep.findingsCount > 0) {
+    parts.push(
+      `The weekly connections sweep flagged ${countNoun(inp.sweep.findingsCount, "item", "items")} — details in The Letter.`,
     );
   }
 
@@ -453,6 +471,18 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     scoring = null;
   }
 
+  // Connections sweep (Horizon A5) — parsed finding count from the persisted
+  // blob. Best-effort: unreadable / absent / unparseable → null → the pulse
+  // stays silent (the Letter paragraph carries the honest state).
+  let sweep: FounderBriefInputs["sweep"] = null;
+  try {
+    const { readLatestSweepBlob } = await import("../solene/connectionsSweep");
+    const blob = await readLatestSweepBlob();
+    sweep = blob && blob.parseOk ? { findingsCount: blob.findings.length } : null;
+  } catch {
+    sweep = null;
+  }
+
   // Operating mode — read the real switches; null (silent) when unreadable.
   let operatingMode: FounderBriefInputs["operatingMode"] = null;
   try {
@@ -482,6 +512,7 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     errorRatePct,
     prodVersion,
     scoring,
+    sweep,
   });
 }
 

@@ -490,7 +490,24 @@ export async function completeDispatch(
         .from(soleneDispatchQueue)
         .where(eq(soleneDispatchQueue.id, id))
         .limit(1);
-      if (row?.sourceType !== "code_review" && row?.sourceType !== "verify") return;
+      if (
+        row?.sourceType !== "code_review" &&
+        row?.sourceType !== "verify" &&
+        row?.sourceType !== "self_audit_drift"
+      )
+        return;
+      // Horizon A5 — the weekly connections sweep rides
+      // sourceType='self_audit_drift' (verified: zero other enqueue callers).
+      // Its result contract is a FINDINGS block, not a VERDICT: parse +
+      // persist the findings blob to platform_settings
+      // ('connections_sweep.latest') — silent-log tier, NEVER an interrupt
+      // (no inbox cards, no notifications; The Letter/pulse read the blob).
+      // An unparseable block is recorded as parseOk=false, honestly.
+      if (row.sourceType === "self_audit_drift") {
+        const { handleSweepCompletion } = await import("./connectionsSweep");
+        await handleSweepCompletion(id, result.resultSummary);
+        return;
+      }
       const { parseReviewVerdict } = await import("./codeReviewQueue");
       const verdict = parseReviewVerdict(result.resultSummary);
       if (!verdict) {

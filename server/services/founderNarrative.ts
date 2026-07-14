@@ -70,6 +70,14 @@ export interface MonthlySummary {
    * "unmeasured" on a failed read.
    */
   cognitionParagraph: string;
+  /**
+   * Horizon A5 — one honest paragraph on the weekly connections sweep
+   * (contradictions / forgotten precedents / stale doctrine), read from the
+   * persisted findings blob. Findings are listed one line each; an empty
+   * sweep says plainly that nothing was found (never padded); no blob yet
+   * says the sweep hasn't run; a failed read says "unmeasured".
+   */
+  connectionsParagraph: string;
   agents: Array<{
     codename: string;
     decisionsOwned: number;
@@ -409,6 +417,22 @@ async function buildSummary(
       "Cognition: unmeasured this month (spend/value read failed) — no number is quoted rather than a guessed one.";
   }
 
+  // Horizon A5 — the connections-sweep paragraph, read from the persisted
+  // blob (platform_settings 'connections_sweep.latest'). Same posture as the
+  // calibration/cognition paragraphs: a failed read says "unmeasured" —
+  // never fabricated findings, never a fabricated all-clear.
+  let connectionsParagraph: string;
+  try {
+    const { readLatestSweepBlob } = await import("./solene/connectionsSweep");
+    connectionsParagraph = buildConnectionsParagraph(await readLatestSweepBlob());
+  } catch (err: any) {
+    logger.warn("[founderNarrative] connections-sweep read failed — reporting unmeasured", {
+      metadata: { error: err?.message },
+    });
+    connectionsParagraph =
+      "Connections sweep: unmeasured this month (findings read failed) — nothing is quoted rather than a guessed all-clear.";
+  }
+
   // Pull synthesized strategic moves for next month, if any.
   // The letter is written FOR month N but looks AHEAD to month N+1,
   // so we peek at synthesized proposals targeted at the upcoming month.
@@ -453,6 +477,7 @@ async function buildSummary(
     },
     calibrationParagraph,
     cognitionParagraph,
+    connectionsParagraph,
     agents,
     pendingProposals: proposalRows.length,
     openDecisionsNeedingFounder: Number(openDecisionsRow[0]?.c ?? 0),
@@ -557,6 +582,48 @@ export function buildCognitionParagraph(roi: {
 }
 
 /**
+ * Horizon A5 — one honest paragraph on the weekly connections sweep for The
+ * Letter. Reads the persisted blob (never re-runs the sweep). Exported for
+ * unit tests. Pure.
+ *
+ *   - no blob yet          → "has not run yet"
+ *   - unparseable findings → says so ("sweep completed, findings unparseable")
+ *   - zero findings        → the plain all-clear sentence, never padded
+ *   - findings             → one line each, refs cited
+ */
+export function buildConnectionsParagraph(
+  blob: {
+    atIso: string;
+    findings: Array<{ type: string; summary: string; refs: string[] }>;
+    parseOk: boolean;
+  } | null,
+): string {
+  if (blob == null) {
+    return "Connections sweep has not run yet.";
+  }
+  const date = blob.atIso.slice(0, 10);
+  if (!blob.parseOk) {
+    return `Connections sweep (${date}): sweep completed, findings unparseable — recorded as such rather than counted as an all-clear.`;
+  }
+  if (blob.findings.length === 0) {
+    return `Connections sweep: no contradictions, forgotten precedents, or stale doctrine found in the last sweep (${date}).`;
+  }
+  const typeLabel: Record<string, string> = {
+    contradiction: "contradiction",
+    forgotten_precedent: "forgotten precedent",
+    stale_doctrine: "stale doctrine",
+  };
+  const lines = blob.findings.map((f) => {
+    const refs = f.refs.length > 0 ? ` (refs: ${f.refs.join(", ")})` : "";
+    return `- [${typeLabel[f.type] ?? f.type}] ${f.summary}${refs}`;
+  });
+  return (
+    `Connections sweep (${date}): ${blob.findings.length} finding${blob.findings.length === 1 ? "" : "s"}:\n` +
+    lines.join("\n")
+  );
+}
+
+/**
  * Call Opus to turn the structured summary into the one-page letter.
  * The system prompt fixes the voice and structure so the result is
  * consistent month to month.
@@ -603,6 +670,7 @@ function buildNarrativeContext(s: MonthlySummary): string {
   lines.push(`- Net positive: ${s.outcomes.netPositive} · net negative: ${s.outcomes.netNegative}`);
   lines.push(`- ${s.calibrationParagraph}`);
   lines.push(`- ${s.cognitionParagraph}`);
+  lines.push(`- ${s.connectionsParagraph}`);
   lines.push("");
   lines.push(`TOP HIGHLIGHTS (what worked):`);
   for (const h of s.topHighlights) lines.push(`- ${h}`);
@@ -669,6 +737,8 @@ function buildFallbackLetter(s: MonthlySummary): string {
     s.calibrationParagraph,
     "",
     s.cognitionParagraph,
+    "",
+    s.connectionsParagraph,
     "",
     `## What worked`,
     "",

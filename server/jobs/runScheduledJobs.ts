@@ -754,6 +754,75 @@ function startNotePaymentDueDetectorJob() {
 }
 
 // ============================================================================
+// Horizon A5 — doctrine corpus ingest. Daily 03:00 UTC (quiet hours; nothing
+// else runs at 03). Walks the repo doctrine dirs (docs/company, docs/internal,
+// docs/adr, docs/architecture, docs/policies, docs/strategy,
+// sovereign-protocol) and upserts every *.md + immutables.json into the
+// 'doctrine' embedding namespace with a content-hash skip. This daily re-walk
+// IS the auto-queue for docs corpusCompleteness() reports missing or stale.
+// Fail-open per file inside the service; cheap on a no-change day (hash
+// compares only, no re-embeds).
+// ============================================================================
+function startDoctrineIngestJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering doctrine corpus ingest (daily 03:00 UTC)', 'doctrine-ingest');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 3) {
+      import('../services/solene/doctrineIngest').then(({ ingestDoctrineCorpus }) => {
+        withJobLock('doctrine_ingest_daily', TTL_SECONDS, async () => {
+          const r = await ingestDoctrineCorpus();
+          log(
+            `Doctrine ingest: walked=${r.walked} ingested=${r.ingested} skippedUnchanged=${r.skippedUnchanged} failed=${r.failed}`,
+            'doctrine-ingest',
+          );
+        }).catch(err => {
+          log(`Doctrine ingest run failed: ${err}`, 'doctrine-ingest');
+        });
+      }).catch(err => log(`Doctrine ingest import failed: ${err}`, 'doctrine-ingest'));
+    }
+  }, ONE_HOUR);
+}
+
+// ============================================================================
+// Horizon A5 — weekly connections sweep. Mondays 13:00 UTC (an hour before
+// the founder weekly digest window so a completed sweep can already be in
+// the blob when the founder reads Monday's surfaces). Enqueues ONE read-only
+// self_audit_drift dispatch per ISO week (idempotencyKey
+// 'connections-sweep:<ISO week>' — a duplicate tick dedups at the DB level).
+// Findings land as a platform_settings blob + a Letter paragraph. NEVER an
+// interrupt. Stands down when the dispatch switch is off (inside the service).
+// ============================================================================
+function startConnectionsSweepJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 10 * 60;
+
+  log('Registering connections sweep (Mondays 13:00 UTC)', 'connections-sweep');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCDay() === 1 && now.getUTCHours() === 13) {
+      import('../services/solene/connectionsSweep').then(({ enqueueWeeklySweep }) => {
+        withJobLock('connections_sweep_weekly', TTL_SECONDS, async () => {
+          const r = await enqueueWeeklySweep();
+          log(
+            r.skipped
+              ? `Connections sweep skipped: ${r.reason}`
+              : `Connections sweep enqueued dispatch #${r.dispatchId}`,
+            'connections-sweep',
+          );
+        }).catch(err => {
+          log(`Connections sweep run failed: ${err}`, 'connections-sweep');
+        });
+      }).catch(err => log(`Connections sweep import failed: ${err}`, 'connections-sweep'));
+    }
+  }, ONE_HOUR);
+}
+
+// ============================================================================
 // Launch-Week WS4 — Gate-Watcher (the self-birthing roadmap). Daily 09:00 UTC.
 // Evaluates every machine-encoded roadmap gate (mature-machine §4 autonomy
 // switch schedule + phase triggers: Phase-1 runbook at $200 MRR held 30d,
@@ -4252,6 +4321,15 @@ export async function runScheduledJobs(): Promise<void> {
   // roadmap items detect their own moment and become one-tap founder
   // Decisions (or auto-execute where the studio dial says autoApprove).
   startGateWatcherJob();
+
+  // Horizon A5 — doctrine corpus ingest (daily 03:00 UTC): the repo's
+  // doctrine dirs → 'doctrine' embedding namespace, hash-skip on unchanged.
+  startDoctrineIngestJob();
+
+  // Horizon A5 — connections sweep (Mondays 13:00 UTC): one read-only
+  // dispatch per ISO week hunting contradictions / forgotten precedents /
+  // stale doctrine. Findings blob + Letter paragraph — never an interrupt.
+  startConnectionsSweepJob();
 
   // §1026.41 periodic statements — monthly (1st of month, 09:00 UTC).
   // Generates one statement per active loan per org per cycle.

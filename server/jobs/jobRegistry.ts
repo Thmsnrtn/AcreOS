@@ -176,6 +176,17 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // counts-only outward senses. Non-critical: a dark scan delays perception
   // by a day; the deadman still surfaces the absence.
   { name: "note_payment_due_scan", intervalMs: DAY, critical: false, cron: "0 11 * * *" },
+  // Horizon A5 — doctrine corpus ingest: daily 03:00 UTC walk of the repo
+  // doctrine dirs into the 'doctrine' embedding namespace (hash-skip on
+  // unchanged). Non-critical: a dark ingest delays memory freshness by a
+  // day; the deadman surfaces the absence as P2 and corpusCompleteness()
+  // shows the drift.
+  { name: "doctrine_ingest_daily", intervalMs: DAY, critical: false, cron: "0 3 * * *" },
+  // Horizon A5 — weekly connections sweep: Mondays 13:00 UTC, one read-only
+  // self_audit_drift dispatch per ISO week (contradictions / forgotten
+  // precedents / stale doctrine → findings blob + Letter paragraph, never an
+  // interrupt). Non-critical: a missed week is recoverable next Monday.
+  { name: "connections_sweep_weekly", intervalMs: WEEK, critical: false, cron: "0 13 * * 1" },
   { name: "customer_unit_economics", intervalMs: DAY, critical: false },
   { name: "api_telemetry_rollup", intervalMs: DAY, critical: false },
   { name: "reserve_floor_check", intervalMs: DAY, critical: true },
