@@ -99,6 +99,9 @@ export const MEMORY_RETRIEVAL_NAMESPACES = [
   // Jarvis 2.3 — founder rulings written back from decision-inbox resolves
   // (decisions_inbox_items, source_ref founder_precedent:decision:<id>).
   "founder_precedent",
+  // Horizon A5 — platform doctrine docs (repo-relative source_ref), walked +
+  // upserted daily by server/services/solene/doctrineIngest.ts. Org NULL.
+  "doctrine",
 ] as const;
 export type MemoryRetrievalNamespace =
   (typeof MEMORY_RETRIEVAL_NAMESPACES)[number];

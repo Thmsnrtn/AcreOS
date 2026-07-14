@@ -8,6 +8,13 @@
  *                                              daily-pulse workflow)
  *   GET /api/founder/solene-capital/recent   — last 7 days of capital events
  *
+ *   GET /api/founder/admin/memory/corpus     — memory-corpus status (per-namespace
+ *                                              ledger counts) + the Horizon A5
+ *                                              disk-vs-store doctrine completeness
+ *                                              report. The /founder/admin/* deep
+ *                                              instrument namespace, visited
+ *                                              deliberately.
+ *
  * Auth: isAuthenticated + requireFounder. The /envelope endpoint also accepts
  * a shared-secret header (X-Pulse-Secret matching PULSE_SHARED_SECRET) so the
  * GitHub Actions daily-pulse workflow can read it without a Clerk session.
@@ -184,6 +191,43 @@ export function registerSoleneAuditRoutes(app: Express): void {
         return res.json({
           envelope: status,
           last24hSpendUsd: last24h.totalUsd,
+        });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ──────────────────────────────────────────────────────────────────────
+  // MEMORY CORPUS — Horizon A5 (doctrine ingest + auditable completeness)
+  // ──────────────────────────────────────────────────────────────────────
+
+  // FOUNDER — memory corpus status + doctrine completeness. `corpusStatus`
+  // is the per-namespace ledger view (getCorpusStatus — wired into use here
+  // after shipping consumer-less); `completeness` compares disk vs store
+  // DIRECTLY for the doctrine namespace, so it never under-reports the way
+  // the ledger can. Missing/stale docs need no manual action: the daily
+  // doctrine-ingest job IS the queue and picks them up on its next run —
+  // stated in the response so the surface is self-explaining.
+  app.get(
+    "/api/founder/admin/memory/corpus",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const [{ getCorpusStatus }, { corpusCompleteness }] = await Promise.all([
+          import("./services/solene/memoryRetrieval"),
+          import("./services/solene/doctrineIngest"),
+        ]);
+        const [corpusStatus, completeness] = await Promise.all([
+          getCorpusStatus(),
+          corpusCompleteness(),
+        ]);
+        return res.json({
+          corpusStatus,
+          completeness,
+          note:
+            "Missing and stale-hash docs are auto-queued by the daily doctrine ingest job (03:00 UTC) — the job is the queue; no manual action needed.",
         });
       } catch (err) {
         return Errors.internal(res, err);

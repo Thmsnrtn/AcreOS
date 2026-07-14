@@ -197,6 +197,14 @@ export const EMBEDDING_NAMESPACES = [
   // the write side (server/services/solene/founderPrecedent.ts) — only
   // reasoned rejections/overrides and explicit option picks are stored.
   "founder_precedent",
+  // Horizon A5 — the doctrine corpus: PLATFORM docs only (organization_id IS
+  // NULL), ingested from the repo's own doctrine dirs (docs/company,
+  // docs/internal, docs/adr, docs/architecture, docs/policies, docs/strategy,
+  // sovereign-protocol — *.md + immutables.json) by
+  // server/services/solene/doctrineIngest.ts. source_ref = repo-relative
+  // path; content_hash of the FULL file detects drift; the daily ingest job
+  // re-walks and upserts. Never tenant data.
+  "doctrine",
 ] as const;
 export type EmbeddingNamespace = (typeof EMBEDDING_NAMESPACES)[number];
 

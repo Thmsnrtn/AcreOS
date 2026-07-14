@@ -441,16 +441,72 @@ export type DispatchToolName =
   (typeof DISPATCH_TOOL_SCHEMAS)[number]["name"];
 
 /**
+ * Horizon A5 — the mutating half of the built-in toolset. A READ-ONLY
+ * dispatch (sourceType in READ_ONLY_DISPATCH_SOURCE_TYPES: verify +
+ * self_audit_drift) must be structurally incapable of writing files or
+ * committing, so these are stripped from its toolset AND rejected by the
+ * executor even if the model hallucinates a call.
+ *
+ * Enumerated against the full DISPATCH_TOOL_SCHEMAS list:
+ *   - file_write  — writes files. Mutating.
+ *   - git_commit  — commits (git add + git commit). Mutating.
+ *   - bash        — free-form shell (already stripped for untrusted; listed
+ *                   here so read-only is independent of the untrusted flag).
+ *   - run_tests   — spawns `npx vitest run`; test runs can write artifacts /
+ *                   snapshots, so the observe-only lane loses it too.
+ * Kept deliberately: file_read, file_list, git_status, git_diff, typecheck
+ * (`tsc --noEmit` writes nothing), and the DB-backed memory/observability
+ * tools (record_decision, record_decision_trace, record_counterfactual,
+ * record_speculation, find_matching_speculations, assess_evidence,
+ * propose_capability, send_message_to_agent, read_agent_inbox) — those are
+ * the silent-log tier, not repo/world mutation. Autopilot HANDS (outward
+ * actions) are excluded wholesale for read-only dispatches — see
+ * getDispatchToolSchemas + isReadOnlyBlockedDispatchTool.
+ */
+export const READ_ONLY_BLOCKED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "file_write",
+  "git_commit",
+  "bash",
+  "run_tests",
+]);
+
+/**
+ * True when `toolName` must be refused for a read-only dispatch: either a
+ * blocked built-in (writes files / commits / free shell / test artifacts) or
+ * ANY registered autopilot hand (hands are outward effects by definition).
+ * Exported for tests.
+ */
+export function isReadOnlyBlockedDispatchTool(toolName: string): boolean {
+  if (READ_ONLY_BLOCKED_TOOL_NAMES.has(toolName)) return true;
+  return Boolean(getHand(toolName));
+}
+
+/**
  * The full tool-schema list shown to the dispatched model: the built-in tools
  * PLUS every registered autopilot hand (Hands roadmap P0.1). The hand registry
  * is empty until a phase registers a hand, so this returns exactly
  * DISPATCH_TOOL_SCHEMAS until then.
+ *
+ * `readOnly` (Horizon A5) — for READ_ONLY_DISPATCH_SOURCE_TYPES (verify +
+ * self_audit_drift) every mutating tool is removed at the TOOLSET level (the
+ * model never sees file_write / git_commit / bash / run_tests, and no hands),
+ * closing the CP2 comment-only gap. The executor's own rejection in
+ * executeDispatchTool is the fail-closed second layer.
  */
-export function getDispatchToolSchemas(opts?: { untrusted?: boolean }): ReadonlyArray<{
+export function getDispatchToolSchemas(opts?: {
+  untrusted?: boolean;
+  readOnly?: boolean;
+}): ReadonlyArray<{
   name: string;
   description: string;
   input_schema: Record<string, unknown>;
 }> {
+  if (opts?.readOnly) {
+    // Read-only lane: strip every mutating built-in and ALL hands.
+    return DISPATCH_TOOL_SCHEMAS.filter(
+      (t) => !READ_ONLY_BLOCKED_TOOL_NAMES.has(t.name),
+    );
+  }
   // SECURITY: autonomous (untrusted) dispatches do NOT get free-form `bash`.
   // The whole regex command-screen surface exists only because bash is free-form;
   // removing the tool from the untrusted toolset collapses that surface. Agents
@@ -494,6 +550,14 @@ export interface DispatchToolContext {
    * every dispatch it runs.
    */
   untrusted?: boolean;
+  /**
+   * Horizon A5 — STRUCTURAL read-only. True when the dispatch's sourceType is
+   * in READ_ONLY_DISPATCH_SOURCE_TYPES (verify + self_audit_drift). Mutating
+   * tool calls (file_write, git_commit, bash, run_tests, any hand) are
+   * REJECTED fail-closed with a logged refusal even if the model hallucinates
+   * one the toolset filter already removed; the dispatch continues.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -691,6 +755,33 @@ export async function executeDispatchTool(
 ): Promise<ToolExecutionResult> {
   const started = Date.now();
   try {
+    // Horizon A5 — structural read-only. Checked BEFORE anything executes so
+    // a read-only dispatch (verify / self_audit_drift) is INCAPABLE of
+    // writing files, committing, or firing an outward hand, even when the
+    // model hallucinates a tool the schema filter already removed. Fail
+    // closed: logged refusal, dispatch continues.
+    if (ctx.readOnly && isReadOnlyBlockedDispatchTool(toolName)) {
+      logger.warn(
+        `[dispatchToolExecutor] read-only dispatch REFUSED mutating tool '${toolName}'`,
+        {
+          metadata: {
+            tool: toolName,
+            dispatchId: ctx.dispatchId ?? null,
+            agentRole: ctx.agentRole ?? "unknown",
+          },
+        },
+      );
+      return {
+        success: false,
+        output:
+          `[READ-ONLY REFUSAL] '${toolName}' is a mutating tool and this is a ` +
+          `read-only dispatch (audit/verification lane — it observes, never ` +
+          `mutates). Use file_read / file_list / git_status / git_diff / ` +
+          `typecheck and report what you find. Refusing.`,
+        durationMs: Date.now() - started,
+      };
+    }
+
     // L6.29 — constitutional self-defense at the tool-call layer.
     // screenToolCall is awaited BEFORE the underlying tool runs. If a
     // pattern rule blocks the call, the underlying tool is NOT invoked,

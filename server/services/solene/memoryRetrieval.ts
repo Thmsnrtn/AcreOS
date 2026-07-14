@@ -226,6 +226,7 @@ export function dedupBySource(items: RetrievedItem[]): RetrievedItem[] {
  */
 const NAMESPACE_RENDER_ORDER: MemoryNamespace[] = [
   "founder_precedent",
+  "doctrine",
   "feedback_memory",
   "dispatch_summary",
   "agent_decision",
@@ -240,6 +241,7 @@ const NAMESPACE_DISPLAY_NAMES: Record<MemoryNamespace, string> = {
   decision_trace_step: "Past decision traces",
   audit_finding: "Past audit findings",
   founder_precedent: "Past founder rulings",
+  doctrine: "Platform doctrine",
 };
 
 /**
@@ -397,6 +399,7 @@ function emptyByNamespace(): Record<MemoryNamespace, number> {
     decision_trace_step: 0,
     audit_finding: 0,
     founder_precedent: 0,
+    doctrine: 0,
   };
 }
 
@@ -484,6 +487,7 @@ export async function getCorpusStatus(): Promise<CorpusStatus> {
     },
     audit_finding: { rowsIngested: 0, lastIngestedAt: null, rowsFailed: 0 },
     founder_precedent: { rowsIngested: 0, lastIngestedAt: null, rowsFailed: 0 },
+    doctrine: { rowsIngested: 0, lastIngestedAt: null, rowsFailed: 0 },
   };
   let totalEmbeddings = 0;
 

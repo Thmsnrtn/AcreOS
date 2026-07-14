@@ -90,7 +90,7 @@ describe("solene_embedded_records org-scoping invariant", () => {
     ]);
   });
 
-  it("enumerates exactly the 6 org-NULL-eligible namespaces from EMBEDDING_NAMESPACES", () => {
+  it("enumerates exactly the 7 org-NULL-eligible namespaces from EMBEDDING_NAMESPACES", () => {
     // The invariant's allowlist is sourced from the schema constant. If a
     // new globally-shared (organization_id IS NULL) namespace is added, the
     // schema constant moves first; if a future namespace is meant to be
@@ -106,9 +106,15 @@ describe("solene_embedded_records org-scoping invariant", () => {
     // (docs/company/three-level-boundary.md rule 5): founder rulings about
     // running AcreOS, stored org-NULL with the originating org id in
     // metadata only.
+    //
+    // `doctrine` (Horizon A5) is the PLATFORM doctrine corpus — repo docs
+    // (docs/company, docs/internal, docs/adr, docs/architecture,
+    // docs/policies, docs/strategy, sovereign-protocol) ingested by
+    // doctrineIngest.ts at organization_id IS NULL. Never tenant data.
     expect([...TEAM_INTERNAL_NAMESPACES].sort()).toEqual([
       "audit_finding",
       "decision_trace",
+      "doctrine",
       "failure_mode",
       "feedback_memory",
       "founder_precedent",

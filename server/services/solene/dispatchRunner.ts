@@ -27,7 +27,10 @@ import type {
   SoleneDispatchQueueRow,
   SoleneDispatchAgentRole,
 } from "@shared/schema/solene-dispatch";
-import { DISPATCH_MAX_TURNS } from "@shared/schema/solene-dispatch";
+import {
+  DISPATCH_MAX_TURNS,
+  isReadOnlyDispatchSourceType,
+} from "@shared/schema/solene-dispatch";
 import { ANTHROPIC_MODELS } from "../models";
 import { logger } from "../../utils/logger";
 import { listActiveClaims } from "./agentClaims";
@@ -577,6 +580,12 @@ export async function runDispatch(
   const dispatchId = row.id;
   const maxCostUsd = Number(row.maxCostUsd);
   const timeoutMs = row.timeoutMs;
+  // Horizon A5 — STRUCTURAL read-only for audit/verification lanes (verify +
+  // self_audit_drift). Derived from the queue row's sourceType and threaded
+  // to BOTH the toolset (the model never sees a mutating tool) and the
+  // executor (which rejects one fail-closed anyway). Closes the CP2
+  // comment-only "read-only" gap.
+  const readOnly = isReadOnlyDispatchSourceType(row.sourceType);
 
   await ensureTranscriptDir();
   const transcriptPath = transcriptPathFor(dispatchId);
@@ -925,7 +934,9 @@ export async function runDispatch(
           system: cachedSystem as any,
           messages: messages as any,
           // Worker dispatches are untrusted → no free-form bash in the toolset.
-          tools: getDispatchToolSchemas({ untrusted: true }) as any,
+          // Read-only lanes (verify / self_audit_drift) additionally lose
+          // every mutating tool (Horizon A5 — structural, not prompt-level).
+          tools: getDispatchToolSchemas({ untrusted: true, readOnly }) as any,
         },
         { timeout: remainingMs },
       );
@@ -1000,6 +1011,9 @@ export async function runDispatch(
           dispatchId,
           agentRole: row.agentRole,
           untrusted: true,
+          // Horizon A5 — executor-level fail-closed rejection of mutating
+          // tools for read-only lanes, even if the model hallucinates one.
+          readOnly,
         });
         await appendTranscript(transcriptPath, {
           event: "tool_use",
