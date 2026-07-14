@@ -33,6 +33,37 @@ function triggerHaptic(style: 'light' | 'medium' | 'heavy' = 'medium') {
   } catch {}
 }
 
+// Jarvis 2.3 — phone-answerable card option (contextBundle.options) and the
+// precedent attached by the cascade (contextBundle.precedents).
+interface DecisionCardOption {
+  key: string;
+  label: string;
+}
+
+interface DecisionPrecedent {
+  sourceRef: string;
+  snippet: string;
+  similarity: number;
+}
+
+function readOptions(bundle: Record<string, any> | null): DecisionCardOption[] {
+  const raw = bundle?.options;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (o: any): o is DecisionCardOption =>
+      o && typeof o.key === "string" && typeof o.label === "string",
+  );
+}
+
+function readPrecedents(bundle: Record<string, any> | null): DecisionPrecedent[] {
+  const raw = bundle?.precedents;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (p: any): p is DecisionPrecedent =>
+      p && typeof p.sourceRef === "string" && typeof p.snippet === "string",
+  );
+}
+
 interface DecisionItem {
   id: number;
   itemType: string;
@@ -129,6 +160,18 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
   const agent = item.ownerAgentCodename || "sophie_csm";
   const avatar = AGENT_AVATARS[agent] || "🤖";
   const role = AGENT_ROLES[agent] || "AI Agent";
+  const options = readOptions(item.contextBundle);
+  const precedents = readPrecedents(item.contextBundle);
+
+  // Jarvis 2.3 — tapping an option answers the card in one gesture:
+  // 'approve_recommended' approves (and executes the recommended action);
+  // any other key lands as an override recorded verbatim.
+  const answerWithOption = (opt: DecisionCardOption) => {
+    mutate.mutate({
+      action: opt.key === "approve_recommended" ? "approve" : "override",
+      body: { chosenOption: opt.key },
+    });
+  };
 
   if (dismissed) return null;
 
@@ -250,8 +293,19 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={expandFade}
-                className="overflow-hidden"
+                className="overflow-hidden space-y-2"
               >
+                {/* Jarvis 2.3 — precedent(s) attached by the cascade */}
+                {precedents.length > 0 && (
+                  <div className="text-xs bg-muted rounded-card p-3 space-y-1">
+                    <p className="font-medium text-foreground">Previously ruled</p>
+                    {precedents.slice(0, 3).map((p) => (
+                      <p key={p.sourceRef} className="text-muted-foreground leading-snug">
+                        {p.snippet.length > 200 ? `${p.snippet.slice(0, 200)}…` : p.snippet}
+                      </p>
+                    ))}
+                  </div>
+                )}
                 <pre className="text-xs bg-muted rounded-card p-3 overflow-auto max-h-32">
                   {JSON.stringify(item.contextBundle, null, 2)}
                 </pre>
@@ -259,47 +313,71 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
             )}
           </AnimatePresence>
 
-          {/* Action buttons (fallback for non-swipe users) */}
-          <div className="flex items-center gap-2 pt-1">
-            <Button
-              type="button"
-              size="sm"
-              className="bg-acr-pos hover:bg-acr-pos text-white flex-1"
-              disabled={mutate.isPending}
-              aria-busy={mutate.isPending}
-              onClick={(e) => { e.stopPropagation(); mutate.mutate({ action: "approve" }); }}
-            >
-              <Check className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-              {item.recommendedActionLabel}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={mutate.isPending}
-              aria-busy={mutate.isPending}
-              aria-label="Reject"
-              onClick={(e) => { e.stopPropagation(); mutate.mutate({ action: "reject" }); }}
-            >
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={mutate.isPending}
-              aria-busy={mutate.isPending}
-              aria-label="Defer 24 hours"
-              onClick={(e) => { e.stopPropagation(); mutate.mutate({ action: "defer", body: { hours: 24 } }); }}
-            >
-              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-            </Button>
-          </div>
+          {/* Jarvis 2.3 — phone-answerable options: tap-sized, full-width
+              stack. When present they replace the approve/reject/defer row;
+              option keys post override (or approve for 'approve_recommended')
+              with chosenOption. */}
+          {options.length > 0 ? (
+            <div className="flex flex-col gap-2 pt-1">
+              {options.map((opt) => (
+                <Button
+                  key={opt.key}
+                  type="button"
+                  variant={opt.key === "approve_recommended" ? "default" : "outline"}
+                  className="w-full min-h-11 justify-center whitespace-normal"
+                  disabled={mutate.isPending}
+                  aria-busy={mutate.isPending}
+                  onClick={(e) => { e.stopPropagation(); answerWithOption(opt); }}
+                >
+                  {opt.label}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            /* Action buttons (fallback for non-swipe users) */
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                className="bg-acr-pos hover:bg-acr-pos text-white flex-1"
+                disabled={mutate.isPending}
+                aria-busy={mutate.isPending}
+                onClick={(e) => { e.stopPropagation(); mutate.mutate({ action: "approve" }); }}
+              >
+                <Check className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+                {item.recommendedActionLabel}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={mutate.isPending}
+                aria-busy={mutate.isPending}
+                aria-label="Reject"
+                onClick={(e) => { e.stopPropagation(); mutate.mutate({ action: "reject" }); }}
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={mutate.isPending}
+                aria-busy={mutate.isPending}
+                aria-label="Defer 24 hours"
+                onClick={(e) => { e.stopPropagation(); mutate.mutate({ action: "defer", body: { hours: 24 } }); }}
+              >
+                <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            </div>
+          )}
 
           {/* Swipe hint */}
-          <p aria-hidden="true" className="text-micro text-muted-foreground/50 text-center select-none">
-            Swipe right to approve · left to reject
-          </p>
+          {options.length === 0 && (
+            <p aria-hidden="true" className="text-micro text-muted-foreground/50 text-center select-none">
+              Swipe right to approve · left to reject
+            </p>
+          )}
         </div>
       </motion.div>
     </AnimatePresence>

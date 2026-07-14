@@ -46,11 +46,12 @@
  * Metric (b) counts what the autonomy-score (v14) tables record over the
  * trailing 7 days: cascade resolutions that escalated to the founder
  * (cascade_resolutions.founder_escalated) plus founder overrides
- * (founder_overrides). Decisions are not yet classified A/B/C per row,
- * so EVERY founder-consumed decision counts against the Class-A/B
- * budget — conservative: it can overcount founder attention, never
- * undercount it. Founder-collab asks that never left the Solene surface
- * are NOT double-counted here.
+ * (founder_overrides) plus founder-resolved decision-inbox cards
+ * (decisions_inbox_items, Jarvis 2.3). Decisions are not yet classified
+ * A/B/C per row, so EVERY founder-consumed decision counts against the
+ * Class-A/B budget — conservative: it can overcount founder attention,
+ * never undercount it. Founder-collab asks that never left the Solene
+ * surface are NOT double-counted here.
  *
  * Week = trailing 7 days from `now` (injectable for tests). Both metrics
  * re-apply the window in process so the arithmetic is pinned by unit
@@ -58,10 +59,10 @@
  * scans cheap in production.
  */
 
-import { and, eq, gte, isNotNull } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../../db";
 import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
-import { cascadeResolutions, founderOverrides, importJobs, mailShipments } from "@shared/schema";
+import { cascadeResolutions, decisionsInboxItems, founderOverrides, importJobs, mailShipments } from "@shared/schema";
 import { FOUNDER_MINUTES_BUDGET } from "@sovereign/immutables";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -223,8 +224,9 @@ export async function getTickMetric(now: Date = new Date()): Promise<TickMetric>
 
 /**
  * Metric (b) counting seam — founder decisions consumed in the trailing
- * 7 days ending at `now`: cascade resolutions that escalated to the founder
- * plus founder overrides. Exported on its own (Jarvis 2.2) because the
+ * 7 days ending at `now`: cascade resolutions that escalated to the founder,
+ * founder overrides, and founder-resolved decision-inbox cards (Jarvis 2.3).
+ * Exported on its own (Jarvis 2.2) because the
  * founder interrupt arbiter uses THIS SAME COUNT as the numerator of its
  * Class-B budget gate — the gate and the Letter can never disagree about
  * how many founder decisions this week consumed.
@@ -254,11 +256,39 @@ export async function countFounderDecisionsThisWeek(now: Date = new Date()): Pro
     .from(founderOverrides)
     .where(gte(founderOverrides.createdAt, weekStart));
 
+  // Jarvis 2.3 — founder answers on decision-inbox cards are real founder
+  // decisions and count against the same budget (they escaped this counter
+  // before). Double-count risk with the cascade term is nil today: inbox
+  // items never originate from cascade_resolutions rows (entirely different
+  // sources). If a creator ever starts minting inbox items FROM cascade
+  // escalations, this join must dedupe on that linkage before summing.
+  const inboxRows = await db
+    .select({
+      status: decisionsInboxItems.status,
+      resolvedBy: decisionsInboxItems.resolvedBy,
+      resolvedAt: decisionsInboxItems.resolvedAt,
+    })
+    .from(decisionsInboxItems)
+    .where(
+      and(
+        eq(decisionsInboxItems.resolvedBy, "founder"),
+        inArray(decisionsInboxItems.status, ["approved", "rejected"]),
+        gte(decisionsInboxItems.resolvedAt, weekStart),
+      ),
+    );
+
   return (
     escalationRows.filter(
       (r) => r.founderEscalated === true && r.createdAt != null && inTrailingWeek(r.createdAt, now),
     ).length +
-    overrideRows.filter((r) => r.createdAt != null && inTrailingWeek(r.createdAt, now)).length
+    overrideRows.filter((r) => r.createdAt != null && inTrailingWeek(r.createdAt, now)).length +
+    inboxRows.filter(
+      (r) =>
+        r.resolvedBy === "founder" &&
+        (r.status === "approved" || r.status === "rejected") &&
+        r.resolvedAt != null &&
+        inTrailingWeek(r.resolvedAt, now),
+    ).length
   );
 }
 

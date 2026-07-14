@@ -190,6 +190,13 @@ export const EMBEDDING_NAMESPACES = [
   // retrieval: these are general domain explanations, never per-parcel facts.
   // See server/services/pax/landKnowledge/.
   "land_knowledge",
+  // Jarvis 2.3 — reusable founder rulings written back from decision-inbox
+  // resolves. PLATFORM memory (organization_id IS NULL) per
+  // docs/company/three-level-boundary.md rule 5: precedents are about
+  // running AcreOS, never deal-level tenant detail. Admission-controlled at
+  // the write side (server/services/solene/founderPrecedent.ts) — only
+  // reasoned rejections/overrides and explicit option picks are stored.
+  "founder_precedent",
 ] as const;
 export type EmbeddingNamespace = (typeof EMBEDDING_NAMESPACES)[number];
 
