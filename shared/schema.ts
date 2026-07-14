@@ -12837,7 +12837,7 @@ export type DealRoomDocument = typeof dealRoomDocuments.$inferSelect;
 // Decisions Inbox — pre-analyzed items requiring human judgment
 export const decisionsInboxItems = pgTable("decisions_inbox_items", {
   id: serial("id").primaryKey(),
-  itemType: text("item_type").notNull(), // support_escalation | critical_alert | feature_request_flagged | churn_risk_intervention | dunning_recovery | deferred_interrupt (Jarvis 2.2 arbiter deferral row) | outcome_check_in (Horizon A1 outcome-ledger founder check-in card)
+  itemType: text("item_type").notNull(), // support_escalation | critical_alert | feature_request_flagged | churn_risk_intervention | dunning_recovery | deferred_interrupt (Jarvis 2.2 arbiter deferral row) | outcome_check_in (Horizon A1 outcome-ledger founder check-in card) | letter_reply_confirm (Horizon A3 letter-reply shown-back parse awaiting the founder's witnessed confirmation)
   riskLevel: text("risk_level").notNull().default("medium"), // low | medium | high | critical
   urgencyScore: integer("urgency_score").notNull().default(50), // 0-100
   estimatedImpactCents: integer("estimated_impact_cents"),

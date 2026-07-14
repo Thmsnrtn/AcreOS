@@ -1190,11 +1190,32 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Authenti
     const id = parseInt(req.params.id);
     const { chosenOption } = req.body ?? {};
 
+    // Horizon A3 — letter-reply confirm cards resolve EXCLUSIVELY through
+    // confirmLetterReply (witnessed admission: the tap on the shown-back
+    // parse is the only path to precedent memory / the dispatch queue). The
+    // generic approve path must never double-handle them, and a plain
+    // approve without an explicit option is refused — the invariant demands
+    // a witnessed tap on a named option. The item is read up front so this
+    // guard also covers option-less approves.
+    let item: typeof decisionsInboxItems.$inferSelect | undefined =
+      (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
+    if (item?.itemType === "letter_reply_confirm") {
+      if (chosenOption == null) {
+        return Errors.badRequest(res, "Letter-reply cards resolve only via an explicit chosenOption");
+      }
+      const { confirmLetterReply, LetterReplyError } = await import("./services/solene/letterReply");
+      try {
+        const result = await confirmLetterReply(id, String(chosenOption));
+        return res.json({ success: true, ...result });
+      } catch (err: any) {
+        if (err instanceof LetterReplyError) return Errors.badRequest(res, err.message);
+        throw err;
+      }
+    }
+
     // Jarvis 2.3 phone-answerable cards: an option tap arrives as chosenOption.
     let chosen: DecisionCardOption | null = null;
-    let item: typeof decisionsInboxItems.$inferSelect | undefined;
     if (chosenOption != null) {
-      item = (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
       chosen = resolveChosenOption(item, chosenOption);
       if (!chosen) return Errors.badRequest(res, "Unknown chosenOption for this decision");
     }
@@ -1242,6 +1263,22 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Authentic
     // Fetch the decision item before rejecting so we can learn from it.
     // (decisionsInboxService has no getById(); read the row directly.)
     const item = (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
+
+    // Horizon A3 — a reject (swipe-left) on a letter-reply confirm card is a
+    // discard: it resolves through confirmLetterReply's single implementation
+    // ('discard' exists on every letter-reply card) and stores nothing. The
+    // generic learn-from-override / rejection-notes / precedent path below is
+    // a category error for the founder's own words and must not run.
+    if (item?.itemType === "letter_reply_confirm") {
+      const { confirmLetterReply, LetterReplyError } = await import("./services/solene/letterReply");
+      try {
+        const result = await confirmLetterReply(id, "discard");
+        return res.json({ success: true, ...result });
+      } catch (err: any) {
+        if (err instanceof LetterReplyError) return Errors.badRequest(res, err.message);
+        throw err;
+      }
+    }
 
     await decisionsInboxService.reject(id, reason);
 
@@ -1314,6 +1351,26 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Authent
     // Fetch the decision item before overriding so we can learn from it.
     // (decisionsInboxService has no getById(); read the row directly.)
     const item = (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
+
+    // Horizon A3 — letter-reply confirm cards resolve EXCLUSIVELY through
+    // confirmLetterReply (witnessed admission). SwipeDecisionCard posts
+    // option taps to THIS route, so this is the inbox entry point into the
+    // same single implementation the dedicated /letter/reply/:id/confirm
+    // endpoint uses. The generic override-learning/precedent path below
+    // must never double-handle these cards.
+    if (item?.itemType === "letter_reply_confirm") {
+      if (chosenOption == null) {
+        return Errors.badRequest(res, "Letter-reply cards resolve only via an explicit chosenOption");
+      }
+      const { confirmLetterReply, LetterReplyError } = await import("./services/solene/letterReply");
+      try {
+        const result = await confirmLetterReply(id, String(chosenOption));
+        return res.json({ success: true, ...result });
+      } catch (err: any) {
+        if (err instanceof LetterReplyError) return Errors.badRequest(res, err.message);
+        throw err;
+      }
+    }
 
     // Jarvis 2.3 phone-answerable cards: an option tap arrives as
     // chosenOption and composes the override action; a typed customAction
@@ -1888,6 +1945,62 @@ router.post("/letter/:monthKey/mark-delivered", requireFounder, async (req: Requ
     const { markLetterDelivered } = await import("./services/founderNarrative");
     await markLetterDelivered(req.params.monthKey);
     res.json({ ok: true });
+  } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+// ── Horizon A3 — letter replies as directives ────────────────────────
+//
+// The founder replies to The Letter in plain language; the parse is SHOWN
+// BACK as a pending inbox card and nothing durable happens until the
+// founder confirms (witnessed admission — see services/solene/letterReply).
+
+router.post("/letter/:monthKey/reply", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const replyText = typeof req.body?.replyText === "string" ? req.body.replyText.trim() : "";
+    if (replyText.length < 3 || replyText.length > 2000) {
+      return Errors.badRequest(res, "replyText must be between 3 and 2000 characters");
+    }
+    const { getLetterByMonth } = await import("./services/founderNarrative");
+    const letter = await getLetterByMonth(req.params.monthKey);
+    if (!letter) return Errors.notFound(res, "Letter");
+
+    const { handleLetterReply } = await import("./services/solene/letterReply");
+    const result = await handleLetterReply({
+      replyText,
+      monthKey: req.params.monthKey,
+      pendingDecisionText: letter.pendingFounderDecision,
+    });
+    res.json(result);
+  } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+router.post("/letter/reply/:itemId/confirm", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const itemId = parseInt(req.params.itemId);
+    if (!Number.isInteger(itemId) || itemId <= 0) {
+      return Errors.badRequest(res, "Invalid itemId");
+    }
+    const chosenOption = req.body?.chosenOption;
+    if (typeof chosenOption !== "string" || chosenOption.length === 0) {
+      return Errors.badRequest(res, "chosenOption required");
+    }
+    const { confirmLetterReply, LetterReplyError } = await import("./services/solene/letterReply");
+    try {
+      const result = await confirmLetterReply(itemId, chosenOption);
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      if (err instanceof LetterReplyError) {
+        if (err.code === "not_found") return Errors.notFound(res, "Letter reply");
+        // unknown_option / not_a_letter_reply / malformed_card all fail
+        // closed as bad requests — nothing was stored.
+        return Errors.badRequest(res, err.message);
+      }
+      throw err;
+    }
   } catch (err: any) {
     Errors.internal(res, err);
   }

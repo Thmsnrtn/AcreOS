@@ -15,11 +15,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { FileText, Check, RefreshCw, Archive } from "lucide-react";
+import { FileText, Check, RefreshCw, Archive, Send } from "lucide-react";
 import { format } from "date-fns";
 
 interface FounderLetter {
@@ -119,6 +120,177 @@ function inline(text: string): React.ReactNode {
     remaining = remaining.slice(m.index + m[0].length);
   }
   return <>{parts}</>;
+}
+
+// ── Horizon A3 — letter replies as directives ───────────────────────────────
+
+interface LetterReplyOption {
+  key: string;
+  label: string;
+}
+
+interface LetterReplyParse {
+  kind: "ruling" | "directive" | "question" | "noise";
+  confidence: number;
+  restatement: string;
+}
+
+interface LetterReplyResponse {
+  itemId: number;
+  parse: LetterReplyParse;
+  options: LetterReplyOption[];
+}
+
+const KIND_LABELS: Record<LetterReplyParse["kind"], string> = {
+  ruling: "Ruling",
+  directive: "Directive",
+  question: "Question",
+  noise: "Noise",
+};
+
+const CONFIRM_TOASTS: Record<string, string> = {
+  stored_precedent: "Stored as precedent",
+  queued_directive: "Queued for Solene",
+  sent_to_chat: "Noted — ask Solene in chat when you're ready",
+  discarded: "Discarded",
+  already_resolved: "Already handled",
+};
+
+/**
+ * The reply box under the letter body. The parse is SHOWN BACK for a
+ * one-tap confirmation — nothing is stored as a precedent or queued as a
+ * directive until an option is tapped (witnessed admission). Keyed on
+ * monthKey by the caller so switching letters resets the panel.
+ */
+function LetterReplyPanel({ monthKey }: { monthKey: string }) {
+  const [replyText, setReplyText] = useState("");
+  const [pending, setPending] = useState<LetterReplyResponse | null>(null);
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const send = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/founder/intelligence/letter/${monthKey}/reply`, {
+        replyText: replyText.trim(),
+      });
+      return (await res.json()) as LetterReplyResponse;
+    },
+    onSuccess: (data) => {
+      setPending(data);
+      // The pending card also lands in the decisions inbox (same row).
+      qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decisions-inbox"] });
+    },
+    onError: (e: Error) =>
+      toast({
+        title: "Couldn't send your reply",
+        description: `${e.message}. Nothing was stored — try again in a moment.`,
+        variant: "destructive",
+      }),
+  });
+
+  const confirm = useMutation({
+    mutationFn: async (chosenOption: string) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/founder/intelligence/letter/reply/${pending!.itemId}/confirm`,
+        { chosenOption },
+      );
+      return (await res.json()) as { outcome: string };
+    },
+    onSuccess: (data) => {
+      toast({ title: CONFIRM_TOASTS[data.outcome] ?? "Done" });
+      setPending(null);
+      setReplyText("");
+      qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decisions-inbox"] });
+    },
+    onError: (e: Error) =>
+      toast({
+        title: "Couldn't confirm",
+        description: `${e.message}. The card is still pending — try again or discard it.`,
+        variant: "destructive",
+      }),
+  });
+
+  const canSend = replyText.trim().length >= 3 && replyText.trim().length <= 2000;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Reply to Solene</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {pending == null ? (
+          <>
+            <label htmlFor="letter-reply-text" className="sr-only">
+              Your reply to the {monthKey} letter
+            </label>
+            <Textarea
+              id="letter-reply-text"
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder="Answer the decision, set a rule, or hand off a task — plain language is fine."
+              maxLength={2000}
+              rows={3}
+              disabled={send.isPending}
+              data-testid="letter-reply-textarea"
+            />
+            {send.isPending ? (
+              <div className="space-y-2" role="status" aria-live="polite">
+                <span className="sr-only">Reading your reply…</span>
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  You'll see what I understood before anything is stored.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!canSend}
+                  onClick={() => send.mutate()}
+                  data-testid="letter-reply-send"
+                >
+                  <Send className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+                  Send
+                </Button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="space-y-3" data-testid="letter-reply-parse-card">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">{KIND_LABELS[pending.parse.kind]}</Badge>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {Math.round(pending.parse.confidence * 100)}% confident
+              </span>
+            </div>
+            <p className="text-sm text-foreground leading-relaxed">{pending.parse.restatement}</p>
+            <p className="text-xs text-muted-foreground">
+              Nothing is stored until you confirm below.
+            </p>
+            <div className="flex flex-col gap-2 pt-1">
+              {pending.options.map((opt) => (
+                <Button
+                  key={opt.key}
+                  type="button"
+                  variant={opt.key === "discard" ? "outline" : "default"}
+                  className="w-full min-h-11 justify-center whitespace-normal"
+                  disabled={confirm.isPending}
+                  aria-busy={confirm.isPending}
+                  onClick={() => confirm.mutate(opt.key)}
+                  data-testid={`letter-reply-option-${opt.key}`}
+                >
+                  {opt.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function FounderLetterPage() {
@@ -263,6 +435,10 @@ export default function FounderLetterPage() {
                   </CardContent>
                 </Card>
               )}
+
+              {/* Horizon A3 — reply to the letter; keyed so switching
+                  months resets the draft + any pending parse card. */}
+              <LetterReplyPanel key={letter.monthKey} monthKey={letter.monthKey} />
             </>
           )}
         </div>
