@@ -177,6 +177,9 @@ export async function detectAndPageOnSpike(): Promise<SpikeDetectionResult> {
     try {
       await sendSolenePage({
         severity: "urgent",
+        // Jarvis 2.2 explicit class mapping: a customer-surface regression is
+        // customer harm — Class A (breaks through budget and quiet hours).
+        interruptClass: "A",
         subject: subjectMarker,
         body: `Route ${row.routePath} fired ErrorBoundary ${trips} times in the last hour (threshold=${SPIKE_TRIPS_PER_HOUR}). Customer-surface regression suspected. See GET /api/founder/error-boundary-trips/recent.`,
       });
