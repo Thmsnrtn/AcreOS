@@ -8,9 +8,15 @@
  *   (b) founder decisions consumed vs. the CONSTITUTIONAL budget —
  *       escalated cascade resolutions + founder overrides, trailing 7 days
  *       only, budget read from the sovereign-protocol immutables loader.
+ *   (c) verification COVERAGE (Jarvis Phase 1 CP4) — passed verdicts over
+ *       everything that entered the verify pipeline this week: completed
+ *       dispatches with a review_status, completed imports and sent mail
+ *       with a verify_status.
  *
  * Honesty invariants: empty tables read as a genuine zero (never inflated,
- * never hidden), and the zero-shipped breakdown still names the blind spots.
+ * never hidden), the zero-shipped breakdown still names the blind spots,
+ * "verified: 0/0" says so explicitly, and a genuine read failure makes the
+ * whole metric THROW so callers render "unmeasured" — never a fabricated 0.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -25,10 +31,25 @@ const STORES = {
     status: string;
     sourceType: string;
     completedAt: Date | null;
+    reviewStatus?: string | null;
   }>,
   cascades: [] as Array<{ founderEscalated: boolean; createdAt: Date }>,
   overrides: [] as Array<{ createdAt: Date }>,
+  imports: [] as Array<{
+    status: string;
+    verifyStatus: string | null;
+    completedAt: Date | null;
+  }>,
+  mail: [] as Array<{
+    status: string;
+    verifyStatus: string | null;
+    sentAt: Date | null;
+  }>,
 };
+
+// Tables whose read should throw — pins the honesty contract that a genuine
+// read failure makes the whole metric throw (callers render "unmeasured").
+const FAIL_TABLES = new Set<string>();
 
 vi.mock("../../server/db", () => {
   const tableName = (tableLike: any): string | null => {
@@ -54,9 +75,14 @@ vi.mock("../../server/db", () => {
         return Promise.resolve(this._execute()).then(onFulfilled, onRejected);
       },
       _execute(): any[] {
+        if (this._table && FAIL_TABLES.has(this._table)) {
+          throw new Error(`simulated read failure: ${this._table}`);
+        }
         if (this._table === "solene_dispatch_queue") return [...STORES.dispatches];
         if (this._table === "cascade_resolutions") return [...STORES.cascades];
         if (this._table === "founder_overrides") return [...STORES.overrides];
+        if (this._table === "import_jobs") return [...STORES.imports];
+        if (this._table === "mail_shipments") return [...STORES.mail];
         return [];
       },
     };
@@ -90,6 +116,9 @@ beforeEach(() => {
   STORES.dispatches.length = 0;
   STORES.cascades.length = 0;
   STORES.overrides.length = 0;
+  STORES.imports.length = 0;
+  STORES.mail.length = 0;
+  FAIL_TABLES.clear();
   vi.clearAllMocks();
 });
 
@@ -101,6 +130,11 @@ describe("getTickMetric", () => {
     expect(m.founderDecisionsThisWeek).toBe(0);
     expect(m.shippedBreakdown).toContain("no completed outward dispatches");
     expect(m.shippedBreakdown).toContain("deploys and merged PRs not counted yet");
+    // CP4 honest zero: nothing entered the verify pipeline → an explicit 0/0.
+    expect(m.verifiedPassed).toBe(0);
+    expect(m.verifiedFlagged).toBe(0);
+    expect(m.verifiablesTotal).toBe(0);
+    expect(m.verificationBreakdown).toBe("nothing verifiable this week");
   });
 
   it("budget comes from the constitution loader (5), never a local constant", async () => {
@@ -148,22 +182,107 @@ describe("getTickMetric", () => {
     expect(m.shippedBreakdown).toContain("internal review/debug machinery excluded");
     expect(m.shippedBreakdown).toContain("deploys and merged PRs not counted yet");
   });
-});
 
-describe("renderTickMetricLine", () => {
-  it("renders the canonical two-number opener", async () => {
+  it("verification coverage counts per component: dispatch review_status + import/mail verify_status", async () => {
+    STORES.dispatches.push(
+      // Verifiable: completed + a review_status of any kind. Only 'passed'
+      // counts toward N; pending/skipped/flagged honestly dilute coverage.
+      { status: "completed", sourceType: "auto_dispatch", completedAt: daysAgo(1), reviewStatus: "passed" },
+      { status: "completed", sourceType: "auto_dispatch", completedAt: daysAgo(2), reviewStatus: "flagged" },
+      { status: "completed", sourceType: "auto_dispatch", completedAt: daysAgo(3), reviewStatus: "pending" },
+      { status: "completed", sourceType: "auto_dispatch", completedAt: daysAgo(4), reviewStatus: "skipped" },
+      // NOT verifiable: never entered the pipeline (null review_status),
+      // or never completed at all.
+      { status: "completed", sourceType: "auto_dispatch", completedAt: daysAgo(1), reviewStatus: null },
+      { status: "failed", sourceType: "auto_dispatch", completedAt: daysAgo(1), reviewStatus: "passed" },
+    );
+    STORES.imports.push(
+      { status: "completed", verifyStatus: "passed", completedAt: daysAgo(1) }, // counted
+      { status: "completed", verifyStatus: "flagged", completedAt: daysAgo(2) }, // total only
+      { status: "completed", verifyStatus: null, completedAt: daysAgo(1) }, // no verify enqueued
+      { status: "running", verifyStatus: "pending", completedAt: null }, // not completed
+    );
+    STORES.mail.push(
+      { status: "sent", verifyStatus: "passed", sentAt: daysAgo(1) }, // counted
+      { status: "sent", verifyStatus: "flagged", sentAt: daysAgo(3) }, // total only
+      { status: "sent", verifyStatus: null, sentAt: daysAgo(1) }, // no verify enqueued
+      { status: "queued", verifyStatus: null, sentAt: null }, // never sent
+    );
+
+    const m = await getTickMetric(NOW);
+    expect(m.verifiedPassed).toBe(3); // 1 dispatch + 1 import + 1 mail
+    expect(m.verifiedFlagged).toBe(3);
+    expect(m.verifiablesTotal).toBe(8); // 4 dispatches + 2 imports + 2 mail
+    expect(m.verificationBreakdown).toBe(
+      "dispatches 1/4 passed, imports 1/2 passed, mail 1/2 passed; 3 flagged; " +
+        "work that never entered the verify pipeline is not counted",
+    );
+  });
+
+  it("verification coverage applies the same trailing-7-day window per component", async () => {
+    STORES.dispatches.push(
+      { status: "completed", sourceType: "auto_dispatch", completedAt: daysAgo(6), reviewStatus: "passed" }, // counted
+      { status: "completed", sourceType: "auto_dispatch", completedAt: daysAgo(8), reviewStatus: "passed" }, // outside window
+    );
+    STORES.imports.push(
+      { status: "completed", verifyStatus: "passed", completedAt: daysAgo(6) }, // counted
+      { status: "completed", verifyStatus: "passed", completedAt: daysAgo(10) }, // outside window
+    );
+    STORES.mail.push(
+      { status: "sent", verifyStatus: "passed", sentAt: daysAgo(6) }, // counted
+      { status: "sent", verifyStatus: "passed", sentAt: daysAgo(8) }, // outside window
+    );
+
+    const m = await getTickMetric(NOW);
+    expect(m.verifiedPassed).toBe(3);
+    expect(m.verifiablesTotal).toBe(3);
+    expect(m.verificationBreakdown).toContain("dispatches 1/1 passed");
+    expect(m.verificationBreakdown).toContain("imports 1/1 passed");
+    expect(m.verificationBreakdown).toContain("mail 1/1 passed");
+  });
+
+  it("a component with nothing verifiable is named honestly, not dropped", async () => {
     STORES.dispatches.push({
       status: "completed",
       sourceType: "auto_dispatch",
       completedAt: daysAgo(1),
+      reviewStatus: "passed",
     });
+
+    const m = await getTickMetric(NOW);
+    expect(m.verifiablesTotal).toBe(1);
+    expect(m.verificationBreakdown).toBe(
+      "dispatches 1/1 passed, imports 0 verifiable, mail 0 verifiable; " +
+        "work that never entered the verify pipeline is not counted",
+    );
+  });
+
+  it("HONESTY: a read failure on ANY coverage table makes the whole metric throw — never a fabricated number", async () => {
+    for (const table of ["solene_dispatch_queue", "import_jobs", "mail_shipments"]) {
+      FAIL_TABLES.clear();
+      FAIL_TABLES.add(table);
+      await expect(getTickMetric(NOW)).rejects.toThrow(`simulated read failure: ${table}`);
+    }
+  });
+});
+
+describe("renderTickMetricLine", () => {
+  it("renders the canonical opener — shipped, decisions, and verified: N/M", async () => {
+    STORES.dispatches.push({
+      status: "completed",
+      sourceType: "auto_dispatch",
+      completedAt: daysAgo(1),
+      reviewStatus: "passed",
+    });
+    STORES.imports.push({ status: "completed", verifyStatus: "passed", completedAt: daysAgo(2) });
     STORES.cascades.push({ founderEscalated: true, createdAt: daysAgo(1) });
     STORES.overrides.push({ createdAt: daysAgo(2) });
 
     const line = renderTickMetricLine(await getTickMetric(NOW));
     expect(line).toBe(
       "Shipped for customers this week: 1 (1 completed outward dispatch; internal review/debug machinery excluded; deploys and merged PRs not counted yet). " +
-        "Founder decisions consumed: 2 of 5 budget.",
+        "Founder decisions consumed: 2 of 5 budget. " +
+        "Verified: 2/2 (dispatches 1/1 passed, imports 1/1 passed, mail 0 verifiable; work that never entered the verify pipeline is not counted).",
     );
   });
 
@@ -171,12 +290,14 @@ describe("renderTickMetricLine", () => {
     const line = renderTickMetricLine(await getTickMetric(NOW));
     expect(line).toContain("Shipped for customers this week: 0 (no completed outward dispatches");
     expect(line).toContain("Founder decisions consumed: 0 of 5 budget.");
+    // CP4 honest zero: coverage of an empty pipeline is 0/0, said out loud.
+    expect(line).toContain("Verified: 0/0 (nothing verifiable this week).");
   });
 });
 
 describe("openWithTickMetric — The Letter opens with the two numbers", () => {
   const METRIC_LINE =
-    "Shipped for customers this week: 2 (2 completed outward dispatches; internal review/debug machinery excluded; deploys and merged PRs not counted yet). Founder decisions consumed: 1 of 5 budget.";
+    "Shipped for customers this week: 2 (2 completed outward dispatches; internal review/debug machinery excluded; deploys and merged PRs not counted yet). Founder decisions consumed: 1 of 5 budget. Verified: 1/2 (dispatches 1/2 passed, imports 0 verifiable, mail 0 verifiable; work that never entered the verify pipeline is not counted).";
 
   it("injects the metric line as the first content line after the title", () => {
     const md =

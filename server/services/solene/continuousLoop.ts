@@ -78,6 +78,13 @@ export interface MorningPulseSnapshot {
   founderDecisionsUsedThisWeek: number | null;
   founderDecisionsBudget: number;
 
+  // Jarvis Phase 1 CP4 — verification COVERAGE over the trailing 7 days:
+  // passed verdicts / everything that entered the verify pipeline
+  // (dispatch review_status + import/mail verify_status). null — not zero —
+  // when the metric read failed, so "verified" is never fabricated.
+  verifiedPassedThisWeek: number | null;
+  verifiablesTotalThisWeek: number | null;
+
   // Activity summary (last 24h).
   dispatchesCompletedLast24h: number;
   dispatchesFlaggedLast24h: number;
@@ -172,13 +179,19 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
   }
 
   // Tick metric (b) — founder decisions consumed vs. the constitutional
-  // budget (kernel-restructure step 5). Best-effort: a failed read reports
+  // budget (kernel-restructure step 5) — and metric (c), verification
+  // coverage (Jarvis Phase 1 CP4). Best-effort: a failed read reports
   // null (unmeasured), never a flattering zero. The budget itself is static
   // constitutional data, so it is always known.
   let founderDecisionsUsedThisWeek: number | null = null;
+  let verifiedPassedThisWeek: number | null = null;
+  let verifiablesTotalThisWeek: number | null = null;
   try {
     const { getTickMetric } = await import("./tickMetric");
-    founderDecisionsUsedThisWeek = (await getTickMetric(generatedAt)).founderDecisionsThisWeek;
+    const metric = await getTickMetric(generatedAt);
+    founderDecisionsUsedThisWeek = metric.founderDecisionsThisWeek;
+    verifiedPassedThisWeek = metric.verifiedPassed;
+    verifiablesTotalThisWeek = metric.verifiablesTotal;
   } catch (err) {
     logger.warn(
       "[continuousLoop] tick-metric read failed; reporting decisions-used as unmeasured",
@@ -201,6 +214,8 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
     envelopeStatus: capital.envelopeStatus,
     founderDecisionsUsedThisWeek,
     founderDecisionsBudget: FOUNDER_MINUTES_BUDGET.classABDecisionsPerWeek,
+    verifiedPassedThisWeek,
+    verifiablesTotalThisWeek,
     dispatchesCompletedLast24h: dispatchActivity.completedLast24h,
     dispatchesFlaggedLast24h: dispatchActivity.flaggedLast24h,
     asksOpenCount: collab.openCount,
@@ -222,10 +237,11 @@ export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
 // ============================================================================
 
 export function renderOneLine(snapshot: MorningPulseSnapshot): string {
-  // Format per the team_solene brief, extended by kernel-restructure step 5:
+  // Format per the team_solene brief, extended by kernel-restructure step 5
+  // and Jarvis Phase 1 CP4:
   //   "{Day} {Date} · ${MRR} MRR · +{N} trials · {X.X}% uptime ·
   //    {N}/{N} compliance · ${X.XX} week-cost · {N} decisions waiting ·
-  //    {X}/{B} decisions used · Horizon: {D} days"
+  //    {X}/{B} decisions used · verified: {N}/{M} · Horizon: {D} days"
   // The line has no hard character cap (it renders on the founder Today page
   // and in the cron log), but it stays a single " · "-joined sentence — one
   // segment per number, no prose.
@@ -242,6 +258,14 @@ export function renderOneLine(snapshot: MorningPulseSnapshot): string {
     snapshot.founderDecisionsUsedThisWeek != null
       ? `${snapshot.founderDecisionsUsedThisWeek}/${snapshot.founderDecisionsBudget} decisions used`
       : "decisions used n/a";
+  // Verification coverage (CP4). Unmeasured renders honestly as n/a; a
+  // measured-but-empty week is an explicit 0/0, never a hidden segment.
+  const verified =
+    snapshot.verifiedPassedThisWeek != null && snapshot.verifiablesTotalThisWeek != null
+      ? snapshot.verifiablesTotalThisWeek === 0
+        ? "verified: 0/0 (nothing verifiable this week)"
+        : `verified: ${snapshot.verifiedPassedThisWeek}/${snapshot.verifiablesTotalThisWeek}`
+      : "verified n/a";
   return [
     `${snapshot.dayLabel}`,
     `$${mrr} MRR`,
@@ -251,6 +275,7 @@ export function renderOneLine(snapshot: MorningPulseSnapshot): string {
     `$${spend} week-cost`,
     `${snapshot.decisionsWaitingCount} decisions waiting`,
     decisionsUsed,
+    verified,
     `Horizon: ${snapshot.autonomyHorizonDays} days`,
   ].join(" · ");
 }
@@ -343,6 +368,11 @@ function hydrateRow(row: SoleneMorningPulseRow): MorningPulseSnapshot {
     founderDecisionsBudget: Number(
       blob.founderDecisionsBudget ?? FOUNDER_MINUTES_BUDGET.classABDecisionsPerWeek,
     ),
+    // Legacy rows predate CP4 verification coverage — null (unmeasured), never 0.
+    verifiedPassedThisWeek:
+      typeof blob.verifiedPassedThisWeek === "number" ? blob.verifiedPassedThisWeek : null,
+    verifiablesTotalThisWeek:
+      typeof blob.verifiablesTotalThisWeek === "number" ? blob.verifiablesTotalThisWeek : null,
     dispatchesCompletedLast24h: Number(blob.dispatchesCompletedLast24h ?? 0),
     dispatchesFlaggedLast24h: Number(blob.dispatchesFlaggedLast24h ?? 0),
     asksOpenCount: Number(blob.asksOpenCount ?? 0),
@@ -370,7 +400,8 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
   // Kernel-restructure step 5 (founder directive 2026-07-13): every cycle
   // OPENS with the two numbers — (a) customer-visible/revenue-relevant
   // outcomes shipped this week, (b) founder decisions consumed vs. the
-  // constitutional budget. A machine graded only on restraint optimizes for
+  // constitutional budget — plus (c) verification coverage "verified: N/M"
+  // (Jarvis Phase 1 CP4). A machine graded only on restraint optimizes for
   // restraint. Best-effort: a failed read logs "unmeasured", never zero.
   try {
     const { getTickMetric } = await import("./tickMetric");
@@ -382,6 +413,10 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
         founderDecisionsThisWeek: metric.founderDecisionsThisWeek,
         founderDecisionsBudget: metric.founderDecisionsBudget,
         budgetSource: metric.budgetSource,
+        verifiedPassed: metric.verifiedPassed,
+        verifiedFlagged: metric.verifiedFlagged,
+        verifiablesTotal: metric.verifiablesTotal,
+        verificationBreakdown: metric.verificationBreakdown,
       },
     });
   } catch (err) {

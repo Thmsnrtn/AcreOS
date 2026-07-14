@@ -343,6 +343,11 @@ describe("composeMorningPulse", () => {
     expect(snap.founderDecisionsBudget).toBe(5);
     expect(snap.founderDecisionsUsedThisWeek).toBe(0);
     expect(snap.oneLine).toContain("0/5 decisions used");
+    // Jarvis Phase 1 CP4: verification coverage rides on every pulse. With
+    // no verifiable rows it is a measured, explicit 0/0 — not hidden.
+    expect(snap.verifiedPassedThisWeek).toBe(0);
+    expect(snap.verifiablesTotalThisWeek).toBe(0);
+    expect(snap.oneLine).toContain("verified: 0/0 (nothing verifiable this week)");
     expect(snap.dayLabel).toMatch(/^[A-Z][a-z]{2} \d{4}-\d{2}-\d{2}$/);
   });
 
@@ -395,6 +400,8 @@ describe("renderOneLine", () => {
       envelopeStatus: "green",
       founderDecisionsUsedThisWeek: 3,
       founderDecisionsBudget: 5,
+      verifiedPassedThisWeek: 3,
+      verifiablesTotalThisWeek: 4,
       dispatchesCompletedLast24h: 0,
       dispatchesFlaggedLast24h: 0,
       asksOpenCount: 0,
@@ -402,7 +409,7 @@ describe("renderOneLine", () => {
       agentActivity: [],
     });
     expect(oneLine).toBe(
-      "Thu 2026-06-04 · $1,234 MRR · +3 trials · 99.9% uptime · 0/0 compliance · $4.21 week-cost · 2 decisions waiting · 3/5 decisions used · Horizon: 5 days",
+      "Thu 2026-06-04 · $1,234 MRR · +3 trials · 99.9% uptime · 0/0 compliance · $4.21 week-cost · 2 decisions waiting · 3/5 decisions used · verified: 3/4 · Horizon: 5 days",
     );
   });
 
@@ -423,6 +430,8 @@ describe("renderOneLine", () => {
       envelopeStatus: "green",
       founderDecisionsUsedThisWeek: null,
       founderDecisionsBudget: 5,
+      verifiedPassedThisWeek: null,
+      verifiablesTotalThisWeek: null,
       dispatchesCompletedLast24h: 0,
       dispatchesFlaggedLast24h: 0,
       asksOpenCount: 0,
@@ -435,6 +444,10 @@ describe("renderOneLine", () => {
     // n/a — never a fabricated 0/5.
     expect(oneLine).toContain("decisions used n/a");
     expect(oneLine).not.toContain("0/5 decisions used");
+    // CP4: an unmeasured verification coverage reads n/a — never a
+    // fabricated 0/0 (a 0/0 is a MEASURED empty pipeline, not a failure).
+    expect(oneLine).toContain("verified n/a");
+    expect(oneLine).not.toContain("verified: 0/0");
   });
 });
 

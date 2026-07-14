@@ -96,7 +96,8 @@ export async function generateMonthlyLetter(monthKey?: string): Promise<{
 
   // Kernel-restructure step 5 (founder directive 2026-07-13): The Letter
   // OPENS with the two numbers — outcomes shipped and founder decisions
-  // consumed vs. the constitutional budget. Injected deterministically
+  // consumed vs. the constitutional budget — plus verification coverage
+  // "Verified: N/M" (Jarvis Phase 1 CP4). Injected deterministically
   // after the title so neither the model nor the fallback can drop it.
   // A failed metric read says "unmeasured" — never a fabricated zero.
   let tickMetricLine: string;
@@ -109,7 +110,8 @@ export async function generateMonthlyLetter(monthKey?: string): Promise<{
     });
     tickMetricLine =
       "Shipped for customers this week: unmeasured (metric read failed this cycle). " +
-      `Founder decisions consumed: unmeasured of ${FOUNDER_MINUTES_BUDGET.classABDecisionsPerWeek} budget.`;
+      `Founder decisions consumed: unmeasured of ${FOUNDER_MINUTES_BUDGET.classABDecisionsPerWeek} budget. ` +
+      "Verified: unmeasured.";
   }
   const letterMarkdown = openWithTickMetric(prose.markdown, tickMetricLine);
 
