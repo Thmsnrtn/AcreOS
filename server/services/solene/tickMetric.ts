@@ -53,8 +53,15 @@
  * never undercount it. Founder-collab asks that never left the Solene
  * surface are NOT double-counted here.
  *
- * Week = trailing 7 days from `now` (injectable for tests). Both metrics
- * re-apply the window in process so the arithmetic is pinned by unit
+ * Metric (d) — the OUTCOME LEDGER (Horizon A1) — counts, over the trailing
+ * 90 days, decisions that carried a PREDICTION at creation (checkInDate
+ * set): scored (outcome recorded), positive (score >= +1), pending
+ * (check-in still ahead), overdue (check-in passed, honestly unscored).
+ * If nothing carries predictions yet the counts are genuine zeros — the
+ * ledger never backfills and never invents a score.
+ *
+ * Week = trailing 7 days from `now` (injectable for tests). All metrics
+ * re-apply their windows in process so the arithmetic is pinned by unit
  * tests independent of the SQL layer; the SQL WHERE clauses keep the
  * scans cheap in production.
  */
@@ -63,6 +70,7 @@ import { and, eq, gte, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../../db";
 import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
 import { cascadeResolutions, decisionsInboxItems, founderOverrides, importJobs, mailShipments } from "@shared/schema";
+import { getOutcomeLedgerCounts } from "../outcomeLedger";
 import { FOUNDER_MINUTES_BUDGET } from "@sovereign/immutables";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -100,6 +108,16 @@ export interface TickMetric {
   verifiablesTotal: number;
   /** Per-component account of (c) — and the pipeline's blind spot. */
   verificationBreakdown: string;
+  /** Metric (d): prediction-bearing decisions scored, trailing 90 days. */
+  outcomesScored90d: number;
+  /** Of the scored, outcomeScore >= +1. */
+  outcomesPositive90d: number;
+  /** Unscored predictions whose check-in is still ahead. */
+  outcomesPending90d: number;
+  /** Unscored predictions whose check-in has passed — honestly overdue. */
+  outcomesOverdue90d: number;
+  /** Plain-language account of (d) — honest zeros, never backfilled. */
+  outcomeLedgerBreakdown: string;
 }
 
 /**
@@ -203,6 +221,9 @@ export async function getTickMetric(now: Date = new Date()): Promise<TickMetric>
   // ── Metric (b): founder decisions consumed, trailing 7 days ─────────────
   const founderDecisionsThisWeek = await countFounderDecisionsThisWeek(now);
 
+  // ── Metric (d): outcome ledger, trailing 90 days (Horizon A1) ───────────
+  const ledger = await getOutcomeLedgerCounts(now);
+
   return {
     revenueRelevantShippedThisWeek: shipped,
     shippedBreakdown: renderShippedBreakdown(shipped),
@@ -219,6 +240,11 @@ export async function getTickMetric(now: Date = new Date()): Promise<TickMetric>
       verifiedFlagged,
       verifiablesTotal,
     ),
+    outcomesScored90d: ledger.scored,
+    outcomesPositive90d: ledger.positive,
+    outcomesPending90d: ledger.pending,
+    outcomesOverdue90d: ledger.overdue,
+    outcomeLedgerBreakdown: renderOutcomeLedgerBreakdown(ledger),
   };
 }
 
@@ -301,8 +327,26 @@ export function renderTickMetricLine(m: TickMetric): string {
   return (
     `Shipped for customers this week: ${m.revenueRelevantShippedThisWeek} (${m.shippedBreakdown}). ` +
     `Founder decisions consumed: ${m.founderDecisionsThisWeek} of ${m.founderDecisionsBudget} budget. ` +
-    `Verified: ${m.verifiedPassed}/${m.verifiablesTotal} (${m.verificationBreakdown}).`
+    `Verified: ${m.verifiedPassed}/${m.verifiablesTotal} (${m.verificationBreakdown}). ` +
+    `Outcome ledger (90d): ${m.outcomeLedgerBreakdown}.`
   );
+}
+
+/**
+ * Metric (d) rendering. Honest zeros: when no decision carries a
+ * prediction yet, the counts read 0 and say why — never backfilled.
+ */
+function renderOutcomeLedgerBreakdown(ledger: {
+  scored: number;
+  positive: number;
+  pending: number;
+  overdue: number;
+}): string {
+  const total = ledger.scored + ledger.pending + ledger.overdue;
+  if (total === 0) {
+    return "0 scored, 0 pending, 0 overdue — no decisions carry predictions yet";
+  }
+  return `${ledger.scored} scored (${ledger.positive} positive), ${ledger.pending} pending, ${ledger.overdue} overdue`;
 }
 
 function renderShippedBreakdown(shipped: number): string {

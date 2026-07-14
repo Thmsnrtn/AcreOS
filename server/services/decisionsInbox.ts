@@ -3,11 +3,16 @@ import {
   decisionsInboxItems, supportTickets, systemAlerts, featureRequests,
   organizations,
 } from "@shared/schema";
-import { eq, and, desc, gte, isNull, or, lt } from "drizzle-orm";
+import { eq, and, desc, gte, isNull, or, lt, sql } from "drizzle-orm";
 import { executeAction, hasExecutor } from "./agentActionExecutors";
 import { customerSupportAutoResolver } from "./customerSupportAutoResolver";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { arbitrateFounderInterrupt } from "./founderInterruptArbiter";
+import {
+  attachPrediction,
+  OUTCOME_CHECK_IN_OPTIONS,
+  type OutcomePrediction,
+} from "./outcomeLedger";
 import { logger } from "../utils/logger";
 
 /**
@@ -111,6 +116,7 @@ export const decisionsInboxService = {
     category?: string;
     actionPayload?: Record<string, any>;
     options?: DecisionCardOption[];
+    prediction?: OutcomePrediction;
   }): Promise<{ autoResolved: boolean; itemId?: number }> {
     const ticket = await db.query.supportTickets.findFirst({
       where: eq(supportTickets.id, ticketId),
@@ -158,6 +164,14 @@ export const decisionsInboxService = {
       { itemType: "support_escalation", ticketId, organizationId: ticket.organizationId ?? undefined },
     );
 
+    // Horizon A1 — every consequential decision carries a prediction at
+    // creation (explicit caller prediction overrides the itemType default).
+    const pred = attachPrediction({
+      itemType: "support_escalation",
+      organizationId: ticket.organizationId ?? null,
+      prediction: opts?.prediction,
+    });
+
     const options = sanitizeDecisionOptions(opts?.options);
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "support_escalation",
@@ -175,7 +189,9 @@ export const decisionsInboxService = {
         category: ticket.category ?? "",
         geniusConfidence: resolution.geniusConfidence,
         ...(options ? { options } : {}),
+        ...(pred ? { outcomePrediction: pred.outcomePrediction } : {}),
       },
+      ...(pred ? { expectedOutcome: pred.expectedOutcome, checkInDate: pred.checkInDate } : {}),
       status: arbiter.status,
       deferredUntil: arbiter.deferredUntil,
     }).returning();
@@ -186,7 +202,7 @@ export const decisionsInboxService = {
   /** For critical system alerts only. */
   async createFromAlert(
     alertId: number,
-    opts?: { options?: DecisionCardOption[] },
+    opts?: { options?: DecisionCardOption[]; prediction?: OutcomePrediction },
   ): Promise<number | null> {
     const alert = await db.query.systemAlerts.findFirst({
       where: eq(systemAlerts.id, alertId),
@@ -212,6 +228,14 @@ export const decisionsInboxService = {
       { itemType: "critical_alert", alertId },
     );
 
+    // Horizon A1 — judgment-call default (no machine check): the founder
+    // scores this one at the 30-day check-in.
+    const pred = attachPrediction({
+      itemType: "critical_alert",
+      organizationId: null,
+      prediction: opts?.prediction,
+    });
+
     const options = sanitizeDecisionOptions(opts?.options);
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "critical_alert",
@@ -222,7 +246,11 @@ export const decisionsInboxService = {
       recommendedActionLabel: "Acknowledge Alert",
       actionPayload: { alertId, action: "acknowledge" },
       sourceAlertId: alertId,
-      ...(options ? { contextBundle: { options } } : {}),
+      contextBundle: {
+        ...(options ? { options } : {}),
+        ...(pred ? { outcomePrediction: pred.outcomePrediction } : {}),
+      },
+      ...(pred ? { expectedOutcome: pred.expectedOutcome, checkInDate: pred.checkInDate } : {}),
       status: arbiter.status,
       deferredUntil: arbiter.deferredUntil,
     }).returning();
@@ -234,7 +262,7 @@ export const decisionsInboxService = {
   async createFromChurnRisk(
     orgId: number,
     score: number,
-    opts?: { options?: DecisionCardOption[] },
+    opts?: { options?: DecisionCardOption[]; prediction?: OutcomePrediction },
   ): Promise<number | null> {
     if (score < 90) return null;
 
@@ -265,6 +293,13 @@ export const decisionsInboxService = {
       { itemType: "churn_risk_intervention", organizationId: orgId, score },
     );
 
+    // Horizon A1 — retention is machine-checkable: churn_retained at 90 days.
+    const pred = attachPrediction({
+      itemType: "churn_risk_intervention",
+      organizationId: orgId,
+      prediction: opts?.prediction,
+    });
+
     const options = sanitizeDecisionOptions(opts?.options);
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "churn_risk_intervention",
@@ -277,7 +312,11 @@ export const decisionsInboxService = {
       recommendedActionLabel: "Approve Retention Outreach",
       actionPayload: { orgId, action: "send_retention_email", riskScore: score },
       organizationId: orgId,
-      ...(options ? { contextBundle: { options } } : {}),
+      contextBundle: {
+        ...(options ? { options } : {}),
+        ...(pred ? { outcomePrediction: pred.outcomePrediction } : {}),
+      },
+      ...(pred ? { expectedOutcome: pred.expectedOutcome, checkInDate: pred.checkInDate } : {}),
       status: arbiter.status,
       deferredUntil: arbiter.deferredUntil,
     }).returning();
@@ -288,7 +327,7 @@ export const decisionsInboxService = {
   /** Analyzes a feature request with OpenAI and surfaces high-value ones. */
   async createFromFeatureRequest(
     requestId: number,
-    opts?: { options?: DecisionCardOption[] },
+    opts?: { options?: DecisionCardOption[]; prediction?: OutcomePrediction },
   ): Promise<number | null> {
     const request = await db.query.featureRequests.findFirst({
       where: eq(featureRequests.id, requestId),
@@ -362,6 +401,14 @@ export const decisionsInboxService = {
       { itemType: "feature_request_flagged", requestId, organizationId: request.organizationId ?? undefined },
     );
 
+    // Horizon A1 — judgment-call default (no machine check): the founder
+    // scores this one at the 30-day check-in.
+    const pred = attachPrediction({
+      itemType: "feature_request_flagged",
+      organizationId: request.organizationId ?? null,
+      prediction: opts?.prediction,
+    });
+
     const options = sanitizeDecisionOptions(opts?.options);
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "feature_request_flagged",
@@ -375,12 +422,92 @@ export const decisionsInboxService = {
       actionPayload: { requestId, action: "add_to_roadmap" },
       sourceFeatureRequestId: requestId,
       organizationId: request.organizationId,
-      ...(options ? { contextBundle: { options } } : {}),
+      contextBundle: {
+        ...(options ? { options } : {}),
+        ...(pred ? { outcomePrediction: pred.outcomePrediction } : {}),
+      },
+      ...(pred ? { expectedOutcome: pred.expectedOutcome, checkInDate: pred.checkInDate } : {}),
       status: arbiter.status,
       deferredUntil: arbiter.deferredUntil,
     }).returning();
 
     return item.id;
+  },
+
+  /**
+   * Horizon A1 — the outcome ledger's founder check-in card for judgment
+   * calls (predictions without a machineCheck). One card per original item
+   * while a card is OPEN; a resolved card does not block ("too soon to
+   * tell" pushes the original's checkInDate forward and legitimately
+   * produces a later card). Class B: a check-in is a real founder decision
+   * (calibration ground truth) and rides the same interrupt budget as every
+   * other founder ask.
+   */
+  async createOutcomeCheckIn(original: {
+    id: number;
+    itemType: string;
+    organizationId: number | null;
+    ownerAgentCodename: string | null;
+    recommendedActionLabel: string;
+    expectedOutcome: string | null;
+    resolvedAt: Date | null;
+  }): Promise<{ itemId: number | null; created: boolean }> {
+    const existing = await db.query.decisionsInboxItems.findFirst({
+      where: and(
+        eq(decisionsInboxItems.itemType, "outcome_check_in"),
+        or(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.status, "deferred"),
+        ),
+        sql`${decisionsInboxItems.contextBundle}->>'outcomeCheckInFor' = ${String(original.id)}`,
+      ),
+    });
+    // Dedupe predicate re-applied in process so unit tests pin the
+    // open-card-only semantics independent of the SQL layer.
+    if (
+      existing &&
+      existing.itemType === "outcome_check_in" &&
+      (existing.status === "pending" || existing.status === "deferred") &&
+      Number(existing.contextBundle?.outcomeCheckInFor) === original.id
+    ) {
+      return { itemId: existing.id, created: false };
+    }
+
+    const arbiter = await arbitrateInboxInsert(
+      "B",
+      `Outcome check-in: decision #${original.id}`,
+      {
+        itemType: "outcome_check_in",
+        originalItemId: original.id,
+        organizationId: original.organizationId ?? undefined,
+      },
+    );
+
+    const resolvedOn = original.resolvedAt
+      ? original.resolvedAt.toISOString().slice(0, 10)
+      : "an unrecorded date";
+    const [item] = await db.insert(decisionsInboxItems).values({
+      itemType: "outcome_check_in",
+      riskLevel: "low",
+      urgencyScore: 30,
+      sophieAnalysis: `Outcome check-in for decision #${original.id} ("${original.recommendedActionLabel}"), resolved ${resolvedOn}. Prediction at creation: ${original.expectedOutcome ?? "none recorded"}`,
+      recommendedAction: 'Score this decision against what actually happened. "Too soon to tell" re-asks in 30 days.',
+      recommendedActionLabel: "Score Outcome",
+      actionPayload: null,
+      organizationId: original.organizationId,
+      ownerAgentCodename: original.ownerAgentCodename ?? this.inferAgent(original.itemType),
+      // The 5-point scale is the ledger's fixed instrument — deliberately
+      // NOT run through sanitizeDecisionOptions, whose 4-option cap governs
+      // free-form creator options, not this constant.
+      contextBundle: {
+        options: OUTCOME_CHECK_IN_OPTIONS.map(({ key, label }) => ({ key, label })),
+        outcomeCheckInFor: original.id,
+      },
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
+    }).returning();
+
+    return { itemId: item.id, created: true };
   },
 
   /** Returns pending items sorted by urgencyScore descending. */
@@ -455,6 +582,7 @@ export const decisionsInboxService = {
       dunning_recovery: "forge_revenue",
       critical_alert: "sentinel_devops",
       feature_request_flagged: "compass_pm",
+      outcome_check_in: "sophie_csm",
     };
     return typeToAgent[itemType] || "sophie_csm";
   },

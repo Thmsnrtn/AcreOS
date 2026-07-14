@@ -46,7 +46,7 @@ import {
   financialApprovals,
   spendAnomalies,
 } from "@shared/schema";
-import { eq, and, gte, lt, sql, desc, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, gte, lt, ne, sql, desc, isNull, isNotNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
 export type Band = "green" | "yellow" | "red";
@@ -323,6 +323,14 @@ export async function getAutonomyHealth(): Promise<AutonomyHealthReport> {
  * business-context rubrics per decision category. The default here
  * errs on neutral (+0) when signal is ambiguous so a noisy grading
  * loop doesn't unfairly punish agent trust.
+ *
+ * OWNERSHIP SPLIT (Horizon A1): items that carry a PREDICTION
+ * (checkInDate set at creation) are scored by the outcome ledger
+ * (server/services/outcomeLedger.ts) against that prediction at their
+ * 30/90-day check-in — this 3-7-day heuristic grader SKIPS them so the
+ * two writers never race on outcomeScore. Legacy items without a
+ * prediction keep the heuristic behavior. outcome_check_in cards are the
+ * ledger's own instrument and are never graded either.
  */
 export async function gradeRecentDecisions(): Promise<{ graded: number }> {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -336,11 +344,18 @@ export async function gradeRecentDecisions(): Promise<{ graded: number }> {
         gte(decisionsInboxItems.resolvedAt, sevenDaysAgo),
         lt(decisionsInboxItems.resolvedAt, threeDaysAgo),
         isNull(decisionsInboxItems.outcomeScore),
+        // Horizon A1 ownership split — the outcome ledger owns
+        // prediction-bearing items (and its own check-in cards).
+        isNull(decisionsInboxItems.checkInDate),
+        ne(decisionsInboxItems.itemType, "outcome_check_in"),
       ),
     );
 
   let graded = 0;
   for (const row of rows) {
+    // Ownership split re-checked in process so unit tests pin the skip
+    // independent of the SQL layer.
+    if (row.checkInDate != null || row.itemType === "outcome_check_in") continue;
     let score = 0;
     let outcome = "Graded by auto-outcome heuristic.";
 

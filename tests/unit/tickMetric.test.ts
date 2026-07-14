@@ -49,6 +49,13 @@ const STORES = {
     status: string;
     resolvedBy: string | null;
     resolvedAt: Date | null;
+    // Horizon A1 outcome-ledger fields (metric d). Optional so the
+    // metric-(b) rows above stay terse — absent fields read as "no
+    // prediction" and are honestly invisible to the ledger.
+    createdAt?: Date | null;
+    checkInDate?: Date | null;
+    outcomeScore?: number | null;
+    outcomeRecordedAt?: Date | null;
   }>,
 };
 
@@ -142,6 +149,14 @@ describe("getTickMetric", () => {
     expect(m.verifiedFlagged).toBe(0);
     expect(m.verifiablesTotal).toBe(0);
     expect(m.verificationBreakdown).toBe("nothing verifiable this week");
+    // Metric (d) honest zero: no predictions yet → real zeros, said out loud.
+    expect(m.outcomesScored90d).toBe(0);
+    expect(m.outcomesPositive90d).toBe(0);
+    expect(m.outcomesPending90d).toBe(0);
+    expect(m.outcomesOverdue90d).toBe(0);
+    expect(m.outcomeLedgerBreakdown).toBe(
+      "0 scored, 0 pending, 0 overdue — no decisions carry predictions yet",
+    );
   });
 
   it("budget comes from the constitution loader (5), never a local constant", async () => {
@@ -296,6 +311,48 @@ describe("getTickMetric", () => {
   });
 });
 
+describe("metric (d) — the outcome ledger, trailing 90 days (Horizon A1)", () => {
+  it("counts scored/positive/pending/overdue over prediction-bearing rows only; rows without a checkInDate are invisible", async () => {
+    STORES.inboxItems.push(
+      // scored positive
+      { status: "approved", resolvedBy: "founder", resolvedAt: daysAgo(31), createdAt: daysAgo(35), checkInDate: daysAgo(1), outcomeScore: 2, outcomeRecordedAt: daysAgo(1) },
+      // scored negative — counted in scored, not in positive
+      { status: "rejected", resolvedBy: "founder", resolvedAt: daysAgo(40), createdAt: daysAgo(45), checkInDate: daysAgo(10), outcomeScore: -1, outcomeRecordedAt: daysAgo(9) },
+      // pending — check-in still ahead, honestly unscored
+      { status: "approved", resolvedBy: "founder", resolvedAt: daysAgo(4), createdAt: daysAgo(5), checkInDate: daysAgo(-25), outcomeScore: null, outcomeRecordedAt: null },
+      // overdue — check-in passed, unscored: reported overdue, NEVER backfilled
+      { status: "approved", resolvedBy: "founder", resolvedAt: daysAgo(34), createdAt: daysAgo(35), checkInDate: daysAgo(5), outcomeScore: null, outcomeRecordedAt: null },
+      // prediction made outside the trailing-90d window
+      { status: "approved", resolvedBy: "founder", resolvedAt: daysAgo(99), createdAt: daysAgo(100), checkInDate: daysAgo(70), outcomeScore: 2, outcomeRecordedAt: daysAgo(69) },
+      // legacy row without a prediction — invisible to the ledger even though scored
+      { status: "approved", resolvedBy: "founder", resolvedAt: daysAgo(4), createdAt: daysAgo(5), checkInDate: null, outcomeScore: 1, outcomeRecordedAt: daysAgo(1) },
+    );
+
+    const m = await getTickMetric(NOW);
+
+    expect(m.outcomesScored90d).toBe(2);
+    expect(m.outcomesPositive90d).toBe(1);
+    expect(m.outcomesPending90d).toBe(1);
+    expect(m.outcomesOverdue90d).toBe(1);
+    expect(m.outcomeLedgerBreakdown).toBe("2 scored (1 positive), 1 pending, 1 overdue");
+  });
+
+  it("metric-(b)-style rows without prediction fields stay honest zeros — no backfill from mere resolution", async () => {
+    STORES.inboxItems.push(
+      { status: "approved", resolvedBy: "founder", resolvedAt: daysAgo(1) },
+      { status: "rejected", resolvedBy: "founder", resolvedAt: daysAgo(3) },
+    );
+
+    const m = await getTickMetric(NOW);
+
+    expect(m.founderDecisionsThisWeek).toBe(2); // still counted by metric (b)
+    expect(m.outcomesScored90d).toBe(0);
+    expect(m.outcomesPending90d).toBe(0);
+    expect(m.outcomesOverdue90d).toBe(0);
+    expect(m.outcomeLedgerBreakdown).toContain("no decisions carry predictions yet");
+  });
+});
+
 describe("renderTickMetricLine", () => {
   it("renders the canonical opener — shipped, decisions, and verified: N/M", async () => {
     STORES.dispatches.push({
@@ -312,7 +369,8 @@ describe("renderTickMetricLine", () => {
     expect(line).toBe(
       "Shipped for customers this week: 1 (1 completed outward dispatch; internal review/debug machinery excluded; deploys and merged PRs not counted yet). " +
         "Founder decisions consumed: 2 of 5 budget. " +
-        "Verified: 2/2 (dispatches 1/1 passed, imports 1/1 passed, mail 0 verifiable; work that never entered the verify pipeline is not counted).",
+        "Verified: 2/2 (dispatches 1/1 passed, imports 1/1 passed, mail 0 verifiable; work that never entered the verify pipeline is not counted). " +
+        "Outcome ledger (90d): 0 scored, 0 pending, 0 overdue — no decisions carry predictions yet.",
     );
   });
 
@@ -322,6 +380,10 @@ describe("renderTickMetricLine", () => {
     expect(line).toContain("Founder decisions consumed: 0 of 5 budget.");
     // CP4 honest zero: coverage of an empty pipeline is 0/0, said out loud.
     expect(line).toContain("Verified: 0/0 (nothing verifiable this week).");
+    // Metric (d) honest zero: the ledger reports real zeros, never backfills.
+    expect(line).toContain(
+      "Outcome ledger (90d): 0 scored, 0 pending, 0 overdue — no decisions carry predictions yet.",
+    );
   });
 });
 
