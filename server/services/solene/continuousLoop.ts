@@ -401,8 +401,10 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
   // OPENS with the two numbers — (a) customer-visible/revenue-relevant
   // outcomes shipped this week, (b) founder decisions consumed vs. the
   // constitutional budget — plus (c) verification coverage "verified: N/M"
-  // (Jarvis Phase 1 CP4). A machine graded only on restraint optimizes for
-  // restraint. Best-effort: a failed read logs "unmeasured", never zero.
+  // (Jarvis Phase 1 CP4) and (d) the Horizon A1 outcome ledger (predictions
+  // scored/pending/overdue, trailing 90 days). A machine graded only on
+  // restraint optimizes for restraint. Best-effort: a failed read logs
+  // "unmeasured", never zero.
   try {
     const { getTickMetric } = await import("./tickMetric");
     const metric = await getTickMetric(ranAt);
@@ -417,6 +419,14 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
         verifiedFlagged: metric.verifiedFlagged,
         verifiablesTotal: metric.verifiablesTotal,
         verificationBreakdown: metric.verificationBreakdown,
+        // Metric (d) — Horizon A1 outcome ledger, trailing 90 days. Honest
+        // zeros until decisions carry predictions; overdue is reported,
+        // never backfilled.
+        outcomesScored90d: metric.outcomesScored90d,
+        outcomesPositive90d: metric.outcomesPositive90d,
+        outcomesPending90d: metric.outcomesPending90d,
+        outcomesOverdue90d: metric.outcomesOverdue90d,
+        outcomeLedgerBreakdown: metric.outcomeLedgerBreakdown,
       },
     });
   } catch (err) {

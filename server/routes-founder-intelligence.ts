@@ -1199,6 +1199,15 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Authenti
       if (!chosen) return Errors.badRequest(res, "Unknown chosenOption for this decision");
     }
 
+    // Horizon A1 — an answered outcome check-in writes the founder's score
+    // back to the ORIGINAL decision BEFORE the card resolves (a retap after
+    // a partial failure re-applies the same answer; the ledger is
+    // first-answer-wins on the original row).
+    if (item && chosen && item.itemType === "outcome_check_in") {
+      const { applyCheckInAnswer } = await import("./services/outcomeLedger");
+      await applyCheckInAnswer({ checkInItem: item, optionKey: chosen.key });
+    }
+
     const result = await decisionsInboxService.approve(
       id,
       chosen ? `option:${chosen.key} — ${chosen.label}` : undefined,
@@ -1207,7 +1216,9 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Authenti
     // Jarvis 2.3 precedent write-back — only when an explicit option was
     // chosen (plain approvals carry no reusable rule; the service enforces
     // admission either way). Fire-and-forget: the service is fail-open.
-    if (item && chosen) {
+    // Outcome check-in answers are calibration ground truth, not reusable
+    // rulings — they never become precedents.
+    if (item && chosen && item.itemType !== "outcome_check_in") {
       recordFounderPrecedent({
         itemId: id,
         itemType: item.itemType,
@@ -1317,10 +1328,21 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Authent
     }
     if (!action) return Errors.badRequest(res, "customAction required");
 
+    // Horizon A1 — an answered outcome check-in writes the founder's score
+    // back to the ORIGINAL decision BEFORE the card resolves (a retap after
+    // a partial failure re-applies the same answer; the ledger is
+    // first-answer-wins on the original row).
+    if (item && chosen && item.itemType === "outcome_check_in") {
+      const { applyCheckInAnswer } = await import("./services/outcomeLedger");
+      await applyCheckInAnswer({ checkInItem: item, optionKey: chosen.key });
+    }
+
     await decisionsInboxService.override(id, action);
 
-    // v4: Learn from the override so agents improve over time
-    if (item) {
+    // v4: Learn from the override so agents improve over time. A check-in
+    // answer is calibration ground truth, not an override of an agent
+    // recommendation — it feeds neither override-learning nor precedents.
+    if (item && item.itemType !== "outcome_check_in") {
       try {
         await learnFromOverride({
           agentCodename: item.ownerAgentCodename || "unknown",

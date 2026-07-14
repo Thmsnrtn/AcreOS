@@ -229,6 +229,10 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // Wall-clock 1st-of-month 12:00 UTC. cron not yet consumed.
   { name: "founder_letter_monthly", intervalMs: MONTH, critical: false, cron: "0 12 1 * *" },
   { name: "autonomy_outcome_grader", intervalMs: DAY, critical: false },
+  // Horizon A1 — outcome-ledger 30/90-day check-in scorer, daily 12:00 UTC.
+  // Non-critical: a dark pass delays scoring by a day; the unscored rows
+  // stay honestly unscored (reported as overdue) until the next run.
+  { name: "outcome_ledger_check_ins", intervalMs: DAY, critical: false, cron: "0 12 * * *" },
   { name: "company_briefing_generator", intervalMs: DAY, critical: false },
   // §1026.41 periodic statements — wall-clock 1st-of-month 09:00 UTC. cron not
   // yet consumed.

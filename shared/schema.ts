@@ -12837,7 +12837,7 @@ export type DealRoomDocument = typeof dealRoomDocuments.$inferSelect;
 // Decisions Inbox — pre-analyzed items requiring human judgment
 export const decisionsInboxItems = pgTable("decisions_inbox_items", {
   id: serial("id").primaryKey(),
-  itemType: text("item_type").notNull(), // support_escalation | critical_alert | feature_request_flagged | churn_risk_intervention | dunning_recovery | deferred_interrupt (Jarvis 2.2 arbiter deferral row)
+  itemType: text("item_type").notNull(), // support_escalation | critical_alert | feature_request_flagged | churn_risk_intervention | dunning_recovery | deferred_interrupt (Jarvis 2.2 arbiter deferral row) | outcome_check_in (Horizon A1 outcome-ledger founder check-in card)
   riskLevel: text("risk_level").notNull().default("medium"), // low | medium | high | critical
   urgencyScore: integer("urgency_score").notNull().default(50), // 0-100
   estimatedImpactCents: integer("estimated_impact_cents"),
@@ -12857,6 +12857,10 @@ export const decisionsInboxItems = pgTable("decisions_inbox_items", {
   founderOverrideAction: text("founder_override_action"),
   contextBundle: jsonb("context_bundle").$type<Record<string, any>>(),
   ownerAgentCodename: text("owner_agent_codename"), // company agent that owns this decision
+  // Horizon A1 outcome ledger — the PREDICTION made at creation (what will
+  // be true if this was the right call + when to check). Items carrying a
+  // checkInDate are scored by server/services/outcomeLedger.ts at 30/90
+  // days; legacy items without one keep the 3-7-day heuristic grader.
   expectedOutcome: text("expected_outcome"),
   checkInDate: timestamp("check_in_date"),
   actualOutcome: text("actual_outcome"),

@@ -55,6 +55,13 @@ export interface MonthlySummary {
     netPositive: number;
     netNegative: number;
   };
+  /**
+   * Horizon A1 — one honest paragraph on prediction calibration (outcome-
+   * ledger counts + Brier from computeCalibration). Reads "unmeasured" on a
+   * failed read and refuses to quote percentages under 10 scored outcomes —
+   * never a fabricated number.
+   */
+  calibrationParagraph: string;
   agents: Array<{
     codename: string;
     decisionsOwned: number;
@@ -111,7 +118,7 @@ export async function generateMonthlyLetter(monthKey?: string): Promise<{
     tickMetricLine =
       "Shipped for customers this week: unmeasured (metric read failed this cycle). " +
       `Founder decisions consumed: unmeasured of ${FOUNDER_MINUTES_BUDGET.classABDecisionsPerWeek} budget. ` +
-      "Verified: unmeasured.";
+      "Verified: unmeasured. Outcome ledger (90d): unmeasured.";
   }
   const letterMarkdown = openWithTickMetric(prose.markdown, tickMetricLine);
 
@@ -358,6 +365,27 @@ async function buildSummary(
     // leave defaults
   }
 
+  // Horizon A1 — the calibration paragraph for the decision-grades section.
+  // Built from the outcome ledger's counts + computeCalibration (Brier).
+  // A failed read says "unmeasured" — never a fabricated number.
+  let calibrationParagraph: string;
+  try {
+    const { getOutcomeLedgerCounts } = await import("./outcomeLedger");
+    const ledger = await getOutcomeLedgerCounts();
+    let report = null;
+    if (ledger.scored >= CALIBRATION_MIN_SAMPLE) {
+      const { computeCalibration } = await import("./calibration");
+      report = await computeCalibration("all", 90);
+    }
+    calibrationParagraph = buildCalibrationParagraph(ledger, report);
+  } catch (err: any) {
+    logger.warn("[founderNarrative] calibration read failed — reporting unmeasured", {
+      metadata: { error: err?.message },
+    });
+    calibrationParagraph =
+      "Calibration: unmeasured this month (outcome-ledger read failed) — no number is quoted rather than a guessed one.";
+  }
+
   // Pull synthesized strategic moves for next month, if any.
   // The letter is written FOR month N but looks AHEAD to month N+1,
   // so we peek at synthesized proposals targeted at the upcoming month.
@@ -400,6 +428,7 @@ async function buildSummary(
       netPositive,
       netNegative,
     },
+    calibrationParagraph,
     agents,
     pendingProposals: proposalRows.length,
     openDecisionsNeedingFounder: Number(openDecisionsRow[0]?.c ?? 0),
@@ -409,6 +438,43 @@ async function buildSummary(
     candidateFounderDecision,
     synthesizedStrategicMoves,
   };
+}
+
+/**
+ * Horizon A1 — below this many ledger-scored outcomes, calibration
+ * percentages are noise; the paragraph says so instead of quoting them.
+ */
+const CALIBRATION_MIN_SAMPLE = 10;
+
+/**
+ * One honest paragraph on prediction calibration for the decision-grades
+ * section. `report` is null when the sample is too small to bother
+ * computing (or confidence pairs are unavailable). Exported for unit tests.
+ */
+export function buildCalibrationParagraph(
+  ledger: { scored: number; positive: number; pending: number; overdue: number },
+  report: {
+    brierScore: number | null;
+    overconfidenceBias: number | null;
+    verdict: string;
+  } | null,
+): string {
+  const total = ledger.scored + ledger.pending + ledger.overdue;
+  if (total === 0) {
+    return "Calibration: no decisions carry predictions yet — the outcome ledger starts scoring at the 30/90-day check-ins.";
+  }
+  const counts = `${ledger.scored} prediction${ledger.scored === 1 ? "" : "s"} scored (${ledger.positive} positive), ${ledger.pending} pending, ${ledger.overdue} overdue in the trailing 90 days`;
+  if (ledger.scored < CALIBRATION_MIN_SAMPLE) {
+    return `Calibration: ${counts}. Fewer than ${CALIBRATION_MIN_SAMPLE} scored outcomes — too small a sample to quote calibration percentages, so none are quoted.`;
+  }
+  if (report == null || report.brierScore == null) {
+    return `Calibration: ${counts}. Confidence-vs-outcome pairs are not available for these decisions, so the Brier score is not computable — reported as such rather than estimated.`;
+  }
+  const bias =
+    report.overconfidenceBias == null
+      ? ""
+      : ` Overconfidence bias ${report.overconfidenceBias > 0 ? "+" : ""}${report.overconfidenceBias} points.`;
+  return `Calibration: ${counts}. Brier score ${report.brierScore} (lower is better). ${report.verdict}${bias}`;
 }
 
 /**
@@ -456,6 +522,7 @@ function buildNarrativeContext(s: MonthlySummary): string {
   lines.push(`- Graded: ${s.outcomes.graded}`);
   if (s.outcomes.avgScore != null) lines.push(`- Avg score (−2..+2): ${s.outcomes.avgScore.toFixed(2)}`);
   lines.push(`- Net positive: ${s.outcomes.netPositive} · net negative: ${s.outcomes.netNegative}`);
+  lines.push(`- ${s.calibrationParagraph}`);
   lines.push("");
   lines.push(`TOP HIGHLIGHTS (what worked):`);
   for (const h of s.topHighlights) lines.push(`- ${h}`);
@@ -518,6 +585,8 @@ function buildFallbackLetter(s: MonthlySummary): string {
     `## What happened`,
     "",
     `The system handled ${s.decisions.total} decisions this month. ${s.decisions.autoResolved} were resolved autonomously, ${s.decisions.escalated} were escalated or are still in the queue, ${s.decisions.founderReversed} you reversed, and ${s.decisions.guardrailBlocked} were stopped by safety rails.`,
+    "",
+    s.calibrationParagraph,
     "",
     `## What worked`,
     "",

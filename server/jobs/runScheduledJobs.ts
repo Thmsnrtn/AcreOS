@@ -2252,6 +2252,40 @@ function startAutonomyOutcomeGraderJob() {
   }, ONE_DAY);
 }
 
+// ============================================================================
+// Horizon A1 — outcome-ledger 30/90-day check-in scorer. Daily 12:00 UTC.
+// Scores resolved decisions whose checkInDate has arrived against the
+// PREDICTION stored at creation: machine-checkable criteria are evaluated
+// against real data (pass +2 / fail -1); judgment calls raise one founder
+// check-in card (Class B, deduped). Items the ledger cannot honestly
+// evaluate stay unscored. The 3-7-day heuristic grader
+// (startAutonomyOutcomeGraderJob) skips prediction-bearing items — the
+// ledger owns them. Cheap: indexed reads + a handful of updates.
+// ============================================================================
+function startOutcomeLedgerJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 10 * 60;
+
+  log('Registering outcome-ledger check-in scorer (daily 12:00 UTC)', 'outcome-ledger');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 12) {
+      import('../services/outcomeLedger').then(({ scoreDueCheckIns }) => {
+        withJobLock('outcome_ledger_check_ins', TTL_SECONDS, async () => {
+          const r = await scoreDueCheckIns();
+          log(
+            `Outcome ledger: due=${r.due} machineScored=${r.machineScored} (+${r.machinePassed}/-${r.machineFailed}) checkInsCreated=${r.checkInsCreated} deduped=${r.checkInsDeduped} skipped=${r.skipped}`,
+            'outcome-ledger',
+          );
+        }).catch(err => {
+          log(`Outcome ledger check-in pass failed: ${err}`, 'outcome-ledger');
+        });
+      }).catch(err => log(`Outcome ledger import failed: ${err}`, 'outcome-ledger'));
+    }
+  }, ONE_HOUR);
+}
+
 /**
  * Pre-generate the CEO briefing daily at 6:45am CT (11:45 UTC)
  * so it's cached and instant when the founder opens the dashboard at 7am.
@@ -4501,6 +4535,10 @@ export async function runScheduledJobs(): Promise<void> {
   // learning loop closes (agent trust + autonomy health signal both
   // depend on outcomeScore being populated).
   startAutonomyOutcomeGraderJob();
+
+  // Horizon A1 — outcome ledger: score prediction-bearing decisions at
+  // their 30/90-day check-in (machine checks + founder check-in cards).
+  startOutcomeLedgerJob();
 
   // Monthly prompt-evolution meta-agent — reads 30d of per-agent
   // performance data and proposes prompt revisions for founder
