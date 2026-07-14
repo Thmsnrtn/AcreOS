@@ -193,14 +193,25 @@ export async function ingestDoctrineFile(
 ): Promise<"ingested" | "skipped_unchanged" | "failed"> {
   try {
     const abs = path.join(rootDir, relPath);
-    const stat = await fs.stat(abs);
-    if (stat.size > DOCTRINE_FILE_BYTE_CAP) {
-      logger.warn("doctrineIngest.file_too_large", {
-        metadata: { relPath, bytes: stat.size },
-      });
-      return "failed";
+    // Size-check and read through ONE file handle so the file can't be
+    // swapped between check and use (CodeQL js/file-system-race on the
+    // previous stat-then-readFile shape).
+    const handle = await fs.open(abs, "r");
+    let fullText: string;
+    let byteSize: number;
+    try {
+      const stat = await handle.stat();
+      byteSize = stat.size;
+      if (byteSize > DOCTRINE_FILE_BYTE_CAP) {
+        logger.warn("doctrineIngest.file_too_large", {
+          metadata: { relPath, bytes: byteSize },
+        });
+        return "failed";
+      }
+      fullText = (await handle.readFile()).toString("utf8");
+    } finally {
+      await handle.close();
     }
-    const fullText = await fs.readFile(abs, "utf8");
     const contentHash = crypto.createHash("sha256").update(fullText, "utf8").digest("hex");
 
     const existing = await db
@@ -231,7 +242,7 @@ export async function ingestDoctrineFile(
       embedding: vector,
       metadata: {
         source: "doctrineIngest",
-        bytes: stat.size,
+        bytes: byteSize,
         // Honest chunking note — see module doc: long docs are snippet-head
         // + single-vector only until a chunker lands.
         truncated: fullText.length > EMBEDDED_SNIPPET_MAX_CHARS,

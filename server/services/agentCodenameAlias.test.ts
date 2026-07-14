@@ -94,6 +94,27 @@ describe("agentCodenameAlias", () => {
       expect(result.canonical).toBe("iris");
       expect(result.legacyCodename).toBe("oracle");
     });
+
+    // Step-4 completions (2026-07-14): every companyAgents roster codename
+    // resolves as a REAL alias — none silently falls through to the
+    // unknown→iris fallback anymore. Pins the full 12/12 bridge.
+    it.each([
+      ["beacon_marketing", "soren"],
+      ["sentinel_devops", "iris"],
+      ["ledger_finance", "lena"],
+      ["shield_legal", "beatrice"],
+      ["oracle_analytics", "iris"],
+      ["compass_pm", "maren"],
+      ["crucible_qa", "krieger"],
+      ["prism_ux", "krieger"],
+      ["scribe_content", "soren"],
+    ] as const)("%s → %s (step-4 bridge, default_alias not fallback)", (legacy, canonical) => {
+      const result = resolveCodename({ requestedCodename: legacy });
+      expect(result.canonical).toBe(canonical);
+      expect(result.wasAlias).toBe(true);
+      expect(result.legacyCodename).toBe(legacy);
+      expect(result.rationale).toBe("default_alias");
+    });
   });
 
   // ─── Action-aware overrides ───────────────────────────────────────────────

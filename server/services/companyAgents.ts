@@ -1,6 +1,18 @@
 /**
  * Company Agents — Sovereign Company Protocol
  *
+ * ⚠ LEGACY LIVE FORK — pending consolidation (kernel restructure step 4).
+ * This module carries its own 12-codename roster (atlas_cto…scribe_content)
+ * that is DISJOINT from the canonical 13-member roster in
+ * shared/schema/agent-codenames.ts (solene, iris, soren, …) which the live
+ * Solene tick actually dispatches to. Retiring this fork is a staged
+ * data-and-UI migration (company_agents rows, decisions_inbox
+ * ownerAgentCodename, agent_memory/override/prompt-evolution keys, UI avatar
+ * maps, financialAuthorityGate ILIKE matchers) — NOT a re-export shim; see
+ * the 2026-07-14 step-4 audit. Until then: no new consumers of this roster;
+ * new persona work targets the canonical kernel; cross-roster resolution
+ * goes through server/services/agentCodenameAlias.ts (now complete, 12/12).
+ *
  * Named AI personas that coordinate existing services into a virtual C-suite.
  * Each agent is a coordination layer — not a replacement for existing services.
  * Agents own sets of services, have communication styles, and report to the CEO Briefing.

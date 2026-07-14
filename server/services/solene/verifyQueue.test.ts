@@ -762,12 +762,17 @@ describe("CP3 — applyVerifiedTrustEvidence (trust binding)", () => {
     const verifyId = seedVerifyRow(`verify:dispatch:${targetId}`, "completed");
 
     await recordVerifyOutcome(verifyId, "passed");
-    await flushAsync();
 
     expect(QUEUE.find((q) => q.id === targetId)?.review_status).toBe("passed");
-    expect(trustCalls).toEqual([
-      expect.objectContaining({ domain: "deploy", passed: true }),
-    ]);
+    // The trust binding is fire-and-forget behind two dynamic imports — a
+    // fixed tick-flush is racy under CI's cold module cache (the call can
+    // land AFTER the assertion and bleed into the next test). Wait on the
+    // condition, not the clock.
+    await vi.waitFor(() =>
+      expect(trustCalls).toEqual([
+        expect.objectContaining({ domain: "deploy", passed: true }),
+      ]),
+    );
   });
 
   it("flagged verify → a bounce through the existing demotion seam (passed=false) + self-debug still fires", async () => {
@@ -780,14 +785,16 @@ describe("CP3 — applyVerifiedTrustEvidence (trust binding)", () => {
     const verifyId = seedVerifyRow(`verify:dispatch:${targetId}`, "completed");
 
     await recordVerifyOutcome(verifyId, "flagged", "- ledger row missing");
-    await flushAsync();
 
     expect(QUEUE.find((q) => q.id === targetId)?.review_status).toBe("flagged");
-    expect(trustCalls).toEqual([
-      expect.objectContaining({ domain: "finance", passed: false }),
-    ]);
+    // Condition-based wait — see the passed-verify test above.
+    await vi.waitFor(() =>
+      expect(trustCalls).toEqual([
+        expect.objectContaining({ domain: "finance", passed: false }),
+      ]),
+    );
     expect(trustCalls[0].evidence).toContain("ledger row missing");
-    expect(selfDebugCalls).toHaveLength(1);
+    await vi.waitFor(() => expect(selfDebugCalls).toHaveLength(1));
   });
 
   it("skips HONESTLY when the dispatch carries no domain — non-autopilot source and unknown move kind", async () => {
