@@ -171,6 +171,11 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // Non-critical: a dark watcher delays a gate by days, it doesn't harm a
   // customer — and the deadman still surfaces the absence as P2.
   { name: "gate_watcher_daily", intervalMs: DAY, critical: false, cron: "0 9 * * *" },
+  // Jarvis 2.1 (audit G2) — note payment due-date detector: daily 11:00 UTC
+  // scan turning borrower payments due-soon/overdue into mesh events +
+  // counts-only outward senses. Non-critical: a dark scan delays perception
+  // by a day; the deadman still surfaces the absence.
+  { name: "note_payment_due_scan", intervalMs: DAY, critical: false, cron: "0 11 * * *" },
   { name: "customer_unit_economics", intervalMs: DAY, critical: false },
   { name: "api_telemetry_rollup", intervalMs: DAY, critical: false },
   { name: "reserve_floor_check", intervalMs: DAY, critical: true },

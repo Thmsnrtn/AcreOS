@@ -9,6 +9,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { logger } from "../utils/logger";
+import { publishDealLifecycle } from "../services/dealLifecycleEvents";
 
 export const dealRepo = {
   async getDeals(this: DatabaseStorage, orgId: number): Promise<Deal[]> {
@@ -48,6 +49,9 @@ export const dealRepo = {
   // column is NOT NULL — callers supply it, so it is required here.
   async createDeal(this: DatabaseStorage, deal: InsertDeal & { organizationId: number }): Promise<Deal> {
     const [newDeal] = await db.insert(deals).values(deal).returning();
+    // Jarvis 2.1 (audit G2): a new deal is a perception event. Fire-and-forget
+    // — publishDealLifecycle never throws, so a mesh outage can't fail the create.
+    if (newDeal) publishDealLifecycle(newDeal.organizationId, null, newDeal);
     return newDeal;
   },
 
@@ -84,6 +88,12 @@ export const dealRepo = {
     // stateDocumentConfig. Keeps the closing workflow from getting
     // stuck on "who's supposed to create this checklist."
     if (updated && before?.status !== updated.status) {
+      // Jarvis 2.1 (audit G2): every genuine stage transition is a perception
+      // event (deal:updated, or deal:closed on won/lost). Fire-and-forget —
+      // never fails the mutation. Requires a real pre-image: without one we
+      // can't honestly claim a from→to transition, so we publish nothing.
+      if (before) publishDealLifecycle(updated.organizationId, before, updated);
+
       const triggerStatuses = new Set(["accepted", "under_contract", "in_escrow"]);
       if (triggerStatuses.has(updated.status ?? "")) {
         void this._autoGenerateClosingChecklist(updated.id, before?.propertyId ?? null).catch((err) => {
@@ -140,9 +150,31 @@ export const dealRepo = {
 
   async bulkUpdateDeals(this: DatabaseStorage, orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number> {
     if (ids.length === 0) return 0;
+
+    // Jarvis 2.1 (audit G2): a bulk stage move is N real transitions the brain
+    // should see. Capture pre-images only when status is actually changing;
+    // read failure degrades to "no events" (never fails the mutation).
+    let beforeRows: Array<{ id: number; status: string | null; acceptedAmount: string | null; offerAmount: string | null }> = [];
+    if (updates.status !== undefined) {
+      try {
+        beforeRows = await db
+          .select({ id: deals.id, status: deals.status, acceptedAmount: deals.acceptedAmount, offerAmount: deals.offerAmount })
+          .from(deals)
+          .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
+      } catch (err) {
+        logger.warn(`[storage.bulkUpdateDeals] lifecycle pre-image read skipped: ${(err as Error)?.message}`);
+      }
+    }
+
     await db.update(deals)
       .set({ ...updates, updatedAt: new Date() })
       .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
+
+    for (const before of beforeRows) {
+      if (before.status === updates.status) continue; // no transition
+      publishDealLifecycle(orgId, before, { ...before, ...updates, id: before.id });
+    }
+
     return ids.length;
   },
 };

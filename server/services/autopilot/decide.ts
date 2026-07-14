@@ -49,6 +49,14 @@ export interface DecisionSenses {
   /** Autonomous-job (reflex) failures in window — a failing dunning/billing/
    * compliance job is a real business incident the brain should stabilize. */
   reflexFailures?: number;
+  // ── Deal-shaped perception (Jarvis 2.1, audit G2). Observe-only inputs:
+  // the tick sees pipeline motion and payment schedules; no new moves yet.
+  /** deal:lifecycle mesh events (created/updated/closed) in the window. */
+  dealEvents24h?: number;
+  /** Note-vertical borrower payments due within the next 7 days. */
+  notePaymentsDueSoon?: number;
+  /** Note-vertical borrower payments past due. */
+  notePaymentsOverdue?: number;
 }
 
 /** Lower `priority` = more urgent. */
@@ -188,7 +196,7 @@ export function sensesFromPulse(
   },
   extra?: { supportBacklog?: number; activationStalled?: boolean; dispatchBacklog?: number },
   /** Outward perception (Hands roadmap P0.2) — counts from the perception bus. */
-  outward?: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number; reflexFailures?: number },
+  outward?: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number; reflexFailures?: number; dealEvents24h?: number; notePaymentsDueSoon?: number; notePaymentsOverdue?: number },
 ): DecisionSenses {
   return {
     openIncidents: pulse.dispatchesFlaggedLast24h,
@@ -204,5 +212,8 @@ export function sensesFromPulse(
     churnSignals: outward?.churnSignals ?? 0,
     trialsEnding: outward?.trialsEnding ?? 0,
     reflexFailures: outward?.reflexFailures ?? 0,
+    dealEvents24h: outward?.dealEvents24h ?? 0,
+    notePaymentsDueSoon: outward?.notePaymentsDueSoon ?? 0,
+    notePaymentsOverdue: outward?.notePaymentsOverdue ?? 0,
   };
 }

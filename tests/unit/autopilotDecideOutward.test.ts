@@ -48,11 +48,26 @@ describe("autopilot decide-core — outward perception moves (Hands P0.2)", () =
     const s = sensesFromPulse(
       { mrr: 0, trials: 0, complianceOpenCount: 0, envelopeStatus: "green", dispatchesFlaggedLast24h: 0 },
       {},
-      { emailComplaints: 1, dunningPressure: 2, churnSignals: 1, trialsEnding: 4 },
+      { emailComplaints: 1, dunningPressure: 2, churnSignals: 1, trialsEnding: 4, dealEvents24h: 6, notePaymentsDueSoon: 3, notePaymentsOverdue: 1 },
     );
     expect(s.emailComplaints).toBe(1);
     expect(s.dunningPressure).toBe(2);
     expect(s.churnSignals).toBe(1);
     expect(s.trialsEnding).toBe(4);
+    // Jarvis 2.1 — deal-shaped perception appears in the fused senses.
+    expect(s.dealEvents24h).toBe(6);
+    expect(s.notePaymentsDueSoon).toBe(3);
+    expect(s.notePaymentsOverdue).toBe(1);
+  });
+
+  it("defaults deal-shaped senses to the honest zero when unmeasured", () => {
+    const s = sensesFromPulse(
+      { mrr: 0, trials: 0, complianceOpenCount: 0, envelopeStatus: "green", dispatchesFlaggedLast24h: 0 },
+      {},
+      {},
+    );
+    expect(s.dealEvents24h).toBe(0);
+    expect(s.notePaymentsDueSoon).toBe(0);
+    expect(s.notePaymentsOverdue).toBe(0);
   });
 });

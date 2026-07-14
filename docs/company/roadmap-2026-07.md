@@ -340,6 +340,37 @@ Operational calls (same session):
    Protocol); LOB live mail → first real customer send need; witness
    grants → per-grant founder issuance by design. Verification memo:
    docs/internal/solene-kernel-restructure-verification.md.
+9. **Jarvis 2 arc** (decided 2026-07-14) — **GO on the full Jarvis 2 arc**
+   from the Phase 0 audit's gap analysis
+   (docs/internal/jarvis-phase0-audit.md): with Phase 1's verified
+   act-and-confirm loop (CP1-CP4) shipped, proceed through G2 deal-shaped
+   perception, then G4 operator-memory retrieval, with G3's interruption
+   arbiter triggered when founder interruptions/week first exceed the
+   constitutional budget of 5. Sequencing per the audit: perception feeds
+   the verifier its most valuable subjects, and memory needs deal events
+   to remember. Observe-only first at every step — events and senses
+   before any new action authority.
+
+**Jarvis 2.x progress** — *2.1 deal-shaped perception BUILT 2026-07-14.*
+The dormant v12 deal-lifecycle publishers got their first real callers:
+the deal write seams every route/tool/workflow funnels through
+(storage/dealRepo createDeal / updateDeal / bulkUpdateDeals) now publish
+deal:discovered on create, deal:updated with from→to on genuine stage
+transitions, and deal:closed (won with honest amount, lost without one)
+— fire-and-forget via dealLifecycleEvents.ts, so a mesh outage can never
+fail a customer mutation. Note payment due-dates became first-class: a
+daily 11:00 UTC detector (notePaymentDueDetector.ts, rostered for the
+deadman) turns active notes' next_payment_date into note:payment_due_soon
+/ note:payment_overdue mesh events (deterministic note+date+classification
+dedupe keys checked against the mesh's own ledger; fail-closed on ledger
+read errors) plus counts-only outward senses. The Solene tick now fuses
+dealEvents24h, notePaymentsDueSoon, and notePaymentsOverdue into its
+decision senses (observe-only — no new moves, no new actions). Priority
+discipline: only closed-won (2) and overdue payments (3) cross the
+notification-router's ≤3 dispatch threshold; routine pipeline motion
+stays at 4-5. New unit tests pin the seams, the dedupe/window logic, the
+counts-only senses, and the fire-and-forget isolation. Next: G4
+operator-memory retrieval, now that deal events exist to remember.
 
 ## Do not regress (verified strengths, all four lenses)
 
