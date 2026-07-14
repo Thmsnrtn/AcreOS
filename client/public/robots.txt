@@ -22,7 +22,6 @@ Allow: /why
 Allow: /land-credit-score
 Allow: /security
 Allow: /glossary
-Allow: /learn
 Allow: /compare/acreos-vs-propstream
 Allow: /compare/acreos-vs-dealmachine
 Allow: /changelog
@@ -35,7 +34,10 @@ Allow: /tools/parcel-check
 Allow: /tools/calculator
 Allow: /learn/
 Allow: /p/
+Allow: /field-notes
+Allow: /compare/
 
 # Sitemap
 Sitemap: https://acreos.io/sitemap.xml
 Sitemap: https://acreos.io/sitemap-reports.xml
+Sitemap: https://acreos.io/sitemap-notes.xml
