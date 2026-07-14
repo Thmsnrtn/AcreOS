@@ -7757,6 +7757,19 @@ const STATEMENTS = [
          VALUES ('arming.tier1.2026_07_13', 'global', '"executed"'::jsonb, '"executed"'::jsonb);
      END IF;
    END $$`,
+
+  // Jarvis Phase 1 CP2 — successCriteria + generic verify dispatches
+  // (migration 0204, founder-approved plan docs/internal/jarvis-phase0-audit.md).
+  // success_criteria: nullable jsonb { criteria: [{ id, description, check? }] }
+  // — the explicit contract an independent READ-ONLY `verify` dispatch
+  // evaluates a target's OUTCOME against. import_jobs.verify_status/
+  // verify_findings are where a completed import's verification VERDICT
+  // lands ('pending' | 'passed' | 'flagged' + FINDINGS). Verification never
+  // blocks the import in CP2 — blocking is CP3. Additive + nullable.
+  // Mirrors shared/schema/solene-dispatch.ts + shared/schema/etl.ts.
+  `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "success_criteria" jsonb`,
+  `ALTER TABLE "import_jobs" ADD COLUMN IF NOT EXISTS "verify_status" text`,
+  `ALTER TABLE "import_jobs" ADD COLUMN IF NOT EXISTS "verify_findings" text`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -41,6 +41,7 @@ import {
   DISPATCH_DEFAULT_COST_USD,
   DISPATCH_DEFAULT_TIMEOUT_MS,
   DISPATCH_MAX_ATTEMPTS,
+  type DispatchSuccessCriteria,
   type SoleneDispatchAgentRole,
   type SoleneDispatchQueueRow,
   type SoleneDispatchResultRow,
@@ -71,6 +72,13 @@ export interface EnqueueDispatchOpts {
    * behavior (always insert). Use computeEffectKey() to build it.
    */
   idempotencyKey?: string | null;
+  /**
+   * CP2 of Jarvis Phase 1 (Verified Act-and-Confirm). Explicit success
+   * criteria an independent `verify` dispatch can later evaluate the OUTCOME
+   * against. Omitted/null = no criteria attached (legacy behavior). On a
+   * sourceType='verify' enqueue this holds the criteria BEING verified.
+   */
+  successCriteria?: DispatchSuccessCriteria | null;
 }
 
 export interface DispatchResultInput {
@@ -172,6 +180,7 @@ export async function enqueueDispatch(
     timeoutMs,
     enqueuedBy: opts.enqueuedBy ?? null,
     idempotencyKey: key,
+    successCriteria: opts.successCriteria ?? null,
   };
 
   // Exactly-once (panel #2): a keyed enqueue inserts ON CONFLICT DO NOTHING
@@ -251,6 +260,7 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
     original_dispatch_id: number | null;
     attempts: number;
     not_before_at: Date | null;
+    success_criteria: DispatchSuccessCriteria | null;
   }>(sql`
     UPDATE solene_dispatch_queue
     SET status = 'in_progress', started_at = now(), attempts = attempts + 1
@@ -267,7 +277,8 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
       agent_role, prompt_text, max_cost_usd, timeout_ms,
       started_at, completed_at, result_summary, result_full_path,
       enqueued_by, review_status, reviewed_by_dispatch_id,
-      original_dispatch_id, idempotency_key, attempts, not_before_at
+      original_dispatch_id, idempotency_key, attempts, not_before_at,
+      success_criteria
   `);
 
   // drizzle's `execute` returns slightly different shapes across drivers.
@@ -303,6 +314,8 @@ export async function claimNextDispatch(): Promise<SoleneDispatchQueueRow | null
     model: r.model ?? null,
     attempts: r.attempts ?? 1,
     notBeforeAt: r.not_before_at ?? null,
+    // CP2 (Jarvis Phase 1) — explicit success criteria for verify dispatches.
+    successCriteria: r.success_criteria ?? null,
   };
 }
 
@@ -350,26 +363,43 @@ export async function completeDispatch(
   // logged loudly and leave review_status pending (surfaced by
   // listPendingReviews) — an unparseable review never counts as passed.
   // Fire-and-forget: verdict-consumption failure must not fail completion.
+  //
+  // CP2 extends the same hook: when the completing dispatch is a generic
+  // `verify` dispatch, the SAME structured block (VERDICT: passed | flagged
+  // + FINDINGS) is parsed by the SAME parser and routed by sourceId —
+  // 'verify:dispatch:<id>' flips the target dispatch's review_status (and
+  // fires self-debug on flagged); 'verify:import:<jobId>' lands the verdict
+  // on the import_jobs row. Verify dispatches are READ-ONLY observers in
+  // CP2: they never block or fail the work they verify (blocking is CP3).
   void (async () => {
     try {
       const [row] = await db
-        .select({ sourceType: soleneDispatchQueue.sourceType })
+        .select({
+          sourceType: soleneDispatchQueue.sourceType,
+          sourceId: soleneDispatchQueue.sourceId,
+        })
         .from(soleneDispatchQueue)
         .where(eq(soleneDispatchQueue.id, id))
         .limit(1);
-      if (row?.sourceType !== "code_review") return;
-      const { parseReviewVerdict, recordReviewOutcome } = await import("./codeReviewQueue");
+      if (row?.sourceType !== "code_review" && row?.sourceType !== "verify") return;
+      const { parseReviewVerdict } = await import("./codeReviewQueue");
       const verdict = parseReviewVerdict(result.resultSummary);
       if (!verdict) {
         logger.warn(
-          `[dispatchQueue] review dispatch id=${id} completed WITHOUT a parseable VERDICT — original stays pending (never counts as passed)`,
+          `[dispatchQueue] ${row.sourceType} dispatch id=${id} completed WITHOUT a parseable VERDICT — target stays pending (never counts as passed)`,
         );
         return;
       }
-      await recordReviewOutcome(id, verdict.outcome, verdict.findings);
+      if (row.sourceType === "code_review") {
+        const { recordReviewOutcome } = await import("./codeReviewQueue");
+        await recordReviewOutcome(id, verdict.outcome, verdict.findings);
+      } else {
+        const { recordVerifyOutcome } = await import("./verifyQueue");
+        await recordVerifyOutcome(id, verdict.outcome, verdict.findings);
+      }
     } catch (err) {
       logger.warn(
-        `[dispatchQueue] verdict consumption failed for review id=${id}: ${
+        `[dispatchQueue] verdict consumption failed for dispatch id=${id}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );

@@ -62,6 +62,17 @@ export const importJobs = pgTable("import_jobs", {
   errors: jsonb("errors").$type<Array<{ row: number; error: string }>>().notNull().default([]),
   result: jsonb("result").$type<Record<string, unknown>>(),
   errorMessage: text("error_message"),
+  // CP2 of Jarvis Phase 1 (Verified Act-and-Confirm, migration 0204).
+  // When an import job completes, a READ-ONLY `verify` dispatch is enqueued
+  // fire-and-forget (server/services/solene/verifyQueue.ts); its VERDICT
+  // lands here. Verification NEVER blocks or fails the import in CP2 —
+  // blocking / act-and-confirm binding is CP3.
+  //   verify_status   — 'pending' | 'passed' | 'flagged'
+  //                     (null = no verify enqueued: pre-CP2 rows, dispatch
+  //                      disabled, or the enqueue itself failed)
+  //   verify_findings — the verdict's FINDINGS block (flagged carries detail)
+  verifyStatus: text("verify_status"),
+  verifyFindings: text("verify_findings"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
