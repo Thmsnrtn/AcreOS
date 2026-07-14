@@ -49,7 +49,17 @@ import {
   type SoleneDispatchStatus,
 } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
-import { assertWithinEnsembleCap } from "./capitalTracker";
+import { assertWithinEnsembleCap, getMonthlyEnvelopeStatus } from "./capitalTracker";
+import {
+  scoreDispatchProposal,
+  backfillScoreEventDispatchId,
+} from "./tokenEconomyScorer";
+import {
+  DEFAULT_DISPATCH_PRIORITY,
+  EV_EXEMPT_SOURCE_TYPES,
+  evPriority,
+  throttleForEnvelope,
+} from "./cognitionThrottle";
 
 export interface EnqueueDispatchOpts {
   sourceType: SoleneDispatchSourceType;
@@ -60,7 +70,12 @@ export interface EnqueueDispatchOpts {
   maxCostUsd?: number;
   /** Default 10 minutes. */
   timeoutMs?: number;
-  /** Default 1.0; higher numbers claim first. */
+  /**
+   * Higher numbers claim first. When OMITTED, the EV loop (Horizon A4) derives
+   * the priority from the dispatch's token-economy score (see
+   * cognitionThrottle.evPriority; default 1.0 when scoring is unavailable).
+   * An explicit value is always respected — never re-scored.
+   */
   priority?: number;
   enqueuedBy?: string;
   /** Bypass the $100 ceiling. Required for any cap above DISPATCH_MAX_COST_USD. */
@@ -134,12 +149,24 @@ export function computeEffectKey(parts: {
 // enqueueDispatch
 // ----------------------------------------------------------------------------
 
+/**
+ * Rough token estimate for EV scoring at enqueue: prompt length / 4 chars per
+ * token in, plus a flat output allowance. These are labeled ESTIMATES — they
+ * shape queue position only, never whether work runs.
+ */
+const EV_OUTPUT_TOKEN_ESTIMATE = 2000;
+function estimateDispatchTokens(promptText: string): { input: number; output: number } {
+  return {
+    input: Math.ceil(promptText.length / 4),
+    output: EV_OUTPUT_TOKEN_ESTIMATE,
+  };
+}
+
 export async function enqueueDispatch(
   opts: EnqueueDispatchOpts,
 ): Promise<number> {
   const maxCostUsd = opts.maxCostUsd ?? DISPATCH_DEFAULT_COST_USD;
   const timeoutMs = opts.timeoutMs ?? DISPATCH_DEFAULT_TIMEOUT_MS;
-  const priority = opts.priority ?? 1.0;
 
   if (!Number.isFinite(maxCostUsd) || maxCostUsd <= 0) {
     throw new Error(
@@ -168,10 +195,76 @@ export async function enqueueDispatch(
   // error so a hiccup can never quietly unbound the ensemble.
   await assertWithinEnsembleCap({ founderOverride: opts.founderOverride });
 
+  // ── Horizon A4 §1 — EV at enqueue. Every eligible dispatch gets an
+  // expected-value score and the score becomes its queue priority (the
+  // documented mapping in cognitionThrottle.evPriority). Three hard rules:
+  //   1. A caller-supplied priority always wins — callers who set one know
+  //      something the scorer doesn't (founder bands, verify/self-debug
+  //      escalation lanes).
+  //   2. Exempt source types (verify + founder-initiated) are never re-scored.
+  //   3. FAIL-OPEN: a scoring failure keeps the default priority and the
+  //      enqueue proceeds — EV must never block work; the hard ensemble cap
+  //      above is the only gate.
+  let priority = opts.priority ?? DEFAULT_DISPATCH_PRIORITY;
+  let scoreEventId: number | null = null;
+  if (opts.priority == null && !EV_EXEMPT_SOURCE_TYPES.has(opts.sourceType)) {
+    try {
+      const scored = await scoreDispatchProposal({
+        agentRole: opts.agentRole,
+        promptText: opts.promptText,
+        estimatedTokens: estimateDispatchTokens(opts.promptText),
+      });
+      scoreEventId = scored.scoreEventId;
+      priority = evPriority(scored.score, opts.sourceType);
+    } catch (err) {
+      logger.warn(
+        `[dispatchQueue] EV scoring failed for source=${opts.sourceType} — enqueue proceeds at default priority (fail-open)`,
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
+
+  // ── Horizon A4 §2 — graduated deprioritization BEFORE the hard cap trips.
+  // Runs strictly AFTER assertWithinEnsembleCap and is IN ADDITION to it,
+  // never instead of it: the throttle only defers (not_before_at) or
+  // deprioritizes (priority floor) — the cap above remains the actual stop.
+  // Exempt source types skip the whole block (never throttled).
+  let notBeforeAt: Date | null = null;
+  if (!EV_EXEMPT_SOURCE_TYPES.has(opts.sourceType)) {
+    let envelopeStatus: "green" | "amber" | "red";
+    try {
+      envelopeStatus = (await getMonthlyEnvelopeStatus()).status;
+    } catch (err) {
+      // getMonthlyEnvelopeStatus is fail-soft and shouldn't throw; if it ever
+      // does, the graduated brake stays conservative (treat as red). The
+      // deferral is fully recoverable — and the hard cap's own fail-CLOSED
+      // read gate already ran above.
+      envelopeStatus = "red";
+      logger.warn(
+        "[dispatchQueue] envelope status read failed — throttling conservatively as red",
+        err instanceof Error ? err : undefined,
+      );
+    }
+    const throttle = throttleForEnvelope(envelopeStatus, opts.sourceType);
+    if (throttle.action === "defer") {
+      notBeforeAt = new Date(Date.now() + throttle.deferMs);
+      logger.info(
+        `[dispatchQueue] throttle: deferred source=${opts.sourceType} envelope=${envelopeStatus} notBeforeAt=${notBeforeAt.toISOString()} — ${throttle.reason}`,
+      );
+    }
+    if (throttle.maxPriority != null && priority > throttle.maxPriority) {
+      logger.info(
+        `[dispatchQueue] throttle: priority ${priority} → ${throttle.maxPriority} source=${opts.sourceType} envelope=${envelopeStatus} — ${throttle.reason}`,
+      );
+      priority = throttle.maxPriority;
+    }
+  }
+
   const key = opts.idempotencyKey?.trim() || null;
   const values = {
     status: "queued" as const,
     priority: priority.toFixed(3),
+    notBeforeAt,
     sourceType: opts.sourceType,
     sourceId: opts.sourceId,
     agentRole: opts.agentRole,
@@ -203,6 +296,11 @@ export async function enqueueDispatch(
         .limit(1);
       if (existing) {
         logger.info(`[dispatchQueue] enqueue deduped on idempotencyKey → existing id=${existing.id}`);
+        // The scoring event described THIS effect; the deduped row IS that
+        // effect's dispatch, so the backfill link is still honest.
+        if (scoreEventId != null) {
+          void backfillScoreEventDispatchId(scoreEventId, existing.id);
+        }
         return existing.id;
       }
       throw new Error("enqueueDispatch: conflict but no existing row found");
@@ -218,8 +316,15 @@ export async function enqueueDispatch(
     throw new Error("enqueueDispatch: insert returned no id");
   }
 
+  // Horizon A4 §1 — backfill the scoring event's dispatch_id now that the
+  // queue row exists (the documented UPDATE pattern on the nullable column).
+  // Fire-and-forget; the helper swallows its own errors.
+  if (scoreEventId != null) {
+    void backfillScoreEventDispatchId(scoreEventId, inserted.id);
+  }
+
   logger.info(
-    `[dispatchQueue] enqueued id=${inserted.id} role=${opts.agentRole} source=${opts.sourceType}:${opts.sourceId} maxCost=$${maxCostUsd} timeoutMs=${timeoutMs}`,
+    `[dispatchQueue] enqueued id=${inserted.id} role=${opts.agentRole} source=${opts.sourceType}:${opts.sourceId} priority=${priority.toFixed(3)} maxCost=$${maxCostUsd} timeoutMs=${timeoutMs}`,
   );
 
   return inserted.id;

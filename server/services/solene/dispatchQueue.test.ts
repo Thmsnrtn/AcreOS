@@ -107,7 +107,9 @@ vi.mock("../../db", () => {
               enqueued_by: row.enqueuedBy ?? null,
               idempotency_key: row.idempotencyKey ?? null,
               attempts: 0,
-              not_before_at: null,
+              // Horizon A4 — the cognition throttle sets not_before_at at
+              // ENQUEUE time (graduated deferral); persist it like the column.
+              not_before_at: row.notBeforeAt ?? null,
               success_criteria: row.successCriteria ?? null,
             };
             return {
@@ -245,10 +247,50 @@ vi.mock("drizzle-orm", async () => {
 // the cap now (correctly) fails CLOSED on an unreadable spend (re-audit it.3),
 // so leaving it real would throw here. No-op the cap; keep the real error
 // classes for the dedicated ensembleMonthlyCap.test.ts.
+// Horizon A4: the cognition throttle reads getMonthlyEnvelopeStatus at enqueue
+// — stub it (default green = no throttle) so tests can drive amber/red.
+const ENVELOPE = vi.hoisted(() => ({ status: "green" as "green" | "amber" | "red" }));
 vi.mock("./capitalTracker", async () => {
   const actual = await vi.importActual<typeof import("./capitalTracker")>("./capitalTracker");
-  return { ...actual, assertWithinEnsembleCap: vi.fn().mockResolvedValue(undefined) };
+  return {
+    ...actual,
+    assertWithinEnsembleCap: vi.fn().mockResolvedValue(undefined),
+    getMonthlyEnvelopeStatus: vi.fn(async () => ({
+      envelopeUsd: 50,
+      monthToDateUsd: 0,
+      percentUsed: 0,
+      daysIntoMonth: 1,
+      projectedMonthlyUsd: 0,
+      status: ENVELOPE.status,
+    })),
+  };
 });
+
+// Horizon A4: enqueueDispatch scores eligible dispatches via the token-economy
+// scorer. Stub the module: the default score 0.6 maps to evPriority 1.0 (the
+// proceed threshold = the default priority) so all pre-A4 queue-mechanics
+// assertions are unchanged; EV-specific tests drive the score explicitly.
+const SCORER = vi.hoisted(() => ({
+  score: 0.6,
+  scoreEventId: null as number | null,
+  fail: false,
+}));
+vi.mock("./tokenEconomyScorer", () => ({
+  scoreDispatchProposal: vi.fn(async () => {
+    if (SCORER.fail) throw new Error("simulated scorer outage");
+    return {
+      estimatedCostUsd: 0.01,
+      estimatedValueUsd: 20,
+      historicalSuccessRate: 0.8,
+      envelopeStatus: "green",
+      score: SCORER.score,
+      recommendation: "proceed",
+      rationale: "test",
+      scoreEventId: SCORER.scoreEventId,
+    };
+  }),
+  backfillScoreEventDispatchId: vi.fn().mockResolvedValue(undefined),
+}));
 
 // CP2 (Jarvis Phase 1) — completeDispatch routes a completing `verify`
 // dispatch's verdict to verifyQueue.recordVerifyOutcome via dynamic import.
@@ -263,6 +305,10 @@ beforeEach(() => {
   RESULTS.length = 0;
   nextQueueId = 1;
   nextResultId = 1;
+  ENVELOPE.status = "green";
+  SCORER.score = 0.6;
+  SCORER.scoreEventId = null;
+  SCORER.fail = false;
 });
 
 afterEach(() => {
@@ -346,6 +392,155 @@ describe("dispatchQueue.enqueueDispatch", () => {
     expect(Number(row!.max_cost_usd)).toBe(5);
     expect(row!.timeout_ms).toBe(10 * 60 * 1000);
     expect(row!.status).toBe("queued");
+  });
+});
+
+describe("enqueueDispatch — EV at enqueue (Horizon A4 §1)", () => {
+  it("derives the priority from the token-economy score when the caller passes none", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    SCORER.score = 0.9; // 0.9 / 0.6 = 1.5
+    const id = await enqueueDispatch({
+      sourceType: "auto_dispatch",
+      sourceId: "ev:1",
+      agentRole: "iris",
+      promptText: "task",
+    });
+    expect(Number(QUEUE.find((q) => q.id === id)!.priority)).toBeCloseTo(1.5, 3);
+  });
+
+  it("a caller-supplied priority is respected — the scorer is never consulted", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    const { scoreDispatchProposal } = await import("./tokenEconomyScorer");
+    SCORER.score = 0.9;
+    const id = await enqueueDispatch({
+      sourceType: "auto_dispatch",
+      sourceId: "ev:2",
+      agentRole: "iris",
+      promptText: "task",
+      priority: 0.7,
+    });
+    expect(Number(QUEUE.find((q) => q.id === id)!.priority)).toBeCloseTo(0.7, 3);
+    expect(scoreDispatchProposal).not.toHaveBeenCalled();
+  });
+
+  it("exempt source types keep the default priority and are never scored", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    const { scoreDispatchProposal } = await import("./tokenEconomyScorer");
+    SCORER.score = 0.05; // would map to the 0.2 floor if it ever applied
+    const id = await enqueueDispatch({
+      sourceType: "verify",
+      sourceId: "verify:dispatch:9",
+      agentRole: "general-purpose",
+      promptText: "verify",
+    });
+    expect(Number(QUEUE.find((q) => q.id === id)!.priority)).toBeCloseTo(1.0, 3);
+    expect(scoreDispatchProposal).not.toHaveBeenCalled();
+  });
+
+  it("FAIL-OPEN: a scoring failure keeps the default priority and the enqueue proceeds", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    SCORER.fail = true;
+    const id = await enqueueDispatch({
+      sourceType: "auto_dispatch",
+      sourceId: "ev:3",
+      agentRole: "iris",
+      promptText: "task",
+    });
+    const row = QUEUE.find((q) => q.id === id)!;
+    expect(row.status).toBe("queued");
+    expect(Number(row.priority)).toBeCloseTo(1.0, 3);
+  });
+
+  it("backfills the scoring event's dispatch_id after the insert (documented UPDATE pattern)", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    const { backfillScoreEventDispatchId } = await import("./tokenEconomyScorer");
+    SCORER.scoreEventId = 55;
+    const id = await enqueueDispatch({
+      sourceType: "auto_dispatch",
+      sourceId: "ev:4",
+      agentRole: "iris",
+      promptText: "task",
+    });
+    await vi.waitFor(() =>
+      expect(backfillScoreEventDispatchId).toHaveBeenCalledWith(55, id),
+    );
+  });
+});
+
+describe("enqueueDispatch — graduated envelope throttle (Horizon A4 §2)", () => {
+  it("amber: internal machinery is deferred ~6h via not_before_at (deferred, not dropped)", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    ENVELOPE.status = "amber";
+    const before = Date.now();
+    const id = await enqueueDispatch({
+      sourceType: "code_review",
+      sourceId: "review:1",
+      agentRole: "code-reviewer",
+      promptText: "review",
+      priority: 2.0,
+    });
+    const row = QUEUE.find((q) => q.id === id)!;
+    expect(row.status).toBe("queued"); // still enqueued
+    expect(row.not_before_at).toBeInstanceOf(Date);
+    expect(row.not_before_at!.getTime()).toBeGreaterThanOrEqual(before + 6 * 60 * 60 * 1000 - 1000);
+    // Deferred, NOT deprioritized at amber.
+    expect(Number(row.priority)).toBeCloseTo(2.0, 3);
+  });
+
+  it("amber: outward work (auto_dispatch) is not deferred", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    ENVELOPE.status = "amber";
+    const id = await enqueueDispatch({
+      sourceType: "auto_dispatch",
+      sourceId: "a:1",
+      agentRole: "iris",
+      promptText: "task",
+    });
+    expect(QUEUE.find((q) => q.id === id)!.not_before_at).toBeNull();
+  });
+
+  it("red: internal machinery is deferred ~24h; background work is pinned to the 0.2 priority floor but still enqueued", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    ENVELOPE.status = "red";
+    const before = Date.now();
+    const reviewId = await enqueueDispatch({
+      sourceType: "self_debug",
+      sourceId: "flagged:1:by:2",
+      agentRole: "iris",
+      promptText: "debug",
+      priority: 1.5,
+    });
+    const reviewRow = QUEUE.find((q) => q.id === reviewId)!;
+    expect(reviewRow.not_before_at!.getTime()).toBeGreaterThanOrEqual(before + 24 * 60 * 60 * 1000 - 1000);
+
+    const bgId = await enqueueDispatch({
+      sourceType: "detector",
+      sourceId: "d:1",
+      agentRole: "krieger",
+      promptText: "task",
+      priority: 1.5,
+    });
+    const bgRow = QUEUE.find((q) => q.id === bgId)!;
+    expect(bgRow.status).toBe("queued"); // still enqueued — the hard cap is the stop
+    expect(bgRow.not_before_at).toBeNull();
+    expect(Number(bgRow.priority)).toBeCloseTo(0.2, 3);
+  });
+
+  it("red: the exempt list is untouched — verify and founder work keep priority and timing", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    ENVELOPE.status = "red";
+    for (const sourceType of ["verify", "founder_manual", "founder_bypass", "letter_reply"] as const) {
+      const id = await enqueueDispatch({
+        sourceType,
+        sourceId: `x:${sourceType}`,
+        agentRole: "general-purpose",
+        promptText: "task",
+        priority: 3.0,
+      });
+      const row = QUEUE.find((q) => q.id === id)!;
+      expect(row.not_before_at).toBeNull();
+      expect(Number(row.priority)).toBeCloseTo(3.0, 3);
+    }
   });
 });
 

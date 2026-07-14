@@ -60,6 +60,14 @@
  * If nothing carries predictions yet the counts are genuine zeros — the
  * ledger never backfills and never invents a score.
  *
+ * Metric (e) — COGNITION ROI (Horizon A4) — over the trailing 30 days:
+ * real dispatch spend (solene_dispatch_results.costUsd) vs. value with a
+ * REAL join back to a dispatch (recovered cents credited by a consequence
+ * webhook onto an experience row carrying that dispatch_id). Both numbers
+ * shown together, always: unattributed spend is reported as unattributed
+ * ("not yet measurable"), never implied to be measured value and never
+ * imputed. Zeros are honest zeros.
+ *
  * Week = trailing 7 days from `now` (injectable for tests). All metrics
  * re-apply their windows in process so the arithmetic is pinned by unit
  * tests independent of the SQL layer; the SQL WHERE clauses keep the
@@ -71,6 +79,7 @@ import { db } from "../../db";
 import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
 import { cascadeResolutions, decisionsInboxItems, founderOverrides, importJobs, mailShipments } from "@shared/schema";
 import { getOutcomeLedgerCounts } from "../outcomeLedger";
+import { computeCognitionRoi } from "./cognitionRoi";
 import { FOUNDER_MINUTES_BUDGET } from "@sovereign/immutables";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -118,6 +127,16 @@ export interface TickMetric {
   outcomesOverdue90d: number;
   /** Plain-language account of (d) — honest zeros, never backfilled. */
   outcomeLedgerBreakdown: string;
+  /** Metric (e): real dispatch spend, trailing 30 days (USD). */
+  cognitionSpent30dUsd: number;
+  /** Value with a REAL join back to a dispatch, trailing 30 days (USD). */
+  cognitionAttributedValue30dUsd: number;
+  /** Distinct dispatches with attributed value, trailing 30 days. */
+  cognitionAttributedDispatches30d: number;
+  /** Distinct dispatches that recorded cost, trailing 30 days. */
+  cognitionTotalDispatches30d: number;
+  /** Plain-language account of (e) — both numbers, unattributed named. */
+  cognitionBreakdown: string;
 }
 
 /**
@@ -224,6 +243,11 @@ export async function getTickMetric(now: Date = new Date()): Promise<TickMetric>
   // ── Metric (d): outcome ledger, trailing 90 days (Horizon A1) ───────────
   const ledger = await getOutcomeLedgerCounts(now);
 
+  // ── Metric (e): cognition ROI, trailing 30 days (Horizon A4) ────────────
+  // Throws on a genuine read failure like every other metric — callers
+  // render "unmeasured" rather than a fabricated zero.
+  const cognition = await computeCognitionRoi(30, now);
+
   return {
     revenueRelevantShippedThisWeek: shipped,
     shippedBreakdown: renderShippedBreakdown(shipped),
@@ -245,6 +269,11 @@ export async function getTickMetric(now: Date = new Date()): Promise<TickMetric>
     outcomesPending90d: ledger.pending,
     outcomesOverdue90d: ledger.overdue,
     outcomeLedgerBreakdown: renderOutcomeLedgerBreakdown(ledger),
+    cognitionSpent30dUsd: cognition.spentUsd,
+    cognitionAttributedValue30dUsd: cognition.attributedValueUsd,
+    cognitionAttributedDispatches30d: cognition.attributedDispatches,
+    cognitionTotalDispatches30d: cognition.totalDispatches,
+    cognitionBreakdown: renderCognitionBreakdown(cognition),
   };
 }
 
@@ -328,8 +357,29 @@ export function renderTickMetricLine(m: TickMetric): string {
     `Shipped for customers this week: ${m.revenueRelevantShippedThisWeek} (${m.shippedBreakdown}). ` +
     `Founder decisions consumed: ${m.founderDecisionsThisWeek} of ${m.founderDecisionsBudget} budget. ` +
     `Verified: ${m.verifiedPassed}/${m.verifiablesTotal} (${m.verificationBreakdown}). ` +
-    `Outcome ledger (90d): ${m.outcomeLedgerBreakdown}.`
+    `Outcome ledger (90d): ${m.outcomeLedgerBreakdown}. ` +
+    `Cognition (30d): ${m.cognitionBreakdown}.`
   );
+}
+
+/**
+ * Metric (e) rendering. Both numbers always appear together — spend and
+ * attributed value — and the attribution gap is named on every rendering,
+ * so "$X spent → $Y attributed" can never read as "all value was measured".
+ */
+function renderCognitionBreakdown(c: {
+  spentUsd: number;
+  attributedValueUsd: number;
+  attributedDispatches: number;
+  totalDispatches: number;
+}): string {
+  const base =
+    `$${c.spentUsd.toFixed(2)} spent, $${c.attributedValueUsd.toFixed(2)} attributed value ` +
+    `(${c.attributedDispatches} of ${c.totalDispatches} dispatches attributable)`;
+  if (c.totalDispatches === 0 && c.attributedDispatches === 0) {
+    return `${base} — no dispatch spend recorded in the window`;
+  }
+  return `${base}; unattributed spend is unmeasured, not assumed valuable`;
 }
 
 /**

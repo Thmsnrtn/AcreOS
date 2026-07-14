@@ -115,8 +115,30 @@ vi.mock("../../server/services/aiRouter", () => ({
   routeCriticalTask: vi.fn(),
 }));
 
+// Metric (e) — cognition ROI (Horizon A4). The rollup's own arithmetic is
+// pinned by cognitionRoi.test.ts; here we stub the module and pin what the
+// tick metric DOES with the numbers (honest zeros, the rendered line, and
+// throw-through on a read failure).
+const COGNITION = vi.hoisted(() => ({
+  roi: {
+    windowDays: 30,
+    spentUsd: 0,
+    attributedValueUsd: 0,
+    attributedDispatches: 0,
+    totalDispatches: 0,
+    bySourceType: [] as Array<{ sourceType: string; spentUsd: number; attributedValueUsd: number }>,
+  },
+  fail: false,
+}));
+vi.mock("../../server/services/solene/cognitionRoi", () => ({
+  computeCognitionRoi: vi.fn(async () => {
+    if (COGNITION.fail) throw new Error("simulated read failure: cognition_roi");
+    return { ...COGNITION.roi, bySourceType: [...COGNITION.roi.bySourceType] };
+  }),
+}));
+
 import { getTickMetric, renderTickMetricLine } from "../../server/services/solene/tickMetric";
-import { openWithTickMetric } from "../../server/services/founderNarrative";
+import { openWithTickMetric, buildCognitionParagraph } from "../../server/services/founderNarrative";
 import { FOUNDER_MINUTES_BUDGET } from "@sovereign/immutables";
 
 const NOW = new Date("2026-07-13T12:00:00Z");
@@ -133,6 +155,15 @@ beforeEach(() => {
   STORES.mail.length = 0;
   STORES.inboxItems.length = 0;
   FAIL_TABLES.clear();
+  COGNITION.roi = {
+    windowDays: 30,
+    spentUsd: 0,
+    attributedValueUsd: 0,
+    attributedDispatches: 0,
+    totalDispatches: 0,
+    bySourceType: [],
+  };
+  COGNITION.fail = false;
   vi.clearAllMocks();
 });
 
@@ -156,6 +187,14 @@ describe("getTickMetric", () => {
     expect(m.outcomesOverdue90d).toBe(0);
     expect(m.outcomeLedgerBreakdown).toBe(
       "0 scored, 0 pending, 0 overdue — no decisions carry predictions yet",
+    );
+    // Metric (e) honest zero: no spend, no attribution — said out loud.
+    expect(m.cognitionSpent30dUsd).toBe(0);
+    expect(m.cognitionAttributedValue30dUsd).toBe(0);
+    expect(m.cognitionAttributedDispatches30d).toBe(0);
+    expect(m.cognitionTotalDispatches30d).toBe(0);
+    expect(m.cognitionBreakdown).toBe(
+      "$0.00 spent, $0.00 attributed value (0 of 0 dispatches attributable) — no dispatch spend recorded in the window",
     );
   });
 
@@ -309,6 +348,54 @@ describe("getTickMetric", () => {
       await expect(getTickMetric(NOW)).rejects.toThrow(`simulated read failure: ${table}`);
     }
   });
+
+  it("HONESTY: a cognition-ROI read failure also makes the whole metric throw (metric e)", async () => {
+    COGNITION.fail = true;
+    await expect(getTickMetric(NOW)).rejects.toThrow("simulated read failure: cognition_roi");
+  });
+});
+
+describe("metric (e) — cognition ROI, trailing 30 days (Horizon A4)", () => {
+  it("carries the rollup's real numbers and names the attribution gap on every non-zero rendering", async () => {
+    COGNITION.roi = {
+      windowDays: 30,
+      spentUsd: 12.34,
+      attributedValueUsd: 125.0,
+      attributedDispatches: 2,
+      totalDispatches: 9,
+      bySourceType: [
+        { sourceType: "auto_dispatch", spentUsd: 10.0, attributedValueUsd: 125.0 },
+        { sourceType: "code_review", spentUsd: 2.34, attributedValueUsd: 0 },
+      ],
+    };
+
+    const m = await getTickMetric(NOW);
+    expect(m.cognitionSpent30dUsd).toBe(12.34);
+    expect(m.cognitionAttributedValue30dUsd).toBe(125.0);
+    expect(m.cognitionAttributedDispatches30d).toBe(2);
+    expect(m.cognitionTotalDispatches30d).toBe(9);
+    expect(m.cognitionBreakdown).toBe(
+      "$12.34 spent, $125.00 attributed value (2 of 9 dispatches attributable); " +
+        "unattributed spend is unmeasured, not assumed valuable",
+    );
+  });
+
+  it("spend with zero attribution renders both honest numbers — never implies value was measured", async () => {
+    COGNITION.roi = {
+      windowDays: 30,
+      spentUsd: 8.0,
+      attributedValueUsd: 0,
+      attributedDispatches: 0,
+      totalDispatches: 5,
+      bySourceType: [{ sourceType: "auto_dispatch", spentUsd: 8.0, attributedValueUsd: 0 }],
+    };
+
+    const m = await getTickMetric(NOW);
+    expect(m.cognitionBreakdown).toBe(
+      "$8.00 spent, $0.00 attributed value (0 of 5 dispatches attributable); " +
+        "unattributed spend is unmeasured, not assumed valuable",
+    );
+  });
 });
 
 describe("metric (d) — the outcome ledger, trailing 90 days (Horizon A1)", () => {
@@ -370,7 +457,8 @@ describe("renderTickMetricLine", () => {
       "Shipped for customers this week: 1 (1 completed outward dispatch; internal review/debug machinery excluded; deploys and merged PRs not counted yet). " +
         "Founder decisions consumed: 2 of 5 budget. " +
         "Verified: 2/2 (dispatches 1/1 passed, imports 1/1 passed, mail 0 verifiable; work that never entered the verify pipeline is not counted). " +
-        "Outcome ledger (90d): 0 scored, 0 pending, 0 overdue — no decisions carry predictions yet.",
+        "Outcome ledger (90d): 0 scored, 0 pending, 0 overdue — no decisions carry predictions yet. " +
+        "Cognition (30d): $0.00 spent, $0.00 attributed value (0 of 0 dispatches attributable) — no dispatch spend recorded in the window.",
     );
   });
 
@@ -384,6 +472,81 @@ describe("renderTickMetricLine", () => {
     expect(line).toContain(
       "Outcome ledger (90d): 0 scored, 0 pending, 0 overdue — no decisions carry predictions yet.",
     );
+    // Metric (e) honest zero: cognition spend/value are real zeros, said out loud.
+    expect(line).toContain(
+      "Cognition (30d): $0.00 spent, $0.00 attributed value (0 of 0 dispatches attributable) — no dispatch spend recorded in the window.",
+    );
+  });
+});
+
+describe("buildCognitionParagraph — The Letter's cognition paragraph (Horizon A4)", () => {
+  const roi = (over: Partial<Parameters<typeof buildCognitionParagraph>[0]> = {}) => ({
+    spentUsd: 0,
+    attributedValueUsd: 0,
+    attributedDispatches: 0,
+    totalDispatches: 0,
+    bySourceType: [] as Array<{ sourceType: string; spentUsd: number; attributedValueUsd: number }>,
+    ...over,
+  });
+
+  it("no spend at all → says so plainly, quotes nothing", () => {
+    expect(buildCognitionParagraph(roi())).toBe(
+      "Cognition: no agent-dispatch spend recorded in the trailing 30 days, so there is nothing to attribute yet.",
+    );
+  });
+
+  it("shows spend AND attributed value together, with top + bottom sourceType by attributed value", () => {
+    const p = buildCognitionParagraph(
+      roi({
+        spentUsd: 20.5,
+        attributedValueUsd: 150,
+        attributedDispatches: 6,
+        totalDispatches: 8,
+        bySourceType: [
+          { sourceType: "auto_dispatch", spentUsd: 12, attributedValueUsd: 100 },
+          { sourceType: "detector", spentUsd: 6, attributedValueUsd: 50 },
+          { sourceType: "code_review", spentUsd: 2.5, attributedValueUsd: 0 },
+        ],
+      }),
+    );
+    expect(p).toContain("$20.50 spent on agent dispatches in the trailing 30 days → $150.00 in attributed value");
+    expect(p).toContain("(6 of 8 dispatches have a real dollar outcome joined back)");
+    expect(p).toContain("Most attributed value: auto_dispatch ($100.00)");
+    expect(p).toContain("least: detector ($50.00)");
+    // 6/8 attribution — the low-coverage sentence must NOT appear.
+    expect(p).not.toContain("not yet attributable");
+  });
+
+  it("thin attribution coverage adds the plain most-value-is-not-yet-attributable sentence", () => {
+    const p = buildCognitionParagraph(
+      roi({
+        spentUsd: 40,
+        attributedValueUsd: 12,
+        attributedDispatches: 1,
+        totalDispatches: 10,
+        bySourceType: [{ sourceType: "auto_dispatch", spentUsd: 40, attributedValueUsd: 12 }],
+      }),
+    );
+    expect(p).toContain("1 of 10 dispatches have a real dollar outcome joined back");
+    expect(p).toContain("All attributed value came through auto_dispatch ($12.00).");
+    expect(p).toContain("Most of this spend is not yet attributable to a measured dollar outcome");
+    expect(p).toContain("not license to assume it was valuable");
+  });
+
+  it("spend with ZERO attribution keeps both numbers visible and never implies measured value", () => {
+    const p = buildCognitionParagraph(
+      roi({
+        spentUsd: 9.99,
+        attributedValueUsd: 0,
+        attributedDispatches: 0,
+        totalDispatches: 4,
+        bySourceType: [{ sourceType: "code_review", spentUsd: 9.99, attributedValueUsd: 0 }],
+      }),
+    );
+    expect(p).toContain("$9.99 spent");
+    expect(p).toContain("$0.00 in attributed value");
+    expect(p).toContain("No source of work has attributed value yet.");
+    expect(p).toContain("Most of this spend is not yet attributable");
   });
 });
 

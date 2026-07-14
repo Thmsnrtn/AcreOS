@@ -47,6 +47,26 @@ describe("autopilot narration engine — the Voice", () => {
     expect(b.theWord).toMatch(/completed 3 tasks/i);
   });
 
+  it("decision scoring (Horizon A4): one honest sentence when dispatches were genuinely scored today", () => {
+    const b = buildFounderBrief(
+      base({ scoring: { totalScored: 4, averageScore: 0.575, deferredCount: 1 } }),
+    );
+    expect(b.theWord).toContain(
+      "I scored 4 prospective dispatches against expected value today (average score 0.57, 1 deferred).",
+    );
+  });
+
+  it("decision scoring: with nothing scored (or the summary unreadable) the sentence is OMITTED — never invented", () => {
+    const zero = buildFounderBrief(
+      base({ scoring: { totalScored: 0, averageScore: 0, deferredCount: 0 } }),
+    );
+    expect(zero.theWord).not.toMatch(/scored/i);
+    const unreadable = buildFounderBrief(base({ scoring: null }));
+    expect(unreadable.theWord).not.toMatch(/scored/i);
+    const legacy = buildFounderBrief(base());
+    expect(legacy.theWord).not.toMatch(/scored/i);
+  });
+
   it("HONESTY: never invents revenue — $0 MRR reads as 'No revenue yet'", () => {
     const b = buildFounderBrief(base({ pulse: { ...base().pulse, mrr: 0 } }));
     expect(b.theWord).toMatch(/No revenue yet/i);

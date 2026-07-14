@@ -9,8 +9,11 @@
  *
  *   scoreDispatchProposal(input)
  *     Compute cost + value + historical-success-rate + envelope weight
- *     → score → recommendation + rationale. Persists fire-and-forget;
- *     never throws on write failure.
+ *     → score → recommendation + rationale. Persists the scoring event
+ *     before returning (write failure is swallowed and reported as
+ *     scoreEventId: null — never thrown), so callers can backfill the
+ *     dispatch link via backfillScoreEventDispatchId once the queue row
+ *     exists (the documented nullable-dispatch_id UPDATE pattern).
  *
  *   listRecentScores(limit?)
  *     Most-recent N scoring rows (desc by scoredAt). Default limit 50.
@@ -25,19 +28,12 @@
  * so downstream surfaces can reason about them without re-importing this
  * service module.
  *
- * NOTE — daily-pulse wire-in is INTENTIONALLY deferred (TODO below).
- * The L5.27 dispatch directive explicitly says "if the daily pulse
- * generator is in a file you cannot identify as safe, DEFER the wire-in
- * and leave a TODO" — at dispatch time the obvious envelope-surface
- * consumers were routes-solene-audit.ts (HTTP endpoint, not a generator),
- * autoDispatch.ts (consumer, not generator), and selfAudit.ts (drift
- * detector, not pulse). Solene will wire this into the actual pulse
- * generator in a follow-up commit.
- *
- * TODO(solene): wire getDailyScoringSummary() into the daily-pulse
- *   generator. Sub-section title: "Decision Scoring". Surface: total
- *   scored, proceeded/deferred/rejected counts, average score, top-3
- *   high-value/low-cost rationales. Reference: L5.27 dispatch.
+ * Pulse wire-in (Horizon A4, closing the L5.27 TODO): the daily founder
+ * brief is the pulse's narrative surface, and composeFounderBrief
+ * (server/services/autopilot/narrate.ts) now folds getDailyScoringSummary()
+ * into the brief as a single honest sentence (count scored, average score,
+ * deferrals). Production callers: enqueueDispatch (scores every eligible
+ * enqueue, Horizon A4 §1) + the founder brief.
  */
 
 import { and, desc, eq, gte, sql } from "drizzle-orm";
@@ -97,6 +93,13 @@ export interface ScoringResult {
   score: number; // 0-1 (higher = more worth dispatching)
   recommendation: SoleneDecisionScoreRecommendation;
   rationale: string;
+  /**
+   * Id of the persisted solene_decision_score_events row, or null when the
+   * write failed (swallowed — scoring never blocks the decision path).
+   * Callers that enqueue AFTER scoring use this to backfill dispatch_id via
+   * backfillScoreEventDispatchId (Horizon A4 §1).
+   */
+  scoreEventId: number | null;
 }
 
 export interface RecentScoreRow {
@@ -177,8 +180,10 @@ export async function scoreDispatchProposal(
     envelopeStatus: envelope,
   });
 
-  // Persist fire-and-forget — never block the decision path.
-  void persistScoringEvent({
+  // Persist the scoring event. Awaited so the caller receives the row id for
+  // the dispatch_id backfill, but a write failure is swallowed (scoreEventId
+  // null) — scoring must never block or fail the decision path.
+  const scoreEventId = await persistScoringEvent({
     dispatchId: input.dispatchId ?? null,
     agentRole: input.agentRole,
     promptSummary: truncate(input.promptText, PROMPT_SUMMARY_MAX),
@@ -199,7 +204,30 @@ export async function scoreDispatchProposal(
     score,
     recommendation,
     rationale,
+    scoreEventId,
   };
+}
+
+/**
+ * Backfill the dispatch link onto a persisted scoring event once the queue
+ * row exists — the UPDATE pattern documented on the nullable `dispatch_id`
+ * column (shared/schema/solene-token-economy.ts). Best-effort; never throws.
+ */
+export async function backfillScoreEventDispatchId(
+  scoreEventId: number,
+  dispatchId: number,
+): Promise<void> {
+  try {
+    await db
+      .update(soleneDecisionScoreEvents)
+      .set({ dispatchId })
+      .where(eq(soleneDecisionScoreEvents.id, scoreEventId));
+  } catch (err) {
+    logger.warn(
+      "[tokenEconomyScorer] dispatch_id backfill swallow",
+      err instanceof Error ? err : undefined,
+    );
+  }
 }
 
 // ============================================================================
@@ -428,28 +456,34 @@ interface PersistArgs {
   rationale: string;
 }
 
-async function persistScoringEvent(args: PersistArgs): Promise<void> {
+/** Returns the inserted row id, or null on a (swallowed) write failure. */
+async function persistScoringEvent(args: PersistArgs): Promise<number | null> {
   try {
-    await db.insert(soleneDecisionScoreEvents).values({
-      dispatchId: args.dispatchId,
-      agentRole: args.agentRole,
-      promptSummary: args.promptSummary,
-      estimatedCostUsd: args.estimatedCostUsd.toFixed(4),
-      estimatedValueUsd:
-        args.estimatedValueUsd === null
-          ? null
-          : args.estimatedValueUsd.toFixed(4),
-      historicalSuccessRate: clamp01(args.historicalSuccessRate).toFixed(4),
-      envelopeStatusAtDecision: args.envelopeStatusAtDecision,
-      score: clamp01(args.score).toFixed(4),
-      recommendation: args.recommendation,
-      rationale: args.rationale,
-    });
+    const [inserted] = await db
+      .insert(soleneDecisionScoreEvents)
+      .values({
+        dispatchId: args.dispatchId,
+        agentRole: args.agentRole,
+        promptSummary: args.promptSummary,
+        estimatedCostUsd: args.estimatedCostUsd.toFixed(4),
+        estimatedValueUsd:
+          args.estimatedValueUsd === null
+            ? null
+            : args.estimatedValueUsd.toFixed(4),
+        historicalSuccessRate: clamp01(args.historicalSuccessRate).toFixed(4),
+        envelopeStatusAtDecision: args.envelopeStatusAtDecision,
+        score: clamp01(args.score).toFixed(4),
+        recommendation: args.recommendation,
+        rationale: args.rationale,
+      })
+      .returning({ id: soleneDecisionScoreEvents.id });
+    return inserted?.id ?? null;
   } catch (err) {
     logger.warn(
       "[tokenEconomyScorer] persistScoringEvent swallow",
       err instanceof Error ? err : undefined,
     );
+    return null;
   }
 }
 

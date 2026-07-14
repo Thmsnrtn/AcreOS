@@ -11,7 +11,7 @@
  * outcomeOf + statsFromExperiences are PURE → exhaustively unit-testable. The DB
  * functions are thin record/accrete helpers.
  */
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { autopilotExperiences, type AutopilotExperience } from "@shared/schema";
 import { logger } from "../../utils/logger";
@@ -422,12 +422,34 @@ export async function setExperienceTarget(dispatchId: number, targetRef: string)
  */
 export async function recordConsequenceByTarget(
   targetRef: string,
-  consequence: { paymentRecovered?: boolean; deliveryBounced?: boolean },
+  consequence: {
+    paymentRecovered?: boolean;
+    deliveryBounced?: boolean;
+    /**
+     * Horizon A4 — the REAL cents the consequence recovered (e.g. Stripe's
+     * amount_paid on a dunning recovery). Optional + additive: existing
+     * callers and the boolean vote are unchanged. Stored by merging into the
+     * row's existing reasoningTrace jsonb (key `recoveredCents`) so the
+     * cognition-ROI rollup can attribute actual dollars — no migration.
+     */
+    recoveredCents?: number;
+  },
 ): Promise<number> {
   try {
     const set: Record<string, unknown> = { resolvedAt: new Date() };
     if (consequence.paymentRecovered != null) set.paymentRecovered = consequence.paymentRecovered;
     if (consequence.deliveryBounced != null) set.deliveryBounced = consequence.deliveryBounced;
+    if (
+      consequence.recoveredCents != null &&
+      Number.isFinite(consequence.recoveredCents) &&
+      consequence.recoveredCents > 0
+    ) {
+      // Merge — never overwrite — the glass-box trace. A non-object trace
+      // (defensive: the column is written as an object everywhere) is left
+      // out of the merge base rather than crashing the jsonb concat.
+      const cents = Math.round(consequence.recoveredCents);
+      set.reasoningTrace = sql`CASE WHEN jsonb_typeof(${autopilotExperiences.reasoningTrace}) = 'object' THEN ${autopilotExperiences.reasoningTrace} ELSE '{}'::jsonb END || jsonb_build_object('recoveredCents', ${cents}::int)`;
+    }
     const updated = await db
       .update(autopilotExperiences)
       .set(set)

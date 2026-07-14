@@ -120,6 +120,15 @@ vi.mock("../../db", () => {
         this._where = w;
         return this;
       },
+      // Horizon A4 — tickMetric's cognition-ROI query joins results⟕queue and
+      // experiences⋈queue. Both tables resolve to "unknown" here (→ empty
+      // rows → honest zeros), so the joins just pass through.
+      leftJoin(_t: any, _on: any) {
+        return this;
+      },
+      innerJoin(_t: any, _on: any) {
+        return this;
+      },
       groupBy(g: any) {
         this._groupBy = g;
         return this;
