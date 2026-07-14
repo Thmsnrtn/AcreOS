@@ -41,6 +41,19 @@ export const LEGACY_AGENT_CODENAMES = [
   "forge_revenue",
   "forge",
   "oracle",
+  // Kernel restructure step 4 (2026-07-14): the remaining companyAgents.ts
+  // roster codenames, previously unbridged — an unbridged name silently
+  // fell back to iris at the resolver. Bridging completes the alias layer
+  // so the eventual fork retirement is a data migration, not a guess.
+  "beacon_marketing",
+  "sentinel_devops",
+  "ledger_finance",
+  "shield_legal",
+  "oracle_analytics",
+  "compass_pm",
+  "crucible_qa",
+  "prism_ux",
+  "scribe_content",
 ] as const;
 export type LegacyAgentCodename = (typeof LEGACY_AGENT_CODENAMES)[number];
 
@@ -66,6 +79,17 @@ export const LEGACY_TO_CANONICAL_ALIAS: Record<
   forge_revenue: "soren",
   forge: "soren",
   oracle: "iris",
+  // Step-4 completions, mapped by roster domain
+  // (docs/internal/team-roster-overview.md):
+  beacon_marketing: "soren", // brand / content / acquisition
+  sentinel_devops: "iris", // engineering / deploys
+  ledger_finance: "lena", // capital allocation / unit economics
+  shield_legal: "beatrice", // compliance / legal / security
+  oracle_analytics: "iris", // analytics / perf prediction (matches oracle)
+  compass_pm: "maren", // product strategy / prioritization
+  crucible_qa: "krieger", // customer-surface test matrices
+  prism_ux: "krieger", // customer-surface UX
+  scribe_content: "soren", // content
 };
 
 /**
