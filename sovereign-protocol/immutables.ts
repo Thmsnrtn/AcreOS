@@ -86,6 +86,43 @@ export function customerImmutableByNumber(
   return CUSTOMER_IMMUTABLES.find((i) => i.number === num);
 }
 
+// ─── Objective block (constitutional amendment, founder directive 2026-07-13) ─
+//
+// The machine-readable objective function: what the system is FOR, so every
+// planner/tick/judge can rank work by it. Same amendment discipline as the
+// two immutable lists — CEO-only, hash-pinned.
+
+export interface RankingCriterion {
+  readonly rank: number;
+  readonly criterion: string;
+}
+
+export interface PhaseGate {
+  readonly id: string;
+  readonly condition: string;
+  readonly unlocks: string;
+}
+
+export const OBJECTIVE = Object.freeze(rawImmutables.objective);
+
+export const PRIME_OBJECTIVE: string = rawImmutables.objective.primeObjective;
+
+export const RANKING_FUNCTION: ReadonlyArray<RankingCriterion> = Object.freeze(
+  rawImmutables.objective.rankingFunction.map((r) => Object.freeze({ rank: r.rank, criterion: r.criterion })),
+);
+
+export const CURRENT_PHASE: string = rawImmutables.objective.phase.current;
+
+export const PHASE_GATES: ReadonlyArray<PhaseGate> = Object.freeze(
+  rawImmutables.objective.phase.gates.map((g) =>
+    Object.freeze({ id: g.id, condition: g.condition, unlocks: g.unlocks }),
+  ),
+);
+
+export const KILL_CRITERIA: string = rawImmutables.objective.killCriteria;
+
+export const FOUNDER_MINUTES_BUDGET = Object.freeze(rawImmutables.objective.founderMinutesBudget);
+
 /**
  * Raw JSON re-export, frozen, for hash-asserting consumers (the unit test
  * and any future docs codegen). Downstream code should prefer the typed

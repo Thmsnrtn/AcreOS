@@ -68,9 +68,9 @@ import {
 //   5. Commit message must reference "constitutional amendment" so Quinn's
 //      drift-audit picks it up.
 const EXPECTED_BYTE_SHA256 =
-  "690794fc8cdfe080ab2e6351719ccf378328ec63b47d555f6e19282236fe4585";
+  "a80aacb95ae1b6cd4ed4fe308dc36fcc4a86ba2184fea1a31ac48474ce7dc8ae";
 const EXPECTED_STRUCTURAL_SHA256 =
-  "ee68d8fcc96908bd0e80feab1d5bc1fecb3ac1ab2e266c4c11c8193633c54e90";
+  "20eadd844f626a99c605df21ca37d825de74cb518e1011cad62e3080f059c8c2";
 
 // Resolved relative to repo root (which is process.cwd() under vitest run).
 const CANONICAL_JSON_PATH = path.resolve(

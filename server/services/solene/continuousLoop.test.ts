@@ -338,6 +338,11 @@ describe("composeMorningPulse", () => {
     expect(snap.oneLine).toContain("MRR");
     expect(snap.oneLine).toContain("trials");
     expect(snap.oneLine).toContain("uptime");
+    // Kernel-restructure step 5: the constitutional decision budget rides on
+    // every pulse; with no decision rows the consumption is an honest zero.
+    expect(snap.founderDecisionsBudget).toBe(5);
+    expect(snap.founderDecisionsUsedThisWeek).toBe(0);
+    expect(snap.oneLine).toContain("0/5 decisions used");
     expect(snap.dayLabel).toMatch(/^[A-Z][a-z]{2} \d{4}-\d{2}-\d{2}$/);
   });
 
@@ -388,6 +393,8 @@ describe("renderOneLine", () => {
       decisionsWaitingCount: 2,
       autonomyHorizonDays: 5,
       envelopeStatus: "green",
+      founderDecisionsUsedThisWeek: 3,
+      founderDecisionsBudget: 5,
       dispatchesCompletedLast24h: 0,
       dispatchesFlaggedLast24h: 0,
       asksOpenCount: 0,
@@ -395,7 +402,7 @@ describe("renderOneLine", () => {
       agentActivity: [],
     });
     expect(oneLine).toBe(
-      "Thu 2026-06-04 · $1,234 MRR · +3 trials · 99.9% uptime · 0/0 compliance · $4.21 week-cost · 2 decisions waiting · Horizon: 5 days",
+      "Thu 2026-06-04 · $1,234 MRR · +3 trials · 99.9% uptime · 0/0 compliance · $4.21 week-cost · 2 decisions waiting · 3/5 decisions used · Horizon: 5 days",
     );
   });
 
@@ -414,6 +421,8 @@ describe("renderOneLine", () => {
       decisionsWaitingCount: 0,
       autonomyHorizonDays: 7,
       envelopeStatus: "green",
+      founderDecisionsUsedThisWeek: null,
+      founderDecisionsBudget: 5,
       dispatchesCompletedLast24h: 0,
       dispatchesFlaggedLast24h: 0,
       asksOpenCount: 0,
@@ -422,6 +431,10 @@ describe("renderOneLine", () => {
     });
     expect(oneLine).toContain("uptime n/a");
     expect(oneLine).not.toContain("99.9");
+    // Kernel-restructure step 5: an unmeasured decisions-used metric reads
+    // n/a — never a fabricated 0/5.
+    expect(oneLine).toContain("decisions used n/a");
+    expect(oneLine).not.toContain("0/5 decisions used");
   });
 });
 

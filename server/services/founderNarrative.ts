@@ -33,6 +33,7 @@ import {
   payments,
 } from "@shared/schema";
 import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
+import { FOUNDER_MINUTES_BUDGET } from "@sovereign/immutables";
 import { logger } from "../utils/logger";
 import { routeCriticalTask } from "./aiRouter";
 
@@ -93,11 +94,30 @@ export async function generateMonthlyLetter(monthKey?: string): Promise<{
   const summary = await buildSummary(key, label, start, end);
   const prose = await writeNarrative(summary);
 
+  // Kernel-restructure step 5 (founder directive 2026-07-13): The Letter
+  // OPENS with the two numbers — outcomes shipped and founder decisions
+  // consumed vs. the constitutional budget. Injected deterministically
+  // after the title so neither the model nor the fallback can drop it.
+  // A failed metric read says "unmeasured" — never a fabricated zero.
+  let tickMetricLine: string;
+  try {
+    const { getTickMetric, renderTickMetricLine } = await import("./solene/tickMetric");
+    tickMetricLine = renderTickMetricLine(await getTickMetric());
+  } catch (err) {
+    logger.warn("[founderNarrative] tick-metric read failed; letter opens with an honest 'unmeasured'", {
+      metadata: { error: err instanceof Error ? err.message : String(err) },
+    });
+    tickMetricLine =
+      "Shipped for customers this week: unmeasured (metric read failed this cycle). " +
+      `Founder decisions consumed: unmeasured of ${FOUNDER_MINUTES_BUDGET.classABDecisionsPerWeek} budget.`;
+  }
+  const letterMarkdown = openWithTickMetric(prose.markdown, tickMetricLine);
+
   await db
     .insert(founderLetters)
     .values({
       monthKey: key,
-      letterMarkdown: prose.markdown,
+      letterMarkdown,
       summaryJson: summary,
       pendingFounderDecision: prose.pendingFounderDecision,
       status: "draft",
@@ -105,7 +125,7 @@ export async function generateMonthlyLetter(monthKey?: string): Promise<{
     .onConflictDoUpdate({
       target: founderLetters.monthKey,
       set: {
-        letterMarkdown: prose.markdown,
+        letterMarkdown,
         summaryJson: summary,
         pendingFounderDecision: prose.pendingFounderDecision,
         generatedAt: new Date(),
@@ -115,10 +135,29 @@ export async function generateMonthlyLetter(monthKey?: string): Promise<{
   logger.info(`[founderNarrative] letter generated for ${key}`);
   return {
     monthKey: key,
-    letterMarkdown: prose.markdown,
+    letterMarkdown,
     summary,
     pendingFounderDecision: prose.pendingFounderDecision,
   };
+}
+
+/**
+ * Place the tick-metric line as the FIRST content line of the letter —
+ * immediately after the "# Founder letter — ..." title (and before the
+ * one-line verdict). If the markdown has no title (a degenerate model
+ * response), the line is prepended so it still opens the letter.
+ * Exported for unit tests.
+ */
+export function openWithTickMetric(markdown: string, metricLine: string): string {
+  const lines = markdown.split("\n");
+  const titleIdx = lines.findIndex((l) => l.trim().startsWith("#"));
+  if (titleIdx === -1) return `${metricLine}\n\n${markdown}`;
+  return [
+    ...lines.slice(0, titleIdx + 1),
+    "",
+    metricLine,
+    ...lines.slice(titleIdx + 1),
+  ].join("\n");
 }
 
 /**
