@@ -76,6 +76,7 @@ const KERNEL_MANIFEST = [
   "experienceLog.ts",
   "policyInducer.ts",
   "shadowRegret.ts", // off-policy decision-quality (read-only; never feeds reward)
+  "shadowAgreement.ts", // Horizon A2 shadow-agreement evidence (read-only; founder-gated promotions)
   "admitPack.ts", // DomainPack refinement proof (fail-closed pack admission)
   "loopStability.ts", // constrained exploration + oscillation damping
   "witnessGrant.ts", // delegable, policy-bound witnessing authority (fail-closed)

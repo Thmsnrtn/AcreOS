@@ -1239,6 +1239,32 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 outcome: outcome.status,
                 memory: memoryNote,
               });
+              // Horizon A2 — shadow mode. When the AUTONOMY gate (and only it)
+              // held this move back — an OBSERVE block (suppressed) or a DRAFT
+              // escalation (a human must approve) — the row records the call
+              // the autopilot WOULD have made. Mark it {shadow, shadowedCapability}
+              // and bind it to the real-world situation via a "shadow:"-namespaced
+              // targetRef (the growth target when one exists, else the move's own
+              // deterministic effect key). Pure metadata on a row that was already
+              // being written; a shadow row is structurally incapable of acting
+              // (Sovereign Principle 10 — no agent may unilaterally expand its own
+              // authority). Best-effort: marking failure records the row unmarked.
+              let traceToRecord: unknown = trace;
+              let shadowTargetRef: string | null = null;
+              try {
+                const { markShadowExperience } = await import("../autopilot/shadowAgreement");
+                const marked = markShadowExperience({
+                  outcome: outcome.status,
+                  gateDecidedBy: outcome.gate?.decidedBy ?? null,
+                  moveKind: actMove.kind,
+                  reasoningTrace: trace as unknown as Record<string, unknown>,
+                  situationKey: selectedGrowthTarget
+                    ? `growth_target:${selectedGrowthTarget.id}`
+                    : effectKey,
+                });
+                traceToRecord = marked.reasoningTrace;
+                shadowTargetRef = marked.targetRef;
+              } catch { /* shadow marking is best-effort metadata */ }
               await recordExperience({
                 moveKind: actMove.kind,
                 domain: actMove.domain,
@@ -1247,7 +1273,8 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 dispatchId: outcome.status === "acted" ? outcome.dispatchId : null,
                 askId: outcome.status === "escalated" ? outcome.askId : null,
                 predictedSuccess,
-                reasoningTrace: trace,
+                reasoningTrace: traceToRecord,
+                targetRef: shadowTargetRef,
               });
             } catch (recErr) {
               logger.warn(

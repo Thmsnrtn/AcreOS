@@ -154,6 +154,15 @@ export async function recordExperience(input: {
   reasoningTrace?: unknown;
   /** Accountable scope (T3 #11) — defaults to the platform (AcreOS itself). */
   scope?: string;
+  /**
+   * Join key at write time (Horizon A2). For SHADOW rows (autonomy-gate
+   * suppressions/escalations) this is the "shadow:<situationKey>" binding —
+   * deliberately namespaced apart from the real consequence keys
+   * (deriveTargetRef's "invoice:…"/"email:…"), so a consequence webhook can
+   * never credit a shadow row. Real actuator targets keep landing via
+   * setExperienceTarget at witnessed execution, unchanged.
+   */
+  targetRef?: string | null;
 }): Promise<number> {
   const [row] = await db
     .insert(autopilotExperiences)
@@ -167,6 +176,7 @@ export async function recordExperience(input: {
       predictedSuccess: input.predictedSuccess != null ? String(input.predictedSuccess) : null,
       reasoningTrace: input.reasoningTrace ?? null,
       scope: input.scope ?? "platform",
+      targetRef: input.targetRef ?? null,
     })
     .returning({ id: autopilotExperiences.id });
   return row?.id ?? 0;

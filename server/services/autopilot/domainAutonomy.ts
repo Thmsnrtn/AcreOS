@@ -32,7 +32,11 @@ export type DomainAutonomyLevel = (typeof DOMAIN_AUTONOMY_LEVELS)[number];
 
 export const AUTOPILOT_DOMAINS: readonly AutopilotDomain[] = ["growth", "support", "deploy", "ops", "finance"];
 
-/** Clean cycles required to auto-promote one level. Conservative by default. */
+/**
+ * Clean cycles required to become ELIGIBLE for promotion one level up.
+ * Conservative by default. Horizon A2: reaching this threshold no longer
+ * auto-promotes — it raises a founder promotion card (see recordCleanCycle).
+ */
 export const PROMOTION_THRESHOLD = Number(process.env.AUTOPILOT_PROMOTION_THRESHOLD ?? 10);
 
 // ── Pure core (no DB — unit-tested directly) ─────────────────────────────────
@@ -123,8 +127,10 @@ export async function getDomainLevel(domain: AutopilotDomain): Promise<DomainAut
 }
 
 /**
- * Record a clean cycle for a domain; auto-promote one level when the threshold
- * is reached (resetting the counter). Returns the resulting level.
+ * Record a clean cycle for a domain. When the threshold is reached (and the
+ * calibration + quality holds pass) this REQUESTS a founder-gated promotion —
+ * it never writes the level itself (Horizon A2; Sovereign Principle 10).
+ * Returns the current level (which this function can no longer raise).
  */
 export async function recordCleanCycle(domain: AutopilotDomain, threshold = PROMOTION_THRESHOLD): Promise<DomainAutonomyLevel> {
   const [row] = await db
@@ -177,13 +183,45 @@ export async function recordCleanCycle(domain: AutopilotDomain, threshold = PROM
       logger.warn("[autopilot] promotion HELD — decision quality below floor", { domain, level });
       return level;
     }
-    const promoted = nextLevel(level)!;
+    // ── Horizon A2: promotion is a FOUNDER TAP, never an automatic write. ──
+    // Constitutional basis: Sovereign Principle 10 — "No agent may unilaterally
+    // expand its own authority"; promotions/demotions are Class B decisions.
+    // Reaching the threshold (with both holds passing) no longer writes the
+    // level — it REQUESTS a promotion: one open founder inbox card backed by
+    // shadow-agreement evidence (requestPromotion, which dedupes, refuses
+    // hard-stop classes structurally, and declines to fire below the honest
+    // shadow-evidence minimum — logging why). Only the founder's tap
+    // (applyPromotionAnswer → setDomainLevel) applies the new level.
+    //
+    // The counter HOLDS at/above the threshold: a domain can sit at-threshold
+    // indefinitely until shadow evidence accumulates, and each further clean
+    // cycle simply re-checks (the dedupe means never a second open card).
+    // Demotion (recordAnomaly) stays AUTOMATIC — this change only tightens.
     await db
       .update(domainAutonomyLevels)
-      .set({ level: promoted, cleanCycleCount: 0, lastPromotedAt: new Date(), updatedAt: new Date() })
+      .set({ cleanCycleCount: nextCount, updatedAt: new Date() })
       .where(eq(domainAutonomyLevels.domain, domain));
-    logger.info("[autopilot] domain promoted", { domain, from: level, to: promoted });
-    return promoted;
+    try {
+      // Dynamic import keeps this module cycle-free (promotionRequest imports us).
+      const { requestPromotion } = await import("./promotionRequest");
+      const r = await requestPromotion(domain, {
+        currentLevel: level,
+        cleanCycleCount: nextCount,
+        threshold,
+      });
+      logger.info("[autopilot] promotion requested (founder gate)", {
+        domain,
+        level,
+        created: r.created,
+        reason: r.reason,
+      });
+    } catch (err) {
+      logger.warn(
+        "[autopilot] promotion request failed — level unchanged (fails closed)",
+        err instanceof Error ? err : undefined,
+      );
+    }
+    return level;
   }
 
   await db
@@ -191,6 +229,24 @@ export async function recordCleanCycle(domain: AutopilotDomain, threshold = PROM
     .set({ cleanCycleCount: nextCount, updatedAt: new Date() })
     .where(eq(domainAutonomyLevels.domain, domain));
   return level;
+}
+
+/**
+ * Horizon A2 — the founder tapped "Not yet — keep earning" on a promotion
+ * card: reset the clean-cycle counter to HALF the threshold. Documented
+ * intent: a re-ask must be RE-EARNED with fresh evidence (half the runway
+ * back), not re-fired next tick — the card is a request, never a nag loop.
+ * The level itself is untouched (a hold is not a demotion).
+ */
+export async function holdPromotionProgress(
+  domain: AutopilotDomain,
+  threshold = PROMOTION_THRESHOLD,
+): Promise<void> {
+  await db
+    .update(domainAutonomyLevels)
+    .set({ cleanCycleCount: Math.floor(threshold / 2), updatedAt: new Date() })
+    .where(eq(domainAutonomyLevels.domain, domain));
+  logger.info("[autopilot] promotion held by founder — clean-cycle progress halved", { domain });
 }
 
 /**
@@ -230,8 +286,9 @@ export async function recordAnomaly(domain: AutopilotDomain, reason: string): Pr
  *
  * POSTURE: this binding is the act-and-confirm coupling. It only ADDS verified
  * evidence to the ledger — unverified completions earn exactly what they earned
- * before (nothing is loosened) — and the promotion rule itself is unchanged
- * (PROMOTION_THRESHOLD clean cycles + the calibration/quality holds).
+ * before (nothing is loosened) — and the promotion eligibility rule is
+ * unchanged (PROMOTION_THRESHOLD clean cycles + the calibration/quality holds;
+ * since Horizon A2 eligibility raises a founder card rather than auto-writing).
  * Verification stays observe-only for the ACTION: a flagged verdict costs the
  * domain trust; it never blocks or rolls back the work it verified.
  */
@@ -256,9 +313,11 @@ export async function checkDomainAutonomyGate(action: PolicyAction): Promise<Gat
 }
 
 /**
- * Founder sovereign override — directly set a domain's autonomy level. This is
- * the reversibility/control guarantee: the founder can PAUSE a domain (set it
- * to observe) or, conversely, grant trust ahead of the earn curve. Resets the
+ * Founder sovereign override (Sovereign Principle 9) — directly set a domain's
+ * autonomy level. This is the reversibility/control guarantee: the founder can
+ * PAUSE a domain (set it to observe) or, conversely, grant trust ahead of the
+ * earn curve — the manual Grant button in the Control Center keeps working
+ * unchanged alongside the Horizon A2 shadow-promotion cards. Resets the
  * clean-cycle progress and records the reason + the right timestamp so the
  * ledger reads truthfully. Validates the level against the known set.
  */

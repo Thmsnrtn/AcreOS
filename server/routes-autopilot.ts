@@ -48,14 +48,23 @@ export function registerAutopilotRoutes(app: Express): void {
         const { getDomainDecisionQuality, decisionEvalLine } = await import(
           "./services/autopilot/decisionEval"
         );
+        // Horizon A2 — the shadow-agreement standing (honest: computed only
+        // from resolved pairs; below the minimum it says it's accumulating).
+        const { getShadowAgreementLine } = await import(
+          "./services/autopilot/shadowAgreement"
+        );
         const enriched = await Promise.all(
           ledger.map(async (entry) => {
+            let quality: Awaited<ReturnType<typeof getDomainDecisionQuality>> | null = null;
+            let qualityLine: string | null = null;
             try {
-              const quality = await getDomainDecisionQuality(entry.domain);
-              return { ...entry, quality, qualityLine: decisionEvalLine(quality) };
+              quality = await getDomainDecisionQuality(entry.domain);
+              qualityLine = decisionEvalLine(quality);
             } catch {
-              return { ...entry, quality: null, qualityLine: null };
+              quality = null;
+              qualityLine = null;
             }
+            return { ...entry, quality, qualityLine, shadowLine: await getShadowAgreementLine(entry.domain) };
           }),
         );
         return res.json({ ledger: enriched });
@@ -150,7 +159,20 @@ export function registerAutopilotRoutes(app: Express): void {
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
         const { getEffectiveSettings } = await import("./services/autopilot/settings");
-        const [settings, ledger] = await Promise.all([getEffectiveSettings(), getTrustLedger()]);
+        const [settings, rawLedger] = await Promise.all([getEffectiveSettings(), getTrustLedger()]);
+        // Horizon A2 — the Control Center renders each domain's shadow-
+        // agreement standing next to its trust dial (small, honest, no new
+        // page). Best-effort: a failed read renders nothing, never a guess.
+        const ledger = await Promise.all(
+          rawLedger.map(async (entry) => {
+            try {
+              const { getShadowAgreementLine } = await import("./services/autopilot/shadowAgreement");
+              return { ...entry, shadowLine: await getShadowAgreementLine(entry.domain) };
+            } catch {
+              return { ...entry, shadowLine: null };
+            }
+          }),
+        );
         let openAsks = 0;
         try {
           const { listOpenAsks } = await import("./services/solene/founderCollab");
