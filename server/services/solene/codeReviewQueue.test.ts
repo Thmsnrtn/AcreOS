@@ -495,3 +495,63 @@ describe("codeReviewQueue.REVIEW_PROMPT_TEMPLATE", () => {
     expect(REVIEW_PROMPT_TEMPLATE).toContain("Do NOT modify any files");
   });
 });
+
+// ── CP1 (Jarvis Phase 1) — parseReviewVerdict contract ──────────────────────
+describe("codeReviewQueue.parseReviewVerdict", () => {
+  it("parses a passed verdict with no findings", async () => {
+    const { parseReviewVerdict } = await import("./codeReviewQueue");
+    expect(parseReviewVerdict("Review done.\n\nVERDICT: passed\n")).toEqual({
+      outcome: "passed",
+      findings: undefined,
+    });
+  });
+
+  it("parses a flagged verdict with findings bullets", async () => {
+    const { parseReviewVerdict } = await import("./codeReviewQueue");
+    const text = [
+      "tsc clean, but two issues.",
+      "",
+      "VERDICT: flagged",
+      "FINDINGS:",
+      "- missing org scoping on the query",
+      "- no test for the error path",
+    ].join("\n");
+    const v = parseReviewVerdict(text);
+    expect(v?.outcome).toBe("flagged");
+    expect(v?.findings).toContain("missing org scoping");
+    expect(v?.findings).toContain("no test for the error path");
+  });
+
+  it("uses the LAST verdict when the template is quoted earlier in the text", async () => {
+    const { parseReviewVerdict } = await import("./codeReviewQueue");
+    const text = [
+      "The prompt told me to end with:",
+      "   VERDICT: passed | flagged",
+      "Here is my actual review... found a real bug.",
+      "VERDICT: flagged",
+      "FINDINGS:",
+      "- off-by-one in pagination",
+    ].join("\n");
+    // The quoted template line "passed | flagged" matches "passed" first —
+    // the parser must take the LAST match (the real verdict).
+    expect(parseReviewVerdict(text)?.outcome).toBe("flagged");
+  });
+
+  it("is case-insensitive on the verdict word", async () => {
+    const { parseReviewVerdict } = await import("./codeReviewQueue");
+    expect(parseReviewVerdict("verdict: PASSED")?.outcome).toBe("passed");
+  });
+
+  it("returns null when no verdict is present (never counts as passed)", async () => {
+    const { parseReviewVerdict } = await import("./codeReviewQueue");
+    expect(parseReviewVerdict("I reviewed the diff and it looks fine.")).toBeNull();
+    expect(parseReviewVerdict("")).toBeNull();
+  });
+
+  it("empty FINDINGS block yields undefined findings", async () => {
+    const { parseReviewVerdict } = await import("./codeReviewQueue");
+    const v = parseReviewVerdict("VERDICT: flagged\nFINDINGS:\n");
+    expect(v?.outcome).toBe("flagged");
+    expect(v?.findings).toBeUndefined();
+  });
+});
