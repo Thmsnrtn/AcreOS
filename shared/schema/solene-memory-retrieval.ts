@@ -96,6 +96,9 @@ export const MEMORY_RETRIEVAL_NAMESPACES = [
   "agent_decision",
   "decision_trace_step",
   "audit_finding",
+  // Jarvis 2.3 — founder rulings written back from decision-inbox resolves
+  // (decisions_inbox_items, source_ref founder_precedent:decision:<id>).
+  "founder_precedent",
 ] as const;
 export type MemoryRetrievalNamespace =
   (typeof MEMORY_RETRIEVAL_NAMESPACES)[number];

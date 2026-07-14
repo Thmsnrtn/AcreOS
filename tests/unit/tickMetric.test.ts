@@ -45,6 +45,11 @@ const STORES = {
     verifyStatus: string | null;
     sentAt: Date | null;
   }>,
+  inboxItems: [] as Array<{
+    status: string;
+    resolvedBy: string | null;
+    resolvedAt: Date | null;
+  }>,
 };
 
 // Tables whose read should throw — pins the honesty contract that a genuine
@@ -83,6 +88,7 @@ vi.mock("../../server/db", () => {
         if (this._table === "founder_overrides") return [...STORES.overrides];
         if (this._table === "import_jobs") return [...STORES.imports];
         if (this._table === "mail_shipments") return [...STORES.mail];
+        if (this._table === "decisions_inbox_items") return [...STORES.inboxItems];
         return [];
       },
     };
@@ -118,6 +124,7 @@ beforeEach(() => {
   STORES.overrides.length = 0;
   STORES.imports.length = 0;
   STORES.mail.length = 0;
+  STORES.inboxItems.length = 0;
   FAIL_TABLES.clear();
   vi.clearAllMocks();
 });
@@ -159,6 +166,29 @@ describe("getTickMetric", () => {
 
     const m = await getTickMetric(NOW);
     expect(m.founderDecisionsThisWeek).toBe(3);
+  });
+
+  it("founder-resolved inbox cards are the third counting source (Jarvis 2.3) — approved/rejected by the founder in-window only", async () => {
+    STORES.cascades.push({ founderEscalated: true, createdAt: daysAgo(1) }); // counted
+    STORES.overrides.push({ createdAt: daysAgo(2) }); // counted
+    STORES.inboxItems.push(
+      { status: "approved", resolvedBy: "founder", resolvedAt: daysAgo(1) }, // counted
+      { status: "rejected", resolvedBy: "founder", resolvedAt: daysAgo(3) }, // counted
+      { status: "approved", resolvedBy: "founder", resolvedAt: daysAgo(9) }, // outside window
+      { status: "deferred", resolvedBy: "founder", resolvedAt: daysAgo(1) }, // deferral isn't a decision
+      { status: "approved", resolvedBy: "auto_resolver", resolvedAt: daysAgo(1) }, // machine, not founder
+      { status: "approved", resolvedBy: "founder", resolvedAt: null }, // never resolved — no timestamp
+    );
+
+    const m = await getTickMetric(NOW);
+    expect(m.founderDecisionsThisWeek).toBe(4);
+  });
+
+  it("HONESTY: a read failure on decisions_inbox_items also makes the metric throw", async () => {
+    FAIL_TABLES.add("decisions_inbox_items");
+    await expect(getTickMetric(NOW)).rejects.toThrow(
+      "simulated read failure: decisions_inbox_items",
+    );
   });
 
   it("shipped counts completed outward dispatches this week; internal machinery and stale/unfinished rows do not count", async () => {

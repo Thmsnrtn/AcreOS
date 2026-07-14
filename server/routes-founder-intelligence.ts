@@ -42,6 +42,8 @@ import { getWeeklyTrends, getMonthlyTrends } from "./services/trendAnalyzer";
 import { getActivePriorities, createPriority, deactivatePriority } from "./services/strategicCompass";
 import { getQuietHoursConfig, setQuietHours } from "./services/quietHours";
 import { learnFromOverride } from "./services/overrideLearner";
+import { recordFounderPrecedent } from "./services/solene/founderPrecedent";
+import type { DecisionCardOption } from "./services/decisionsInbox";
 import { generateBriefingUpdates, generateHeadlineInsight } from "./services/aiBriefingWriter";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
@@ -1152,10 +1154,69 @@ router.get("/decisions-inbox", requireFounder, async (req: Request, res: Respons
   }
 });
 
-router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Request, res: Response) => {
+// Jarvis 2.3 defect ledger — Class-C arrivals (status=suppressed). Each one
+// is a defect signal: something escalated that policy says should have been
+// handled silently. Read-only surface for the /founder/decisions page.
+router.get("/decisions-inbox/defects", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const raw = Number(req.query.days ?? 30);
+    const days = Number.isFinite(raw) ? Math.max(1, Math.min(365, Math.floor(raw))) : 30;
+    const { items, byType, total } = await decisionsInboxService.getSuppressedDefects(days);
+    res.json({ items, byType, total, windowDays: days });
+  } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+/**
+ * Jarvis 2.3 — resolve a `chosenOption` key from the request body against
+ * the item's contextBundle.options. Returns null when the key doesn't match
+ * a stored option (callers fail closed with a 400 — approve executes an
+ * action payload, so an unknown key must never silently pass through).
+ */
+function resolveChosenOption(
+  item: { contextBundle: Record<string, any> | null } | undefined,
+  chosenOptionKey: unknown,
+): DecisionCardOption | null {
+  if (typeof chosenOptionKey !== "string" || chosenOptionKey.length === 0) return null;
+  const options = item?.contextBundle?.options;
+  if (!Array.isArray(options)) return null;
+  const opt = options.find((o: any) => o && o.key === chosenOptionKey);
+  return opt && typeof opt.label === "string" ? (opt as DecisionCardOption) : null;
+}
+
+router.post("/decisions-inbox/:id/approve", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    const result = await decisionsInboxService.approve(id);
+    const { chosenOption } = req.body ?? {};
+
+    // Jarvis 2.3 phone-answerable cards: an option tap arrives as chosenOption.
+    let chosen: DecisionCardOption | null = null;
+    let item: typeof decisionsInboxItems.$inferSelect | undefined;
+    if (chosenOption != null) {
+      item = (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
+      chosen = resolveChosenOption(item, chosenOption);
+      if (!chosen) return Errors.badRequest(res, "Unknown chosenOption for this decision");
+    }
+
+    const result = await decisionsInboxService.approve(
+      id,
+      chosen ? `option:${chosen.key} — ${chosen.label}` : undefined,
+    );
+
+    // Jarvis 2.3 precedent write-back — only when an explicit option was
+    // chosen (plain approvals carry no reusable rule; the service enforces
+    // admission either way). Fire-and-forget: the service is fail-open.
+    if (item && chosen) {
+      recordFounderPrecedent({
+        itemId: id,
+        itemType: item.itemType,
+        question: `${item.sophieAnalysis} — recommended: ${item.recommendedActionLabel}`,
+        answer: { outcome: "approved", chosenOptionLabel: chosen.label },
+        organizationId: item.organizationId,
+      }).catch(() => {});
+    }
+
     res.json({ success: true, ...result });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -1204,6 +1265,17 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Authentic
       } catch (rejErr: any) {
         logger.warn(`[decisions-inbox] agent_rejection_notes mirror failed: ${rejErr?.message ?? rejErr}`);
       }
+
+      // Jarvis 2.3 precedent write-back — admission control lives in the
+      // service (only reasons ≥ 20 chars become reusable rules). Fire-and-
+      // forget: the service is fail-open, never the resolve path's problem.
+      recordFounderPrecedent({
+        itemId: id,
+        itemType: item.itemType,
+        question: `${item.sophieAnalysis} — recommended: ${item.recommendedActionLabel}`,
+        answer: { outcome: "rejected", reason },
+        organizationId: item.organizationId,
+      }).catch(() => {});
     }
 
     res.json({ success: true });
@@ -1223,17 +1295,29 @@ router.post("/decisions-inbox/:id/defer", requireFounder, async (req: Request, r
   }
 });
 
-router.post("/decisions-inbox/:id/override", requireFounder, async (req: Request, res: Response) => {
+router.post("/decisions-inbox/:id/override", requireFounder, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    const { customAction } = req.body;
-    if (!customAction) return Errors.badRequest(res, "customAction required");
+    const { customAction, chosenOption } = req.body ?? {};
 
     // Fetch the decision item before overriding so we can learn from it.
     // (decisionsInboxService has no getById(); read the row directly.)
     const item = (await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.id, id)).limit(1))[0];
 
-    await decisionsInboxService.override(id, customAction);
+    // Jarvis 2.3 phone-answerable cards: an option tap arrives as
+    // chosenOption and composes the override action; a typed customAction
+    // still works exactly as before.
+    let chosen: DecisionCardOption | null = null;
+    let action: string | undefined =
+      typeof customAction === "string" && customAction.trim().length > 0 ? customAction : undefined;
+    if (chosenOption != null) {
+      chosen = resolveChosenOption(item, chosenOption);
+      if (!chosen) return Errors.badRequest(res, "Unknown chosenOption for this decision");
+      action = `option:${chosen.key} — ${chosen.label}`;
+    }
+    if (!action) return Errors.badRequest(res, "customAction required");
+
+    await decisionsInboxService.override(id, action);
 
     // v4: Learn from the override so agents improve over time
     if (item) {
@@ -1242,13 +1326,28 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Request
           agentCodename: item.ownerAgentCodename || "unknown",
           actionName: item.itemType || "decision",
           originalRecommendation: item.recommendedActionLabel || item.sophieAnalysis || "",
-          ceoOverrideAction: customAction,
-          ceoOverrideNotes: customAction,
+          ceoOverrideAction: action,
+          ceoOverrideNotes: action,
           decisionId: id,
         });
       } catch (learnErr: any) {
         logger.error("[decisions-inbox] Override learning failed (non-blocking)", undefined, { metadata: { detail: learnErr.message } });
       }
+
+      // Jarvis 2.3 precedent write-back — a reasoned custom action or an
+      // explicit option pick both qualify (the service enforces admission).
+      // Fire-and-forget: the service is fail-open.
+      recordFounderPrecedent({
+        itemId: id,
+        itemType: item.itemType,
+        question: `${item.sophieAnalysis} — recommended: ${item.recommendedActionLabel}`,
+        answer: {
+          outcome: "override",
+          reason: typeof customAction === "string" ? customAction : undefined,
+          chosenOptionLabel: chosen?.label,
+        },
+        organizationId: item.organizationId,
+      }).catch(() => {});
     }
 
     res.json({ success: true });

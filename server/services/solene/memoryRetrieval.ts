@@ -77,7 +77,7 @@ export type MemoryNamespace = MemoryRetrievalNamespace;
 
 export interface MultiNamespaceQuery {
   queryText: string;
-  /** Defaults to all five namespaces. */
+  /** Defaults to every namespace in MEMORY_RETRIEVAL_NAMESPACES. */
   namespaces?: MemoryNamespace[];
   /** Defaults to MEMORY_RETRIEVAL_TOP_K_PER_NAMESPACE_DEFAULT (3). */
   topKPerNamespace?: number;
@@ -225,6 +225,7 @@ export function dedupBySource(items: RetrievedItem[]): RetrievedItem[] {
  * a stable order regardless of caller input.
  */
 const NAMESPACE_RENDER_ORDER: MemoryNamespace[] = [
+  "founder_precedent",
   "feedback_memory",
   "dispatch_summary",
   "agent_decision",
@@ -238,6 +239,7 @@ const NAMESPACE_DISPLAY_NAMES: Record<MemoryNamespace, string> = {
   agent_decision: "Past decisions",
   decision_trace_step: "Past decision traces",
   audit_finding: "Past audit findings",
+  founder_precedent: "Past founder rulings",
 };
 
 /**
@@ -394,6 +396,7 @@ function emptyByNamespace(): Record<MemoryNamespace, number> {
     agent_decision: 0,
     decision_trace_step: 0,
     audit_finding: 0,
+    founder_precedent: 0,
   };
 }
 
@@ -480,6 +483,7 @@ export async function getCorpusStatus(): Promise<CorpusStatus> {
       rowsFailed: 0,
     },
     audit_finding: { rowsIngested: 0, lastIngestedAt: null, rowsFailed: 0 },
+    founder_precedent: { rowsIngested: 0, lastIngestedAt: null, rowsFailed: 0 },
   };
   let totalEmbeddings = 0;
 

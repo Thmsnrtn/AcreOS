@@ -3,7 +3,7 @@ import {
   decisionsInboxItems, supportTickets, systemAlerts, featureRequests,
   organizations,
 } from "@shared/schema";
-import { eq, and, desc, isNull, or, lt } from "drizzle-orm";
+import { eq, and, desc, gte, isNull, or, lt } from "drizzle-orm";
 import { executeAction, hasExecutor } from "./agentActionExecutors";
 import { customerSupportAutoResolver } from "./customerSupportAutoResolver";
 import { requireOpenAIClient } from "../utils/openaiClient";
@@ -55,6 +55,44 @@ async function arbitrateInboxInsert(
   }
 }
 
+/**
+ * Jarvis 2.3 — phone-answerable cards. A creator may attach up to
+ * DECISION_CARD_MAX_OPTIONS tap-sized options; the founder answers by
+ * tapping one instead of typing. Stored inside contextBundle.options —
+ * deliberately NOT a new column (no migration).
+ */
+export interface DecisionCardOption {
+  key: string;
+  label: string;
+  action?: Record<string, any>;
+}
+
+export const DECISION_CARD_MAX_OPTIONS = 4;
+export const DECISION_CARD_LABEL_MAX_CHARS = 60;
+
+/**
+ * Drop malformed entries, enforce the tap-sized constraints (≤ 4 options,
+ * labels ≤ 60 chars). Returns undefined when nothing survives so callers
+ * can spread-omit the key entirely.
+ */
+export function sanitizeDecisionOptions(
+  options?: DecisionCardOption[],
+): DecisionCardOption[] | undefined {
+  if (!Array.isArray(options)) return undefined;
+  const valid = options
+    .filter(
+      (o): o is DecisionCardOption =>
+        !!o &&
+        typeof o.key === "string" &&
+        o.key.trim().length > 0 &&
+        typeof o.label === "string" &&
+        o.label.trim().length > 0 &&
+        o.label.length <= DECISION_CARD_LABEL_MAX_CHARS,
+    )
+    .slice(0, DECISION_CARD_MAX_OPTIONS);
+  return valid.length > 0 ? valid : undefined;
+}
+
 export const decisionsInboxService = {
 
   /**
@@ -72,6 +110,7 @@ export const decisionsInboxService = {
     confidenceScore?: number;
     category?: string;
     actionPayload?: Record<string, any>;
+    options?: DecisionCardOption[];
   }): Promise<{ autoResolved: boolean; itemId?: number }> {
     const ticket = await db.query.supportTickets.findFirst({
       where: eq(supportTickets.id, ticketId),
@@ -119,6 +158,7 @@ export const decisionsInboxService = {
       { itemType: "support_escalation", ticketId, organizationId: ticket.organizationId ?? undefined },
     );
 
+    const options = sanitizeDecisionOptions(opts?.options);
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "support_escalation",
       riskLevel: isBilling ? "high" : "medium",
@@ -134,6 +174,7 @@ export const decisionsInboxService = {
         ticketTitle: ticket.subject ?? "",
         category: ticket.category ?? "",
         geniusConfidence: resolution.geniusConfidence,
+        ...(options ? { options } : {}),
       },
       status: arbiter.status,
       deferredUntil: arbiter.deferredUntil,
@@ -143,7 +184,10 @@ export const decisionsInboxService = {
   },
 
   /** For critical system alerts only. */
-  async createFromAlert(alertId: number): Promise<number | null> {
+  async createFromAlert(
+    alertId: number,
+    opts?: { options?: DecisionCardOption[] },
+  ): Promise<number | null> {
     const alert = await db.query.systemAlerts.findFirst({
       where: eq(systemAlerts.id, alertId),
     });
@@ -168,6 +212,7 @@ export const decisionsInboxService = {
       { itemType: "critical_alert", alertId },
     );
 
+    const options = sanitizeDecisionOptions(opts?.options);
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "critical_alert",
       riskLevel: "critical",
@@ -177,6 +222,7 @@ export const decisionsInboxService = {
       recommendedActionLabel: "Acknowledge Alert",
       actionPayload: { alertId, action: "acknowledge" },
       sourceAlertId: alertId,
+      ...(options ? { contextBundle: { options } } : {}),
       status: arbiter.status,
       deferredUntil: arbiter.deferredUntil,
     }).returning();
@@ -185,7 +231,11 @@ export const decisionsInboxService = {
   },
 
   /** For orgs with churn risk score >= 90. Lower scores auto-handled by revenueProtection. */
-  async createFromChurnRisk(orgId: number, score: number): Promise<number | null> {
+  async createFromChurnRisk(
+    orgId: number,
+    score: number,
+    opts?: { options?: DecisionCardOption[] },
+  ): Promise<number | null> {
     if (score < 90) return null;
 
     // Dedup: one critical churn item per org
@@ -215,6 +265,7 @@ export const decisionsInboxService = {
       { itemType: "churn_risk_intervention", organizationId: orgId, score },
     );
 
+    const options = sanitizeDecisionOptions(opts?.options);
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "churn_risk_intervention",
       riskLevel: "critical",
@@ -226,6 +277,7 @@ export const decisionsInboxService = {
       recommendedActionLabel: "Approve Retention Outreach",
       actionPayload: { orgId, action: "send_retention_email", riskScore: score },
       organizationId: orgId,
+      ...(options ? { contextBundle: { options } } : {}),
       status: arbiter.status,
       deferredUntil: arbiter.deferredUntil,
     }).returning();
@@ -234,7 +286,10 @@ export const decisionsInboxService = {
   },
 
   /** Analyzes a feature request with OpenAI and surfaces high-value ones. */
-  async createFromFeatureRequest(requestId: number): Promise<number | null> {
+  async createFromFeatureRequest(
+    requestId: number,
+    opts?: { options?: DecisionCardOption[] },
+  ): Promise<number | null> {
     const request = await db.query.featureRequests.findFirst({
       where: eq(featureRequests.id, requestId),
     });
@@ -307,6 +362,7 @@ export const decisionsInboxService = {
       { itemType: "feature_request_flagged", requestId, organizationId: request.organizationId ?? undefined },
     );
 
+    const options = sanitizeDecisionOptions(opts?.options);
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "feature_request_flagged",
       riskLevel: isHigh ? "high" : "medium",
@@ -319,6 +375,7 @@ export const decisionsInboxService = {
       actionPayload: { requestId, action: "add_to_roadmap" },
       sourceFeatureRequestId: requestId,
       organizationId: request.organizationId,
+      ...(options ? { contextBundle: { options } } : {}),
       status: arbiter.status,
       deferredUntil: arbiter.deferredUntil,
     }).returning();
@@ -334,11 +391,22 @@ export const decisionsInboxService = {
     });
   },
 
-  /** Approve: mark approved, then EXECUTE the action payload. v3 closes the loop. */
-  async approve(itemId: number): Promise<{ executed: boolean; detail?: string }> {
+  /**
+   * Approve: mark approved, then EXECUTE the action payload. v3 closes the
+   * loop. Jarvis 2.3: `chosenOptionText` records the tapped card option
+   * (`option:<key> — <label>`) into founderOverrideAction so the log shows
+   * WHICH option answered the card.
+   */
+  async approve(itemId: number, chosenOptionText?: string): Promise<{ executed: boolean; detail?: string }> {
     // Mark as approved
     await db.update(decisionsInboxItems)
-      .set({ status: "approved", resolvedAt: new Date(), resolvedBy: "founder", updatedAt: new Date() })
+      .set({
+        status: "approved",
+        resolvedAt: new Date(),
+        resolvedBy: "founder",
+        updatedAt: new Date(),
+        ...(chosenOptionText ? { founderOverrideAction: chosenOptionText } : {}),
+      })
       .where(eq(decisionsInboxItems.id, itemId));
 
     // v3: Execute the approved action
@@ -420,6 +488,42 @@ export const decisionsInboxService = {
         updatedAt: new Date(),
       })
       .where(eq(decisionsInboxItems.id, itemId));
+  },
+
+  /**
+   * Jarvis 2.3 defect ledger — Class-C arrivals in the trailing window. A
+   * suppressed row means something escalated that policy says should have
+   * been handled silently: each one is a DEFECT signal, kept verbatim by the
+   * arbiter wrapper for exactly this surface. Window/order re-applied in
+   * process so unit tests pin the arithmetic independent of the SQL layer;
+   * the WHERE clause keeps the scan cheap in production.
+   */
+  async getSuppressedDefects(days = 30): Promise<{
+    items: Array<typeof decisionsInboxItems.$inferSelect>;
+    byType: Record<string, number>;
+    total: number;
+  }> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const rows = await db.query.decisionsInboxItems.findMany({
+      where: and(
+        eq(decisionsInboxItems.status, "suppressed"),
+        gte(decisionsInboxItems.createdAt, cutoff),
+      ),
+      orderBy: desc(decisionsInboxItems.createdAt),
+    });
+    const items = rows
+      .filter(
+        (r) =>
+          r.status === "suppressed" &&
+          r.createdAt != null &&
+          r.createdAt.getTime() >= cutoff.getTime(),
+      )
+      .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
+    const byType: Record<string, number> = {};
+    for (const item of items) {
+      byType[item.itemType] = (byType[item.itemType] ?? 0) + 1;
+    }
+    return { items, byType, total: items.length };
   },
 
   /** Re-open deferred items whose deferral window has passed. */

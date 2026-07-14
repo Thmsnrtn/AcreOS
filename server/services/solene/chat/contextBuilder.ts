@@ -35,6 +35,7 @@ export type ContextBlockSource =
   | "strategy_doc"
   | "feedback_memory"
   | "recent_decisions"
+  | "founder_precedent"
   | "retrieval";
 
 export interface ContextBlock {
@@ -100,10 +101,13 @@ const SOURCE_PRIORITY: Record<ContextBlockSource, number> = {
   strategy_doc: 70,
   feedback_memory: 60,
   recent_decisions: 50,
+  founder_precedent: 45,
   retrieval: 40,
 };
 
 const RETRIEVAL_TOP_K = 5;
+
+const PRECEDENT_RETRIEVAL_TOP_K = 3;
 
 // ============================================================================
 // Pure helpers
@@ -313,6 +317,34 @@ export async function buildChatContext(
     }
   } catch (err) {
     logger.warn("[soleneChat] contextBuilder.retrieval_failed", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // ── 3.5 Founder precedents — dynamic (Jarvis 2.3) ─────────────────────────
+  // This builder serves only the founder-facing Solene chat (turnRunner), so
+  // prior founder rulings are always in scope here — same fail-open contract
+  // as the retrieval block above (a miss degrades to "no block").
+  try {
+    const precedents = await retrieveRelevantMemories({
+      queryText: input.userMessage,
+      namespace: "founder_precedent",
+      topK: PRECEDENT_RETRIEVAL_TOP_K,
+      queryingAgentRole: "system",
+    });
+    for (const m of precedents.retrieved) {
+      const content = `### Prior founder ruling — ${m.sourceRef} (similarity=${m.similarityScore.toFixed(3)})\n\n${m.contentSnippet}`;
+      blocks.push({
+        source: "founder_precedent",
+        label: m.sourceRef,
+        content,
+        tokens: estimateTokens(content),
+        priority: SOURCE_PRIORITY.founder_precedent,
+        isStatic: false,
+      });
+    }
+  } catch (err) {
+    logger.warn("[soleneChat] contextBuilder.founder_precedent_failed", {
       err: err instanceof Error ? err.message : String(err),
     });
   }

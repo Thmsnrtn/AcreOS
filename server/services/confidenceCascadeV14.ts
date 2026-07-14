@@ -17,6 +17,8 @@ import { adaptiveStrategyService } from "./adaptiveStrategyV13";
 import { collaborationProtocolService } from "./collaborationProtocolV13";
 import { governanceBrainService } from "./governanceBrainV13";
 import { selfHealingMeshService } from "./selfHealingMeshV13";
+import { retrieveRelevantMemories } from "./solene/learningLoop";
+import { logActivity } from "./systemActivityLogger";
 import { logger } from "../utils/logger";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -102,6 +104,20 @@ const LAYER_TIMEOUTS: Record<string, number> = {
 
 const MAX_CONFIDENCE = 95;
 
+// Jarvis 2.3 — a stored founder ruling at/above this cosine similarity rides
+// the escalation payload so the founder card can show "You previously
+// ruled: …". Attach-only ON PURPOSE: auto-resolving from precedent is an
+// autonomy promotion that needs its own verified track record before it can
+// be earned — deliberately out of scope for this slice.
+const PRECEDENT_ATTACH_MIN_SIMILARITY = 0.62;
+const PRECEDENT_TOP_K = 3;
+
+interface FounderPrecedentMatch {
+  sourceRef: string;
+  snippet: string;
+  similarity: number;
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 class ConfidenceCascadeService {
@@ -184,6 +200,31 @@ class ConfidenceCascadeService {
     let founderEscalated = false;
     if (status === "escalated") {
       founderEscalated = true;
+
+      // Jarvis 2.3 — check stored founder rulings before the interrupt goes
+      // out. A strong match still escalates (see PRECEDENT_ATTACH_MIN_SIMILARITY
+      // note above) but the ruling rides the layer detail so the founder card
+      // renders it. Fail-open: a retrieval hiccup escalates exactly as today.
+      const precedents = await this.lookupFounderPrecedents(request);
+      if (precedents.length > 0) {
+        void logActivity({
+          job: "cascade",
+          action: "precedent_hit_on_escalation",
+          summary: `Founder precedent matched on escalation (${request.triggerType}) — top similarity ${precedents[0].similarity.toFixed(4)}`,
+          entityType: "cascade_resolution",
+          entityId: resolutionId,
+          metadata: {
+            resolutionId,
+            triggerType: request.triggerType,
+            originAgent: request.originAgent,
+            precedents: precedents.map((p) => ({
+              sourceRef: p.sourceRef,
+              similarity: p.similarity,
+            })),
+          },
+        });
+      }
+
       layersAttempted.push({
         layer: "founder_escalation",
         layerIndex: 4,
@@ -193,6 +234,7 @@ class ConfidenceCascadeService {
         confidenceAfter: confidence,
         details: {
           reason: "All automated layers exhausted — escalating to founder",
+          ...(precedents.length > 0 ? { precedents } : {}),
           cascadeContext: {
             decisionNeeded: request.decisionNeeded,
             threshold,
@@ -523,6 +565,40 @@ class ConfidenceCascadeService {
       return this.buildLayerResult("governance_check", 3, currentConfidence, start, "failed", {
         error: err.message ?? "Governance check failed",
       });
+    }
+  }
+
+  /**
+   * Jarvis 2.3 — top-K founder_precedent retrieval for an escalating
+   * decision. Platform scope (no organizationId filter — precedents are
+   * stored org-NULL). Returns [] unless the BEST match clears
+   * PRECEDENT_ATTACH_MIN_SIMILARITY; then returns every match above it.
+   * NEVER throws — retrieval failure escalates without precedents.
+   */
+  private async lookupFounderPrecedents(
+    request: CascadeRequest,
+  ): Promise<FounderPrecedentMatch[]> {
+    try {
+      const result = await retrieveRelevantMemories({
+        queryText: `[${request.triggerType}] ${request.decisionNeeded}`,
+        namespace: "founder_precedent",
+        topK: PRECEDENT_TOP_K,
+        queryingAgentRole: "system",
+      });
+      const best = result.retrieved[0]?.similarityScore ?? 0;
+      if (best < PRECEDENT_ATTACH_MIN_SIMILARITY) return [];
+      return result.retrieved
+        .filter((m) => m.similarityScore >= PRECEDENT_ATTACH_MIN_SIMILARITY)
+        .map((m) => ({
+          sourceRef: m.sourceRef,
+          snippet: m.contentSnippet,
+          similarity: m.similarityScore,
+        }));
+    } catch (err: any) {
+      logger.warn(
+        `[cascade] founder-precedent lookup failed — escalating without precedents: ${err?.message ?? err}`,
+      );
+      return [];
     }
   }
 

@@ -454,6 +454,117 @@ function WitnessedSendQueue() {
   );
 }
 
+// ───────────── Class-C defect ledger (Jarvis 2.3) ─────────────
+//
+// Suppressed inbox rows (status=suppressed) are Class-C arrivals: something
+// escalated that policy says should have been handled silently. The arbiter
+// keeps each row verbatim; this section is the ledger that makes the defect
+// signal visible without ever surfacing the rows as pending work.
+
+interface DefectItem {
+  id: number;
+  itemType: string;
+  sophieAnalysis: string;
+  createdAt: string;
+}
+
+interface DefectsResponse {
+  items: DefectItem[];
+  byType: Record<string, number>;
+  total: number;
+  windowDays: number;
+}
+
+function ClassCDefectsSection() {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useQuery<DefectsResponse>({
+    queryKey: ["/api/founder/intelligence/decisions-inbox/defects"],
+    queryFn: async () => {
+      const res = await fetch("/api/founder/intelligence/decisions-inbox/defects", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load Class-C defects");
+      return res.json();
+    },
+  });
+
+  const items = data?.items ?? [];
+  const byType = data?.byType ?? {};
+
+  return (
+    <Card>
+      <CardHeader>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center justify-between w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          aria-label="Toggle Class-C defects list"
+          aria-expanded={open}
+          data-testid="class-c-defects-toggle"
+        >
+          <CardTitle className="text-base flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+            Class-C defects
+            <Badge variant="outline" className="text-xs tabular-nums">
+              {data?.total ?? 0}
+            </Badge>
+          </CardTitle>
+          <ChevronRight
+            className={`w-4 h-4 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`}
+            aria-hidden="true"
+          />
+        </button>
+        <p className="text-xs text-muted-foreground">
+          A Class-C arrival is a defect signal — something escalated that policy says should have
+          been handled silently.
+        </p>
+      </CardHeader>
+      {open && (
+        <CardContent className="space-y-2">
+          {isLoading ? (
+            Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16" />)
+          ) : items.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              No Class-C arrivals — the machine is answering its own questions.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                {Object.entries(byType).map(([type, count]) => (
+                  <Badge key={type} variant="outline" className="text-micro">
+                    {humanizeItemType(type)} · {count}
+                  </Badge>
+                ))}
+              </div>
+              {items.map((item) => (
+                <div key={item.id} className="border rounded-card p-4 hover:bg-muted/30 transition-colors">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="font-medium text-sm">{humanizeItemType(item.itemType)}</span>
+                        <Badge variant="outline" className="text-micro uppercase">
+                          suppressed
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {`${item.sophieAnalysis.replace(/\s+/g, " ").slice(0, 180)}${item.sophieAnalysis.length > 180 ? "…" : ""}`}
+                      </p>
+                    </div>
+                    <div className="text-xs font-mono text-muted-foreground whitespace-nowrap flex items-center gap-1 shrink-0">
+                      <Clock className="w-3 h-3" />
+                      {relative(item.createdAt)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 // ───────────── Page ─────────────
 
 const BUCKET_META: Record<
@@ -683,6 +794,9 @@ export default function FounderDecisionsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Class-C defect ledger — collapsed by default beneath the buckets */}
+      <ClassCDefectsSection />
     </div>
     </PageShell>
   );

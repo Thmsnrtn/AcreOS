@@ -188,6 +188,30 @@ async function embedQueryText(text: string): Promise<number[]> {
 }
 
 /**
+ * Resolve text to a vector for STORAGE (`input_type='document'` — Voyage
+ * tunes document vs. query embeddings asymmetrically). Same fail-open
+ * contract as the query path: on ANY Voyage failure we warn + degrade to
+ * the placeholder. Exported for write-back consumers (founderPrecedent) so
+ * the Voyage-with-fallback logic is not duplicated. NEVER throws.
+ */
+export async function embedDocumentTextFailOpen(
+  text: string,
+): Promise<{ vector: number[]; model: string }> {
+  try {
+    const result = await embedTexts({ texts: [text], inputType: "document" });
+    return { vector: result.embeddings[0], model: result.model };
+  } catch (err) {
+    logger.warn("learningLoop.embedDocument.voyage_fallback", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      vector: placeholderEmbedding(text, EMBEDDING_DIM),
+      model: PLACEHOLDER_EMBEDDING_MODEL,
+    };
+  }
+}
+
+/**
  * Cosine similarity between two equal-length vectors.
  * Returns 0 when either input has zero norm (no NaN).
  *
