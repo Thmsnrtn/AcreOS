@@ -10,22 +10,28 @@ import { eventMeshService } from "./eventMeshV12";
 
 class EventMeshPublisher {
   // ─── Deal Events ─────────────────────────────────────────────────────────
+  // Priority discipline (Jarvis 2.1): the notification-router dispatches
+  // priority ≤3, so routine deal traffic (discovered/updated/closed-lost)
+  // sits at 4-5 and only closed-WON crosses the notification threshold.
 
   async dealDiscovered(orgId: number, deal: Record<string, any>): Promise<void> {
     await eventMeshService.publish("deal:lifecycle", "deal:discovered", deal, {
-      publisher: "deal-hunter",
-      priority: 3,
+      publisher: "deal-pipeline",
+      priority: 4,
       orgId,
       requiresAck: false,
     });
   }
 
   async dealClosed(orgId: number, deal: Record<string, any>): Promise<void> {
+    // Closed-won is the milestone worth notifying on; closed-lost is
+    // routine pipeline truth the brain should see without paging anyone.
+    const won = deal.outcome === "won";
     await eventMeshService.publish("deal:lifecycle", "deal:closed", deal, {
       publisher: "deal-pipeline",
-      priority: 2,
+      priority: won ? 2 : 4,
       orgId,
-      requiresAck: true,
+      requiresAck: won,
     });
   }
 

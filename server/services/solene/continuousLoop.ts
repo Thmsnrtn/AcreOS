@@ -562,12 +562,19 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
       const supportBacklog = await getOpenSupportCaseCount();
       // Outward perception (Hands P0.2) — best-effort; defaults to none-known so
       // a quiet/unwired channel never fabricates pressure.
-      let outward: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number; reflexFailures?: number } = {};
+      let outward: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number; reflexFailures?: number; dealEvents24h?: number; notePaymentsDueSoon?: number; notePaymentsOverdue?: number } = {};
       try {
         const { readOutwardSenses, outwardSignalFrom } = await import("../autopilot/perception");
         const sig = outwardSignalFrom(await readOutwardSenses(24));
-        outward = { emailComplaints: sig.emailComplaints, dunningPressure: sig.dunningPressure, churnSignals: sig.churnSignals, trialsEnding: sig.trialsEnding };
+        outward = { emailComplaints: sig.emailComplaints, dunningPressure: sig.dunningPressure, churnSignals: sig.churnSignals, trialsEnding: sig.trialsEnding, notePaymentsDueSoon: sig.notePaymentsDueSoon, notePaymentsOverdue: sig.notePaymentsOverdue };
       } catch { /* perception is best-effort */ }
+      // Deal-shaped perception (Jarvis 2.1, audit G2) — the tick now sees
+      // pipeline motion from the mesh's own ledger. Best-effort; a quiet or
+      // unreadable channel is an honest zero, never invented pressure.
+      try {
+        const { getDealActivitySignal } = await import("../autopilot/senses");
+        outward.dealEvents24h = (await getDealActivitySignal(24)).events;
+      } catch { /* deal perception is best-effort */ }
       // Reflex perception (H1) — the brain now sees the autonomic job layer.
       try {
         const { readReflexHealth } = await import("../autopilot/reflexes");

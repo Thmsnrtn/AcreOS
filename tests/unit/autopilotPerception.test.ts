@@ -44,6 +44,11 @@ describe("autopilot perception bus — outwardSignalFrom (pure)", () => {
       row("email_complaint", 1, "2026-06-17T07:00:00Z"),
       row("sms_opt_out", 2, "2026-06-17T06:00:00Z"),
       row("trial_ending", 1, "2026-06-17T05:00:00Z"),
+      // Snapshot senses (Jarvis 2.1): the detector records the CURRENT total
+      // each daily run — newest observation wins, runs are never summed.
+      row("note_payment_due_soon", 3, "2026-06-17T04:30:00Z"), // newest
+      row("note_payment_due_soon", 5, "2026-06-17T04:00:00Z"),
+      row("note_payment_overdue", 2, "2026-06-17T04:30:00Z"),
     ]);
     const sig = outwardSignalFrom(agg);
     expect(sig.revenueDeltaCents).toBe(4900);
@@ -52,6 +57,8 @@ describe("autopilot perception bus — outwardSignalFrom (pure)", () => {
     expect(sig.emailComplaints).toBe(1);
     expect(sig.smsOptOuts).toBe(1); // count of observations
     expect(sig.trialsEnding).toBe(1);
+    expect(sig.notePaymentsDueSoon).toBe(3); // latest snapshot, not sum (8) or count (2)
+    expect(sig.notePaymentsOverdue).toBe(2);
   });
 
   it("defaults every channel to the honest zero when absent", () => {
@@ -63,6 +70,8 @@ describe("autopilot perception bus — outwardSignalFrom (pure)", () => {
       emailComplaints: 0,
       smsOptOuts: 0,
       trialsEnding: 0,
+      notePaymentsDueSoon: 0,
+      notePaymentsOverdue: 0,
     });
   });
 });

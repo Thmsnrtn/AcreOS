@@ -720,6 +720,40 @@ function startCustomerConcentrationJob() {
 }
 
 // ============================================================================
+// Jarvis 2.1 (audit G2) — Note payment due-date detector. Daily 11:00 UTC
+// (an hour before the Solene morning pulse at 12:00 UTC so the tick reads a
+// fresh signal). Scans active notes for borrower payments due in the next 7
+// days or overdue: one mesh event per NEW finding (deterministic dedupe key
+// checked against the mesh ledger — a rerun never re-publishes), plus
+// aggregate counts-only outward senses via perception.recordSense. Observe-
+// only; overdue events at priority 3 ride the existing notification-router.
+// Cheap: two indexed reads + a handful of inserts; no external API calls.
+// ============================================================================
+function startNotePaymentDueDetectorJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 10 * 60;
+
+  log('Registering note payment due-date detector (daily 11:00 UTC)', 'note-payments');
+
+  trackInterval(() => {
+    const now = new Date();
+    if (now.getUTCHours() === 11) {
+      import('../services/notePaymentDueDetector').then(({ runNotePaymentDueScan }) => {
+        withJobLock('note_payment_due_scan', TTL_SECONDS, async () => {
+          const r = await runNotePaymentDueScan();
+          log(
+            `Note payment scan: scanned=${r.scanned} dueSoon=${r.dueSoon} overdue=${r.overdue} published=${r.published} errors=${r.errors}`,
+            'note-payments',
+          );
+        }).catch(err => {
+          log(`Note payment due scan failed: ${err}`, 'note-payments');
+        });
+      }).catch(err => log(`Note payment detector import failed: ${err}`, 'note-payments'));
+    }
+  }, ONE_HOUR);
+}
+
+// ============================================================================
 // Launch-Week WS4 — Gate-Watcher (the self-birthing roadmap). Daily 09:00 UTC.
 // Evaluates every machine-encoded roadmap gate (mature-machine §4 autonomy
 // switch schedule + phase triggers: Phase-1 runbook at $200 MRR held 30d,
@@ -4175,6 +4209,10 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Customer Concentration (daily 13:00 UTC) — MRR concentration alerts
   startCustomerConcentrationJob();
+
+  // Jarvis 2.1 (audit G2) — note payment due-date detector (daily 11:00 UTC):
+  // borrower payments due-soon/overdue become mesh events + outward senses.
+  startNotePaymentDueDetectorJob();
 
   // Launch-Week WS4 — Gate-Watcher (daily 09:00 UTC): condition-gated
   // roadmap items detect their own moment and become one-tap founder

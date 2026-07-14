@@ -1,0 +1,200 @@
+/**
+ * Note payment due-date detector (Jarvis 2.1 — deal-shaped perception, audit G2).
+ *
+ * The note-investor vertical's payment schedule (notes.next_payment_date) was
+ * invisible to the brain: nothing turned "a borrower payment is due Thursday"
+ * or "this payment is overdue" into a signal. This daily scan makes due-dates
+ * first-class:
+ *
+ *   (a) one mesh event per NEW finding on the `note:payments` channel —
+ *       deduped by a deterministic key (note + due-date + classification)
+ *       checked against the mesh's own ledger, so a rerun never re-publishes
+ *       the same fact. Overdue publishes at priority 3 (crosses the
+ *       notification-router's ≤3 dispatch threshold — money that didn't
+ *       arrive is worth a notification); due-soon at 4 (visible, not paged).
+ *   (b) an aggregate outward sense per classification (counts only — no
+ *       borrower data, constitutional) via perception.recordSense, so the
+ *       Solene tick SEES payment pressure the same way it sees Stripe
+ *       dunning events.
+ *
+ * Observe-only: events + senses. No actions, no direct notifications beyond
+ * what the existing notification-router already does with priority.
+ */
+import { and, eq, isNull, lte, sql } from "drizzle-orm";
+import { db } from "../db";
+import { eventMeshEvents, notes } from "@shared/schema";
+import { logger } from "../utils/logger";
+import { recordSense } from "./autopilot/perception";
+import { eventMeshPublisher } from "./eventMeshPublisher";
+
+export const NOTE_PAYMENT_CHANNEL = "note:payments";
+export const DUE_SOON_WINDOW_DAYS = 7;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export type PaymentDueClassification = "due_soon" | "overdue";
+
+export interface NotePaymentRow {
+  id: number;
+  organizationId: number;
+  nextPaymentDate: Date | null;
+}
+
+export interface PaymentDueFinding {
+  noteId: number;
+  orgId: number;
+  /** Due date as YYYY-MM-DD (UTC) — part of the idempotency key. */
+  dueDate: string;
+  classification: PaymentDueClassification;
+  /** Whole days until due (negative = days overdue). */
+  daysUntilDue: number;
+  /** Deterministic idempotency key: same note + due-date + classification
+   * never publishes twice, while a due-soon finding that later turns overdue
+   * IS a new fact and publishes once more. */
+  dedupeKey: string;
+}
+
+function isoDay(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Pure window + classification logic. A note whose next payment is strictly
+ * in the past is overdue; within the next `windowDays` (inclusive) is
+ * due-soon; further out (or unknown) is no finding. Deterministic + total.
+ */
+export function classifyPaymentsDue(
+  rows: NotePaymentRow[],
+  now: Date,
+  windowDays: number = DUE_SOON_WINDOW_DAYS,
+): PaymentDueFinding[] {
+  const findings: PaymentDueFinding[] = [];
+  for (const row of rows) {
+    if (!row.nextPaymentDate) continue; // honest: no schedule, no signal
+    const due = row.nextPaymentDate.getTime();
+    if (!Number.isFinite(due)) continue;
+    const deltaMs = due - now.getTime();
+    if (deltaMs > windowDays * DAY_MS) continue; // outside the window
+    const classification: PaymentDueClassification = deltaMs < 0 ? "overdue" : "due_soon";
+    const dueDate = isoDay(row.nextPaymentDate);
+    findings.push({
+      noteId: row.id,
+      orgId: row.organizationId,
+      dueDate,
+      classification,
+      daysUntilDue: Math.floor(deltaMs / DAY_MS),
+      dedupeKey: `note-payment:${row.id}:${dueDate}:${classification}`,
+    });
+  }
+  return findings;
+}
+
+export interface NotePaymentScanResult {
+  scanned: number;
+  dueSoon: number;
+  overdue: number;
+  published: number;
+  errors: number;
+}
+
+/**
+ * Daily scan: read active notes with a payment due inside the window (or
+ * already past), publish one mesh event per NEW finding, and record the
+ * aggregate counts as outward senses. Best-effort throughout — a failure
+ * degrades to fewer signals, never to a crash or an invented value.
+ */
+export async function runNotePaymentDueScan(now: Date = new Date()): Promise<NotePaymentScanResult> {
+  const result: NotePaymentScanResult = { scanned: 0, dueSoon: 0, overdue: 0, published: 0, errors: 0 };
+
+  let findings: PaymentDueFinding[] = [];
+  try {
+    const horizon = new Date(now.getTime() + DUE_SOON_WINDOW_DAYS * DAY_MS);
+    const rows = await db
+      .select({ id: notes.id, organizationId: notes.organizationId, nextPaymentDate: notes.nextPaymentDate })
+      .from(notes)
+      .where(and(eq(notes.status, "active"), isNull(notes.deletedAt), lte(notes.nextPaymentDate, horizon)));
+    result.scanned = rows.length;
+    findings = classifyPaymentsDue(rows, now);
+  } catch (err) {
+    result.errors += 1;
+    logger.warn(
+      "[notePaymentDueDetector] notes read failed; scan degraded to none",
+      err instanceof Error ? err : undefined,
+    );
+    return result;
+  }
+
+  result.dueSoon = findings.filter((f) => f.classification === "due_soon").length;
+  result.overdue = findings.filter((f) => f.classification === "overdue").length;
+
+  // Ledger dedupe: the mesh itself is the record of what was already
+  // published. A finding whose dedupeKey exists on the channel is old news.
+  let alreadyPublished = new Set<string>();
+  if (findings.length > 0) {
+    try {
+      const keys = findings.map((f) => f.dedupeKey);
+      const existing = await db
+        .select({ key: sql<string>`${eventMeshEvents.payload} ->> 'dedupeKey'` })
+        .from(eventMeshEvents)
+        .where(
+          and(
+            eq(eventMeshEvents.channel, NOTE_PAYMENT_CHANNEL),
+            sql`${eventMeshEvents.payload} ->> 'dedupeKey' IN (${sql.join(keys.map((k) => sql`${k}`), sql`, `)})`,
+          ),
+        );
+      alreadyPublished = new Set(existing.map((r) => r.key));
+    } catch (err) {
+      result.errors += 1;
+      // Fail CLOSED on publishing (skip all) rather than risk duplicate
+      // events every day the ledger read is broken — the senses below still
+      // record the honest aggregate counts either way.
+      alreadyPublished = new Set(findings.map((f) => f.dedupeKey));
+      logger.warn(
+        "[notePaymentDueDetector] dedupe ledger read failed; skipping event publish this run",
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
+
+  for (const f of findings) {
+    if (alreadyPublished.has(f.dedupeKey)) continue;
+    try {
+      await eventMeshPublisher.publish(
+        NOTE_PAYMENT_CHANNEL,
+        f.classification === "overdue" ? "note:payment_overdue" : "note:payment_due_soon",
+        {
+          noteId: f.noteId,
+          dueDate: f.dueDate,
+          daysUntilDue: f.daysUntilDue,
+          dedupeKey: f.dedupeKey,
+        },
+        {
+          publisher: "note-payment-detector",
+          // Overdue crosses the notification-router's ≤3 threshold; due-soon
+          // stays routine (visible in the mesh/tick, no notification).
+          priority: f.classification === "overdue" ? 3 : 4,
+          orgId: f.orgId,
+        },
+      );
+      result.published += 1;
+    } catch (err) {
+      result.errors += 1;
+      logger.warn(
+        `[notePaymentDueDetector] publish failed for ${f.dedupeKey} (swallowed)`,
+        err instanceof Error ? err : undefined,
+      );
+    }
+  }
+
+  // Aggregate outward senses — counts only (constitutional: no borrower PII
+  // in senses). The value is the CURRENT total pressure, recorded once per
+  // run, so the tick reads `latest` rather than summing across runs.
+  if (result.dueSoon > 0) {
+    void recordSense("note_payment_due_soon", result.dueSoon, { newFindings: result.published });
+  }
+  if (result.overdue > 0) {
+    void recordSense("note_payment_overdue", result.overdue, { newFindings: result.published });
+  }
+
+  return result;
+}

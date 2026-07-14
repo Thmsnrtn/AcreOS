@@ -12,7 +12,7 @@
  */
 import { sql } from "drizzle-orm";
 import { db } from "../../db";
-import { supportCases } from "@shared/schema";
+import { eventMeshEvents, supportCases } from "@shared/schema";
 import { logger } from "../../utils/logger";
 
 /**
@@ -34,5 +34,40 @@ export async function getOpenSupportCaseCount(): Promise<number> {
       err instanceof Error ? err : undefined,
     );
     return 0;
+  }
+}
+
+/** Deal pipeline activity as the brain sees it (Jarvis 2.1, audit G2). */
+export interface DealActivitySignal {
+  /** deal:lifecycle mesh events in the window (created/updated/closed). */
+  events: number;
+  /** Of those, deals closed WON — the milestone signal. */
+  closedWon: number;
+}
+
+/**
+ * Count deal-lifecycle mesh events in the window. This reads the mesh's own
+ * ledger (event_mesh_events) rather than re-deriving pipeline state, so the
+ * brain sees exactly what the mutation seams published — no more, no less.
+ * Returns honest zeros on any failure.
+ */
+export async function getDealActivitySignal(windowHours = 24): Promise<DealActivitySignal> {
+  try {
+    const [row] = await db
+      .select({
+        events: sql<number>`count(*)::int`,
+        closedWon: sql<number>`count(*) filter (where ${eventMeshEvents.eventType} = 'deal:closed' and ${eventMeshEvents.payload} ->> 'outcome' = 'won')::int`,
+      })
+      .from(eventMeshEvents)
+      .where(
+        sql`${eventMeshEvents.channel} = 'deal:lifecycle' and ${eventMeshEvents.createdAt} > now() - (${windowHours} || ' hours')::interval`,
+      );
+    return { events: Number(row?.events ?? 0), closedWon: Number(row?.closedWon ?? 0) };
+  } catch (err) {
+    logger.warn(
+      "[autopilot/senses] deal activity read failed; defaulting to 0",
+      err instanceof Error ? err : undefined,
+    );
+    return { events: 0, closedWon: 0 };
   }
 }
