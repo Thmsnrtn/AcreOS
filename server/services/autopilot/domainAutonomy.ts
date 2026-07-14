@@ -218,6 +218,35 @@ export async function recordAnomaly(domain: AutopilotDomain, reason: string): Pr
 }
 
 /**
+ * CP3 of Jarvis Phase 1 (Verified Act-and-Confirm; founder-approved plan
+ * docs/internal/jarvis-phase0-audit.md) — the seam through which INDEPENDENT
+ * verification verdicts (code-review dispatches, generic verify dispatches)
+ * feed the Trust Ledger.
+ *
+ * A PASSED verdict counts as a verified clean cycle — it increments the SAME
+ * clean-cycle counter promotions read (recordCleanCycle; no parallel ledger).
+ * A FLAGGED verdict is an anomaly and takes the domain through the EXISTING
+ * circuit-breaker demotion (recordAnomaly — one rung down, counter reset).
+ *
+ * POSTURE: this binding is the act-and-confirm coupling. It only ADDS verified
+ * evidence to the ledger — unverified completions earn exactly what they earned
+ * before (nothing is loosened) — and the promotion rule itself is unchanged
+ * (PROMOTION_THRESHOLD clean cycles + the calibration/quality holds).
+ * Verification stays observe-only for the ACTION: a flagged verdict costs the
+ * domain trust; it never blocks or rolls back the work it verified.
+ */
+export async function recordVerifiedOutcome(
+  domain: AutopilotDomain,
+  passed: boolean,
+  evidence: string,
+): Promise<DomainAutonomyLevel> {
+  if (passed) {
+    return recordCleanCycle(domain);
+  }
+  return recordAnomaly(domain, `verification flagged: ${evidence}`.slice(0, 500));
+}
+
+/**
  * The AUTONOMY gate for the policy-gate stack. Inject this as
  * `runPolicyGateStack(action, { checkDomainAutonomy })`.
  */

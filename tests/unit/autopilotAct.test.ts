@@ -6,6 +6,7 @@ import {
   dispatchPromptFor,
   applyAutonomyFeedback,
   isAutopilotDispatch,
+  domainForDispatch,
   type ActDeps,
   type ActContext,
 } from "../../server/services/autopilot/act";
@@ -198,5 +199,28 @@ describe("autopilot feedback edge — outcomes earn (or cost) autonomy", () => {
     expect(isAutopilotDispatch({ sourceType: "auto_dispatch", sourceId: "autopilot:optimize" })).toBe(true);
     expect(isAutopilotDispatch({ sourceType: "auto_dispatch", sourceId: "detector:42" })).toBe(false);
     expect(isAutopilotDispatch({ sourceType: "founder_manual", sourceId: "autopilot:optimize" })).toBe(false);
+  });
+});
+
+describe("CP3 — domainForDispatch (honest dispatch→domain mapping for trust evidence)", () => {
+  it("maps an autopilot dispatch with a KNOWN move to its bound domain", () => {
+    expect(domainForDispatch({ sourceType: "auto_dispatch", sourceId: "autopilot:resolve_incident" })).toBe("deploy");
+    expect(domainForDispatch({ sourceType: "auto_dispatch", sourceId: "autopilot:recover_payments" })).toBe("finance");
+    expect(domainForDispatch({ sourceType: "auto_dispatch", sourceId: "autopilot:grow_owned_channels" })).toBe("growth");
+  });
+
+  it("returns null for non-autopilot dispatches — founder/manual/review work carries no domain", () => {
+    expect(domainForDispatch({ sourceType: "founder_manual", sourceId: "autopilot:optimize" })).toBeNull();
+    expect(domainForDispatch({ sourceType: "code_review", sourceId: "dispatch:7" })).toBeNull();
+    expect(domainForDispatch({ sourceType: "auto_dispatch", sourceId: "detector:42" })).toBeNull();
+    expect(domainForDispatch({ sourceType: "verify", sourceId: "verify:dispatch:7" })).toBeNull();
+  });
+
+  it("returns null for an UNKNOWN move kind — never guesses through the fail-closed default binding", () => {
+    // bindingFor() maps unknown kinds to the fail-closed 'ops' default for
+    // GATING purposes; domainForDispatch must NOT let that default earn or
+    // cost 'ops' trust.
+    expect(bindingFor("brand_new_unbound_move").domain).toBe("ops");
+    expect(domainForDispatch({ sourceType: "auto_dispatch", sourceId: "autopilot:brand_new_unbound_move" })).toBeNull();
   });
 });

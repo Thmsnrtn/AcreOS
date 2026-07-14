@@ -7770,6 +7770,16 @@ const STATEMENTS = [
   `ALTER TABLE "solene_dispatch_queue" ADD COLUMN IF NOT EXISTS "success_criteria" jsonb`,
   `ALTER TABLE "import_jobs" ADD COLUMN IF NOT EXISTS "verify_status" text`,
   `ALTER TABLE "import_jobs" ADD COLUMN IF NOT EXISTS "verify_findings" text`,
+
+  // Jarvis Phase 1 CP3 — verify verdict columns on mail_shipments
+  // (migration 0205, founder-approved plan docs/internal/jarvis-phase0-audit.md).
+  // After the mail flusher actually SENDS a shipment, an independent READ-ONLY
+  // verify dispatch evaluates the shipment's own record; its VERDICT lands
+  // here ('pending' | 'passed' | 'flagged' + FINDINGS). Verification never
+  // blocks or un-sends — CP3's act-and-confirm binding is the Trust Ledger,
+  // not blocking. Additive + nullable. Mirrors shared/schema/finance.ts.
+  `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "verify_status" text`,
+  `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "verify_findings" text`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

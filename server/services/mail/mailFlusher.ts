@@ -181,6 +181,20 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
       .where(eq(mailShipments.id, ship.id));
     await bookFreeSendAcquisitionCogs(ship);
     logger.info(`[mailFlusher] sent shipment ${ship.id} (${pieces.length} pieces via ${route.chosenProvider})`);
+    // CP3 of Jarvis Phase 1 (Verified Act-and-Confirm) — after a REAL send,
+    // enqueue an independent READ-ONLY verification of the shipment's own
+    // record (piece accounting vs the locked quote, debit-ledger consistency,
+    // compliance posture). Fire-and-forget: a verify hiccup must never fail a
+    // shipment that already sent; verification only observes.
+    void import("../solene/verifyQueue")
+      .then(({ enqueueMailShipmentVerify }) => enqueueMailShipmentVerify(ship.id))
+      .catch((err) =>
+        logger.warn(
+          `[mailFlusher] verify enqueue failed for shipment ${ship.id} (send unaffected): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        ),
+      );
     return "sent";
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

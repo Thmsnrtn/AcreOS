@@ -369,8 +369,12 @@ export async function completeDispatch(
   // + FINDINGS) is parsed by the SAME parser and routed by sourceId —
   // 'verify:dispatch:<id>' flips the target dispatch's review_status (and
   // fires self-debug on flagged); 'verify:import:<jobId>' lands the verdict
-  // on the import_jobs row. Verify dispatches are READ-ONLY observers in
-  // CP2: they never block or fail the work they verify (blocking is CP3).
+  // on the import_jobs row; CP3 adds 'verify:mailShipment:<id>' and
+  // 'verify:dunningEvent:<id>' routes. Verify dispatches remain READ-ONLY
+  // observers: they never block or fail the work they verify. CP3's
+  // act-and-confirm binding is TRUST, not blocking — verdicts on dispatches
+  // in known autopilot domains feed the Trust Ledger (verified clean cycles
+  // / circuit-breaker bounces) inside recordReviewOutcome/recordVerifyOutcome.
   void (async () => {
     try {
       const [row] = await db
