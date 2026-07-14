@@ -377,6 +377,23 @@ export function isAutopilotDispatch(d: { sourceType: string; sourceId: string })
   return d.sourceType === "auto_dispatch" && d.sourceId.startsWith(AUTOPILOT_SOURCE_PREFIX);
 }
 
+/**
+ * CP3 of Jarvis Phase 1 — HONEST dispatch→domain mapping for trust-ledger
+ * evidence. Returns the domain ONLY when the dispatch is autopilot-initiated
+ * AND its move-kind carries an explicit binding; anything else returns null.
+ * Deliberately does NOT route through bindingFor()'s fail-closed
+ * DEFAULT_BINDING — that default exists to make an UNKNOWN move maximally
+ * gated, not to let an unknown move's verification verdict credit or charge
+ * the 'ops' domain. A dispatch that carries no honest domain contributes no
+ * trust evidence (the caller skips with a debug log).
+ */
+export function domainForDispatch(d: { sourceType: string; sourceId: string }): AutopilotDomain | null {
+  if (!isAutopilotDispatch(d)) return null;
+  const moveKind = d.sourceId.slice(AUTOPILOT_SOURCE_PREFIX.length);
+  if (!isKnownMoveKind(moveKind)) return null;
+  return MOVE_BINDINGS[moveKind].domain;
+}
+
 export async function applyAutonomyFeedback(
   d: DispatchOutcomeForFeedback,
   deps: Partial<AutonomyFeedbackDeps> = {},

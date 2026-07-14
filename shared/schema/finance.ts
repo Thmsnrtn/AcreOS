@@ -342,6 +342,13 @@ export const mailShipments = pgTable("mail_shipments", {
   // the guarantee that a shipment is never charged-without-sent.
   debitEventKey: text("debit_event_key"),
   debitedCents: integer("debited_cents"),
+  // CP3 of Jarvis Phase 1 (Verified Act-and-Confirm, migration 0205).
+  // Where a SENT shipment's independent verification VERDICT lands
+  // ('pending' | 'passed' | 'flagged' + the FINDINGS block). NULL = no
+  // verify enqueued (pre-CP3 rows, dispatch disabled, enqueue failed).
+  // Verification is a READ-ONLY observer — it never blocks or un-sends.
+  verifyStatus: text("verify_status"),
+  verifyFindings: text("verify_findings"),
 }, (table) => [
   index("mail_shipments_org_status_idx").on(table.organizationId, table.status),
   index("mail_shipments_leaves_at_idx").on(table.leavesAt),

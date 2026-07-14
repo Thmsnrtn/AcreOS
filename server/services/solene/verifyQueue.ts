@@ -32,11 +32,22 @@
  *            flagged, fire the existing self-debug chain
  *          · 'verify:import:<jobId>' → land verdict on the import_jobs row
  *            + Letter-visible logActivity(job:'verify')
+ *          · 'verify:mailShipment:<id>' → land verdict on the mail_shipments
+ *            row + Letter-visible logActivity(job:'verify')   (CP3)
+ *          · 'verify:dunningEvent:<id>' → Letter-visible
+ *            logActivity(job:'verify') only — read-only, no columns  (CP3)
  *
- * AUTONOMY POSTURE (CP2): verification dispatches are read-only OBSERVERS.
- * The prompt forbids modification (like the review template) and nothing
- * here blocks, fails, or retries the work being verified — imports complete
- * regardless of the verdict. Blocking / act-and-confirm binding is CP3.
+ * AUTONOMY POSTURE (CP2 → CP3): verification dispatches are read-only
+ * OBSERVERS. The prompt forbids modification (like the review template) and
+ * nothing here blocks, fails, or retries the work being verified — imports
+ * complete, mail stays sent, dunning actions stand, regardless of the
+ * verdict. CP3 adds the act-and-confirm COUPLING without adding blocking:
+ * a verdict on a dispatch in a known autopilot domain feeds the Trust
+ * Ledger (applyVerifiedTrustEvidence → domainAutonomy.recordVerifiedOutcome),
+ * so verified outcomes now weigh into the same clean-cycle evidence
+ * promotions require — and a flagged verdict costs trust through the
+ * existing circuit-breaker demotion. Enforcement remains observe-only for
+ * the actions themselves.
  */
 
 import { and, eq, inArray, not } from "drizzle-orm";
@@ -46,7 +57,7 @@ import {
   type DispatchSuccessCriterion,
   type SoleneDispatchReviewStatus,
 } from "@shared/schema/solene-dispatch";
-import { importJobs } from "@shared/schema";
+import { dunningEvents, importJobs, mailShipments, organizations } from "@shared/schema";
 import { computeEffectKey, enqueueDispatch } from "./dispatchQueue";
 import { logger } from "../../utils/logger";
 
@@ -85,7 +96,7 @@ End your turn with a single structured verdict block:
 Do NOT modify any files, database rows, or settings. Do NOT commit.
 Read-only verification.`;
 
-export type VerifyTargetKind = "dispatch" | "import";
+export type VerifyTargetKind = "dispatch" | "import" | "mailShipment" | "dunningEvent";
 
 export interface EnqueueVerifyInput {
   targetKind: VerifyTargetKind;
@@ -109,7 +120,7 @@ export function buildVerifySourceId(
 export function parseVerifySourceId(
   sourceId: string,
 ): { targetKind: VerifyTargetKind; targetId: number } | null {
-  const m = sourceId.match(/^verify:(dispatch|import):(\d+)$/);
+  const m = sourceId.match(/^verify:(dispatch|import|mailShipment|dunningEvent):(\d+)$/);
   if (!m) return null;
   return { targetKind: m[1] as VerifyTargetKind, targetId: Number(m[2]) };
 }
@@ -121,10 +132,13 @@ export function buildVerifyPrompt(opts: {
   criteria: DispatchSuccessCriterion[];
   context?: string;
 }): string {
-  const label =
-    opts.targetKind === "dispatch"
-      ? `dispatch #${opts.targetId}`
-      : `import job #${opts.targetId}`;
+  const labels: Record<VerifyTargetKind, string> = {
+    dispatch: `dispatch #${opts.targetId}`,
+    import: `import job #${opts.targetId}`,
+    mailShipment: `mail shipment #${opts.targetId}`,
+    dunningEvent: `dunning event #${opts.targetId}`,
+  };
+  const label = labels[opts.targetKind];
   const criteriaText = opts.criteria
     .map((c, i) => {
       const check = c.check ? `\n   check: ${c.check}` : "";
@@ -156,7 +170,8 @@ export interface EnqueueVerifyResult {
 
 const VERIFY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes — reads only, no build loop
 const VERIFY_PRIORITY = 1.2; // above default work, below self-debug (1.5)
-/** Default cap for import verifications (no original cap to halve). */
+/** Default cap for non-dispatch verifications — imports, mail shipments,
+ *  dunning events — where there is no original dispatch cap to halve. */
 export const VERIFY_IMPORT_COST_USD = 2.5;
 
 /**
@@ -222,7 +237,7 @@ export async function enqueueVerifyDispatch(
       }
       const cap = Number(target.maxCostUsd);
       targetDispatchCap = Number.isFinite(cap) && cap > 0 ? cap : null;
-    } else {
+    } else if (targetKind === "import") {
       const [job] = await db
         .select({ id: importJobs.id, organizationId: importJobs.organizationId })
         .from(importJobs)
@@ -230,6 +245,34 @@ export async function enqueueVerifyDispatch(
         .limit(1);
       if (!job) {
         logger.warn(`[verifyQueue] skip ${sourceId} — import job not found`);
+        return {
+          verifyDispatchId: null,
+          skipped: true,
+          skipReason: "target_not_found",
+        };
+      }
+    } else if (targetKind === "mailShipment") {
+      const [ship] = await db
+        .select({ id: mailShipments.id })
+        .from(mailShipments)
+        .where(eq(mailShipments.id, targetId))
+        .limit(1);
+      if (!ship) {
+        logger.warn(`[verifyQueue] skip ${sourceId} — mail shipment not found`);
+        return {
+          verifyDispatchId: null,
+          skipped: true,
+          skipReason: "target_not_found",
+        };
+      }
+    } else {
+      const [event] = await db
+        .select({ id: dunningEvents.id })
+        .from(dunningEvents)
+        .where(eq(dunningEvents.id, targetId))
+        .limit(1);
+      if (!event) {
+        logger.warn(`[verifyQueue] skip ${sourceId} — dunning event not found`);
         return {
           verifyDispatchId: null,
           skipped: true,
@@ -264,7 +307,7 @@ export async function enqueueVerifyDispatch(
 
     // 5. Cost cap — half the target dispatch's cap (verification is lighter
     //    than the work, same ratio as code review), or a small fixed cap for
-    //    import targets.
+    //    non-dispatch targets (imports, mail shipments, dunning events).
     const maxCostUsd =
       input.maxCostUsd ??
       (targetDispatchCap !== null
@@ -300,13 +343,18 @@ export async function enqueueVerifyDispatch(
       successCriteria: { criteria },
     });
 
-    // 7. Import targets: stamp 'pending' so the jobs surface distinguishes
-    //    "verification in flight" from "never verified".
+    // 7. Import + mail-shipment targets: stamp 'pending' so their surfaces
+    //    distinguish "verification in flight" from "never verified".
     if (targetKind === "import") {
       await db
         .update(importJobs)
         .set({ verifyStatus: "pending" })
         .where(eq(importJobs.id, targetId));
+    } else if (targetKind === "mailShipment") {
+      await db
+        .update(mailShipments)
+        .set({ verifyStatus: "pending" })
+        .where(eq(mailShipments.id, targetId));
     }
 
     logger.info(
@@ -334,9 +382,15 @@ export async function enqueueVerifyDispatch(
  * Route a completed verify dispatch's parsed verdict to its target:
  *   - 'verify:dispatch:<id>' — flip the target dispatch's review_status
  *     (passed | flagged) and, on flagged, fire the existing self-debug chain
- *     (the same reflex a flagged code review triggers).
+ *     (the same reflex a flagged code review triggers). CP3: the verdict is
+ *     also fed to the Trust Ledger (applyVerifiedTrustEvidence) when the
+ *     target dispatch maps to a known autopilot domain.
  *   - 'verify:import:<jobId>' — write verify_status/verify_findings onto the
  *     import job row and log Letter-visibly via logActivity(job:'verify').
+ *   - 'verify:mailShipment:<id>' — write verify_status/verify_findings onto
+ *     the mail_shipments row and log Letter-visibly (CP3).
+ *   - 'verify:dunningEvent:<id>' — log Letter-visibly only; dunning_events
+ *     carries no verify columns by design (CP3, read-only observer).
  *
  * Sibling of codeReviewQueue.recordReviewOutcome; that function's lookup
  * rides original_dispatch_id, which verify rows deliberately don't carry
@@ -413,6 +467,94 @@ export async function recordVerifyOutcome(
           ),
         );
     }
+    // CP3 — the act-and-confirm coupling: a verdict on a dispatch feeds the
+    // Trust Ledger when the dispatch maps to a known autopilot domain.
+    // Fire-and-forget so the verdict write above stands regardless;
+    // applyVerifiedTrustEvidence never throws.
+    void applyVerifiedTrustEvidence({
+      targetDispatchId: target.targetId,
+      outcome,
+      verdictDispatchId: verifyDispatchId,
+      via: "verify",
+      findings,
+    });
+    return;
+  }
+
+  if (target.targetKind === "mailShipment") {
+    const [ship] = await db
+      .select({ id: mailShipments.id, organizationId: mailShipments.organizationId })
+      .from(mailShipments)
+      .where(eq(mailShipments.id, target.targetId))
+      .limit(1);
+    if (!ship) {
+      logger.warn(
+        `[verifyQueue] recordVerifyOutcome: mail shipment id=${target.targetId} not found for verify id=${verifyDispatchId}`,
+      );
+      return;
+    }
+
+    await db
+      .update(mailShipments)
+      .set({
+        verifyStatus: outcome,
+        verifyFindings: findings ? findings.slice(0, 4000) : null,
+      })
+      .where(eq(mailShipments.id, target.targetId));
+
+    logger.info(
+      `[verifyQueue] verify id=${verifyDispatchId} verdict=${outcome} -> mail shipment id=${target.targetId}`,
+    );
+
+    const { logActivity } = await import("../systemActivityLogger");
+    await logActivity({
+      orgId: ship.organizationId,
+      job: "verify",
+      action:
+        outcome === "passed" ? "mail_shipment_verify_passed" : "mail_shipment_verify_flagged",
+      summary:
+        outcome === "passed"
+          ? `Mail shipment #${target.targetId} independently verified: piece accounting, debit ledger, and compliance posture all passed.`
+          : `Mail shipment #${target.targetId} verification FLAGGED: ${(findings ?? "no findings text").slice(0, 300)}`,
+      entityType: "mail_shipment",
+      entityId: target.targetId,
+      metadata: findings ? { findings: findings.slice(0, 2000) } : undefined,
+    });
+    return;
+  }
+
+  if (target.targetKind === "dunningEvent") {
+    const [event] = await db
+      .select({ id: dunningEvents.id, organizationId: dunningEvents.organizationId })
+      .from(dunningEvents)
+      .where(eq(dunningEvents.id, target.targetId))
+      .limit(1);
+    if (!event) {
+      logger.warn(
+        `[verifyQueue] recordVerifyOutcome: dunning event id=${target.targetId} not found for verify id=${verifyDispatchId}`,
+      );
+      return;
+    }
+
+    logger.info(
+      `[verifyQueue] verify id=${verifyDispatchId} verdict=${outcome} -> dunning event id=${target.targetId}`,
+    );
+
+    // Letter-visible trail only — dunning_events deliberately carries no
+    // verify columns (the verdict lives on the verify dispatch row + here).
+    const { logActivity } = await import("../systemActivityLogger");
+    await logActivity({
+      orgId: event.organizationId,
+      job: "verify",
+      action: outcome === "passed" ? "dunning_verify_passed" : "dunning_verify_flagged",
+      summary:
+        outcome === "passed"
+          ? `Dunning event #${target.targetId} independently verified: status transition, org dunning state, and ledger posture all consistent.`
+          : `Dunning event #${target.targetId} verification FLAGGED: ${(findings ?? "no findings text").slice(0, 300)}`,
+      entityType: "dunning_event",
+      entityId: target.targetId,
+      metadata: findings ? { findings: findings.slice(0, 2000) } : undefined,
+    });
     return;
   }
 
@@ -455,6 +597,102 @@ export async function recordVerifyOutcome(
     entityId: target.targetId,
     metadata: findings ? { findings: findings.slice(0, 2000) } : undefined,
   });
+}
+
+// ----------------------------------------------------------------------------
+// applyVerifiedTrustEvidence — CP3: verdicts feed the Trust Ledger
+// ----------------------------------------------------------------------------
+
+export type VerifiedEvidenceVia = "verify" | "code_review";
+
+export interface ApplyTrustEvidenceInput {
+  /** The dispatch whose work was verified/reviewed (NOT the verifier). */
+  targetDispatchId: number;
+  outcome: "passed" | "flagged";
+  /** The verify/review dispatch that produced the verdict (audit trail). */
+  verdictDispatchId: number;
+  via: VerifiedEvidenceVia;
+  findings?: string;
+}
+
+export interface ApplyTrustEvidenceResult {
+  applied: boolean;
+  domain?: string;
+  skipReason?: "target_not_found" | "no_domain" | "error";
+}
+
+/**
+ * CP3 of Jarvis Phase 1 — bind an independent verdict (verify OR code review)
+ * to the per-domain Trust Ledger. This is the act-and-confirm coupling:
+ * a PASSED verdict on a dispatch in domain X counts as a verified clean cycle
+ * toward that domain's promotion; a FLAGGED verdict is a bounce through the
+ * EXISTING circuit-breaker demotion (domainAutonomy.recordAnomaly — no
+ * parallel ledger).
+ *
+ * HONEST MAPPING: the dispatch row carries no domain column; the only honest
+ * derivation is act.ts's autopilot sourceId convention + an explicitly-known
+ * move binding (domainForDispatch). A dispatch that maps to no domain —
+ * founder/manual dispatches, non-autopilot sources, unknown move kinds —
+ * contributes NOTHING (skip with a debug log); we never guess.
+ *
+ * Nothing is loosened: unverified completions still earn exactly what the
+ * existing applyAutonomyFeedback edge granted them; this only ADDS verified
+ * evidence. Never throws (fire-and-forget contract — a trust-ledger hiccup
+ * must never fail the verdict write that triggered it).
+ */
+export async function applyVerifiedTrustEvidence(
+  input: ApplyTrustEvidenceInput,
+): Promise<ApplyTrustEvidenceResult> {
+  try {
+    const [target] = await db
+      .select({
+        sourceType: soleneDispatchQueue.sourceType,
+        sourceId: soleneDispatchQueue.sourceId,
+      })
+      .from(soleneDispatchQueue)
+      .where(eq(soleneDispatchQueue.id, input.targetDispatchId))
+      .limit(1);
+    if (!target) {
+      logger.debug(
+        `[verifyQueue] trust evidence skip — target dispatch id=${input.targetDispatchId} not found`,
+      );
+      return { applied: false, skipReason: "target_not_found" };
+    }
+
+    const { domainForDispatch } = await import("../autopilot/act");
+    const domain = domainForDispatch({
+      sourceType: target.sourceType,
+      sourceId: target.sourceId,
+    });
+    if (!domain) {
+      // No honest domain — do NOT guess. Founder/manual work, reviews,
+      // verifies, and unknown move kinds earn/cost no domain trust.
+      logger.debug(
+        `[verifyQueue] trust evidence skip — dispatch id=${input.targetDispatchId} (source=${target.sourceType}:${target.sourceId}) carries no known autopilot domain`,
+      );
+      return { applied: false, skipReason: "no_domain" };
+    }
+
+    const { recordVerifiedOutcome } = await import("../autopilot/domainAutonomy");
+    await recordVerifiedOutcome(
+      domain,
+      input.outcome === "passed",
+      `${input.via} dispatch #${input.verdictDispatchId} verdict=${input.outcome} on dispatch #${input.targetDispatchId}${
+        input.findings ? `: ${input.findings.slice(0, 200)}` : ""
+      }`,
+    );
+    logger.info(
+      `[verifyQueue] trust evidence applied — domain=${domain} outcome=${input.outcome} via=${input.via} target=${input.targetDispatchId} verdictDispatch=${input.verdictDispatchId}`,
+    );
+    return { applied: true, domain };
+  } catch (err) {
+    logger.warn(
+      `[verifyQueue] trust evidence failed for dispatch id=${input.targetDispatchId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return { applied: false, skipReason: "error" };
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -528,4 +766,296 @@ export function buildImportVerifyCriteria(
     },
   ];
   return criteria;
+}
+
+// ----------------------------------------------------------------------------
+// CP3 — OUTREACH MAIL criteria (verify after a shipment actually SENDS)
+// ----------------------------------------------------------------------------
+
+export interface MailShipmentVerifyFacts {
+  shipmentId: number;
+  organizationId: number;
+  /** The quote-locked piece count persisted at queue time. */
+  pieceCount: number;
+  debitEventKey: string | null;
+  debitedCents: number | null;
+  /** The org's subscription tier at verify-enqueue time (lowercased). */
+  orgTier: string;
+  provider: string | null;
+}
+
+/**
+ * Pure. Derive verification criteria from a SENT mail shipment's own record.
+ * Descriptions are deliberately HONEST about what CAN be checked from DB
+ * state — and explicit about what CANNOT:
+ *   - the recent-mail dedupe (>20% recently-mailed) is an advisory UX warning
+ *     at compose time, never an enforced gate, so it is not verifiable as a
+ *     control;
+ *   - no suppression list is applied on the outreach-mail path today, so
+ *     suppression cannot be asserted;
+ *   - the physical delivery of pieces is a provider/USPS fact, not a DB fact.
+ */
+export function buildMailShipmentVerifyCriteria(
+  f: MailShipmentVerifyFacts,
+): DispatchSuccessCriterion[] {
+  const isFree = f.orgTier === "free";
+  const criteria: DispatchSuccessCriterion[] = [
+    {
+      id: `mailShipment:${f.shipmentId}:piece-accounting`,
+      description:
+        `Piece accounting: mail_shipments row #${f.shipmentId} was reported ` +
+        `SENT with the quote-locked piece_count=${f.pieceCount}` +
+        `${f.provider ? ` via provider '${f.provider}'` : ""}. Confirm the ` +
+        `persisted row reads status='sent' with sent_at set, and that the ` +
+        `count of mail_shipment_pieces rows for this shipment with ` +
+        `status='sent' equals piece_count=${f.pieceCount}. Flag any pieces ` +
+        `still 'pending' or 'failed' under a 'sent' shipment. HONEST LIMIT: ` +
+        `physical delivery is a provider/USPS fact — only the recorded send ` +
+        `state is checkable here.`,
+      check:
+        `SELECT status, sent_at, piece_count, provider FROM mail_shipments ` +
+        `WHERE id = ${f.shipmentId}; SELECT status, count(*) FROM ` +
+        `mail_shipment_pieces WHERE shipment_id = ${f.shipmentId} GROUP BY status`,
+    },
+    {
+      id: `mailShipment:${f.shipmentId}:debit-ledger`,
+      description:
+        f.debitEventKey
+          ? `Debit-ledger consistency: the enqueue debit ` +
+            `(debited_cents=${f.debitedCents ?? 0}, ` +
+            `debit_event_key='${f.debitEventKey}') must be recorded in ` +
+            `financial_ledger under external_event_id='${f.debitEventKey}', ` +
+            `and — because the shipment SENT — the refund row ` +
+            `external_event_id='${f.debitEventKey}:refund' must be ABSENT ` +
+            `(refunds accompany only failure/cancel; a sent shipment keeps ` +
+            `its charge).`
+          : `Debit-ledger consistency: this shipment persisted NO ` +
+            `debit_event_key (legacy or zero-debit row), so the exact ledger ` +
+            `draw is NOT attributable — report this limit rather than ` +
+            `guessing. Flag only if debited_cents=${f.debitedCents ?? 0} is ` +
+            `positive while the key is missing (a draw that can never be ` +
+            `refunded is the inconsistency).`,
+      check: f.debitEventKey
+        ? `SELECT external_event_id, amount_cents FROM financial_ledger WHERE ` +
+          `external_event_id IN ('${f.debitEventKey}', '${f.debitEventKey}:refund')`
+        : `SELECT debit_event_key, debited_cents FROM mail_shipments WHERE id = ${f.shipmentId}`,
+    },
+    {
+      id: `mailShipment:${f.shipmentId}:compliance-posture`,
+      description:
+        (isFree
+          ? `Compliance posture: organization ${f.organizationId} was on the ` +
+            `FREE tier, whose lifetime mail allowance is capped. Confirm the ` +
+            `org's total non-cancelled mail_shipments.piece_count sum does ` +
+            `not exceed the free lifetime cap (FREE_TIER_LIFETIME_PIECES in ` +
+            `server/routes-outreach-mail.ts — read the constant from source, ` +
+            `do not assume its value). HONEST LIMIT: a founder-queued send ` +
+            `legitimately bypasses the cap and the shipment row does not ` +
+            `record founder status — report an overage as a finding to ` +
+            `investigate, not as proof of a breach. `
+          : `Compliance posture: organization ${f.organizationId} was on the ` +
+            `'${f.orgTier}' (paid) tier, so the free lifetime cap does not ` +
+            `apply; the enforced control on this path is the credit-pool ` +
+            `debit (previous criterion). `) +
+        `FURTHER HONEST LIMITS (state, do not assert): the recent-mail ` +
+        `dedupe (>20% recently-mailed warning) is advisory UX only — never ` +
+        `an enforced gate — and NO suppression list is applied on the ` +
+        `outreach-mail path today; neither can be verified as a control ` +
+        `from DB state.`,
+      check: isFree
+        ? `SELECT coalesce(sum(piece_count), 0) FROM mail_shipments WHERE ` +
+          `organization_id = ${f.organizationId} AND status != 'cancelled'; ` +
+          `compare against FREE_TIER_LIFETIME_PIECES in server/routes-outreach-mail.ts`
+        : `SELECT subscription_tier FROM organizations WHERE id = ${f.organizationId}`,
+    },
+  ];
+  return criteria;
+}
+
+/**
+ * CP3 seam for the mail flusher: after a shipment actually SENDS, enqueue a
+ * READ-ONLY verify dispatch with criteria derived from the shipment's own
+ * record. Fire-and-forget by contract — never throws, never fails the send
+ * (the shipment is already sent; verification only observes).
+ */
+export async function enqueueMailShipmentVerify(
+  shipmentId: number,
+): Promise<EnqueueVerifyResult> {
+  try {
+    const [ship] = await db
+      .select({
+        id: mailShipments.id,
+        organizationId: mailShipments.organizationId,
+        pieceCount: mailShipments.pieceCount,
+        debitEventKey: mailShipments.debitEventKey,
+        debitedCents: mailShipments.debitedCents,
+        provider: mailShipments.provider,
+      })
+      .from(mailShipments)
+      .where(eq(mailShipments.id, shipmentId))
+      .limit(1);
+    if (!ship) {
+      logger.warn(
+        `[verifyQueue] enqueueMailShipmentVerify: shipment id=${shipmentId} not found`,
+      );
+      return { verifyDispatchId: null, skipped: true, skipReason: "target_not_found" };
+    }
+    const [org] = await db
+      .select({ tier: organizations.subscriptionTier })
+      .from(organizations)
+      .where(eq(organizations.id, ship.organizationId))
+      .limit(1);
+
+    const criteria = buildMailShipmentVerifyCriteria({
+      shipmentId: ship.id,
+      organizationId: ship.organizationId,
+      pieceCount: ship.pieceCount,
+      debitEventKey: ship.debitEventKey,
+      debitedCents: ship.debitedCents,
+      orgTier: (org?.tier ?? "free").toLowerCase(),
+      provider: ship.provider,
+    });
+    return await enqueueVerifyDispatch({
+      targetKind: "mailShipment",
+      targetId: shipmentId,
+      criteria,
+      context:
+        `mailFlusher reports shipment #${shipmentId} sent ` +
+        `(${ship.pieceCount} pieces${ship.provider ? ` via ${ship.provider}` : ""}, ` +
+        `org ${ship.organizationId}).`,
+    });
+  } catch (err) {
+    logger.warn(
+      `[verifyQueue] enqueueMailShipmentVerify failed for shipment=${shipmentId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return { verifyDispatchId: null, skipped: true, skipReason: "enqueue_failed" };
+  }
+}
+
+// ----------------------------------------------------------------------------
+// CP3 — NOTE-VERTICAL / DUNNING criteria (verify after a witnessed hand acts)
+// ----------------------------------------------------------------------------
+
+export type DunningHandAction = "retry" | "resolve" | "cancel";
+
+/** The resolution_type each successful hand action writes (dunningService). */
+export const DUNNING_EXPECTED_RESOLUTION: Record<DunningHandAction, string> = {
+  retry: "manual_payment",
+  cancel: "subscription_cancelled",
+  resolve: "escalated",
+};
+
+export interface DunningVerifyFacts {
+  eventId: number;
+  organizationId: number;
+  action: DunningHandAction;
+}
+
+/**
+ * Pure. Derive verification criteria for a dunning event AFTER the witnessed
+ * dunning_action hand reported success. HONEST about the limits:
+ *   - the hand's manual paths do not increment retry_count (only the
+ *     auto-retry ladder does), so a missing attempt marker on a
+ *     hand-initiated retry is a documented limit, not a finding;
+ *   - the Stripe-side charge outcome is not checkable from this database
+ *     (the later invoice webhook is the closing signal);
+ *   - another open dunning case can legitimately keep the org's dunning
+ *     stage set.
+ */
+export function buildDunningVerifyCriteria(
+  f: DunningVerifyFacts,
+): DispatchSuccessCriterion[] {
+  const expectedResolution = DUNNING_EXPECTED_RESOLUTION[f.action];
+  return [
+    {
+      id: `dunningEvent:${f.eventId}:status-transition`,
+      description:
+        `Status transition: after a successful '${f.action}' the ` +
+        `dunning_events row #${f.eventId} must read status='resolved' with ` +
+        `resolved_at set and resolution_type='${expectedResolution}'. ` +
+        `HONEST LIMIT: the witnessed hand's paths do NOT increment ` +
+        `retry_count (only the auto-retry ladder stamps that attempt ` +
+        `marker), so do not flag a missing retry_count bump on a ` +
+        `hand-initiated '${f.action}' — report the limit instead.`,
+      check:
+        `SELECT status, resolved_at, resolution_type, retry_count FROM ` +
+        `dunning_events WHERE id = ${f.eventId}`,
+    },
+    {
+      id: `dunningEvent:${f.eventId}:org-state`,
+      description:
+        `Org dunning state coherent: a resolved case clears the org's ` +
+        `posture — organizations.dunning_stage must be 'none' (and ` +
+        `dunning_started_at NULL) for organization ${f.organizationId} — ` +
+        `UNLESS another OPEN dunning event (status 'pending' or ` +
+        `'scheduled_retry') exists for the same org, which legitimately ` +
+        `keeps a stage set. Check for open siblings BEFORE flagging.`,
+      check:
+        `SELECT dunning_stage, dunning_started_at FROM organizations WHERE ` +
+        `id = ${f.organizationId}; SELECT count(*) FROM dunning_events WHERE ` +
+        `organization_id = ${f.organizationId} AND status IN ` +
+        `('pending', 'scheduled_retry')`,
+    },
+    {
+      id: `dunningEvent:${f.eventId}:ledger`,
+      description:
+        `Ledger untouched-or-consistent: the dunning hand moves money in ` +
+        `STRIPE, not in the internal ledger — confirm no financial_ledger ` +
+        `rows were written for this action (none reference dunning event ` +
+        `#${f.eventId} in external_event_id or notes). HONEST LIMIT: the ` +
+        `Stripe-side charge outcome is NOT checkable from this database; ` +
+        `the later invoice webhook is the closing signal — report it as out ` +
+        `of scope rather than asserting it.`,
+      check:
+        `SELECT count(*) FROM financial_ledger WHERE external_event_id ` +
+        `ILIKE '%dunning%${f.eventId}%' OR notes ILIKE '%dunning event ${f.eventId}%'`,
+    },
+  ];
+}
+
+/**
+ * CP3 seam for the witnessed dunning_action hand: after the hand reports
+ * success, enqueue a READ-ONLY verify dispatch over the dunning event's
+ * post-action state. Fire-and-forget by contract — never throws, never
+ * fails the hand (the action already happened; verification only observes).
+ */
+export async function enqueueDunningEventVerify(
+  eventId: number,
+  action: DunningHandAction,
+): Promise<EnqueueVerifyResult> {
+  try {
+    const [event] = await db
+      .select({ id: dunningEvents.id, organizationId: dunningEvents.organizationId })
+      .from(dunningEvents)
+      .where(eq(dunningEvents.id, eventId))
+      .limit(1);
+    if (!event) {
+      logger.warn(
+        `[verifyQueue] enqueueDunningEventVerify: dunning event id=${eventId} not found`,
+      );
+      return { verifyDispatchId: null, skipped: true, skipReason: "target_not_found" };
+    }
+    const criteria = buildDunningVerifyCriteria({
+      eventId,
+      organizationId: event.organizationId,
+      action,
+    });
+    return await enqueueVerifyDispatch({
+      targetKind: "dunningEvent",
+      targetId: eventId,
+      criteria,
+      context:
+        `witnessed dunning_action hand reports '${action}' succeeded on ` +
+        `dunning event #${eventId} (org ${event.organizationId}).`,
+    });
+  } catch (err) {
+    logger.warn(
+      `[verifyQueue] enqueueDunningEventVerify failed for event=${eventId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return { verifyDispatchId: null, skipped: true, skipReason: "enqueue_failed" };
+  }
 }

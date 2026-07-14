@@ -244,6 +244,27 @@ vi.mock("./capitalTracker", async () => {
   return { ...actual, assertWithinEnsembleCap: vi.fn().mockResolvedValue(undefined) };
 });
 
+// CP3 — recordReviewOutcome feeds review verdicts to the Trust Ledger through
+// verifyQueue.applyVerifiedTrustEvidence (dynamic import, fire-and-forget).
+// Capture the calls; the honest dispatch→domain mapping itself is covered by
+// verifyQueue.test.ts + autopilotAct.test.ts.
+const trustEvidenceCalls: Array<Record<string, unknown>> = [];
+let trustEvidenceShouldThrow = false;
+vi.mock("./verifyQueue", () => ({
+  applyVerifiedTrustEvidence: vi.fn(async (input: Record<string, unknown>) => {
+    if (trustEvidenceShouldThrow) throw new Error("trust binding down");
+    trustEvidenceCalls.push(input);
+    return { applied: true, domain: "deploy" };
+  }),
+}));
+
+/** Flush fire-and-forget dynamic-import chains. */
+async function flushAsync(): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+  }
+}
+
 // --- Helpers --------------------------------------------------------------
 
 async function seedOriginalDispatch(args: {
@@ -289,6 +310,8 @@ async function seedOriginalDispatch(args: {
 beforeEach(() => {
   QUEUE.length = 0;
   RESULTS.length = 0;
+  trustEvidenceCalls.length = 0;
+  trustEvidenceShouldThrow = false;
   nextQueueId = 1;
   nextResultId = 1;
 });
@@ -443,6 +466,66 @@ describe("codeReviewQueue.recordReviewOutcome", () => {
   it("no-ops cleanly when review id is unknown", async () => {
     const { recordReviewOutcome } = await import("./codeReviewQueue");
     await expect(recordReviewOutcome(9999, "passed")).resolves.toBeUndefined();
+  });
+
+  // ── CP3 — review verdicts are verified Trust Ledger evidence ──────────────
+
+  it("CP3: a passed review feeds verified clean evidence for the ORIGINAL dispatch", async () => {
+    const { enqueueReviewDispatch, recordReviewOutcome } = await import(
+      "./codeReviewQueue"
+    );
+    const originalId = await seedOriginalDispatch({});
+    const { reviewDispatchId } = await enqueueReviewDispatch(originalId);
+
+    await recordReviewOutcome(reviewDispatchId!, "passed");
+    await flushAsync();
+
+    expect(trustEvidenceCalls).toEqual([
+      expect.objectContaining({
+        targetDispatchId: originalId,
+        outcome: "passed",
+        verdictDispatchId: reviewDispatchId,
+        via: "code_review",
+      }),
+    ]);
+  });
+
+  it("CP3: a flagged review feeds a bounce (same seam, outcome=flagged, findings forwarded)", async () => {
+    const { enqueueReviewDispatch, recordReviewOutcome } = await import(
+      "./codeReviewQueue"
+    );
+    const originalId = await seedOriginalDispatch({});
+    const { reviewDispatchId } = await enqueueReviewDispatch(originalId);
+
+    await recordReviewOutcome(reviewDispatchId!, "flagged", "- unscoped query");
+    await flushAsync();
+
+    expect(trustEvidenceCalls).toEqual([
+      expect.objectContaining({
+        targetDispatchId: originalId,
+        outcome: "flagged",
+        via: "code_review",
+        findings: "- unscoped query",
+      }),
+    ]);
+  });
+
+  it("CP3: fire-and-forget isolation — a trust-binding failure never breaks the verdict write", async () => {
+    const { enqueueReviewDispatch, recordReviewOutcome } = await import(
+      "./codeReviewQueue"
+    );
+    trustEvidenceShouldThrow = true;
+    const originalId = await seedOriginalDispatch({});
+    const { reviewDispatchId } = await enqueueReviewDispatch(originalId);
+
+    await expect(
+      recordReviewOutcome(reviewDispatchId!, "passed"),
+    ).resolves.toBeUndefined();
+    await flushAsync();
+
+    const original = QUEUE.find((q) => q.id === originalId)!;
+    expect(original.review_status).toBe("passed");
+    expect(trustEvidenceCalls).toHaveLength(0);
   });
 });
 

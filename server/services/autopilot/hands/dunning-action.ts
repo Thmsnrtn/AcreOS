@@ -15,6 +15,7 @@
 import { registerHand } from "./registry";
 import { handError, type HandResult } from "./types";
 import { dunningService } from "../../dunning";
+import { logger } from "../../../utils/logger";
 
 const NAME = "dunning_action";
 const ACTIONS = new Set(["retry", "resolve", "cancel"]);
@@ -31,6 +32,25 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
     if (action === "retry") result = await dunningService.retryPayment(eventId);
     else if (action === "cancel") result = await dunningService.cancelCase(eventId);
     else result = await dunningService.resolveCase(eventId, typeof input.notes === "string" ? input.notes : undefined);
+    if (result.success) {
+      // CP3 of Jarvis Phase 1 (Verified Act-and-Confirm) — after the witnessed
+      // hand acts, enqueue an independent READ-ONLY verification of the
+      // event's post-action state (status transition, org dunning stage,
+      // ledger untouched). Fire-and-forget: a verify hiccup never fails the
+      // hand; verification only observes — the act-and-confirm coupling is
+      // the Trust Ledger, not blocking.
+      void import("../../solene/verifyQueue")
+        .then(({ enqueueDunningEventVerify }) =>
+          enqueueDunningEventVerify(eventId, action as "retry" | "resolve" | "cancel"),
+        )
+        .catch((err) =>
+          logger.warn(
+            `[autopilot/hands] dunning verify enqueue failed for event ${eventId} (action unaffected): ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        );
+    }
     return { success: result.success, output: result.message, durationMs: Date.now() - started };
   } catch (err) {
     return handError(NAME, err, started);

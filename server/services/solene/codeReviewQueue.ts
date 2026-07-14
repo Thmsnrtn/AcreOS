@@ -346,6 +346,34 @@ export async function recordReviewOutcome(
     }`,
   );
 
+  // CP3 of Jarvis Phase 1 (Verified Act-and-Confirm) — a review verdict is
+  // VERIFIED evidence for the original dispatch's domain in the Trust Ledger:
+  // passed → verified clean cycle; flagged → the existing circuit-breaker
+  // demotion. applyVerifiedTrustEvidence maps dispatch→domain honestly (skips
+  // with a debug log when the original carries no known autopilot domain) and
+  // never throws. Fire-and-forget so this function's no-throw contract and
+  // the verdict write above are never at risk. Observe-only for the action:
+  // trust moves; the reviewed work is not blocked or rolled back.
+  {
+    const targetId = reviewRow.originalDispatchId;
+    import("./verifyQueue")
+      .then(({ applyVerifiedTrustEvidence }) =>
+        applyVerifiedTrustEvidence({
+          targetDispatchId: targetId,
+          outcome,
+          verdictDispatchId: reviewDispatchId,
+          via: "code_review",
+          findings,
+        }),
+      )
+      .catch((err) =>
+        logger.warn(
+          `[codeReviewQueue] trust-evidence import failed for original=${targetId}`,
+          err,
+        ),
+      );
+  }
+
   // L3.13 — self-debugging. When a review flags the original, call the
   // original agent back to introspect on the findings. Fire-and-forget so
   // recordReviewOutcome's contract (no throw) is preserved.
