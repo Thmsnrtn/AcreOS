@@ -264,6 +264,41 @@ export async function enqueueReviewDispatch(
 // recordReviewOutcome
 // ----------------------------------------------------------------------------
 
+// ----------------------------------------------------------------------------
+// parseReviewVerdict — CP1 of Jarvis Phase 1 (Verified Act-and-Confirm).
+// ----------------------------------------------------------------------------
+// The review prompt ends with a structured block:
+//   VERDICT: passed | flagged
+//   FINDINGS:
+//   - ...
+// This parses the LAST verdict in the text (the model may quote the template
+// earlier) plus everything after the following FINDINGS: marker. Pure and
+// exported so the contract is unit-testable. Returns null when no verdict is
+// parseable — the caller logs loudly and leaves review_status pending, which
+// listPendingReviews() surfaces; an unparseable review NEVER counts as
+// passed.
+
+export interface ParsedReviewVerdict {
+  outcome: "passed" | "flagged";
+  findings?: string;
+}
+
+export function parseReviewVerdict(text: string): ParsedReviewVerdict | null {
+  const matches = [...text.matchAll(/VERDICT:\s*(passed|flagged)\b/gi)];
+  const last = matches[matches.length - 1];
+  if (!last) return null;
+  const outcome = last[1].toLowerCase() as "passed" | "flagged";
+
+  let findings: string | undefined;
+  const tail = text.slice((last.index ?? 0) + last[0].length);
+  const fm = tail.match(/FINDINGS:\s*\n?([\s\S]*)/i);
+  if (fm) {
+    const body = fm[1].trim();
+    if (body.length > 0) findings = body.slice(0, 4000);
+  }
+  return { outcome, findings };
+}
+
 /**
  * Update the ORIGINAL dispatch's review_status once the review-dispatch
  * (identified by reviewDispatchId) concludes. Findings, if supplied, are

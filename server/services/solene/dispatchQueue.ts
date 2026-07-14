@@ -340,6 +340,42 @@ export async function completeDispatch(
     });
   });
 
+  // CP1 of Jarvis Phase 1 (Verified Act-and-Confirm, founder GO 2026-07-14):
+  // when the COMPLETING dispatch is itself a code_review, consume its
+  // verdict — the wire that was missing since L2.8 shipped. Parse the
+  // UNSLICED summary (the stored copy is cut at 4000 chars and the VERDICT
+  // block sits at the END of the review's final message), then
+  // recordReviewOutcome flips the original's review_status and, on
+  // flagged, fires the existing self-debug chain. Unparseable verdicts are
+  // logged loudly and leave review_status pending (surfaced by
+  // listPendingReviews) — an unparseable review never counts as passed.
+  // Fire-and-forget: verdict-consumption failure must not fail completion.
+  void (async () => {
+    try {
+      const [row] = await db
+        .select({ sourceType: soleneDispatchQueue.sourceType })
+        .from(soleneDispatchQueue)
+        .where(eq(soleneDispatchQueue.id, id))
+        .limit(1);
+      if (row?.sourceType !== "code_review") return;
+      const { parseReviewVerdict, recordReviewOutcome } = await import("./codeReviewQueue");
+      const verdict = parseReviewVerdict(result.resultSummary);
+      if (!verdict) {
+        logger.warn(
+          `[dispatchQueue] review dispatch id=${id} completed WITHOUT a parseable VERDICT — original stays pending (never counts as passed)`,
+        );
+        return;
+      }
+      await recordReviewOutcome(id, verdict.outcome, verdict.findings);
+    } catch (err) {
+      logger.warn(
+        `[dispatchQueue] verdict consumption failed for review id=${id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  })();
+
   // L2.8 — multi-agent code review. Fire-and-forget. enqueueReviewDispatch
   // handles all the eligibility checks (commits present, not already a review,
   // not recursive). We never let a review failure propagate back into the
