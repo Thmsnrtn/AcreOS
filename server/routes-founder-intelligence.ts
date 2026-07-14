@@ -1229,6 +1229,19 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Authenti
       await applyCheckInAnswer({ checkInItem: item, optionKey: chosen.key });
     }
 
+    // Horizon A2 — a shadow-promotion card is the ONLY path a promotion card
+    // widens a domain's autonomy through, and it requires exactly this: the
+    // founder's tap (Sovereign Principle 10 — no agent may unilaterally
+    // expand its own authority; promotions are Class B). Applied BEFORE the
+    // card resolves (A1 pattern, retappable). A swipe-approve without an
+    // explicit option counts as the grant tap; the level write itself is
+    // stale-guarded inside applyPromotionAnswer, so it never loosens a gate
+    // the circuit breaker has since tightened.
+    if (item && item.itemType === "shadow_promotion_request") {
+      const { applyPromotionAnswer } = await import("./services/autopilot/promotionRequest");
+      await applyPromotionAnswer({ item, optionKey: chosen?.key ?? "grant" });
+    }
+
     const result = await decisionsInboxService.approve(
       id,
       chosen ? `option:${chosen.key} — ${chosen.label}` : undefined,
@@ -1238,8 +1251,10 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Authenti
     // chosen (plain approvals carry no reusable rule; the service enforces
     // admission either way). Fire-and-forget: the service is fail-open.
     // Outcome check-in answers are calibration ground truth, not reusable
-    // rulings — they never become precedents.
-    if (item && chosen && item.itemType !== "outcome_check_in") {
+    // rulings — they never become precedents. A2: promotion answers are the
+    // founder ruling on the MACHINE's authority, not on a recommendation —
+    // they feed the Trust Ledger exclusively, never precedents.
+    if (item && chosen && item.itemType !== "outcome_check_in" && item.itemType !== "shadow_promotion_request") {
       recordFounderPrecedent({
         itemId: id,
         itemType: item.itemType,
@@ -1278,6 +1293,18 @@ router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Authentic
         if (err instanceof LetterReplyError) return Errors.badRequest(res, err.message);
         throw err;
       }
+    }
+
+    // Horizon A2 — swipe-left on a shadow-promotion card means "not yet":
+    // apply the hold (clean-cycle counter → threshold/2, so the re-ask is
+    // re-earned rather than re-fired next tick) and resolve the card. The
+    // founder's ruling on the machine's own authority is not agent-override
+    // material — the generic learn/precedent paths below must not run.
+    if (item?.itemType === "shadow_promotion_request") {
+      const { applyPromotionAnswer } = await import("./services/autopilot/promotionRequest");
+      await applyPromotionAnswer({ item, optionKey: "hold" });
+      await decisionsInboxService.reject(id, reason ?? "hold — keep earning");
+      return res.json({ success: true });
     }
 
     await decisionsInboxService.reject(id, reason);
@@ -1394,12 +1421,23 @@ router.post("/decisions-inbox/:id/override", requireFounder, async (req: Authent
       await applyCheckInAnswer({ checkInItem: item, optionKey: chosen.key });
     }
 
+    // Horizon A2 — SwipeDecisionCard posts option taps (grant / hold) to THIS
+    // route. The founder's tap is applied to the Trust Ledger BEFORE the card
+    // resolves (A1 interception pattern; grant is stale-guarded inside
+    // applyPromotionAnswer — Sovereign Principle 10).
+    if (item && chosen && item.itemType === "shadow_promotion_request") {
+      const { applyPromotionAnswer } = await import("./services/autopilot/promotionRequest");
+      await applyPromotionAnswer({ item, optionKey: chosen.key });
+    }
+
     await decisionsInboxService.override(id, action);
 
     // v4: Learn from the override so agents improve over time. A check-in
     // answer is calibration ground truth, not an override of an agent
     // recommendation — it feeds neither override-learning nor precedents.
-    if (item && item.itemType !== "outcome_check_in") {
+    // Same for A2 promotion answers: they rule on the machine's authority,
+    // not on an agent recommendation.
+    if (item && item.itemType !== "outcome_check_in" && item.itemType !== "shadow_promotion_request") {
       try {
         await learnFromOverride({
           agentCodename: item.ownerAgentCodename || "unknown",

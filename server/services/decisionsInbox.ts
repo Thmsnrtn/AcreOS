@@ -510,6 +510,112 @@ export const decisionsInboxService = {
     return { itemId: item.id, created: true };
   },
 
+  /**
+   * Horizon A2 — the shadow-promotion request card (Sovereign Principle 10:
+   * "No agent may unilaterally expand its own authority"; promotions/demotions
+   * are Class B decisions). Raised by the autopilot when a domain reaches the
+   * clean-cycle threshold WITH sufficient shadow-agreement evidence — the card
+   * is the ONLY way the request reaches the founder, and the founder's tap
+   * (promotionRequest.applyPromotionAnswer, intercepted in the resolve routes)
+   * is the ONLY way the level changes. itemType is a value in the existing
+   * text column — deliberately no migration.
+   *
+   * Dedupe: never a second OPEN (pending/deferred) card for the same
+   * domain+targetLevel. Routed through arbitrateInboxInsert as Class B — a
+   * machine-initiated interrupt (unlike letter replies, these DO go through
+   * the arbiter).
+   */
+  async createShadowPromotionRequest(input: {
+    domain: string;
+    fromLevel: string;
+    toLevel: string;
+    cleanCycleCount: number;
+    threshold: number;
+    agreement: {
+      matched: number;
+      total: number;
+      pendingPairs: number;
+      windowWeeks: number;
+      misses: Array<{ when: string | null; moveKind: string; shadowCall: string; actualRuling: string }>;
+      sufficient: boolean;
+      capabilities: string[];
+      caveat: string;
+    };
+  }): Promise<{ itemId: number | null; created: boolean }> {
+    const { SHADOW_PROMOTION_ITEM_TYPE, PROMOTION_OPTION_GRANT, PROMOTION_OPTION_HOLD, buildPromotionCardBody } =
+      await import("./autopilot/promotionRequest");
+
+    const existing = await db.query.decisionsInboxItems.findFirst({
+      where: and(
+        eq(decisionsInboxItems.itemType, SHADOW_PROMOTION_ITEM_TYPE),
+        or(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.status, "deferred"),
+        ),
+        sql`${decisionsInboxItems.contextBundle}->'shadowPromotion'->>'domain' = ${input.domain}`,
+        sql`${decisionsInboxItems.contextBundle}->'shadowPromotion'->>'toLevel' = ${input.toLevel}`,
+      ),
+    });
+    // Dedupe predicate re-applied in process so unit tests pin the
+    // open-card-only semantics independent of the SQL layer (A1 pattern).
+    if (
+      existing &&
+      existing.itemType === SHADOW_PROMOTION_ITEM_TYPE &&
+      (existing.status === "pending" || existing.status === "deferred") &&
+      existing.contextBundle?.shadowPromotion?.domain === input.domain &&
+      existing.contextBundle?.shadowPromotion?.toLevel === input.toLevel
+    ) {
+      return { itemId: existing.id, created: false };
+    }
+
+    const arbiter = await arbitrateInboxInsert(
+      "B",
+      `Autonomy promotion request: ${input.domain} → ${input.toLevel}`,
+      { itemType: SHADOW_PROMOTION_ITEM_TYPE, domain: input.domain, toLevel: input.toLevel },
+    );
+
+    const [item] = await db.insert(decisionsInboxItems).values({
+      itemType: SHADOW_PROMOTION_ITEM_TYPE,
+      // Widening the machine's authority is a real (if reversible) decision.
+      riskLevel: "high",
+      urgencyScore: 55,
+      sophieAnalysis: buildPromotionCardBody({
+        domain: input.domain,
+        fromLevel: input.fromLevel,
+        toLevel: input.toLevel,
+        cleanCycleCount: input.cleanCycleCount,
+        threshold: input.threshold,
+        agreement: input.agreement,
+      }),
+      recommendedAction:
+        "Grant to apply the new autonomy level, or hold to keep earning. Only your tap changes the level; you can pause any domain at any time from the Control Center.",
+      recommendedActionLabel: "Review Promotion",
+      // Nothing executes on resolve — the level write happens exclusively in
+      // the applyPromotionAnswer interception (never via an action executor).
+      actionPayload: null,
+      organizationId: null,
+      ownerAgentCodename: "solene",
+      contextBundle: {
+        options: [
+          { key: PROMOTION_OPTION_GRANT, label: `Promote to ${input.toLevel.replace(/_/g, " ")}` },
+          { key: PROMOTION_OPTION_HOLD, label: "Not yet — keep earning" },
+        ],
+        shadowPromotion: {
+          domain: input.domain,
+          fromLevel: input.fromLevel,
+          toLevel: input.toLevel,
+          cleanCycleCount: input.cleanCycleCount,
+          threshold: input.threshold,
+          agreement: input.agreement,
+        },
+      },
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
+    }).returning();
+
+    return { itemId: item.id, created: true };
+  },
+
   /** Returns pending items sorted by urgencyScore descending. */
   async getPendingItems() {
     return db.query.decisionsInboxItems.findMany({
@@ -587,6 +693,9 @@ export const decisionsInboxService = {
       // Solene owns it: the reply is addressed to her and confirms resolve
       // exclusively through letterReply.confirmLetterReply.
       letter_reply_confirm: "solene",
+      // Horizon A2 — the autopilot's request to widen its own authority;
+      // Solene owns it (Sovereign Principle 10: only the founder's tap grants).
+      shadow_promotion_request: "solene",
     };
     return typeToAgent[itemType] || "sophie_csm";
   },

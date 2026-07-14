@@ -32,6 +32,15 @@ export interface DecisionRecord {
   predictedSuccess: number | null;
   /** The resolved real outcome. */
   vote: DecisionVote;
+  /** When the decision was recorded (for evidence windowing). Optional/null when unknown. */
+  at?: Date | null;
+  /**
+   * Horizon A2 shadow marker — present when the AUTONOMY gate held this move
+   * back (observe block / draft escalate) and the row records the call the
+   * autopilot WOULD have made. Read-only evidence for founder-gated promotion
+   * cards (shadowAgreement.ts); never a learning input.
+   */
+  shadow?: { shadowedCapability?: string } | null;
 }
 
 /** Below this many RESOLVED decisions, the numbers aren't trustworthy. */
@@ -169,7 +178,12 @@ export async function buildDecisionRecords(
       .orderBy(desc(autopilotExperiences.createdAt))
       .limit(limit);
     return rows.map((r: typeof autopilotExperiences.$inferSelect) => {
-      const trace = (r.reasoningTrace as { senses?: Record<string, unknown> } | null) ?? null;
+      const trace =
+        (r.reasoningTrace as {
+          senses?: Record<string, unknown>;
+          shadow?: boolean;
+          shadowedCapability?: string;
+        } | null) ?? null;
       const vote = outcomeOf({
         dispatchSuccess: r.dispatchSuccess,
         evalScore: r.evalScore != null ? Number(r.evalScore) : null,
@@ -183,6 +197,17 @@ export async function buildDecisionRecords(
         senses: trace?.senses ?? {},
         predictedSuccess: r.predictedSuccess != null ? Number(r.predictedSuccess) : null,
         vote,
+        at: r.createdAt ?? null,
+        // Horizon A2 — surface the shadow marker verbatim; shadow rows are NOT
+        // filtered out (they vote pending until a real signal accretes, which
+        // the pure scorer already ignores honestly).
+        shadow:
+          trace?.shadow === true
+            ? {
+                shadowedCapability:
+                  typeof trace.shadowedCapability === "string" ? trace.shadowedCapability : undefined,
+              }
+            : null,
       };
     });
   } catch {
