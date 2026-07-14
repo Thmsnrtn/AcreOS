@@ -63,6 +63,13 @@ export interface FounderPrecedentInput {
   };
   /** Traceability ONLY — stored in metadata, never in organization_id. */
   organizationId?: number | null;
+  /**
+   * Horizon A3 — the sourceRef segment naming WHERE the ruling was witnessed.
+   * Defaults to "decision" (the Jarvis 2.3 decision-inbox resolve path, kept
+   * verbatim for backward compatibility with existing rows). Letter replies
+   * pass "letter_reply" so their precedents carry a distinct natural key.
+   */
+  sourceKind?: string;
 }
 
 export interface FounderPrecedentResult {
@@ -137,7 +144,7 @@ export async function recordFounderPrecedent(
       .createHash("sha256")
       .update(fullText, "utf8")
       .digest("hex");
-    const sourceRef = `founder_precedent:decision:${input.itemId}`;
+    const sourceRef = `founder_precedent:${input.sourceKind ?? "decision"}:${input.itemId}`;
 
     // Natural-key lookup scoped to org IS NULL (platform memory).
     const existing = await db

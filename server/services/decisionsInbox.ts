@@ -583,6 +583,10 @@ export const decisionsInboxService = {
       critical_alert: "sentinel_devops",
       feature_request_flagged: "compass_pm",
       outcome_check_in: "sophie_csm",
+      // Horizon A3 — the shown-back parse of a founder's letter reply.
+      // Solene owns it: the reply is addressed to her and confirms resolve
+      // exclusively through letterReply.confirmLetterReply.
+      letter_reply_confirm: "solene",
     };
     return typeToAgent[itemType] || "sophie_csm";
   },

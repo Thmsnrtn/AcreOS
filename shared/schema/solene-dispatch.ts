@@ -229,6 +229,11 @@ export const DISPATCH_SOURCE_TYPES = [
   // 'verify:import:456') — idempotency rides the existing effect-key/
   // idempotency machinery. Verifiers never verify verifiers.
   "verify",
+  // Horizon A3 — a founder directive parsed from a reply to The Letter and
+  // CONFIRMED on the shown-back parse (witnessed admission — never enqueued
+  // from the parse alone). sourceId + idempotencyKey are both
+  // 'letter-reply:<inboxItemId>' so a double-tap can't double-enqueue.
+  "letter_reply",
 ] as const;
 export type SoleneDispatchSourceType = (typeof DISPATCH_SOURCE_TYPES)[number];
 
