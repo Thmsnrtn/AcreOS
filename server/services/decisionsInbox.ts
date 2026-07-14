@@ -7,6 +7,53 @@ import { eq, and, desc, isNull, or, lt } from "drizzle-orm";
 import { executeAction, hasExecutor } from "./agentActionExecutors";
 import { customerSupportAutoResolver } from "./customerSupportAutoResolver";
 import { requireOpenAIClient } from "../utils/openaiClient";
+import { arbitrateFounderInterrupt } from "./founderInterruptArbiter";
+import { logger } from "../utils/logger";
+
+/**
+ * Jarvis 2.2 — route a would-be founder inbox item through the interrupt
+ * arbiter BEFORE it lands in the founder's pending queue. The row is always
+ * written (never dropped); the arbiter only decides which status it lands in:
+ *
+ *   deliver         → status "pending"    (today's behavior — surfaces now)
+ *   defer_*         → status "deferred"   + deferredUntil (processDeferredItems
+ *                     re-opens it; the Letter batches it)
+ *   suppress (C)    → status "suppressed" (kept verbatim for the audit trail
+ *                     and the 2.3 defect ledger; never surfaced as pending,
+ *                     never re-opened — a Class-C arrival is a defect signal)
+ *
+ * Never throws: arbiter unavailability fails CLOSED-quiet per the binding
+ * design — B defers, C suppresses.
+ */
+async function arbitrateInboxInsert(
+  interruptClass: "B" | "C",
+  subject: string,
+  metadata: Record<string, unknown>,
+): Promise<{ status: "pending" | "deferred" | "suppressed"; deferredUntil: Date | null }> {
+  try {
+    const decision = await arbitrateFounderInterrupt({
+      source: "decisions_inbox",
+      interruptClass,
+      channel: "inbox_pending_item",
+      subject,
+      metadata,
+    });
+    if (decision.outcome === "deliver") return { status: "pending", deferredUntil: null };
+    if (decision.outcome === "suppress") return { status: "suppressed", deferredUntil: null };
+    return {
+      status: "deferred",
+      deferredUntil: decision.deferUntil ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
+    };
+  } catch (err) {
+    logger.error(
+      "[decisionsInbox] interrupt arbiter threw — failing CLOSED-quiet at the wrapper",
+      err instanceof Error ? err : undefined,
+    );
+    return interruptClass === "B"
+      ? { status: "deferred", deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) }
+      : { status: "suppressed", deferredUntil: null };
+  }
+}
 
 export const decisionsInboxService = {
 
@@ -61,6 +108,17 @@ export const decisionsInboxService = {
       if (existing) return { autoResolved: false, itemId: existing.id };
     }
 
+    // Jarvis 2.2 explicit class mapping for THIS call site: riskLevel high
+    // (billing — the customer's money) → Class B; medium → Class C (an
+    // unresolved medium-risk escalation should be answerable inside earned
+    // autonomy — its arrival here is a logged defect signal, and the ticket
+    // itself stays open in supportTickets either way).
+    const arbiter = await arbitrateInboxInsert(
+      isBilling ? "B" : "C",
+      `Support escalation: ticket #${ticketId}`,
+      { itemType: "support_escalation", ticketId, organizationId: ticket.organizationId ?? undefined },
+    );
+
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "support_escalation",
       riskLevel: isBilling ? "high" : "medium",
@@ -77,7 +135,8 @@ export const decisionsInboxService = {
         category: ticket.category ?? "",
         geniusConfidence: resolution.geniusConfidence,
       },
-      status: "pending",
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
     }).returning();
 
     return { autoResolved: false, itemId: item.id };
@@ -99,6 +158,16 @@ export const decisionsInboxService = {
     });
     if (existing) return existing.id;
 
+    // Jarvis 2.2 explicit class mapping for THIS call site: riskLevel critical
+    // → Class B. The inbox row is the batched decision surface; the PROMPT
+    // channel for the same incident is the alertSpine pager, which maps to
+    // Class A on its own path — so deferring this row never silences a fire.
+    const arbiter = await arbitrateInboxInsert(
+      "B",
+      `Critical alert: ${alert.title}`,
+      { itemType: "critical_alert", alertId },
+    );
+
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "critical_alert",
       riskLevel: "critical",
@@ -108,7 +177,8 @@ export const decisionsInboxService = {
       recommendedActionLabel: "Acknowledge Alert",
       actionPayload: { alertId, action: "acknowledge" },
       sourceAlertId: alertId,
-      status: "pending",
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
     }).returning();
 
     return item.id;
@@ -135,6 +205,16 @@ export const decisionsInboxService = {
       where: eq(organizations.id, orgId),
     });
 
+    // Jarvis 2.2 explicit class mapping for THIS call site: riskLevel critical
+    // (churn of a paying customer — retention risk, rank 2 in the ranking
+    // function) → Class B: interrupt while budget allows, batch to the Letter
+    // when consumed.
+    const arbiter = await arbitrateInboxInsert(
+      "B",
+      `Churn risk ${score}/100 for org #${orgId}`,
+      { itemType: "churn_risk_intervention", organizationId: orgId, score },
+    );
+
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "churn_risk_intervention",
       riskLevel: "critical",
@@ -146,7 +226,8 @@ export const decisionsInboxService = {
       recommendedActionLabel: "Approve Retention Outreach",
       actionPayload: { orgId, action: "send_retention_email", riskScore: score },
       organizationId: orgId,
-      status: "pending",
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
     }).returning();
 
     return item.id;
@@ -215,9 +296,20 @@ export const decisionsInboxService = {
 
     if (!analysis.shouldSurface) return null;
 
+    // Jarvis 2.2 explicit class mapping for THIS call site: riskLevel high
+    // (priorityScore >= 80) → Class B; medium → Class C (a routine feature
+    // request should be triaged inside earned autonomy, not interrupt the
+    // founder — the row is kept as a suppressed defect-signal record).
+    const isHigh = analysis.priorityScore >= 80;
+    const arbiter = await arbitrateInboxInsert(
+      isHigh ? "B" : "C",
+      `Feature request flagged: ${request.title}`,
+      { itemType: "feature_request_flagged", requestId, organizationId: request.organizationId ?? undefined },
+    );
+
     const [item] = await db.insert(decisionsInboxItems).values({
       itemType: "feature_request_flagged",
-      riskLevel: analysis.priorityScore >= 80 ? "high" : "medium",
+      riskLevel: isHigh ? "high" : "medium",
       urgencyScore: analysis.priorityScore,
       estimatedImpactCents: analysis.estimatedRevImpactCents,
       sophieAnalysis: analysis.analysisReason,
@@ -227,7 +319,8 @@ export const decisionsInboxService = {
       actionPayload: { requestId, action: "add_to_roadmap" },
       sourceFeatureRequestId: requestId,
       organizationId: request.organizationId,
-      status: "pending",
+      status: arbiter.status,
+      deferredUntil: arbiter.deferredUntil,
     }).returning();
 
     return item.id;

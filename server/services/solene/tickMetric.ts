@@ -200,29 +200,7 @@ export async function getTickMetric(now: Date = new Date()): Promise<TickMetric>
   const verifiablesTotal = dispatchVerdicts.total + importVerdicts.total + mailVerdicts.total;
 
   // ── Metric (b): founder decisions consumed, trailing 7 days ─────────────
-  const escalationRows = await db
-    .select({
-      founderEscalated: cascadeResolutions.founderEscalated,
-      createdAt: cascadeResolutions.createdAt,
-    })
-    .from(cascadeResolutions)
-    .where(
-      and(
-        eq(cascadeResolutions.founderEscalated, true),
-        gte(cascadeResolutions.createdAt, weekStart),
-      ),
-    );
-
-  const overrideRows = await db
-    .select({ createdAt: founderOverrides.createdAt })
-    .from(founderOverrides)
-    .where(gte(founderOverrides.createdAt, weekStart));
-
-  const founderDecisionsThisWeek =
-    escalationRows.filter(
-      (r) => r.founderEscalated === true && r.createdAt != null && inTrailingWeek(r.createdAt, now),
-    ).length +
-    overrideRows.filter((r) => r.createdAt != null && inTrailingWeek(r.createdAt, now)).length;
+  const founderDecisionsThisWeek = await countFounderDecisionsThisWeek(now);
 
   return {
     revenueRelevantShippedThisWeek: shipped,
@@ -241,6 +219,47 @@ export async function getTickMetric(now: Date = new Date()): Promise<TickMetric>
       verifiablesTotal,
     ),
   };
+}
+
+/**
+ * Metric (b) counting seam — founder decisions consumed in the trailing
+ * 7 days ending at `now`: cascade resolutions that escalated to the founder
+ * plus founder overrides. Exported on its own (Jarvis 2.2) because the
+ * founder interrupt arbiter uses THIS SAME COUNT as the numerator of its
+ * Class-B budget gate — the gate and the Letter can never disagree about
+ * how many founder decisions this week consumed.
+ *
+ * Throws on a genuine read failure — callers degrade honestly (the metric
+ * renders "unmeasured"; the arbiter fails CLOSED-quiet), never a fabricated
+ * zero.
+ */
+export async function countFounderDecisionsThisWeek(now: Date = new Date()): Promise<number> {
+  const weekStart = new Date(now.getTime() - WEEK_MS);
+
+  const escalationRows = await db
+    .select({
+      founderEscalated: cascadeResolutions.founderEscalated,
+      createdAt: cascadeResolutions.createdAt,
+    })
+    .from(cascadeResolutions)
+    .where(
+      and(
+        eq(cascadeResolutions.founderEscalated, true),
+        gte(cascadeResolutions.createdAt, weekStart),
+      ),
+    );
+
+  const overrideRows = await db
+    .select({ createdAt: founderOverrides.createdAt })
+    .from(founderOverrides)
+    .where(gte(founderOverrides.createdAt, weekStart));
+
+  return (
+    escalationRows.filter(
+      (r) => r.founderEscalated === true && r.createdAt != null && inTrailingWeek(r.createdAt, now),
+    ).length +
+    overrideRows.filter((r) => r.createdAt != null && inTrailingWeek(r.createdAt, now)).length
+  );
 }
 
 /**

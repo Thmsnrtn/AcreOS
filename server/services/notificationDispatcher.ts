@@ -13,6 +13,11 @@ import { wsServer } from "../websocket";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import {
+  arbitrateFounderInterrupt,
+  recordDeferredInterrupt,
+  type ArbiterDecision,
+} from "./founderInterruptArbiter";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -29,21 +34,29 @@ interface ChannelConfig {
   defaultChannel: "in_app" | "email" | "sms" | "push";
   urgentChannel?: "sms" | "push";
   label: string;
+  /**
+   * Jarvis 2.2 — constitutional decision class of the FOUNDER-facing legs
+   * (founder broadcast + SMS + email), mapped EXPLICITLY per event: events
+   * with an urgentChannel (escalation / approval / conflict) are Class B;
+   * everything else is Class C (never interrupts the founder). The org
+   * broadcast is customer-facing and never arbitrated.
+   */
+  founderClass: "B" | "C";
 }
 
 // ─── Event → Channel Mapping ─────────────────────────────────────────────────
 
 const EVENT_CHANNEL_MAP: Record<string, ChannelConfig> = {
-  "deal:discovered": { defaultChannel: "in_app", label: "New Deal Found" },
-  "deal:closed": { defaultChannel: "email", label: "Deal Closed" },
-  "agent:escalation": { defaultChannel: "in_app", urgentChannel: "sms", label: "Agent Escalation" },
-  "agent:decision": { defaultChannel: "in_app", label: "Agent Decision" },
-  "approval:requested": { defaultChannel: "in_app", urgentChannel: "sms", label: "Approval Needed" },
-  "job:failed": { defaultChannel: "in_app", label: "Job Failed" },
-  "revenue:milestone": { defaultChannel: "email", label: "Revenue Milestone" },
-  "briefing:ready": { defaultChannel: "in_app", label: "Daily Briefing Ready" },
-  "agent:conflict": { defaultChannel: "in_app", urgentChannel: "sms", label: "Agent Conflict" },
-  "market:alert": { defaultChannel: "in_app", label: "Market Alert" },
+  "deal:discovered": { defaultChannel: "in_app", label: "New Deal Found", founderClass: "C" },
+  "deal:closed": { defaultChannel: "email", label: "Deal Closed", founderClass: "C" },
+  "agent:escalation": { defaultChannel: "in_app", urgentChannel: "sms", label: "Agent Escalation", founderClass: "B" },
+  "agent:decision": { defaultChannel: "in_app", label: "Agent Decision", founderClass: "C" },
+  "approval:requested": { defaultChannel: "in_app", urgentChannel: "sms", label: "Approval Needed", founderClass: "B" },
+  "job:failed": { defaultChannel: "in_app", label: "Job Failed", founderClass: "C" },
+  "revenue:milestone": { defaultChannel: "email", label: "Revenue Milestone", founderClass: "C" },
+  "briefing:ready": { defaultChannel: "in_app", label: "Daily Briefing Ready", founderClass: "C" },
+  "agent:conflict": { defaultChannel: "in_app", urgentChannel: "sms", label: "Agent Conflict", founderClass: "B" },
+  "market:alert": { defaultChannel: "in_app", label: "Market Alert", founderClass: "C" },
 };
 
 // ─── Notification Storage (in-app history) ───────────────────────────────────
@@ -99,19 +112,65 @@ class NotificationDispatcher {
       notificationStore.length = MAX_NOTIFICATIONS;
     }
 
+    // Jarvis 2.2 — the FOUNDER-facing legs (founder broadcast + SMS + email)
+    // route through the interrupt arbiter. The org broadcast (customer-facing)
+    // and the in-app history store (pull-based tray) are untouched. Fails
+    // CLOSED-quiet: an arbiter failure suppresses the founder legs with a
+    // log — it never blocks the customer-facing path and never spams.
+    const founderClass = config?.founderClass ?? "C"; // unmapped events → C
+    let founderLegsAllowed = false;
+    try {
+      const decision: ArbiterDecision = await arbitrateFounderInterrupt({
+        source: "notification_dispatcher",
+        interruptClass: founderClass,
+        channel: "founder_broadcast",
+        subject: label,
+        body: notification.message,
+        metadata: {
+          eventType: event.eventType,
+          priority: event.priority,
+          organizationId: event.orgId,
+        },
+      });
+      founderLegsAllowed = decision.outcome === "deliver";
+      if (decision.outcome === "defer_next_pulse" || decision.outcome === "defer_to_letter") {
+        await recordDeferredInterrupt(
+          {
+            source: "notification_dispatcher",
+            interruptClass: founderClass,
+            channel: "founder_broadcast",
+            subject: label,
+            body: notification.message,
+            metadata: { eventType: event.eventType, priority: event.priority, organizationId: event.orgId },
+          },
+          decision,
+        );
+      }
+    } catch (err) {
+      logger.error(
+        `[notification-dispatcher] interrupt arbiter threw for ${event.eventType} — founder legs fail CLOSED-quiet`,
+        err instanceof Error ? err : undefined,
+      );
+      founderLegsAllowed = false;
+    }
+
     // Route to channels
     try {
-      // Always send in-app via WebSocket
-      await this.sendInApp(event, notification);
+      // Customer-facing org broadcast — always, never arbitrated.
+      await this.sendInAppOrg(event, notification);
 
-      // If urgent and has an urgent channel, also send there
-      if (isUrgent && config?.urgentChannel === "sms") {
-        await this.sendSms(event, notification);
-      }
+      if (founderLegsAllowed) {
+        await this.sendInAppFounder(event, notification);
 
-      // Email for non-urgent but important
-      if (channel === "email" || (isUrgent && channel !== "sms")) {
-        await this.queueEmail(event, notification);
+        // If urgent and has an urgent channel, also send there
+        if (isUrgent && config?.urgentChannel === "sms") {
+          await this.sendSms(event, notification);
+        }
+
+        // Email for non-urgent but important
+        if (channel === "email" || (isUrgent && channel !== "sms")) {
+          await this.queueEmail(event, notification);
+        }
       }
     } catch (err: any) {
       logger.error(`[notification-dispatcher] Error dispatching ${event.eventType}`, err);
@@ -119,9 +178,9 @@ class NotificationDispatcher {
   }
 
   /**
-   * In-app notification via WebSocket toast
+   * In-app notification via WebSocket toast — customer-facing org broadcast.
    */
-  private async sendInApp(event: NotificationEvent, notification: StoredNotification): Promise<void> {
+  private async sendInAppOrg(event: NotificationEvent, notification: StoredNotification): Promise<void> {
     if (event.orgId) {
       wsServer.broadcastToOrg(event.orgId, "notification", {
         id: notification.id,
@@ -133,8 +192,13 @@ class NotificationDispatcher {
         createdAt: notification.createdAt,
       });
     }
+  }
 
-    // Also broadcast to all connected founder users
+  /**
+   * In-app notification via WebSocket toast — founder-facing broadcast
+   * (arbitrated; Jarvis 2.2).
+   */
+  private async sendInAppFounder(event: NotificationEvent, notification: StoredNotification): Promise<void> {
     wsServer.broadcast("founder:activity", "notification", {
       id: notification.id,
       title: notification.title,

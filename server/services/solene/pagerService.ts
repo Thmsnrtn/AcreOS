@@ -27,6 +27,12 @@ import {
   type SolenePageSeverity,
   type SolenePageDeliveryStatus,
 } from "@shared/schema/solene-page";
+import {
+  arbitrateFounderInterrupt,
+  recordDeferredInterrupt,
+  type ArbiterDecision,
+  type InterruptClass,
+} from "../founderInterruptArbiter";
 
 const DEFAULT_TOPIC = "acreos-solene-urgent-norton-9k4m7q3z";
 
@@ -40,6 +46,15 @@ export interface SendPageInput {
   severity: SolenePageSeverity;
   subject: string;
   body: string;
+  /**
+   * Jarvis 2.2 — explicit constitutional-class override for call sites whose
+   * URGENT pages are customer-harm / money / constitutional and must reach
+   * the founder immediately (Class A) regardless of budget or quiet hours.
+   * Default mapping when omitted: critical → A, urgent → B. Only "A" is
+   * accepted — a call site can promote an urgent page, never demote a
+   * critical one.
+   */
+  interruptClass?: "A";
 }
 
 export interface SendPageResult {
@@ -69,10 +84,73 @@ export function pageTopic(): string | null {
  */
 export async function sendSolenePage(input: SendPageInput): Promise<SendPageResult> {
   const { severity, subject, body } = input;
+
+  // ── Jarvis 2.2 — governed interruption arbiter (choke point) ──────────────
+  // Explicit class mapping for THIS silo: critical → A; urgent → B unless the
+  // call site marked itself customer-harm/money/constitutional via
+  // input.interruptClass = "A". Class A behavior is byte-identical to before
+  // the arbiter existed (the pager still pages): the arbiter only observes
+  // and audits A. Class B may be deferred (budget / quiet hours) — the page
+  // event row still persists (status "skipped") and a deferral row is written
+  // so the interrupt is batched, never dropped.
+  const interruptClass: InterruptClass =
+    input.interruptClass ?? (severity === "critical" ? "A" : "B");
+  let arbiterDecision: ArbiterDecision | null = null;
+  try {
+    arbiterDecision = await arbitrateFounderInterrupt({
+      source: "pager",
+      interruptClass,
+      channel: "ntfy_push",
+      subject,
+      body,
+      metadata: { severity },
+    });
+  } catch (err) {
+    // arbitrateFounderInterrupt never throws by contract; if it somehow does,
+    // apply the fail physics here too: A fails OPEN (deliver), B fails
+    // CLOSED-quiet (defer with a logged row).
+    logger.error(
+      "[solenePager] interrupt arbiter threw — applying fail policy at the wrapper",
+      err instanceof Error ? err : undefined,
+    );
+    arbiterDecision = null;
+  }
+
+  let deliveryStatus: SolenePageDeliveryStatus = "skipped";
+  let deliveryDetail: string | null = null;
+  // Class A is NEVER held — even a malformed arbiter decision cannot block it.
+  let arbiterHeld = false;
+  if (interruptClass !== "A") {
+    if (arbiterDecision === null) {
+      arbiterHeld = true;
+      const failQuiet: ArbiterDecision = {
+        outcome: "defer_next_pulse",
+        interruptClass,
+        reason: "interrupt arbiter unavailable — Class B fails CLOSED-quiet",
+        quietHoursActive: null,
+        budget: null,
+        deferUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      };
+      deliveryDetail = `interrupt arbiter ${failQuiet.outcome}: ${failQuiet.reason}`;
+      await recordDeferredInterrupt(
+        { source: "pager", interruptClass, channel: "ntfy_push", subject, body, metadata: { severity } },
+        failQuiet,
+      );
+    } else if (arbiterDecision.outcome !== "deliver") {
+      arbiterHeld = true;
+      deliveryDetail = `interrupt arbiter ${arbiterDecision.outcome}: ${arbiterDecision.reason}`;
+      await recordDeferredInterrupt(
+        { source: "pager", interruptClass, channel: "ntfy_push", subject, body, metadata: { severity } },
+        arbiterDecision,
+      );
+    }
+  }
+
   // Topic resolution: a founder-connected value (Platform Connections, no
   // redeploy) wins; otherwise the env/production semantics of pageTopic().
   // Fail-soft — a broken connections layer never blocks a page.
   let topic = pageTopic();
+  if (!arbiterHeld) {
   try {
     const { resolveConnection } = await import("../connections/platformConnections");
     const connected = await resolveConnection("paging", "topic");
@@ -81,9 +159,6 @@ export async function sendSolenePage(input: SendPageInput): Promise<SendPageResu
 
   const priority = severity === "critical" ? "5" : "4";
   const tags = severity === "critical" ? "warning,siren" : "warning";
-
-  let deliveryStatus: SolenePageDeliveryStatus = "skipped";
-  let deliveryDetail: string | null = null;
 
   if (topic === null) {
     // Production with no SOLENE_PAGE_TOPIC: refuse to push to the public
@@ -138,7 +213,8 @@ export async function sendSolenePage(input: SendPageInput): Promise<SendPageResu
   // to email via FOUNDER_EMAIL. One transport outage must never silence a
   // critical page. The email reaching the founder counts as delivery; the
   // detail records the full path honestly. Best-effort: an email failure
-  // never throws past here.
+  // never throws past here. (Skipped when the arbiter held the page — a
+  // deferred Class-B interrupt must not leak out via the fallback channel.)
   if (deliveryStatus !== "delivered") {
     let founderEmail = process.env.FOUNDER_EMAIL?.trim() || null;
     try {
@@ -176,8 +252,10 @@ export async function sendSolenePage(input: SendPageInput): Promise<SendPageResu
       }
     }
   }
+  } // end !arbiterHeld — held pages skip every outward transport
 
-  // Persist regardless of delivery outcome.
+  // Persist regardless of delivery outcome (including arbiter-held pages —
+  // the page-discipline ledger records the deferral verbatim).
   let eventId: number | null = null;
   try {
     const [inserted] = await db

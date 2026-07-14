@@ -12837,7 +12837,7 @@ export type DealRoomDocument = typeof dealRoomDocuments.$inferSelect;
 // Decisions Inbox — pre-analyzed items requiring human judgment
 export const decisionsInboxItems = pgTable("decisions_inbox_items", {
   id: serial("id").primaryKey(),
-  itemType: text("item_type").notNull(), // support_escalation | critical_alert | feature_request_flagged | churn_risk_intervention | dunning_recovery
+  itemType: text("item_type").notNull(), // support_escalation | critical_alert | feature_request_flagged | churn_risk_intervention | dunning_recovery | deferred_interrupt (Jarvis 2.2 arbiter deferral row)
   riskLevel: text("risk_level").notNull().default("medium"), // low | medium | high | critical
   urgencyScore: integer("urgency_score").notNull().default(50), // 0-100
   estimatedImpactCents: integer("estimated_impact_cents"),
@@ -12850,7 +12850,7 @@ export const decisionsInboxItems = pgTable("decisions_inbox_items", {
   sourceAlertId: integer("source_alert_id").references(() => systemAlerts.id),
   sourceFeatureRequestId: integer("source_feature_request_id").references(() => featureRequests.id),
   organizationId: integer("organization_id").references(() => organizations.id),
-  status: text("status").notNull().default("pending"), // pending | approved | rejected | deferred | auto_resolved
+  status: text("status").notNull().default("pending"), // pending | approved | rejected | deferred | auto_resolved | suppressed (Class C — interrupt-arbiter audit record, never surfaced)
   deferredUntil: timestamp("deferred_until"),
   resolvedAt: timestamp("resolved_at"),
   resolvedBy: text("resolved_by"),

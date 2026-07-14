@@ -589,6 +589,10 @@ async function firePage(
     `Action: blocked + logged. Worker has returned a structured refusal.`;
   const res = await sendSolenePage({
     severity: input.severity,
+    // Jarvis 2.2 explicit class mapping: a constitutional violation is Class A
+    // by definition (constitution's own decision classes) — even when its
+    // pager severity is "urgent", it breaks through budget and quiet hours.
+    interruptClass: "A",
     subject,
     body,
   });

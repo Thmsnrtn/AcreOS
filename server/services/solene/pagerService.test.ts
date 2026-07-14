@@ -7,9 +7,60 @@
  *  - Network errors caught, persisted, never thrown
  *  - SOLENE_PAGE_TOPIC env override
  *  - pageTopic() default fallback
+ *  - Jarvis 2.2 interrupt arbiter wrapper: severity → class mapping
+ *    (critical → A, urgent → B, explicit interruptClass:"A" override), Class A
+ *    byte-identical delivery even when the arbiter defers or throws
+ *    (fail OPEN), Class B held pages persist as skipped + a deferral row and
+ *    skip BOTH transports (fail CLOSED-quiet).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// ─── Jarvis 2.2 — interrupt arbiter mock ────────────────────────────────────
+
+interface ArbiterCall {
+  source: string;
+  interruptClass: string;
+  channel: string;
+  subject: string;
+}
+const ARBITER_CALLS: ArbiterCall[] = [];
+const DEFERRALS: Array<{ interruptClass: string; outcome: string }> = [];
+let arbiterMode: "deliver" | "defer" | "throw" = "deliver";
+
+vi.mock("../founderInterruptArbiter", () => ({
+  arbitrateFounderInterrupt: vi.fn(async (req: any) => {
+    ARBITER_CALLS.push({
+      source: req.source,
+      interruptClass: req.interruptClass,
+      channel: req.channel,
+      subject: req.subject,
+    });
+    if (arbiterMode === "throw") throw new Error("arbiter exploded");
+    if (arbiterMode === "defer") {
+      return {
+        outcome: "defer_to_letter",
+        interruptClass: req.interruptClass,
+        reason: "weekly founder-decision budget consumed (5/5)",
+        quietHoursActive: false,
+        budget: { used: 5, limit: 5 },
+        deferUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      };
+    }
+    return {
+      outcome: "deliver",
+      interruptClass: req.interruptClass,
+      reason: "within budget",
+      quietHoursActive: false,
+      budget: { used: 0, limit: 5 },
+      deferUntil: null,
+    };
+  }),
+  recordDeferredInterrupt: vi.fn(async (req: any, decision: any) => {
+    DEFERRALS.push({ interruptClass: req.interruptClass, outcome: decision.outcome });
+    return 1;
+  }),
+}));
 
 vi.mock("../../utils/logger", () => ({
   logger: {
@@ -85,6 +136,9 @@ const originalFetch = globalThis.fetch;
 beforeEach(() => {
   PAGES.length = 0;
   FETCH_CALLS.length = 0;
+  ARBITER_CALLS.length = 0;
+  DEFERRALS.length = 0;
+  arbiterMode = "deliver";
   nextPageId = 1;
   throwOnInsert = false;
   fetchMode = "ok";
@@ -286,5 +340,83 @@ describe("sendSolenePage failure handling", () => {
     expect(result.eventId).toBeNull();
     // Delivery itself was OK
     expect(result.deliveryStatus).toBe("delivered");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Jarvis 2.2 — interrupt arbiter wrapper
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("sendSolenePage interrupt arbiter wrapper (Jarvis 2.2)", () => {
+  it("maps severity explicitly: critical → Class A, urgent → Class B", async () => {
+    await sendSolenePage({ severity: "critical", subject: "a", body: "b" });
+    await sendSolenePage({ severity: "urgent", subject: "c", body: "d" });
+
+    expect(ARBITER_CALLS).toHaveLength(2);
+    expect(ARBITER_CALLS[0]).toMatchObject({
+      source: "pager",
+      interruptClass: "A",
+      channel: "ntfy_push",
+    });
+    expect(ARBITER_CALLS[1]).toMatchObject({ interruptClass: "B" });
+  });
+
+  it("honors an explicit interruptClass:'A' override on an urgent page (customer-harm/money call sites)", async () => {
+    await sendSolenePage({
+      severity: "urgent",
+      interruptClass: "A",
+      subject: "customer-surface regression",
+      body: "x",
+    });
+    expect(ARBITER_CALLS[0].interruptClass).toBe("A");
+  });
+
+  it("Class B held by the arbiter: no ntfy push, no email fallback, event persisted as skipped, deferral row recorded", async () => {
+    arbiterMode = "defer";
+    process.env.FOUNDER_EMAIL = "tom@example.com"; // fallback must NOT fire for a held page
+
+    const result = await sendSolenePage({ severity: "urgent", subject: "s", body: "b" });
+
+    expect(FETCH_CALLS).toHaveLength(0);
+    expect(EMAILS).toHaveLength(0);
+    expect(result.deliveryStatus).toBe("skipped");
+    expect(result.deliveryDetail).toContain("interrupt arbiter defer_to_letter");
+    expect(result.deliveryDetail).toContain("budget consumed");
+    // The page-discipline ledger still records the event verbatim.
+    expect(PAGES).toHaveLength(1);
+    expect(PAGES[0].deliveryStatus).toBe("skipped");
+    // Never dropped: a deferral row was written.
+    expect(DEFERRALS).toEqual([{ interruptClass: "B", outcome: "defer_to_letter" }]);
+  });
+
+  it("Class A is BYTE-IDENTICAL to pre-arbiter behavior even when the arbiter tries to defer", async () => {
+    arbiterMode = "defer";
+
+    const result = await sendSolenePage({ severity: "critical", subject: "fire", body: "b" });
+
+    expect(FETCH_CALLS).toHaveLength(1);
+    expect(FETCH_CALLS[0].init.headers.Priority).toBe("5");
+    expect(result.deliveryStatus).toBe("delivered");
+    expect(DEFERRALS).toHaveLength(0);
+  });
+
+  it("fails OPEN for Class A: an arbiter throw never blocks a critical page", async () => {
+    arbiterMode = "throw";
+
+    const result = await sendSolenePage({ severity: "critical", subject: "fire", body: "b" });
+
+    expect(FETCH_CALLS).toHaveLength(1);
+    expect(result.deliveryStatus).toBe("delivered");
+  });
+
+  it("fails CLOSED-quiet for Class B: an arbiter throw defers (skipped + deferral row), never spams", async () => {
+    arbiterMode = "throw";
+
+    const result = await sendSolenePage({ severity: "urgent", subject: "s", body: "b" });
+
+    expect(FETCH_CALLS).toHaveLength(0);
+    expect(result.deliveryStatus).toBe("skipped");
+    expect(result.deliveryDetail).toContain("fails CLOSED-quiet");
+    expect(DEFERRALS).toEqual([{ interruptClass: "B", outcome: "defer_next_pulse" }]);
   });
 });
