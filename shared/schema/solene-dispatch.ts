@@ -44,6 +44,25 @@ import {
 import { sql } from "drizzle-orm";
 
 // ============================================
+// SUCCESS CRITERIA — CP2 of Jarvis Phase 1 (Verified Act-and-Confirm).
+// Shape of the `success_criteria` jsonb column below. Criteria descriptions
+// must be HONEST about what can actually be checked — a verifier that cannot
+// check a criterion reports it as unverifiable, never as passed.
+// ============================================
+export interface DispatchSuccessCriterion {
+  /** Stable identifier, e.g. 'import:123:row-accounting'. */
+  id: string;
+  /** Human-readable statement of what must be true. */
+  description: string;
+  /** Optional machine-checkable hint (a SQL query, file path, or gate name). */
+  check?: string;
+}
+
+export interface DispatchSuccessCriteria {
+  criteria: DispatchSuccessCriterion[];
+}
+
+// ============================================
 // SOLENE_DISPATCH_QUEUE
 // ============================================
 export const soleneDispatchQueue = pgTable(
@@ -103,6 +122,15 @@ export const soleneDispatchQueue = pgTable(
     // outward effects is preserved.
     attempts: integer("attempts").notNull().default(0),
     notBeforeAt: timestamp("not_before_at", { withTimezone: true }),
+    // CP2 of Jarvis Phase 1 (Verified Act-and-Confirm, migration 0204).
+    // Explicit success criteria the enqueuer attaches to a dispatch so an
+    // INDEPENDENT `verify` dispatch (server/services/solene/verifyQueue.ts)
+    // can later evaluate the OUTCOME against them. Each criterion carries a
+    // human-readable description plus an optional machine-checkable hint.
+    // NULL = no criteria attached (legacy + criteria-less dispatches).
+    // On a sourceType='verify' row this holds the criteria BEING verified,
+    // so the audit trail shows exactly what the verifier was asked to check.
+    successCriteria: jsonb("success_criteria").$type<DispatchSuccessCriteria>(),
   },
   (t) => [
     // Fast worker pull: status + priority + queued_at
@@ -194,6 +222,13 @@ export const DISPATCH_SOURCE_TYPES = [
   // ahead of auto-dispatched work. founderOverride=true is set when the
   // requested maxCostUsd exceeds the normal $100 ceiling.
   "founder_bypass",
+  // CP2 of Jarvis Phase 1 (Verified Act-and-Confirm). A generic READ-ONLY
+  // verification dispatch that evaluates a target's OUTCOME against the
+  // explicit successCriteria attached to it. sourceId is
+  // 'verify:<targetKind>:<targetId>' (e.g. 'verify:dispatch:123',
+  // 'verify:import:456') — idempotency rides the existing effect-key/
+  // idempotency machinery. Verifiers never verify verifiers.
+  "verify",
 ] as const;
 export type SoleneDispatchSourceType = (typeof DISPATCH_SOURCE_TYPES)[number];
 

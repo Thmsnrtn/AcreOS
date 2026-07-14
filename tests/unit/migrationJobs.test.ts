@@ -8,11 +8,25 @@
  *   - 50K-row hard cap (we exercise the parseCSV pre-scan only since the
  *     full createImportJob flow needs a DB)
  *   - 1000-row CSV is parsed cleanly
+ *   - CP2 (Jarvis Phase 1): import completion enqueues a read-only verify
+ *     dispatch with HONEST criteria derived from the job's own record, and
+ *     a verify-enqueue failure never propagates into the import path
  */
 
-import { describe, it, expect } from "vitest";
-import { buildZipArchive, readZipArchive, MAX_IMPORT_ROWS, IMPORT_CHUNK_SIZE } from "../../server/services/migrationJobs";
+import { describe, it, expect, vi } from "vitest";
+import { buildZipArchive, readZipArchive, MAX_IMPORT_ROWS, IMPORT_CHUNK_SIZE, enqueueImportVerification } from "../../server/services/migrationJobs";
 import { parseCSV } from "../../server/services/importExport";
+import { enqueueVerifyDispatch } from "../../server/services/solene/verifyQueue";
+
+// CP2 seam test: keep buildImportVerifyCriteria REAL (the honesty of the
+// criteria is the point) but stub the enqueue so no DB is needed.
+vi.mock("../../server/services/solene/verifyQueue", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../server/services/solene/verifyQueue")>();
+  return {
+    ...actual,
+    enqueueVerifyDispatch: vi.fn(async () => ({ verifyDispatchId: 1, skipped: false })),
+  };
+});
 
 function buildLeadCsv(rows: number): string {
   const headers = "firstName,lastName,email,phone";
@@ -103,5 +117,47 @@ describe("ZIP archive round-trip", () => {
     const buf = await buildZipArchive([{ name: "x.csv", data: Buffer.from(repeat, "utf8") }]);
     // The whole archive (with headers) should still be well under the raw size
     expect(buf.length).toBeLessThan(repeat.length);
+  });
+});
+
+describe("enqueueImportVerification (CP2 — the IMPORTS workflow verify-gated first)", () => {
+  const JOB = { id: 42, organizationId: 7, kind: "leads" as const };
+  const RESULT = {
+    totalRows: 100,
+    successCount: 90,
+    errorCount: 8,
+    duplicatesSkipped: 2,
+  };
+
+  it("enqueues a verify dispatch with criteria derived from the job's own record", async () => {
+    vi.mocked(enqueueVerifyDispatch).mockClear();
+    await enqueueImportVerification(JOB, RESULT);
+
+    expect(enqueueVerifyDispatch).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(enqueueVerifyDispatch).mock.calls[0][0];
+    expect(call.targetKind).toBe("import");
+    expect(call.targetId).toBe(42);
+    expect(call.context).toContain("Import job #42");
+    expect(call.context).toContain("errorCount=8");
+
+    // Honest criteria: row accounting quotes the job's own counts; error
+    // rate carries the 5% threshold; org-scoping states the attribution
+    // limit rather than promising a check the system can't perform.
+    expect(call.criteria.map((c) => c.id)).toEqual([
+      "import:42:row-accounting",
+      "import:42:error-rate",
+      "import:42:org-scoping",
+    ]);
+    expect(call.criteria[0].description).toContain("total_rows=100");
+    expect(call.criteria[0].check).toContain("FROM import_jobs WHERE id = 42");
+    expect(call.criteria[1].description).toContain("5%");
+    expect(call.criteria[2].description).toContain("organization_id=7");
+    expect(call.criteria[2].description).toContain("NOT stamped with the import-job id");
+  });
+
+  it("NEVER fails the import path — a verify-enqueue error is swallowed", async () => {
+    vi.mocked(enqueueVerifyDispatch).mockClear();
+    vi.mocked(enqueueVerifyDispatch).mockRejectedValueOnce(new Error("queue down"));
+    await expect(enqueueImportVerification(JOB, RESULT)).resolves.toBeUndefined();
   });
 });

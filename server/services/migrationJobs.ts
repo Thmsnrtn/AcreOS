@@ -397,6 +397,8 @@ function mapImportJobRow(row: any): ImportJob {
     errors: row.errors ?? [],
     result: row.result,
     errorMessage: row.error_message,
+    verifyStatus: row.verify_status ?? null,
+    verifyFindings: row.verify_findings ?? null,
     createdAt: row.created_at,
     startedAt: row.started_at,
     completedAt: row.completed_at,
@@ -431,13 +433,13 @@ async function runImportJob(job: ImportJob): Promise<void> {
 
     if (job.kind === "documents") {
       const result = await processDocumentImport(job, payload);
-      await markImportComplete(job.id, result);
+      await markImportComplete(job, result);
       return;
     }
 
     if (job.kind === "communications") {
       const result = await processCommunicationsImport(job, payload);
-      await markImportComplete(job.id, result);
+      await markImportComplete(job, result);
       return;
     }
 
@@ -472,7 +474,7 @@ async function runImportJob(job: ImportJob): Promise<void> {
         .where(eq(importJobs.id, job.id));
     }
 
-    await markImportComplete(job.id, {
+    await markImportComplete(job, {
       totalRows: total,
       successCount: success,
       errorCount,
@@ -759,7 +761,7 @@ async function processDocumentImport(
 }
 
 async function markImportComplete(
-  jobId: number,
+  job: Pick<ImportJob, "id" | "organizationId" | "kind">,
   result: {
     totalRows: number;
     successCount: number;
@@ -781,7 +783,60 @@ async function markImportComplete(
       result: result as any,
       completedAt: new Date(),
     })
-    .where(eq(importJobs.id, jobId));
+    .where(eq(importJobs.id, job.id));
+
+  // CP2 of Jarvis Phase 1 (Verified Act-and-Confirm) — the IMPORTS workflow
+  // is the first verify-gated seam. Fire-and-forget: verification is a
+  // READ-ONLY observer in CP2 and must NEVER fail or delay the import
+  // (blocking / act-and-confirm binding is CP3). enqueueImportVerification
+  // catches everything internally.
+  void enqueueImportVerification(job, result);
+}
+
+/**
+ * Enqueue a read-only `verify` dispatch for a just-completed import job,
+ * with criteria derived from the job's own record (row accounting, error
+ * rate, org-scoping sanity — see verifyQueue.buildImportVerifyCriteria for
+ * the honest limits of each). Exported for tests. Never throws.
+ */
+export async function enqueueImportVerification(
+  job: Pick<ImportJob, "id" | "organizationId" | "kind">,
+  result: {
+    totalRows: number;
+    successCount: number;
+    errorCount: number;
+    duplicatesSkipped: number;
+  }
+): Promise<void> {
+  try {
+    const { enqueueVerifyDispatch, buildImportVerifyCriteria } = await import(
+      "./solene/verifyQueue"
+    );
+    const criteria = buildImportVerifyCriteria({
+      jobId: job.id,
+      organizationId: job.organizationId,
+      kind: job.kind,
+      totalRows: result.totalRows,
+      successCount: result.successCount,
+      errorCount: result.errorCount,
+      duplicatesSkipped: result.duplicatesSkipped,
+    });
+    await enqueueVerifyDispatch({
+      targetKind: "import",
+      targetId: job.id,
+      criteria,
+      context:
+        `Import job #${job.id} (kind=${job.kind}, organization=${job.organizationId}) ` +
+        `just completed reporting totalRows=${result.totalRows}, ` +
+        `successCount=${result.successCount}, errorCount=${result.errorCount}, ` +
+        `duplicatesSkipped=${result.duplicatesSkipped}.`,
+    });
+  } catch (err) {
+    logger.warn("[migrationJobs] import verification enqueue failed", {
+      jobId: job.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 // ─── Export worker ───────────────────────────────────────────────────────────

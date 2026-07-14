@@ -15,6 +15,9 @@
  *  - failDispatch transient=true requeues with backoff, bounded by
  *    DISPATCH_MAX_ATTEMPTS, then dead-letters; non-transient stays terminal
  *  - claimNextDispatch honors the not_before_at backoff gate
+ *  - CP2 (Jarvis Phase 1): enqueueDispatch persists successCriteria;
+ *    completeDispatch routes a completing `verify` dispatch's VERDICT to
+ *    verifyQueue.recordVerifyOutcome (and never routes an unparseable one)
  *
  * We mock `db` to keep this test unit-scope (no Postgres required).
  */
@@ -49,6 +52,7 @@ interface QueueRow {
   idempotency_key: string | null;
   attempts: number;
   not_before_at: Date | null;
+  success_criteria: unknown;
 }
 
 interface ResultRow {
@@ -104,6 +108,7 @@ vi.mock("../../db", () => {
               idempotency_key: row.idempotencyKey ?? null,
               attempts: 0,
               not_before_at: null,
+              success_criteria: row.successCriteria ?? null,
             };
             return {
               // Non-keyed path: unconditional insert (push at returning time).
@@ -157,7 +162,20 @@ vi.mock("../../db", () => {
               const v = (clause as any)?.__id;
               const row = QUEUE.find((q) => q.id === v) ?? QUEUE.find((q) => q.idempotency_key === v);
               if (!row) return Promise.resolve([]);
-              return Promise.resolve([{ id: row.id, status: row.status, attempts: row.attempts }]);
+              // Superset of every column completeDispatch/failDispatch's
+              // fire-and-forget hooks select — callers destructure what
+              // they asked for (sourceType/sourceId back the CP1/CP2
+              // verdict routing).
+              return Promise.resolve([
+                {
+                  id: row.id,
+                  status: row.status,
+                  attempts: row.attempts,
+                  sourceType: row.source_type,
+                  sourceId: row.source_id,
+                  agentRole: row.agent_role,
+                },
+              ]);
             },
           }),
         }),
@@ -231,6 +249,14 @@ vi.mock("./capitalTracker", async () => {
   const actual = await vi.importActual<typeof import("./capitalTracker")>("./capitalTracker");
   return { ...actual, assertWithinEnsembleCap: vi.fn().mockResolvedValue(undefined) };
 });
+
+// CP2 (Jarvis Phase 1) — completeDispatch routes a completing `verify`
+// dispatch's verdict to verifyQueue.recordVerifyOutcome via dynamic import.
+// Mock the whole module: these tests assert the ROUTING, not the outcome
+// write (verifyQueue.test.ts covers that side).
+vi.mock("./verifyQueue", () => ({
+  recordVerifyOutcome: vi.fn().mockResolvedValue(undefined),
+}));
 
 beforeEach(() => {
   QUEUE.length = 0;
@@ -625,6 +651,116 @@ describe("failDispatch — bounded side-effect-aware retry (step-away gap #3)", 
     );
     expect(out.requeued).toBe(false);
     expect(QUEUE.find((q) => q.id === id)!.status).toBe("cancelled");
+  });
+});
+
+describe("enqueueDispatch — successCriteria (CP2, Jarvis Phase 1)", () => {
+  it("persists successCriteria on the row when supplied", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    const criteria = {
+      criteria: [
+        { id: "c1", description: "row counts match", check: "SELECT 1" },
+      ],
+    };
+    const id = await enqueueDispatch({
+      sourceType: "verify",
+      sourceId: "verify:import:7",
+      agentRole: "general-purpose",
+      promptText: "verify the import",
+      successCriteria: criteria,
+    });
+    expect(QUEUE.find((q) => q.id === id)?.success_criteria).toEqual(criteria);
+  });
+
+  it("defaults successCriteria to null when omitted (legacy behavior)", async () => {
+    const { enqueueDispatch } = await import("./dispatchQueue");
+    const id = await enqueueDispatch({
+      sourceType: "auto_dispatch",
+      sourceId: "x",
+      agentRole: "iris",
+      promptText: "task",
+    });
+    expect(QUEUE.find((q) => q.id === id)?.success_criteria).toBeNull();
+  });
+});
+
+describe("completeDispatch — CP2 verify verdict routing", () => {
+  async function completeVerifyDispatch(resultSummary: string): Promise<number> {
+    const { enqueueDispatch, claimNextDispatch, completeDispatch } = await import(
+      "./dispatchQueue"
+    );
+    const id = await enqueueDispatch({
+      sourceType: "verify",
+      sourceId: "verify:import:7",
+      agentRole: "general-purpose",
+      promptText: "verify the import against its criteria",
+    });
+    await claimNextDispatch();
+    await completeDispatch(id, {
+      costUsd: 0.2,
+      durationMs: 30_000,
+      tokenInput: 1000,
+      tokenOutput: 200,
+      resultSummary,
+      resultFullPath: null,
+    });
+    return id;
+  }
+
+  it("routes a completing verify dispatch's VERDICT to recordVerifyOutcome", async () => {
+    const { recordVerifyOutcome } = await import("./verifyQueue");
+    const id = await completeVerifyDispatch(
+      [
+        "Checked all three criteria against the live tables.",
+        "VERDICT: flagged",
+        "FINDINGS:",
+        "- error rate 9% exceeds the 5% threshold",
+      ].join("\n"),
+    );
+    // The hook is fire-and-forget — poll until it lands.
+    await vi.waitFor(() =>
+      expect(recordVerifyOutcome).toHaveBeenCalledWith(
+        id,
+        "flagged",
+        expect.stringContaining("error rate 9%"),
+      ),
+    );
+  });
+
+  it("an unparseable verdict NEVER routes (never counts as passed)", async () => {
+    const { recordVerifyOutcome } = await import("./verifyQueue");
+    await completeVerifyDispatch("I looked at the import and it seems fine.");
+    // Flush the fire-and-forget hook's async chain, then assert absence.
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(recordVerifyOutcome).not.toHaveBeenCalled();
+  });
+
+  it("a NON-verify dispatch completing never touches recordVerifyOutcome", async () => {
+    const { enqueueDispatch, claimNextDispatch, completeDispatch } = await import(
+      "./dispatchQueue"
+    );
+    const { recordVerifyOutcome } = await import("./verifyQueue");
+    const id = await enqueueDispatch({
+      sourceType: "auto_dispatch",
+      sourceId: "opp:1",
+      agentRole: "iris",
+      promptText: "task",
+    });
+    await claimNextDispatch();
+    await completeDispatch(id, {
+      costUsd: 0.1,
+      durationMs: 1000,
+      tokenInput: 10,
+      tokenOutput: 10,
+      resultSummary: "done. VERDICT: passed",
+      resultFullPath: null,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(recordVerifyOutcome).not.toHaveBeenCalled();
   });
 });
 
