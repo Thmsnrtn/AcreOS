@@ -47,8 +47,9 @@ import {
 import { Link } from "wouter";
 import { Verbs } from "@/lib/labels";
 import { TeamChatPanel } from "@/components/team-chat-panel";
+import { NativeMailPanel } from "@/components/native-mail-panel";
 
-type ChannelFilter = "all" | "email" | "sms" | "team";
+type ChannelFilter = "all" | "email" | "sms" | "team" | "mail";
 type StatusFilter = "all" | "unread" | "starred" | "archived";
 
 type UnifiedItem = {
@@ -1279,10 +1280,18 @@ export default function InboxPage() {
               <Users className="h-4 w-4 mr-1" aria-hidden="true" />
               Team
             </TabsTrigger>
+            <TabsTrigger
+              value="mail"
+              className="min-h-11 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+              data-testid="tab-channel-mail"
+            >
+              <Mail className="h-4 w-4 mr-1" aria-hidden="true" />
+              Mail
+            </TabsTrigger>
           </TabsList>
         </Tabs>
 
-        {channelFilter !== "sms" && channelFilter !== "team" && (
+        {channelFilter !== "sms" && channelFilter !== "team" && channelFilter !== "mail" && (
           <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="border-b">
             <TabsList className="w-full justify-start rounded-none border-none h-12 p-0 bg-transparent" aria-label="Status">
               <TabsTrigger
@@ -1324,6 +1333,8 @@ export default function InboxPage() {
 
         {channelFilter === "team" ? (
           <TeamChatPanel />
+        ) : channelFilter === "mail" ? (
+          <NativeMailPanel />
         ) : (
         <div className="flex-1 flex overflow-hidden">
           <div ref={listColumnRef} className={`${selectedItem ? "hidden md:block" : ""} w-full md:w-96 border-r overflow-hidden flex flex-col`}>
