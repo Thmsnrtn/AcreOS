@@ -456,7 +456,15 @@ export default function NoteDetailPage() {
       {/* Servicing snapshot */}
       <Card className="mb-6">
         <div className="p-5">
-          <h2 className="text-sm font-semibold mb-4">Servicing snapshot</h2>
+          <h2 className="text-sm font-semibold mb-1">Servicing snapshot</h2>
+          {/* R1b reshape (home-base-reshape.md rule 2): make the posture
+              explicit — AcreOS is the intelligent dashboard over the note;
+              collection and servicing of record run through the holder's own
+              licensed servicer, not AcreOS. */}
+          <p className="text-xs text-muted-foreground mb-4">
+            A read on your note's status. AcreOS dashboards the note — collection and
+            servicing of record run through your own licensed servicer.
+          </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <KV label="Current balance" value={fmtUsd(note.currentBalanceCents)} />
             <KV
