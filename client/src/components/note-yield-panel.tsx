@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, AlertCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 
 interface YieldResponse {
   noteId: string;
@@ -101,6 +102,10 @@ export function NoteYieldPanel({ noteId }: { noteId: string }) {
                 {data.effectiveNetServicingAssumption.note}.
               </p>
             )}
+            {/* R1b reshape (home-base-reshape.md rule 2): yield figures are an
+                informational worksheet the holder verifies — AcreOS dashboards
+                the note, it is not the servicer/adviser of record. */}
+            <RequiredDisclaimer type="worksheet" className="mt-4" />
           </>
         ) : null}
       </div>

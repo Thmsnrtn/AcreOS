@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Receipt, AlertCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 
 interface BasisRow {
   year: number;
@@ -125,6 +126,11 @@ export function NoteBasisSchedule({ noteId }: { noteId: string }) {
             </p>
           </>
         ) : null}
+
+        {/* R1b reshape (home-base-reshape.md rule 2): tax accretion figures are
+            an informational worksheet the holder verifies with their CPA — a
+            labeled computation, never a tax determination AcreOS renders. */}
+        {data && !isError && <RequiredDisclaimer type="worksheet" className="mt-4" />}
       </div>
     </Card>
   );
