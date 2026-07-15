@@ -27,10 +27,10 @@ describe("predictCostCents", () => {
     ).toBeCloseTo(3000, 5);
   });
 
-  it("prices Haiku 4.5 at the lower OpenRouter rate ($0.80/$4.00 per 1M)", () => {
+  it("prices Haiku 4.5 at first-party rates ($1.00/$5.00 per 1M — 2026-07 cost audit)", () => {
     expect(
       predictCostCents({ model: "anthropic/claude-haiku-4-5", inputTokens: 1_000_000, outputTokens: 1_000_000 }),
-    ).toBeCloseTo(480, 5);
+    ).toBeCloseTo(600, 5);
   });
 
   it("falls back to DEFAULT_RATE for unknown models (never silently $0)", () => {
@@ -96,14 +96,15 @@ describe("cheapestModelWithinBudget", () => {
   const shared = { inputTokens: 1_000_000, outputTokens: 1_000_000 };
 
   it("picks the cheapest candidate that fits the budget", () => {
-    // opus = 3000c, haiku = 480c. Budget 500c → only haiku fits.
+    // opus = 3000c, haiku = 600c (first-party $1/$5). Budget 700c → only
+    // haiku fits.
     const pick = cheapestModelWithinBudget(
       ["anthropic/claude-opus-4-8", "anthropic/claude-haiku-4-5"],
-      500,
+      700,
       shared,
     );
     expect(pick?.model).toBe("anthropic/claude-haiku-4-5");
-    expect(pick?.predictedCents).toBeCloseTo(480, 5);
+    expect(pick?.predictedCents).toBeCloseTo(600, 5);
   });
 
   it("returns null when no candidate fits", () => {
