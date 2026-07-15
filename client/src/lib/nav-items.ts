@@ -73,11 +73,14 @@ export interface MasterNavItem {
 }
 
 export const ALL_NAV_ITEMS: MasterNavItem[] = [
-  // 2026-05-11 sidebar audit — 7 canonical customer entries.
-  // Today / Leads / Properties / Deals / Outreach / Money / Settings.
-  // Pipeline is reachable as a Deals view; AI Hub stays as a mobile-nav
-  // entry only. Founder-mode surfaces are gated separately under /founder
-  // and are NEVER listed in this customer-facing registry.
+  // This is the MASTER REGISTRY of every resolvable customer nav item — a
+  // superset retained so the command palette, mobile drawer, and saved
+  // nav-preferences can resolve any id to a label/href. It is NOT the nav
+  // model. The canonical customer navigation is the FIVE FIXED DOORS —
+  // Today · Map · Deals · Finance · Pax, plus Inbox + Settings (CLAUDE.md) —
+  // enforced by DEFAULT_SIDEBAR_ITEMS below. (Superseded the stale
+  // "7 canonical entries" framing from the 2026-05-11 audit.) Founder-mode
+  // surfaces are gated separately under /founder and NEVER appear here.
   { id: "today",         label: "Today",          icon: Home,        href: "/today",          description: "Daily briefing and action queue" },
   { id: "leads",         label: "Leads",           icon: Users,       href: "/leads",          description: "Land seller leads CRM" },
   { id: "properties",    label: "Properties",      icon: MapIcon,     href: "/properties",     description: "Property inventory" },
