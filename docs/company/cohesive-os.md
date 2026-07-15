@@ -41,6 +41,28 @@ them. Otherwise the cohesion work itself adds incoherence. This
 consolidation decision is the first workstream — a founder-visible
 architecture call, made before the feature work.
 
+### A second duplication surfaced by R1 (the connectors hub)
+
+Building the connectors hub found the same pattern in credentials: there
+are **two credential systems**, both load-bearing.
+
+- **`organizationIntegrations`** (older) — stores lob / twilio / sendgrid /
+  rapidapi, read directly by many backend services (`comps`, `parcel`,
+  `directMailService`, `emailService`, `dueDiligence`).
+- **`byokCredentials` vault** (canonical, AES-256-GCM, per-channel) — the
+  14-channel vault the comms router, `aiByok`, and now `dataByok` (R1d)
+  check for the credit-pool bypass.
+
+The connectors hub is built over the **canonical vault** (the surface that
+actually drives the BYOK bypass), so the customer-facing "connect your
+vendors" experience is coherent today. But collapsing the two systems —
+migrating the backend services that still read `organizationIntegrations`
+onto the vault, then retiring the old table and its `/api/settings/
+save-api-key` surface — is a founder-visible decision with comms/data-path
+implications, deliberately **not** auto-executed. It composes with the
+message/activity consolidation above as the credential leg of "one
+primitive per concern."
+
 ## The design thesis (unchanged, restated for cohesion)
 
 The safest version of a risk is one where the customer owns the thing that

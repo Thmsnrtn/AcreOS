@@ -40,7 +40,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage } from "@/lib/error-utils";
-import { Trash2, KeyRound, ShieldCheck } from "lucide-react";
+import { Trash2, KeyRound, ShieldCheck, MessageSquare, Mail, Printer, Sparkles, Database, MapPin, type LucideIcon } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
 
@@ -85,6 +85,20 @@ const CHANNEL_LABELS: Record<string, { name: string; help: string; placeholder: 
   attom: { name: "ATTOM Data", help: "Property details, valuations, and comps — your ATTOM account, billed direct.", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
   regrid: { name: "Regrid", help: "Nationwide parcel boundaries and owner data — your Regrid account, billed direct.", placeholder: "xxxxxxxx-xxxx-xxxx" },
 };
+
+// R1 Connectors hub: group the channels by what they DO, so the surface reads
+// as "connect the tools your business runs on" (the home-base reshape) rather
+// than a flat key list. Each group leads with the capability, not the vendor.
+// Any channel not listed here still renders under "More connectors" so a newly
+// added channel is never silently hidden.
+const CHANNEL_GROUPS: Array<{ title: string; blurb: string; channels: string[]; icon: LucideIcon }> = [
+  { title: "Texts & calls", blurb: "Reach sellers by SMS and phone on your own carrier account.", channels: ["twilio", "telnyx"], icon: MessageSquare },
+  { title: "Email", blurb: "Send from your verified domain for the best deliverability.", channels: ["sendgrid", "ses"], icon: Mail },
+  { title: "Print & mail", blurb: "Print and post physical letters and postcards to owners.", channels: ["lob", "postgrid"], icon: Printer },
+  { title: "AI & Pax", blurb: "Power Pax with your own AI account past the included turns.", channels: ["openrouter", "anthropic", "openai"], icon: Sparkles },
+  { title: "Property data", blurb: "Pull parcels, owners, comps, and skip-trace on your own data account.", channels: ["batch_skiptracing", "attom", "regrid"], icon: Database },
+  { title: "Storage & maps", blurb: "Bring your own file storage and mapping tokens.", channels: ["s3", "mapbox"], icon: MapPin },
+];
 
 export default function ByokSettingsPage() {
   useDocumentTitle("Your provider keys");
@@ -162,15 +176,9 @@ export default function ByokSettingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>Channels</CardTitle>
-          <CardDescription>
-            Each row is one thing AcreOS does for you — texts, mail, email, AI — and whose account pays for it.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
+      {isLoading ? (
+        <Card className="mt-4">
+          <CardContent className="pt-6">
             <div className="divide-y">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center justify-between py-3">
@@ -182,61 +190,105 @@ export default function ByokSettingsPage() {
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="divide-y">
-              {(data?.channels ?? []).map((row) => {
-                const meta = CHANNEL_LABELS[row.channel] ?? { name: row.channel, help: "", placeholder: "" };
-                return (
-                  <div key={row.channel} className="flex items-center justify-between py-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{meta.name}</span>
-                        {row.status === "byok" ? (
-                          <Badge variant="default" className="bg-acr-pos text-acr-brand-ink hover:bg-acr-pos">
-                            BYOK · …{row.fingerprint}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">Platform default</Badge>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {meta.help}
-                        {row.lastUsedAt && (
-                          <> · last used {formatDate(row.lastUsedAt)}</>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {row.status === "byok" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Revoke ${meta.name} credential`}
-                          onClick={() => revokeMutation.mutate(row.channel)}
-                          disabled={revokeMutation.isPending}
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setOpenChannel(row.channel);
-                          setPlaintext("");
-                        }}
-                      >
-                        <KeyRound className="mr-2 h-4 w-4" aria-hidden="true" />
-                        {row.status === "byok" ? "Replace" : "Add credential"}
-                      </Button>
-                    </div>
+          </CardContent>
+        </Card>
+      ) : (
+        (() => {
+          // Index the API status rows by channel, then render grouped by
+          // capability. A trailing "More connectors" group catches any channel
+          // the server returns that isn't assigned to a group above, so a new
+          // channel is never silently dropped from the surface.
+          const byChannel = new Map((data?.channels ?? []).map((r) => [r.channel, r]));
+          const grouped = new Set(CHANNEL_GROUPS.flatMap((g) => g.channels));
+          const leftover = (data?.channels ?? [])
+            .map((r) => r.channel)
+            .filter((ch) => !grouped.has(ch));
+          const groups = [
+            ...CHANNEL_GROUPS.map((g) => ({ ...g, channels: g.channels.filter((ch) => byChannel.has(ch)) })),
+            ...(leftover.length
+              ? [{ title: "More connectors", blurb: "Other services you can bring your own account for.", channels: leftover, icon: KeyRound as LucideIcon }]
+              : []),
+          ].filter((g) => g.channels.length > 0);
+
+          const renderRow = (channel: string) => {
+            const row = byChannel.get(channel);
+            if (!row) return null;
+            const meta = CHANNEL_LABELS[channel] ?? { name: channel, help: "", placeholder: "" };
+            return (
+              <div key={channel} className="flex items-center justify-between py-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{meta.name}</span>
+                    {row.status === "byok" ? (
+                      <Badge variant="default" className="bg-acr-pos text-acr-brand-ink hover:bg-acr-pos">
+                        Connected · …{row.fingerprint}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">Platform default</Badge>
+                    )}
                   </div>
+                  <div className="text-xs text-muted-foreground">
+                    {meta.help}
+                    {row.lastUsedAt && <> · last used {formatDate(row.lastUsedAt)}</>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {row.status === "byok" && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Revoke ${meta.name} credential`}
+                      onClick={() => revokeMutation.mutate(channel)}
+                      disabled={revokeMutation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setOpenChannel(channel);
+                      setPlaintext("");
+                    }}
+                  >
+                    <KeyRound className="mr-2 h-4 w-4" aria-hidden="true" />
+                    {row.status === "byok" ? "Replace" : "Connect"}
+                  </Button>
+                </div>
+              </div>
+            );
+          };
+
+          return (
+            <div className="mt-4 space-y-4">
+              {groups.map((group) => {
+                const GroupIcon = group.icon;
+                const connectedCount = group.channels.filter((ch) => byChannel.get(ch)?.status === "byok").length;
+                return (
+                  <Card key={group.title}>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <GroupIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                        {group.title}
+                        {connectedCount > 0 && (
+                          <Badge variant="secondary" className="ml-1 font-normal">
+                            {connectedCount} connected
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription>{group.blurb}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="divide-y">{group.channels.map(renderRow)}</div>
+                    </CardContent>
+                  </Card>
                 );
               })}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          );
+        })()
+      )}
 
       <Dialog open={openChannel !== null} onOpenChange={(open) => !open && setOpenChannel(null)}>
         <DialogContent>
