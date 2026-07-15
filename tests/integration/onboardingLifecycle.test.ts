@@ -292,5 +292,53 @@ describe("Onboarding Lifecycle", () => {
       expect(result.completed).toBe(5);
       expect(result.progress).toBe(100);
     });
+
+    // R5 reshape: the "connect your services" item is OPTIONAL — it never
+    // counts toward progress or the auto-dismiss. Mirrors the required-only
+    // math in client/src/components/getting-started-checklist.tsx.
+    describe("optional connect-your-services item", () => {
+      interface ItemState {
+        isComplete: boolean;
+        optional?: boolean;
+      }
+      function progressRequiredOnly(items: ItemState[]) {
+        const required = items.filter((i) => !i.optional);
+        const completed = required.filter((i) => i.isComplete).length;
+        return {
+          completed,
+          total: required.length,
+          allComplete: completed === required.length,
+        };
+      }
+
+      it("excludes the optional item from the completion denominator", () => {
+        const r = progressRequiredOnly([
+          { isComplete: true },
+          { isComplete: true },
+          { isComplete: false, optional: true }, // connect — not connected
+        ]);
+        expect(r.total).toBe(2);
+        expect(r.completed).toBe(2);
+      });
+
+      it("auto-dismisses when required steps are done even if not connected", () => {
+        const r = progressRequiredOnly([
+          { isComplete: true },
+          { isComplete: true },
+          { isComplete: false, optional: true },
+        ]);
+        expect(r.allComplete).toBe(true);
+      });
+
+      it("a completed optional item never pushes an incomplete list to done", () => {
+        const r = progressRequiredOnly([
+          { isComplete: true },
+          { isComplete: false },
+          { isComplete: true, optional: true }, // connected, but a required step is open
+        ]);
+        expect(r.allComplete).toBe(false);
+        expect(r.completed).toBe(1);
+      });
+    });
   });
 });
