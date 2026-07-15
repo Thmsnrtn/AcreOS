@@ -62,29 +62,21 @@ keep only the ones you want to front.
 That's roughly a dozen platform secrets you can stop holding — each one was a
 liability + COGS line the reshape retired.
 
-## The native inbox + Clerk (an important simplification)
+## The native inbox rides Clerk — NO AcreOS OAuth key (done 2026-07-15)
 
-Clerk already owns Google/Microsoft OAuth for login. The native inbox mail
-grant is a *separate, broader* consent (Gmail/Graph mail scopes), but you have
-two ways to wire it:
+The native inbox is wired to Clerk's OAuth token vending: the customer links
+their Gmail/Outlook through Clerk (`createExternalAccount` with mail scopes),
+**Clerk holds the tokens**, and AcreOS reads a fresh one on-demand. There is
+**no `GOOGLE_CLIENT_ID` / `MICROSOFT_CLIENT_ID` in AcreOS env** and AcreOS
+stores zero mailbox tokens.
 
-1. **Ride Clerk (recommended, fewer keys):** add the Gmail/Graph mail scopes
-   to the Google + Microsoft social connections in your Clerk dashboard.
-   AcreOS then reads the mail token from Clerk's token-vending API — **no
-   `GOOGLE_CLIENT_ID` / `MICROSOFT_CLIENT_ID` in AcreOS env at all.** One
-   OAuth config, Clerk manages refresh. (The connect slice I shipped can be
-   rewired onto this — say the word.)
-2. **Standalone app (what slice 1 ships today):** register a Google + a
-   Microsoft OAuth app and set `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` +
-   `MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`(+`MICROSOFT_TENANT_ID`) in
-   AcreOS env.
+To turn the inbox on, do it entirely in the **Clerk dashboard**:
+- Enable the **Google** and **Microsoft** social connections.
+- Add the mail scopes: Google `gmail.readonly` + `gmail.send`; Microsoft
+  `Mail.Read` + `Mail.Send`.
 
-Either path = you register one Google + one Microsoft app; option 1 keeps the
-credential in Clerk instead of AcreOS.
-
-Note: the legacy Google/Microsoft **login** OAuth in `server/auth/oauth.ts`
-(also `GOOGLE_CLIENT_ID`) is redundant now that Clerk owns login and can be
-retired — which also removes the naming overlap with the mailbox flow.
+The legacy standalone Google/Microsoft **login** OAuth (`server/auth/oauth.ts`)
+was retired the same day — Clerk owns login, so those routes were redundant.
 
 ## The short version
 
