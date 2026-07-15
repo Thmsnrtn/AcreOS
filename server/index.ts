@@ -350,8 +350,8 @@ const authAttemptLimiter = rateLimit({
 });
 
 app.use("/api/auth", authLimiter);
-app.use("/api/auth/google", authAttemptLimiter);
-app.use("/api/auth/microsoft", authAttemptLimiter);
+// (Legacy /api/auth/google + /api/auth/microsoft rate-limiters removed with
+// the standalone social-login OAuth — Clerk owns login/OAuth now.)
 app.use("/api/login", authAttemptLimiter);
 
 // ── Phase 0 traffic-readiness — dual-lane CGNAT-safe limiters ───────────────

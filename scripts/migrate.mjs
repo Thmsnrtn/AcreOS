@@ -7806,6 +7806,14 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "connected_mailboxes_org_idx" ON "connected_mailboxes" ("organization_id")`,
   `CREATE INDEX IF NOT EXISTS "connected_mailboxes_user_idx" ON "connected_mailboxes" ("user_id")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "connected_mailboxes_active_uidx" ON "connected_mailboxes" ("organization_id", "email_address") WHERE "revoked_at" IS NULL`,
+
+  // ── 0207 connected_mailboxes: drop token columns (Clerk rewire) ──
+  // The native inbox rides Clerk's OAuth token vending now — AcreOS stores no
+  // mailbox tokens. Remove the unused encrypted-token columns from 0206.
+  // Mirrors migrations/0207_connected_mailboxes_drop_tokens.sql.
+  `ALTER TABLE "connected_mailboxes" DROP COLUMN IF EXISTS "access_token_encrypted"`,
+  `ALTER TABLE "connected_mailboxes" DROP COLUMN IF EXISTS "refresh_token_encrypted"`,
+  `ALTER TABLE "connected_mailboxes" DROP COLUMN IF EXISTS "token_expires_at"`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

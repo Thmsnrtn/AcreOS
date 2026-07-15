@@ -698,9 +698,9 @@ export async function registerRoutes(
   // through Clerk's frontend SDK; the server only enforces (see
   // requireClerkMFA below).
 
-  // T12: OAuth/SSO routes (Google + Microsoft)
-  const { registerOAuthRoutes } = await import("./auth/oauth");
-  registerOAuthRoutes(app);
+  // Legacy Google/Microsoft login OAuth (server/auth/oauth.ts) was RETIRED —
+  // Clerk owns all login + OAuth now, so the standalone social-login routes
+  // were redundant. (Removed 2026-07-15.)
 
   // /api/health/deep is registered later by routes-enhancements.ts. The wildcard
   // /api/health/:service below would otherwise shadow it (Express picks the
