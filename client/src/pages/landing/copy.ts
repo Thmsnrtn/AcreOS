@@ -56,7 +56,14 @@ export const LANDING_COPY = {
     // the parcel-check IS the demo.)
     cta2: "Run it on your county — free, no signup",
     ctaSub: "Pax pulls your first list inside 10 minutes. Every parcel gets a Land Credit Score — a 300–850 read on the parcel itself.",
-    proof: "",
+    // Reshape identity (home-base-reshape.md): the platform is the home base
+    // you connect your own tools to. Truthful today — the BYOK vault + the
+    // connectors hub (client/src/pages/settings/byok.tsx) let an org connect
+    // its own Twilio/SendGrid/Lob and property-data accounts, and those keys
+    // make that channel's spend bill to the customer instead of AcreOS. Cited
+    // in the truth-engine audit (scripts/audit-public-claims.ts).
+    proof:
+      "Connect your own Twilio, SendGrid, Lob, and property-data accounts — or run on ours. Your keys, your invoices; AcreOS runs the intelligence over the top.",
   },
   positioning: {
     primary: "Built for Land Investors.",
