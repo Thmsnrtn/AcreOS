@@ -443,6 +443,64 @@ export const decisionsInboxService = {
    * (calibration ground truth) and rides the same interrupt budget as every
    * other founder ask.
    */
+  /**
+   * 2026-07 cost audit — generic founder decision card, created directly
+   * (no source-domain row). For machine-raised PRODUCT decisions that must
+   * not auto-execute: actionPayload is always null; the founder's tap
+   * records the ruling (founderOverrideAction via chosenOption) for a
+   * human-reviewed follow-up. Class B through the arbiter like every
+   * machine-initiated insert. Dedupes on an open card with the same
+   * contextBundle.directCardSubject.
+   */
+  async createDirectDecisionCard(card: {
+    itemType: string;
+    riskLevel: string;
+    urgencyScore: number;
+    sophieAnalysis: string;
+    recommendedAction: string;
+    recommendedActionLabel: string;
+    subject: string;
+    options: DecisionCardOption[];
+  }): Promise<{ itemId: number | null; created: boolean }> {
+    const existing = await db.query.decisionsInboxItems.findFirst({
+      where: and(
+        or(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.status, "deferred"),
+        ),
+        sql`${decisionsInboxItems.contextBundle}->>'directCardSubject' = ${card.subject}`,
+      ),
+    });
+    if (existing) return { itemId: existing.id, created: false };
+
+    const arbiter = await arbitrateInboxInsert("B", card.subject, {
+      itemType: card.itemType,
+      directCardSubject: card.subject,
+    });
+
+    const [item] = await db
+      .insert(decisionsInboxItems)
+      .values({
+        itemType: card.itemType,
+        riskLevel: card.riskLevel,
+        urgencyScore: card.urgencyScore,
+        sophieAnalysis: card.sophieAnalysis,
+        recommendedAction: card.recommendedAction,
+        recommendedActionLabel: card.recommendedActionLabel,
+        actionPayload: null,
+        organizationId: null,
+        ownerAgentCodename: this.inferAgent(card.itemType),
+        contextBundle: {
+          directCardSubject: card.subject,
+          options: sanitizeDecisionOptions(card.options),
+        },
+        status: arbiter.status,
+        deferredUntil: arbiter.deferredUntil,
+      })
+      .returning();
+    return { itemId: item?.id ?? null, created: true };
+  },
+
   async createOutcomeCheckIn(original: {
     id: number;
     itemType: string;

@@ -204,6 +204,117 @@ export class ProviderCreditError extends Error {
   }
 }
 
+/**
+ * 2026-07-14 cost audit — thrown when the org's (or the platform's) daily AI
+ * cost ceiling is exhausted on the Pax chat rail. Routes map this to a
+ * friendly 429, mirroring the message-count limit shape. Never a 500.
+ */
+export class PaxAiPausedError extends Error {
+  readonly code = "PAX_AI_PAUSED" as const;
+  constructor(public readonly scope: "org" | "platform") {
+    super(
+      scope === "org"
+        ? "Pax has reached today's AI budget for your workspace. It resets tomorrow — or connect your own AI key in Settings for unlimited use."
+        : "Pax is briefly paused platform-wide for the day. Please try again tomorrow.",
+    );
+    this.name = "PaxAiPausedError";
+  }
+}
+
+/**
+ * 2026-07-14 cost audit: the Pax chat rail previously bypassed the AI cost
+ * ceilings entirely — it metered spend into api_usage, which the ceilings
+ * (aiCostCeiling.ts, reading ai_telemetry_events) never see, and it never
+ * consulted them before calling. Enforcement, in order:
+ *   1. BYOK turns are exempt — the customer's key pays the provider,
+ *      platform COGS is $0, so platform/org ceilings don't apply.
+ *   2. Ceiling exhausted → PaxAiPausedError (friendly 429 at the route).
+ *   3. Remaining org budget thin (< 50¢) → finish the day on Haiku instead
+ *      of stopping — graceful degradation over hard stops.
+ * Accounting READ failures inside the ceiling helpers already fail open
+ * (per their own contracts) — a metering hiccup never breaks customer chat.
+ */
+async function enforcePaxCostCeilings(
+  orgId: number,
+  byokChannel: string | null,
+  model: string,
+): Promise<string> {
+  if (byokChannel) return model;
+  const {
+    assertWithinAiCostCeiling,
+    getRemainingDailyBudgetCents,
+    AiCostCeilingExceededError,
+  } = await import("../services/aiCostCeiling");
+  try {
+    // Includes the platform-wide check (customer-facing: no failClosed —
+    // customers get the full bucket, background loops reserve at 70%).
+    await assertWithinAiCostCeiling(orgId);
+  } catch (err) {
+    if (err instanceof AiCostCeilingExceededError) {
+      logger.warn("[AI Chat] cost ceiling exhausted — pausing Pax turn", {
+        metadata: { orgId, scope: err.orgId === 0 ? "platform" : "org", windowKey: err.windowKey },
+      });
+      throw new PaxAiPausedError(err.orgId === 0 ? "platform" : "org");
+    }
+    throw err;
+  }
+  try {
+    const remainingCents = await getRemainingDailyBudgetCents(orgId);
+    const isCheapModel = model.includes("haiku") || model.includes("deepseek");
+    if (Number.isFinite(remainingCents) && remainingCents < 50 && !isCheapModel) {
+      logger.info("[AI Chat] daily budget thin — degrading model to Haiku", {
+        metadata: { orgId, remainingCents, from: model },
+      });
+      return "anthropic/claude-haiku-4-5-20251001";
+    }
+  } catch {
+    // Budget lookup already fails open inside the helper; belt-and-suspenders.
+  }
+  return model;
+}
+
+/**
+ * Write-through so the ceilings SEE Pax spend: mirror each turn's estimated
+ * cost into ai_telemetry_events (the ledger aiCostCeiling sums), alongside
+ * the existing api_usage log. Fire-and-forget — telemetry must never block
+ * or fail a customer turn. BYOK turns log $0 (customer's spend, not COGS).
+ */
+function recordPaxTelemetry(payload: {
+  orgId: number;
+  model: string;
+  provider: string;
+  estimatedCostCents: number;
+  promptTokens: number;
+  completionTokens: number;
+  latencyMs: number;
+  cacheHit: boolean;
+}): void {
+  void (async () => {
+    try {
+      const { aiTelemetryEvents } = await import("@shared/schema");
+      await db.insert(aiTelemetryEvents).values({
+        organizationId: payload.orgId,
+        taskType: "pax_chat",
+        provider: payload.provider,
+        model: payload.model,
+        promptTokens: payload.promptTokens,
+        completionTokens: payload.completionTokens,
+        totalTokens: payload.promptTokens + payload.completionTokens,
+        estimatedCostCents: payload.estimatedCostCents.toString(),
+        latencyMs: payload.latencyMs,
+        cacheHit: payload.cacheHit,
+        complexity: "moderate",
+        success: true,
+        errorMessage: null,
+      });
+    } catch (err) {
+      logger.warn("[AI Chat] pax telemetry write failed (turn unaffected)", {
+        metadata: { detail: err instanceof Error ? err.message : String(err) },
+      });
+    }
+  })();
+}
+
 // Extract the "can only afford N" number from an OpenRouter 402 message.
 function extractAffordableTokens(message: string): number | null {
   const m = /afford\s+(\d+)/i.exec(message);
@@ -1316,6 +1427,9 @@ export async function processChat(
     logger.warn("[AI Chat] BYOK resolution failed — using platform routing", err instanceof Error ? err : undefined);
   }
 
+  // Ceiling enforcement + thin-budget degradation (2026-07 cost audit).
+  model = await enforcePaxCostCeilings(org.id, byokChannel, model);
+
   logger.info(`[AI Chat] Routing chat (${complexity}) -> ${provider}/${model}${byokChannel ? ` [byok:${byokChannel}]` : ""}`);
 
   // P1-41: Anthropic prompt caching. The system prompt is large and stable
@@ -1409,6 +1523,20 @@ export async function processChat(
         predictedCacheSavingsCents: Number((_predictedColdCents - _predictedCents).toFixed(4)),
         promptCacheActive: _shouldCache,
       },
+    });
+    // Write-through to the ceilings' ledger (2026-07 cost audit) — without
+    // this, Pax spend was invisible to the daily ceilings that gate it.
+    recordPaxTelemetry({
+      orgId: org.id,
+      model,
+      provider,
+      estimatedCostCents,
+      promptTokens: response.usage?.prompt_tokens ?? Math.round(estimatedTokens),
+      completionTokens: response.usage?.completion_tokens ?? 0,
+      latencyMs: 0,
+      cacheHit: Boolean(
+        (response.usage as any)?.prompt_tokens_details?.cached_tokens,
+      ),
     });
   } catch (error) {
     logger.error('[AI Chat] Failed to log API usage', error);
@@ -1752,6 +1880,10 @@ export async function* processChatStream(
   } catch (err) {
     logger.warn("[AI Stream] BYOK resolution failed — using platform routing", err instanceof Error ? err : undefined);
   }
+
+  // Ceiling enforcement + thin-budget degradation (2026-07 cost audit) —
+  // same seam as processChat; PaxAiPausedError maps to a friendly 429.
+  model = await enforcePaxCostCeilings(org.id, streamByokChannel, model);
 
   // Reasoning trace — for COMPLEX requests
   if (complexity === TaskComplexity.COMPLEX) {

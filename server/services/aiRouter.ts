@@ -619,6 +619,14 @@ export const MODEL_CRITICAL  = MODELS.OPUS;            // $5.00/$25.00 per M tok
 export const MODEL_VISION    = MODELS.VISION;          // $2.50/$10.00 per M tokens
 
 // Legacy aliases kept for backward compat
+// 2026-07-14 cost audit: unified prompt-cache stamping threshold (chars).
+// Stamping cache_control below a model's minimum cacheable prefix is a
+// harmless no-op (~2048 tokens on Sonnet 4.6, ~4096 on Opus 4.8/Haiku 4.5),
+// so a low uniform threshold — matching the Pax rail — beats a gate that
+// sometimes skipped large stable prompts. Module-level: shared by the
+// primary call and the cascade-escalation retry.
+const ANTHROPIC_CACHE_MIN_CHARS = 1024;
+
 const OPENROUTER_CHEAP_MODEL     = MODEL_SIMPLE;
 const OPENROUTER_REASONING_MODEL = MODEL_REASONING;
 const OPENAI_PREMIUM_MODEL       = MODEL_COMPLEX;
@@ -1295,12 +1303,18 @@ export async function routeAITask(
     // can still force-disable by setting enablePromptCaching === false.
     // Cache discount: ~90% on the cached portion (write: 1.25× base, read: 0.1× base).
     //
-    // Token estimate: Anthropic's tokenizer averages ~3.7 chars/token for
-    // English; we use 4 as a conservative ceiling, so 4096 chars ≈ 1024 tokens.
+    // Threshold honesty (2026-07-14 cost audit): stamping cache_control on a
+    // prompt BELOW the model's minimum cacheable prefix is a harmless no-op
+    // (no error, no charge — it just doesn't cache). The real per-model
+    // minimums are ~2048 tokens (Sonnet 4.6) and ~4096 tokens (Opus 4.8,
+    // Haiku 4.5) — i.e. well ABOVE the old 4096-char gate. So the gate never
+    // protected anything; it only created a band of large-ish prompts that
+    // sometimes missed the stamp. Unified at 1024 chars to match the Pax
+    // rail's threshold: every plausibly-cacheable prompt gets stamped, and
+    // the API decides.
     const isAnthropicModel = model.startsWith("anthropic/");
     const systemMsg = task.messages?.find(m => m.role === "system");
     const systemLength = systemMsg?.content?.length || 0;
-    const ANTHROPIC_CACHE_MIN_CHARS = 4096; // ≈ 1024 tokens at 4 chars/token
     const cacheEligible = isAnthropicModel && systemLength >= ANTHROPIC_CACHE_MIN_CHARS;
     // Honor explicit opt-out (false) but otherwise auto-enable when eligible.
     const shouldCache = task.enablePromptCaching === false
@@ -1428,9 +1442,27 @@ export async function routeAITask(
             }
             return [{ role: "system" as const, content: CONFIDENCE_SCHEMA_INSTRUCTION }, ...base];
           })();
+          // 2026-07-14 cost audit: stamp cache_control on the escalated call
+          // too. Caches are model-scoped, so this never reads the primary
+          // model's cache — but repeated escalations of the same stable
+          // system prompt (the common cascade pattern) now warm and reuse
+          // the escalated model's own cache instead of paying full price
+          // every time.
+          const escalatedSysLen =
+            escalatedMessages.find(m => m.role === "system")?.content?.length || 0;
+          const escalatedPayload =
+            escalatedModel.startsWith("anthropic/") &&
+            escalatedSysLen >= ANTHROPIC_CACHE_MIN_CHARS &&
+            task.enablePromptCaching !== false
+              ? escalatedMessages.map(m =>
+                  m.role === "system"
+                    ? { ...m, cache_control: { type: "ephemeral" } }
+                    : m,
+                )
+              : escalatedMessages;
           const escalatedResponse = await client.chat.completions.create({
             model: escalatedModel,
-            messages: escalatedMessages,
+            messages: escalatedPayload,
             max_tokens: task.maxTokens || dbMaxTokens || 4096,
             temperature: task.temperature ?? 0.7,
             ...((task.responseFormat === "json" || confidenceRequested) && { response_format: { type: "json_object" } }),
@@ -1440,10 +1472,8 @@ export async function routeAITask(
             content = escalatedContent;
             usage = escalatedResponse.usage;
             finalModel = escalatedModel;
-            // The escalated call carries no cache_control, so its prompt is
-            // billed entirely fresh. Read the escalated cached count (normally
-            // 0) rather than leaking the primary model's cache discount onto a
-            // different model that never warmed it.
+            // Read the escalated call's own cached count (its cache is
+            // model-scoped and separate from the primary's).
             cachedInputTokens =
               (escalatedResponse.usage as any)?.prompt_tokens_details?.cached_tokens
               ?? (escalatedResponse.usage as any)?.cache_read_input_tokens
