@@ -367,18 +367,31 @@ const GRAPH_SELECT =
   "id,conversationId,subject,from,bodyPreview,receivedDateTime,isRead";
 
 async function graphList(token: string, opts: ListMessagesOpts): Promise<ListMessagesResult> {
-  // A pageToken here is Graph's full @odata.nextLink URL — follow it verbatim.
-  let url: string;
+  // A pageToken here is Graph's full @odata.nextLink URL. It is server-issued,
+  // but it round-trips through the client, so we never fetch it verbatim (that
+  // would let a crafted token steer this OAuth-bearing request at an internal
+  // or metadata endpoint — SSRF). Instead we carry over ONLY its opaque
+  // continuation query params and rebuild the request against our own constant
+  // GRAPH_BASE, so the request origin is always a hardcoded literal.
+  const params = new URLSearchParams();
   if (opts.pageToken) {
-    url = opts.pageToken;
+    let parsed: URL;
+    try {
+      parsed = new URL(opts.pageToken);
+    } catch {
+      throw new MailboxApiError("Invalid page token.");
+    }
+    if (parsed.protocol !== "https:" || parsed.hostname !== "graph.microsoft.com") {
+      throw new MailboxApiError("Invalid page token.");
+    }
+    for (const [key, value] of parsed.searchParams) params.set(key, value);
   } else {
-    const params = new URLSearchParams();
     params.set("$select", GRAPH_SELECT);
     params.set("$top", String(opts.max ?? 25));
     params.set("$orderby", "receivedDateTime desc");
     if (opts.query) params.set("$search", `"${opts.query}"`);
-    url = `${GRAPH_BASE}/messages?${params.toString()}`;
   }
+  const url = `${GRAPH_BASE}/messages?${params.toString()}`;
   const listing = await authedFetch<{
     value?: GraphMessage[];
     "@odata.nextLink"?: string;
