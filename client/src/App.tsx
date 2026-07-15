@@ -62,6 +62,10 @@ import { useIsMobile } from "@/hooks/use-mobile";
 // Phase D — Atlas Dock follows Tom across every founder surface. Lazy
 // so non-founder users never download the chat bundle.
 const AtlasDock = React.lazy(() => import("@/components/founder-chat/Dock").then(m => ({ default: m.Dock })));
+// Cohesion R4 — TeamChatDock follows the operator across every customer
+// surface (the Atlas pattern, customer side). Lazy so the chat bundle only
+// loads when a customer actually opens it.
+const TeamChatDock = React.lazy(() => import("@/components/team-chat-dock").then(m => ({ default: m.TeamChatDock })));
 import { usePageContext } from "@/hooks/use-page-context";
 const BetaActivationDetector = React.lazy(() => import("@/components/beta-activation-detector").then(m => ({ default: m.BetaActivationDetector })));
 const PaxCopilotRail = React.lazy(() => import("@/components/pax-copilot-rail").then(m => ({ default: m.PaxCopilotRail })));
@@ -2099,6 +2103,19 @@ function AppContent() {
           <AtlasDockHost />
         </Suspense>
       )}
+      {/* TeamChatDock — Cohesion R4. The persistent, collapsible team-chat
+          presence on every CUSTOMER surface. Suppressed on /founder (Atlas
+          lives there) and on /inbox + /team-inbox (team chat is already a
+          first-class surface there — no double UI). Bottom-left, clear of the
+          Pax copilot rail's right edge. */}
+      {user &&
+        !location.startsWith("/founder") &&
+        !location.startsWith("/inbox") &&
+        !location.startsWith("/team-inbox") && (
+          <Suspense fallback={null}>
+            <TeamChatDock />
+          </Suspense>
+        )}
       {user && <Suspense fallback={null}><BetaActivationDetector /></Suspense>}
       {/* Hide the global PaxCopilotRail on /ai because that page has
           its own main-area chat UI ("AcreOS Assistant"). r3 Gabriel
