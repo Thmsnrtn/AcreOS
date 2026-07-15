@@ -4390,6 +4390,15 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Sovereign Company Protocol — seed AI agent personas and register briefing jobs
   seedCompanyAgentsOnStartup();
+  // 2026-07 cost audit — one-shot founder decision cards (marker-guarded;
+  // fail-open, retries next boot until the marker writes).
+  void import("../services/costDecisionCards")
+    .then(({ seedCostDecisionCards }) => seedCostDecisionCards())
+    .catch((err) =>
+      logger.warn("[runScheduledJobs] cost decision-card seed failed (boot unaffected)", {
+        metadata: { detail: err instanceof Error ? err.message : String(err) },
+      }),
+    );
   startCompanyBriefingJob();
   startTrustEvolutionJob();
   startAgentReactionProcessorJob();

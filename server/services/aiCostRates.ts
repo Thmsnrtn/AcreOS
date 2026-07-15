@@ -43,12 +43,16 @@ export const AI_COST_RATES: Record<string, AICostRate> = {
   // (claude-api skill, shared/models.md). Per-1M USD, input / output:
   //   Opus 4.8 / 4.7 / 4.6 : $5.00 / $25.00
   //   Sonnet 4.6 / 4.5     : $3.00 / $15.00
-  //   Haiku 4.5            : $1.00 / $5.00 first-party. These IDs bill through
-  //                          OpenRouter, which has listed $0.80 / $4.00 — we
-  //                          keep the lower OpenRouter figure for Haiku.
+  //   Haiku 4.5            : $1.00 / $5.00 first-party. 2026-07-14 cost
+  //                          audit: previously kept at OpenRouter's listed
+  //                          $0.80 / $4.00, which under-counts spend ~20%
+  //                          whenever OpenRouter bills at first-party rates
+  //                          and we can't verify their listing continuously.
+  //                          Per this file's own philosophy ("better to
+  //                          slightly overcount"), metered at first-party.
   // cachedInput = ~0.1× input (Anthropic prompt-cache READ price).
-  "anthropic/claude-haiku-4-5-20251001": { input: 0.80, output: 4.00, cachedInput: 0.08 },
-  "anthropic/claude-haiku-4-5":          { input: 0.80, output: 4.00, cachedInput: 0.08 },
+  "anthropic/claude-haiku-4-5-20251001": { input: 1.00, output: 5.00, cachedInput: 0.10 },
+  "anthropic/claude-haiku-4-5":          { input: 1.00, output: 5.00, cachedInput: 0.10 },
   "anthropic/claude-sonnet-4-6":         { input: 3.00, output: 15.00, cachedInput: 0.30 },
   "anthropic/claude-sonnet-4-5":         { input: 3.00, output: 15.00, cachedInput: 0.30 },
   // Opus corrected from the stale $15/$75 figure to the current $5/$25
@@ -56,6 +60,9 @@ export const AI_COST_RATES: Record<string, AICostRate> = {
   "anthropic/claude-opus-4-8":           { input: 5.00, output: 25.00, cachedInput: 0.50 },
   "anthropic/claude-opus-4-7":           { input: 5.00, output: 25.00, cachedInput: 0.50 },
   "anthropic/claude-opus-4-6":           { input: 5.00, output: 25.00, cachedInput: 0.50 },
+  // Legacy claude-opus-4 (pre-4.6 generation) genuinely billed $15/$75 —
+  // this row is CORRECT for rows pinned to that model id, not stale. Kept
+  // so historical/pinned calls attribute at their real rate.
   "anthropic/claude-opus-4":             { input: 15.00, output: 75.00, cachedInput: 1.50 },
 
   // ── OpenAI (via OpenRouter) ───────────────────────────────────────────────

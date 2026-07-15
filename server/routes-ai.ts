@@ -6,7 +6,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate, aiByokThresholdGate } from "./middleware/usageLimitGate";
 import { usageMeteringService, creditService } from "./services/credits";
-import { processChat, processChatStream, agentProfiles, getOrCreateConversation, ProviderCreditError } from "./ai/executive";
+import { processChat, processChatStream, agentProfiles, getOrCreateConversation, ProviderCreditError, PaxAiPausedError } from "./ai/executive";
 import { parsePaxPromptVersion } from "./ai/paxPromptVersions";
 import { storage, db } from "./storage";
 import { eq, sql, and } from "drizzle-orm";
@@ -383,6 +383,15 @@ export function registerAIRoutes(app: Express): void {
           message:
             "The AI provider is temporarily out of credits. We've been notified — please try again shortly.",
           details: { affordableTokens: error.affordableTokens },
+        });
+      }
+      if (error instanceof PaxAiPausedError) {
+        // Daily AI cost ceiling exhausted (2026-07 cost audit) — friendly
+        // 429 via the house helper. Never a 500.
+        return Errors.limitExceeded(res, {
+          error: "pax_ai_paused",
+          message: error.message,
+          scope: error.scope,
         });
       }
       logger.error(`AI Chat error at step=${step}`, error instanceof Error ? error : undefined);
