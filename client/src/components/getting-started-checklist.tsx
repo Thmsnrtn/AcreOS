@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { Users, Upload, Megaphone, Handshake, Banknote, CheckCircle2, ArrowRight, X, Sparkles, MapPin } from "lucide-react";
+import { Users, Upload, Megaphone, Handshake, Banknote, CheckCircle2, ArrowRight, X, Sparkles, MapPin, Plug } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface ChecklistStatus {
@@ -17,6 +17,7 @@ interface ChecklistStatus {
   hasDeal: boolean;
   hasNotePayment: boolean;
   hasPropertyLookup: boolean;
+  hasConnectedService: boolean;
 }
 
 interface ChecklistItem {
@@ -25,6 +26,10 @@ interface ChecklistItem {
   description: string;
   icon: typeof Users;
   href: string;
+  // R5 reshape: optional items (e.g. "connect your services") are a bonus
+  // nudge — they never count toward completion or block the checklist's
+  // auto-dismiss. Value before friction: connecting is optional.
+  optional?: boolean;
 }
 
 // FW-YUNA-1 (push-forward 2026-05-08): persona-aware aha checklist.
@@ -137,6 +142,20 @@ const STATUS_KEYS: Record<string, keyof ChecklistStatus> = {
   campaign: "hasCampaign",
   deal: "hasDeal",
   notePayment: "hasNotePayment",
+  connectServices: "hasConnectedService",
+};
+
+// R5 reshape: the optional "connect your services" first-run nudge — the same
+// invitation the landing (home-base identity) makes, now inside the product.
+// Points at the grouped connectors hub (R1). Optional: never blocks the
+// checklist's completion or auto-dismiss.
+const CONNECT_ITEM: Omit<ChecklistItem, "isComplete"> = {
+  id: "connectServices",
+  title: "Connect your services (optional)",
+  description: "Bring your own Twilio, SendGrid, Lob, or data accounts — your keys, your invoices. Or keep running on ours.",
+  icon: Plug,
+  href: "/settings/byok",
+  optional: true,
 };
 
 export function GettingStartedChecklist() {
@@ -178,14 +197,21 @@ export function GettingStartedChecklist() {
           : item,
       );
 
-  const items = visibleItems.map((item) => ({
+  // Append the optional connect-your-services nudge after the persona aha
+  // steps. It renders and completes like any item but is excluded from the
+  // progress + auto-dismiss math below (optional === never blocking).
+  const items = [...visibleItems, CONNECT_ITEM].map((item) => ({
     ...item,
     isComplete: checklistStatus ? checklistStatus[STATUS_KEYS[item.id]] : false,
   }));
 
-  const completedCount = items.filter((item) => item.isComplete).length;
-  const progress = (completedCount / items.length) * 100;
-  const allComplete = completedCount === items.length;
+  // Progress + completion are measured over REQUIRED items only, so a user who
+  // finishes the aha steps but never connects a service still sees the
+  // checklist auto-dismiss (value before friction).
+  const requiredItems = items.filter((item) => !item.optional);
+  const completedCount = requiredItems.filter((item) => item.isComplete).length;
+  const progress = requiredItems.length > 0 ? (completedCount / requiredItems.length) * 100 : 0;
+  const allComplete = completedCount === requiredItems.length;
 
   const handleDismiss = async () => {
     await updateOrg.mutateAsync({
@@ -223,7 +249,7 @@ export function GettingStartedChecklist() {
             <Sparkles className="w-5 h-5 text-primary" />
             <CardTitle className="text-lg">Getting Started</CardTitle>
             <Badge variant="secondary" className="ml-auto mr-8">
-              {completedCount}/{items.length}
+              {completedCount}/{requiredItems.length}
             </Badge>
           </div>
           <CardDescription>

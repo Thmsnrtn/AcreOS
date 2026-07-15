@@ -137,10 +137,10 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
     }
 
     const { db } = await import("./storage");
-    const { leads, campaigns, deals, payments, properties, activationEvents, mailShipments } = await import("@shared/schema");
-    const { eq, sql, and, inArray } = await import("drizzle-orm");
+    const { leads, campaigns, deals, payments, properties, activationEvents, mailShipments, byokCredentials } = await import("@shared/schema");
+    const { eq, sql, and, inArray, isNull } = await import("drizzle-orm");
 
-    const [leadResult, importResult, campaignResult, dealResult, notePaymentResult, propertyLookupResult] = await Promise.all([
+    const [leadResult, importResult, campaignResult, dealResult, notePaymentResult, propertyLookupResult, connectedServiceResult] = await Promise.all([
       // hasLead: org has >= 1 lead
       db.select({ count: sql<number>`count(*)` }).from(leads).where(eq(leads.organizationId, orgId)).then(r => r[0]?.count > 0),
       // hasImport: any lead with source = 'csv_import' or 'import'
@@ -179,6 +179,12 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
           )
         ).then(r => r[0]?.count > 0),
       ]).then(([byProperty, byEvent]) => byProperty || byEvent),
+      // R5 reshape: hasConnectedService — the org has connected at least one of
+      // its own provider accounts (any non-revoked BYOK credential). Drives the
+      // OPTIONAL "connect your services" first-run item (never a blocking aha).
+      db.select({ count: sql<number>`count(*)` }).from(byokCredentials).where(
+        and(eq(byokCredentials.organizationId, orgId), isNull(byokCredentials.revokedAt)),
+      ).then(r => r[0]?.count > 0),
     ]);
 
     res.json({
@@ -188,6 +194,7 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
       hasDeal: dealResult,
       hasNotePayment: notePaymentResult,
       hasPropertyLookup: propertyLookupResult,
+      hasConnectedService: connectedServiceResult,
     });
   } catch (err) {
     Errors.internal(res, err);
