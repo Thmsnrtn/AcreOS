@@ -286,6 +286,14 @@ export const BYOK_CHANNELS = [
   "batch_skiptracing",
   "mapbox",
   "s3",
+  // R1d BYO-data-keys: customer-connected property-data providers. When one
+  // of these is active, the registry routes the lookup through the customer's
+  // own vendor account and never debits the AcreOS credit pool (platform COGS
+  // $0) — see server/services/byok/dataByok.ts. BatchData's property lookups
+  // reuse the existing "batch_skiptracing" channel (one key, all BatchData
+  // features), so only ATTOM and Regrid need their own channels here.
+  "attom",
+  "regrid",
 ] as const;
 export type ByokChannel = (typeof BYOK_CHANNELS)[number];
 

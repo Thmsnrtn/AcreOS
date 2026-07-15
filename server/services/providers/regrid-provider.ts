@@ -18,6 +18,7 @@ import type {
   LookupInput,
   LookupResult,
   ProviderHealthStatus,
+  ProviderLookupContext,
 } from "./types";
 
 const CATEGORY_COSTS: Partial<Record<DataCategory, number>> = {
@@ -79,9 +80,13 @@ export const regridProvider: DataProvider = {
     return key !== null;
   },
 
-  async lookup(category: DataCategory, input: LookupInput): Promise<LookupResult> {
+  async lookup(category: DataCategory, input: LookupInput, ctx?: ProviderLookupContext): Promise<LookupResult> {
     const start = Date.now();
-    const apiKey = await getApiKey();
+    // R1d BYO-data-keys: the registry resolves the customer's Regrid key from
+    // the canonical BYOK vault and passes it here; prefer it over the platform
+    // key. (Regrid's own getApiKey retains a legacy organizationIntegrations
+    // fallback used by isConfigured; the registry override is the live path.)
+    const apiKey = ctx?.apiKeyOverride ?? await getApiKey();
 
     if (!apiKey) {
       throw new Error("Regrid API key not configured");
