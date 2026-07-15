@@ -12,6 +12,7 @@ import type {
   LookupInput,
   LookupResult,
   ProviderHealthStatus,
+  ProviderLookupContext,
 } from "./types";
 import crypto from "crypto";
 
@@ -136,9 +137,10 @@ export const attomProvider: DataProvider = {
     return getApiKey() !== null;
   },
 
-  async lookup(category: DataCategory, input: LookupInput): Promise<LookupResult> {
+  async lookup(category: DataCategory, input: LookupInput, ctx?: ProviderLookupContext): Promise<LookupResult> {
     const start = Date.now();
-    const apiKey = getApiKey();
+    // R1d BYO-data-keys: prefer the customer's own ATTOM key when connected.
+    const apiKey = ctx?.apiKeyOverride ?? getApiKey();
 
     if (!apiKey) {
       throw new Error("ATTOM API key not configured");

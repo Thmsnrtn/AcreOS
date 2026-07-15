@@ -11,6 +11,7 @@ import type {
   LookupInput,
   LookupResult,
   ProviderHealthStatus,
+  ProviderLookupContext,
 } from "./types";
 
 const BATCHDATA_BASE = "https://api.batchdata.com/api/v1";
@@ -82,9 +83,12 @@ export const batchdataProvider: DataProvider = {
     return getApiKey() !== null;
   },
 
-  async lookup(category: DataCategory, input: LookupInput): Promise<LookupResult> {
+  async lookup(category: DataCategory, input: LookupInput, ctx?: ProviderLookupContext): Promise<LookupResult> {
     const start = Date.now();
-    const apiKey = getApiKey();
+    // R1d BYO-data-keys: the customer's own BatchData key (when connected)
+    // takes precedence over the platform key — the customer pays BatchData
+    // directly and the registry skips the credit-pool debit.
+    const apiKey = ctx?.apiKeyOverride ?? getApiKey();
 
     if (!apiKey) {
       throw new Error("BatchData API key not configured");

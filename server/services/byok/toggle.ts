@@ -41,6 +41,9 @@ const PLATFORM_ENV_MAP: Record<ByokChannel, string | null> = {
   batch_skiptracing: "BATCH_SKIP_TRACING_API_KEY",
   mapbox: "MAPBOX_ACCESS_TOKEN",
   s3: "AWS_ACCESS_KEY_ID",
+  // R1d BYO-data-keys — property-data providers (platform fallback keys).
+  attom: "ATTOM_API_KEY",
+  regrid: "REGRID_API_KEY",
 };
 
 /**

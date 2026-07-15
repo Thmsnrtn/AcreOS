@@ -20,6 +20,9 @@ import type {
 } from "./types";
 import { ProviderCircuitBreaker, type BreakerSnapshot } from "./circuit-breaker";
 import { dbBreakerStore } from "./circuit-breaker-store";
+// R1d BYO-data-keys: resolves the customer's own property-data vendor key so
+// the lookup runs on their account (platform COGS $0, pool never debited).
+import { getConnectedDataProviders, resolveDataProviderKey } from "../byok/dataByok";
 // Static import (no cycle: providerIntelligence only pulls db/schema/logger).
 // Telemetry calls remain fire-and-forget at every callsite — only the module
 // loading is eager now, not the work.
@@ -145,6 +148,15 @@ class ProviderRegistry {
       return null;
     }
 
+    // R1d BYO-data-keys: one cheap, no-decrypt presence query — which paid
+    // providers does this org bring its own key for? A BYOK-served lookup is
+    // free to the platform, so it stays affordable with an empty pool and its
+    // pool debit is skipped below. Failure degrades to "no BYOK" (platform
+    // path unchanged).
+    const byokProviders = organizationId
+      ? await getConnectedDataProviders(organizationId)
+      : new Set<string>();
+
     // Stale-while-revalidate: if every candidate is unavailable (circuit open
     // / live failure), we serve the freshest EXPIRED cache rather than null.
     let bestStale: LookupResult | null = null;
@@ -155,8 +167,13 @@ class ProviderRegistry {
       const costCents = provider.costPerLookupCents(category);
       if (costCents > 0) allFree = false;
 
-      // Skip if org can't afford this provider (free lookups always pass)
-      if (costCents > 0 && creditBalance < costCents) {
+      // A provider the org has connected its own key for costs the PLATFORM
+      // nothing — don't let an empty credit pool skip it.
+      const byokPresent = byokProviders.has(provider.name);
+      const platformCostCents = byokPresent ? 0 : costCents;
+
+      // Skip if org can't afford this provider (free + BYOK lookups always pass)
+      if (platformCostCents > 0 && creditBalance < platformCostCents) {
         logger.info(`Skipping ${provider.name}: insufficient credits (need ${costCents}, have ${creditBalance})`, {
           source: "ProviderRegistry",
         });
@@ -217,15 +234,32 @@ class ProviderRegistry {
         });
       }
 
+      // ── Resolve BYO-data-key (R1d) ──────────────────────────
+      // Decrypt the customer's key only now, right before the vendor call —
+      // not on cache hits. If a key row exists but decryption fails, fall
+      // back to the platform key AND platform billing (byokServed stays
+      // false) so a broken key never silently gives free lookups.
+      let apiKeyOverride: string | undefined;
+      let byokServed = false;
+      if (byokPresent && organizationId) {
+        const customerKey = await resolveDataProviderKey(organizationId, provider.name);
+        if (customerKey) {
+          apiKeyOverride = customerKey;
+          byokServed = true;
+        }
+      }
+
       // ── Live lookup ────────────────────────────────────────
       try {
         const start = Date.now();
-        const result = await provider.lookup(category, input);
+        const result = await provider.lookup(category, input, apiKeyOverride ? { apiKeyOverride } : undefined);
         const latencyMs = Date.now() - start;
 
         this.recordSuccess(provider.name);
 
-        // Provider-intelligence telemetry (non-blocking).
+        // Provider-intelligence telemetry (non-blocking). A BYOK-served lookup
+        // costs the PLATFORM nothing — record 0 so the founder cost surface
+        // stays truthful (the customer paid their own vendor).
         providerIntel
           .recordLookup({
             providerName: provider.name,
@@ -234,7 +268,7 @@ class ProviderRegistry {
             success: true,
             cached: false,
             latencyMs,
-            costCents,
+            costCents: byokServed ? 0 : costCents,
             organizationId,
             state,
             county,
@@ -245,8 +279,9 @@ class ProviderRegistry {
 
         // ── Credit metering (Lena, close the margin leak) ────
         // Debit the org credit pool only for a PAID, non-cached provider
-        // success. Free providers (costCents=0) and cached hits debit 0.
-        if (costCents > 0 && organizationId && !finalResult.cached) {
+        // success. Free providers (costCents=0), cached hits, and BYOK-served
+        // lookups (customer paid their own vendor) debit 0.
+        if (!byokServed && costCents > 0 && organizationId && !finalResult.cached) {
           this.debitPaidLookup(organizationId, category, provider.name, costCents, input).catch(
             (debitErr) =>
               logger.warn(`Credit debit error (non-fatal)`, {
@@ -261,7 +296,8 @@ class ProviderRegistry {
           metadata: {
             provider: provider.name,
             category,
-            costCents,
+            costCents: byokServed ? 0 : costCents,
+            byokServed,
             latencyMs: finalResult.latencyMs,
             cached: false,
             confidence: result.confidence,

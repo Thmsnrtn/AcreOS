@@ -178,9 +178,24 @@ export interface DataProvider {
   /** Whether the provider has valid credentials configured */
   isConfigured(organizationId?: number): Promise<boolean>;
   /** Perform a single-category lookup */
-  lookup(category: DataCategory, input: LookupInput): Promise<LookupResult>;
+  lookup(category: DataCategory, input: LookupInput, ctx?: ProviderLookupContext): Promise<LookupResult>;
   /** Quick connectivity / credential check */
   healthCheck(): Promise<ProviderHealthStatus>;
+}
+
+/**
+ * Per-lookup context threaded from the registry into a provider's `lookup`.
+ * Currently carries the BYO-data-key override (R1d): when the calling org
+ * has connected its own vendor account for this provider, the registry
+ * resolves the customer's key and passes it here. Proprietary adapters use
+ * it in preference to the platform key; open-data providers ignore it.
+ */
+export interface ProviderLookupContext {
+  /**
+   * The customer's own decrypted API key for this provider, when they've
+   * connected one. NEVER log or serialize this value. Absent → platform key.
+   */
+  apiKeyOverride?: string;
 }
 
 // ── Health ─────────────────────────────────────────────────────

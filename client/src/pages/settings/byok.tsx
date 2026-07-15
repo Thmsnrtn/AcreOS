@@ -79,9 +79,11 @@ const CHANNEL_LABELS: Record<string, { name: string; help: string; placeholder: 
   openrouter: { name: "OpenRouter", help: "Powers Pax with your own AI account.", placeholder: "sk-or-v1-xxxxxxxx" },
   anthropic: { name: "Anthropic", help: "Powers Pax with your own Claude account.", placeholder: "sk-ant-xxxxxxxx" },
   openai: { name: "OpenAI", help: "Powers Pax with your own OpenAI account.", placeholder: "sk-xxxxxxxx" },
-  batch_skiptracing: { name: "BatchSkipTracing", help: "Finds owners' phone numbers and addresses.", placeholder: "xxxxxxxx-xxxx-xxxx" },
+  batch_skiptracing: { name: "BatchData", help: "Finds owners' phones and addresses, and pulls property details — your BatchData account, billed direct.", placeholder: "xxxxxxxx-xxxx-xxxx" },
   mapbox: { name: "Mapbox", help: "Maps and address lookups.", placeholder: "pk.xxxxxxxx" },
   s3: { name: "S3 / R2", help: "Stores your files. Format: accessKeyId:secretAccessKey:bucket", placeholder: "AKIA...:wJalr...:my-bucket" },
+  attom: { name: "ATTOM Data", help: "Property details, valuations, and comps — your ATTOM account, billed direct.", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+  regrid: { name: "Regrid", help: "Nationwide parcel boundaries and owner data — your Regrid account, billed direct.", placeholder: "xxxxxxxx-xxxx-xxxx" },
 };
 
 export default function ByokSettingsPage() {
