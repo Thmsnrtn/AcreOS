@@ -43,6 +43,7 @@ import { getErrorMessage } from "@/lib/error-utils";
 import { Trash2, KeyRound, ShieldCheck, MessageSquare, Mail, Printer, Sparkles, Database, MapPin, type LucideIcon } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
+import { MailboxConnect } from "@/components/settings/mailbox-connect";
 
 interface ChannelStatus {
   channel: string;
@@ -175,6 +176,11 @@ export default function ByokSettingsPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* R1c native business inbox — connect your own Gmail/Outlook. */}
+      <div className="mt-4">
+        <MailboxConnect />
+      </div>
 
       {isLoading ? (
         <Card className="mt-4">

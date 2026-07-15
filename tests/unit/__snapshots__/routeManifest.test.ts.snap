@@ -167,6 +167,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-lifecycle.ts",
   "routes-lot-basis.ts",
   "routes-lot-pricing.ts",
+  "routes-mailbox.ts",
   "routes-maintenance-tickets.ts",
   "routes-market-heat.ts",
   "routes-market-intelligence.ts",
