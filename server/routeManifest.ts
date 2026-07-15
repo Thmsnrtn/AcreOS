@@ -204,6 +204,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-lifecycle.ts", mountPath: null, kind: "register", export: "registerLifecycleRoutes" },
   { file: "routes-lot-basis.ts", mountPath: null, kind: "register", export: "registerLotBasisRoutes" },
   { file: "routes-lot-pricing.ts", mountPath: null, kind: "register", export: "registerLotPricingRoutes" },
+  { file: "routes-mailbox.ts", mountPath: "/api/mailbox", kind: "router", export: "default" },
   { file: "routes-maintenance-tickets.ts", mountPath: null, kind: "register", export: "registerMaintenanceTicketRoutes" },
   { file: "routes-market-heat.ts", mountPath: null, kind: "register", export: "registerMarketHeatRoutes" },
   { file: "routes-market-intelligence.ts", mountPath: "/api/market-intelligence", kind: "router", export: "default" },

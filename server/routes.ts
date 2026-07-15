@@ -82,6 +82,7 @@ import preferencesRouter from "./routes-preferences";
 import tenantThemeRouter from "./routes-tenant-theme";
 import uiStateRouter from "./routes-ui-state";
 import byokRouter from "./routes-byok";
+import mailboxRouter from "./routes-mailbox";
 import autonomyRouter from "./routes-autonomy";
 import personaRouter from "./routes-persona";
 import needsOnboardingRouter from "./routes-needs-onboarding";
@@ -1416,6 +1417,9 @@ export async function registerRoutes(
   // toggles, dismissed banners). Org context keys each row to (org, user).
   app.use('/api/ui-state', isAuthenticated, getOrCreateOrg, uiStateRouter);
   app.use('/api/byok', isAuthenticated, getOrCreateOrg, byokRouter);
+  // R1c native inbox — mailbox connect/callback/list/disconnect. Same auth
+  // posture as byok; env-gated per provider (inert until the OAuth app is set).
+  app.use('/api/mailbox', isAuthenticated, getOrCreateOrg, mailboxRouter);
   // Per-agent autonomy matrix — split off from /preferences in JC#14 so
   // theme writes can't trample agent policy and agents have a narrow read
   // surface at action time.

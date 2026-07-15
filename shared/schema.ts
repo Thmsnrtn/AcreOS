@@ -18189,6 +18189,7 @@ export * from "./schema/autopilot-witness-grants";
 // (./schema/platform-connections.ts)
 // ============================================================================
 export * from "./schema/platform-connections";
+export * from "./schema/connected-mailboxes";
 
 // ============================================================================
 // UNATTACHED INBOUND REPLIES — SMS from numbers matching no lead
