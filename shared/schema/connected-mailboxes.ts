@@ -1,45 +1,30 @@
 /**
  * Connected mailboxes — R1c native business inbox (2026-07-15).
  *
- * Per-(org, operator) customer mailbox connections (Gmail / Outlook / IMAP).
+ * Per-(org, operator) customer mailbox connections (Gmail / Outlook).
  *
- * MINIMAL-CUSTODY POSTURE (reshape doctrine — connect, don't custody):
- * this table stores ONLY the encrypted OAuth tokens + non-secret metadata.
- * Message bodies are NEVER persisted here — the native inbox reads mail
- * ON-DEMAND through the customer's own connection and displays it live. The
- * customer's mailbox stays the system of record; AcreOS is the intelligent
- * lens over it. (Full-sync — persisting a mailbox copy — is a deliberate,
- * founder-visible custody escalation and is intentionally NOT built here.)
- *
- * Tokens are AES-256-GCM envelopes stored as bytea (same discipline as
- * byokCredentials): never logged, decrypted only in-memory to make the
- * upstream Gmail/Graph call.
+ * MINIMAL-CUSTODY AT ITS FLOOR (reshape doctrine — connect, don't custody):
+ * this table stores NO tokens at all. The customer links their mailbox
+ * through Clerk (Clerk owns OAuth); Clerk holds the tokens and AcreOS reads
+ * a fresh one on-demand (see server/services/mailbox/clerkMailbox.ts). This
+ * row is only the org-scoped record of "which mailbox, whose, and its
+ * fine-tuning settings" — never a credential and never a copy of the mail.
  */
 
-import { pgTable, serial, integer, text, timestamp, jsonb, index, uniqueIndex, customType } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
-  dataType() {
-    return "bytea";
-  },
-});
 
 export const connectedMailboxes = pgTable(
   "connected_mailboxes",
   {
     id: serial("id").primaryKey(),
     organizationId: integer("organization_id").notNull(),
-    /** The operator (users.id varchar UUID) who connected this mailbox. */
+    /** The operator (users.id varchar UUID) who linked this mailbox via Clerk. */
     userId: text("user_id").notNull(),
-    /** "gmail" | "outlook" | "imap". */
+    /** "gmail" | "outlook". */
     provider: text("provider").notNull(),
     /** The connected address, e.g. "you@yourbusiness.com". Non-secret. */
     emailAddress: text("email_address").notNull(),
-    /** AES-256-GCM envelope (bytea). Null until the OAuth callback stores it. */
-    accessTokenEncrypted: bytea("access_token_encrypted"),
-    refreshTokenEncrypted: bytea("refresh_token_encrypted"),
-    tokenExpiresAt: timestamp("token_expires_at"),
     /** Space-delimited granted scopes, for capability checks. Non-secret. */
     scopes: text("scopes"),
     /** "connected" | "error" | "revoked". */

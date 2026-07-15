@@ -80,15 +80,10 @@ describe("Server user-creation — clickwrap timestamps", () => {
     expect(src).toMatch(/const\s+acceptedAt\s*=\s*new Date\(\)/);
   });
 
-  it("oauth.ts (legacy Passport path) INSERT stamps tosAcceptedAt + privacyAcceptedAt", () => {
-    const src = fs.readFileSync(
-      path.join(ROOT, "server/auth/oauth.ts"),
-      "utf-8",
-    );
-    expect(src).toContain("tosAcceptedAt:");
-    expect(src).toContain("privacyAcceptedAt:");
-    expect(src).toMatch(/const\s+acceptedAt\s*=\s*new Date\(\)/);
-  });
+  // The legacy server/auth/oauth.ts (Passport social-login) path was RETIRED
+  // 2026-07-15 — Clerk owns all login + OAuth, and Clerk stamps its own
+  // consent. The clickwrap timestamps on the remaining user-creation paths are
+  // covered by the cases above; the deleted file's case was removed with it.
 });
 
 // ── (c) Drizzle column declarations exist ─────────────────────────────────────
