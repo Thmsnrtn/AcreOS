@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -166,6 +167,8 @@ export default function RedemptionClockPage() {
             redemption amount = principal + statutory interest as of today,
             computed per the state's interest model.
           </p>
+          {/* Standing disclaimer — computed deadlines/amounts are an informational worksheet */}
+          <RequiredDisclaimer type="worksheet" className="mt-3" />
         </div>
         <Button onClick={() => setCreateOpen(true)} data-testid="add-certificate-button">
           <Plus className="w-4 h-4 mr-1.5" aria-hidden="true" />

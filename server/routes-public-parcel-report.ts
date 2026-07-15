@@ -43,6 +43,7 @@ import {
   recordReportView,
   reportPath,
 } from "./services/publicParcelReport";
+import { DISCLAIMER_INFORMATIONAL_SCORE } from "./services/legalDisclaimers";
 import type { PublicParcelReport } from "@shared/schema";
 
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://acreos.io";
@@ -141,6 +142,9 @@ router.get(
           apn: result.report.apn,
         }),
         report: result.report,
+        // L1 liability shield — response-level legend covers reports
+        // generated before the lcs payload started carrying its own.
+        disclaimer: DISCLAIMER_INFORMATIONAL_SCORE,
       });
     } catch (err) {
       return Errors.internal(res, err);

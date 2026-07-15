@@ -1,6 +1,7 @@
 import { useState, useId } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -225,6 +226,8 @@ export default function TaxOptimizerPage() {
         <div>
           <h1 className="text-2xl font-bold">Tax optimizer</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Capital gains analysis, 1031 exchanges, and year-end tax planning.</p>
+          {/* Standing disclaimer — computed tax figures are informational, not tax advice */}
+          <RequiredDisclaimer type="financial" className="mt-3" />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Label htmlFor={yearSelectId} className="sr-only">Tax year</Label>

@@ -92,7 +92,11 @@ import {
   type InsertPaxAuditFinding,
   type PaxAuditSeverity,
 } from "@shared/schema/pax-audit";
-import { LEAK_PATTERNS } from "../../utils/validatePaxResponse";
+import {
+  LEAK_PATTERNS,
+  ADVISOR_PHRASING_PATTERNS,
+  ADVISOR_FALSE_POSITIVE_EXCLUSIONS,
+} from "../../utils/validatePaxResponse";
 import { logger } from "../../utils/logger";
 import { enqueueDispatch } from "../solene/dispatchQueue";
 
@@ -122,22 +126,11 @@ const COMPETITOR_PATTERNS: RegExp[] = [
   /\bmark\s+podolsky\b/i,
 ];
 
-// Advisor-phrasing patterns. Immutable §12.
-const ADVISOR_PATTERNS: RegExp[] = [
-  /\byou\s+should\b/i,
-  /\bI\s+recommend\b/i,
-  /\bmy\s+advice\b/i,
-  /\bI\s+suggest\s+you\b/i,
-  /\bif\s+I\s+were\s+you\b/i,
-  /\byou\s+ought\s+to\b/i,
-];
-
-// Rendering-language exclusions — these phrases use "you should" but in a
-// "the UI should let you do X" sense, which is not fiduciary advice.
-const ADVISOR_FALSE_POSITIVE_EXCLUSIONS: RegExp[] = [
-  /you\s+should\s+(be\s+able\s+to\s+see|see|find|notice)/i,
-  /you\s+should\s+now\s+be\s+able\s+to/i,
-];
+// Advisor-phrasing patterns. Immutable §12. Single source of truth lives in
+// validatePaxResponse.ts (same convention as LEAK_PATTERNS) — the synchronous
+// fiduciary-disclaimer appender and this sampling detector must never drift
+// apart. The exclusions list is imported alongside it.
+const ADVISOR_PATTERNS: RegExp[] = ADVISOR_PHRASING_PATTERNS;
 
 // Codename list — same set the per-response validator gates on.
 const CODENAMES = [

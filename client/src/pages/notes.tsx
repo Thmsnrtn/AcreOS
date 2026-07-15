@@ -18,6 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { FileText, Filter, Upload } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -209,6 +210,8 @@ export default function NotesPage() {
             Mortgage notes and seller-financed paper you've acquired. Track
             performing / late / default status and record payments.
           </p>
+          {/* Standing disclaimer — servicing figures are an informational worksheet */}
+          <RequiredDisclaimer type="worksheet" className="mt-3" />
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Select value={statusFilter} onValueChange={setStatusFilter}>

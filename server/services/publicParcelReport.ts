@@ -53,6 +53,7 @@ import {
   lcsGradeForScore,
 } from "./landCredit";
 import { raiseAlert } from "./alertSpine";
+import { DISCLAIMER_INFORMATIONAL_SCORE } from "./legalDisclaimers";
 import { logger } from "../utils/logger";
 import { publicParcelReportEventsTotal } from "../metrics";
 
@@ -327,6 +328,9 @@ export function computePartialLcs(
     dimensions,
     modelVersion: PUBLIC_LCS_MODEL_VERSION,
     computedAt: new Date().toISOString(),
+    // L1 liability shield — the legend travels with the score payload so
+    // any renderer or forwarder of this JSON carries the framing too.
+    disclaimer: DISCLAIMER_INFORMATIONAL_SCORE,
   };
 }
 

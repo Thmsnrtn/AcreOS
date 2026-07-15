@@ -65,12 +65,114 @@ export const LEAK_PATTERNS: RegExp[] = [
 const SAFE_FALLBACK =
   "I ran into an issue formatting that response. Could you rephrase or try again?";
 
+// ============================================================================
+// FIDUCIARY-DISCLAIMER APPENDER (L1 liability shield)
+// ----------------------------------------------------------------------------
+// Constitution Immutable #12: "Pax never gives fiduciary advice"
+// (docs/company/CONSTITUTION.md). Until now that immutable was enforced only
+// post-hoc by the continuous-audit sampling floor
+// (server/services/pax/continuousAudit.ts advisor_phrasing detector). This
+// synchronous companion APPENDS a one-line disclaimer when advisor phrasing
+// lands in an investment/legal/tax/deal-decision context — it NEVER blocks,
+// truncates, or rewrites the response body. The original text is preserved
+// byte-for-byte; the only change is the appended line.
+//
+// The advisor-phrasing pattern list is the single source of truth shared
+// with continuousAudit (same convention as LEAK_PATTERNS above — the
+// per-response validator exports, the audit service imports).
+// ============================================================================
+
+/** Advisor-phrasing patterns. Immutable §12. Shared with continuousAudit. */
+export const ADVISOR_PHRASING_PATTERNS: RegExp[] = [
+  /\byou\s+should\b/i,
+  /\bI\s+recommend\b/i,
+  /\bmy\s+advice\b/i,
+  /\bI\s+suggest\s+you\b/i,
+  /\bif\s+I\s+were\s+you\b/i,
+  /\byou\s+ought\s+to\b/i,
+];
+
+/**
+ * Rendering-language exclusions — these phrases use "you should" but in a
+ * "the UI should let you do X" sense, which is not fiduciary advice.
+ * Shared with continuousAudit.
+ */
+export const ADVISOR_FALSE_POSITIVE_EXCLUSIONS: RegExp[] = [
+  /you\s+should\s+(be\s+able\s+to\s+see|see|find|notice)/i,
+  /you\s+should\s+now\s+be\s+able\s+to/i,
+];
+
+/**
+ * Decision-context nouns that scope the appender. Advisor phrasing alone is
+ * often benign product guidance ("you should connect your Twilio account");
+ * the disclaimer only appends when the phrasing lands NEAR an
+ * investment/legal/tax/deal-decision noun.
+ */
+const FIDUCIARY_CONTEXT_NOUNS =
+  /\b(invest\w*|buy\w*|sell\w*|offer\w*|loan\w*|note\w*|deed\w*|legal\w*|tax\w*|foreclos\w*)\b/i;
+
+/** Chars of context on each side of an advisor match to scan for nouns. */
+const FIDUCIARY_CONTEXT_WINDOW_CHARS = 120;
+
+/** The single appended line — ToS vocabulary, never a novel legal claim. */
+export const FIDUCIARY_DISCLAIMER_LINE =
+  "This is informational analysis, not investment, legal, or tax advice — AcreOS is not your fiduciary.";
+
+/**
+ * Does the response already carry a fiduciary/advice disclaimer? Covers the
+ * appended line itself (idempotence on re-validation), the client-side
+ * RequiredDisclaimer copy, and the legalDisclaimers legends.
+ */
+const EXISTING_FIDUCIARY_DISCLAIMER =
+  /fiduciary|\bnot\s+(?:investment|legal|tax|financial)[^.\n]{0,80}\badvice\b|\binformational\s+(?:only|analysis|purposes)\b/i;
+
+/**
+ * Detect advisor phrasing scoped to a decision context. Returns the sources
+ * of the advisor patterns that matched near a decision noun (empty array =
+ * nothing to disclaim). Pure + exported for tests.
+ */
+export function detectFiduciaryAdvisorPhrasing(response: string): string[] {
+  // Scrub rendering-language false positives first (detection only — the
+  // surfaced response is never modified by this scrub), then re-test.
+  let scrubbed = response;
+  for (const re of ADVISOR_FALSE_POSITIVE_EXCLUSIONS) {
+    scrubbed = scrubbed.replace(re, "");
+  }
+  const matched: string[] = [];
+  for (const re of ADVISOR_PHRASING_PATTERNS) {
+    const global = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
+    let m: RegExpExecArray | null;
+    while ((m = global.exec(scrubbed)) !== null) {
+      const start = Math.max(0, m.index - FIDUCIARY_CONTEXT_WINDOW_CHARS);
+      const end = Math.min(
+        scrubbed.length,
+        m.index + m[0].length + FIDUCIARY_CONTEXT_WINDOW_CHARS,
+      );
+      if (FIDUCIARY_CONTEXT_NOUNS.test(scrubbed.slice(start, end))) {
+        matched.push(re.source);
+        break; // one hit per pattern is enough — we append at most one line
+      }
+      // Zero-width safety: RegExp.exec with a global flag can loop forever
+      // on a zero-length match. None of the patterns can match empty, but
+      // guard anyway.
+      if (m[0].length === 0) global.lastIndex += 1;
+    }
+  }
+  return matched;
+}
+
 export interface ValidatePaxResponseResult {
   safe: boolean;
   /** The response to surface to the user — either original or fallback. */
   response: string;
   /** Patterns that matched, for telemetry. */
   matchedPatterns: string[];
+  /**
+   * True when the fiduciary-disclaimer line was appended (Immutable #12).
+   * Absent/false otherwise. The response body above is otherwise identical
+   * to what the model produced — appending never blocks or rewrites.
+   */
+  fiduciaryDisclaimerAppended?: boolean;
 }
 
 export interface ValidatePaxResponseOptions {
@@ -107,6 +209,46 @@ export function validatePaxResponse(
   }
 
   if (matched.length === 0) {
+    // Leak screen passed — run the fiduciary-disclaimer appender
+    // (Immutable #12, "Pax never gives fiduciary advice"). APPEND-only:
+    // the response body is surfaced byte-identical, plus at most one line.
+    const advisorHits = detectFiduciaryAdvisorPhrasing(response);
+    if (
+      advisorHits.length > 0 &&
+      !EXISTING_FIDUCIARY_DISCLAIMER.test(response)
+    ) {
+      try {
+        // Structured warn tagged as the REAL-TIME appender so Beatrice's
+        // continuousAudit sampled advisor_phrasing counts are never
+        // double-counted against it. We deliberately do NOT write a
+        // pax_audit_findings row here: those rows are keyed to a sampling
+        // runId and feed the drift-ratio denominators — injecting
+        // synchronous per-response hits would distort the sampling-floor
+        // statistics. The audit service will independently sample and
+        // count this same message if it lands in a window.
+        logger.warn(
+          "[validatePaxResponse] fiduciary disclaimer appended (Immutable #12) — realtime appender, distinct from continuousAudit sampling",
+          {
+            metadata: {
+              source: opts.source ?? "unknown",
+              organizationId: opts.organizationId ?? null,
+              conversationId: opts.conversationId ?? null,
+              messageId: opts.messageId ?? null,
+              advisorPatterns: advisorHits,
+              responseLength: response.length,
+            },
+          },
+        );
+      } catch {
+        // logger must never break the response path
+      }
+      return {
+        safe: true,
+        response: `${response}\n\n${FIDUCIARY_DISCLAIMER_LINE}`,
+        matchedPatterns: [],
+        fiduciaryDisclaimerAppended: true,
+      };
+    }
     return { safe: true, response, matchedPatterns: [] };
   }
 

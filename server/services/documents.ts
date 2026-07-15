@@ -3,6 +3,10 @@ import { storage } from "../storage";
 import type { Note, Property, Lead, Organization } from "@shared/schema";
 import { format } from "date-fns";
 import { getStateConfig } from "./stateDocumentConfig";
+import {
+  DISCLAIMER_DOCUMENT_TEMPLATE,
+  DISCLAIMER_WORKSHEET,
+} from "./legalDisclaimers";
 
 function formatCurrency(amount: number | string): string {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -57,6 +61,27 @@ function checkPageBreak(doc: jsPDF, y: number, needed: number = 40): number {
     return 20;
   }
   return y;
+}
+
+/**
+ * L1 liability shield — standing disclaimer legend appended at the end of
+ * every document this module generates. ADDITIVE only: it never alters the
+ * document body, it only appends the "template for attorney review, not
+ * legal advice" framing from server/services/legalDisclaimers.ts.
+ */
+function addDisclaimerLegend(
+  doc: jsPDF,
+  y: number,
+  text: string = DISCLAIMER_DOCUMENT_TEMPLATE
+): number {
+  y = checkPageBreak(doc, y, 26);
+  y += 10;
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "italic");
+  doc.setTextColor(130, 130, 130);
+  const lines = doc.splitTextToSize(text, 170);
+  doc.text(lines, 20, y);
+  return y + lines.length * 3.5;
 }
 
 export async function generatePromissoryNote(
@@ -209,6 +234,8 @@ export async function generatePromissoryNote(
   y += 10;
   doc.text("Date: _______________", 20, y);
   doc.text("Date: _______________", 110, y);
+
+  addDisclaimerLegend(doc, y);
 
   const arrayBuffer = doc.output("arraybuffer");
   return Buffer.from(arrayBuffer);
@@ -414,6 +441,9 @@ Notary Public`;
   
   const splitNotary = doc.splitTextToSize(notaryText, 170);
   doc.text(splitNotary, 20, y);
+  y += splitNotary.length * 4;
+
+  addDisclaimerLegend(doc, y);
 
   const arrayBuffer = doc.output("arraybuffer");
   return Buffer.from(arrayBuffer);
@@ -562,6 +592,8 @@ export async function generateOfferLetter(
   doc.text("Date: _______________", 110, y);
   y += 6;
   doc.text("Seller Signature", 20, y);
+
+  addDisclaimerLegend(doc, y);
 
   const arrayBuffer = doc.output("arraybuffer");
   return Buffer.from(arrayBuffer);
@@ -772,6 +804,9 @@ export async function generateSettlementStatement(
   y += 10;
   doc.text("Date: _______________", 20, y);
   doc.text("Date: _______________", 110, y);
+
+  // Settlement figures are a computed worksheet, not counsel work-product.
+  addDisclaimerLegend(doc, y, DISCLAIMER_WORKSHEET);
 
   const arrayBuffer = doc.output("arraybuffer");
   return Buffer.from(arrayBuffer);
@@ -1051,6 +1086,8 @@ export async function generateDeedOfTrust(data: DeedOfTrustData): Promise<Buffer
   y += notaryLines.length * 4 + 6;
   doc.text("Notary Signature: _______________________   My Commission Expires: ___________", 20, y);
 
+  addDisclaimerLegend(doc, y);
+
   const arrayBuffer = doc.output("arraybuffer");
   return Buffer.from(arrayBuffer);
 }
@@ -1163,6 +1200,8 @@ export async function generateLandContract(data: LandContractData): Promise<Buff
   y += 5;
   doc.text("Date: _______________", 20, y);
   doc.text("Date: _______________", 110, y);
+
+  addDisclaimerLegend(doc, y);
 
   const arrayBuffer = doc.output("arraybuffer");
   return Buffer.from(arrayBuffer);

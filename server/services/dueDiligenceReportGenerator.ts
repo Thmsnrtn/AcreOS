@@ -11,6 +11,7 @@ import { properties } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { jsPDF } from "jspdf";
 import { logger } from "../utils/logger";
+import { DISCLAIMER_WORKSHEET } from "./legalDisclaimers";
 import {
   getWaterRightsInfo,
   getMineralRightsInfo,
@@ -420,6 +421,11 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
     y,
     { maxWidth: pageWidth - margin * 2 },
   );
+  // L1 liability shield — standing worksheet legend (attorney/CPA framing)
+  // in addition to the informational paragraph above.
+  doc.text(DISCLAIMER_WORKSHEET, margin, y + 0.5, {
+    maxWidth: pageWidth - margin * 2,
+  });
 
   doc.setFontSize(7);
   // Honest count: the footer claims exactly the sources enumerated on the
