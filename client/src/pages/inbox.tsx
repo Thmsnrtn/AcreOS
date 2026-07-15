@@ -42,11 +42,13 @@ import {
   Phone,
   Sparkles,
   RefreshCw,
+  Users,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Verbs } from "@/lib/labels";
+import { TeamChatPanel } from "@/components/team-chat-panel";
 
-type ChannelFilter = "all" | "email" | "sms";
+type ChannelFilter = "all" | "email" | "sms" | "team";
 type StatusFilter = "all" | "unread" | "starred" | "archived";
 
 type UnifiedItem = {
@@ -1269,10 +1271,18 @@ export default function InboxPage() {
               <Phone className="h-4 w-4 mr-1" aria-hidden="true" />
               SMS
             </TabsTrigger>
+            <TabsTrigger
+              value="team"
+              className="min-h-11 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+              data-testid="tab-channel-team"
+            >
+              <Users className="h-4 w-4 mr-1" aria-hidden="true" />
+              Team
+            </TabsTrigger>
           </TabsList>
         </Tabs>
 
-        {channelFilter !== "sms" && (
+        {channelFilter !== "sms" && channelFilter !== "team" && (
           <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="border-b">
             <TabsList className="w-full justify-start rounded-none border-none h-12 p-0 bg-transparent" aria-label="Status">
               <TabsTrigger
@@ -1312,6 +1322,9 @@ export default function InboxPage() {
           </Tabs>
         )}
 
+        {channelFilter === "team" ? (
+          <TeamChatPanel />
+        ) : (
         <div className="flex-1 flex overflow-hidden">
           <div ref={listColumnRef} className={`${selectedItem ? "hidden md:block" : ""} w-full md:w-96 border-r overflow-hidden flex flex-col`}>
             <ContentReveal
@@ -1477,6 +1490,7 @@ export default function InboxPage() {
             )}
           </div>
         </div>
+        )}
         </ErrorBoundary>
       </main>
     </div>
