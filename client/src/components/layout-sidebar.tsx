@@ -134,7 +134,8 @@ import {
   useContext,
 } from "react";
 import { useUiState } from "@/hooks/use-ui-state";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useWebSocketChannel } from "@/hooks/use-websocket-channel";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -930,11 +931,26 @@ export function Sidebar() {
     } catch {}
   }, [expandedModules]);
 
+  const queryClient = useQueryClient();
   const { data: unreadCountData } = useQuery<{ count: number }>({
     queryKey: ["/api/inbox/unread-count"],
-    refetchInterval: 60000,
+    // Cohesion Wave-1: WebSocket is now the primary path (org-channel
+    // subscription below); the poll drops from 60s to a 5-min fallback for
+    // when the socket is disconnected.
+    refetchInterval: 300000,
   });
   const inboxUnreadCount = unreadCountData?.count ?? 0;
+
+  // Live inbox badge: the server publishes `inbox.unread` to the org channel
+  // when an inbound email or SMS lands. Refetch the count on receipt so the
+  // badge bumps live. Org-scoped; the poll above remains the fallback.
+  useWebSocketChannel(
+    organization?.id ? `org:${organization.id}` : "",
+    (event) => {
+      if (event.type !== "inbox.unread") return;
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox/unread-count"] });
+    },
+  );
 
   const handlePrefetch = useCallback((href: string) => {
     const apiRoute = routePrefetchMap[href];

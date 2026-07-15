@@ -6,6 +6,8 @@
 
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
+import { wsServer } from "../websocket";
+import { logger } from "../utils/logger";
 import {
   automationRules,
   automationExecutions,
@@ -158,6 +160,27 @@ export const automationRepo = {
 
   async createNotification(this: DatabaseStorage, notification: InsertNotification): Promise<Notification> {
     const [newNotification] = await db.insert(notifications).values(notification).returning();
+
+    // Cohesion Wave-1: push the new row to its recipient in real-time so the
+    // notification center updates live instead of waiting on its 5-min poll.
+    // Scoped strictly to the recipient's own `user:{id}` channel — never the
+    // org channel — so one user's notification is never delivered to another.
+    // Fail-safe: a WS hiccup must never fail notification creation; the poll
+    // remains the fallback.
+    if (newNotification?.userId) {
+      try {
+        wsServer.sendToUser(newNotification.userId, "notification.new", {
+          id: newNotification.id,
+          type: newNotification.type,
+        });
+      } catch (err) {
+        logger.error(
+          "[notifications] failed to publish notification.new over WebSocket (poll fallback remains)",
+          err instanceof Error ? err : undefined,
+        );
+      }
+    }
+
     return newNotification;
   },
 

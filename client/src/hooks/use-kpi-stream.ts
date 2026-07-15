@@ -28,7 +28,7 @@ interface KpiUpdate {
   label?: string;
 }
 
-export function useKpiStream(orgId: number | undefined, userId: number | undefined) {
+export function useKpiStream(orgId: number | undefined, userId: string | undefined) {
   const [metrics, setMetrics] = useState<KpiMetrics>({});
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isConnected, setIsConnected] = useState(false);

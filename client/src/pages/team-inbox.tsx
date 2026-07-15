@@ -286,6 +286,17 @@ export default function TeamInboxPage() {
     });
   }, [on, qc]);
 
+  // Real-time presence: the server broadcasts `presence.update` to the org
+  // channel on every presence PATCH. Refetch presence on receipt so the dots
+  // update live — the WS is now the primary path and the 30s poll above is
+  // the safety net. Scoped to this org (a socket only receives its own org's
+  // events).
+  useEffect(() => {
+    return on("presence.update", () => {
+      qc.invalidateQueries({ queryKey: ["/api/team-messaging/presence"] });
+    });
+  }, [on, qc]);
+
   // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

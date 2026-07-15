@@ -482,6 +482,19 @@ export function registerTeamMessagingRoutes(app: Express): void {
           .returning();
       }
       
+      // Cohesion Wave-1: broadcast the presence change to the org so every
+      // teammate's presence dots update live instead of on their 30s poll.
+      // Org-scoped; the 30s poll remains as the safety net. Fail-safe — the
+      // presence row is already persisted.
+      try {
+        wsServer.broadcastToOrg(org.id, "presence.update", { userId, status });
+      } catch (err) {
+        logger.error(
+          "Presence WebSocket broadcast failed (poll fallback remains)",
+          err instanceof Error ? err : undefined,
+        );
+      }
+
       res.json(presence);
     } catch (error: any) {
       logger.error("Update presence error", error);

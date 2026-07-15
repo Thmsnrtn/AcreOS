@@ -46,7 +46,7 @@ function parseCookies(header: string): Record<string, string> {
  */
 async function validateWsSession(
   req: IncomingMessage,
-  claimedUserId: number,
+  claimedUserId: string,
 ): Promise<boolean> {
   try {
     const cookieHeader = req.headers.cookie || '';
@@ -85,7 +85,10 @@ interface WSClient {
   id: string;
   ws: WebSocket;
   organizationId: number;
-  userId: number;
+  // users.id is a varchar UUID (shared/models/auth.ts) — NOT numeric. This
+  // is the recipient key for `user:{userId}` channels and must be compared
+  // as a string; parseInt-ing a UUID silently corrupts the identity.
+  userId: string;
   subscribedChannels: Set<string>;
   lastPing: number;
 }
@@ -131,10 +134,13 @@ class AcreOSWebSocketServer {
   private async handleConnection(ws: WebSocket, req: IncomingMessage): Promise<void> {
     const clientId = crypto.randomUUID();
 
-    // Extract claimed identity from query params (?orgId=X&userId=Y)
+    // Extract claimed identity from query params (?orgId=X&userId=Y).
+    // orgId is a numeric serial; userId is a varchar UUID and must stay a
+    // string — parseInt would map it to NaN/partial and break both the
+    // session check and the `user:{id}` channel it keys.
     const url = new URL(req.url || '/', 'http://localhost');
     const organizationId = parseInt(url.searchParams.get('orgId') || '0');
-    const userId = parseInt(url.searchParams.get('userId') || '0');
+    const userId = (url.searchParams.get('userId') || '').trim();
 
     if (!organizationId || !userId) {
       ws.close(4001, 'Missing orgId or userId');
@@ -296,7 +302,7 @@ class AcreOSWebSocketServer {
   /**
    * Send an event to a specific user.
    */
-  sendToUser(userId: number, type: string, payload: Record<string, any>): void {
+  sendToUser(userId: string, type: string, payload: Record<string, any>): void {
     this.broadcast(`user:${userId}`, type, payload);
   }
 
