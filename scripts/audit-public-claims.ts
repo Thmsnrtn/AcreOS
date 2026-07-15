@@ -51,6 +51,10 @@ const CLAIMS: string[] = [
   // Positioning.tsx (tiers — verified against business-types.ts)
   "Note investors run a full workflow today. Fix-and-flippers, wholesalers, and tax-delinquent buyers are in beta",
   "Subdividers and buy-and-hold landlords are on the roadmap.",
+
+  // copy.ts hero.proof — the home-base reshape identity (R2). Sourced to the
+  // live BYOK vault + connectors hub.
+  "Connect your own Twilio, SendGrid, Lob, and property-data accounts, or run on ours.",
 ];
 
 /**
@@ -137,6 +141,28 @@ function buildSources(): Source[] {
         the replies, closes the deal (workflow templates), services
         the note after (note_payment_missed, note_partial_payment,
         note_payoff templates).
+      `,
+    },
+    {
+      // Home-base reshape (R2): the connect-your-services identity is true
+      // today. The BYOK vault channels below are the live list in
+      // shared/schema/finance.ts (BYOK_CHANNELS); the connectors hub UI is
+      // client/src/pages/settings/byok.tsx. When an org connects its own key
+      // for a channel, that channel's spend bills to the customer (their
+      // account, their invoice) — the credit-pool bypass in
+      // server/services/creditPool.ts and the data-key path in
+      // server/services/byok/dataByok.ts.
+      name: "AcreOS BYOK vault + connectors hub",
+      ref: "shared/schema/finance.ts (BYOK_CHANNELS) + client/src/pages/settings/byok.tsx",
+      content: `
+        Bring-your-own-key vault. Connect your own accounts for any
+        channel, or run on ours: Twilio, Telnyx (texts and calls),
+        SendGrid, SES (email), Lob, PostGrid (print and mail),
+        OpenRouter, Anthropic, OpenAI (AI), BatchData, ATTOM, Regrid
+        (property-data), Mapbox, S3. When a key is connected, that
+        channel's spend bills to the customer directly (your keys, your
+        invoices) instead of drawing AcreOS credits; AcreOS runs the
+        intelligence over the top. Grouped connectors hub surface.
       `,
     },
   ];
