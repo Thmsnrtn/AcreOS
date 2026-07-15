@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -864,6 +865,12 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       </header>
 
       <PortalSunsetBanner />
+
+      {/* Standing disclaimer — statements and figures are an informational
+          worksheet rendered by software, not servicer/lender advice */}
+      <div className="max-w-5xl mx-auto px-4 pt-4">
+        <RequiredDisclaimer type="worksheet" />
+      </div>
 
       {isVerifyingPayment && (
         <div className="max-w-5xl mx-auto px-4 py-4">

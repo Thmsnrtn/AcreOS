@@ -3,7 +3,14 @@ import { cn } from "@/lib/utils";
 import { useBrandName } from "@/hooks/use-white-label";
 import { ReadAloudButton } from "@/components/ReadAloudButton";
 
-type RequiredDisclaimerType = "financial" | "legal" | "ai" | "valuation";
+type RequiredDisclaimerType =
+  | "financial"
+  | "legal"
+  | "ai"
+  | "valuation"
+  | "score"
+  | "document"
+  | "worksheet";
 
 interface RequiredDisclaimerProps {
   type: RequiredDisclaimerType;
@@ -20,6 +27,15 @@ function disclaimerFor(type: RequiredDisclaimerType, brand: string): string {
       return "AI-generated content is for informational purposes only and may contain errors. Always verify AI suggestions independently before acting on them.";
     case "valuation":
       return "AVM estimates are algorithmic approximations, not certified appraisals. Do not use as the sole basis for financial decisions. Obtain a licensed appraisal for material transactions.";
+    // The copy for the three variants below mirrors the server-side legends
+    // in server/services/legalDisclaimers.ts (L1 liability shield) — keep
+    // the two in step when either changes.
+    case "score":
+      return "The Land Credit Score is an informational property analysis. It scores the parcel, not a person: it is not a consumer credit score, is not FCRA-regulated, and is not lending or investment advice.";
+    case "document":
+      return `Generated documents are templates for review by you and your attorney before any use. ${brand} does not practice law and this is not legal advice — recordability and enforceability vary by state.`;
+    case "worksheet":
+      return `Figures shown are an informational worksheet computed from data you provided. Verify independently and with your attorney or CPA. ${brand} is not your servicer, lender, broker, or adviser.`;
   }
 }
 

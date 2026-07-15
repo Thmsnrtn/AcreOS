@@ -24,6 +24,7 @@
  */
 
 import { jsPDF } from "jspdf";
+import { DISCLAIMER_DOCUMENT_TEMPLATE } from "./legalDisclaimers";
 
 interface RenderInput {
   // Assignor (the seller — current note holder).
@@ -161,6 +162,13 @@ export function renderAssignmentPdf(input: RenderInput): { pdfBase64: string; by
   y += 18;
   doc.text("Notary Public: ________________________________", left, y); y += lineHeight;
   doc.text("My commission expires: _________________________", left, y);
+
+  // L1 liability shield — standing template legend at the page foot.
+  // Complements the per-state header note above: this generic template is
+  // for attorney review before any recording or enforcement use.
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "italic");
+  doc.text(doc.splitTextToSize(DISCLAIMER_DOCUMENT_TEMPLATE, 480), left, 742);
 
   const buffer: ArrayBuffer = doc.output("arraybuffer");
   const bytes = buffer.byteLength;

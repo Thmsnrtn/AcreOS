@@ -6400,6 +6400,14 @@ export interface PublicLcs {
   dimensions: PublicLcsDimension[];
   modelVersion: string;
   computedAt: string;
+  /**
+   * Standing disclaimer legend (L1 liability shield) — the score travels
+   * with its "informational analysis, not a consumer credit score" framing
+   * wherever the JSON is rendered or forwarded. Optional because rows
+   * generated before the legend shipped don't carry it; the public API
+   * route also attaches the legend at the response level for those.
+   */
+  disclaimer?: string;
 }
 
 export const publicParcelReports = pgTable("public_parcel_reports", {

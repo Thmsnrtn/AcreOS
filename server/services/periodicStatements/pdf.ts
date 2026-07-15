@@ -13,6 +13,7 @@
  */
 
 import type { PeriodicStatement } from "@shared/schema/reg-z";
+import { DISCLAIMER_WORKSHEET } from "../legalDisclaimers";
 
 const PRIMARY = "#9C4221";
 const TEXT = "#1f2937";
@@ -211,6 +212,12 @@ export async function renderPeriodicStatementPdf(input: RenderStatementInput) {
       `This statement is provided pursuant to 12 C.F.R. §1026.41. Generated ${new Date(statement.generatedAt).toISOString().slice(0, 10)} for billing cycle ${statement.cycleStart} – ${statement.cycleEnd}.`,
       { align: "center" },
     );
+
+  // L1 liability shield — standing worksheet legend. The servicer named
+  // above is the organization; AcreOS is the software that rendered this
+  // statement, and the legend keeps that distinction on the artifact.
+  doc.moveDown(0.4);
+  doc.fontSize(7).fillColor(MUTED).text(DISCLAIMER_WORKSHEET, { align: "center" });
 
   return doc;
 }

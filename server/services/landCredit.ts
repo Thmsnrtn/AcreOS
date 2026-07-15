@@ -5,6 +5,7 @@ import {
 } from '../../shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { logger } from "../utils/logger";
+import { DISCLAIMER_INFORMATIONAL_SCORE } from "./legalDisclaimers";
 
 interface ScoringFactors {
   location: {
@@ -1207,9 +1208,13 @@ class LandCreditScoring {
       y += 0.18;
     }
 
-    // Footer
-    doc.setFontSize(8);
+    // Footer — standing disclaimer legend (L1 liability shield): the score
+    // reads like a consumer credit score by design, so every report page
+    // carries the "not a consumer credit score / not FCRA" legend.
+    doc.setFontSize(6.5);
     doc.setTextColor(150, 150, 150);
+    doc.text(DISCLAIMER_INFORMATIONAL_SCORE, margin, 9.7, { maxWidth: pageWidth - margin * 2 });
+    doc.setFontSize(8);
     doc.text("Score valid for 30 days.", margin, 10.2);
 
     // ─── Page 2: Supporting Data ───────────────────────────────────────
@@ -1254,8 +1259,12 @@ class LandCreditScoring {
     }
 
     y += 0.3;
-    doc.setFontSize(8);
+    // Standing disclaimer legend on the methodology page too (L1 liability
+    // shield) — a printed page 2 circulates on its own.
+    doc.setFontSize(6.5);
     doc.setTextColor(150, 150, 150);
+    doc.text(DISCLAIMER_INFORMATIONAL_SCORE, margin, 9.7, { maxWidth: pageWidth - margin * 2 });
+    doc.setFontSize(8);
     doc.text(`Powered by AcreOS — Land Credit Score methodology ${LCS_METHODOLOGY_VERSION}`, margin, 10.2);
 
     return Buffer.from(doc.output("arraybuffer"));

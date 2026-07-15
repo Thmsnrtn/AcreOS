@@ -1,5 +1,6 @@
 import { useState, useId } from "react";
 import { PageShell } from "@/components/page-shell";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,6 +104,8 @@ export default function DoddFrankCheckerPage() {
         <p className="text-muted-foreground text-sm md:text-base">
           Check if your seller-financing deal qualifies for exemptions under CFPB Reg Z. Informational only — not legal advice.
         </p>
+        {/* Standing disclaimer — automated screening only, not legal advice */}
+        <RequiredDisclaimer type="legal" className="mt-3" />
       </div>
 
       <Card>

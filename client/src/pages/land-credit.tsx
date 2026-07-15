@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { RequiredDisclaimer } from '@/components/required-disclaimer';
 import { useProperties } from '@/hooks/use-properties';
 import {
   RadarChart,
@@ -274,6 +275,8 @@ export default function LandCreditPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
+      {/* Standing disclaimer — the score is parcel analysis, not a consumer credit score */}
+      <RequiredDisclaimer type="score" />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

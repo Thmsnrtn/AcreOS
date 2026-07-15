@@ -18,6 +18,7 @@ import { useState } from "react";
 import { useRoute, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobilePropertyDetail } from "@/components/mobile/MobilePropertyDetail";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -250,6 +251,10 @@ function ParcelDetailDesktop({ id }: { id: number | null }) {
             Red when verified-trust; yellow when unverified. Auto-AVM,
             auto-offer, auto-contract are blocked unless landStatus === 'fee'. */}
         <LandStatusBanner property={property} />
+
+        {/* Standing disclaimer — due-diligence data and derived analysis are an
+            informational worksheet, verified independently */}
+        <RequiredDisclaimer type="worksheet" />
 
         {/* Header — APN + status + acreage + actions */}
         <header className="space-y-3">

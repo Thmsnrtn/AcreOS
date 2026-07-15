@@ -1,5 +1,6 @@
 import { useState, useMemo, useId } from "react";
 import { PageShell } from "@/components/page-shell";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest, fetchJsonArray } from "@/lib/queryClient";
@@ -341,7 +342,10 @@ export default function OffersPage() {
               </div>
             </div>
           </div>
-          
+
+          {/* Standing disclaimer — generated offers are templates for attorney review */}
+          <RequiredDisclaimer type="document" className="mt-4" />
+
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             {/* TabsList is inline-flex so it doesn't shrink — at 390px the
                 three labels + icons total ~408px and overflow the viewport.

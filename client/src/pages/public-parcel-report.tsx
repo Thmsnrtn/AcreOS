@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { DataProvenanceChip } from "@/components/data-provenance-chip";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { emitMarketingTouch, getAnonymousId } from "@/lib/marketing-touch";
 import { capturePendingParcel } from "@/lib/acquisition-utm";
 import { trackEvent } from "@/lib/analytics";
@@ -477,6 +478,10 @@ export default function PublicParcelReportPage() {
             </div>
 
             <ScoreHero report={report} onShare={handleShare} shared={shared} />
+
+            {/* Standing disclaimer — the partial score is parcel analysis,
+                not a consumer credit score (renders on the public surface too) */}
+            <RequiredDisclaimer type="score" />
 
             <section aria-labelledby="report-dimensions-heading">
               <h2

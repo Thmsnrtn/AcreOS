@@ -28,6 +28,8 @@
  *   - SAFE Act (12 U.S.C. 5102)
  */
 
+import { DISCLAIMER_WORKSHEET } from "./legalDisclaimers";
+
 export interface DoddFrankInput {
   /** Number of seller-financed transactions in the past 12 months (including this one) */
   sellerFinancedDealsLast12Months: number;
@@ -79,6 +81,12 @@ export interface DoddFrankCheckResult {
   recommendations: string[];
   /** Does this deal require a licensed mortgage loan originator (MLO)? */
   requiresLicensedMLO: boolean;
+  /**
+   * Always-rendered disclaimer legend (L1 liability shield) — travels with
+   * the result wherever it is rendered or forwarded. This checker provides
+   * guidance, not legal advice.
+   */
+  disclaimer: string;
 }
 
 /**
@@ -109,6 +117,7 @@ export function checkDoddFrankCompliance(input: DoddFrankInput): DoddFrankCheckR
       findings,
       recommendations,
       requiresLicensedMLO: false,
+      disclaimer: DISCLAIMER_WORKSHEET,
     };
   }
 
@@ -303,5 +312,6 @@ export function checkDoddFrankCompliance(input: DoddFrankInput): DoddFrankCheckR
     findings,
     recommendations,
     requiresLicensedMLO: requiresMLO,
+    disclaimer: DISCLAIMER_WORKSHEET,
   };
 }
