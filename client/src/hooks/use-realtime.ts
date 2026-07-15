@@ -31,7 +31,7 @@ let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 30_000;
 const listeners = new Map<string, Set<EventHandler>>();
 
-function getWsUrl(user: { id: number }, org: { id: number }): string {
+function getWsUrl(user: { id: string }, org: { id: number }): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/ws?orgId=${org.id}&userId=${user.id}`;
 }

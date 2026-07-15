@@ -9,7 +9,7 @@
     },
     {
       "file": "server/routes-team-messaging.ts",
-      "line": 569,
+      "line": 582,
       "category": "id",
       "note": "batchId suffix \u2014 entropy for uniqueness."
     },

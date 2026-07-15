@@ -4,6 +4,7 @@ import { leadEmails, leads, leadActivities, inboxMessages } from "@shared/schema
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { activityLogger } from "./activityLogger";
+import { wsServer } from "../websocket";
 
 const HMAC_SECRET = process.env.INBOUND_EMAIL_HMAC_SECRET
   || process.env.SESSION_SECRET
@@ -121,6 +122,19 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
       messageId: payload.messageId || null,
       inReplyToMessageId: payload.inReplyTo || null,
     });
+
+    // Cohesion Wave-1: nudge the org's inbox unread badge to refetch live
+    // instead of waiting on its slow fallback poll. Org-scoped (the inbox is
+    // per-org, not per-user). Fail-safe: the row is already persisted; a WS
+    // failure just means the badge updates on the next poll.
+    try {
+      wsServer.broadcastToOrg(lead.organizationId, "inbox.unread", { channel: "email" });
+    } catch (err) {
+      logger.error(
+        "[inbound-email] failed to publish inbox.unread over WebSocket (poll fallback remains)",
+        err instanceof Error ? err : undefined,
+      );
+    }
 
     // Mark lead as responded
     await db.update(leads).set({

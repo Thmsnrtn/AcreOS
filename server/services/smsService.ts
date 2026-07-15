@@ -34,6 +34,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { wsServer } from "../websocket";
 import { commsRouter, type CommsRouter } from "./comms/router";
 import { twilioProvider } from "./comms/providers/twilio";
 // Side-effect import: ensures the Telnyx adapter registers itself with
@@ -615,6 +616,18 @@ export async function handleIncomingSMS(
     .update(conversations)
     .set({ lastMessageAt: new Date(), status: "active" })
     .where(eq(conversations.id, existingConversation.id));
+
+  // Cohesion Wave-1: nudge the org's inbox to refetch live so an inbound
+  // seller SMS surfaces in the unified inbox without waiting on the poll.
+  // Org-scoped; fail-safe — the message is already persisted above.
+  try {
+    wsServer.broadcastToOrg(organizationId, "inbox.unread", { channel: "sms" });
+  } catch (err) {
+    logger.error(
+      "[SMS] failed to publish inbox.unread over WebSocket (poll fallback remains)",
+      err instanceof Error ? err : undefined,
+    );
+  }
 
   // Roadmap W1.4: the EMAIL inbound path flips the lead to "responded" (the
   // signal Today's priority queue and the funnel read) — SMS, the dominant

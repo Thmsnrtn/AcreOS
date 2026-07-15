@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
+import { useAuth } from "@/hooks/use-auth";
+import { useWebSocketChannel } from "@/hooks/use-websocket-channel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -70,6 +72,7 @@ const notificationColors: Record<string, string> = {
 export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const { user } = useAuth();
 
   const { data: allNotifications } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
@@ -81,8 +84,26 @@ export function NotificationCenter() {
 
   const { data: countData } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/count"],
-    refetchInterval: 30000,
+    // Cohesion Wave-1: WebSocket is now the primary delivery path (see the
+    // user-channel subscription below). The poll is retained purely as a
+    // belt-and-suspenders fallback for when the socket is disconnected, so
+    // it drops from 30s to a long 5-min safety interval.
+    refetchInterval: 300000,
   });
+
+  // Live notifications: the server publishes `notification.new` to the
+  // recipient's own `user:{id}` channel the moment a row is created. On
+  // receipt we refetch the list + count so the badge updates instantly.
+  // Strictly user-scoped — a socket only ever receives its own user channel,
+  // so another user's notification can never land here.
+  useWebSocketChannel(
+    user?.id ? `user:${user.id}` : "",
+    (event) => {
+      if (event.type !== "notification.new") return;
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications/count"] });
+    },
+  );
 
   // Optimistic — the notification dropdown should reflect `isRead: true`
   // instantly when the user taps a row, even on cellular. Factory snapshots
