@@ -32,6 +32,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { AutopilotSetup } from "@/components/settings/autopilot-setup";
 
 // Sentinel threshold — when the autonomy slider hits this value the
 // "auto above" gate can never trip (confidences are 0..1, ours are .50–1.00).
@@ -259,6 +260,13 @@ export default function PaxControlsPage() {
           effect the moment auto-execution turns on, and the replay below
           shows every observation Pax has surfaced.
         </p>
+      </div>
+
+      {/* ── Autopilot setup — the crystal-clear config (level + tools + what
+          it means). The technical controls (pause/replay/thresholds) stay
+          below for power users. ─────────────────────────────────────────── */}
+      <div className="mb-6">
+        <AutopilotSetup />
       </div>
 
       {/* ── Current status banner ────────────────────────────────────── */}

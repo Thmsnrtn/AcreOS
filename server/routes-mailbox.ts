@@ -11,18 +11,64 @@
  */
 
 import { Router, type Response } from "express";
+import { z } from "zod";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "./db";
-import { connectedMailboxes, MAILBOX_OAUTH_PROVIDERS } from "@shared/schema";
+import {
+  connectedMailboxes,
+  MAILBOX_OAUTH_PROVIDERS,
+  type MailboxOAuthProvider,
+} from "@shared/schema";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { getLinkedMailAccount } from "./services/mailbox/clerkMailbox";
+import {
+  listMessages,
+  getMessage,
+  sendMessage,
+  MailboxNotConnectedError,
+  MailboxApiError,
+} from "./services/mailbox/mailboxClient";
 import { getOrganizationId, getUserId, type AuthenticatedRequest } from "./types/request";
 
 const router = Router();
 
 function isKnownProvider(p: string): p is (typeof MAILBOX_OAUTH_PROVIDERS)[number] {
   return (MAILBOX_OAUTH_PROVIDERS as readonly string[]).includes(p);
+}
+
+/**
+ * Load an active (non-revoked), org-owned mailbox row by id, or null. Shared
+ * by the read/send/settings routes so ownership + revocation are enforced in
+ * exactly one place.
+ */
+async function loadOwnedMailbox(organizationId: number, id: number) {
+  const [row] = await db
+    .select()
+    .from(connectedMailboxes)
+    .where(
+      and(
+        eq(connectedMailboxes.id, id),
+        eq(connectedMailboxes.organizationId, organizationId),
+        isNull(connectedMailboxes.revokedAt),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/** Map a mailboxClient throw onto the right Errors.* response. Returns true if handled. */
+function handleMailboxError(res: Response, err: unknown): boolean {
+  if (err instanceof MailboxNotConnectedError) {
+    Errors.badRequest(res, err.message);
+    return true;
+  }
+  if (err instanceof MailboxApiError) {
+    // Upstream provider failure — surface as a 502 (their dependency, not our bug).
+    Errors.badGateway(res, err.message);
+    return true;
+  }
+  return false;
 }
 
 // ── Record a mailbox the user linked via Clerk ──────────────────────────────
@@ -124,6 +170,115 @@ router.delete("/:id", async (req: AuthenticatedRequest, res: Response) => {
 
     if (!row) return Errors.notFound(res, "Mailbox");
     res.json({ ok: true });
+  } catch (err) {
+    Errors.internal(res, err);
+  }
+});
+
+// ── Read: list messages on-demand (nothing persisted) ───────────────────────
+router.get("/:id/messages", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
+
+    const mailbox = await loadOwnedMailbox(organizationId, id);
+    if (!mailbox) return Errors.notFound(res, "Mailbox");
+    if (!isKnownProvider(mailbox.provider)) return Errors.badRequest(res, "Unsupported mailbox provider");
+
+    const q = typeof req.query.q === "string" ? req.query.q : undefined;
+    const pageToken = typeof req.query.pageToken === "string" ? req.query.pageToken : undefined;
+
+    const result = await listMessages(userId, mailbox.provider as MailboxOAuthProvider, { query: q, pageToken });
+    res.json(result);
+  } catch (err) {
+    if (handleMailboxError(res, err)) return;
+    Errors.internal(res, err);
+  }
+});
+
+// ── Read: full single message on-demand ─────────────────────────────────────
+router.get("/:id/messages/:messageId", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
+
+    const mailbox = await loadOwnedMailbox(organizationId, id);
+    if (!mailbox) return Errors.notFound(res, "Mailbox");
+    if (!isKnownProvider(mailbox.provider)) return Errors.badRequest(res, "Unsupported mailbox provider");
+
+    const message = await getMessage(userId, mailbox.provider as MailboxOAuthProvider, req.params.messageId);
+    res.json({ message });
+  } catch (err) {
+    if (handleMailboxError(res, err)) return;
+    Errors.internal(res, err);
+  }
+});
+
+// ── Send: compose/reply on-demand through the customer's own mailbox ─────────
+const sendSchema = z.object({
+  to: z.string().email(),
+  subject: z.string().max(998).default(""),
+  body: z.string().min(1).max(200_000),
+  inReplyTo: z.string().max(998).optional(),
+  threadId: z.string().max(4096).optional(),
+});
+
+router.post("/:id/send", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
+
+    const parsed = sendSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+    const mailbox = await loadOwnedMailbox(organizationId, id);
+    if (!mailbox) return Errors.notFound(res, "Mailbox");
+    if (!isKnownProvider(mailbox.provider)) return Errors.badRequest(res, "Unsupported mailbox provider");
+
+    const sent = await sendMessage(userId, mailbox.provider as MailboxOAuthProvider, parsed.data);
+    logger.info(`[mailbox] sent via ${mailbox.provider} for org=${organizationId}`);
+    res.json({ ok: true, id: sent.id });
+  } catch (err) {
+    if (handleMailboxError(res, err)) return;
+    Errors.internal(res, err);
+  }
+});
+
+// ── Fine-tuning: merge per-mailbox settings (non-secret) ─────────────────────
+const settingsSchema = z
+  .object({
+    signature: z.string().max(4000).optional(),
+    aiReplyTone: z.enum(["professional", "friendly", "concise", "warm", "direct"]).optional(),
+    showLabels: z.boolean().optional(),
+  })
+  .strict();
+
+router.patch("/:id/settings", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
+
+    const parsed = settingsSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+    const mailbox = await loadOwnedMailbox(organizationId, id);
+    if (!mailbox) return Errors.notFound(res, "Mailbox");
+
+    const merged = { ...(mailbox.settings ?? {}), ...parsed.data };
+    const [row] = await db
+      .update(connectedMailboxes)
+      .set({ settings: merged })
+      .where(and(eq(connectedMailboxes.id, id), eq(connectedMailboxes.organizationId, organizationId)))
+      .returning({ id: connectedMailboxes.id, settings: connectedMailboxes.settings });
+
+    res.json({ mailbox: row });
   } catch (err) {
     Errors.internal(res, err);
   }
