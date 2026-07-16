@@ -11,7 +11,6 @@
  * stays separate so on-demand lookups don't have to wait for a
  * scheduled tick.
  */
-import { logger } from "../../utils/logger";
 import type {
   DataCategory,
   DataProvider,
@@ -31,25 +30,17 @@ const CATEGORY_COSTS: Partial<Record<DataCategory, number>> = {
 const SUPPORTED_CATEGORIES: DataCategory[] = ["parcel_data", "comps", "owner_info", "valuation"];
 
 async function getApiKey(organizationId?: number): Promise<string | null> {
-  // BYOK first
+  // BYOK first — vault (connectors hub) then legacy, via the shared resolver.
+  // Previously this read ONLY the legacy store, so a regrid key connected in
+  // the hub (which writes the canonical vault) was silently ignored.
   if (organizationId) {
-    try {
-      const { storage } = await import("../../storage");
-      const integration = await storage.getOrganizationIntegration(organizationId, "regrid");
-      if (integration?.isEnabled && (integration.credentials as any)?.encrypted) {
-        const { decryptJsonCredentials } = await import("../fieldEncryption");
-        const creds = decryptJsonCredentials<{ apiKey: string }>(
-          (integration.credentials as any).encrypted,
-          organizationId
-        );
-        if (creds.apiKey) return creds.apiKey;
-      }
-    } catch (error) {
-      logger.warn("Failed to get BYOK Regrid key", {
-        source: "RegridProvider",
-        metadata: { error: error instanceof Error ? error.message : String(error) },
-      });
-    }
+    const { resolveProviderCredential } = await import("./resolveProviderCredential");
+    const key = await resolveProviderCredential(organizationId, {
+      channel: "regrid",
+      legacyProvider: "regrid",
+      legacyField: "apiKey",
+    });
+    if (key) return key;
   }
 
   // Platform fallback
