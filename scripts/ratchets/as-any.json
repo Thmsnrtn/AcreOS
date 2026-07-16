@@ -9,6 +9,6 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 1478,
+  "baselineCount": 1476,
   "direction": "down"
 }
