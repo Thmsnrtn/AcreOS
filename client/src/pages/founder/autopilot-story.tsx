@@ -16,7 +16,7 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { QueryErrorState } from "@/components/query-error-state";
+import { FounderAuthError } from "@/components/founder/FounderAuthError";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { formatRelative } from "@/lib/format";
@@ -246,7 +246,7 @@ export default function FounderAutopilotStoryPage() {
             <Skeleton className="h-16 w-full rounded-card" />
           </div>
         ) : isError ? (
-          <QueryErrorState
+          <FounderAuthError
             error={error instanceof Error ? error : new Error("Failed")}
             title="The story isn't available right now"
             onRetry={() => void refetch()}
