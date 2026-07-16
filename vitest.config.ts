@@ -62,6 +62,13 @@ export default defineConfig({
         "server/services/tcpaCompliance.ts": { lines: 50 },
         "server/services/compliance/dncScrub.ts": { lines: 58 },
         "server/middleware/featureGate.ts": { lines: 90 },
+        // Tenant-authorization surfaces — cross-org access decisions. Floored
+        // 2026-07-16 once real tests landed (roleScope 100, permissions 28.4);
+        // each ~a few pts under measured. permissions.ts is low because its
+        // async getUserPermissionContext + middleware (263-395) are still
+        // untested — the next lift, not a fake floor.
+        "server/middleware/roleScope.ts": { lines: 95 },
+        "server/utils/permissions.ts": { lines: 25 },
       },
     },
   },
