@@ -26,6 +26,9 @@ const ROSTER_ONLY: string[] = [];
 // setIntervals into the runtime at their own definition sites.
 const SCANNED_FILES = [
   "../../server/jobs/runScheduledJobs.ts",
+  // S3 (2026-07): lead_nurturing + campaign_optimizer withJobLock literals
+  // moved here as the first decomposition slice out of runScheduledJobs.ts.
+  "../../server/jobs/leadCampaignJobs.ts",
   "../../server/jobs/atlasPendingConfirmationNudger.ts",
   "../../server/jobs/autonomousTaskProcessor.ts",
   "../../server/services/founderDigest.ts",
