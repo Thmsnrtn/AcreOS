@@ -23,13 +23,13 @@ import { isFounderEmail } from "../services/founder";
 export function requireFlag(flagKey: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     // Founder bypass — provision-time access while flags are being set up.
-    const email = (req.user as any)?.email || (req.user as any)?.email;
+    const email = req.user?.email || req.user?.email;
     if (isFounderEmail(email)) return next();
 
     // Enterprise-tier orgs continue to bypass legacy reseller / white-label
     // routes (kept for back-compat with the original featureGate). Future
     // flags should not rely on this — set state to "tier:scale" or similar.
-    const tier = (req.organization as any)?.subscriptionTier;
+    const tier = req.organization?.subscriptionTier;
     if (tier === "enterprise") return next();
 
     try {

@@ -2344,7 +2344,7 @@ export function registerAdminRoutes(app: Express): void {
         const { recordActivationEventAsync } = await import("./services/activation");
         recordActivationEventAsync({
           orgId: org.id,
-          userId: (req.user as any)?.id ?? null,
+          userId: req.user?.id ?? null,
           eventName: "first_lead_enriched",
           eventValue: { propertyId, source: "maps_lookup" },
         });

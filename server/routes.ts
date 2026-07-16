@@ -2594,7 +2594,7 @@ export async function registerRoutes(
   app.post("/api/tasks", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       
       const validated = insertTaskSchema.parse({
         ...req.body,
@@ -2636,7 +2636,7 @@ export async function registerRoutes(
   app.put("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const id = parseInt(req.params.id);
       
       const existingTask = await storage.getTask(orgId, id);
@@ -2715,7 +2715,7 @@ export async function registerRoutes(
   app.post("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const id = parseInt(req.params.id);
       
       const existingTask = await storage.getTask(orgId, id);

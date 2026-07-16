@@ -68,7 +68,7 @@ export function registerFounderLetterRoutes(app: Express): void {
           return Errors.validationFailed(res, parsed.error.flatten());
         }
         const userId = getUserId(req);
-        const senderEmail = (req.user as any)?.email ?? null;
+        const senderEmail = req.user?.email ?? null;
         const [created] = await db
           .insert(communityLetters)
           .values({
