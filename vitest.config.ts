@@ -48,15 +48,20 @@ export default defineConfig({
         // change to code that moves money or sends messages.
         // Raised 2026-07-07 after the real tcpaCompliance/dunning suites
         // landed (measured: tcpa 53.3, sms 42.9, dunning 24.7, dnc 59.1).
-        "server/services/creditPool.ts": { lines: 80 },
+        // Ratcheted again 2026-07-16 (S4) to the newly-measured levels, each
+        // ~1pt under measured so a real regression trips but run-to-run
+        // jitter doesn't: creditPool 88.6, sms 43.4, dunning 33.5, dnc 59.1,
+        // featureGate 92.3 (new floor on the tenant/subscription gate).
+        "server/services/creditPool.ts": { lines: 87 },
         "server/webhookHandlers.ts": { lines: 70 },
         "server/services/webhook-idempotency.ts": { lines: 75 },
         "server/services/publicParcelReport.ts": { lines: 88 },
         "server/services/directMailService.ts": { lines: 52 },
-        "server/services/smsService.ts": { lines: 40 },
-        "server/services/dunning.ts": { lines: 23 },
+        "server/services/smsService.ts": { lines: 42 },
+        "server/services/dunning.ts": { lines: 32 },
         "server/services/tcpaCompliance.ts": { lines: 50 },
-        "server/services/compliance/dncScrub.ts": { lines: 55 },
+        "server/services/compliance/dncScrub.ts": { lines: 58 },
+        "server/middleware/featureGate.ts": { lines: 90 },
       },
     },
   },
