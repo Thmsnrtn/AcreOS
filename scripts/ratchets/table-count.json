@@ -1,0 +1,9 @@
+{
+  "name": "table-count",
+  "description": "Number of Drizzle pgTable() definitions across shared/. The mature-machine north star is a SMALLER schema (<=450 tables); today's count is far above it. This strict down-only ratchet makes the schema monotonic: adding a table fails CI until the baseline is deliberately bumped (a conscious 'yes we need this'), and every consolidation lowers the baseline toward the target. Founder-chosen 'strict' 2026-07-16.",
+  "pattern": "pgTable\\(",
+  "globs": ["shared/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts"],
+  "baselineCount": 746,
+  "direction": "down"
+}
