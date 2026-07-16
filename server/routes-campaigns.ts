@@ -774,8 +774,7 @@ export function registerCampaignRoutes(app: Express): void {
       if (!usingOrgLobCredentials) {
         const balance = await creditService.getBalance(org.id);
         if (balance < totalCost) {
-          return res.status(402).json({
-            error: "Insufficient credits",
+          return Errors.paymentRequired(res, "Insufficient credits", {
             required: totalCost / 100,
             balance: balance / 100,
             perPiece: costPerPiece / 100,
@@ -841,7 +840,7 @@ export function registerCampaignRoutes(app: Express): void {
         );
 
         if (!deductResult) {
-          return res.status(402).json({ error: "Insufficient credits" });
+          return Errors.paymentRequired(res, "Insufficient credits");
         }
       } else {
         logger.info(`Skipping credit deduction for org - using org Lob credentials`, { orgId: org.id });
