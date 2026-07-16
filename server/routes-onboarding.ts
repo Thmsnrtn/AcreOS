@@ -300,7 +300,7 @@ router.post("/step-entered", async (req: Request, res: Response) => {
       return;
     }
     const { recordActivationEventAsync, onboardingStepEnteredEvent } = await import("./services/activation");
-    const userId = (req.user as any)?.id || (req.user as any)?.id || null;
+    const userId = req.user?.id || req.user?.id || null;
     recordActivationEventAsync({
       orgId: org.id,
       userId,
@@ -339,7 +339,7 @@ router.post("/path-selected", async (req: Request, res: Response) => {
       return;
     }
     const { recordActivationEventAsync } = await import("./services/activation");
-    const userId = (req.user as any)?.id || (req.user as any)?.id || null;
+    const userId = req.user?.id || req.user?.id || null;
     recordActivationEventAsync({
       orgId: org.id,
       userId,
@@ -370,7 +370,7 @@ router.patch("/progress", async (req: Request, res: Response) => {
     if (typeof step === "number" && step > 0) {
       try {
         const { recordActivationEventAsync, onboardingStepCompletedEvent } = await import("./services/activation");
-        const userId = (req.user as any)?.id || (req.user as any)?.id || null;
+        const userId = req.user?.id || req.user?.id || null;
         recordActivationEventAsync({
           orgId: org.id,
           userId,

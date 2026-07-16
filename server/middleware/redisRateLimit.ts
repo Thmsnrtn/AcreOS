@@ -151,9 +151,9 @@ const API_KEY_TIERS: Record<
 export function createOrgRateLimit(redisClient: any) {
   return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     try {
-      const orgId = req.organizationId || (req.user as any)?.organizationId;
-      const tier = (req.organization as any)?.subscriptionTier || "free";
-      const isFounder = (req.organization as any)?.isFounder;
+      const orgId = req.organizationId || req.organization?.id;
+      const tier = req.organization?.subscriptionTier || "free";
+      const isFounder = req.organization?.isFounder;
 
       if (!orgId || isFounder) {
         // Not authenticated or founder bypass — skip rate limiting
@@ -268,8 +268,8 @@ export function createApiKeyRateLimit(redisClient: any) {
 export function createAIRateLimit(redisClient: any) {
   return async (req: RateLimitRequest, res: Response, next: NextFunction) => {
     const orgId = req.organizationId;
-    const isFounder = (req.organization as any)?.isFounder;
-    const tier = (req.organization as any)?.subscriptionTier || "free";
+    const isFounder = req.organization?.isFounder;
+    const tier = req.organization?.subscriptionTier || "free";
 
     if (!orgId || isFounder) return next();
 

@@ -718,7 +718,7 @@ export function registerDealRoutes(app: Express): void {
         // Phase 3 Week 14 — Activation telemetry. First closed deal is a
         // major activation milestone (lead → close conversion).
         try {
-          const userIdForEvent = (req.user as any)?.id || (req.user as any)?.id;
+          const userIdForEvent = req.user?.id || req.user?.id;
           const { recordActivationEventAsync } = await import("./services/activation");
           recordActivationEventAsync({
             orgId: org.id,

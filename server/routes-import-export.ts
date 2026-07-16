@@ -580,7 +580,7 @@ export function registerImportExportRoutes(app: Express): void {
   api.patch("/api/leads/:id/consent", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const leadId = parseInt(req.params.id);
       const { tcpaConsent, consentSource, optOutReason } = req.body;
       
@@ -638,7 +638,7 @@ export function registerImportExportRoutes(app: Express): void {
   api.patch("/api/compliance/retention-policies", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const org = req.organization!;
       const newPolicies = req.body;
       
@@ -675,7 +675,7 @@ export function registerImportExportRoutes(app: Express): void {
   api.post("/api/compliance/purge-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = req.organization!.id;
-      const userId = (req.user as any).id;
+      const userId = req.user.id;
       const { dataType, beforeDate } = req.body;
       
       if (!dataType || !beforeDate) {

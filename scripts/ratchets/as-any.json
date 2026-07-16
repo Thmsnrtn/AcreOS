@@ -1,0 +1,14 @@
+{
+  "name": "as-any",
+  "description": "`as any` erases the type checker at that expression — on money and multi-tenant paths that's where a mispriced charge or a cross-org data leak hides. `(req as any)` and `(req.user as any).id`-style casts have typed replacements (AuthenticatedRequest + req.user.id, getOrganizationId(req)); Express-internals monkey-patches are the residual baseline. This ratchet freezes the count and drives it strictly DOWN — lower baselineCount whenever a reduction lands.",
+  "pattern": "as any",
+  "globs": [
+    "server/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
+  "baselineCount": 1478,
+  "direction": "down"
+}

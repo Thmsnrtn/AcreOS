@@ -671,7 +671,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         })
         .where(eq(knowledgeBaseArticles.id, articleId));
 
-      logger.info(`[support] KB draft published`, { metadata: { articleId, userId: (req.user as any)?.id } });
+      logger.info(`[support] KB draft published`, { metadata: { articleId, userId: req.user?.id } });
       res.json({ success: true });
     } catch (error: any) {
       logger.error("[support] Error publishing KB draft", error);
@@ -714,7 +714,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         })
         .where(eq(knowledgeBaseArticles.id, articleId));
 
-      logger.info(`[support] KB draft dismissed`, { metadata: { articleId, userId: (req.user as any)?.id } });
+      logger.info(`[support] KB draft dismissed`, { metadata: { articleId, userId: req.user?.id } });
       res.json({ success: true });
     } catch (error: any) {
       logger.error("[support] Error dismissing KB draft", error);

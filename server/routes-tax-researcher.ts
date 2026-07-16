@@ -100,7 +100,7 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
       .limit(1);
     if (!listing) return Errors.notFound(res, "Listing");
 
-    const userId = (req.user as any)?.id || (req.user as any)?.id || null;
+    const userId = req.user?.id || req.user?.id || null;
 
     const [entry] = await drizzleDb
       .insert(auctionBidLog)

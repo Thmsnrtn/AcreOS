@@ -41,7 +41,7 @@ const router = Router();
 const SLA_HOURS = 24;
 
 function getRequesterEmail(req: AuthenticatedRequest): string | null {
-  const email = (req.user as any)?.email;
+  const email = req.user?.email;
   return typeof email === "string" && email.length > 0 ? email.toLowerCase() : null;
 }
 
