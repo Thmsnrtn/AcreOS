@@ -1190,9 +1190,7 @@ export function registerOrganizationRoutes(app: Express): void {
     // Liana §1: admins can promote between member and va (and to viewer), but
     // they cannot grant `admin` — only the owner can elevate someone to admin.
     if (context.role === "admin" && role === "admin") {
-      return res
-        .status(403)
-        .json({ message: "Only the owner can grant the admin role" });
+      return Errors.forbidden(res, "Only the owner can grant the admin role");
     }
 
     const owners = members.filter(m => m.role === "owner");
@@ -2069,7 +2067,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // VAPID public key — returned to browser to create a PushSubscription
   api.get("/api/push/vapid-public-key", isAuthenticated, (_req, res) => {
     const key = process.env.VAPID_PUBLIC_KEY;
-    if (!key) return res.status(503).json({ message: "Push notifications not configured" });
+    if (!key) return Errors.serviceUnavailable(res, "Push notifications not configured");
     res.json({ publicKey: key });
   });
 
