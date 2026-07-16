@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
+import { FounderAuthError } from "@/components/founder/FounderAuthError";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { useToast } from "@/hooks/use-toast";
@@ -304,7 +305,7 @@ export default function FounderAutopilotControlPage() {
             <Skeleton className="h-40 w-full rounded-card" />
           </div>
         ) : isError || !data ? (
-          <QueryErrorState error={error instanceof Error ? error : new Error("Failed")} title="Control Center unavailable" onRetry={() => void refetch()} />
+          <FounderAuthError error={error instanceof Error ? error : new Error("Failed")} title="Control Center unavailable" onRetry={() => void refetch()} />
         ) : (
           <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="visible">
             {/* The "can I leave?" answer — machine-verified, never vibes. */}

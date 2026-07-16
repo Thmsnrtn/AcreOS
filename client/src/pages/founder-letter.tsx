@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
+import { FounderAuthError } from "@/components/founder/FounderAuthError";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -296,7 +297,7 @@ function LetterReplyPanel({ monthKey }: { monthKey: string }) {
 export default function FounderLetterPage() {
   useDocumentTitle("Founder letter");
   const [selectedMonth, setSelectedMonth] = useState<string | undefined>(undefined);
-  const { data, isLoading, isError, refetch } = useCurrentLetter(selectedMonth);
+  const { data, isLoading, isError, error, refetch } = useCurrentLetter(selectedMonth);
   const archive = useArchive();
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -353,16 +354,10 @@ export default function FounderLetterPage() {
               </CardContent>
             </Card>
           ) : isError ? (
-            <EmptyState
-              icon={FileText}
-              headline="Couldn't load the letter"
-              subtitle="Your previous letter (if any) is still saved. Try generating a fresh one or come back in a moment."
-              cta={{
-                label: "Retry",
-                onClick: () => refetch(),
-                "data-testid": "founder-letter-retry",
-              }}
-              actionIcon={null}
+            <FounderAuthError
+              error={error instanceof Error ? error : new Error("Couldn't load the letter")}
+              title="Couldn't load the letter"
+              onRetry={() => void refetch()}
             />
           ) : !letter ? (
             <EmptyState

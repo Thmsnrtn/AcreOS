@@ -207,6 +207,31 @@ export async function registerEnhancementRoutes(app: Express) {
     }
   });
 
+  // Auth-config self-diagnostic — turns a silent "every authenticated call
+  // 401s" outage (e.g. CLERK_JWT_KEY missing on the proxy fallback path) into
+  // a one-line, secret-free cause the operator can act on. Returns ENV
+  // presence/shape only ("live | test | missing", "present", "looks like a
+  // PEM") — NEVER key material.
+  //
+  // Gated on the presence of a Clerk session cookie: a signed-in operator
+  // whose session the SERVER can't verify (the exact failure this diagnoses)
+  // still carries the `__session*` cookie, so they get the report; an
+  // anonymous scanner with no cookie gets nothing. No auth middleware — that
+  // would 401 during the very outage this exists to explain.
+  app.get("/api/health/auth-config", async (req, res) => {
+    try {
+      const cookieHeader = req.headers.cookie ?? "";
+      const hasClerkCookie = /(?:^|;\s*)__session(?:_[A-Za-z0-9_-]+)?=/.test(cookieHeader);
+      if (!hasClerkCookie) {
+        return res.json({ available: false });
+      }
+      const { computeAuthConfigReport } = await import("./services/authConfigDiagnostic");
+      res.json({ available: true, ...computeAuthConfigReport() });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
   // Pillar 8.6 — read replica health check
   app.get("/api/health/replica", async (_req, res) => {
     try {

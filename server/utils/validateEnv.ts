@@ -35,6 +35,21 @@ export function validateEnv(): void {
     errors.push("CLERK_SECRET_KEY is required — get it from clerk.com dashboard");
   }
 
+  // CLERK_JWT_KEY is a SOFT requirement (warning, not boot-fail): it is the
+  // key hydrateUser (server/auth/clerkAuth.ts) uses to verify the __session
+  // cookie JWT when the inline clerkMiddleware path can't populate req.auth
+  // (our proxy/Cloudflare setup). Without it that fallback is skipped and,
+  // whenever the inline path fails, EVERY authenticated request 401s — the
+  // SPA renders but all data calls are rejected (blank/failed doors). We warn
+  // loudly rather than exit so a fresh/dev env without the proxy path can
+  // still boot. GET /api/health/auth-config reports the same condition at
+  // runtime for a signed-in operator.
+  if (!process.env.CLERK_JWT_KEY) {
+    errors.push(
+      "CLERK_JWT_KEY is not set — the session-cookie JWT fallback in hydrateUser is disabled. If the inline Clerk verification path fails (common behind a proxy/CDN), every authenticated request will 401. Set it from Clerk dashboard → API Keys → Show JWT public key (the full PEM)."
+    );
+  }
+
   // Beatrice / compliance-debt §3 — the field-encryption key is HARD-REQUIRED
   // for every process that can reach prod data, independent of NODE_ENV. Any
   // process touching the encrypted columns (founder vault, skip-trace PII, BYOK
