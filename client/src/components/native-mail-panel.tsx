@@ -32,7 +32,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Send, Loader2, ArrowLeft, Search, Settings2, RefreshCw } from "lucide-react";
+import { Mail, Send, Loader2, ArrowLeft, Search, Settings2, RefreshCw, Sparkles } from "lucide-react";
 import { relative } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
 
@@ -202,6 +202,23 @@ function MessageReader({
 
   const full = data?.message;
 
+  // One-line Pax summary — lazy, cached, and independent of the body render so
+  // the message shows instantly while the glance resolves. The server holds
+  // nothing; a blank summary just renders no chip.
+  const { data: summaryData, isLoading: summaryLoading } = useQuery<{ summary: string }>({
+    queryKey: ["/api/mailbox", mailboxId, "messages", selected.id, "summary"],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/mailbox/${mailboxId}/messages/${encodeURIComponent(selected.id)}/summary`,
+      );
+      if (!res.ok) throw new Error(`${res.status}`);
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 30,
+  });
+  const summary = summaryData?.summary?.trim();
+
   // allow-no-invalidation: on-demand send — nothing is cached to go stale; the
   // list refetches live and the reply is delivered straight from the mailbox.
   const send = useMutation({
@@ -270,6 +287,23 @@ function MessageReader({
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-4">
           <h2 className="text-section-h2">{selected.subject || "(No subject)"}</h2>
+          {/* One-line Pax summary — the "what is this" glance above the body. */}
+          {summaryLoading ? (
+            <div
+              className="flex items-center gap-2 rounded-card border border-primary/20 bg-primary/5 px-3 py-2"
+              role="status"
+              aria-live="polite"
+            >
+              <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+              <span className="sr-only">Summarizing…</span>
+              <Skeleton announce={false} className="h-3.5 w-2/3" />
+            </div>
+          ) : summary ? (
+            <p className="flex items-start gap-2 rounded-card border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-foreground/90">
+              <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+              <span>{summary}</span>
+            </p>
+          ) : null}
           {isLoading ? (
             <div className="space-y-2" role="status" aria-live="polite">
               <span className="sr-only">Loading message…</span>
