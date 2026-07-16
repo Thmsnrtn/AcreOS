@@ -26,6 +26,7 @@ import { wsServer } from "../websocket";
 import { jobSupervisor } from "../services/jobSupervisor";
 import { instanceId as _instanceId, trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
 import { startLeadNurturingJob, startCampaignOptimizationJob } from "./leadCampaignJobs";
+import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 
 // Touch unused imports to keep them part of the symbol table (their
 // presence mirrors index.ts where they were originally imported at the
@@ -4275,15 +4276,9 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Sovereign Company Protocol — seed AI agent personas and register briefing jobs
   seedCompanyAgentsOnStartup();
-  // 2026-07 cost audit — one-shot founder decision cards (marker-guarded;
-  // fail-open, retries next boot until the marker writes).
-  void import("../services/costDecisionCards")
-    .then(({ seedCostDecisionCards }) => seedCostDecisionCards())
-    .catch((err) =>
-      logger.warn("[runScheduledJobs] cost decision-card seed failed (boot unaffected)", {
-        metadata: { detail: err instanceof Error ? err.message : String(err) },
-      }),
-    );
+  // One-shot founder decision cards (cost audit + rail sunset). Marker-guarded,
+  // fail-open, nothing auto-executes — see ./seedFounderDecisionCards.
+  seedFounderDecisionCardsOnStartup();
   startCompanyBriefingJob();
   startTrustEvolutionJob();
   startAgentReactionProcessorJob();
