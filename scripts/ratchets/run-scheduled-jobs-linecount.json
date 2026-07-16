@@ -1,0 +1,10 @@
+{
+  "name": "run-scheduled-jobs-linecount",
+  "description": "server/jobs/runScheduledJobs.ts is the autopilot heartbeat — a ~6k-line god-file of process*/start*Job pairs sharing ./utils/jobRuntime. It is being decomposed one cohesive job-group at a time into server/jobs/*.ts (S3, started 2026-07-16 with leadCampaignJobs.ts). This ratchet drives its line count strictly DOWN so each extraction can only make progress; lower baselineCount as groups are carved out.",
+  "mode": "lineCount",
+  "globs": [
+    "server/jobs/runScheduledJobs.ts"
+  ],
+  "baselineCount": 5857,
+  "direction": "down"
+}
