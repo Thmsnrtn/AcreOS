@@ -29,6 +29,7 @@ import {
   MailboxNotConnectedError,
   MailboxApiError,
 } from "./services/mailbox/mailboxClient";
+import { summarizeThread } from "./services/mailbox/threadSummary";
 import { getOrganizationId, getUserId, type AuthenticatedRequest } from "./types/request";
 
 const router = Router();
@@ -212,6 +213,27 @@ router.get("/:id/messages/:messageId", async (req: AuthenticatedRequest, res: Re
 
     const message = await getMessage(userId, mailbox.provider as MailboxOAuthProvider, req.params.messageId);
     res.json({ message });
+  } catch (err) {
+    if (handleMailboxError(res, err)) return;
+    Errors.internal(res, err);
+  }
+});
+
+// ── Read: one-line Pax summary of a thread (on-demand, never persisted) ──────
+router.get("/:id/messages/:messageId/summary", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const organizationId = getOrganizationId(req);
+    const userId = getUserId(req);
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
+
+    const mailbox = await loadOwnedMailbox(organizationId, id);
+    if (!mailbox) return Errors.notFound(res, "Mailbox");
+    if (!isKnownProvider(mailbox.provider)) return Errors.badRequest(res, "Unsupported mailbox provider");
+
+    const message = await getMessage(userId, mailbox.provider as MailboxOAuthProvider, req.params.messageId);
+    const summary = await summarizeThread(message);
+    res.json({ summary });
   } catch (err) {
     if (handleMailboxError(res, err)) return;
     Errors.internal(res, err);
