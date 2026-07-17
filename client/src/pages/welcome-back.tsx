@@ -131,15 +131,17 @@ export default function WelcomeBackPage() {
 
   const handleResubscribe = () => {
     if (!data) return;
+    // Canonical upgrade deep-link (same pattern as the limit-toast upsell):
+    // /pricing#<tier> preselects the plan. There is no client-side /checkout
+    // route — the previous target 404'd inside the SPA — and price is always
+    // resolved server-side at checkout (a client-passed priceCents must never
+    // drive billing; grandfathered pricing is applied by the server from the
+    // subscription history).
     const params = new URLSearchParams({
-      tier: data.lastPlan.tier,
       interval: data.lastPlan.billingInterval,
       from: "welcome_back",
     });
-    if (data.grandfatheredPriceAvailable) {
-      params.set("priceCents", String(data.lastPlan.monthlyPriceCents));
-    }
-    navigate(`/checkout?${params.toString()}`);
+    navigate(`/pricing?${params.toString()}#${data.lastPlan.tier}`);
   };
 
   if (isLoading) {

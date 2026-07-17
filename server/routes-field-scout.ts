@@ -61,37 +61,42 @@ fieldScoutRouter.get('/properties/parcel-lookup', async (req: Request, res: Resp
       return Errors.badRequest(res, 'lat and lng must be valid numbers');
     }
 
-    // In production this would call a GIS/parcel API service.
-    // For now return enriched mock data based on coordinates.
-    const latHash = Math.abs(Math.round(latitude * 1000));
-    const lngHash = Math.abs(Math.round(longitude * 1000));
-    const seed = (latHash + lngHash) % 10000;
+    // Real point lookup only — free statewide/county GIS intersection first,
+    // Regrid when a key is configured (server/services/parcel.ts). House rule:
+    // NEVER fabricate parcel facts. When nothing resolves, say so honestly —
+    // the client renders "No parcel found at this location" and the scout
+    // enters details manually.
+    const { lookupParcelByCoordinates } = await import('./services/parcel');
+    const result = await lookupParcelByCoordinates(latitude, longitude);
 
-    const counties = ['Williamson', 'Travis', 'Hays', 'Bell', 'Burnet', 'Bastrop', 'Caldwell', 'Milam'];
-    const states = ['TX', 'TX', 'TX', 'TX', 'TX', 'TX', 'TX', 'TX'];
-    const zonings = ['AG', 'R-1', 'R-2', 'RR', 'C-1', 'A-1', 'MH', 'SF-3'];
+    if (!result.found || !result.parcel) {
+      return res.json({
+        found: false,
+        apn: null,
+        reason: result.error ?? 'No parcel found at these coordinates',
+      });
+    }
 
-    const countyIdx = seed % counties.length;
-    const acreage = parseFloat((1 + (seed % 500) / 10).toFixed(2));
-    const assessedValue = Math.round(acreage * (2000 + (seed % 8000)));
-    const lastSalePrice = Math.round(assessedValue * (0.7 + (seed % 60) / 100));
-
-    const parcel = {
-      apn: `${String(seed).padStart(4, '0')}-${String((seed * 7) % 10000).padStart(4, '0')}-${String((seed * 13) % 1000).padStart(3, '0')}`,
-      ownerName: `Owner ${seed}`,
-      address: `${1000 + seed} County Road ${seed % 999}`,
-      county: counties[countyIdx],
-      state: states[countyIdx],
-      acreage,
-      assessedValue,
-      zoning: zonings[seed % zonings.length],
-      lastSaleDate: new Date(2015 + (seed % 9), seed % 12, 1 + (seed % 28)).toISOString().split('T')[0],
-      lastSalePrice,
-      latitude,
-      longitude,
+    const d = result.parcel.data;
+    const toNum = (v: number | string | undefined): number | undefined => {
+      const n = typeof v === 'string' ? parseFloat(v) : v;
+      return Number.isFinite(n as number) ? (n as number) : undefined;
     };
 
-    res.json(parcel);
+    res.json({
+      found: true,
+      source: result.source,
+      apn: result.parcel.apn,
+      ownerName: d.owner && d.owner !== 'Unknown' ? d.owner : undefined,
+      county: d.county,
+      state: d.state,
+      acreage: d.acres,
+      assessedValue: toNum(d.assessedValue),
+      lastSalePrice: toNum(d.lastSalePrice),
+      lastSaleDate: d.lastSaleDate,
+      latitude: result.parcel.centroid?.lat ?? latitude,
+      longitude: result.parcel.centroid?.lng ?? longitude,
+    });
   } catch (err: any) {
     logger.error('[field-scout] parcel-lookup error', err);
     return Errors.internal(res, err);

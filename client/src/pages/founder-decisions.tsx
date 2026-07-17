@@ -37,6 +37,8 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { dollars, relative } from "@/lib/format";
+import { PrefetchLink } from "@/components/prefetch-link";
+import { HelpCircle } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 
@@ -475,6 +477,66 @@ interface DefectsResponse {
   windowDays: number;
 }
 
+/**
+ * Open questions from the agents (asks). The door's doctrine (founder-doors.ts)
+ * names asks as part of Decisions — "the witnessed-send queue, asks, appeals,
+ * recourse" — but asks previously lived ONLY on the /founder/asks deep page,
+ * so a founder checking this door could miss a blocked agent waiting on an
+ * answer. Mirrors WitnessedSendQueue: renders only when something is waiting.
+ * Answering stays on the asks surface (the answer form is format-dependent).
+ */
+function OpenAsksSection() {
+  const { data } = useQuery<{
+    asks: Array<{ id: number; questionSummary: string; askingAgentRole: string; urgency: "urgent" | "normal" | "low"; askedAt: string }>;
+    count: number;
+  }>({
+    queryKey: ["/api/founder/asks?status=open&limit=10"],
+    staleTime: 30_000,
+  });
+  if (!data || data.count === 0) return null;
+  return (
+    <Card className="border-l-4 border-l-primary" data-testid="decisions-open-asks">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <HelpCircle className="w-4 h-4 text-primary" aria-hidden="true" />
+          Questions waiting on you ({data.count})
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {data.asks.slice(0, 5).map((ask) => (
+          <div
+            key={ask.id}
+            className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2"
+            data-testid={`decisions-open-ask-${ask.id}`}
+          >
+            <div className="min-w-0">
+              <p className="text-sm text-foreground truncate">{ask.questionSummary}</p>
+              <p className="text-xs text-muted-foreground">
+                {ask.askingAgentRole} · {relative(ask.askedAt)}
+                {ask.urgency === "urgent" ? " · urgent" : ""}
+              </p>
+            </div>
+            <Button asChild size="sm" variant={ask.urgency === "urgent" ? "default" : "outline"} className="shrink-0">
+              <PrefetchLink href={`/founder/asks?id=${ask.id}`} aria-label={`Answer: ${ask.questionSummary}`}>
+                Answer
+              </PrefetchLink>
+            </Button>
+          </div>
+        ))}
+        {data.count > 5 && (
+          <PrefetchLink
+            href="/founder/asks"
+            className="block text-xs text-primary hover:underline"
+            data-testid="decisions-open-asks-all"
+          >
+            All {data.count} open questions →
+          </PrefetchLink>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ClassCDefectsSection() {
   const [open, setOpen] = useState(false);
   const { data, isLoading } = useQuery<DefectsResponse>({
@@ -695,6 +757,9 @@ export default function FounderDecisionsPage() {
           execution seam, so it sits above the audit trail. */}
       <WitnessedSendQueue />
 
+      {/* Open agent questions — same renders-only-when-waiting contract. */}
+      <OpenAsksSection />
+
       {/* Summary strip */}
       {isLoading ? (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -797,6 +862,15 @@ export default function FounderDecisionsPage() {
 
       {/* Class-C defect ledger — collapsed by default beneath the buckets */}
       <ClassCDefectsSection />
+
+      {/* Doctrine completeness (founder-doors.ts): appeals + recourse belong
+          to this door too. Quiet footer links — rare paths, not daily ones. */}
+      <p className="text-xs text-muted-foreground" data-testid="decisions-door-footer">
+        Also part of this door:{" "}
+        <PrefetchLink href="/founder/appeals" className="text-primary hover:underline">Appeals</PrefetchLink>
+        {" · "}
+        <PrefetchLink href="/founder/recourse" className="text-primary hover:underline">Recourse</PrefetchLink>
+      </p>
     </div>
     </PageShell>
   );

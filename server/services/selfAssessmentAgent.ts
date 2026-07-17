@@ -17,21 +17,21 @@ import {
 } from "@shared/schema";
 import { eq, desc, gte, sql, and, lt } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { requireOpenAIClient } from "../utils/openaiClient";
 import { MODELS } from "./models";
 
 // ---------------------------------------------------------------------------
 // OpenRouter client (Claude Opus for deep analysis, DeepSeek for cheap tasks)
 // ---------------------------------------------------------------------------
-const openrouterClient = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY!,
-  baseURL:
-    process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL ||
-    "https://openrouter.ai/api/v1",
-  defaultHeaders: {
-    "HTTP-Referer": "https://acreos.fly.dev",
-    "X-Title": "AcreOS",
-  },
-});
+// Lazy shared client (server/utils/openaiClient.ts): the previous module-
+// level `new OpenAI({ apiKey: ...OPENROUTER_API_KEY! })` threw at import
+// time when the key was unset, killing the scheduled job that dynamically
+// imported this module with an opaque constructor error. The shared helper
+// resolves the same key/baseURL/headers at call time and throws an honest
+// "not configured" error instead.
+function openrouter(): OpenAI {
+  return requireOpenAIClient();
+}
 
 const ASSESSMENT_MODEL = MODELS.OPUS;
 const CHEAP_MODEL = MODELS.DEEPSEEK_CHAT;
@@ -157,7 +157,7 @@ Return a JSON array only — no prose, no markdown fences:
 
   let rawContent = "";
   try {
-    const completion = await openrouterClient.chat.completions.create({
+    const completion = await openrouter().chat.completions.create({
       model: ASSESSMENT_MODEL,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 2000,
@@ -380,7 +380,7 @@ Return a JSON array only — no prose, no markdown fences.`;
 
   let rawContent = "";
   try {
-    const completion = await openrouterClient.chat.completions.create({
+    const completion = await openrouter().chat.completions.create({
       model: ASSESSMENT_MODEL,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 3000,

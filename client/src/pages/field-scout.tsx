@@ -400,12 +400,12 @@ export default function FieldScout() {
         setShowQuickAdd(true);
         toast({
           title: "Parcel identified",
-          description: `${data.address} — Owner: ${data.ownerName || "Unknown"}`,
+          description: `${data.address || `APN ${data.apn}`} — Owner: ${data.ownerName || "Unknown"}`,
         });
       } else {
         toast({
           title: "No parcel found at this location",
-          description: "Try again or enter details manually.",
+          description: data?.reason || "Try again or enter details manually.",
           variant: "destructive",
         });
       }
@@ -867,8 +867,8 @@ export default function FieldScout() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                Standing near a property? GPS-identify the parcel instantly — get owner,
-                tax status, and estimated value in seconds.
+                Standing near a property? GPS-identify the parcel from public
+                records — owner, acreage, and assessed value where available.
               </p>
               {/* Primary capture action — deliberately oversized (h-14) for
                   work-gloves-in-a-truck use. Never below 44px. */}

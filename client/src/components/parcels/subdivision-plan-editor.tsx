@@ -161,9 +161,17 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    // Mapbox token comes from env (already wired in property-map.tsx).
-    const token = (window as any).MAPBOX_TOKEN ?? import.meta.env.VITE_MAPBOX_TOKEN;
-    if (token) (mapboxgl.accessToken as any) = token;
+    // Canonical Mapbox token var is VITE_MAPBOX_ACCESS_TOKEN (property-map.tsx,
+    // the founder setup wizard). This component previously read the legacy
+    // VITE_MAPBOX_TOKEN name — so even a correctly configured deploy rendered
+    // a silent gray map here. Without a token we don't construct the map at
+    // all; the render below shows an honest "map unavailable" state instead.
+    const token =
+      import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ??
+      (window as any).__ENV__?.VITE_MAPBOX_ACCESS_TOKEN ??
+      (window as any).MAPBOX_TOKEN;
+    if (!token) return;
+    (mapboxgl.accessToken as any) = token;
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
@@ -383,7 +391,17 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
             </Button>
           </div>
         </div>
-        <div ref={containerRef} className="h-96 w-full rounded-md border" />
+        {import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ||
+        (typeof window !== "undefined" &&
+          ((window as any).__ENV__?.VITE_MAPBOX_ACCESS_TOKEN || (window as any).MAPBOX_TOKEN)) ? (
+          <div ref={containerRef} className="h-96 w-full rounded-md border" />
+        ) : (
+          // Customer-safe honest state (mirrors property-map.tsx): no env-var
+          // names on a customer surface — the cause lives in the deploy config.
+          <div className="h-96 w-full rounded-md border flex items-center justify-center text-center text-muted-foreground p-6">
+            <p>The drawing map isn't available right now — your plan data is safe and saving still works.</p>
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
           Use the polygon tool on the map controls to draw lots. Use the line tool for roads.
           The trash icon deletes selected features. Plan-level summary (lot count, total acres,

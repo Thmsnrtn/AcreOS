@@ -16,10 +16,24 @@ import { tracedLlmCall } from "./tracedLlmCall";
 import { sanitizePrompt, USER_DATA_SYSTEM_CLAUSE } from "../utils/sanitizePrompt";
 import { validatePaxResponse } from "../utils/validatePaxResponse";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+// Lazy client: constructing OpenAI at module scope threw at import time when
+// the key was unset, so the first hit on any support-brain route surfaced as
+// a generic 500. Resolving at call time lets a missing key throw the typed
+// NO_AI_PROVIDER shape instead, which Errors.internal maps to a clean 503.
+let openaiSingleton: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    const err = new Error("AI provider not configured — set AI_INTEGRATIONS_OPENAI_API_KEY");
+    err.name = "NoAIProviderError";
+    (err as { code?: string }).code = "NO_AI_PROVIDER";
+    throw err;
+  }
+  openaiSingleton ??= new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+  return openaiSingleton;
+}
 
 interface ClassificationResult {
   category: string;
@@ -84,7 +98,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         systemPrompt,
         userPrompt: safeMessage,
         call: () =>
-          openai.chat.completions.create({
+          getOpenAI().chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
               { role: "system", content: systemPrompt },
@@ -399,7 +413,7 @@ Adapt this template with the specific details from the context. Be conversationa
         userPrompt: "Generate the response message.",
         metadata: { playbookSlug: playbook.slug, actionsTaken },
         call: () =>
-          openai.chat.completions.create({
+          getOpenAI().chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
               { role: "system", content: systemPrompt },
@@ -471,7 +485,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         systemPrompt,
         userPrompt: userMessage,
         call: () =>
-          openai.chat.completions.create({
+          getOpenAI().chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
             temperature: 0.7,

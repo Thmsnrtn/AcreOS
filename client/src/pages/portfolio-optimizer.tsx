@@ -587,7 +587,7 @@ export default function PortfolioOptimizerPage() {
             <TabsTrigger value="recommendations">AI Recommendations ({recommendations.length})</TabsTrigger>
             <TabsTrigger value="capital-stack">Capital Stack</TabsTrigger>
             <TabsTrigger value="attribution">Attribution</TabsTrigger>
-            <TabsTrigger value="comparison">AI vs Current</TabsTrigger>
+            <TabsTrigger value="comparison">Concentration</TabsTrigger>
           </TabsList>
 
           {/* ── MONTE CARLO ── */}
@@ -1193,23 +1193,29 @@ export default function PortfolioOptimizerPage() {
             </Card>
           </TabsContent>
 
-          {/* ── AI vs CURRENT COMPARISON ── */}
+          {/* ── CONCENTRATION vs EQUAL-WEIGHT BENCHMARK ── */}
           <TabsContent value="comparison" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Current vs AI-Optimized Allocation</CardTitle>
-                <CardDescription>Side-by-side comparison of your current allocation vs AI recommendations</CardDescription>
+                <CardTitle>Current Allocation vs Equal-Weight Benchmark</CardTitle>
+                <CardDescription>
+                  Your concentration by state beside an equal-weight spread — the wider the gap, the more concentrated you are in that state
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {diversification ? (
-                  <div role="img" aria-label={`Current vs AI-optimized allocation by state across ${(diversification.byState || []).length} states`}>
+                  <div role="img" aria-label={`Current allocation vs equal-weight benchmark by state across ${(diversification.byState || []).length} states`}>
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart
                       data={[
-                        ...(diversification.byState || []).map((d: any) => ({
+                        ...(diversification.byState || []).map((d: any, _i: number, arr: any[]) => ({
                           label: d.state,
                           current: Math.round(d.percentage),
-                          optimized: Math.min(100, Math.round(d.percentage * (0.8 + Math.random() * 0.4))),
+                          // Honest, computable reference: an even spread across
+                          // the states you already hold. No fabricated "AI"
+                          // series — a real optimizer target lands with the
+                          // recommendations engine, not random jitter.
+                          benchmark: arr.length > 0 ? Math.round(100 / arr.length) : 0,
                         })),
                       ]}
                       margin={{ top: 10, right: 10, left: 0, bottom: 5 }}
@@ -1220,7 +1226,7 @@ export default function PortfolioOptimizerPage() {
                       <Tooltip formatter={(v: any) => [`${v}%`, '']} />
                       <Legend />
                       <Bar dataKey="current" name="Current %" fill={CHART_COLORS[0]} radius={[3, 3, 0, 0]} />
-                      <Bar dataKey="optimized" name="AI-Optimized %" fill={CHART_COLORS[1]} radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="benchmark" name="Equal-weight %" fill={CHART_COLORS[1]} radius={[3, 3, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                   </div>
@@ -1228,7 +1234,7 @@ export default function PortfolioOptimizerPage() {
                   <EmptyState
                     icon={BarChart2}
                     headline="No comparison data yet"
-                    subtitle="Run the full analysis to see your current allocation beside the AI-optimized target, state by state."
+                    subtitle="Run the full analysis to see your current allocation beside an equal-weight benchmark, state by state."
                     cta={{
                       label: analyzeAllMutation.isPending ? 'Analyzing…' : 'Run full analysis',
                       onClick: () => analyzeAllMutation.mutate(),

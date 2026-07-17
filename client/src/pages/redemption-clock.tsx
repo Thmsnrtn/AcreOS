@@ -17,7 +17,6 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 import {
   Clock,
   AlertTriangle,
@@ -126,7 +125,6 @@ const STATUS_LABELS: Record<Certificate["status"], string> = {
 
 export default function RedemptionClockPage() {
   useDocumentTitle("Redemption clock — AcreOS");
-  const [, navigate] = useLocation();
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [stateFilter, setStateFilter] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
@@ -257,18 +255,14 @@ export default function RedemptionClockPage() {
                     ? "border-acr-warn"
                     : "";
             return (
+              // Not clickable: there is no per-certificate detail route yet —
+              // the previous role="button" navigated to /redemption-clock/:id,
+              // which is unregistered and 404'd on every tap. The card already
+              // shows everything the page tracks; re-add navigation only when
+              // a real detail surface exists.
               <Card
                 key={c.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => navigate(`/redemption-clock/${c.id}`)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    navigate(`/redemption-clock/${c.id}`);
-                  }
-                }}
-                className={`p-4 cursor-pointer active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${tone}`}
+                className={`p-4 ${tone}`}
                 data-testid={`certificate-card-${c.id}`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -366,17 +360,11 @@ export default function RedemptionClockPage() {
               </thead>
               <tbody>
                 {certs.map((c) => (
+                  // Same as the card view: no per-certificate detail route
+                  // exists, so rows are display-only (the old click 404'd).
                   <tr
                     key={c.id}
-                    tabIndex={0}
-                    className="border-t border-border/40 hover:bg-accent/30 cursor-pointer focus-visible:outline-none focus-visible:bg-accent/30"
-                    onClick={() => navigate(`/redemption-clock/${c.id}`)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        navigate(`/redemption-clock/${c.id}`);
-                      }
-                    }}
+                    className="border-t border-border/40"
                     data-testid={`certificate-row-${c.id}`}
                   >
                     <td className="px-3 py-2.5">

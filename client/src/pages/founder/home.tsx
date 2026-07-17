@@ -14,7 +14,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, Activity, BookOpen, Mic, SlidersHorizontal, Gauge, Newspaper, TrendingUp, LayoutGrid } from "lucide-react";
+import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, BookOpen, Mic, SlidersHorizontal, LayoutGrid } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { PageShell } from "@/components/page-shell";
@@ -72,16 +72,19 @@ const BUDGET_STATUS: Record<"green" | "amber" | "red" | "unknown", { label: stri
   unknown: { label: "No data yet" },
 };
 
+// The hub is the DOORS — not a resurrection of the retired overview pile.
+// The old 9-item grid re-surfaced Command / Bridge / Feed / Steering right on
+// the daily home, which is exactly the ~10-overlapping-overviews problem the
+// four-door doctrine exists to end. Those instruments stay one tap away via
+// "All instruments" (and the sidebar's deep-tools overflow); the daily home
+// teaches only the canonical map: read here → act in Decisions → configure in
+// Controls → verify in Story.
 const HUB = [
-  { href: "/founder/decisions", icon: ListChecks, label: "Decisions", desc: "Everything awaiting your tap" },
-  { href: "/founder/command", icon: Gauge, label: "System health", desc: "Is the company green? Per-domain status" },
-  { href: "/founder/bridge", icon: Activity, label: "Live telemetry", desc: "Real-time metrics + chat bridge" },
-  { href: "/founder/feed", icon: Newspaper, label: "Activity feed", desc: "Feedback, agent events, proposals" },
-  { href: "/founder/steering", icon: TrendingUp, label: "Monthly review", desc: "Trends + the strategic check-in" },
-  { href: "/founder/autopilot/story", icon: BookOpen, label: "The story", desc: "Glass-box: every action + why" },
-  { href: "/founder/autopilot/voice", icon: Mic, label: "Your voice", desc: "Standing orders + objectives" },
-  { href: "/founder/autopilot/control", icon: SlidersHorizontal, label: "Controls", desc: "Switches, trust levels, budgets" },
-  { href: "/founder/all-tools", icon: LayoutGrid, label: "All instruments", desc: "Costs, telemetry, agents, prompts — the deep panels" },
+  { href: "/founder/decisions", icon: ListChecks, label: "Decisions", desc: "Everything awaiting your tap — approvals, questions, appeals" },
+  { href: "/founder/autopilot/control", icon: SlidersHorizontal, label: "Controls", desc: "Switches, trust levels, budgets, emergency stop" },
+  { href: "/founder/autopilot/story", icon: BookOpen, label: "Story", desc: "The glass-box audit trail — every action + why" },
+  { href: "/founder/autopilot/voice", icon: Mic, label: "Your voice", desc: "Standing orders + objectives the brain steers by" },
+  { href: "/founder/all-tools", icon: LayoutGrid, label: "All instruments", desc: "Costs, telemetry, health, feed, steering — every deep panel" },
 ];
 
 export default function FounderHomePage() {
