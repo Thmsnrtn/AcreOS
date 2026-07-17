@@ -46,15 +46,20 @@ export const LANDING_COPY = {
     // else on the market does the last two for a land operator.
     wedge:
       "The only platform that finds parcels, sends the mail, drafts the replies, closes the deal, and tracks the note after.",
-    sub:
-      "AcreOS pulls lists, runs real comparable sales (not Zillow estimates), sends direct mail, drafts seller replies, tracks every parcel from cold lead through closed note in one thread, and turns on automated note servicing once payments are connected. The operator handles judgment calls; the system handles the busy work.",
-    cta1: "See Pax run on your county — free for 14 days",
+    // Landing-benchmark pass (2026-07-17, vs Linear/Stripe/Notion + the REI
+    // category): the hero previously stacked FOUR text blocks before the CTAs
+    // (wedge + a 60-word paragraph + ctaSub + proof). Best-in-class pages run
+    // headline → ONE subhead → CTAs. The wedge sentence IS the subhead; the
+    // long paragraph's content already lives in How-it-works and Features, so
+    // it was cut from the hero rather than compressed into mush.
+    cta1: "Start free — 14 days, no card",
     // Secondary CTA is the proof itself: the public streaming parcel-check at
     // /tools/parcel-check lets a stranger watch real government data resolve
     // source-by-source, no signup. The proof sells; the result page carries the
-    // signup CTA. (Replaced the old "90-second demo" line — there is no video;
-    // the parcel-check IS the demo.)
-    cta2: "Run it on your county — free, no signup",
+    // signup CTA. (Benchmark pass: the old pair — "See Pax run on your county"
+    // vs "Run it on your county" — read as the same button twice; now the
+    // primary is the start action and the secondary is unmistakably the demo.)
+    cta2: "Watch it run on a real parcel — no signup",
     ctaSub: "Pax pulls your first list inside 10 minutes. Every parcel gets a Land Credit Score — a 300–850 read on the parcel itself.",
     // Reshape identity (home-base-reshape.md): the platform is the home base
     // you connect your own tools to. Truthful today — the BYOK vault + the
@@ -64,6 +69,14 @@ export const LANDING_COPY = {
     // in the truth-engine audit (scripts/audit-public-claims.ts).
     proof:
       "Connect your own Twilio, SendGrid, Lob, and property-data accounts — or run on ours. Your keys, your invoices; AcreOS runs the intelligence over the top.",
+    // The honest logo wall. The category leans on user counts and press logos;
+    // pre-launch we have neither and fabricate nothing. What we DO verifiably
+    // have is the data spine: five federal sources wired live in
+    // server/services/data-source-broker.ts (queryFemaFlood / querySoilData /
+    // queryElevation / queryNwiWetlands / queryDemographics) — the same list
+    // the Data section documents in depth further down the page.
+    agenciesLabel: "Every parcel checked against five federal data sources — free:",
+    agencies: ["FEMA", "USDA", "USGS", "USFWS", "U.S. Census"] as const,
   },
   positioning: {
     primary: "Built for Land Investors.",

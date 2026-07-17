@@ -80,7 +80,6 @@ export function Hero() {
           </span>
         </h1>
         <p className="lp-hero-wedge">{c.wedge}</p>
-        <p className="lp-hero-sub">{c.sub}</p>
         <div className="lp-hero-cta">
           <Link
             href="/auth?mode=register"
@@ -116,6 +115,16 @@ export function Hero() {
             {c.proof}
           </div>
         ) : null}
+        {/* The honest trust band — the category leads with user counts and
+            press logos; pre-launch we lead with the verifiable data spine. */}
+        <div className="lp-hero-agencies" data-testid="hero-agency-band">
+          <span className="lp-hero-agencies-label">{c.agenciesLabel}</span>
+          <ul className="lp-hero-agencies-list" role="list">
+            {c.agencies.map((a) => (
+              <li key={a} className="lp-hero-agency">{a}</li>
+            ))}
+          </ul>
+        </div>
       </div>
 
       <HeroVisual />
