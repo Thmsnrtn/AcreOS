@@ -27,7 +27,7 @@
  * The tables, summary cards, and skeleton are named in-file sections below.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatRelative } from "@/lib/format";
 import {
@@ -537,6 +537,24 @@ export default function FounderAsksPage() {
   // ─── Drawer/modal state ────────────────────────────────────────────────
   const [answerOpen, setAnswerOpen] = useState<FounderAsk | null>(null);
   const [supersedeOpen, setSupersedeOpen] = useState<FounderAsk | null>(null);
+
+  // Deep-link hand-off: the Letter's "a decision needs you" card and the
+  // Decisions door's open-questions rows both link here as /founder/asks?id=N.
+  // Landing on the list and having to find the ask again breaks that hand-off,
+  // so once the open list is loaded, auto-open the answer drawer for the
+  // linked ask (once — closing it must not re-open it).
+  const [deepLinkConsumed, setDeepLinkConsumed] = useState(false);
+  useEffect(() => {
+    if (deepLinkConsumed || openAsks.length === 0) return;
+    const idParam = new URLSearchParams(window.location.search).get("id");
+    if (!idParam) {
+      setDeepLinkConsumed(true);
+      return;
+    }
+    const target = openAsks.find((a) => a.id === Number(idParam));
+    if (target) setAnswerOpen(target);
+    setDeepLinkConsumed(true);
+  }, [deepLinkConsumed, openAsks]);
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: OPEN_QUERY_KEY });

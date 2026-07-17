@@ -31,20 +31,20 @@ import {
 import { eq, desc, and, isNull, sql, gte, lt } from "drizzle-orm";
 import { MODELS } from "./models";
 import { logger } from "../utils/logger";
+import { requireOpenAIClient } from "../utils/openaiClient";
 
 // ---------------------------------------------------------------------------
 // OpenRouter client
 // ---------------------------------------------------------------------------
-const openrouterClient = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY!,
-  baseURL:
-    process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL ||
-    "https://openrouter.ai/api/v1",
-  defaultHeaders: {
-    "HTTP-Referer": "https://acreos.fly.dev",
-    "X-Title": "AcreOS",
-  },
-});
+// Lazy shared client (server/utils/openaiClient.ts): the previous module-
+// level `new OpenAI({ apiKey: ...OPENROUTER_API_KEY! })` threw at import
+// time when the key was unset, killing the scheduled job that dynamically
+// imported this module with an opaque constructor error. The shared helper
+// resolves the same key/baseURL/headers at call time and throws an honest
+// "not configured" error instead.
+function openrouter(): OpenAI {
+  return requireOpenAIClient();
+}
 
 const ASSESSMENT_MODEL = MODELS.OPUS;
 const REVIEW_MODEL = MODELS.VISION;
@@ -316,7 +316,7 @@ export async function stage1Generate(proposal: {
   // 4. Call Claude Opus to generate the code change
   let generatedCode = "";
   try {
-    const completion = await openrouterClient.chat.completions.create({
+    const completion = await openrouter().chat.completions.create({
       model: ASSESSMENT_MODEL,
       messages: [
         {
@@ -460,7 +460,7 @@ export async function stage2AdversarialReview(
 
   let rawContent = "";
   try {
-    const completion = await openrouterClient.chat.completions.create({
+    const completion = await openrouter().chat.completions.create({
       model: REVIEW_MODEL,
       messages: [
         {
@@ -580,7 +580,7 @@ export async function stage3IntentVerification(
 
   let rawContent = "";
   try {
-    const completion = await openrouterClient.chat.completions.create({
+    const completion = await openrouter().chat.completions.create({
       model: REASONER_MODEL,
       messages: [
         {

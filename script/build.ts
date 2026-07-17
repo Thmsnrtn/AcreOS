@@ -99,13 +99,19 @@ async function buildAll() {
   const release = resolveGitSha();
   process.env.VITE_GIT_SHA = release;
 
-  // Refresh sitemap.xml + robots.txt from the canonical PUBLIC_ROUTES
-  // list so the public asset shipped to dist/public is always in sync
-  // with the React route table. This must run before viteBuild() so the
-  // generated files are picked up as static assets.
-  console.log("[seo] regenerating sitemap.xml and robots.txt...");
+  // Verify sitemap.xml is fresh against the CANONICAL generator
+  // (scripts/generate-sitemap.mjs — the one CI's staleness gate runs).
+  // The build previously REGENERATED sitemap.xml + robots.txt here via
+  // script/generate-sitemap.ts, a second generator with a different URL
+  // set (it re-listed the noindex'd /compare pages the canonical one
+  // deliberately excludes and rewrote robots.txt). Two generators meant
+  // every local build dirtied the tree with a version CI then rejected
+  // as stale. The committed files are the source of truth; --check makes
+  // a genuinely stale sitemap fail the build instead of being silently
+  // overwritten.
+  console.log("[seo] checking sitemap.xml freshness (canonical generator)...");
   const { execSync: exec } = await import("child_process");
-  exec("npx tsx script/generate-sitemap.ts", { stdio: "inherit" });
+  exec("node scripts/generate-sitemap.mjs --check", { stdio: "inherit" });
 
   console.log(`building client (release=${release})...`);
   await viteBuild();

@@ -937,7 +937,7 @@ export default function FounderMoneyPage() {
               className="h-auto justify-start py-3"
             >
               <Link
-                href="/founder/unit-economics"
+                href="/founder/admin/costs"
                 aria-label="Open the unit-economics breakdown"
                 data-testid="link-money-unit-economics"
               >

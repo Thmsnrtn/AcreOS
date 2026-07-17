@@ -6,10 +6,25 @@ import type { Organization, VaAgent, VaAction, InsertVaAction, InsertVaBriefing 
 import { validateAtlasOutput, AtlasOutputType } from "./validators";
 import { logger } from "../utils/logger";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+// Lazy client: constructing OpenAI at module scope threw at import time when
+// the key was unset, so the first hit on any VA route surfaced as a generic
+// 500. Resolving at call time lets a missing key throw the typed
+// NO_AI_PROVIDER shape instead, which Errors.internal maps to a clean 503
+// ("AI features are temporarily unavailable").
+let openaiSingleton: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    const err = new Error("AI provider not configured — set AI_INTEGRATIONS_OPENAI_API_KEY");
+    err.name = "NoAIProviderError";
+    (err as { code?: string }).code = "NO_AI_PROVIDER";
+    throw err;
+  }
+  openaiSingleton ??= new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+  return openaiSingleton;
+}
 
 const MAX_TOOL_ITERATIONS = 10;
 
@@ -643,7 +658,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     const toolsUsed: string[] = [];
     const proposedActions: VaAction[] = [];
 
-    let response = await openai.chat.completions.create({
+    let response = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
       messages,
       tools: tools.length > 0 ? tools : undefined,
@@ -680,7 +695,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
       messages.push(assistantMessage as any);
       messages.push(...toolResults);
 
-      response = await openai.chat.completions.create({
+      response = await getOpenAI().chat.completions.create({
         model: "gpt-4o",
         messages,
         tools: tools.length > 0 ? tools : undefined,
@@ -819,7 +834,7 @@ Generate a briefing with:
 
 Keep it concise and actionable.`;
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
       messages: [
         { 

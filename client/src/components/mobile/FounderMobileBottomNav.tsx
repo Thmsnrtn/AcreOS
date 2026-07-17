@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useLocation, Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { NAV_INDICATOR_LAYOUT_IDS, navIndicatorSpring } from "@/lib/animations";
@@ -94,6 +95,28 @@ export function FounderMobileBottomNav() {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
 
+  // "Does anything need me?" — the one question the founder asks this bar.
+  // Open agent questions + pending witnessed actions, shown as a count badge
+  // on the Decisions slot. Fails silent to 0 (a nav bar must never error);
+  // polls gently so a new ask surfaces within ~90s without hammering.
+  const { data: needsYouCount = 0 } = useQuery<number>({
+    queryKey: ["founder-nav-needs-you"],
+    queryFn: async () => {
+      const [asksRes, pendingRes] = await Promise.all([
+        fetch("/api/founder/asks?status=open&limit=1", { credentials: "include" }),
+        fetch("/api/founder/autopilot/pending-actions", { credentials: "include" }),
+      ]);
+      let count = 0;
+      if (asksRes.ok) count += Number((await asksRes.json())?.count) || 0;
+      if (pendingRes.ok) count += ((await pendingRes.json())?.actions?.length ?? 0);
+      return count;
+    },
+    enabled: isMobile && newFounderUI && location.startsWith("/founder"),
+    staleTime: 60_000,
+    refetchInterval: 90_000,
+    retry: false,
+  });
+
   const clearLongPress = () => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
@@ -133,6 +156,11 @@ export function FounderMobileBottomNav() {
                 key={item.id}
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
+                aria-label={
+                  item.id === "decisions" && needsYouCount > 0
+                    ? `Decisions — ${needsYouCount} waiting on you`
+                    : undefined
+                }
                 onTouchStart={startLongPress}
                 onTouchEnd={clearLongPress}
                 onTouchCancel={clearLongPress}
@@ -165,6 +193,15 @@ export function FounderMobileBottomNav() {
                     />
                   )}
                   <ItemIcon className={cn("relative w-6 h-6", isActive && "text-primary")} aria-hidden="true" />
+                  {item.id === "decisions" && needsYouCount > 0 && (
+                    <span
+                      className="absolute -top-0.5 right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold tabular-nums text-primary-foreground"
+                      aria-hidden="true"
+                      data-testid="founder-nav-decisions-badge"
+                    >
+                      {needsYouCount > 9 ? "9+" : needsYouCount}
+                    </span>
+                  )}
                 </div>
                 <span className={cn("text-caption font-medium truncate", isActive && "text-primary")}>
                   {item.label}

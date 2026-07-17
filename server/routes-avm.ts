@@ -272,6 +272,64 @@ router.post('/record-transaction', async (req: Request, res: Response) => {
 });
 
 // =====================
+// LATEST STORED VALUATION (free read)
+// =====================
+
+// The Map pin-tap intelligence panel reads `GET /api/avm/:id` for the latest
+// STORED valuation ({ valuation } — the shape deriveIntel in
+// client/src/pages/maps-intel.ts consumes). This is a free read of what a
+// prior paid run produced — it never generates, never debits the pool, and
+// never invents a value: no stored valuation → { valuation: null }, and the
+// panel renders its honest "Not yet pulled · Check now" state.
+//
+// Registered AFTER /history/:propertyId and /stats so those literal GETs
+// always match first (Express matches in registration order); non-numeric
+// ids 404 in the handler (Express 5 dropped :param(regex) constraints).
+router.get('/:propertyId', cacheResponse(300), async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    if (!/^\d+$/.test(req.params.propertyId)) {
+      return Errors.notFound(res, 'Property');
+    }
+    const propertyId = parseInt(req.params.propertyId, 10);
+
+    const [prop] = await db
+      .select({ sizeAcres: properties.sizeAcres })
+      .from(properties)
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, org.id)));
+    if (!prop) {
+      return Errors.notFound(res, 'Property');
+    }
+
+    const rows = await acreOSValuation.getValuationHistory(
+      org.id.toString(),
+      req.params.propertyId
+    );
+    const latest = rows[0] as
+      | { predictedValue?: unknown; confidenceScore?: unknown; createdAt?: unknown; modelVersion?: string }
+      | undefined;
+    if (!latest || !Number(latest.predictedValue)) {
+      return res.json({ valuation: null });
+    }
+
+    const acres = prop.sizeAcres ? parseFloat(prop.sizeAcres) : null;
+    const estimatedValue = Number(latest.predictedValue);
+    res.json({
+      valuation: {
+        estimatedValue,
+        confidence: Number(latest.confidenceScore) || undefined,
+        pricePerAcre: acres && acres > 0 ? Math.round(estimatedValue / acres) : undefined,
+        source: 'AcreOS valuation model',
+        sourceAsOf: latest.createdAt ?? undefined,
+        classification: 'modeled',
+      },
+    });
+  } catch (error: any) {
+    Errors.internal(res, error);
+  }
+});
+
+// =====================
 // BULK VALUATIONS
 // =====================
 

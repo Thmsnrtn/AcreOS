@@ -547,7 +547,7 @@ export function TeamChatPanel() {
               Team messaging requires a plan with 2 or more seats.
             </p>
             <Button asChild variant="outline">
-              <Link href="/settings/billing">Upgrade plan</Link>
+              <Link href="/settings?tab=billing">Upgrade plan</Link>
             </Button>
           </div>
         )}

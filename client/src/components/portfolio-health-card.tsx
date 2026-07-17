@@ -164,7 +164,7 @@ export function TaxOptimizationBanner({ estimatedSavings }: { estimatedSavings?:
             </div>
           </div>
           <Link
-            href="/portfolio/tax"
+            href="/tax-optimizer"
             className="text-xs text-primary inline-flex items-center gap-1 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
           >
             Review <ArrowRight className="w-3 h-3" aria-hidden="true" />

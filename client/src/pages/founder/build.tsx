@@ -190,7 +190,7 @@ function AiCostCeilingTile() {
           </div>
           <Button asChild variant="ghost" size="sm">
             <Link
-              href="/founder/ai-costs"
+              href="/founder/admin/costs"
               aria-label="Open AI cost dashboard"
               data-testid="link-ai-cost-dashboard"
             >

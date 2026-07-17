@@ -459,16 +459,6 @@ function PropertyIntelligencePanel({
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch comps for this property
-  const { data: compsData } = useQuery({
-    queryKey: ["/api/comps", property.id, "mini"],
-    queryFn: async () => {
-      const res = await fetch(`/api/comps/${property.id}?limit=3`, { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
-    },
-    staleTime: 10 * 60 * 1000,
-  });
 
   // "Check now" — trigger a real enrichment lookup, then refresh the AVM query.
   // This pulls actual data (or honestly fails); it NEVER fabricates a value.
@@ -487,7 +477,6 @@ function PropertyIntelligencePanel({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/avm", property.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/comps", property.id, "mini"] });
     },
     onError: () => {
       toast({
@@ -956,37 +945,11 @@ function PropertyIntelligencePanel({
           </div>
         )}
 
-        {/* Nearby Comps */}
-        {compsData?.comps?.length > 0 && (
-          <div className="p-3 border-b">
-            <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground mb-2">Recent Comps</p>
-            <div className="space-y-1.5">
-              {compsData.comps.slice(0, 3).map((comp: any, i: number) => (
-                <div key={i} className="flex items-center justify-between bg-muted/40 rounded px-2 py-1.5">
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium truncate">{comp.county ?? comp.address ?? "Nearby parcel"}</p>
-                    <p className="text-micro text-muted-foreground">
-                      {comp.sizeAcres ? `${parseFloat(String(comp.sizeAcres)).toFixed(1)} ac` : ""}
-                      {comp.saleDate ? ` · ${new Date(comp.saleDate).getFullYear()}` : ""}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0 ml-2">
-                    {comp.salePrice ? (
-                      <p className="text-xs font-semibold text-primary">
-                        ${(parseFloat(String(comp.salePrice)) / 1000).toFixed(0)}K
-                      </p>
-                    ) : null}
-                    {comp.pricePerAcre ? (
-                      <p className="text-micro text-muted-foreground">
-                        ${parseFloat(String(comp.pricePerAcre)).toFixed(0)}/ac
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* No mini-comps panel: its query hit GET /api/comps/:id, a route
+            that never existed, so it silently rendered nothing on every pin
+            tap while firing a guaranteed 404. Comps are a metered lookup
+            (POST /api/comps/search) — they belong behind a deliberate action
+            on the property page, not a free-looking ambient panel here. */}
 
         {/* Quick Actions */}
         <div className="p-3 space-y-2">

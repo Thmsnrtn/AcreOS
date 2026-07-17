@@ -261,21 +261,17 @@ router.get("/instant-deal-hunt", async (req: Request, res: Response) => {
       return res.json({ opportunities, totalScanned: countyLeads.length, source: "live_database" });
     }
 
-    // Illustrative sample based on county expert data
-    const { TOP_LAND_COUNTIES } = await import("./jobs/countyAssessorIngest");
-    const cfg = TOP_LAND_COUNTIES.find(
-      (c: any) => c.county.toLowerCase() === String(county).toLowerCase() &&
-                  c.state.toUpperCase() === String(state).toUpperCase()
-    );
-    const mp = cfg?.medianSalePrice || 8000;
-    const aa = cfg?.avgAcreage || 10;
+    // No leads in this county yet — say so honestly. The previous fallback
+    // synthesized three invented "opportunities" ("Multi-Heir Estate",
+    // "Out-of-State LLC", …) with specific motivation scores and profit
+    // figures derived from county medians, unlabeled — a fabricated-data
+    // violation waiting to be wired to a screen. An empty list with a clear
+    // reason is the only honest answer here.
     res.json({
-      opportunities: [
-        { county: String(county), state: String(state), ownerName: "Multi-Heir Estate", acreage: aa * 1.5, assessedValue: mp * 1.2, motivationScore: 87, motivationGrade: "A", topSignal: "Inherited + tax delinquent + out-of-state heirs", estimatedOfferPrice: Math.round(mp * 0.28), estimatedResaleValue: Math.round(mp * 0.85), potentialProfit: Math.round(mp * 0.57) },
-        { county: String(county), state: String(state), ownerName: "Out-of-State LLC", acreage: aa, assessedValue: mp, motivationScore: 74, motivationGrade: "B+", topSignal: "Corporate owner + 15yr tenure + no permits", estimatedOfferPrice: Math.round(mp * 0.32), estimatedResaleValue: Math.round(mp * 0.80), potentialProfit: Math.round(mp * 0.48) },
-        { county: String(county), state: String(state), ownerName: "Tax Delinquent Owner", acreage: aa * 0.75, assessedValue: mp * 0.8, motivationScore: 68, motivationGrade: "B+", topSignal: "3 years delinquent — facing tax sale", estimatedOfferPrice: Math.round(mp * 0.24), estimatedResaleValue: Math.round(mp * 0.64), potentialProfit: Math.round(mp * 0.40) },
-      ],
-      totalScanned: 0, source: "county_intelligence",
+      opportunities: [],
+      totalScanned: 0,
+      source: "none",
+      message: `No scanned leads in ${String(county)} County, ${String(state)} yet — import or scan leads to see real opportunities.`,
     });
   } catch (err: any) {
     logger.error("[OnboardingDealHunt]", err);

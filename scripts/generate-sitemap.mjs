@@ -85,6 +85,11 @@ const STATIC_ROUTES = [
   // noindex comes off the pages.
   { path: "/land-credit-score",       lastmod: "2026-06-08", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/land-credit-score" component={LandCreditScorePage} />' },
   { path: "/glossary",                lastmod: "2026-06-10", changefreq: "monthly", priority: "0.6", appRoute: 'App.tsx: <Route path="/glossary" component={GlossaryPage} /> (restored 2026-06-10, T0-8)' },
+  // The learn HUB page — the dynamic /learn/<vertical>/<state> +
+  // /learn/county/* content pages were globbed below all along, but the hub
+  // that indexes them was missing from the static list (spotted 2026-07-17
+  // when the retired build-time generator, which did list it, was removed).
+  { path: "/learn",                   lastmod: "2026-07-17", changefreq: "weekly",  priority: "0.6", appRoute: 'App.tsx: <Route path="/learn" component={LearnHubPage} />' },
   { path: "/changelog",               lastmod: "2026-06-08", changefreq: "weekly",  priority: "0.6", appRoute: 'App.tsx: <Route path="/changelog" component={ChangelogPage} />' },
   { path: "/auth",                    lastmod: "2026-06-08", changefreq: "monthly", priority: "0.5", appRoute: 'App.tsx: <Route path="/auth" component={AuthPage} />' },
   { path: "/status",                  lastmod: "2026-06-08", changefreq: "daily",   priority: "0.5", appRoute: 'App.tsx: <Route path="/status" component={StatusPage} />' },

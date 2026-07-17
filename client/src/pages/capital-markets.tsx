@@ -548,13 +548,11 @@ export default function CapitalMarketsPage() {
                   return true;
                 })
                 .map((lender: any) => {
-                  // Match score 0-100; deterministic per lender (id-based hash) so
-                  // the displayed score stays stable across re-renders. The previous
-                  // Math.random() implementation flickered on every state change.
-                  const idStr = String(lender.id ?? lender.name ?? "");
-                  let h = 0;
-                  for (let i = 0; i < idStr.length; i++) h = (h * 31 + idStr.charCodeAt(i)) | 0;
-                  const matchScore = 60 + Math.abs(h) % 41;
+                  // No "match score" here: the previous badge was a hash of the
+                  // lender ID dressed up as a 0-100 compatibility metric — a
+                  // fabricated-data violation. A real score belongs to the Match
+                  // tab's engine; until a lender card carries one from the
+                  // server, we show only the lender's actual facts.
                   return (
                     <li key={lender.id}>
                       <Card>
@@ -563,12 +561,6 @@ export default function CapitalMarketsPage() {
                             <div>
                               <div className="flex items-center gap-2">
                                 <p className="font-semibold">{lender.name}</p>
-                                <span
-                                  className={`text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${matchScore >= 80 ? 'bg-acr-pos-soft text-acr-pos' : matchScore >= 60 ? 'bg-acr-warn-soft text-acr-warn' : 'bg-muted text-muted-foreground'}`}
-                                  aria-label={`Match score ${matchScore} of 100`}
-                                >
-                                  {matchScore} match
-                                </span>
                               </div>
                               <p className="text-xs text-muted-foreground mt-0.5">{lender.lenderType?.replace(/_/g, " ")} · {lender.state ?? "National"}</p>
                               <dl className="flex gap-3 mt-2 text-xs">

@@ -174,7 +174,7 @@ export default function ListingSyndicationPage() {
           subtitle="Connect MLS feeds, listing portals, or marketplaces to push your listings everywhere at once."
           cta={{
             label: "Browse channels",
-            onClick: () => { window.location.assign("/integrations"); },
+            onClick: () => { window.location.assign("/settings/integrations"); },
             "data-testid": "listing-syndication-browse",
           }}
           actionIcon={null}

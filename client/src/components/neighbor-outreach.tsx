@@ -91,7 +91,7 @@ export function NeighborOutreach({ propertyId, isOwned }: NeighborOutreachProps)
               variant="ghost"
               size="sm"
               className="px-0 mt-1 underline"
-              onClick={() => setLocation(`/properties/${propertyId}?action=enrich`)}
+              onClick={() => setLocation(`/parcels/${propertyId}?action=enrich`)}
             >
               Enrich this property
             </Button>
