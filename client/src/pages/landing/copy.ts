@@ -78,6 +78,19 @@ export const LANDING_COPY = {
     agenciesLabel: "Every parcel checked against five federal data sources — free:",
     agencies: ["FEMA", "USDA", "USGS", "USFWS", "U.S. Census"] as const,
   },
+  // Simulated product screens (2026-07-17, founder request following the
+  // landing benchmark pass). These are RENDERED depictions of the real
+  // product surfaces — the Map door's parcel-intelligence panel, the Today
+  // decision queue, the Pax thread — populated with the same hand-authored
+  // illustrative fixtures the hero cards use. Every frame carries the
+  // "Example · representative output" chip; the section subline turns the
+  // honesty into a CTA (run the free parcel check for real output).
+  productShots: {
+    eyebrow: "The product",
+    title: "What you actually work in.",
+    sub: "Illustrative screens with example data — run the free parcel check to see real output on a real parcel.",
+    proofCta: "Run a free parcel check",
+  },
   positioning: {
     primary: "Built for Land Investors.",
     // Truth-engine note (verified against Rafe Castellan CCO report, 2026-06-01

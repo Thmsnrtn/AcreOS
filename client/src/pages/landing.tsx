@@ -38,6 +38,7 @@ import {
 } from "@/lib/jsonld-schemas";
 import { LandingNav } from "./landing/LandingNav";
 import { Hero } from "./landing/Hero";
+import { ProductShots } from "./landing/ProductShots";
 import { Positioning } from "./landing/Positioning";
 import { HowItWorks } from "./landing/HowItWorks";
 import { Agents } from "./landing/Agents";
@@ -82,6 +83,9 @@ export default function LandingPage() {
           prototype's app.jsx switch statement. */}
       <main id="main-content">
         <Hero />
+        {/* Simulated product screens (rendered UI, example-labeled) — the
+            benchmark pattern of showing the actual product, done honestly. */}
+        <ProductShots />
         <Positioning />
         <HowItWorks />
         <Agents />
