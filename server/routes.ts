@@ -490,6 +490,31 @@ export async function registerRoutes(
     res.status(200).json({ ok: true, uptime: process.uptime() });
   });
 
+  // /api/health/auth-config — secret-free Clerk-config self-diagnostic
+  // (server/services/authConfigDiagnostic.ts). MUST live in this pre-Clerk,
+  // pre-auth block: it exists to explain the "every authenticated call 401s"
+  // outage, so it can never sit behind the very session verification it
+  // diagnoses. It was first registered in routes-enhancements.ts, where the
+  // GET /api/health/:service wildcard (registered earlier) shadowed it into a
+  // 404 — the same trap that bit /api/health/deep on 2026-05-11.
+  // Gated on the presence of a Clerk session cookie: a signed-in operator
+  // whose session the server can't verify still carries __session*, so they
+  // get the report; an anonymous scanner gets nothing.
+  app.get("/api/health/auth-config", async (req: Request, res: Response) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      const cookieHeader = req.headers.cookie ?? "";
+      const hasClerkCookie = /(?:^|;\s*)__session(?:_[A-Za-z0-9_-]+)?=/.test(cookieHeader);
+      if (!hasClerkCookie) {
+        return res.json({ available: false });
+      }
+      const { computeAuthConfigReport } = await import("./services/authConfigDiagnostic");
+      res.json({ available: true, ...computeAuthConfigReport() });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
   // /api/health/uptime-probe — external uptime probe ingest (gold-standard
   // outside-in reachability). A free GitHub Actions cron POSTs here every ~5min
   // with a shared token; each call records an external uptime sample. Dormant
@@ -702,12 +727,15 @@ export async function registerRoutes(
   // Clerk owns all login + OAuth now, so the standalone social-login routes
   // were redundant. (Removed 2026-07-15.)
 
-  // /api/health/deep is registered later by routes-enhancements.ts. The wildcard
-  // /api/health/:service below would otherwise shadow it (Express picks the
-  // first match), so we special-case `deep` to delegate to the deep-health path.
-  // Caught 2026-05-11 via endpoint health probe — /api/health/deep was 404ing.
+  // /api/health/deep and /api/health/replica are registered later by
+  // routes-enhancements.ts. The wildcard /api/health/:service below would
+  // otherwise shadow them (Express picks the first match), so we special-case
+  // both to delegate. deep was caught 2026-05-11 via endpoint health probe;
+  // replica had been silently 404ing the same way ever since it shipped
+  // (caught 2026-07-17 while diagnosing the identically-shadowed
+  // /api/health/auth-config, which now lives in the pre-Clerk probe block).
   app.get("/api/health/:service", async (req: AuthenticatedRequest, res: Response, next) => {
-    if (req.params.service === "deep") return next();
+    if (req.params.service === "deep" || req.params.service === "replica") return next();
     const { healthCheckService } = await import("./services/healthCheck");
     const service = await healthCheckService.checkService(req.params.service);
     if (!service) {
