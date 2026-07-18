@@ -738,6 +738,9 @@ export function registerCommunicationRoutes(app: Express): void {
         text,
         replyTo,
         organizationId: org.id,
+        // Deal mail: a user-composed email to an external recipient — org
+        // identity required; the 4xx below tells them to connect their email.
+        purpose: 'counterparty',
       });
 
       if (result.success) {

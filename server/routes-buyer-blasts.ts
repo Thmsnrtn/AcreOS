@@ -223,6 +223,9 @@ export function registerBuyerBlastRoutes(app: Express): void {
                 subject,
                 html: body,
                 organizationId: orgId,
+                // Deal mail: blast to the customer's buyer list — org
+                // identity required.
+                purpose: 'counterparty',
               } as any);
               if (result?.success || result === undefined) {
                 sentCount++;

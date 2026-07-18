@@ -308,12 +308,20 @@ export class SequenceProcessorService {
       const { emailService } = await import("./emailService");
       const configured = await emailService.isConfigured();
       if (configured) {
-        await emailService.sendEmail({
+        const sendResult = await emailService.sendEmail({
           to: lead.email,
           subject,
           html: content,
           text: content.replace(/<[^>]*>/g, ""),
+          // Deal mail: sequence outreach to a lead — org identity required.
+          organizationId: lead.organizationId,
+          purpose: 'counterparty',
         });
+        if (!sendResult.success) {
+          logger.warn("[sequence-processor] Email refused/failed", {
+            metadata: { leadId: lead.id, error: sendResult.error },
+          });
+        }
       } else {
         logger.info("[sequence-processor] Email service not available", { metadata: { wouldSendTo: lead.email } });
       }

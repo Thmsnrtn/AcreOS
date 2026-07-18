@@ -1762,6 +1762,8 @@ export async function executeTool(
           html: htmlContent,
           text: textContent,
           organizationId: org.id,
+          // Deal mail: Pax emailing a customer's lead — org identity required.
+          purpose: 'counterparty',
         });
 
         // Record the send into the audit envelope so the rate limiter and the

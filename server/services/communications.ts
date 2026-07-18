@@ -89,6 +89,12 @@ export class CommunicationsService {
           to: lead.email,
           subject: options.subject || 'Message from AcreOS',
           html: `<p>${options.message}</p>`,
+          // Deal mail: must carry the org's own identity (this call previously
+          // omitted organizationId entirely, so lead outreach silently went
+          // out as platform @acreos.io — the exact leak the counterparty
+          // enforcement closes).
+          organizationId: options.organizationId,
+          purpose: 'counterparty',
         });
 
         if (result.success) {
