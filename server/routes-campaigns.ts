@@ -1964,6 +1964,8 @@ export function registerCampaignRoutes(app: Express): void {
             html,
             organizationId: org.id,
             isCampaignEmail: true,
+            // Deal mail: campaign send to a customer's lead — org identity required.
+            purpose: 'counterparty',
           });
           results.sent++;
           sentInExecution.add(lead!.id);

@@ -305,6 +305,16 @@ export interface EmailOptions {
   /** Whether this is a marketing/campaign email (appends unsubscribe footer if true) */
   isCampaignEmail?: boolean;
   transactional?: boolean; // CAN-SPAM §5 safe-default: footer on EVERY send UNLESS true. See shouldRenderCanSpamFooter().
+  /**
+   * Which lane this send belongs to (founder decision, 2026-07-17):
+   *  - "counterparty" — deal mail to the customer's sellers/buyers/borrowers.
+   *    REQUIRES the org's own identity (BYO SES creds or verified sending
+   *    domain); refused honestly otherwise — never falls back to @acreos.io.
+   *  - "system" (default) — AcreOS talking to its own users (trial, win-back,
+   *    digests, receipt/dunning fallbacks). May use the platform identity.
+   * Every NEW lead/buyer/borrower-facing call site MUST set "counterparty".
+   */
+  purpose?: 'system' | 'counterparty';
 }
 
 export interface EmailResult {
@@ -504,6 +514,45 @@ export class EmailService {
           success: false,
           error: `Daily send limit reached for warmup day ${reservation.warmupDay} (limit: ${reservation.dailyLimit}). Resets at ${reservation.resetAt.toISOString()}.`,
           errorType: 'quota_exceeded',
+          attempts: 0,
+          retryable: false,
+        };
+      }
+    }
+
+    // ── Counterparty enforcement (founder decision, 2026-07-17) ──────────
+    // Deal mail — anything sent to a customer's sellers/buyers/borrowers on
+    // their behalf — must carry the CUSTOMER's identity: either their own
+    // AWS SES credentials (aws_ses integration) or their verified sending
+    // domain (org email identity). The platform @acreos.io identity is
+    // reserved for SYSTEM mail (trial notices, win-back, receipt/dunning
+    // fallbacks, digests to the customer themselves). Deal lanes mark their
+    // sends with purpose: "counterparty"; there is deliberately NO silent
+    // fallback to the platform identity on that path — the honest failure
+    // tells the customer to connect their email.
+    if (options.purpose === 'counterparty') {
+      if (!options.organizationId) {
+        return {
+          success: false,
+          error: 'Counterparty email requires an organizationId — deal mail always belongs to a customer org.',
+          errorType: 'configuration_error',
+          attempts: 0,
+          retryable: false,
+        };
+      }
+      const [orgCreds, orgIdentity] = await Promise.all([
+        getOrgCredentials(options.organizationId),
+        getIdentityForSend(options.organizationId).catch(() => null),
+      ]);
+      if (!orgCreds && !orgIdentity) {
+        logger.info('[EmailService] Counterparty send refused — no connected email identity', {
+          metadata: { organizationId: options.organizationId },
+        });
+        return {
+          success: false,
+          error:
+            'No connected email identity for this organization. Connect your email account or verify your sending domain (Settings → Connections) to email sellers and buyers — platform email is reserved for system notices.',
+          errorType: 'configuration_error',
           attempts: 0,
           retryable: false,
         };
