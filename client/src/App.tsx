@@ -72,6 +72,7 @@ const PaxCopilotRail = React.lazy(() => import("@/components/pax-copilot-rail").
 const DynamicIsland = React.lazy(() => import("@/components/dynamic-island").then(m => ({ default: m.DynamicIsland })));
 import { DynamicIslandProvider } from "@/contexts/dynamic-island-context";
 import { useCursorGlass } from "@/hooks/use-cursor-glass";
+import { useRenderSentinel } from "@/hooks/use-render-sentinel";
 import { TrialBanner } from "@/components/trial-banner";
 import { NotificationStack } from "@/components/notification-stack";
 const NotificationBanner = React.lazy(() => import("@/components/notification-banner").then(m => ({ default: m.NotificationBanner })));
@@ -1855,6 +1856,9 @@ function AppContent() {
   useSwipeNavigation();
   useWhiteLabel();
   useCursorGlass();
+  // Blank-render sentinel: detects a mounted-but-unpainted page (stalled
+  // animation engine on iOS Safari), self-heals, and reports the trip.
+  useRenderSentinel();
 
   // NPS feedback collection
   const [npsOpen, setNpsOpen] = React.useState(false);

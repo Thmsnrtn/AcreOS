@@ -95,6 +95,10 @@
   --glass-bg-light:    rgba(252, 250, 247, 0.72);
   --glass-bg-subtle:   rgba(252, 250, 247, 0.55);
   --glass-bg-sm:       rgba(252, 250, 247, 0.65);
+  /* Modal panels: near-opaque — they float over a blurred scrim, so
+     translucency adds nothing and backdrop-filter is banned there
+     (see .modal-surface). */
+  --glass-bg-modal:    rgba(252, 250, 247, 0.96);
   --glass-border:      rgba(255, 255, 255, 0.55);
   --glass-border-sm:   rgba(255, 255, 255, 0.40);
   --glass-specular:    linear-gradient(135deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 60%);
@@ -192,6 +196,7 @@
   --glass-bg-light:  rgba(20, 14, 8, 0.78);
   --glass-bg-subtle: rgba(20, 14, 8, 0.60);
   --glass-bg-sm:     rgba(20, 14, 8, 0.70);
+  --glass-bg-modal:  rgba(24, 18, 12, 0.97);
   --glass-border:    rgba(255, 255, 255, 0.07);
   --glass-border-sm: rgba(255, 255, 255, 0.05);
   --glass-specular:  linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0) 60%);
@@ -1397,6 +1402,82 @@
 }
 .liquid-glass-subtle > * { position: relative; z-index: 1; }
 
+/* ── Touch-device glass budget ──────────────────────────────────────
+   iOS Safari has a hard GPU tile budget; every backdrop-filter surface
+   costs proportionally to its blur radius, and when the budget is blown
+   Safari silently stops painting layers (pages render black, dialog
+   panels vanish — observed on the founder's iPhone). Desktop keeps the
+   full 32px material; phones get the same glass at a radius the mobile
+   compositor can always afford. Visually near-identical at handset size. */
+@media (hover: none) {
+  .glass-panel,
+  .liquid-glass {
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+  }
+  .liquid-glass-sm,
+  .liquid-glass-subtle {
+    backdrop-filter: blur(10px) saturate(150%);
+    -webkit-backdrop-filter: blur(10px) saturate(150%);
+  }
+}
+
+/* ── Modal surface (no backdrop-filter) ─────────────────────────────
+   Dialog/sheet panels sit ON TOP of an overlay that already blurs and
+   dims the page. Giving the panel its own backdrop-filter meant iOS
+   Safari had to resolve a filter whose backdrop is itself a filtered
+   layer — the documented WebKit failure mode where the panel simply
+   never paints (the founder's "frosted page with nothing on it").
+   The panel therefore uses a near-opaque surface: over the blurred
+   scrim it reads identically to glass, with none of the risk. */
+.modal-surface {
+  /* NB: NO `position` declaration here. Modal panels position themselves
+     with a `fixed` utility, and an unlayered `.modal-surface {position:
+     relative}` would OUTRANK Tailwind's `.fixed` (equal specificity, later
+     source order) — dropping the panel into normal flow at its `top`
+     offset, ~1600px down the page and off the viewport. That is exactly
+     the "frosted page, invisible dialog" the founder hit (the old
+     `.glass-panel` on DialogContent had the same defect). The specular
+     ::before anchors to the panel's own `fixed` box, so no positioning
+     context is needed here. */
+  background: var(--glass-bg-modal, hsl(var(--card)));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+.modal-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-specular);
+  pointer-events: none;
+  z-index: 0;
+}
+.modal-surface > * { position: relative; z-index: 1; }
+
+/* ── Tab-strip overflow ─────────────────────────────────────────────
+   Applied by the base TabsList. Lets any tab strip scroll horizontally
+   instead of hard-clipping its last tab, keeps the scrollbar invisible,
+   and on touch devices fades the trailing edge as a "more tabs this way"
+   affordance. Strips that fit their container are visually unchanged. */
+.tab-strip-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.tab-strip-scroll::-webkit-scrollbar { display: none; }
+@media (hover: none) {
+  .tab-strip-scroll {
+    scroll-snap-type: x proximity;
+    mask-image: linear-gradient(to right, black calc(100% - 24px), rgba(0, 0, 0, 0.35) 100%);
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), rgba(0, 0, 0, 0.35) 100%);
+  }
+  .tab-strip-scroll > * { scroll-snap-align: start; }
+}
+
 /* ── Capsule & Elevation utilities ────────────────────────────────── */
 .capsule { border-radius: 9999px; }
 .elevation-1 { box-shadow: var(--shadow-1); }
@@ -1787,10 +1868,12 @@ body[data-offline-banner="true"] [data-page-topbar] {
   transition: margin-left 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* Cards: frosted glass hover lift */
+/* Cards: frosted glass hover lift.
+   No standing will-change — browsers promote layers during the transition
+   on their own, and permanent will-change on repeated surfaces multiplies
+   composited layers on iOS Safari until it drops paints. */
 .card-glass-hover {
   @apply transition-all duration-200 ease-out;
-  will-change: transform;
 }
 @media (hover: hover) {
   .card-glass-hover:hover {
@@ -1802,7 +1885,6 @@ body[data-offline-banner="true"] [data-page-topbar] {
 /* Button press micro-interaction */
 .btn-press {
   @apply transition-transform duration-100 ease-out;
-  will-change: transform;
 }
 .btn-press:active {
   transform: scale(0.96);
@@ -1867,21 +1949,28 @@ body[data-offline-banner="true"] [data-page-topbar] {
   border-radius: 0.375rem;
 }
 
-/* Page entry animation — smooth Spotlight-style */
+/* Page entry animation — smooth Spotlight-style.
+   No `filter: blur()` in the keyframes: animating filter forces an
+   offscreen composite of the whole page on every route change, one of the
+   triggers for iOS Safari dropping paints entirely. And the animation runs
+   only on hover-capable (desktop) pointers — on touch devices the content's
+   RESTING state is fully visible, so a stalled animation engine can never
+   strand a page at opacity 0. Route changes on mobile still cross-fade via
+   the View Transitions layer. */
 @keyframes pageEnter {
   from {
     opacity: 0;
     transform: translateY(6px) scale(0.995);
-    filter: blur(2px);
   }
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
-    filter: blur(0);
   }
 }
-.page-enter {
-  animation: pageEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@media (hover: hover) and (pointer: fine) {
+  .page-enter {
+    animation: pageEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
 }
 
 /* Toast: slide down from top-right with blur */
@@ -2209,6 +2298,25 @@ textarea:focus-visible,
   .traffic-light-group:hover .tl-symbol {
     opacity: 1;
   }
+}
+
+/* ── Render rescue ──────────────────────────────────────────────────
+   Script-driven entrances (framer-motion `initial="hidden"`) hold content
+   at inline `opacity: 0` until the animation engine ticks it up. If that
+   engine ever stalls (throttled rAF in a long-lived iOS Safari tab, etc.)
+   the page rests INVISIBLE while everything else works. This rule is the
+   safety net: any element still sitting at exactly inline `opacity: 0`
+   1.6s after (re)appearing gets landed at its final visible state by a
+   CSS animation (which outranks inline styles while filling). The moment
+   the real animation moves opacity to a fractional value the selector
+   stops matching and the rescue disarms — normal entrances are
+   completely unaffected, and exit fades unmount long before the delay
+   elapses. */
+@keyframes acr-render-rescue {
+  to { opacity: 1; }
+}
+main [style*="opacity: 0"]:not([style*="opacity: 0."]) {
+  animation: acr-render-rescue 1ms linear 1.6s forwards;
 }
 
 /* Reduced motion override — honor the system preference globally.

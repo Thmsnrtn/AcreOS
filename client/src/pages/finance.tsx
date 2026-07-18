@@ -892,7 +892,10 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
         // over-content surface — give it the glass material + Track-1
         // `shadow-level-3` (mode-independent) instead of an opaque `bg-background`
         // + raw `shadow-2xl`. Layout/sizing unchanged.
-        className="fixed right-0 top-0 h-full w-full max-w-2xl glass-panel shadow-level-3 overflow-y-auto"
+        // modal-surface, not glass-panel: this slide-over floats above a
+        // backdrop-blurred scrim — stacking a second backdrop-filter is the
+        // WebKit combination that fails to paint on iOS Safari.
+        className="fixed right-0 top-0 h-full w-full max-w-2xl modal-surface shadow-level-3 overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* §1.2 nested sticky chrome: this header sits inside the slide-over —

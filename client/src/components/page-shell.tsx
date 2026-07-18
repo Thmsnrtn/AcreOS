@@ -114,7 +114,12 @@ export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7x
           so PageShell only provides the #main-content landmark. */}
       <Sidebar />
       <div
-        className={`flex-1 flex flex-col min-w-0 content-spring will-change-[margin-left] transition-[margin-right] duration-200 ${
+        // No will-change here: margin isn't a compositable property, so
+        // will-change-[margin-left] bought nothing while forcing iOS Safari
+        // to promote the ENTIRE page content into one giant GPU layer —
+        // under memory pressure that layer silently paints black (the
+        // "blank page, working bottom nav" failure on iPhone).
+        className={`flex-1 flex flex-col min-w-0 content-spring transition-[margin-right] duration-200 ${
           isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"
         } ${railOpen ? "md:mr-[360px]" : "md:mr-12"}`}
       >
