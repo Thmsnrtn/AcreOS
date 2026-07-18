@@ -1,14 +1,21 @@
-// Bumped to v16 (2026-06-12): force every installed SW to drop its v15
-// caches on activate and re-pull from network — insurance against a stale
-// client shell while chasing a reported blank-Pax render. Content-hashed
-// assets already cache-bust per deploy, but bumping the name guarantees a
-// clean slate (the activate handler deletes any non-current acreos-* cache).
+// Bumped to v17 (2026-07-18): the v16 asset strategy was CACHE-FIRST for
+// every non-API GET — including hashed JS route chunks. Across several
+// same-day deploys that served a Frankenstein app: fresh main bundle, stale
+// or missing lazy chunks, which rendered the founder doors as BLANK pages on
+// any browser profile with the SW installed (private windows, with no SW,
+// worked — the tell). v17 flips assets to NETWORK-FIRST with cache fallback
+// (see the fetch handler): hashed assets are immutable per URL, so the HTTP
+// cache already makes repeat loads fast; the SW cache now exists only as an
+// offline fallback and can never serve a chunk newer deploys have replaced.
+// The version bump forces every installed v16 worker to update, drop its
+// caches on activate, and take over immediately (skipWaiting+clients.claim).
 //
+// v16 (2026-06-12): clean-slate bump chasing a stale-shell blank-Pax render.
 // v15 (2026-06-04, AcreOS-Solene migration Wave 2): founder UI got the new
 // 5-door surface + Solene chat; stale-v14 caches were serving the
 // pre-migration shell. v14 (2026-05-29) added /api/field-scout/quick-add to
 // the offline-queueable allowlist and bumped the IndexedDB version to 2.
-const CACHE_NAME = 'acreos-v16';
+const CACHE_NAME = 'acreos-v17';
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const API_CACHE = `${CACHE_NAME}-api`;
 
@@ -313,12 +320,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Static assets: NETWORK-FIRST, cache as offline fallback only (v17).
+  // The previous cache-first strategy served hashed JS chunks from the SW
+  // cache forever — across rapid deploys that mixed bundle generations and
+  // blanked lazily-loaded routes. Hashed URLs are immutable, so the browser
+  // HTTP cache already gives repeat-visit speed; the SW copy exists solely
+  // so the app shell can limp along offline.
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(request).then((response) => {
+    fetch(request)
+      .then((response) => {
         if (response.ok) {
           const clonedResponse = response.clone();
           caches.open(STATIC_CACHE).then((cache) => {
@@ -326,8 +336,8 @@ self.addEventListener('fetch', (event) => {
           });
         }
         return response;
-      });
-    })
+      })
+      .catch(() => caches.match(request))
   );
 });
 
