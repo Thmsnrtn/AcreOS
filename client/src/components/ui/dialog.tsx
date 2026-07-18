@@ -57,8 +57,12 @@ const DialogContent = React.forwardRef<
         // narrower than this even if a consumer or downstream JSX
         // tries to collapse it.
         "fixed left-[50%] top-[50%] z-modal grid w-[calc(100vw-2rem)] min-w-[280px] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4",
-        // Tahoe Liquid Glass material
-        "glass-panel rounded-2xl p-6",
+        // Tahoe material, modal grade: the overlay beneath already blurs
+        // the page, and stacking a second backdrop-filter on the panel is
+        // the WebKit combination that left dialog panels unpainted on
+        // iOS (frosted page, invisible dialog). modal-surface keeps the
+        // glass look with a near-opaque fill and no backdrop-filter.
+        "modal-surface rounded-2xl p-6",
         // Spring animation
         "duration-200",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",

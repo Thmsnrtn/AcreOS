@@ -35,7 +35,10 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName
 
 const sheetVariants = cva(
-  "fixed z-modal gap-4 liquid-glass p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+  // modal-surface, not liquid-glass: the command-backdrop overlay under
+  // the sheet already blurs the page, and a second backdrop-filter on the
+  // panel is the WebKit combination that left panels unpainted on iOS.
+  "fixed z-modal gap-4 modal-surface p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
   {
     variants: {
       side: {

@@ -153,7 +153,7 @@ describe("Errors helpers — Apple-voice rewrites", () => {
     expect(r.statusCode).toBe(500);
     const body = r.body as { message: string; requestId: string; docsUrl: string };
     expect(body.message).toBe(
-      "Something broke on our end. We've logged it; if it keeps happening, please share what you were doing at status.acreos.io.",
+      "Something broke on our end. It's been logged automatically — please try again in a moment.",
     );
     expect(body.requestId).toBe("req-abc-123");
     expect(body.docsUrl).toBe("/help/article/internal-error");

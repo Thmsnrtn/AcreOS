@@ -661,20 +661,28 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
   
-  // Clear demo data endpoint
+  // Clear demo data endpoint. Walks the live FK graph so leads/deals/
+  // properties with dependent rows (offers, conversations, campaign
+  // responses…) clear cleanly instead of tripping a foreign-key 500 —
+  // see server/services/orgDataClear.ts.
   api.post("/api/clear-demo-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      
-      // Delete in order to respect foreign key constraints
-      await db.delete(payments).where(eq(payments.organizationId, org.id));
-      await db.delete(notes).where(eq(notes.organizationId, org.id));
-      await db.delete(deals).where(eq(deals.organizationId, org.id));
-      await db.delete(properties).where(eq(properties.organizationId, org.id));
-      await db.delete(leads).where(eq(leads.organizationId, org.id));
-      await db.delete(activityLog).where(eq(activityLog.organizationId, org.id));
-      
-      res.json({ success: true, message: "All data cleared for your organization" });
+      const { clearOrganizationRecords } = await import("./services/orgDataClear");
+      const outcome = await clearOrganizationRecords(org.id);
+      if (outcome.blocked.length > 0) {
+        Errors.internal(
+          res,
+          new Error(`clear-demo-data blocked on: ${outcome.blocked.join(", ")}`),
+        );
+        return;
+      }
+      const rows = Object.values(outcome.cleared).reduce((a, b) => a + b, 0);
+      res.json({
+        success: true,
+        message: "All data cleared for your organization",
+        removedRows: rows,
+      });
     } catch (err: any) {
       logger.error("Clear data error", err);
       Errors.internal(res, err);

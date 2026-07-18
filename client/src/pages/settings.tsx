@@ -276,14 +276,21 @@ export default function Settings() {
       queryClient.invalidateQueries();
       setShowClearConfirm(false);
       toast({
-        title: "Data cleared",
-        description: "All demo data has been removed from your organization.",
+        title: "Workspace cleared",
+        description:
+          "All leads, properties, deals, notes, and payments were removed from your workspace.",
       });
     },
     onError: (err: any) => {
+      // apiRequest throws "<status>: <server message>" — the numeric prefix
+      // is engineer-speak, so drop it before showing the person the message.
+      const raw = typeof err?.message === "string" ? err.message : "";
+      const friendly = raw.replace(/^\d{3}:\s*/, "");
       toast({
-        title: "Couldn't clear data",
-        description: err?.message || "Check your connection and try again.",
+        title: "Couldn't clear your data",
+        description:
+          friendly ||
+          "Nothing was removed. Check your connection and try again — if it keeps failing, it's on our side and already logged.",
         variant: "destructive",
       });
     },

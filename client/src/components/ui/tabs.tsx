@@ -12,7 +12,13 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-xl liquid-glass-subtle p-1 text-muted-foreground",
+      // justify-start + tab-strip-scroll (not justify-center): a centered
+      // flex container that overflows clips its FIRST items unreachably,
+      // and an overflowing strip previously hard-cut the last tab with no
+      // hint it scrolls ("Foreca…" on the Finance door). The strip now
+      // scrolls with a right-edge fade affordance on touch devices; when
+      // everything fits, it renders exactly as before.
+      "inline-flex h-10 items-center justify-start rounded-xl liquid-glass-subtle p-1 text-muted-foreground tab-strip-scroll",
       className
     )}
     {...props}

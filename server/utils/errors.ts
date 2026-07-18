@@ -225,8 +225,11 @@ export const Errors = {
     // to the logger so SRE can correlate via the request ID we surface
     // alongside the message. In dev we keep the underlying message so
     // local debugging stays painless.
+    // No external links here: the copy previously pointed at
+    // status.acreos.io, which was never stood up — a dead link inside an
+    // error message reads as a second failure. Plain, honest, retryable.
     const prodMessage =
-      "Something broke on our end. We've logged it; if it keeps happening, please share what you were doing at status.acreos.io.";
+      "Something broke on our end. It's been logged automatically — please try again in a moment.";
     const message =
       process.env.NODE_ENV === "production"
         ? prodMessage
