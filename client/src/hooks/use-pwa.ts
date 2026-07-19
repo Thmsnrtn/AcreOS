@@ -11,6 +11,11 @@ export function usePWA() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  // iOS + real Safari specifically. "Add to Home Screen" only exists in
+  // Safari's share sheet — Chrome (CriOS), Firefox (FxiOS), Edge (EdgiOS),
+  // and in-app webviews (Instagram/Gmail/etc., which omit the Safari token)
+  // can't do it, so showing them the steps would be a dead end.
+  const [isIOSSafari, setIsIOSSafari] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [syncedCount, setSyncedCount] = useState(0);
@@ -27,9 +32,19 @@ export function usePWA() {
   }, []);
 
   useEffect(() => {
+    const ua = navigator.userAgent;
+    // iPadOS 13+ reports a desktop UA but is still a touch iPad — detect via
+    // maxTouchPoints so an iPad in "request desktop site" mode still counts.
     const isIOSDevice =
-      /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      (/iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) &&
+      !(window as any).MSStream;
     setIsIOS(isIOSDevice);
+
+    // Real Safari only — exclude other iOS browser engines and in-app
+    // webviews, none of which expose "Add to Home Screen".
+    const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|GSA|Instagram|FBAN|FBAV|Line\//.test(ua);
+    setIsIOSSafari(isIOSDevice && isSafari);
 
     const isStandalone =
       window.matchMedia("(display-mode: standalone)").matches ||
@@ -114,6 +129,7 @@ export function usePWA() {
     canInstall: !!installPrompt,
     isInstalled,
     isIOS,
+    isIOSSafari,
     isOnline,
     pendingSyncCount,
     syncedCount,
