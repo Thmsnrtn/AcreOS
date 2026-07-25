@@ -53,9 +53,11 @@ async function fetchServerValue<T>(key: string): Promise<{ value: T } | null> {
     const res = await fetch(`/api/ui-state/${encodeURIComponent(key)}`, {
       credentials: "include",
     });
-    if (res.status === 404) return null; // unset on the server — keep local
+    // 404 kept for rolling-deploy compat with servers predating `set:false`.
+    if (res.status === 404) return null;
     if (!res.ok) return null;
-    const data = (await res.json()) as { key: string; value: T };
+    const data = (await res.json()) as { key: string; value: T; set?: boolean };
+    if (data.set === false) return null; // unset on the server — keep local
     return { value: data.value };
   } catch {
     return null;

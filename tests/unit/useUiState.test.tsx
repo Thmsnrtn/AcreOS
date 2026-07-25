@@ -139,7 +139,7 @@ describe("Tahoe E6 — useUiState", () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ key: "sidebar:collapsed", value: true }),
+      json: async () => ({ key: "sidebar:collapsed", value: true, set: true }),
     });
     (globalThis as any).fetch = fetchMock;
 
@@ -151,5 +151,25 @@ describe("Tahoe E6 — useUiState", () => {
     });
     expect(lastValue).toBe(true);
     expect(JSON.parse(localStorage.getItem("sidebar:collapsed")!)).toBe(true);
+  });
+
+  it("keeps the local value when the server answers 200 set:false (unset)", async () => {
+    // The server answers 200 { set:false } for unset keys — never a 404, so
+    // fresh users don't paint console errors on every page load.
+    localStorage.setItem("sidebar:collapsed", JSON.stringify(true));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ key: "sidebar:collapsed", value: null, set: false }),
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    mount("sidebar:collapsed", false);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // Local value retained — the unset server answer must not clobber it.
+    expect(lastValue).toBe(true);
   });
 });
