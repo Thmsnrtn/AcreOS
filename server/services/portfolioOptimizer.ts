@@ -4,7 +4,7 @@ import {
   optimizationRecommendations,
   properties,
 } from '../../shared/schema';
-import { eq, and, desc, gte, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
