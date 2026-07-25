@@ -187,11 +187,11 @@ function SettlementsTab() {
   const [settlementToRelease, setSettlementToRelease] = useState<Settlement | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/fees/settlements", statusFilter],
+    queryKey: ["/api/transaction-fees/fees/settlements", statusFilter],
     queryFn: async () => {
       const params = new URLSearchParams({ limit: "50", offset: "0" });
       if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
-      const res = await fetch(`/api/fees/settlements?${params}`, { credentials: "include" });
+      const res = await fetch(`/api/transaction-fees/fees/settlements?${params}`, { credentials: "include" });
       return res.json();
     },
   });
@@ -202,7 +202,7 @@ function SettlementsTab() {
 
   const releaseMutation = useMutation({
     mutationFn: async (id: string | number) => {
-      const res = await fetch(`/api/fees/settlements/${id}/release`, {
+      const res = await fetch(`/api/transaction-fees/fees/settlements/${id}/release`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -213,8 +213,8 @@ function SettlementsTab() {
     },
     onSuccess: () => {
       toast({ title: "Settlement released from escrow." });
-      queryClient.invalidateQueries({ queryKey: ["/api/fees/settlements"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/fees/analytics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transaction-fees/fees/settlements"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transaction-fees/fees/analytics"] });
       setSettlementToRelease(null);
     },
     onError: (e: any) =>
@@ -325,9 +325,9 @@ function SettlementsTab() {
 
 function LedgerTab() {
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/fees/ledger"],
+    queryKey: ["/api/transaction-fees/fees/ledger"],
     queryFn: async () => {
-      const res = await fetch("/api/fees/ledger?limit=100", { credentials: "include" });
+      const res = await fetch("/api/transaction-fees/fees/ledger?limit=100", { credentials: "include" });
       return res.json();
     },
   });
@@ -390,10 +390,10 @@ function TriggerPayoutDialog({ onSuccess }: { onSuccess: () => void }) {
   const bankId = useId();
   const noteId = useId();
 
-  // allow-no-invalidation: the parent's onSuccess prop invalidates /api/fees/payouts (see dialog usage)
+  // allow-no-invalidation: the parent's onSuccess prop invalidates /api/transaction-fees/fees/payouts (see dialog usage)
   const triggerMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/fees/payouts/trigger", {
+      const res = await fetch("/api/transaction-fees/fees/payouts/trigger", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -497,7 +497,7 @@ function SchedulePanel() {
   // allow-no-invalidation: schedule settings live in this form's local state — no query caches them
   const scheduleMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/fees/payouts/schedule", {
+      const res = await fetch("/api/transaction-fees/fees/payouts/schedule", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -576,9 +576,9 @@ function PayoutsTab() {
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/fees/payouts"],
+    queryKey: ["/api/transaction-fees/fees/payouts"],
     queryFn: async () => {
-      const res = await fetch("/api/fees/payouts?limit=50", { credentials: "include" });
+      const res = await fetch("/api/transaction-fees/fees/payouts?limit=50", { credentials: "include" });
       return res.json();
     },
   });
@@ -591,7 +591,7 @@ function PayoutsTab() {
         <p className="text-sm text-muted-foreground">
           <span className="tabular-nums">{payouts.length}</span> payout{payouts.length === 1 ? "" : "s"}
         </p>
-        <TriggerPayoutDialog onSuccess={() => queryClient.invalidateQueries({ queryKey: ["/api/fees/payouts"] })} />
+        <TriggerPayoutDialog onSuccess={() => queryClient.invalidateQueries({ queryKey: ["/api/transaction-fees/fees/payouts"] })} />
       </div>
 
       <SchedulePanel />
@@ -645,9 +645,9 @@ function PayoutsTab() {
 export default function FeeDashboardPage() {
   useDocumentTitle("Fee dashboard");
   const { data: analyticsData, isLoading: analyticsLoading } = useQuery({
-    queryKey: ["/api/fees/analytics"],
+    queryKey: ["/api/transaction-fees/fees/analytics"],
     queryFn: async () => {
-      const res = await fetch("/api/fees/analytics", { credentials: "include" });
+      const res = await fetch("/api/transaction-fees/fees/analytics", { credentials: "include" });
       return res.json();
     },
   });

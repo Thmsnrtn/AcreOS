@@ -85,7 +85,7 @@ export function ConversionFunnel({
                 <div className="tabular-nums">{fmtCount(stage.count)}</div>
                 {convRate !== null && (
                   <div className="text-muted-foreground">
-                    <span className="tabular-nums">{percent(convRate)}</span> conv from prev
+                    <span className="tabular-nums">{percent(convRate, { fraction: true })}</span> conv from prev
                   </div>
                 )}
               </TooltipContent>

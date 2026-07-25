@@ -75,7 +75,8 @@ import { PlanComparisonModal, type TierKey } from "@/components/tier-upgrade-pan
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 // R4: Clerk-native MFA management — replaces the deleted in-house TOTP flow.
-import { UserProfile, useUser } from "@clerk/react";
+import { UserProfile } from "@clerk/react";
+import { useSafeUser, CLERK_AVAILABLE } from "@/lib/clerk-safe";
 import { useLocation } from "wouter";
 import { useSearch } from "wouter";
 import { XCircle } from "lucide-react";
@@ -1766,7 +1767,7 @@ export default function Settings() {
 // give the user the security flows they expect without re-implementing TOTP.
 
 function TwoFactorAuthSettings() {
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded } = useSafeUser();
   const [showProfile, setShowProfile] = useState(false);
 
   const twoFactorEnabled = Boolean(user?.twoFactorEnabled);
@@ -1799,17 +1800,24 @@ function TwoFactorAuthSettings() {
           </p>
         )}
 
-        <Button
-          size="sm"
-          variant={twoFactorEnabled ? "outline" : "default"}
-          className="min-h-11 pointer-fine:sm:min-h-9"
-          onClick={() => setShowProfile(true)}
-          data-testid="button-manage-2fa"
-        >
-          {twoFactorEnabled ? "Manage 2FA" : "Set up 2FA"}
-        </Button>
+        {CLERK_AVAILABLE ? (
+          <Button
+            size="sm"
+            variant={twoFactorEnabled ? "outline" : "default"}
+            className="min-h-11 pointer-fine:sm:min-h-9"
+            onClick={() => setShowProfile(true)}
+            data-testid="button-manage-2fa"
+          >
+            {twoFactorEnabled ? "Manage 2FA" : "Set up 2FA"}
+          </Button>
+        ) : (
+          <p className="text-xs text-muted-foreground" data-testid="text-2fa-unavailable">
+            Account security is managed through your sign-in provider, which
+            isn&apos;t loaded here.
+          </p>
+        )}
 
-        <Dialog open={showProfile} onOpenChange={setShowProfile}>
+        <Dialog open={showProfile && CLERK_AVAILABLE} onOpenChange={setShowProfile}>
           <DialogContent className="sm:max-w-3xl p-0 overflow-hidden">
             <DialogHeader className="sr-only">
               <DialogTitle>Account security</DialogTitle>

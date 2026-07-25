@@ -31,6 +31,25 @@ const priorityStyles: Record<string, string> = {
   low: "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground",
 };
 
+/**
+ * The linked-entity detail route for a task. Naive `/${type}s/${id}`
+ * produced "/propertys/:id" (mis-pluralized AND wrong base — the parcel
+ * detail route is /parcels/:id). Map each entity type to its real route;
+ * unknown types get no link rather than a 404.
+ */
+function entityHref(entityType: string, entityId: string | number): string | null {
+  switch (entityType) {
+    case "property":
+      return `/parcels/${entityId}`;
+    case "lead":
+      return `/leads/${entityId}`;
+    case "deal":
+      return `/deals/${entityId}`;
+    default:
+      return null;
+  }
+}
+
 function TaskItem({ task, onComplete, isCompleting }: {
   task: Task;
   onComplete: (id: number) => void;
@@ -84,9 +103,10 @@ function TaskItem({ task, onComplete, isCompleting }: {
         >
           {task.priority}
         </Badge>
-        {task.entityType && task.entityType !== "none" && task.entityId && (
+        {task.entityType && task.entityType !== "none" && task.entityId &&
+          entityHref(task.entityType, task.entityId) && (
           <Button asChild size="icon" variant="ghost" className="h-7 w-7">
-            <Link href={`/${task.entityType}s/${task.entityId}`} aria-label={`View linked ${task.entityType}`}>
+            <Link href={entityHref(task.entityType, task.entityId)!} aria-label={`View linked ${task.entityType}`}>
               <ArrowRight className="w-4 h-4" aria-hidden="true" />
             </Link>
           </Button>

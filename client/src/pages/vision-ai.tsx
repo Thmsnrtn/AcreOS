@@ -465,7 +465,7 @@ export default function VisionAIPage() {
                 subtitle="Snapshots are captured automatically once a satellite imagery provider is connected. In the meantime, the Map gives you current aerial imagery for this parcel."
                 cta={{
                   label: "View on Map",
-                  href: "/map",
+                  href: "/maps",
                   "data-testid": "vision-ai-snapshots-map-cta",
                 }}
                 actionIcon={Map}

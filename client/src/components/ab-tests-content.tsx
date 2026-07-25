@@ -71,9 +71,18 @@ export function AbTestsContent() {
     { name: "Variant B", subject: "", content: "", isControl: false },
   ]);
 
-  const { data: abTests, isLoading } = useQuery<AbTestWithVariants[]>({
+  // /api/ab-tests has two server registrations that disagree on shape —
+  // one returns a bare array, the other { tests: [...] } (2026-07 audit:
+  // the object shape reached the client and `.filter` threw, crashing the
+  // whole tab). Normalize to an array here so either shape is safe.
+  const { data: abTestsRaw, isLoading } = useQuery<
+    AbTestWithVariants[] | { tests: AbTestWithVariants[] }
+  >({
     queryKey: ["/api/ab-tests"],
   });
+  const abTests: AbTestWithVariants[] = Array.isArray(abTestsRaw)
+    ? abTestsRaw
+    : abTestsRaw?.tests ?? [];
 
   const { data: campaigns } = useQuery<Campaign[]>({
     queryKey: ["/api/campaigns"],
