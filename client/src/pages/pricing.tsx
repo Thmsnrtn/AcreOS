@@ -323,6 +323,16 @@ export default function PricingPage() {
             describes encryption + SOC 2 in flight; surface a one-liner
             at the moment the user is about to give us their card. */}
         <div className="mt-8 mx-auto max-w-2xl text-center text-xs text-muted-foreground">
+          {/* FTC negative-option rule: auto-renewal terms + the cancel
+              mechanism must be disclosed BEFORE billing info is collected,
+              and cancelling must be as easy as subscribing. Keep this
+              sentence next to the CTAs. */}
+          <span data-testid="auto-renewal-disclosure">
+            Paid plans renew automatically each billing period (monthly or
+            yearly, as selected) until you cancel. Cancel anytime in Settings
+            &rarr; Billing — it takes effect at the end of the current period,
+            no calls and no forms.
+          </span>{" "}
           Payments processed by Stripe. Your card never touches our servers.
           Every paid plan is backed by a <span className="tabular-nums">30</span>-day
           money-back guarantee — see our{" "}
