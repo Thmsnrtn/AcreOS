@@ -14,7 +14,8 @@ import {
   LEGAL_GOVERNING_STATE,
 } from "@/lib/legal-entity";
 
-// v1.0 — effective 2026-06-01 — Beatrice Whitfield, CRO (Beatrice audit P2).
+// v1.1 — effective 2026-07-25 — adds §19 assignment/successor-entity clause
+// (pre-LLC → LLC continuity), severability, and waiver language.
 // Content sourced from docs/legal/terms-of-service.md.
 const PAGE_TITLE = "Terms of service";
 const PAGE_DESCRIPTION =
@@ -22,7 +23,7 @@ const PAGE_DESCRIPTION =
 
 export default function TermsOfService() {
   usePageMeta(PAGE_TITLE, PAGE_DESCRIPTION);
-  const lastUpdated = "2026-06-01";
+  const lastUpdated = "2026-07-25";
   const docRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -57,7 +58,7 @@ export default function TermsOfService() {
                 <LegalDocReadAloud docRef={docRef} data-testid="terms-read-aloud" />
               </div>
               <p className="text-muted-foreground" data-testid="text-last-updated">
-                Version 1.0 · Effective date:{" "}
+                Version 1.1 · Effective date:{" "}
                 <span className="tabular-nums">2026-06-01</span> · Last updated:{" "}
                 <span className="tabular-nums">{lastUpdated}</span>
               </p>
@@ -530,7 +531,15 @@ export default function TermsOfService() {
                 your subscription before the effective date.
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                AcreOS will maintain a version history of these Terms accessible at acreos.io/terms/history.
+                AcreOS maintains a version history of these Terms at{" "}
+                <Link
+                  href="/terms/history"
+                  className="underline-offset-2 hover:underline text-primary"
+                  data-testid="link-terms-history"
+                >
+                  acreos.io/terms/history
+                </Link>
+                .
               </p>
             </section>
 
@@ -564,14 +573,27 @@ export default function TermsOfService() {
               </p>
             </section>
 
-            {/* ── 19. Entire Agreement ── */}
+            {/* ── 19. Entire Agreement; Assignment ── */}
             <section className="space-y-4" data-testid="section-entire-agreement">
-              <h2 className="text-xl font-semibold">19. Entire agreement</h2>
+              <h2 className="text-xl font-semibold">19. Entire agreement; assignment</h2>
               <p className="text-muted-foreground leading-relaxed">
                 These Terms, together with the Privacy Policy and any order forms or written agreements
                 between you and AcreOS, constitute the entire agreement between you and AcreOS regarding
                 the Service and supersede all prior agreements, representations, and understandings
                 relating to the subject matter hereof.
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                You may not assign or transfer these Terms, or any rights or obligations under them,
+                without AcreOS&apos;s prior written consent. AcreOS may assign these Terms, in whole or
+                in part, without your consent: (a) to a successor entity formed to operate the Service —
+                including the Massachusetts limited liability company currently being organized — upon
+                which that entity automatically assumes all rights and obligations under these Terms and
+                your subscription continues uninterrupted; or (b) in connection with a merger,
+                acquisition, reorganization, or sale of substantially all assets relating to the Service.
+                These Terms bind and benefit the parties and their respective successors and permitted
+                assigns. If any provision of these Terms is held unenforceable, it will be limited to the
+                minimum extent necessary and the remaining provisions will continue in full force. A
+                failure to enforce any provision is not a waiver of the right to enforce it later.
               </p>
             </section>
 
@@ -604,7 +626,7 @@ export default function TermsOfService() {
 
             <div className="pt-6 border-t border-border">
               <p className="text-sm text-muted-foreground text-center">
-                {LEGAL_ENTITY_FOOTER} · v1.0 — 2026-05-31
+                {LEGAL_ENTITY_FOOTER} · v1.1 — 2026-07-25
               </p>
             </div>
           </CardContent>

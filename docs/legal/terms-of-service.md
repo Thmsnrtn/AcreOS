@@ -231,9 +231,11 @@ The Service integrates with third-party services including Anthropic (AI), Strip
 
 ---
 
-## 19. Entire Agreement
+## 19. Entire Agreement; Assignment
 
 These Terms, together with the Privacy Policy and any order forms or written agreements between you and AcreOS, constitute the entire agreement between you and AcreOS regarding the Service and supersede all prior agreements, representations, and understandings relating to the subject matter hereof.
+
+You may not assign or transfer these Terms, or any rights or obligations under them, without AcreOS's prior written consent. AcreOS may assign these Terms, in whole or in part, without your consent: (a) to a successor entity formed to operate the Service — including the Massachusetts limited liability company currently being organized — upon which that entity automatically assumes all rights and obligations under these Terms and your subscription continues uninterrupted; or (b) in connection with a merger, acquisition, reorganization, or sale of substantially all assets relating to the Service. These Terms bind and benefit the parties and their respective successors and permitted assigns. If any provision of these Terms is held unenforceable, it will be limited to the minimum extent necessary and the remaining provisions will continue in full force. A failure to enforce any provision is not a waiver of the right to enforce it later.
 
 ---
 

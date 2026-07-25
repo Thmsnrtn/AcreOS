@@ -284,6 +284,19 @@ class EventMeshService {
   }
 
   /**
+   * Recent events across ALL channels, newest first. Powers the founder
+   * event-log stream (a cross-channel firehose the per-channel endpoint
+   * couldn't serve).
+   */
+  async getRecentEvents(limit: number = 100): Promise<EventMeshEvent[]> {
+    return db
+      .select()
+      .from(eventMeshEvents)
+      .orderBy(desc(eventMeshEvents.createdAt))
+      .limit(Math.min(Math.max(limit, 1), 500));
+  }
+
+  /**
    * Get events by type.
    */
   async getEventsByType(type: string, limit: number = 50): Promise<EventMeshEvent[]> {

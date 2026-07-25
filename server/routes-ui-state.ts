@@ -8,7 +8,12 @@
  * each useUiState<T> consumer.
  *
  * GET /api/ui-state          → all keys for (org, user) as { [key]: value }
- * GET /api/ui-state/:key     → single value, or 404 if unset
+ * GET /api/ui-state/:key     → { key, value, set } — set:false (200) when
+ *                              unset. Deliberately NOT a 404: every fresh
+ *                              user hits this on every page for every pref,
+ *                              and a by-design 404 painted two console
+ *                              errors per page load and polluted error
+ *                              telemetry with known noise.
  * PUT /api/ui-state/:key     → upsert one key's value
  *
  * Writes are scoped to the calling user within their org, so any member may
@@ -77,8 +82,8 @@ router.get("/:key", async (req: AuthenticatedRequest, res: Response) => {
       )
       .limit(1);
 
-    if (!row) return Errors.notFound(res, "UI state");
-    res.json({ key, value: row.value });
+    if (!row) return res.json({ key, value: null, set: false });
+    res.json({ key, value: row.value, set: true });
   } catch (error) {
     Errors.internal(res, error);
   }

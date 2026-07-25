@@ -34,6 +34,7 @@ import {
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const DialsTab = lazy(() => import("@/pages/founder/studio/dials"));
@@ -108,15 +109,30 @@ export default function FounderStudioPage() {
 
           {TABS.map(({ key }) => (
             <TabsContent key={key} value={key} className="mt-4">
-              <Suspense fallback={<Skeleton className="h-96 w-full" />}>
-                {key === "dials" && <DialsTab />}
-                {key === "allocation" && <AllocationTab />}
-                {key === "credits" && <CreditsTab />}
-                {key === "triggers" && <TriggersTab />}
-                {key === "routing" && <RoutingTab />}
-                {key === "byok" && <ByokTab />}
-                {key === "infra" && <InfraTab />}
-              </Suspense>
+              {/* Per-tab boundary: a render crash in one tab must not replace the
+                  whole Studio shell (tab strip included) with a full-page 500.
+                  resetKey=activeTab clears the error when the founder switches tabs. */}
+              <ErrorBoundary
+                resetKey={activeTab}
+                fallback={
+                  <div className="rounded-card border border-acr-warn/40 bg-acr-warn/5 p-6 text-center" role="alert">
+                    <p className="text-sm font-medium">This tab hit a snag loading.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      The rest of Studio still works — switch tabs and back, or reload the page. We've logged it.
+                    </p>
+                  </div>
+                }
+              >
+                <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+                  {key === "dials" && <DialsTab />}
+                  {key === "allocation" && <AllocationTab />}
+                  {key === "credits" && <CreditsTab />}
+                  {key === "triggers" && <TriggersTab />}
+                  {key === "routing" && <RoutingTab />}
+                  {key === "byok" && <ByokTab />}
+                  {key === "infra" && <InfraTab />}
+                </Suspense>
+              </ErrorBoundary>
             </TabsContent>
           ))}
         </Tabs>

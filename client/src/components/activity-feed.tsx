@@ -102,7 +102,7 @@ function ActivityFeedItem({ event }: ActivityFeedItemProps) {
       case "lead":
         return `/leads/${event.entityId}`;
       case "property":
-        return `/properties/${event.entityId}`;
+        return `/parcels/${event.entityId}`;
       case "deal":
         return `/deals/${event.entityId}`;
       default:

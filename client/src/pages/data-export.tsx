@@ -218,7 +218,7 @@ export default function DataExportPage() {
         Exports are processed in real-time and limited to your organization's data. Large exports may take a few seconds.
         For GDPR data deletion requests, use the{" "}
         <Link
-          href="/privacy-settings"
+          href="/settings/privacy"
           className="underline-offset-2 hover:underline text-primary"
           data-testid="data-export-dsar-link"
         >

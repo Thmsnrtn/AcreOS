@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { useUser } from "@clerk/react";
+import { useSafeUser } from "@/lib/clerk-safe";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,7 +54,7 @@ const PROVIDER_META: Record<string, { label: string; strategy: string; scopes: s
 
 export function MailboxConnect() {
   const { toast } = useToast();
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded } = useSafeUser();
   const [linking, setLinking] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery<MailboxResponse>({

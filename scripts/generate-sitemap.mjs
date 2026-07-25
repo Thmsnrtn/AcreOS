@@ -94,7 +94,8 @@ const STATIC_ROUTES = [
   { path: "/auth",                    lastmod: "2026-06-08", changefreq: "monthly", priority: "0.5", appRoute: 'App.tsx: <Route path="/auth" component={AuthPage} />' },
   { path: "/status",                  lastmod: "2026-06-08", changefreq: "daily",   priority: "0.5", appRoute: 'App.tsx: <Route path="/status" component={StatusPage} />' },
   { path: "/legal/sub-processors",    lastmod: "2026-06-08", changefreq: "monthly", priority: "0.4", appRoute: 'App.tsx: <Route path="/legal/sub-processors" component={PublicSubProcessorsPage} />' },
-  { path: "/terms",                   lastmod: "2026-06-08", changefreq: "yearly",  priority: "0.3", appRoute: 'App.tsx: <Route path="/terms" component={TermsOfService} />' },
+  { path: "/terms",                   lastmod: "2026-07-25", changefreq: "yearly",  priority: "0.3", appRoute: 'App.tsx: <Route path="/terms" component={TermsOfService} />' },
+  { path: "/terms/history",           lastmod: "2026-07-25", changefreq: "yearly",  priority: "0.2", appRoute: 'App.tsx: <Route path="/terms/history" component={TermsHistory} />' },
   { path: "/privacy",                 lastmod: "2026-06-08", changefreq: "yearly",  priority: "0.3", appRoute: 'App.tsx: <Route path="/privacy" component={PrivacyPolicy} />' },
 ];
 

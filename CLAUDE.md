@@ -77,3 +77,15 @@ The founder surface follows the SAME discipline as the customer side — the mor
 **The Letter (`/founder/autopilot`) · Decisions (`/founder/decisions`) · Controls (`/founder/autopilot/control`) · Story (`/founder/autopilot/story`)** — plus the `/founder/admin/*` instrument namespace for deep panels (telemetry, costs, ETL, prompts, ML snapshots) visited deliberately.
 
 The historical `/founder/*` set grew to ~88 routes (≥10 overlapping overviews) precisely because this rule didn't exist. Any new founder surface must live behind one of the four doors as a child/section/tab — never a new top-level overview route. The `founderFourDoors.test.ts` ratchet bounds the total `/founder/*` route count: it may only SHRINK as consolidation proceeds. When you consolidate, lower `FOUNDER_ROUTE_BASELINE` to the new count.
+
+## The DO-NOT-DO list (standing founder decisions — do not relitigate)
+
+Each line below is an existing decision recorded in `docs/company/roadmap-2026-07.md`, the deletion ledger, or a dated founder decision. Future sessions enforce them; only the founder can rescind one, explicitly.
+
+- **No marketplace before ~25 customers; no public API before ~50** (the approved expansion ladder).
+- **No new persona verticals**, and **no new top-level nav entries EVER** — customer or founder side. New surfaces live behind existing doors (see the two doors sections above). The five customer doors may never be hidden per-persona (`PROTECTED_DOOR_ROUTES` in `client/src/lib/sidebar-hidden-routes.ts` + `sidebarHiddenRoutes.test.ts` ratchet).
+- **No re-fronting platform send rails**: counterparty mail requires the org's own connected identity (BYO); the platform sender is for system mail only (`emailService` purpose lanes, founder decision 2026-07-17).
+- **No residential-comps data plane** before its revenue trigger.
+- **No new AI destinations** — Pax stays ambient fabric behind the doors, never a separate app-within-the-app.
+- **Fabrication is never acceptable**: no invented numbers, no fake activity, no placeholder data presented as real. Refuse-not-fabricate everywhere (`lint:no-fabrication` gate).
+- **Hard-stops stay founder-only forever**: pricing changes, legal signing, spends >$500, customer-data deletion.

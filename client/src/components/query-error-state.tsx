@@ -1,9 +1,17 @@
-import { AlertCircle, RefreshCw, WifiOff, ServerCrash, Database, Shield } from "lucide-react";
+import { AlertCircle, RefreshCw, WifiOff, ServerCrash, Database, Shield, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { motion } from "framer-motion";
 
-type ErrorType = "network" | "server" | "auth" | "notFound" | "generic";
+type ErrorType = "network" | "server" | "auth" | "forbidden" | "notFound" | "generic";
+
+// Strip a leading "403: " / "401: " status prefix (thrown by apiRequest) so we
+// can surface the server's human message verbatim.
+function serverMessage(error: Error | null): string | null {
+  if (!error?.message) return null;
+  const stripped = error.message.replace(/^\d{3}:\s*/, "").trim();
+  return stripped.length > 0 ? stripped : null;
+}
 
 interface QueryErrorStateProps {
   error: Error | null;
@@ -21,10 +29,16 @@ function getErrorType(error: Error | null): ErrorType {
   
   const message = error.message.toLowerCase();
   
-  if (message.includes("network") || message.includes("fetch") || message.includes("failed to fetch")) {
+  if (message.includes("network") || message.includes("failed to fetch") || message.includes("offline")) {
     return "network";
   }
-  if (message.includes("401") || message.includes("403") || message.includes("unauthorized") || message.includes("forbidden")) {
+  // 403 (forbidden / MFA required) is NOT a session problem — telling the user to
+  // "sign in again" is misleading and the retry never succeeds. Bucket it apart
+  // from 401 (genuine session expiry) so each gets accurate, actionable copy.
+  if (message.includes("403") || message.includes("forbidden") || message.includes("mfa") || message.includes("permission")) {
+    return "forbidden";
+  }
+  if (message.includes("401") || message.includes("unauthorized") || message.includes("session")) {
     return "auth";
   }
   if (message.includes("404") || message.includes("not found")) {
@@ -58,11 +72,29 @@ function getErrorConfig(type: ErrorType, error: Error | null) {
     case "auth":
       return {
         icon: Shield,
-        title: "Authentication required",
-        description: "Your session may have expired. Sign in again to continue.",
+        title: "Session expired",
+        description: "You've been signed out. Sign in again to continue — your data is safe.",
         iconColor: "text-acr-warn",
         bgColor: "from-acr-warn/20 to-acr-warn/5",
       };
+    case "forbidden": {
+      // Surface the server's guidance verbatim when present (e.g. the MFA
+      // instruction). Retrying without the missing factor won't help, so the
+      // copy points at the real remedy instead of "sign in again".
+      const srv = serverMessage(error);
+      const isMfa = (error?.message ?? "").toLowerCase().includes("mfa") ||
+        (error?.message ?? "").toLowerCase().includes("verify mfa") ||
+        (srv ?? "").toLowerCase().includes("verify");
+      return {
+        icon: KeyRound,
+        title: isMfa ? "Extra verification needed" : "Access restricted",
+        description: srv || (isMfa
+          ? "This area requires two-factor authentication. Turn it on (or complete it for this session) in your account security settings, then try again."
+          : "You don't have permission to view this. Ask the org owner if you need access."),
+        iconColor: "text-acr-warn",
+        bgColor: "from-acr-warn/20 to-acr-warn/5",
+      };
+    }
     case "notFound":
       return {
         icon: Database,

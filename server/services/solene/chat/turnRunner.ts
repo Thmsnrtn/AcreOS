@@ -311,6 +311,7 @@ export async function* runTurn(
       cacheCreationTokens: 0,
     };
     let streamErrored = false;
+    let streamErrorMessage: string | null = null;
     // Provider tag for this completion. Set on the first event we see. If
     // the primary errors pre-token and we failover, providerSelector emits
     // its happy-path events tagged with the secondary provider, so we'll
@@ -390,13 +391,41 @@ export async function* runTurn(
           const e = ev as Extract<StreamEvent, { type: "error" }>;
           yield { type: "error", data: { message: e.message } };
           streamErrored = true;
+          streamErrorMessage = e.message;
           break;
         }
       }
       if (streamErrored) break;
     }
 
-    if (streamErrored) return;
+    if (streamErrored) {
+      // Persist an assistant error row so refetched history reflects the failed
+      // turn (and the client's lastTurnFailed banner can fire) instead of
+      // leaving only the user bubble forever. This is the persistence the file
+      // header promises; without it the flagship first-message path went
+      // totally silent. Any partial text streamed before the error is kept.
+      try {
+        const errorText = streamErrorMessage
+          ? `This turn didn't complete: ${streamErrorMessage}`
+          : "This turn didn't complete before a reply could be generated.";
+        await appendMessage({
+          conversationId: input.conversationId,
+          role: "assistant",
+          content:
+            textAccum.length > 0
+              ? [{ type: "text", text: textAccum }]
+              : [{ type: "text", text: errorText }],
+          modelUsed: route.model,
+          errorMessage: streamErrorMessage ?? "stream_errored",
+        });
+      } catch (err) {
+        logger.warn("[soleneChat] turnRunner.persist_error_row_failed", {
+          err: err instanceof Error ? err.message : String(err),
+          conversationId: input.conversationId,
+        });
+      }
+      return;
+    }
 
     // Build the assistant message: text block (if any) first, then tool_use
     // blocks (in stream order).

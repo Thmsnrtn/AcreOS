@@ -418,6 +418,7 @@ const FounderScenariosPage = React.lazy(() => import("@/pages/founder/scenarios"
 // Misc public
 const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
 const TermsOfService = React.lazy(() => import("@/pages/terms"));
+const TermsHistory = React.lazy(() => import("@/pages/terms-history"));
 const PrivacyPolicy = React.lazy(() => import("@/pages/privacy"));
 const PublicSubProcessorsPage = React.lazy(() => import("@/pages/sub-processors"));
 const DealRoomSharePage = React.lazy(() => import("@/pages/deal-room-share"));
@@ -688,6 +689,8 @@ function Router() {
     <React.Suspense fallback={<RouteFallback />}>
     <Switch>
       <Route path="/auth" component={AuthPage} />
+      {/* /terms/history BEFORE /terms — ToS §16 promises this page exists. */}
+      <Route path="/terms/history" component={TermsHistory} />
       <Route path="/terms" component={TermsOfService} />
       <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/legal/privacy" component={PrivacyPolicy} />
@@ -1815,7 +1818,17 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
           initial="initial"
           animate="animate"
           exit="exit"
-          className="min-h-[100dvh]"
+          // page-transition-layer: this motion.div wraps the ENTIRE app
+          // (sidebar + topbar + main). AnimatePresence mode="wait" can strand
+          // it at the exit state (opacity:0) when a route change interrupts
+          // an in-flight transition — e.g. a full load of /pipeline that
+          // redirects a beat later — leaving every user-visible pixel hidden
+          // with the DOM fully intact (2026-07 production-gate finding). The
+          // acr-render-rescue CSS rule (index.css) lands this layer back at
+          // opacity 1 if it sits at exactly inline opacity:0 for >1s, which a
+          // normal ~0.24s transition never does. Belt to the sentinel's
+          // suspenders.
+          className="min-h-[100dvh] page-transition-layer"
           id="main-content"
         >
           {children}

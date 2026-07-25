@@ -284,19 +284,19 @@ function ResultsGrid({ results }: ResultsGridProps) {
       />
       <Stat
         label="ROI"
-        value={results.roi === null ? "—" : percent(results.roi, { decimals: 1 })}
+        value={results.roi === null ? "—" : percent(results.roi, { decimals: 1, fraction: true })}
         emphasis={results.roi === null ? "neutral" : results.roi >= 0 ? "positive" : "negative"}
         testid="calc-out-roi"
       />
       <Stat
         label="Annualized return"
-        value={results.annualizedReturn === null ? "—" : percent(results.annualizedReturn, { decimals: 1 })}
+        value={results.annualizedReturn === null ? "—" : percent(results.annualizedReturn, { decimals: 1, fraction: true })}
         emphasis={results.annualizedReturn === null ? "neutral" : results.annualizedReturn >= 0 ? "positive" : "negative"}
         testid="calc-out-annualized"
       />
       <Stat
         label="IRR (annual)"
-        value={results.irr === null ? "n/a" : percent(results.irr, { decimals: 1 })}
+        value={results.irr === null ? "n/a" : percent(results.irr, { decimals: 1, fraction: true })}
         helper={
           results.irr === null
             ? "Cash flow shape doesn't support an IRR (no sign change in the series)."

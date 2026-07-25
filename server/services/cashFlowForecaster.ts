@@ -99,10 +99,6 @@ class CashFlowForecasterService {
   ): Promise<CashFlowForecast> {
     const { noteId, propertyId, periodMonths = 12 } = params;
 
-    if (!noteId && !propertyId) {
-      throw new Error("Either noteId or propertyId must be provided");
-    }
-
     let projectedIncome: IncomeProjection[] = [];
     let projectedExpenses: ExpenseProjection[] = [];
     let paymentRiskScore: number | undefined;
@@ -122,6 +118,42 @@ class CashFlowForecasterService {
       projectedIncome = [...projectedIncome, ...propertyIncome];
       const propertyExpenses = await this.projectExpenses("property", propertyId, periodMonths);
       projectedExpenses = [...projectedExpenses, ...propertyExpenses];
+    }
+
+    // Portfolio-level forecast when no specific holding is targeted: aggregate every
+    // active note + owned property for the org. The /cash-flow page's "Generate
+    // forecast" CTA has no note/property picker — it intends exactly this org-wide
+    // view — so the previous "Either noteId or propertyId must be provided" guard
+    // made that CTA a guaranteed 400. The forecast row persists with both ids null.
+    if (!noteId && !propertyId) {
+      const [activeNotes, ownedProperties] = await Promise.all([
+        db.select().from(notes)
+          .where(and(eq(notes.organizationId, organizationId), eq(notes.status, "active"))),
+        db.select().from(properties)
+          .where(and(eq(properties.organizationId, organizationId), eq(properties.status, "owned"))),
+      ]);
+
+      if (activeNotes.length === 0 && ownedProperties.length === 0) {
+        throw new Error("No active notes or owned properties to forecast yet — add a note or mark a property owned first.");
+      }
+
+      const noteRiskScores: number[] = [];
+      for (const note of activeNotes) {
+        projectedIncome.push(...await this.projectNoteIncome(note.id, periodMonths));
+        projectedExpenses.push(...await this.projectExpenses("note", note.id, periodMonths));
+        riskFactors.push(...await this.identifyRiskFactors(note.id));
+        noteRiskScores.push(await this.calculatePaymentRiskScore(note.id));
+      }
+      for (const property of ownedProperties) {
+        projectedIncome.push(...await this.projectPropertyIncome(property.id, periodMonths));
+        projectedExpenses.push(...await this.projectExpenses("property", property.id, periodMonths));
+      }
+
+      // Portfolio payment risk = mean of per-note risk scores (properties carry no
+      // payment-risk score). Undefined when the portfolio holds no notes.
+      paymentRiskScore = noteRiskScores.length > 0
+        ? Math.round(noteRiskScores.reduce((a, b) => a + b, 0) / noteRiskScores.length)
+        : undefined;
     }
 
     const totalProjectedIncome = projectedIncome.reduce(

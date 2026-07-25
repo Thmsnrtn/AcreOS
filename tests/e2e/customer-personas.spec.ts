@@ -81,8 +81,9 @@ const ABORTED_RE = /ERR_ABORTED|net::ERR_FAILED|interrupted/i;
 const REDUNDANT_CONSOLE_RE = /Failed to load resource/i;
 const IGNORABLE_404_RE = /\.map(\?|$)|\.js(\?|$)|\.css(\?|$)|\.png|\.svg|\.ico|\.woff|favicon|manifest/i;
 // 404s that are CORRECT by design, not findings:
-//  - /api/ui-state/<key> returns 404 when a UI pref is unset (every new user);
-//    the client falls back to defaults. (server/routes-ui-state.ts)
+//  - /api/ui-state/<key> now answers 200 {set:false} for unset prefs (the old
+//    by-design 404 painted console errors on every fresh page load); the
+//    allowlist entry stays only for rolling-deploy compat. (routes-ui-state.ts)
 //  - /api/white-label/* is feature-gated → 404 "Feature not available" for any
 //    org without the white_label flag (all customer personas). (featureGate)
 const EXPECTED_404_RE = /\/api\/(ui-state|white-label)\b/i;

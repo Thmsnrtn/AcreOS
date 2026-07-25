@@ -141,8 +141,10 @@ export default function CashFlowPage() {
         body: JSON.stringify({ periodMonths: 12 }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Forecast failed');
+        const err = await res.json().catch(() => ({}));
+        // The error envelope is { error, message, ... } where `error` is a machine
+        // code (BAD_REQUEST) and `message` is the human sentence — prefer the latter.
+        throw new Error(err.message || err.error || 'Forecast failed');
       }
       return res.json();
     },
@@ -310,7 +312,7 @@ export default function CashFlowPage() {
               </div>
               <dd className="text-2xl font-bold text-acr-warn tabular-nums">{summary.highRiskNoteCount}</dd>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Avg risk score: <span className="tabular-nums">{Math.round(summary.averagePaymentRiskScore * 100)}%</span>
+                Avg risk score: <span className="tabular-nums">{Math.round(summary.averagePaymentRiskScore)}%</span>
               </p>
             </CardContent>
           </Card>
@@ -611,9 +613,9 @@ export default function CashFlowPage() {
                               <p className="font-medium">Note <span className="tabular-nums">#{note.id}</span></p>
                               <Badge
                                 className="bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn"
-                                aria-label={`Risk score ${(riskScore * 100).toFixed(0)} percent`}
+                                aria-label={`Risk score ${riskScore.toFixed(0)} percent`}
                               >
-                                Risk: <span className="tabular-nums ml-1">{(riskScore * 100).toFixed(0)}%</span>
+                                Risk: <span className="tabular-nums ml-1">{riskScore.toFixed(0)}%</span>
                               </Badge>
                               {note.paymentPattern && (
                                 <Badge className={PATTERN_STYLES[note.paymentPattern]?.color || ''}>

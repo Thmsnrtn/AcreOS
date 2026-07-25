@@ -4,7 +4,7 @@ import {
   optimizationRecommendations,
   properties,
 } from '../../shared/schema';
-import { eq, and, desc, gte, sql } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
@@ -194,6 +194,11 @@ class PortfolioOptimizer {
           totalReturn: { p10: scenarios.pessimistic.roi, p50: scenarios.base.roi, p90: scenarios.optimistic.roi },
           cashFlow: { p10: 0, p50: 0, p90: 0 },
           riskOfLoss: riskMetrics.probabilityOfLoss,
+          // Persist the full Monte Carlo detail so GET /simulations can rehydrate
+          // the optimizer dashboard on reload without re-running the simulation.
+          scenarios,
+          riskMetrics,
+          timeline,
         },
         status: 'completed',
       }).returning();
@@ -284,7 +289,7 @@ class PortfolioOptimizer {
       const propertyRows = propertyIds.length > 0
         ? await db.select({ id: properties.id, state: properties.state, county: properties.county, zoning: properties.zoning })
             .from(properties)
-            .where(sql`${properties.id} = ANY(${propertyIds})`)
+            .where(inArray(properties.id, propertyIds))
         : [];
 
       const propMeta: Map<string, { state: string; county: string; zoning: string | null }> = new Map();

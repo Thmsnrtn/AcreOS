@@ -961,7 +961,7 @@ function PropertyIntelligencePanel({
                 drafted offer + the witnessed-send handoff to Pax. */}
             <InlineBlindOfferComposer property={property} />
             <Button asChild size="sm" variant="outline" className="h-8 text-xs">
-              <Link href={`/negotiation-copilot?propertyId=${property.id}`}>
+              <Link href={`/negotiation?propertyId=${property.id}`}>
                 <MessageSquare className="w-3 h-3 mr-1" />
                 Negotiate
               </Link>

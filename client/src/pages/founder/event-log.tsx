@@ -259,7 +259,7 @@ export default function FounderEventLogPage() {
           <CardHeader>
             <CardTitle className="text-sm flex items-center justify-between gap-2">
               Event stream
-              <Badge variant="secondary"><span className="tabular-nums">{filteredEvents.length}</span> events</Badge>
+              <Badge variant="secondary" className="gap-1"><span className="tabular-nums">{filteredEvents.length}</span> events</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>

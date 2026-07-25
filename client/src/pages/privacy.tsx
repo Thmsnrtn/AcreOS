@@ -392,7 +392,7 @@ export default function PrivacyPolicy() {
                       <td className="py-2 pr-4">Obtain a copy of all personal data we hold about you</td>
                       <td className="py-2">
                         <Link
-                          href="/privacy-settings"
+                          href="/settings/privacy"
                           className="underline-offset-2 hover:underline text-primary"
                           data-testid="rights-dsr-access"
                         >
@@ -426,7 +426,7 @@ export default function PrivacyPolicy() {
                       <td className="py-2 pr-4">Limit our processing in certain circumstances</td>
                       <td className="py-2">
                         <Link
-                          href="/privacy-settings"
+                          href="/settings/privacy"
                           className="underline-offset-2 hover:underline text-primary"
                           data-testid="rights-dsr-restriction"
                         >
@@ -439,7 +439,7 @@ export default function PrivacyPolicy() {
                       <td className="py-2 pr-4">Object to processing based on legitimate interests</td>
                       <td className="py-2">
                         <Link
-                          href="/privacy-settings"
+                          href="/settings/privacy"
                           className="underline-offset-2 hover:underline text-primary"
                           data-testid="rights-dsr-objection"
                         >
@@ -467,7 +467,7 @@ export default function PrivacyPolicy() {
               <p className="text-muted-foreground leading-relaxed">
                 <strong>To exercise any right:</strong> Submit a request via{" "}
                 <Link
-                  href="/privacy-settings"
+                  href="/settings/privacy"
                   className="underline-offset-2 hover:underline text-primary"
                   data-testid="privacy-rights-dsar"
                 >
@@ -498,7 +498,7 @@ export default function PrivacyPolicy() {
                 </a>{" "}
                 or{" "}
                 <Link
-                  href="/privacy-settings"
+                  href="/settings/privacy"
                   className="underline-offset-2 hover:underline text-primary"
                   data-testid="privacy-rights-dsar-ccpa"
                 >
@@ -830,7 +830,7 @@ export default function PrivacyPolicy() {
                 </li>
                 <li>
                   <Link
-                    href="/privacy-settings"
+                    href="/settings/privacy"
                     className="underline-offset-2 hover:underline text-primary"
                     data-testid="privacy-settings-link"
                   >

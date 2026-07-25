@@ -226,7 +226,17 @@ function MrrMarginSection() {
   return (
     <Card id="mrr">
       <CardHeader>
-        <CardTitle className="text-base">MRR + margin</CardTitle>
+        <CardTitle className="text-base">Revenue collected + margin</CardTitle>
+        {/* NOT labeled "MRR": this section reads the financial LEDGER
+            (cash actually posted in the window), while the Letter/home
+            reports true subscription run-rate from active org tiers
+            (computeRealMrrUsd). Labeling both "MRR" made sibling founder
+            pages contradict each other ($0.00 here vs $49 on the Letter —
+            2026-07 design-panel finding). Same numbers, honest names. */}
+        <p className="text-xs text-muted-foreground">
+          Cash posted to the ledger — subscription run-rate (MRR) lives on the
+          Letter and can differ until payments post here.
+        </p>
       </CardHeader>
       <CardContent>
         {mrr.isLoading || margin.isLoading ? (
@@ -248,7 +258,7 @@ function MrrMarginSection() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <div className="text-xs text-muted-foreground mb-1">
-                  MRR (trailing 30d)
+                  Revenue collected (trailing 30d)
                 </div>
                 <div className="text-2xl font-semibold tabular-nums">
                   {formatUsd(mrr.data.currentMrr)}

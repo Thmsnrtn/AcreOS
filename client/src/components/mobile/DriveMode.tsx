@@ -75,7 +75,7 @@ function useGpsWatch() {
       (err) => {
         setError(
           err.code === err.PERMISSION_DENIED
-            ? "Location permission denied. Enable it in your phone's settings to use Drive Mode."
+            ? "Location permission denied. Allow location access for this site in your browser or device settings, then try again."
             : "Couldn't get a GPS fix — try moving to a clearer view of the sky.",
         );
         setPending(false);

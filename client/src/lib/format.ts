@@ -82,10 +82,22 @@ export function count(n: number | null | undefined, compact = false): string {
 
 // ── Percent ─────────────────────────────────────────────────────────
 
-/** "85%" from 0.85 or 85 (both accepted; values > 1 assumed already-percent). */
-export function percent(value: number | null | undefined, opts: { decimals?: number } = {}): string {
+/**
+ * "85%" from 85 — or from 0.85 with `{ fraction: true }`.
+ *
+ * The unit is EXPLICIT, never guessed. The old magnitude heuristic
+ * ("values ≤ 1 are fractions") silently broke for any fractional ratio
+ * above 1: the public Land Deal Calculator rendered a 197.2% ROI as
+ * "2.0%" because 1.972 > 1 skipped the ×100 (2026-07 production-gate
+ * audit). Callers holding a ratio (0.85 = 85%) pass `fraction: true`;
+ * callers holding percent points (85 = 85%) pass nothing.
+ */
+export function percent(
+  value: number | null | undefined,
+  opts: { decimals?: number; fraction?: boolean } = {},
+): string {
   if (value == null) return "—";
-  const v = Math.abs(value) <= 1 ? value * 100 : value;
+  const v = opts.fraction ? value * 100 : value;
   return `${v.toFixed(opts.decimals ?? 0)}%`;
 }
 

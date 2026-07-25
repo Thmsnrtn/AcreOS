@@ -37,6 +37,14 @@ const CSRF_EXEMPT_PATHS = new Set([
   "/analytics/session/start",
   "/analytics/session/end",
   "/telemetry",
+  // Crash + funnel beacons (2026-07 production-gate audit): both fire
+  // before a csrf_token cookie may exist — the error-boundary trip fires
+  // ON CRASH (possibly the first page load, e.g. /auth failing to boot),
+  // so requiring the token meant every production crash report 403'd and
+  // the founder's crash-visibility loop received nothing, ever. Validated,
+  // rate-limited, no user-data mutation — same class as STR-009 above.
+  "/client/error-boundary-trip",
+  "/onboarding/step-entered",
   // Routes NOT mounted under /api — these never reach this middleware
   // because the mount is /api-only; kept for documentation only.
   "/webhook/twilio/recording-complete",
