@@ -314,8 +314,13 @@ export default function CommissionsPage() {
 
   const { data: config } = useQuery<CommissionConfig>({
     queryKey: ["/api/commissions/config"],
+    // The endpoint returns the config wrapped as { config: {...} }; unwrap it so
+    // `config.tiers` is the tier array (not undefined) — an unwrapped body would
+    // make `config.tiers.map(...)` below throw and take down the whole surface.
     queryFn: () =>
-      apiRequest("GET", "/api/commissions/config").then((r) => r.json()),
+      apiRequest("GET", "/api/commissions/config")
+        .then((r) => r.json())
+        .then((d) => d?.config ?? d),
   });
 
   const payMutation = useMutation({
@@ -575,7 +580,7 @@ export default function CommissionsPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {config.tiers.map((t, i) => (
+                          {(config.tiers ?? []).map((t, i) => (
                             <TableRow key={i}>
                               <TableCell scope="row" className="font-medium">
                                 {t.label}

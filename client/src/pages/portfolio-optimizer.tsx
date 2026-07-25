@@ -80,6 +80,38 @@ function formatDollar(n: number) {
   return `${sign}${usd(abs, { noCents: true })}`;
 }
 
+/**
+ * GET /portfolio-optimizer/simulations returns stored rows whose payload lives
+ * under `row.results`. Rows written after the full-detail shape landed carry
+ * results.scenarios/riskMetrics/timeline; older rows carry only the percentile
+ * summary (portfolioValue/totalReturn/riskOfLoss). Normalize either into the rich
+ * shape this dashboard renders — reconstructing the scenario cards from the
+ * percentile fields when detailed scenarios are absent — so a reload never
+ * crashes on a partially-shaped row. Returns undefined when there is no row.
+ */
+function normalizeSimulation(row: any) {
+  if (!row) return undefined;
+  const r = row.results ?? {};
+  const scenarios = r.scenarios ?? ((r.portfolioValue && r.totalReturn) ? {
+    pessimistic: { value: r.portfolioValue.p10 ?? 0, roi: r.totalReturn.p10 ?? 0 },
+    base: { value: r.portfolioValue.p50 ?? 0, roi: r.totalReturn.p50 ?? 0 },
+    optimistic: { value: r.portfolioValue.p90 ?? 0, roi: r.totalReturn.p90 ?? 0 },
+  } : undefined);
+  const riskMetrics = r.riskMetrics ?? (
+    r.riskOfLoss != null ? { probabilityOfLoss: r.riskOfLoss } : undefined
+  );
+  return {
+    ...row,
+    scenarios,
+    riskMetrics,
+    timeline: row.timeline ?? r.timeline ?? [],
+    summary: row.summary,
+  };
+}
+
+const fmtPct1 = (v: unknown) => (Number.isFinite(v) ? `${(v as number).toFixed(1)}%` : '—');
+const fmtMoneyOrDash = (v: unknown) => (Number.isFinite(v) ? formatDollar(v as number) : '—');
+
 function MetricCard({ label, value, sub, icon }: { label: string; value: string; sub?: string; icon: JSX.Element }) {
   return (
     <Card>
@@ -221,7 +253,7 @@ export default function PortfolioOptimizerPage() {
     queryKey: ['portfolio-optimizer', 'metrics'],
     queryFn: async () => {
       const res = await fetch('/api/portfolio-optimizer/metrics', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch metrics');
+      if (!res.ok) throw new Error(`${res.status}: Couldn't load portfolio metrics`);
       return res.json();
     },
   });
@@ -237,7 +269,7 @@ export default function PortfolioOptimizerPage() {
     queryKey: ['portfolio-optimizer', 'simulations'],
     queryFn: async () => {
       const res = await fetch('/api/portfolio-optimizer/simulations', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch simulations');
+      if (!res.ok) throw new Error(`${res.status}: Couldn't load simulation results`);
       return res.json();
     },
   });
@@ -253,7 +285,7 @@ export default function PortfolioOptimizerPage() {
     queryKey: ['portfolio-optimizer', 'recommendations'],
     queryFn: async () => {
       const res = await fetch('/api/portfolio-optimizer/recommendations', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch recommendations');
+      if (!res.ok) throw new Error(`${res.status}: Couldn't load recommendations`);
       return res.json();
     },
   });
@@ -262,7 +294,7 @@ export default function PortfolioOptimizerPage() {
     queryKey: ['portfolio-optimizer', 'diversification'],
     queryFn: async () => {
       const res = await fetch('/api/portfolio-optimizer/diversification', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch diversification');
+      if (!res.ok) throw new Error(`${res.status}: Couldn't load diversification analysis`);
       return res.json();
     },
   });
@@ -335,7 +367,7 @@ export default function PortfolioOptimizerPage() {
 
   const metrics = metricsData?.metrics;
   const holdings = metricsData?.holdings ?? [];
-  const latestSim = simulationsData?.simulations?.[0];
+  const latestSim = normalizeSimulation(simulationsData?.simulations?.[0]);
   const recommendations = recsData?.recommendations ?? [];
   const diversification = diversData?.diversification;
 
@@ -648,6 +680,7 @@ export default function PortfolioOptimizerPage() {
             {!simsLoading && !simsIsError && (latestSim ? (
               <>
                 {/* Scenario summary */}
+                {latestSim.scenarios && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Card className="border-acr-neg-soft dark:border-acr-neg-soft">
                     <CardHeader className="pb-2">
@@ -655,7 +688,7 @@ export default function PortfolioOptimizerPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">{formatDollar(latestSim.scenarios.pessimistic.value)}</div>
-                      <div className="text-sm text-muted-foreground">{latestSim.scenarios.pessimistic.roi.toFixed(1)}% ROI</div>
+                      <div className="text-sm text-muted-foreground">{fmtPct1(latestSim.scenarios.pessimistic.roi)} ROI</div>
                     </CardContent>
                   </Card>
                   <Card className="border-primary dark:border-primary/50">
@@ -664,7 +697,7 @@ export default function PortfolioOptimizerPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">{formatDollar(latestSim.scenarios.base.value)}</div>
-                      <div className="text-sm text-muted-foreground">{latestSim.scenarios.base.roi.toFixed(1)}% ROI</div>
+                      <div className="text-sm text-muted-foreground">{fmtPct1(latestSim.scenarios.base.roi)} ROI</div>
                     </CardContent>
                   </Card>
                   <Card className="border-acr-pos-soft dark:border-acr-pos-soft">
@@ -673,10 +706,11 @@ export default function PortfolioOptimizerPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">{formatDollar(latestSim.scenarios.optimistic.value)}</div>
-                      <div className="text-sm text-muted-foreground">{latestSim.scenarios.optimistic.roi.toFixed(1)}% ROI</div>
+                      <div className="text-sm text-muted-foreground">{fmtPct1(latestSim.scenarios.optimistic.roi)} ROI</div>
                     </CardContent>
                   </Card>
                 </div>
+                )}
 
                 {/* Timeline chart */}
                 {timelineData.length > 0 && (
@@ -713,12 +747,13 @@ export default function PortfolioOptimizerPage() {
                 )}
 
                 {/* Risk metrics */}
+                {latestSim.riskMetrics && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <Card>
                     <CardContent className="pt-4">
                       <p className="text-sm text-muted-foreground">Value at Risk (95%)</p>
                       <p className="text-xl font-bold text-acr-neg mt-1">
-                        {formatDollar(latestSim.riskMetrics.valueAtRisk95)}
+                        {fmtMoneyOrDash(latestSim.riskMetrics.valueAtRisk95)}
                       </p>
                     </CardContent>
                   </Card>
@@ -726,7 +761,7 @@ export default function PortfolioOptimizerPage() {
                     <CardContent className="pt-4">
                       <p className="text-sm text-muted-foreground">Expected Shortfall</p>
                       <p className="text-xl font-bold text-acr-warn mt-1">
-                        {formatDollar(latestSim.riskMetrics.expectedShortfall)}
+                        {fmtMoneyOrDash(latestSim.riskMetrics.expectedShortfall)}
                       </p>
                     </CardContent>
                   </Card>
@@ -734,7 +769,7 @@ export default function PortfolioOptimizerPage() {
                     <CardContent className="pt-4">
                       <p className="text-sm text-muted-foreground">Probability of Loss</p>
                       <p className="text-xl font-bold mt-1">
-                        {latestSim.riskMetrics.probabilityOfLoss.toFixed(1)}%
+                        {fmtPct1(latestSim.riskMetrics.probabilityOfLoss)}
                       </p>
                     </CardContent>
                   </Card>
@@ -742,11 +777,12 @@ export default function PortfolioOptimizerPage() {
                     <CardContent className="pt-4">
                       <p className="text-sm text-muted-foreground">Max Drawdown</p>
                       <p className="text-xl font-bold text-acr-neg mt-1">
-                        {latestSim.riskMetrics.maxDrawdown.toFixed(1)}%
+                        {fmtPct1(latestSim.riskMetrics.maxDrawdown)}
                       </p>
                     </CardContent>
                   </Card>
                 </div>
+                )}
               </>
             ) : (
               <EmptyState

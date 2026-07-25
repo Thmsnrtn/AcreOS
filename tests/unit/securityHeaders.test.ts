@@ -47,14 +47,20 @@ describe("securityHeaders middleware", () => {
     expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
   });
 
-  it("sets Permissions-Policy disabling camera/mic/geolocation (task #35)", async () => {
+  it("scopes camera/mic/geolocation to self (not blanket-disabled) so first-party field-capture works", async () => {
     const { securityHeaders } = await import("../../server/middleware/security");
     const { req, res, next, headers } = mockReqRes();
     securityHeaders(req, res, next);
     const pp = headers["permissions-policy"];
-    expect(pp).toContain("camera=()");
-    expect(pp).toContain("microphone=()");
-    expect(pp).toContain("geolocation=()");
+    // (self) grants our own origin — Drive Mode geolocation, field-scanner camera,
+    // voice-capture microphone — while still denying third-party iframes. A blanket
+    // `=()` disables the feature document-wide with no browser/OS override, which
+    // killed those flows for every web user.
+    expect(pp).toContain("geolocation=(self)");
+    expect(pp).toContain("camera=(self)");
+    expect(pp).toContain("microphone=(self)");
+    // FLoC/topics opt-out stays fully disabled.
+    expect(pp).toContain("interest-cohort=()");
   });
 
   it("sets Content-Security-Policy header", async () => {

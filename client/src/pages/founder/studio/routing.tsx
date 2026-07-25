@@ -56,6 +56,17 @@ interface AIRouting {
   enforcePromptCache: boolean;
 }
 
+// Safe empty shapes per section. The server normalizes stored values, but this is
+// belt-and-suspenders: merging these UNDER the fetched routing guarantees every
+// array/record field exists, so a drifted or partial payload can never crash the
+// render (draft.eddmStates.join / Object.entries(draft.cacheTtlDays) of undefined).
+const SECTION_FALLBACKS: Record<"mail" | "comms" | "data" | "ai", object> = {
+  mail: { providerPriority: [], eddmStates: [], holdAndBatchHours: 0.5, coMarketingEnabled: false },
+  comms: { smsPriority: [], carrierOverrides: "", trackingPoolSize: 50, byokWins: true },
+  data: { cacheTtlDays: {}, freeSourceFirst: true, fallbackOrder: [] },
+  ai: { modelFloor: {}, cacheTtlHoursByComplexity: {}, enforcePromptCache: true },
+};
+
 export default function FounderStudioRouting() {
   return (
     <Tabs defaultValue="mail">
@@ -453,8 +464,10 @@ function useRoutingSection<T extends object>({
   const [note, setNote] = useState("");
 
   useEffect(() => {
-    if (data?.routing && draft === null) setDraft(data.routing);
-  }, [data, draft]);
+    if (data?.routing && draft === null) {
+      setDraft({ ...(SECTION_FALLBACKS[suffix] as object), ...data.routing } as T);
+    }
+  }, [data, draft, suffix]);
 
   const save = useMutation({
     mutationFn: async () => {

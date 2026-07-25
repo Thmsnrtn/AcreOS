@@ -195,38 +195,43 @@ export const SETTINGS_CATALOG: SeedSettingArgs[] = [
   },
 
   // ─── Provider routing rules (Pillars 2, 5, 6, 7) ──────────────────────
+  // Shapes below MUST match the studio routing zod schemas
+  // (server/routes-founder-studio-dials.ts: mail/comms/data/aiRoutingSchema).
+  // The GET handler validates stored values against those schemas and falls back
+  // to code defaults on mismatch, but seeding the correct shape here avoids
+  // seeding data that would just be discarded on read.
   {
     key: "routing.mail",
     category: "cost",
-    description: "Mail provider routing rules: priority order, EDDM region rules, hold-and-batch threshold, co-marketing toggle.",
-    defaultValue: { priority: ["lob", "postgrid", "eddm", "presort", "lettrlabs"], eddmRegions: [], holdBatchThreshold: 500, comarketingEnabled: false },
+    description: "Mail provider routing rules: priority order, EDDM state rules, hold-and-batch hours, co-marketing toggle.",
+    defaultValue: { providerPriority: ["eddm", "presort", "postgrid", "lob", "lettrlabs"], eddmStates: ["TX", "FL", "AZ", "NM", "OK", "CO"], holdAndBatchHours: 0.5, coMarketingEnabled: false },
     validRange: { type: "object" },
   },
   {
     key: "routing.comms",
     category: "cost",
-    description: "SMS/voice routing: Telnyx vs Twilio priority, tracking-pool size limit, BYOK precedence.",
-    defaultValue: { priority: ["twilio", "telnyx", "bandwidth"], poolSizeLimit: 50, byokPrecedence: true },
+    description: "SMS/voice routing: Telnyx vs Twilio priority, carrier overrides, tracking-pool size, BYOK precedence.",
+    defaultValue: { smsPriority: ["telnyx", "twilio"], carrierOverrides: "", trackingPoolSize: 50, byokWins: true },
     validRange: { type: "object" },
   },
   {
     key: "routing.data",
     category: "cost",
-    description: "Data-cache TTL per entity-type + free-source-first toggle + provider fallback order.",
+    description: "Data-cache TTL (days) per entity-type + free-source-first toggle + provider fallback order.",
     defaultValue: {
-      ttls: { skip_trace: 2160, parcel_ownership: 4320, parcel_polygon: 8760, avm: 720, flood_zone: 8760, liens: 720 },
+      cacheTtlDays: { skip_trace: 90, parcel_ownership: 30, parcel_polygon: 365, avm: 30, flood_zone: 365, liens: 30 },
       freeSourceFirst: true,
-      fallbackOrder: ["batch_skiptracing", "reiskip"],
+      fallbackOrder: ["regrid", "estated", "datatree"],
     },
     validRange: { type: "object" },
   },
   {
     key: "routing.ai",
     category: "cost",
-    description: "Per-task model floor (highest model allowed), cache TTL per complexity, prompt-cache enforcement.",
+    description: "Per-task model floor (highest model allowed), cache TTL (hours) per complexity, prompt-cache enforcement.",
     defaultValue: {
-      modelFloor: { classification: "haiku-4-5", extraction: "haiku-4-5", synthesis: "sonnet-4-6", agent_tool: "sonnet-4-6", other: "sonnet-4-6" },
-      cacheTtlMinutes: { exact: 60, semantic: 15 },
+      modelFloor: { classification: "claude-haiku-4-5", synthesis: "claude-sonnet-4-6", agent_tool: "claude-sonnet-4-6", other: "claude-sonnet-4-6" },
+      cacheTtlHoursByComplexity: { trivial: 24, simple: 12, moderate: 4, complex: 1 },
       enforcePromptCache: true,
     },
     validRange: { type: "object" },

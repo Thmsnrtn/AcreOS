@@ -68,6 +68,7 @@ import {
   FOUNDER_DEEP_DIVE_CATEGORY_LABEL,
 } from "@/lib/nav-items";
 import { readRecents, recordRecency } from "@/lib/cmdkRecency";
+import { isFrozenRoute } from "@shared/feature-freeze";
 import { Kbd } from "@/components/ui/kbd";
 import {
   Command,
@@ -241,6 +242,10 @@ const pages = [
   ...ALL_NAV_ITEMS.map(navItemToPage),
   ...PALETTE_EXTRAS,
 ].filter((p) => {
+  // Frozen/killed routes (e.g. /marketplace, /capital-markets, /vision-ai) render
+  // NotFound via FlaggedRoute, so surfacing them here is a first-class ⌘K result
+  // that dead-ends on a 404. Filter them out to match what's actually reachable.
+  if (isFrozenRoute(p.path)) return false;
   if (seenPaths.has(p.path)) return false;
   seenPaths.add(p.path);
   return true;
@@ -495,6 +500,43 @@ export function CommandPalette() {
     if (!matcherQuery.trim()) return [];
     return rankItems(matcherQuery, items, { recents }).slice(0, 6);
   }, [matcherQuery, activeScope, recents, isFounder]);
+
+  // Entity search results (leads / properties / deals). Prefer server-side
+  // fuzzy/hybrid results once /api/search resolves; fall back to a client-side
+  // filter for instant feedback while the round-trip is in flight. Lifted out of
+  // the JSX so the "Search results" group can be hidden entirely when empty —
+  // an empty group heading (or a disabled "No matches" row sitting above real
+  // verb/page matches) read as a contradiction.
+  const searchResults = useMemo<Array<{ name: string; path: string }>>(() => {
+    if (query.trim().length === 0) return [];
+    const serverResults = serverSearchData?.results;
+    const serverFlat: Array<{ name: string; path: string; rank: number }> = [];
+    if (serverResults && Object.keys(serverResults).length) {
+      for (const [type, items] of Object.entries(serverResults)) {
+        for (const r of items) {
+          const label =
+            type === "lead" ? `Lead: ${r.title}` :
+            type === "property" ? `Property: ${r.title}` :
+            type === "deal" ? `Deal: ${r.title}` :
+            r.title;
+          serverFlat.push({ name: label, path: r.url, rank: r.rank ?? 0 });
+        }
+      }
+      serverFlat.sort((a, b) => b.rank - a.rank);
+    }
+    if (serverFlat.length) return serverFlat.slice(0, 8).map(({ name, path }) => ({ name, path }));
+    const q = query.trim().toLowerCase();
+    const leadMatches = (leadsData || []).filter(l =>
+      (l.firstName + " " + l.lastName).toLowerCase().includes(q) || (l.email || "").toLowerCase().includes(q)
+    ).slice(0, 5).map(l => ({ name: `Lead: ${l.firstName} ${l.lastName}`, path: `/leads?id=${l.id}` }));
+    const propertyMatches = (propertiesData || []).filter(p =>
+      (p.county + " " + p.state).toLowerCase().includes(q) || String(p.apn || '').toLowerCase().includes(q)
+    ).slice(0, 5).map(p => ({ name: `Property: ${p.county}, ${p.state}`, path: `/properties?id=${p.id}` }));
+    const dealMatches = (dealsData || []).filter(d =>
+      String(d.id).includes(q)
+    ).slice(0, 5).map(d => ({ name: `Deal #${d.id}`, path: `/deals?id=${d.id}` }));
+    return [...leadMatches, ...propertyMatches, ...dealMatches].slice(0, 8);
+  }, [query, serverSearchData, leadsData, propertiesData, dealsData]);
 
   // ── Founder inspector shortcuts (IA consolidation Lens 4 Fix 3) ──────
   // "lob" → provider page, "org #12" → org cost tab, "#12345" → cost
@@ -1016,53 +1058,14 @@ export function CommandPalette() {
                         Fall back to client-side filter for instant
                         feedback while the server round-trip is in
                         flight. */}
-                    {query.trim().length > 0 && (
+                    {searchResults.length > 0 && (
                       <CommandGroup heading="Search results">
-                        {(() => {
-                          const serverResults = serverSearchData?.results;
-                          const serverFlat: Array<{ name: string; path: string; rank: number }> = [];
-                          if (serverResults && Object.keys(serverResults).length) {
-                            for (const [type, items] of Object.entries(serverResults)) {
-                              for (const r of items) {
-                                const label =
-                                  type === "lead" ? `Lead: ${r.title}` :
-                                  type === "property" ? `Property: ${r.title}` :
-                                  type === "deal" ? `Deal: ${r.title}` :
-                                  r.title;
-                                serverFlat.push({
-                                  name: label,
-                                  path: r.url,
-                                  rank: r.rank ?? 0,
-                                });
-                              }
-                            }
-                            serverFlat.sort((a, b) => b.rank - a.rank);
-                          }
-
-                          let results: Array<{ name: string; path: string }>;
-                          if (serverFlat.length) {
-                            results = serverFlat.slice(0, 8);
-                          } else {
-                            // Client-side fallback while server is in flight.
-                            const q = query.trim().toLowerCase();
-                            const leadMatches = (leadsData || []).filter(l =>
-                              (l.firstName + " " + l.lastName).toLowerCase().includes(q) || (l.email||"").toLowerCase().includes(q)
-                            ).slice(0, 5).map(l => ({ name: `Lead: ${l.firstName} ${l.lastName}`, path: `/leads?id=${l.id}` }));
-                            const propertyMatches = (propertiesData || []).filter(p =>
-                              (p.county+" "+p.state).toLowerCase().includes(q) || String(p.apn||'').toLowerCase().includes(q)
-                            ).slice(0, 5).map(p => ({ name: `Property: ${p.county}, ${p.state}`, path: `/properties?id=${p.id}` }));
-                            const dealMatches = (dealsData || []).filter(d =>
-                              String(d.id).includes(q)
-                            ).slice(0, 5).map(d => ({ name: `Deal #${d.id}`, path: `/deals?id=${d.id}` }));
-                            results = [...leadMatches, ...propertyMatches, ...dealMatches].slice(0, 8);
-                          }
-                          return results.length ? results.map(r => (
-                            <CommandItem key={r.path} onSelect={() => handleSelect(r.path)} className="cursor-pointer">
-                              <Search className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                              <span>{r.name}</span>
-                            </CommandItem>
-                          )) : <CommandItem disabled>No matches</CommandItem>;
-                        })()}
+                        {searchResults.map(r => (
+                          <CommandItem key={r.path} onSelect={() => handleSelect(r.path)} className="cursor-pointer">
+                            <Search className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                            <span>{r.name}</span>
+                          </CommandItem>
+                        ))}
                       </CommandGroup>
                     )}
 
@@ -1121,10 +1124,13 @@ export function CommandPalette() {
                     )}
 
                     {/* Persona toggle (folded in from ex-FounderCommandPalette).
-                        Always shown for founders since it's the #1 nav
-                        pain — Cmd+; is the keyboard shortcut, but the
-                        palette item makes it discoverable. */}
-                    {isFounder && (
+                        Shown for founders in BROWSE mode (empty query) since it's
+                        the #1 nav pain — Cmd+; is the keyboard shortcut, but the
+                        palette item makes it discoverable. Gated to the empty query
+                        so it never sits ABOVE the typed query's matches and steals
+                        the auto-selected Enter target (a founder typing "leads" was
+                        landing on /founder because this static group was first). */}
+                    {isFounder && matcherQuery.trim().length === 0 && (
                       <CommandGroup heading="Switch mode">
                         <CommandItem
                           onSelect={() => {
@@ -1307,7 +1313,11 @@ export function CommandPalette() {
                       return null;
                     })}
 
-                    {isFounder && (
+                    {/* Founder/admin quick links are BROWSE affordances (empty query
+                        only). Like "Switch mode" above, these render unconditionally
+                        for founders, so with a typed query they sat above the matched
+                        Actions/Pages and became the Enter target — gate to empty query. */}
+                    {isFounder && matcherQuery.trim().length === 0 && (
                       <>
                         <CommandGroup heading="Founder / admin">
                           <CommandItem
@@ -1378,54 +1388,67 @@ export function CommandPalette() {
                         "tdc" surfaces "Tax Delinquent Counties" via
                         page match; "send" surfaces send-letter / text
                         / email via verb match. */}
-                    {matcherQuery.trim().length > 0 && matchedVerbs.length > 0 && (
-                      <CommandGroup heading="Actions">
-                        {matchedVerbs.map(({ item: m }) => {
-                          const verb: PaletteVerb = (m as { verb: PaletteVerb }).verb;
-                          const Icon = VERB_ICONS[verb.iconKey] ?? Sparkles;
-                          const requiresAI = verb.id === "verb:generate-offer";
-                          const disabled = requiresAI && !isAvailable("ai");
-                          return (
-                            <CommandItem
-                              key={verb.id}
-                              onSelect={() => !disabled && handleSelect(verb.path, verb.id)}
-                              data-testid={`command-verb-${verb.id.replace(/:/g, "-")}`}
-                              className="cursor-pointer"
-                              disabled={disabled}
-                            >
-                              <Icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                              <div className="flex flex-col min-w-0">
-                                <span>{verb.label}{disabled ? " (AI unavailable)" : ""}</span>
-                                {verb.hint && (
-                                  <span className="text-xs text-muted-foreground truncate">{verb.hint}</span>
-                                )}
-                              </div>
-                              <CommandShortcut>{"\u21b5"}</CommandShortcut>
-                            </CommandItem>
-                          );
-                        })}
-                      </CommandGroup>
-                    )}
+                    {matcherQuery.trim().length > 0 && (matchedVerbs.length > 0 || matchedPages.length > 0) && (() => {
+                      const actionsGroup = matchedVerbs.length > 0 ? (
+                        <CommandGroup heading="Actions" key="actions">
+                          {matchedVerbs.map(({ item: m }) => {
+                            const verb: PaletteVerb = (m as { verb: PaletteVerb }).verb;
+                            const Icon = VERB_ICONS[verb.iconKey] ?? Sparkles;
+                            const requiresAI = verb.id === "verb:generate-offer";
+                            const disabled = requiresAI && !isAvailable("ai");
+                            return (
+                              <CommandItem
+                                key={verb.id}
+                                onSelect={() => !disabled && handleSelect(verb.path, verb.id)}
+                                data-testid={`command-verb-${verb.id.replace(/:/g, "-")}`}
+                                className="cursor-pointer"
+                                disabled={disabled}
+                              >
+                                <Icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                                <div className="flex flex-col min-w-0">
+                                  <span>{verb.label}{disabled ? " (AI unavailable)" : ""}</span>
+                                  {verb.hint && (
+                                    <span className="text-xs text-muted-foreground truncate">{verb.hint}</span>
+                                  )}
+                                </div>
+                                <CommandShortcut>{"\u21b5"}</CommandShortcut>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      ) : null;
 
-                    {matcherQuery.trim().length > 0 && matchedPages.length > 0 && (
-                      <CommandGroup heading="Pages">
-                        {matchedPages.map(({ item: m }) => {
-                          const page = (m as { page: typeof pages[number] }).page;
-                          return (
-                            <CommandItem
-                              key={page.path}
-                              onSelect={() => handleSelect(page.path, `page:${page.path}`)}
-                              onMouseEnter={() => ({ "/": ["/api/dashboard/stats"], "/leads": ["/api/leads"], "/properties": ["/api/properties"], "/deals": ["/api/deals"] }[page.path] || []).forEach(prefetchRoute)}
-                              data-testid={`command-item-${page.name.toLowerCase().replace(/\s+/g, "-")}`}
-                              className="cursor-pointer"
-                            >
-                              <page.icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                              <span>{page.name}</span>
-                            </CommandItem>
-                          );
-                        })}
-                      </CommandGroup>
-                    )}
+                      const pagesGroup = matchedPages.length > 0 ? (
+                        <CommandGroup heading="Pages" key="pages">
+                          {matchedPages.map(({ item: m }) => {
+                            const page = (m as { page: typeof pages[number] }).page;
+                            return (
+                              <CommandItem
+                                key={page.path}
+                                onSelect={() => handleSelect(page.path, `page:${page.path}`)}
+                                onMouseEnter={() => ({ "/": ["/api/dashboard/stats"], "/leads": ["/api/leads"], "/properties": ["/api/properties"], "/deals": ["/api/deals"] }[page.path] || []).forEach(prefetchRoute)}
+                                data-testid={`command-item-${page.name.toLowerCase().replace(/\s+/g, "-")}`}
+                                className="cursor-pointer"
+                              >
+                                <page.icon className="mr-2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                                <span>{page.name}</span>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      ) : null;
+
+                      // cmdk auto-selects the first non-disabled item in DOM order, so
+                      // the higher-scored group must render first for Enter to hit the
+                      // best match. A page-name query ("leads") ranks the Leads PAGE
+                      // above the "Add lead" verb; a verb phrase ("add lead") ranks the
+                      // action higher. Ties favor navigation (pages first).
+                      const topPageScore = matchedPages[0]?.score ?? -Infinity;
+                      const topVerbScore = matchedVerbs[0]?.score ?? -Infinity;
+                      return topPageScore >= topVerbScore
+                        ? <>{pagesGroup}{actionsGroup}</>
+                        : <>{actionsGroup}{pagesGroup}</>;
+                    })()}
 
                     {/* Empty-query state \u2014 show the canonical Pages +
                         verb-suggestion (top-7 by recency) lists so the

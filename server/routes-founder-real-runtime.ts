@@ -114,6 +114,17 @@ export function registerFounderV12Routes(app: Express) {
     catch (err: any) { Errors.internal(res, err); }
   });
 
+  // Cross-channel recent-events firehose for the founder event-log stream.
+  // (Previously the client fetched this path and 404'd, so the stream always
+  // showed a false "no events" empty state while the stats header proved the
+  // mesh was active.)
+  app.get("/api/founder/v12/event-mesh/events", async (req, res) => {
+    try {
+      const limit = parseInt((req.query.limit as string) || "100", 10);
+      res.json(await eventMeshService.getRecentEvents(Number.isFinite(limit) ? limit : 100));
+    } catch (err: any) { Errors.internal(res, err); }
+  });
+
   app.get("/api/founder/v12/events/subscriptions", async (req, res) => {
     try { res.json(await eventMeshService.getSubscriptions(req.query.subscriber as string)); }
     catch (err: any) { Errors.internal(res, err); }

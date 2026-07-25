@@ -141,8 +141,10 @@ export default function CashFlowPage() {
         body: JSON.stringify({ periodMonths: 12 }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Forecast failed');
+        const err = await res.json().catch(() => ({}));
+        // The error envelope is { error, message, ... } where `error` is a machine
+        // code (BAD_REQUEST) and `message` is the human sentence — prefer the latter.
+        throw new Error(err.message || err.error || 'Forecast failed');
       }
       return res.json();
     },

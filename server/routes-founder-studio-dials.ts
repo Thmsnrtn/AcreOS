@@ -425,8 +425,16 @@ export function registerFounderStudioDialRoutes(app: Express) {
   for (const entry of routingRegistry) {
     app.get(`/api/founder/studio/routing/${entry.suffix}`, ...guards, async (_req, res: Response) => {
       try {
-        const value = await getSetting(entry.key, entry.defaults);
-        res.json({ routing: value });
+        // Stored values can predate the current shape (legacy seeder keys used
+        // priority/eddmRegions/holdBatchThreshold/comarketingEnabled). Returning
+        // them verbatim crashed the client render (draft.eddmStates.join of
+        // undefined). Validate against the same schema the POST path uses and
+        // fall back to defaults on any mismatch, so the GET always emits the
+        // current shape. Correctly-saved values pass through untouched; the next
+        // Save persists the normalized shape.
+        const raw = await getSetting(entry.key, entry.defaults);
+        const parsed = entry.schema.safeParse(raw);
+        res.json({ routing: parsed.success ? parsed.data : entry.defaults });
       } catch (err) {
         Errors.internal(res, err);
       }

@@ -228,11 +228,12 @@ export function useEventMeshEvents(limit: number = 50) {
   return useQuery({
     queryKey: ["/api/founder/v12/event-mesh/events", limit],
     queryFn: async () => {
-      // No server route exists for this yet — returns null; see task #34 sweep follow-ups.
-      // (v12 only exposes /events/channel/:channel, /events/unprocessed/:subscriber,
-      // and /events/dead-letter — no cross-channel recent-events feed.)
+      // Cross-channel recent-events firehose (server:
+      // GET /api/founder/v12/event-mesh/events, backed by
+      // eventMeshService.getRecentEvents). Surface real failures instead of a
+      // silent [] so the stream never fakes an empty state on error.
       const res = await fetch(`/api/founder/v12/event-mesh/events?limit=${limit}`, { credentials: "include" });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(`Failed to load event stream (${res.status})`);
       return res.json();
     },
     staleTime: 10_000,

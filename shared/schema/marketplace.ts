@@ -343,12 +343,31 @@ export const portfolioSimulations = pgTable("portfolio_simulations", {
     marketVolatility?: number;
   }>(),
   
-  // Results
+  // Results. The percentile summary (portfolioValue/totalReturn/cashFlow/riskOfLoss)
+  // is the durable at-a-glance record. The optional scenarios/riskMetrics/timeline
+  // fields carry the full Monte Carlo detail the optimizer UI renders — they are
+  // present on simulations run after this shape was introduced; older rows omit
+  // them and the client reconstructs the scenario summary from the percentile fields.
   results: jsonb("results").$type<{
     portfolioValue: { p10: number; p50: number; p90: number };
     totalReturn: { p10: number; p50: number; p90: number };
     cashFlow: { p10: number; p50: number; p90: number };
     riskOfLoss: number; // percentage
+    scenarios?: {
+      pessimistic: { value: number; roi: number };
+      base: { value: number; roi: number };
+      optimistic: { value: number; roi: number };
+    };
+    riskMetrics?: {
+      valueAtRisk95: number;
+      expectedShortfall: number;
+      probabilityOfLoss: number;
+      maxDrawdown: number;
+    };
+    timeline?: Array<{
+      year: number;
+      values: { p10: number; p25: number; p50: number; p75: number; p90: number };
+    }>;
   }>(),
   
   status: text("status").notNull().default("pending"), // pending, running, completed, failed

@@ -2318,6 +2318,15 @@ textarea:focus-visible,
 main [style*="opacity: 0"]:not([style*="opacity: 0."]) {
   animation: acr-render-rescue 1ms linear 1.6s forwards;
 }
+/* The whole-app route-transition wrapper (App.tsx PageWrapper). If an
+   interrupted route change strands it at the exit state (inline opacity:0),
+   the entire app — sidebar, topbar, and content — goes invisible while the
+   DOM stays intact. A normal transition holds exactly "opacity: 0" for a
+   single frame; this only fires when the layer is stuck there >1s. !important
+   beats framer's inline style once the fill lands. */
+.page-transition-layer[style*="opacity: 0"]:not([style*="opacity: 0."]) {
+  animation: acr-render-rescue 1ms linear 1s forwards;
+}
 
 /* Reduced motion override — honor the system preference globally.
    The specific class list kills our custom keyframes; the wildcard

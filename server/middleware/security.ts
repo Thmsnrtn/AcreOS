@@ -38,7 +38,14 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   res.setHeader("X-Frame-Options", embedFriendly ? "ALLOWALL" : "DENY");
   res.setHeader("X-XSS-Protection", "1; mode=block");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=(), interest-cohort=()");
+  // Scope powerful features to our OWN origin (self), not blanket-disable them:
+  // Drive Mode / Field Scout / Map locate-me need geolocation, the field scanner
+  // needs camera, and voice capture (Pax rail, field notes) needs the microphone.
+  // A blanket `geolocation=()` disables the feature at the document level, which no
+  // browser/OS setting can override — that silently killed those flows for every
+  // web user. `(self)` grants our origin while still denying third-party iframes.
+  // interest-cohort=() stays fully off (FLoC opt-out).
+  res.setHeader("Permissions-Policy", "geolocation=(self), microphone=(self), camera=(self), interest-cohort=()");
 
   // Generate a per-request nonce for inline scripts/styles.
   // Available to downstream handlers (e.g. static.ts) via res.locals.cspNonce.

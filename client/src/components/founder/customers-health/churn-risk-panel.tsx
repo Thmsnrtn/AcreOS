@@ -12,12 +12,13 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 export function ChurnRiskPanel() {
   const { toast } = useToast();
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ["/api/admin/churn-risk"],
     queryFn: () => apiRequest("GET", "/api/admin/churn-risk?minScore=40").then(r => r.json()),
     refetchInterval: 5 * 60_000,
@@ -52,6 +53,17 @@ export function ChurnRiskPanel() {
       <CardContent>
         {isLoading ? (
           <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+        ) : isError ? (
+          // A failed fetch must NOT masquerade as an all-clear — this is a risk
+          // surface, and a false "no orgs at risk" is worse than an honest error.
+          <QueryErrorState
+            error={error as Error}
+            onRetry={() => refetch()}
+            isRetrying={isRefetching}
+            title="Couldn't load churn risk"
+            compact
+            testId="churn-risk-error"
+          />
         ) : orgs.length === 0 ? (
           <div className="flex flex-col items-center py-6 gap-1">
             <CircleCheck className="w-8 h-8 text-acr-pos" aria-hidden="true" />

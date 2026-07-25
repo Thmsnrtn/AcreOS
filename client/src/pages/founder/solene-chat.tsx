@@ -243,13 +243,43 @@ export default function SoleneChatPage() {
           // change). Best UX: just await server-side completion.
           if (res.body) {
             const reader = res.body.getReader();
-            // Drain the stream so the server completes the turn.
-            // (We deliberately don't surface streaming for this edge case
-            //  because the hook isn't wired to this conversation yet —
-            //  history refetch will hydrate the full transcript.)
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let streamError: string | null = null;
+            // Drain the stream so the server completes the turn, but PARSE the
+            // SSE frames for an `error` event. The server flushes HTTP 200
+            // before the turn runs, so res.ok can't tell us the turn failed —
+            // previously any first-turn error (missing key, cost cap, refusal,
+            // timeout) was silently swallowed here and the message just sat
+            // there with no reply/typing/error. Frame format: `event: <type>\n
+            // data: <json>\n\n`.
             while (true) {
-              const { done } = await reader.read();
+              const { done, value } = await reader.read();
               if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              let sep: number;
+              while ((sep = buffer.indexOf("\n\n")) !== -1) {
+                const frame = buffer.slice(0, sep);
+                buffer = buffer.slice(sep + 2);
+                let evName = "";
+                let dataStr = "";
+                for (const line of frame.split("\n")) {
+                  if (line.startsWith("event:")) evName = line.slice(6).trim();
+                  else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+                }
+                if (evName === "error") {
+                  try {
+                    streamError = JSON.parse(dataStr)?.message || "The chat backend returned an error.";
+                  } catch {
+                    streamError = "The chat backend returned an error.";
+                  }
+                }
+              }
+            }
+            if (streamError) {
+              // Routed to the catch below → inline failed state + retry, and the
+              // server now persists an assistant error row so history agrees.
+              throw new Error(streamError);
             }
           }
           // Refetch via the LATEST hook binding (now wired to the new

@@ -1818,7 +1818,17 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
           initial="initial"
           animate="animate"
           exit="exit"
-          className="min-h-[100dvh]"
+          // page-transition-layer: this motion.div wraps the ENTIRE app
+          // (sidebar + topbar + main). AnimatePresence mode="wait" can strand
+          // it at the exit state (opacity:0) when a route change interrupts
+          // an in-flight transition — e.g. a full load of /pipeline that
+          // redirects a beat later — leaving every user-visible pixel hidden
+          // with the DOM fully intact (2026-07 production-gate finding). The
+          // acr-render-rescue CSS rule (index.css) lands this layer back at
+          // opacity 1 if it sits at exactly inline opacity:0 for >1s, which a
+          // normal ~0.24s transition never does. Belt to the sentinel's
+          // suspenders.
+          className="min-h-[100dvh] page-transition-layer"
           id="main-content"
         >
           {children}
