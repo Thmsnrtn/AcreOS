@@ -418,6 +418,7 @@ const FounderScenariosPage = React.lazy(() => import("@/pages/founder/scenarios"
 // Misc public
 const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
 const TermsOfService = React.lazy(() => import("@/pages/terms"));
+const TermsHistory = React.lazy(() => import("@/pages/terms-history"));
 const PrivacyPolicy = React.lazy(() => import("@/pages/privacy"));
 const PublicSubProcessorsPage = React.lazy(() => import("@/pages/sub-processors"));
 const DealRoomSharePage = React.lazy(() => import("@/pages/deal-room-share"));
@@ -688,6 +689,8 @@ function Router() {
     <React.Suspense fallback={<RouteFallback />}>
     <Switch>
       <Route path="/auth" component={AuthPage} />
+      {/* /terms/history BEFORE /terms — ToS §16 promises this page exists. */}
+      <Route path="/terms/history" component={TermsHistory} />
       <Route path="/terms" component={TermsOfService} />
       <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/legal/privacy" component={PrivacyPolicy} />

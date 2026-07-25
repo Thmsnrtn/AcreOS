@@ -162,14 +162,27 @@ const PART_OF_DAY_WORD: Record<PartOfDay, string> = {
 export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
   const greeting = `Good ${PART_OF_DAY_WORD[inp.partOfDay]}, ${inp.founderName}.`;
   const decision = inp.openAsks[0] ?? null;
-  const isFounderNeeded = inp.openAsks.length > 0;
 
   // ── The needed-line: the single most important thing on the page. ─────────
+  // It must agree with the Decisions door. Asks (questions Solene posed) and
+  // queued decisions (decisionsWaitingCount from the pulse) are separate
+  // stores; the Letter reads the UNION — it may never say "nothing needs
+  // you" while the Decisions door holds work (2026-07 design-panel finding:
+  // the Letter said exactly that over 17 waiting items, which is fatal for
+  // a product whose thesis is "trust the one letter").
+  const asksCount = inp.openAsks.length;
+  const queueCount = Math.max(0, inp.pulse.decisionsWaitingCount);
+  const isFounderNeeded = asksCount + queueCount > 0;
+
   const neededLine = !isFounderNeeded
     ? "Nothing needs you today."
-    : inp.openAsks.length === 1
-      ? "One thing needs your call — below."
-      : `${inp.openAsks.length} things need your call — below.`;
+    : asksCount > 0 && queueCount > 0
+      ? `${asksCount + queueCount} things need your call — ${countNoun(asksCount, "question", "questions")} below, plus ${countNoun(queueCount, "decision", "decisions")} waiting in Decisions.`
+      : asksCount === 1
+        ? "One thing needs your call — below."
+        : asksCount > 1
+          ? `${asksCount} things need your call — below.`
+          : `${countNoun(queueCount, "decision is", "decisions are")} waiting for you in Decisions.`;
 
   // ── The Word: an honest, editorial paragraph from real fields only. ───────
   const parts: string[] = [];

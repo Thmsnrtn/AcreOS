@@ -229,6 +229,10 @@ export class WebhookHandlers {
       return WebhookHandlers.processPaymentFailed(event.data.object as Stripe.Invoice);
     }
 
+    if (event.type === 'invoice.upcoming') {
+      return WebhookHandlers.processUpcomingRenewal(event.data.object as Stripe.Invoice);
+    }
+
     if (event.type === 'invoice.payment_succeeded') {
       return WebhookHandlers.processPaymentSucceeded(event.data.object as Stripe.Invoice);
     }
@@ -438,6 +442,71 @@ export class WebhookHandlers {
       // charged but never provisioned, silently).
       logger.error('[webhook] Error processing subscription checkout', err instanceof Error ? err : undefined);
       throw err;
+    }
+  }
+
+  /**
+   * invoice.upcoming — Stripe's pre-renewal notice, fired N days before a
+   * subscription renews (N is the Dashboard's "Upcoming invoice" lead time;
+   * set it to 7+ days there). ToS §5 promises customers a renewal reminder
+   * and 940 CMR 38 (MA auto-renewal regulation) expects notice with clear
+   * cancellation instructions — this handler is what keeps that promise.
+   * System-lane email (platform sender): renewal date, amount, and the
+   * self-serve cancel path. Never throws — a reminder failure must not
+   * poison webhook processing.
+   */
+  static async processUpcomingRenewal(invoice: Stripe.Invoice): Promise<void> {
+    try {
+      const customerId =
+        typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
+      if (!customerId) return;
+
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      const to =
+        invoice.customer_email ||
+        (org as { billingEmail?: string | null } | undefined)?.billingEmail ||
+        null;
+      if (!to) {
+        logger.info(`[webhook] invoice.upcoming: no email for customer ${customerId} — reminder skipped`);
+        return;
+      }
+
+      const amount = ((invoice.amount_due ?? 0) / 100).toLocaleString('en-US', {
+        style: 'currency',
+        currency: (invoice.currency || 'usd').toUpperCase(),
+      });
+      const renewsAtMs =
+        (invoice.next_payment_attempt ?? (invoice as { period_end?: number }).period_end ?? 0) * 1000;
+      const renewsOn = renewsAtMs
+        ? new Date(renewsAtMs).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        : 'your next billing date';
+      const appUrl = process.env.APP_URL || 'https://acreos.io';
+      const billingUrl = `${appUrl}/settings?tab=billing`;
+
+      const { emailService } = await import('./services/emailService');
+      await emailService.sendEmail({
+        to,
+        subject: `Your AcreOS subscription renews on ${renewsOn}`,
+        html: `
+          <h2>Your AcreOS subscription renews soon</h2>
+          <p>This is a reminder that your AcreOS subscription will renew automatically on
+          <strong>${renewsOn}</strong> for <strong>${amount}</strong>, charged to your payment
+          method on file.</p>
+          <p>No action is needed to continue. If you'd like to make a change, you can manage
+          or cancel your subscription any time — it takes effect at the end of the current
+          billing period, with no calls and no forms:</p>
+          <p><a href="${billingUrl}">Manage subscription</a></p>
+          <p>Questions? Just reply to this email.</p>
+          <p>— The AcreOS Team</p>
+        `,
+        text: `Your AcreOS subscription renews automatically on ${renewsOn} for ${amount}, charged to your payment method on file.\n\nNo action is needed to continue. To manage or cancel (effective at the end of the current period): ${billingUrl}\n\nQuestions? Just reply to this email.\n— The AcreOS Team`,
+      });
+      logger.info(`[webhook] Renewal reminder sent to ${to} (renews ${renewsOn}, ${amount})`);
+    } catch (err) {
+      logger.warn(
+        '[webhook] Could not send renewal reminder (invoice.upcoming)',
+        err instanceof Error ? err : undefined,
+      );
     }
   }
 

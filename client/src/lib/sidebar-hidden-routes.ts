@@ -183,6 +183,28 @@ export interface ResolveHiddenRoutesInput {
 }
 
 /**
+ * The five fixed doors (+ Inbox/Settings) — CLAUDE.md doctrine: "Persona
+ * changes only the CONTENT behind each door … never the doors themselves."
+ * The mobile bottom nav (MOBILE_DOORS in nav-items.ts) deliberately has no
+ * persona filter, so any door hidden here produced a desktop sidebar that
+ * DISAGREED with the same account's phone — four doors on desktop, five on
+ * mobile (found independently by three 2026-07 design-panel reviews).
+ * Doors are therefore unhideable: persona axes may gate any secondary
+ * route, but never these.
+ */
+const PROTECTED_DOOR_ROUTES: ReadonlySet<string> = new Set([
+  "/today",
+  "/maps",
+  "/deals",
+  "/pipeline",
+  "/money",
+  "/finance",
+  "/ai",
+  "/inbox",
+  "/settings",
+]);
+
+/**
  * Compute the union of hidden routes across all three input axes.
  * The single entry point used by `layout-sidebar.tsx`. Returns a
  * stable Array (not a Set) for stable React keying.
@@ -194,6 +216,7 @@ export function resolveHiddenRoutes(input: ResolveHiddenRoutesInput): string[] {
   }
   for (const r of REGISTRY.byDetectedInvestorType[input.detectedInvestorType] ?? []) out.add(r);
   for (const r of REGISTRY.byOrgInvestorType[input.orgInvestorType] ?? []) out.add(r);
+  for (const door of PROTECTED_DOOR_ROUTES) out.delete(door);
   return Array.from(out);
 }
 

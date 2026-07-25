@@ -26,6 +26,30 @@ const base = (over: Partial<FounderBriefInputs> = {}): FounderBriefInputs => ({
 });
 
 describe("autopilot narration engine — the Voice", () => {
+  it("UNION: never says 'nothing needs you' while decisions wait in the queue (2026-07 panel finding)", () => {
+    const b = buildFounderBrief(
+      base({ pulse: { ...base().pulse, decisionsWaitingCount: 17 } }),
+    );
+    expect(b.isFounderNeeded).toBe(true);
+    expect(b.neededLine).not.toMatch(/Nothing needs you/i);
+    expect(b.neededLine).toMatch(/17 decisions are waiting for you in Decisions/);
+  });
+
+  it("UNION: asks + queued decisions combine into one honest count", () => {
+    const b = buildFounderBrief(
+      base({
+        pulse: { ...base().pulse, decisionsWaitingCount: 2 },
+        openAsks: [
+          { askId: 1, summary: "Approve budget?", urgency: "normal", answerFormat: "yes_no" },
+        ],
+      }),
+    );
+    expect(b.isFounderNeeded).toBe(true);
+    expect(b.neededLine).toMatch(/3 things need your call/);
+    expect(b.neededLine).toMatch(/1 question below/);
+    expect(b.neededLine).toMatch(/2 decisions waiting in Decisions/);
+  });
+
   it("on a calm all-green day the letter says you're free, and needs nobody", () => {
     const b = buildFounderBrief(base());
     expect(b.greeting).toBe("Good morning, Tom.");

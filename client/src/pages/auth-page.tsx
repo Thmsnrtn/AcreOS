@@ -12,7 +12,75 @@ import { trackCanonicalEvent } from "@/lib/analytics";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 
+/**
+ * Provider-aware entry. AuthPage's body calls useClerk()/useUser() at the
+ * top, which THROW when no <ClerkProvider> is mounted — and main.tsx
+ * deliberately skips the provider in E2E test-auth mode (and would if the
+ * publishable key ever went missing). Before this wrapper, that made the
+ * sign-in door itself crash to the 500 boundary — the worst possible
+ * failure shape for the one page a locked-out user needs. Route to a
+ * providerless fallback instead of crashing.
+ */
 export default function AuthPage() {
+  const runtimeEnv =
+    (typeof window !== "undefined" && (window as any).__ENV__) || {};
+  const clerkAvailable =
+    runtimeEnv.E2E_TEST_AUTH !== "1" &&
+    Boolean(
+      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
+        runtimeEnv.VITE_CLERK_PUBLISHABLE_KEY,
+    );
+  if (!clerkAvailable) return <AuthPageProviderless />;
+  return <AuthPageClerk />;
+}
+
+/**
+ * Rendered when ClerkProvider isn't mounted (E2E test-auth mode, or a
+ * missing publishable key). Uses only the API-based useAuth: an existing
+ * session redirects onward; otherwise an honest unavailable card — never
+ * a crash.
+ */
+function AuthPageProviderless() {
+  usePageMeta(
+    "Sign in",
+    "Sign in to AcreOS — the operating system Land Investors use to manage leads, properties, deals, notes, and rehabs in one place."
+  );
+  const { user, isLoading } = useAuth();
+  if (user) return <Redirect to="/today" />;
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-6">
+      <div
+        className="max-w-sm w-full text-center space-y-4"
+        data-testid="auth-clerk-unavailable"
+      >
+        <h1 className="text-2xl font-bold">Sign-in is briefly unavailable</h1>
+        <p className="text-sm text-muted-foreground">
+          {isLoading
+            ? "Checking your session…"
+            : "Our sign-in service didn't load. This is usually momentary — try again, and if it keeps happening, email support@acreos.io."}
+        </p>
+        <div className="flex justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="min-h-11 px-4 rounded-lg border border-border font-medium hover:bg-muted"
+            data-testid="auth-unavailable-retry"
+          >
+            Try again
+          </button>
+          <Link
+            href="/"
+            className="min-h-11 px-4 inline-flex items-center rounded-lg font-medium text-muted-foreground hover:text-foreground"
+          >
+            Back to home
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthPageClerk() {
   usePageMeta(
     "Sign in",
     "Sign in to AcreOS — the operating system Land Investors use to manage leads, properties, deals, notes, and rehabs in one place."

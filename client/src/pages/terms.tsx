@@ -531,7 +531,15 @@ export default function TermsOfService() {
                 your subscription before the effective date.
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                AcreOS will maintain a version history of these Terms accessible at acreos.io/terms/history.
+                AcreOS maintains a version history of these Terms at{" "}
+                <Link
+                  href="/terms/history"
+                  className="underline-offset-2 hover:underline text-primary"
+                  data-testid="link-terms-history"
+                >
+                  acreos.io/terms/history
+                </Link>
+                .
               </p>
             </section>
 
