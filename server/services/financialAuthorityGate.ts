@@ -1,16 +1,22 @@
 /**
  * Graduated Financial Authority Gate — Sovereign Company Protocol
  *
- * Replaces the flat $500 cap in autonomousDecisionExecutor.ts with a
- * tiered multi-agent consensus spending authority. Each tier demands
- * progressively stricter trust scores, more approvers, and longer
- * cooling periods before funds are released.
+ * Tiered spending authority on top of the flat $500 cap in
+ * autonomousDecisionExecutor.ts.
  *
- * Tier 1:  $0 – $500        Single agent, trust >= 70
- * Tier 2:  $500 – $2,500    Owner agent + Ledger consensus, trust >= 80
- * Tier 3:  $2,500 – $10K    Owner + Ledger + Shield, trust >= 85, 4hr cooling
- * Tier 4:  $10K – $50K      5+ agent quorum, trust >= 90, 24hr cooling, Founder Twin
- * Tier 5:  $50K+            Founder approval required (hard stop)
+ * CONSTITUTIONAL HARD STOP (CLAUDE.md, founder-confirmed this session):
+ * "spends >$500 stay founder-only forever." Only Tier 1 ($0–$500) may be
+ * granted autonomously. EVERY tier above $500 sets founderApprovalRequired
+ * and routes to the founder — the multi-agent-consensus machinery (trust
+ * scores, approver roles, cooling periods) is retained for the record and
+ * for the day the founder explicitly rescinds the >$500 hard stop, but it
+ * does NOT release funds on its own while the hard stop stands.
+ *
+ * Tier 1:  $0 – $500        Single agent, trust >= 70 — AUTONOMOUS
+ * Tier 2:  $500 – $2,500    Founder approval required (>$500 hard stop)
+ * Tier 3:  $2,500 – $10K    Founder approval required (>$500 hard stop)
+ * Tier 4:  $10K – $50K      Founder approval required (>$500 hard stop)
+ * Tier 5:  $50K+            Founder approval required (>$500 hard stop)
  *
  * Layered on top (Phase A.2 hardening):
  *
@@ -110,7 +116,8 @@ const SPENDING_TIERS: SpendingTier[] = [
     approverRoles: ["owner", "ledger"],
     coolingPeriodHours: 0,
     founderTwinRequired: false,
-    founderApprovalRequired: false,
+    // >$500 constitutional hard stop: founder-only, not agent consensus.
+    founderApprovalRequired: true,
   },
   {
     tier: 3,
@@ -121,7 +128,8 @@ const SPENDING_TIERS: SpendingTier[] = [
     approverRoles: ["owner", "ledger", "shield"],
     coolingPeriodHours: 4,
     founderTwinRequired: false,
-    founderApprovalRequired: false,
+    // >$500 constitutional hard stop: founder-only, not agent consensus.
+    founderApprovalRequired: true,
   },
   {
     tier: 4,
@@ -132,7 +140,8 @@ const SPENDING_TIERS: SpendingTier[] = [
     approverRoles: ["owner", "ledger", "shield", "quorum", "founder_twin"],
     coolingPeriodHours: 24,
     founderTwinRequired: true,
-    founderApprovalRequired: false,
+    // >$500 constitutional hard stop: founder-only, not agent consensus.
+    founderApprovalRequired: true,
   },
   {
     tier: 5,
@@ -146,6 +155,27 @@ const SPENDING_TIERS: SpendingTier[] = [
     founderApprovalRequired: true,
   },
 ];
+
+/**
+ * Resolve the tier for an amount (public mirror of the service's private
+ * getTier — kept in sync). Anything beyond all tiers falls to the last.
+ */
+function tierForAmount(amountCents: number): SpendingTier {
+  return (
+    SPENDING_TIERS.find((t) => amountCents >= t.minCents && amountCents < t.maxCents) ??
+    SPENDING_TIERS[SPENDING_TIERS.length - 1]
+  );
+}
+
+/**
+ * True when a spend of this many cents may be granted WITHOUT founder
+ * approval. Per the >$500 constitutional hard stop (CLAUDE.md), ONLY Tier 1
+ * ($0–$500) is autonomous — every larger spend routes to the founder.
+ * Exported so the regression test can lock the hard stop against drift.
+ */
+export function spendIsAutonomous(amountCents: number): boolean {
+  return !tierForAmount(amountCents).founderApprovalRequired;
+}
 
 // ─── Default Monthly Budgets (in cents) ──────────────────────────────────────
 
@@ -253,7 +283,10 @@ class FinancialAuthorityGateService {
       }
     }
 
-    // ── Hard stop: Tier 5 requires founder approval ──
+    // ── Hard stop: any spend >$500 requires founder approval ──
+    // Per CLAUDE.md, "spends >$500 stay founder-only forever." Every tier
+    // above Tier 1 sets founderApprovalRequired, so this routes all of them
+    // to the founder rather than to autonomous multi-agent consensus.
     if (tier.founderApprovalRequired) {
       const requestId = crypto.randomUUID();
       await db.insert(financialApprovals).values({
@@ -267,14 +300,14 @@ class FinancialAuthorityGateService {
         approvalStatus: {},
         requiredApprovers: 1,
         status: "awaiting_founder",
-        reasoning: `Tier 5 hard stop — amount $${(amountCents / 100).toLocaleString()} requires founder approval.`,
+        reasoning: `Tier ${tier.tier} hard stop — amount $${(amountCents / 100).toLocaleString()} is over the $500 autonomous cap and requires founder approval.`,
       });
 
       return {
         requestId,
         tier: tier.tier,
         status: "awaiting_founder",
-        message: `Spend of $${(amountCents / 100).toLocaleString()} exceeds $50K threshold. Founder approval required.`,
+        message: `Spend of $${(amountCents / 100).toLocaleString()} is over the $500 autonomous cap. Founder approval required.`,
       };
     }
 
