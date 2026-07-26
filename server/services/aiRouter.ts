@@ -1143,7 +1143,14 @@ export async function routeAITask(
   // is the hard fail-CLOSED backstop that prevents the runaway $30/day
   // scenario regardless of which surface initiated the call, and ALWAYS runs
   // (no skipBudget bypass). Per-org ceiling also enforced when orgId is set.
-  if (!config.skipQuota) {
+  //
+  // This gate is DECOUPLED from skipQuota on purpose: skipQuota only waives the
+  // per-ORG quota above, and many internal callers set it to escape that quota
+  // without meaning to disable the platform-wide backstop. The ceiling is
+  // therefore bypassed ONLY when the customer pays COGS on their own key
+  // (config.byok) or an operator sets the explicit AI_COST_CEILING_BYPASS
+  // escape hatch — never via skipQuota.
+  if (!config.byok && process.env.AI_COST_CEILING_BYPASS !== "1") {
     try {
       const { assertWithinAiCostCeiling } = await import("./aiCostCeiling");
       await assertWithinAiCostCeiling(config.orgId ?? null);

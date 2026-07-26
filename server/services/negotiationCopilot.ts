@@ -860,6 +860,16 @@ Return JSON: { "strategy": string, "reasoning": string, "actions": string[] }`,
     };
   }
 
+  // Fetch a single session by its own id (unscoped). Callers that expose this
+  // by a client-supplied id MUST verify session.organizationId against the
+  // caller's org before acting — see requireOwnedSessionId in routes-negotiation.
+  async getSessionById(sessionId: number): Promise<NegotiationSession | undefined> {
+    const [session] = await db.select()
+      .from(negotiationSessions)
+      .where(eq(negotiationSessions.id, sessionId));
+    return session;
+  }
+
   async closeSession(
     sessionId: number,
     outcome: SessionOutcome,

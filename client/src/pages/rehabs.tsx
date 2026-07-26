@@ -149,28 +149,28 @@ export default function RehabsPage() {
           </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div>
-              <Label className="text-xs">Property ID</Label>
-              <Input value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="h-9" placeholder="42" />
+              <Label htmlFor="rehab-property-id" className="text-xs">Property ID</Label>
+              <Input id="rehab-property-id" value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="h-9" placeholder="42" />
             </div>
             <div className="md:col-span-2">
-              <Label className="text-xs">Project name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-9" placeholder="1247 Cherokee Pl" />
+              <Label htmlFor="rehab-name" className="text-xs">Project name</Label>
+              <Input id="rehab-name" value={name} onChange={(e) => setName(e.target.value)} className="h-9" placeholder="1247 Cherokee Pl" />
             </div>
             <div>
-              <Label className="text-xs">Purchase price ($)</Label>
-              <Input type="number" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} className="h-9" placeholder="120000" />
+              <Label htmlFor="rehab-purchase-price" className="text-xs">Purchase price ($)</Label>
+              <Input id="rehab-purchase-price" type="number" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} className="h-9" placeholder="120000" />
             </div>
             <div>
-              <Label className="text-xs">Budget total ($)</Label>
-              <Input type="number" value={budgetTotal} onChange={(e) => setBudgetTotal(e.target.value)} className="h-9" placeholder="65000" />
+              <Label htmlFor="rehab-budget-total" className="text-xs">Budget total ($)</Label>
+              <Input id="rehab-budget-total" type="number" value={budgetTotal} onChange={(e) => setBudgetTotal(e.target.value)} className="h-9" placeholder="65000" />
             </div>
             <div>
-              <Label className="text-xs">ARV ($)</Label>
-              <Input type="number" value={arv} onChange={(e) => setArv(e.target.value)} className="h-9" placeholder="245000" />
+              <Label htmlFor="rehab-arv" className="text-xs">ARV ($)</Label>
+              <Input id="rehab-arv" type="number" value={arv} onChange={(e) => setArv(e.target.value)} className="h-9" placeholder="245000" />
             </div>
             <div>
-              <Label className="text-xs">Holding cost / month ($)</Label>
-              <Input type="number" value={holdingMonthly} onChange={(e) => setHoldingMonthly(e.target.value)} className="h-9" placeholder="900" />
+              <Label htmlFor="rehab-holding-monthly" className="text-xs">Holding cost / month ($)</Label>
+              <Input id="rehab-holding-monthly" type="number" value={holdingMonthly} onChange={(e) => setHoldingMonthly(e.target.value)} className="h-9" placeholder="900" />
             </div>
             <div className="col-span-full">
               <Button disabled={!name || !propertyId || create.isPending} onClick={() => create.mutate()}>

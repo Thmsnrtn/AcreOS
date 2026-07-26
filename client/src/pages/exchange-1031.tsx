@@ -15,6 +15,7 @@ import { RefreshCw, Calendar, DollarSign, AlertTriangle, CheckCircle2, Clock, Lo
 import { Verbs } from "@/lib/labels";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 
 interface Exchange1031 {
   id: number;
@@ -111,9 +112,12 @@ export default function Exchange1031Page() {
   const [relinquishedAddress, setRelinquishedAddress] = useState("");
   const [salePrice, setSalePrice] = useState("");
 
-  const { data, isLoading } = useQuery<{ exchanges: Exchange1031[] }>({
+  // Route through apiRequest so throwIfResNotOk rejects on non-2xx — a failed
+  // fetch must surface as an error, never as "No 1031 exchanges tracked yet"
+  // which would hide live tax deadlines behind a false all-clear.
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<{ exchanges: Exchange1031[] }>({
     queryKey: ["/api/exchange-1031"],
-    queryFn: () => fetch("/api/exchange-1031").then(r => r.json()),
+    queryFn: () => apiRequest("GET", "/api/exchange-1031").then(r => r.json()),
   });
 
   const createMutation = useMutation({
@@ -218,6 +222,17 @@ export default function Exchange1031Page() {
 
       {isLoading ? (
         <PageSkeleton variant="list" announceText="Loading exchanges" />
+      ) : isError ? (
+        // A failed load must NOT masquerade as an empty tracker — show an honest,
+        // retryable error rather than the "No 1031 exchanges tracked yet" false
+        // positive that would bury live identification/exchange deadlines.
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          isRetrying={isRefetching}
+          title="Couldn't load 1031 exchanges"
+          testId="exchanges-error"
+        />
       ) : exchanges.length === 0 ? (
         <EmptyState
           framed

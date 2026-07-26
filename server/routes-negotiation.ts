@@ -4,6 +4,23 @@ import { Errors } from './utils/errors';
 
 const router = Router();
 
+// Verify the :id session belongs to the caller's org before any action. Without
+// this, any authenticated user could read/close/manipulate another org's
+// negotiation session just by guessing the numeric id (cross-tenant IDOR).
+// Mirrors requireOwnedQualificationId in routes-buyer-qualification.ts. Returns
+// the parsed id, or null after having already sent the 400/404 response.
+async function requireOwnedSessionId(req: Request, res: Response): Promise<number | null> {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { Errors.badRequest(res, "Invalid session ID"); return null; }
+  const org = req.organization;
+  const session = await negotiationCopilotService.getSessionById(id);
+  if (!session || session.organizationId !== org.id) {
+    Errors.notFound(res, "Session");
+    return null;
+  }
+  return id;
+}
+
 
 // =====================
 // SESSION MANAGEMENT
@@ -48,10 +65,12 @@ router.get('/deal/:dealId', async (req: Request, res: Response) => {
 
 router.post('/sessions/:id/close', async (req: Request, res: Response) => {
   try {
+    const id = await requireOwnedSessionId(req, res);
+    if (id === null) return;
     const { outcome, finalPrice, lessons } = req.body;
-    await negotiationCopilotService.closeSession(parseInt(req.params.id), outcome, finalPrice);
+    await negotiationCopilotService.closeSession(id, outcome, finalPrice);
     if (lessons) {
-      await negotiationCopilotService.recordLessonsLearned(parseInt(req.params.id), lessons);
+      await negotiationCopilotService.recordLessonsLearned(id, lessons);
     }
     res.json({ success: true });
   } catch (error) {
@@ -65,8 +84,10 @@ router.post('/sessions/:id/close', async (req: Request, res: Response) => {
 
 router.post('/sessions/:id/detect-objection', async (req: Request, res: Response) => {
   try {
+    const id = await requireOwnedSessionId(req, res);
+    if (id === null) return;
     const { messageText } = req.body;
-    const objection = await negotiationCopilotService.detectObjection(parseInt(req.params.id), messageText);
+    const objection = await negotiationCopilotService.detectObjection(id, messageText);
     res.json({ objection });
   } catch (error) {
     Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
@@ -75,9 +96,11 @@ router.post('/sessions/:id/detect-objection', async (req: Request, res: Response
 
 router.post('/sessions/:id/generate-response', async (req: Request, res: Response) => {
   try {
+    const id = await requireOwnedSessionId(req, res);
+    if (id === null) return;
     const { objectionId, strategy } = req.body;
     const response = await negotiationCopilotService.generateResponse(
-      parseInt(req.params.id),
+      id,
       objectionId,
       strategy
     );
@@ -89,7 +112,9 @@ router.post('/sessions/:id/generate-response', async (req: Request, res: Respons
 
 router.post('/sessions/:id/counter-offer', async (req: Request, res: Response) => {
   try {
-    const suggestion = await negotiationCopilotService.suggestCounterOffer(parseInt(req.params.id));
+    const id = await requireOwnedSessionId(req, res);
+    if (id === null) return;
+    const suggestion = await negotiationCopilotService.suggestCounterOffer(id);
     res.json({ suggestion });
   } catch (error) {
     Errors.badRequest(res, error instanceof Error ? error.message : 'Bad request');
@@ -98,9 +123,11 @@ router.post('/sessions/:id/counter-offer', async (req: Request, res: Response) =
 
 router.post('/sessions/:id/analyze-sentiment', async (req: Request, res: Response) => {
   try {
+    const id = await requireOwnedSessionId(req, res);
+    if (id === null) return;
     const { messageText } = req.body;
     const sentiment = await negotiationCopilotService.analyzeSentiment(
-      parseInt(req.params.id),
+      id,
       messageText
     );
     res.json({ sentiment });
@@ -111,7 +138,9 @@ router.post('/sessions/:id/analyze-sentiment', async (req: Request, res: Respons
 
 router.get('/sessions/:id/strategy', async (req: Request, res: Response) => {
   try {
-    const strategy = await negotiationCopilotService.getRecommendedStrategy(parseInt(req.params.id));
+    const id = await requireOwnedSessionId(req, res);
+    if (id === null) return;
+    const strategy = await negotiationCopilotService.getRecommendedStrategy(id);
     res.json({ strategy });
   } catch (error) {
     Errors.internal(res, error);

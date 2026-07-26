@@ -12,6 +12,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { AlertTriangle, CreditCard, Mail, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 import { Verbs } from "@/lib/labels";
 
 interface DunningCase {
@@ -54,12 +55,15 @@ export default function DunningManagerPage() {
 
   const { data: summary } = useQuery<DunningSummary>({
     queryKey: ["/api/dunning/summary"],
-    queryFn: () => fetch("/api/dunning/summary").then(r => r.json()),
+    queryFn: () => apiRequest("GET", "/api/dunning/summary").then(r => r.json()),
   });
 
-  const { data: casesData, isLoading } = useQuery<{ cases: DunningCase[] }>({
+  // Route through apiRequest so throwIfResNotOk rejects on non-2xx — a failed
+  // fetch must surface as an error, never as a reassuring "No active dunning
+  // cases" that hides delinquent revenue behind a false all-clear.
+  const { data: casesData, isLoading, isError, error, refetch, isRefetching } = useQuery<{ cases: DunningCase[] }>({
     queryKey: ["/api/dunning/cases"],
-    queryFn: () => fetch("/api/dunning/cases").then(r => r.json()),
+    queryFn: () => apiRequest("GET", "/api/dunning/cases").then(r => r.json()),
   });
 
   const retryMutation = useMutation({
@@ -166,6 +170,18 @@ export default function DunningManagerPage() {
                 </div>
               ))}
             </div>
+          ) : isError ? (
+            // A failed load must NOT masquerade as a cleared queue — an honest,
+            // retryable error beats a false "No active dunning cases" that would
+            // hide real delinquent revenue.
+            <QueryErrorState
+              error={error as Error}
+              onRetry={() => refetch()}
+              isRetrying={isRefetching}
+              title="Couldn't load dunning cases"
+              compact
+              testId="dunning-cases-error"
+            />
           ) : cases.length === 0 ? (
             <EmptyState
               icon={CheckCircle2}

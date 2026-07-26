@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryErrorState } from "@/components/query-error-state";
 
 interface PortfolioAlert {
   id: number;
@@ -85,9 +86,11 @@ export default function PortfolioHealthPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const { data, isLoading } = useQuery<{ alerts: PortfolioAlert[] }>({
+  // Route through apiRequest so throwIfResNotOk rejects on non-2xx — a failed
+  // fetch must surface as an error, never as a reassuring "Portfolio is healthy".
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<{ alerts: PortfolioAlert[] }>({
     queryKey: ["/api/portfolio-health/alerts"],
-    queryFn: () => fetch("/api/portfolio-health/alerts").then(r => r.json()),
+    queryFn: () => apiRequest("GET", "/api/portfolio-health/alerts").then(r => r.json()),
   });
 
   const runScan = useMutation({
@@ -192,6 +195,16 @@ export default function PortfolioHealthPage() {
             </Card>
           ))}
         </div>
+      ) : isError ? (
+        // A failed load must NOT masquerade as an all-clear — show an honest,
+        // retryable error instead of the "Portfolio is healthy" false positive.
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          isRetrying={isRefetching}
+          title="Couldn't load portfolio health"
+          testId="portfolio-health-error"
+        />
       ) : alerts.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center" role="status" aria-live="polite">
           <ShieldCheck className="w-12 h-12 text-acr-pos" aria-hidden="true" />
