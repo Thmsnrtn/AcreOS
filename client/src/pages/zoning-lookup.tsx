@@ -44,7 +44,28 @@ export default function ZoningLookupPage() {
     mutationFn: () => apiRequest("POST", "/api/zoning/lookup", { address, parcelId }),
     onSuccess: async (res) => {
       const data = await res.json();
-      setResult(data);
+      // The server returns ZoningInfo (permittedUses / minimumLotSize /
+      // maxBuildingHeight / setbacks{front,rear,side}); this page's ZoningResult
+      // used different field names, so `result.allowedUses.map` and
+      // `result.restrictions.map` threw on every successful lookup. Normalize
+      // server → page shape here (arrays guaranteed to be arrays).
+      setResult({
+        address,
+        parcelId: parcelId || undefined,
+        zoningCode: data.zoningCode ?? "",
+        zoningDescription: data.zoningDescription ?? "",
+        allowedUses: Array.isArray(data.permittedUses) ? data.permittedUses : [],
+        restrictions: Array.isArray(data.restrictions) ? data.restrictions : [],
+        floodZone: data.floodZone,
+        setbackFront: data.setbacks?.front,
+        setbackRear: data.setbacks?.rear,
+        setbackSide: data.setbacks?.side,
+        maxHeight: data.maxBuildingHeight,
+        minLotSize: data.minimumLotSize,
+        permitRequired: typeof data.permitRequired === "boolean" ? data.permitRequired : false,
+        source: data.source ?? "unknown",
+        asOf: data.asOf ?? new Date().toISOString(),
+      });
     },
     onError: () =>
       toast({
@@ -154,23 +175,29 @@ export default function ZoningLookupPage() {
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-2">Allowed uses</p>
                 <ul className="space-y-1" aria-label="Allowed uses">
-                  {result.allowedUses.map(use => (
-                    <li key={use} className="flex items-center gap-1.5 text-xs">
-                      <CheckCircle2 className="w-3 h-3 text-acr-pos flex-shrink-0" aria-hidden="true" /> {use}
-                    </li>
-                  ))}
+                  {(result.allowedUses ?? []).length > 0 ? (
+                    (result.allowedUses ?? []).map(use => (
+                      <li key={use} className="flex items-center gap-1.5 text-xs">
+                        <CheckCircle2 className="w-3 h-3 text-acr-pos flex-shrink-0" aria-hidden="true" /> {use}
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-xs text-muted-foreground">No permitted-use data for this parcel.</li>
+                  )}
                 </ul>
               </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Restrictions</p>
-                <ul className="space-y-1" aria-label="Restrictions">
-                  {result.restrictions.map(r => (
-                    <li key={r} className="flex items-center gap-1.5 text-xs">
-                      <AlertTriangle className="w-3 h-3 text-acr-warn flex-shrink-0" aria-hidden="true" /> {r}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {(result.restrictions ?? []).length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Restrictions</p>
+                  <ul className="space-y-1" aria-label="Restrictions">
+                    {(result.restrictions ?? []).map(r => (
+                      <li key={r} className="flex items-center gap-1.5 text-xs">
+                        <AlertTriangle className="w-3 h-3 text-acr-warn flex-shrink-0" aria-hidden="true" /> {r}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             {(result.setbackFront || result.maxHeight || result.minLotSize) && (
