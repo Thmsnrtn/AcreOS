@@ -192,14 +192,20 @@ class AcreOSValuationModel {
    */
   async recordTransactionForTraining(
     _organizationId: string,
-    transactionData: TransactionDataPoint
+    transactionData: TransactionDataPoint,
+    // On-platform CLOSED deals are arm's-length ground truth — the richest,
+    // most-trusted training signal. Callers with that provenance can override
+    // the heuristic quality score (which can't reach "high" without market
+    // context a deal-close event doesn't carry) so those rows feed the retrain.
+    dataQualityOverride?: "high" | "medium" | "low",
   ): Promise<string> {
     try {
       // transaction_training is intentionally anonymized — no organizationId,
       // no propertyId, no nested location/characteristics objects. Map the
       // incoming TransactionDataPoint onto the flat, anonymized columns.
       const qualityScore = this.assessDataQuality(transactionData);
-      const dataQuality = qualityScore >= 75 ? "high" : qualityScore >= 50 ? "medium" : "low";
+      const dataQuality = dataQualityOverride
+        ?? (qualityScore >= 75 ? "high" : qualityScore >= 50 ? "medium" : "low");
       // transaction_hash is a required unique key; derive a stable hash from
       // the anonymized fields so re-imports dedupe deterministically.
       const transactionHash = `${transactionData.location.state}|${transactionData.location.county}|${transactionData.acres}|${transactionData.salePrice}|${transactionData.saleDate.toISOString()}`;
