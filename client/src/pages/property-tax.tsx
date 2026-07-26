@@ -27,16 +27,24 @@ interface EscrowStatus {
   recommendation: string;
 }
 
+// Shape mirrors getPortfolioTaxSummary() in server/services/propertyTaxService.ts.
+// All money fields are DOLLARS (server parses dollar-denominated numeric strings),
+// so the client must NOT divide by 100.
 interface PortfolioTaxSummary {
+  totalNotesWithEscrow: number;
+  totalAnnualTaxExposure: number;
   totalEscrowBalance: number;
-  totalAnnualTax: number;
-  notesWithEscrow: number;
   notesWithShortfall: number;
-  upcomingPayments: Array<{
+  taxesDueIn30Days: number;
+  taxesDueIn90Days: number;
+  notes: Array<{
     noteId: number;
-    dueDate: string;
-    amount: number;
+    borrowerName: string;
     propertyAddress: string;
+    annualTax: number;
+    escrowBalance: number;
+    nextTaxDue: string | null;
+    status: "adequate" | "shortfall" | "due_soon" | "overdue";
   }>;
 }
 
@@ -84,8 +92,11 @@ export default function PropertyTaxPage() {
   }
 
   const totalBalance = summary?.totalEscrowBalance ?? 0;
-  const totalAnnualTax = summary?.totalAnnualTax ?? 0;
+  const totalAnnualTax = summary?.totalAnnualTaxExposure ?? 0;
   const coverage = totalAnnualTax > 0 ? (totalBalance / totalAnnualTax) * 100 : 0;
+  // Server returns the full `notes` array (there is no dedicated upcomingPayments
+  // field). Treat notes with a scheduled due date as the upcoming payments.
+  const upcomingPayments = (summary?.notes ?? []).filter(n => n.nextTaxDue);
 
   return (
     <PageShell>
@@ -134,7 +145,7 @@ export default function PropertyTaxPage() {
                   <span className="text-xs">Escrow balance</span>
                 </dt>
                 <dd className="text-xl font-bold tabular-nums">
-                  {usd(totalBalance / 100)}
+                  {usd(totalBalance)}
                 </dd>
               </CardContent>
             </Card>
@@ -142,14 +153,14 @@ export default function PropertyTaxPage() {
               <CardContent className="p-4">
                 <dt className="text-xs text-muted-foreground mb-1">Annual tax due</dt>
                 <dd className="text-xl font-bold tabular-nums">
-                  {usd(totalAnnualTax / 100)}
+                  {usd(totalAnnualTax)}
                 </dd>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <dt className="text-xs text-muted-foreground mb-1">Notes w/ escrow</dt>
-                <dd className="text-xl font-bold tabular-nums">{summary?.notesWithEscrow ?? 0}</dd>
+                <dd className="text-xl font-bold tabular-nums">{summary?.totalNotesWithEscrow ?? 0}</dd>
               </CardContent>
             </Card>
             <Card>
@@ -180,20 +191,22 @@ export default function PropertyTaxPage() {
             </CardContent>
           </Card>
 
-          {(summary?.upcomingPayments?.length ?? 0) > 0 && (
+          {upcomingPayments.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Upcoming tax payments</CardTitle>
               </CardHeader>
               <CardContent className="p-4 pt-0">
                 <ul className="space-y-2" aria-label="Upcoming tax payments">
-                  {summary!.upcomingPayments.map(p => (
+                  {upcomingPayments.map(p => (
                     <li key={p.noteId} className="flex items-center justify-between text-sm">
                       <div>
                         <p className="font-medium text-xs">{p.propertyAddress}</p>
-                        <p className="text-xs text-muted-foreground tabular-nums">Due {formatDate(p.dueDate)}</p>
+                        {/* nextTaxDue is non-null here (filtered above) */}
+                        <p className="text-xs text-muted-foreground tabular-nums">Due {formatDate(p.nextTaxDue!)}</p>
                       </div>
-                      <Badge variant="secondary" className="tabular-nums">{usd(p.amount / 100)}</Badge>
+                      {/* annualTax is dollars from the server — no /100 */}
+                      <Badge variant="secondary" className="tabular-nums">{usd(p.annualTax)}</Badge>
                     </li>
                   ))}
                 </ul>

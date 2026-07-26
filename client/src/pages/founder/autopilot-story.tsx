@@ -32,13 +32,18 @@ interface TraceSenses {
   complianceOpenCount: number;
 }
 interface ReasoningTrace {
-  consideredMoves: Array<{ kind: string; priority: number; rationale: string }>;
-  chosen: { kind: string; domain: string; playId?: string | null };
-  senses: TraceSenses;
+  // Only the play/decision traces carry the rich reasoning shape. Governance
+  // traces (gate_watch, gate_ripened — see server/services/autopilot/gateWatcher.ts)
+  // and partial/legacy rows emit just { narrative, ... } WITHOUT
+  // senses/consideredMoves/gate, so every rich field is optional and must be
+  // guarded before access.
+  consideredMoves?: Array<{ kind: string; priority: number; rationale: string }>;
+  chosen?: { kind: string; domain: string; playId?: string | null };
+  senses?: TraceSenses;
   forecast?: { successProb: number; n: number; confidence: string } | null;
-  gate: { decision: string; decidedBy?: string };
-  outcome: string;
-  narrative: string;
+  gate?: { decision: string; decidedBy?: string };
+  outcome?: string;
+  narrative?: string;
   memory?: string | null;
 }
 interface StoryEntry {
@@ -149,29 +154,46 @@ function StoryRow({ entry }: { entry: StoryEntry }) {
           <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
         </div>
       </button>
-      {open && t && (
-        <div className="px-9 pb-4 space-y-1.5 text-sm" data-testid={`story-detail-${entry.id}`}>
-          <TraceBlock label="What I saw">
-            {`MRR $${t.senses.mrr} · ${t.senses.trials} trials · ${t.senses.supportBacklog} waiting · runway ${t.senses.envelopeStatus}`}
-            {t.senses.openIncidents > 0 ? ` · ${t.senses.openIncidents} incident(s)` : ""}
-            {t.senses.complianceOpenCount > 0 ? ` · ${t.senses.complianceOpenCount} compliance` : ""}
-          </TraceBlock>
-          <TraceBlock label={`Options I weighed (${t.consideredMoves.length})`}>
-            {t.consideredMoves.map((m) => prettyKind(m.kind)).join(" · ")}
-          </TraceBlock>
-          {t.memory && <TraceBlock label="What I remembered">{t.memory}</TraceBlock>}
-          {t.forecast && (
-            <TraceBlock label="My forecast">
-              {t.forecast.confidence === "none"
-                ? "No track record yet — couldn't predict honestly."
-                : `~${Math.round(t.forecast.successProb * 100)}% likely to go well, from ${t.forecast.n} past run(s) (${t.forecast.confidence} confidence).`}
-            </TraceBlock>
-          )}
-          <TraceBlock label="The gate">
-            {t.gate.decision === "pass" ? "Cleared every gate." : `${t.gate.decision}${t.gate.decidedBy ? ` — ${t.gate.decidedBy.replace(/_/g, " ")}` : ""}.`}
-          </TraceBlock>
-        </div>
-      )}
+      {open && t && (() => {
+        // Governance/legacy traces lack the rich reasoning fields. Detect
+        // whether ANY rich block is present; if none is, show an honest
+        // fallback rather than crashing on t.senses.mrr etc.
+        const hasRich = !!(t.senses || t.consideredMoves || t.gate || t.forecast || t.memory);
+        return (
+          <div className="px-9 pb-4 space-y-1.5 text-sm" data-testid={`story-detail-${entry.id}`}>
+            {t.senses && (
+              <TraceBlock label="What I saw">
+                {`MRR $${t.senses.mrr} · ${t.senses.trials} trials · ${t.senses.supportBacklog} waiting · runway ${t.senses.envelopeStatus}`}
+                {t.senses.openIncidents > 0 ? ` · ${t.senses.openIncidents} incident(s)` : ""}
+                {t.senses.complianceOpenCount > 0 ? ` · ${t.senses.complianceOpenCount} compliance` : ""}
+              </TraceBlock>
+            )}
+            {t.consideredMoves && (
+              <TraceBlock label={`Options I weighed (${t.consideredMoves.length})`}>
+                {t.consideredMoves.map((m) => prettyKind(m.kind)).join(" · ")}
+              </TraceBlock>
+            )}
+            {t.memory && <TraceBlock label="What I remembered">{t.memory}</TraceBlock>}
+            {t.forecast && (
+              <TraceBlock label="My forecast">
+                {t.forecast.confidence === "none"
+                  ? "No track record yet — couldn't predict honestly."
+                  : `~${Math.round(t.forecast.successProb * 100)}% likely to go well, from ${t.forecast.n} past run(s) (${t.forecast.confidence} confidence).`}
+              </TraceBlock>
+            )}
+            {t.gate && (
+              <TraceBlock label="The gate">
+                {t.gate.decision === "pass" ? "Cleared every gate." : `${t.gate.decision}${t.gate.decidedBy ? ` — ${t.gate.decidedBy.replace(/_/g, " ")}` : ""}.`}
+              </TraceBlock>
+            )}
+            {!hasRich && (
+              <p className="text-muted-foreground italic" data-testid={`story-detail-sparse-${entry.id}`}>
+                No detailed reasoning captured for this entry.
+              </p>
+            )}
+          </div>
+        );
+      })()}
     </motion.li>
   );
 }

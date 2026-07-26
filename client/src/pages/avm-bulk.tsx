@@ -31,6 +31,11 @@ export default function AvmBulk() {
   const fileInputId = useId();
   const [file, setFile] = useState<File | null>(null);
   const [results, setResults] = useState<BulkResult[]>([]);
+  // The /bulk endpoint is fire-and-forget (server/routes-avm.ts:336): it kicks off
+  // valuation for all owned properties and returns { success, message } — never a
+  // per-row results array. `started` drives an honest "queued" state instead.
+  const [started, setStarted] = useState(false);
+  const [startedMessage, setStartedMessage] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [sortField, setSortField] = useState<keyof BulkResult>("avmValue");
@@ -50,6 +55,7 @@ export default function AvmBulk() {
   const handleUploadAndProcess = async () => {
     if (!file) return;
     setIsProcessing(true);
+    setStarted(false);
     setProgress(0);
 
     const formData = new FormData();
@@ -71,8 +77,18 @@ export default function AvmBulk() {
 
       if (!res.ok) throw new Error("Bulk valuation failed");
       const data = await res.json();
-      setResults(data.results || []);
-      toast({ title: "Bulk valuation complete", description: `Processed ${data.results.length} properties.` });
+      // Async contract: the server queues valuations and returns { success, message }.
+      // There is no synchronous `results` array and no bulk-results poll endpoint, so
+      // surface the honest "started" state rather than reading data.results (which
+      // does not exist and previously crashed on data.results.length).
+      setStarted(true);
+      setStartedMessage(
+        data?.message ?? "Bulk valuation started for all owned properties.",
+      );
+      toast({
+        title: "Bulk valuation started",
+        description: "Results will populate as your properties are processed.",
+      });
     } catch (err: any) {
       toast({
         title: "Couldn't run bulk valuation",
@@ -181,6 +197,23 @@ export default function AvmBulk() {
           )}
         </CardContent>
       </Card>
+
+      {started && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3" role="status" aria-live="polite">
+              <CheckCircle className="h-5 w-5 text-acr-pos mt-0.5" aria-hidden="true" />
+              <div>
+                <p className="font-medium">Bulk valuation started</p>
+                <p className="text-sm text-muted-foreground">
+                  {startedMessage} Valuations run in the background — results will
+                  populate on each property as they finish processing.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {results.length > 0 && (
         <dl className="grid grid-cols-1 md:grid-cols-4 gap-4">

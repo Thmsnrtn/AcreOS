@@ -55,6 +55,26 @@ function scoreTier(score: number): "excellent" | "very good" | "good" | "fair" |
   return "poor";
 }
 
+// Server rows persist `overallScore` on a 0–100 scale; this surface presents
+// the FICO-style 300–850 "credit scale". Map with the SAME formula the server
+// uses (lcsCreditScale) so the number the client shows matches the scale the
+// server graded on. Guard against missing/non-numeric values (older rows).
+function toCreditScore(overall0to100: number | null | undefined): number | null {
+  if (typeof overall0to100 !== "number" || Number.isNaN(overall0to100)) return null;
+  return Math.round(300 + (overall0to100 / 100) * 550);
+}
+
+// The row has no `riskLevel` column — the server derives one from the 300–850
+// credit score and discards it. Reconstruct the identical label here from the
+// mapped credit score (server thresholds: 740/670/580/500).
+function riskLevelFromCreditScore(score: number): "excellent" | "good" | "fair" | "poor" | "high" {
+  if (score >= 740) return "excellent";
+  if (score >= 670) return "good";
+  if (score >= 580) return "fair";
+  if (score >= 500) return "poor";
+  return "high";
+}
+
 const GRADE_COLORS: Record<string, string> = {
   'A+': 'text-acr-pos dark:text-acr-pos',
   'A': 'text-acr-pos dark:text-acr-pos',
@@ -67,11 +87,15 @@ const GRADE_COLORS: Record<string, string> = {
 };
 
 const RISK_BADGE: Record<string, string> = {
+  // Property-card risk labels (derived from the credit score)
   excellent: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos',
   good: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos',
   fair: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
   poor: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
   high: 'bg-acr-neg-soft text-acr-neg dark:bg-acr-neg-soft/30 dark:text-acr-neg',
+  // Portfolio risk-band labels (server emits low/medium/high from riskScore)
+  low: 'bg-acr-pos-soft text-acr-pos dark:bg-acr-pos-soft/30 dark:text-acr-pos',
+  medium: 'bg-acr-warn-soft text-acr-warn dark:bg-acr-warn-soft/30 dark:text-acr-warn',
 };
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -250,28 +274,36 @@ export default function LandCreditPage() {
   });
 
   const latestScore = historyData?.history?.[0];
-  const factors = latestScore?.factors;
+  // Six-dimension factors live at scoreBreakdown.factors ({ [dim]: { score, weight } }),
+  // NOT at a top-level `factors` key. Optional — pre-S2a rows may lack it.
+  const factors = latestScore?.scoreBreakdown?.factors;
+  // Mapped 300–850 credit score for this parcel (from the 0–100 overallScore column).
+  const latestCreditScore = toCreditScore(latestScore?.overallScore);
+  const latestRiskLevel =
+    latestCreditScore != null ? riskLevelFromCreditScore(latestCreditScore) : null;
   const distribution = portfolioData?.distribution;
   const featureImportance: any[] = featureImportanceData?.features ?? [];
 
   // Personalized score
-  const personalizedScore = latestScore
-    ? (() => {
-        const base = latestScore.score;
-        const adj: Record<InvestorStrategy, number> = { cash_flow: 3, appreciation: 8, flip: 13 };
-        return Math.min(850, Math.max(300, base + (adj[investorStrategy] || 0)));
-      })()
-    : null;
+  const personalizedScore =
+    latestCreditScore != null
+      ? (() => {
+          const adj: Record<InvestorStrategy, number> = { cash_flow: 3, appreciation: 8, flip: 13 };
+          return Math.min(850, Math.max(300, latestCreditScore + (adj[investorStrategy] || 0)));
+        })()
+      : null;
 
-  // Historical score trend data
+  // Historical score trend data — map each row's 0–100 overallScore to the
+  // 300–850 scale the chart's Y axis expects. Rows carry `createdAt` only.
   const scoreTrend =
-    historyData?.history
-      ?.slice()
+    (historyData?.history ?? [])
+      .slice()
       .reverse()
-      .map((h: any, i: number) => ({
-        date: new Date(h.calculatedAt || h.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        score: h.score,
-      })) ?? [];
+      .map((h: any) => ({
+        date: new Date(h.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        score: toCreditScore(h.overallScore),
+      }))
+      .filter((d: { score: number | null }) => d.score != null);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -441,23 +473,25 @@ export default function LandCreditPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center gap-4">
-                  <ScoreGauge score={latestScore.score} />
+                  {latestCreditScore != null && <ScoreGauge score={latestCreditScore} />}
                   <div className="flex items-center gap-3">
                     <span
-                      className={`text-5xl font-bold ${GRADE_COLORS[latestScore.grade]}`}
+                      className={`text-5xl font-bold ${GRADE_COLORS[latestScore.grade] ?? ''}`}
                       aria-label={`Letter grade: ${latestScore.grade}`}
                     >
                       {latestScore.grade}
                     </span>
-                    <Badge
-                      className={RISK_BADGE[latestScore.riskLevel]}
-                      aria-label={`Risk level: ${latestScore.riskLevel}`}
-                    >
-                      {latestScore.riskLevel?.charAt(0).toUpperCase() + latestScore.riskLevel?.slice(1)} risk
-                    </Badge>
+                    {latestRiskLevel && (
+                      <Badge
+                        className={RISK_BADGE[latestRiskLevel]}
+                        aria-label={`Risk level: ${latestRiskLevel}`}
+                      >
+                        {latestRiskLevel.charAt(0).toUpperCase() + latestRiskLevel.slice(1)} risk
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Last updated <time dateTime={latestScore.calculatedAt || latestScore.createdAt}>{formatDate(latestScore.calculatedAt || latestScore.createdAt)}</time>
+                    Last updated <time dateTime={latestScore.createdAt}>{formatDate(latestScore.createdAt)}</time>
                   </p>
                 </CardContent>
               </Card>
@@ -497,7 +531,10 @@ export default function LandCreditPage() {
                 </CardContent>
               </Card>
 
-              {/* Strengths */}
+              {/* Strengths / Weaknesses / Recommendations — these arrays live ONLY on
+                  the POST /score response, which the mutation discards; history rows
+                  do not carry them. Guarded on real data so the cards stay hidden
+                  honestly rather than fabricating placeholder insights. */}
               {latestScore.strengths?.length > 0 && (
                 <Card>
                   <CardHeader>
@@ -576,7 +613,7 @@ export default function LandCreditPage() {
                     <dl className="flex items-center gap-4">
                       <div>
                         <dt className="text-xs text-muted-foreground">Base score</dt>
-                        <dd className="text-2xl font-bold tabular-nums">{latestScore.score}</dd>
+                        <dd className="text-2xl font-bold tabular-nums">{latestCreditScore}</dd>
                       </div>
                       <div className="text-muted-foreground" aria-hidden="true">→</div>
                       <div>
@@ -658,7 +695,7 @@ export default function LandCreditPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-5xl font-bold text-primary tabular-nums">
-                    {Math.round(distribution.avgScore)}
+                    {toCreditScore(distribution.avgScore) ?? '—'}
                   </div>
                   <div className="text-sm text-muted-foreground mt-1">300–850 scale</div>
                 </CardContent>
