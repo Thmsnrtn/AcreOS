@@ -65,24 +65,39 @@ function formatDollar(n: number) {
   return usd(n, { noCents: true });
 }
 
-// ─── SHAP Waterfall Placeholder ───────────────────────────────────────────────
+// ─── SHAP Waterfall (real factor attributions only) ───────────────────────────
 
-function SHAPWaterfallPlaceholder({ adjustments }: { adjustments: any[] }) {
-  const factors = adjustments?.length > 0
-    ? adjustments.map((a: any, i: number) => ({ name: a.factor?.slice(0, 22) ?? `Factor ${i+1}`, value: a.adjustment, fill: a.adjustment >= 0 ? CHART_POS : CHART_NEG }))
-    : [
-        { name: 'Base value', value: 100, fill: CHART_PRIMARY },
-        { name: 'Road access', value: 8, fill: CHART_POS },
-        { name: 'Water rights', value: 6, fill: CHART_POS },
-        { name: 'Zoning', value: -4, fill: CHART_NEG },
-        { name: 'Terrain', value: -2, fill: CHART_NEG },
-      ];
+function SHAPWaterfall({ adjustments }: { adjustments: any[] }) {
+  // Only ever render REAL, engine-produced factor attributions. When the engine
+  // has insufficient comparable data it returns no adjustments — show an honest
+  // empty state, never invented factors (no-fabrication rule).
+  const factors = (adjustments ?? [])
+    .filter((a: any) => a && typeof a.adjustment === 'number' && Number.isFinite(a.adjustment))
+    .map((a: any, i: number) => ({ name: a.factor?.slice(0, 22) ?? `Factor ${i + 1}`, value: a.adjustment, fill: a.adjustment >= 0 ? CHART_POS : CHART_NEG }));
+
+  if (factors.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-primary" aria-hidden="true" /> Feature impact
+          </CardTitle>
+          <CardDescription>Per-factor adjustments driving this valuation away from the base estimate</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Not enough comparable-sales signal to attribute factors for this parcel yet. Attributions appear once the model has enough comparable data.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-sm flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-primary" aria-hidden="true" /> SHAP feature impact (waterfall)
+          <BarChart3 className="w-4 h-4 text-primary" aria-hidden="true" /> Feature impact (waterfall)
         </CardTitle>
         <CardDescription>Top factors driving this valuation away from the base estimate</CardDescription>
       </CardHeader>
@@ -111,7 +126,7 @@ function SHAPWaterfallPlaceholder({ adjustments }: { adjustments: any[] }) {
             </li>
           ))}
         </ul>
-        <p className="text-xs text-muted-foreground mt-3 italic">SHAP values show each feature&apos;s marginal contribution to the final estimate.</p>
+        <p className="text-xs text-muted-foreground mt-3 italic">Each factor&apos;s modeled contribution to this valuation vs. the base estimate.</p>
       </CardContent>
     </Card>
   );
@@ -690,12 +705,10 @@ export default function AVMPage() {
                 </CardContent>
               </Card>
 
-              {/* SHAP waterfall */}
-              {latest.marketAdjustments && (
-                <div className="md:col-span-3">
-                  <SHAPWaterfallPlaceholder adjustments={latest.marketAdjustments} />
-                </div>
-              )}
+              {/* Feature-impact waterfall (real attributions or honest empty state) */}
+              <div className="md:col-span-3">
+                <SHAPWaterfall adjustments={latest.marketAdjustments ?? []} />
+              </div>
 
               {/* Quick stats */}
               <Card>
