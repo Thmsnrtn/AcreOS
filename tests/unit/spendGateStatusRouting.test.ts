@@ -30,8 +30,10 @@ describe("classifySpendGateStatus — gate→executor status contract", () => {
     expect(classifySpendGateStatus("blocked")).toBe("hard_stop");
   });
 
-  it("defers a Tier 2-4 'pending' spend — consensus not yet gathered", () => {
-    // The critical regression: 'pending' must NEVER map to 'execute'.
+  it("defers a 'pending' spend — multi-agent consensus not yet gathered", () => {
+    // The critical regression: 'pending' must NEVER map to 'execute'. (With the
+    // >$500 hard stop active, tiers 2-4 route to the founder rather than emit
+    // 'pending', but the mapping must stay safe if consensus mode is restored.)
     expect(classifySpendGateStatus("pending")).toBe("defer");
   });
 
