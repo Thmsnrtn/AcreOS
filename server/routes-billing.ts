@@ -435,7 +435,7 @@ export function registerBillingRoutes(app: Express): void {
   api.post("/api/billing/packs/checkout", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), idempotencyMiddleware, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
-      const { VERTICAL_PACKS } = await import("@shared/billing/tier-pricing");
+      const { VERTICAL_PACKS, isVerticalPackPurchasable } = await import("@shared/billing/tier-pricing");
       const org = req.organization;
       const parsed = packCheckoutSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -443,6 +443,16 @@ export function registerBillingRoutes(app: Express): void {
       }
       const { packKey, interval } = parsed.data;
       const pack = VERTICAL_PACKS[packKey];
+      // Waitlisted verticals are NOT sellable. A pack whose vertical is
+      // `roadmap` (e.g. fix_and_flip, demoted by founder decision 2026-07-11)
+      // must not be purchasable — charging for a frozen product is a broken
+      // promise. Refuse honestly rather than take the money.
+      if (!isVerticalPackPurchasable(packKey)) {
+        return Errors.forbidden(
+          res,
+          `${pack.displayName} isn't available yet — this vertical is on the waitlist. You won't be charged. We'll open it up when it's production-ready.`,
+        );
+      }
       const priceId = interval === "yearly" ? pack.stripePriceIdYearly : pack.stripePriceIdMonthly;
       if (!priceId) {
         // Honest 503, mirroring requireStripePriceId for tiers — an

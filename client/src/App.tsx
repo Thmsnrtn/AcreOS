@@ -1107,29 +1107,32 @@ function Router() {
         {() => <Redirect to="/help#support" />}
       </Route>
       {/* IA consolidation (Lens 4): /founder/bridge is the canonical
-          founder home — fused chat + telemetry surface. Every prior
-          founder-home variant redirects here.
+          The Letter (/founder) is the single founder home per the four-door
+          doctrine (client/src/lib/founder-doors.ts + CLAUDE.md). D6 fused the
+          Pulse (/founder) and Letter (/founder/autopilot) overviews there; the
+          earlier Lens-4 consolidation had pointed these legacy homes at
+          /founder/bridge, which left TWO surfaces each calling itself "the
+          canonical founder home." Completing the fold: every legacy founder-home
+          variant now redirects to /founder. Bridge stays reachable as a deep
+          chat+telemetry TOOL, not a competing home.
             • /founder-dashboard  — was the legacy 7,400-line operations
-              console (FounderDashboard). Now points to bridge; the legacy
-              component itself stays reachable via the sidebar "Operations
-              console (legacy)" overflow entry which still hits its old
-              route → bridge (no longer the real dashboard, but extraction
-              continues per Sigfried §1).
+              console (FounderDashboard). The legacy component stays reachable
+              via the sidebar "Operations console (legacy)" overflow entry.
             • /founder-home      — was the early "clean home" landing page.
             • /founder/now       — was the tile-driven daily inbox.
             • /founder/cockpit   — was the weekly steering surface.
           See client/src/lib/route-redirects.ts. */}
       <Route path="/founder-dashboard">
-        {() => <Redirect to="/founder/bridge" />}
+        {() => <Redirect to="/founder" />}
       </Route>
       <Route path="/founder-home">
-        {() => <Redirect to="/founder/bridge" />}
+        {() => <Redirect to="/founder" />}
       </Route>
       <Route path="/founder/now">
-        {() => <Redirect to="/founder/bridge" />}
+        {() => <Redirect to="/founder" />}
       </Route>
       <Route path="/founder/cockpit">
-        {() => <Redirect to="/founder/bridge" />}
+        {() => <Redirect to="/founder" />}
       </Route>
       {/* Pillar R — per-(agent, category) tier admin. Linked from the
           cockpit's autonomy section. */}
@@ -1155,11 +1158,10 @@ function Router() {
       <Route path="/founder/inspector/audit">
         {() => <FounderProtectedRoute component={FounderInspectorRouter} />}
       </Route>
-      {/* IA consolidation (Lens 4): /founder/dashboard was the legacy
-          tile-driven Now-surface (LegacyNowSurface). Folded into the
-          bridge per the consolidation plan. */}
+      {/* /founder/dashboard was the legacy tile-driven Now-surface
+          (LegacyNowSurface). Folded into the single founder home (The Letter). */}
       <Route path="/founder/dashboard">
-        {() => <Redirect to="/founder/bridge" />}
+        {() => <Redirect to="/founder" />}
       </Route>
       {/* /founder — the founder home. The Solene-migration 5-door model is
           now the sole surface: /founder always renders Today (the morning
@@ -1221,8 +1223,10 @@ function Router() {
       <Route path="/founder/build">
         {() => <FounderProtectedRoute component={FounderBuildPage} />}
       </Route>
-      {/* Bridge — fused chat + telemetry surface. Canonical founder home
-          per the Lens 4 IA consolidation. */}
+      {/* Bridge — a deep chat + telemetry TOOL, reachable from the sidebar
+          overflow and command palette. It is NOT the founder home: The Letter
+          (/founder) is the single home per the four-door doctrine. (Telemetry
+          also stands alone at /founder/telemetry; chat is on The Letter.) */}
       <Route path="/founder/bridge">
         {() => <FounderProtectedRoute component={FounderBridgePage} />}
       </Route>

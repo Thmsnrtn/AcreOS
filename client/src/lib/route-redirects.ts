@@ -44,35 +44,35 @@ export const ROUTE_REDIRECTS: readonly RouteRedirect[] = [
   },
   {
     legacy: "/founder-home",
-    canonical: "/founder/bridge",
+    canonical: "/founder",
     sunsetOn: "2026-07-26",
     reason:
-      "IA consolidation (Lens 4): /founder/bridge is the canonical founder home. /founder-home, /founder-dashboard, /founder/now, /founder/cockpit, /founder/dashboard all redirected here.",
+      "Four-door doctrine: The Letter (/founder) is the single founder home. D6 fused the Pulse + Letter overviews there; the earlier Lens-4 target /founder/bridge is now a deep chat+telemetry tool, not a home. /founder-home, /founder-dashboard, /founder/now, /founder/cockpit, /founder/dashboard all redirect to /founder.",
   },
   {
     legacy: "/founder-dashboard",
-    canonical: "/founder/bridge",
+    canonical: "/founder",
     sunsetOn: "2026-07-26",
     reason:
-      "IA consolidation (Lens 4): legacy 7,400-line operations console. Sidebar overflow still links here as 'Operations console (legacy)' but the route now redirects to bridge.",
+      "Legacy 7,400-line operations console. Sidebar overflow still links here as 'Operations console (legacy)' but the route now redirects to the single founder home, The Letter (/founder).",
   },
   {
     legacy: "/founder/now",
-    canonical: "/founder/bridge",
+    canonical: "/founder",
     sunsetOn: "2026-07-26",
     reason:
-      "IA consolidation (Lens 4): tile-driven daily inbox folded into the bridge surface.",
+      "Tile-driven daily inbox folded into the single founder home, The Letter (/founder).",
   },
   {
     legacy: "/founder/cockpit",
-    canonical: "/founder/bridge",
+    canonical: "/founder",
     sunsetOn: "2026-07-26",
     reason:
-      "IA consolidation (Lens 4): weekly steering folded into the bridge. /founder/steering still renders the cockpit component for the sidebar 'Steering' entry.",
+      "Weekly steering folded into the single founder home, The Letter (/founder). /founder/steering still renders the cockpit component for the sidebar 'Steering' entry.",
   },
   {
     legacy: "/founder/dashboard",
-    canonical: "/founder/bridge",
+    canonical: "/founder",
     sunsetOn: "2026-07-26",
     reason:
       "IA consolidation (Lens 4): legacy LegacyNowSurface tile layout folded into the bridge surface.",
