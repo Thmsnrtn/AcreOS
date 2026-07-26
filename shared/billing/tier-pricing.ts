@@ -25,6 +25,8 @@
  * are positive and self-consistent and only verify env IDs when they are set.
  */
 
+import { type BusinessTypeId, isProductionReady } from "../business-types";
+
 export type Tier = "starter" | "pro" | "scale";
 export type BillingInterval = "monthly" | "yearly";
 
@@ -141,6 +143,12 @@ export interface VerticalPack {
   stripePriceIdYearly?: string;
   /** Description shown on the pricing page tile. */
   tagline: string;
+  /**
+   * The vertical this pack unlocks. A pack is only purchasable when its
+   * vertical is production-ready (core|beta); a `roadmap` vertical is on the
+   * waitlist and must NOT be sold — see isVerticalPackPurchasable().
+   */
+  businessTypeId: BusinessTypeId;
 }
 
 export const VERTICAL_PACKS: Record<VerticalPackKey, VerticalPack> = {
@@ -152,6 +160,7 @@ export const VERTICAL_PACKS: Record<VerticalPackKey, VerticalPack> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_NI_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_NI_YEARLY"),
     tagline: "Amortization, payment ledger, 1098/1099-INT, portfolio dashboard",
+    businessTypeId: "note_investor",
   },
   buy_and_hold: {
     key: "buy_and_hold",
@@ -161,6 +170,7 @@ export const VERTICAL_PACKS: Record<VerticalPackKey, VerticalPack> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_BH_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_BH_YEARLY"),
     tagline: "Tenant screening, rent ledger, maintenance tickets, late-fee engine",
+    businessTypeId: "buy_and_hold",
   },
   fix_and_flipper: {
     key: "fix_and_flipper",
@@ -170,6 +180,7 @@ export const VERTICAL_PACKS: Record<VerticalPackKey, VerticalPack> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_FF_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_FF_YEARLY"),
     tagline: "ARV, rehab budgets, contractor 1099s, construction draws",
+    businessTypeId: "fix_and_flip",
   },
   subdivision: {
     key: "subdivision",
@@ -179,6 +190,7 @@ export const VERTICAL_PACKS: Record<VerticalPackKey, VerticalPack> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_SD_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_SD_YEARLY"),
     tagline: "Lot subdivision, CC&R templates, permit tracker",
+    businessTypeId: "subdivider",
   },
   wholesale: {
     key: "wholesale",
@@ -188,8 +200,27 @@ export const VERTICAL_PACKS: Record<VerticalPackKey, VerticalPack> = {
     stripePriceIdMonthly: envPriceId("STRIPE_PRICE_PACK_W_MONTHLY"),
     stripePriceIdYearly: envPriceId("STRIPE_PRICE_PACK_W_YEARLY"),
     tagline: "Assignment-of-contract, buyer-match, double-close, state-rule gate",
+    businessTypeId: "residential_wholesaler",
   },
 };
+
+/**
+ * Whether a vertical pack may be sold. A pack is purchasable only when its
+ * underlying vertical is production-ready (core|beta). A `roadmap` vertical
+ * is on the waitlist — e.g. fix_and_flip was demoted beta→roadmap by founder
+ * decision 2026-07-11 — and selling access to it would charge a customer for
+ * a frozen product. The checkout route and the pricing UI both gate on this.
+ */
+export function isVerticalPackPurchasable(packKey: VerticalPackKey): boolean {
+  const pack = VERTICAL_PACKS[packKey];
+  if (!pack) return false;
+  return isProductionReady(pack.businessTypeId);
+}
+
+/** The subset of packs that are currently purchasable (vertical is core|beta). */
+export function purchasableVerticalPacks(): VerticalPack[] {
+  return Object.values(VERTICAL_PACKS).filter((p) => isProductionReady(p.businessTypeId));
+}
 
 export function packPriceCents(packKey: VerticalPackKey, interval: BillingInterval): number {
   const pack = VERTICAL_PACKS[packKey];

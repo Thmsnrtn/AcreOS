@@ -219,6 +219,35 @@ const EXECUTOR_CONFIG = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Financial-authority gate status routing
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Map a FinancialAuthorityGate.requestSpend() status onto an executor
+ * disposition. The gate returns exactly one of:
+ *   "approved"         — Tier 1 auto-approved, safe to execute
+ *   "pending"          — Tier 2-4, multi-agent consensus record created but
+ *                        NOT yet gathered
+ *   "awaiting_founder" — Tier 5 (>$50K) founder hard stop
+ *   "blocked"          — absolute hard-cap exceeded, no approval flow runs
+ *   "expired"          — a pending request that aged out without consensus
+ *
+ * ONLY "approved" may execute. Everything else — including any future or
+ * unrecognized status — fails safe. The prior executor branched on
+ * "founder_required" / "pending_approval", statuses the gate never emits, so
+ * every non-Tier-1 spend fell through to execution. This pure function is the
+ * single source of truth for that mapping and is exhaustively unit-tested so
+ * the mismatch cannot silently return.
+ */
+export type SpendGateDisposition = "execute" | "hard_stop" | "defer";
+export function classifySpendGateStatus(status: string): SpendGateDisposition {
+  if (status === "approved") return "execute";
+  if (status === "awaiting_founder" || status === "blocked") return "hard_stop";
+  // "pending", "expired", or anything unrecognized → defer, never execute.
+  return "defer";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -787,13 +816,21 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
         `Autonomous decision: ${item.itemType} (item #${item.id})`,
         item.itemType
       );
-      if (spendResult.status === "founder_required") {
+      // Route on the gate's ACTUAL status. Only "approved" may execute; every
+      // other status fails safe. The prior code branched on "founder_required"
+      // and "pending_approval" — statuses the gate NEVER returns — so every
+      // non-Tier-1 result fell through to execution, letting $500-$50K spends
+      // fire before consensus and even hard-cap-blocked spends go through.
+      const disposition = classifySpendGateStatus(spendResult.status);
+      if (disposition === "hard_stop") {
         result.decision = {
           action: "hard_stop",
           confidence: 100,
-          reasoning: `Financial impact $${(impactCents / 100).toFixed(2)} is Tier 5 (>$50K). Requires founder approval.`,
+          reasoning: spendResult.status === "blocked"
+            ? `Financial impact $${(impactCents / 100).toFixed(2)} exceeds the absolute hard cap. ${spendResult.message} Founder decision required.`
+            : `Financial impact $${(impactCents / 100).toFixed(2)} is Tier 5 (>$50K). Requires founder approval.`,
         };
-        result.executedAction = "hard_stop_deferred_tier5";
+        result.executedAction = spendResult.status === "blocked" ? "hard_stop_hard_cap" : "hard_stop_deferred_tier5";
         result.executionSuccess = true;
         result.executed = false;
         await db.update(decisionsInboxItems)
@@ -801,20 +838,24 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
           .where(eq(decisionsInboxItems.id, item.id));
         return result;
       }
-      if (spendResult.status === "pending_approval") {
+      if (disposition === "defer") {
+        // "pending" (Tier 2-4 awaiting consensus), "expired", or any
+        // unrecognized status: the spend has NOT been approved, so executing
+        // it now would bypass the gate entirely. Defer instead.
         result.decision = {
           action: "defer",
           confidence: 80,
-          reasoning: `Financial impact $${(impactCents / 100).toFixed(2)} requires Tier ${spendResult.tier} multi-agent consensus. Approval request ${spendResult.requestId} created.`,
+          reasoning: `Financial impact $${(impactCents / 100).toFixed(2)} is Tier ${spendResult.tier} and not yet approved (gate status "${spendResult.status}"). Approval request ${spendResult.requestId} created; execution withheld until consensus is reached.`,
         };
         result.executedAction = `deferred_multi_agent_approval_tier${spendResult.tier}`;
         result.executionSuccess = true;
+        result.executed = false;
         await db.update(decisionsInboxItems)
           .set({ status: "deferred", deferredUntil: new Date(Date.now() + 4 * 60 * 60 * 1000), updatedAt: new Date() })
           .where(eq(decisionsInboxItems.id, item.id));
         return result;
       }
-      // status === "approved" — proceed with execution
+      // disposition === "execute" (status === "approved") — proceed
     } catch {
       // Fallback to legacy flat cap if graduated authority fails
     }
