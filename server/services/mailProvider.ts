@@ -58,6 +58,27 @@ interface ProviderCredentials {
 const LOB_LETTER_COST = 0.85;
 const LOB_POSTCARD_COST = 0.45;
 
+// Bounded timeout for the Lob API. The SDK's create() has no default timeout,
+// so a stalled Lob endpoint would hang the autopilot hand indefinitely. We race
+// the create against this timer and surface a distinct 'lob timeout' error so
+// callers can retry rather than block forever.
+const LOB_TIMEOUT_MS = 18_000;
+
+class LobTimeoutError extends Error {
+  constructor() {
+    super('lob timeout');
+    this.name = 'LobTimeoutError';
+  }
+}
+
+function withLobTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new LobTimeoutError()), LOB_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function getOrgMailCredentials(organizationId: number): Promise<ProviderCredentials | null> {
   const [lobIntegration] = await db
     .select()
@@ -124,14 +145,14 @@ async function sendLetterViaLob(
   try {
     const lob = new Lob({ apiKey: credentials.apiKey });
 
-    const letter = await (lob.letters as any).create({
+    const letter = await withLobTimeout<any>((lob.letters as any).create({
       to: formatAddressForLob(options.to),
       from: formatAddressForLob(options.from),
       file: options.file,
       color: options.color ?? false,
       double_sided: options.doubleSided ?? false,
       description: options.description,
-    });
+    }));
 
     return {
       success: true,
@@ -145,7 +166,8 @@ async function sendLetterViaLob(
   } catch (error: any) {
     return {
       success: false,
-      error: error.message || String(error),
+      // Distinct, retryable signal when the Lob API stalls past LOB_TIMEOUT_MS.
+      error: error instanceof LobTimeoutError ? 'lob timeout' : (error.message || String(error)),
       isTestMode: credentials.isTestKey,
       provider: MailProvider.LOB,
     };
@@ -159,14 +181,14 @@ async function sendPostcardViaLob(
   try {
     const lob = new Lob({ apiKey: credentials.apiKey });
 
-    const postcard = await (lob.postcards as any).create({
+    const postcard = await withLobTimeout<any>((lob.postcards as any).create({
       to: formatAddressForLob(options.to),
       from: formatAddressForLob(options.from),
       front: options.front,
       back: options.back,
       size: options.size || '4x6',
       description: options.description,
-    });
+    }));
 
     return {
       success: true,
@@ -179,7 +201,8 @@ async function sendPostcardViaLob(
   } catch (error: any) {
     return {
       success: false,
-      error: error.message || String(error),
+      // Distinct, retryable signal when the Lob API stalls past LOB_TIMEOUT_MS.
+      error: error instanceof LobTimeoutError ? 'lob timeout' : (error.message || String(error)),
       isTestMode: credentials.isTestKey,
       provider: MailProvider.LOB,
     };
@@ -198,11 +221,23 @@ export async function sendLetter(options: LetterOptions): Promise<MailResult> {
   }
 
   if (!credentials) {
-    logger.info(`[Mail] No provider configured - would send letter to ${options.to.name}`);
+    // No mail credentials configured. Only produce a mock mailing id under an
+    // explicit dev flag — never as the silent default, which would fabricate a
+    // successful send and let a real letter no-op while reporting success.
+    if (process.env.MAIL_MOCK === '1') {
+      logger.info(`[Mail] MAIL_MOCK - simulating letter to ${options.to.name}`);
+      return {
+        success: true,
+        mailingId: `mock-letter-${Date.now()}`,
+        isTestMode: true,
+        provider: MailProvider.LOB,
+      };
+    }
+    logger.warn(`[Mail] No provider configured - refusing to send letter to ${options.to.name}`);
     return {
-      success: true,
-      mailingId: `mock-letter-${Date.now()}`,
-      isTestMode: true,
+      success: false,
+      error: 'mail provider not configured',
+      isTestMode: false,
       provider: MailProvider.LOB,
     };
   }
@@ -223,11 +258,23 @@ export async function sendPostcard(options: PostcardOptions): Promise<MailResult
   }
 
   if (!credentials) {
-    logger.info(`[Mail] No provider configured - would send postcard to ${options.to.name}`);
+    // No mail credentials configured. Only produce a mock mailing id under an
+    // explicit dev flag — never as the silent default, which would fabricate a
+    // successful send and let a real postcard no-op while reporting success.
+    if (process.env.MAIL_MOCK === '1') {
+      logger.info(`[Mail] MAIL_MOCK - simulating postcard to ${options.to.name}`);
+      return {
+        success: true,
+        mailingId: `mock-postcard-${Date.now()}`,
+        isTestMode: true,
+        provider: MailProvider.LOB,
+      };
+    }
+    logger.warn(`[Mail] No provider configured - refusing to send postcard to ${options.to.name}`);
     return {
-      success: true,
-      mailingId: `mock-postcard-${Date.now()}`,
-      isTestMode: true,
+      success: false,
+      error: 'mail provider not configured',
+      isTestMode: false,
       provider: MailProvider.LOB,
     };
   }

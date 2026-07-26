@@ -218,7 +218,7 @@ export default function NotesTaxReadinessPage() {
                   {eligibleCount}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Total interest income {fmtUsd(totalInterest)}
+                  Total interest income {fmtUsd(Math.round(totalInterest * 100))}
                 </p>
               </div>
               <Button
@@ -253,9 +253,13 @@ export default function NotesTaxReadinessPage() {
                       <td className="px-2 py-2 font-mono text-xs">
                         {f.recipientTin ? f.recipientTin.replace(/^(\d{3})(\d{2})/, "•••-••-") : "—"}
                       </td>
-                      <td className="px-2 py-2 text-right font-mono">{fmtUsd(f.box1_interestIncome)}</td>
+                      {/* box1_interestIncome / box10_marketDiscount are DOLLARS
+                          (the server converts them to cents via *100 elsewhere);
+                          fmtUsd expects cents, so scale up or every 1099 amount
+                          renders 100x too small on a tax-filing surface. */}
+                      <td className="px-2 py-2 text-right font-mono">{fmtUsd(Math.round(f.box1_interestIncome * 100))}</td>
                       <td className="px-2 py-2 text-right font-mono">
-                        {f.box10_marketDiscount > 0 ? fmtUsd(f.box10_marketDiscount) : "—"}
+                        {f.box10_marketDiscount > 0 ? fmtUsd(Math.round(f.box10_marketDiscount * 100)) : "—"}
                       </td>
                     </tr>
                   ))}

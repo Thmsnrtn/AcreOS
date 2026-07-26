@@ -88,17 +88,22 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Get ticket details with messages
   api.get("/api/support/tickets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization!;
       const ticketId = parseInt(req.params.id);
       const { getTicketMessages } = await import("./ai/supportAgent");
-      
+
       const [ticket] = await db.select()
         .from(supportTickets)
         .where(eq(supportTickets.id, ticketId));
-      
+
       if (!ticket) {
         return Errors.notFound(res, "Ticket");
       }
-      
+      // Org-scope guard: a customer may only read their own org's tickets.
+      if (ticket.organizationId !== org.id && !org.isFounder) {
+        return Errors.forbidden(res);
+      }
+
       const messages = await getTicketMessages(ticketId);
 
       // SLA metrics (wire-for-real: measurementLoops.computeSla). First-reply =
@@ -133,6 +138,20 @@ export function registerSupportTicketRoutes(app: Express): void {
       
       if (!message) {
         return Errors.badRequest(res, "Message is required");
+      }
+
+      // Org-scope guard: a customer may only post to their own org's tickets.
+      // Must run BEFORE any grading/mutation below so we never touch a
+      // sibling org's ticket. 404 when the ticket doesn't exist at all.
+      const [ticketForGuard] = await db
+        .select({ organizationId: supportTickets.organizationId })
+        .from(supportTickets)
+        .where(eq(supportTickets.id, ticketId));
+      if (!ticketForGuard) {
+        return Errors.notFound(res, "Ticket");
+      }
+      if (ticketForGuard.organizationId !== org.id && !org.isFounder) {
+        return Errors.forbidden(res);
       }
 
       // Andrei — calibration loop. A customer posting again on an auto-resolved
@@ -239,9 +258,21 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Close/resolve ticket
   api.post("/api/support/tickets/:id/close", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = req.organization!;
       const ticketId = parseInt(req.params.id);
       const { resolution, rating, feedback } = req.body;
-      
+
+      // Org-scope guard: a customer may only close their own org's tickets.
+      const [ticket] = await db.select({ organizationId: supportTickets.organizationId })
+        .from(supportTickets)
+        .where(eq(supportTickets.id, ticketId));
+      if (!ticket) {
+        return Errors.notFound(res, "Ticket");
+      }
+      if (ticket.organizationId !== org.id && !org.isFounder) {
+        return Errors.forbidden(res);
+      }
+
       await db.update(supportTickets)
         .set({
           status: "closed",

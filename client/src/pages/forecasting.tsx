@@ -26,23 +26,25 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { format, addMonths } from "date-fns";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
-interface MonthlyData {
-  [month: string]: {
-    income: number;
-    expenses: number;
-  };
+// Mirrors the server's getPortfolioCashFlowSummary return shape
+// (server/services/cashFlowForecaster.ts:923-932). monthlyBreakdown is an
+// ARRAY keyed by 'YYYY-MM'; there is NO total/active note count in the payload.
+interface MonthlyBreakdownEntry {
+  month: string; // 'YYYY-MM'
+  income: number;
+  expenses: number;
+  net: number;
 }
 
 interface PortfolioSummary {
   totalProjectedIncome: number;
   totalProjectedExpenses: number;
   netCashFlow: number;
-  averageRiskScore: number;
+  averagePaymentRiskScore: number;
   highRiskNoteCount: number;
-  activeNoteCount: number;
   incomeBySource: Record<string, number>;
   expensesByCategory: Record<string, number>;
-  monthlyData: MonthlyData;
+  monthlyBreakdown: MonthlyBreakdownEntry[];
 }
 
 // Abbreviated currency for chart axes / KPI cards (tight space). Money-precision
@@ -54,9 +56,12 @@ function fmt(n: number) {
   return `$${n.toFixed(0)}`;
 }
 
-const MONTH_LABELS = Array.from({ length: 12 }, (_, i) =>
-  format(addMonths(new Date(), i), "MMM yy")
-);
+// Fixed 12-month axis: `key` matches the server's 'YYYY-MM' breakdown keys,
+// `label` is the human-readable axis tick.
+const MONTHS = Array.from({ length: 12 }, (_, i) => {
+  const d = addMonths(new Date(), i);
+  return { key: format(d, "yyyy-MM"), label: format(d, "MMM yy") };
+});
 
 export default function ForecastingPage() {
   useDocumentTitle("Cash flow forecasting");
@@ -67,37 +72,34 @@ export default function ForecastingPage() {
 
   const summary = resp?.summary;
 
-  const chartData = MONTH_LABELS.map((label) => {
-    const key = label;
-    const entry = summary?.monthlyData?.[key];
+  // Server sends monthlyBreakdown as an ARRAY keyed 'YYYY-MM'. Index it by month
+  // key so the fixed 12-month axis can pull each month's totals (previously the
+  // client read a non-existent `monthlyData` object → all-zero chart).
+  const monthlyByKey = new Map(
+    (summary?.monthlyBreakdown ?? []).map((m) => [m.month, m])
+  );
+
+  const monthlyEntries = MONTHS.map(({ key, label }) => {
+    const entry = monthlyByKey.get(key);
     return {
       month: label,
       income: entry?.income ?? 0,
       expenses: entry?.expenses ?? 0,
-      net: (entry?.income ?? 0) - (entry?.expenses ?? 0),
+      net: entry?.net ?? 0,
     };
   });
 
-  const monthlyEntries = summary?.monthlyData
-    ? Object.entries(summary.monthlyData)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .slice(0, 12)
-        .map(([month, data], i) => ({
-          month: MONTH_LABELS[i] ?? month,
-          income: data.income,
-          expenses: data.expenses,
-          net: data.income - data.expenses,
-        }))
-    : chartData;
+  // Only render the chart when the server actually returned monthly data.
+  const hasMonthlyData = (summary?.monthlyBreakdown?.length ?? 0) > 0;
 
   const incomeBreakdown = summary
-    ? Object.entries(summary.incomeBySource).map(([source, amount]) => ({
+    ? Object.entries(summary.incomeBySource ?? {}).map(([source, amount]) => ({
         name: source.replace(/_/g, " "),
         amount,
       }))
     : [];
 
-  const riskScore = summary?.averageRiskScore ?? 0;
+  const riskScore = summary?.averagePaymentRiskScore ?? 0;
   const riskColor = riskScore > 60 ? "text-acr-neg" : riskScore > 30 ? "text-acr-warn" : "text-acr-pos";
 
   return (
@@ -159,7 +161,9 @@ export default function ForecastingPage() {
                 <div className="flex items-center gap-3">
                   <CheckCircle2 className="w-8 h-8 text-acr-brand" aria-hidden="true" />
                   <div>
-                    <dd className="text-2xl font-bold tabular-nums">{summary.activeNoteCount}</dd>
+                    {/* Server summary does not include a total/active note count — show an
+                        honest em-dash rather than a fabricated or NaN value. */}
+                    <dd className="text-2xl font-bold tabular-nums">—</dd>
                     <dt className="text-xs text-muted-foreground">Active notes</dt>
                   </div>
                 </div>
@@ -188,7 +192,7 @@ export default function ForecastingPage() {
               <CardTitle>Monthly cash flow — next 12 months</CardTitle>
             </CardHeader>
             <CardContent>
-              {monthlyEntries.length > 0 ? (
+              {hasMonthlyData ? (
                 <div
                   role="img"
                   aria-label={`12-month cash flow forecast: ${fmt(summary.totalProjectedIncome)} income, ${fmt(summary.totalProjectedExpenses)} expenses, ${fmt(summary.netCashFlow)} net`}
@@ -269,9 +273,9 @@ export default function ForecastingPage() {
                 <div className="text-center">
                   <p
                     className={`text-4xl font-bold tabular-nums ${riskColor}`}
-                    aria-label={`Average risk score ${Math.round(summary.averageRiskScore)} of 100, ${riskScore > 60 ? "high" : riskScore > 30 ? "moderate" : "low"} risk`}
+                    aria-label={`Average risk score ${Math.round(riskScore)} of 100, ${riskScore > 60 ? "high" : riskScore > 30 ? "moderate" : "low"} risk`}
                   >
-                    {Math.round(summary.averageRiskScore)}
+                    {Math.round(riskScore)}
                   </p>
                   <p className="text-sm text-muted-foreground">Avg risk score</p>
                   <p className="text-xs text-muted-foreground">(0 = low, 100 = high)</p>
@@ -280,8 +284,10 @@ export default function ForecastingPage() {
                   <div className="flex justify-between text-sm">
                     <dt>Low risk notes</dt>
                     <dd>
+                      {/* Low-risk count = total notes − high-risk, but the server summary
+                          carries no total-note count, so we cannot derive it honestly. */}
                       <Badge variant="outline" className="text-acr-pos tabular-nums">
-                        {summary.activeNoteCount - summary.highRiskNoteCount}
+                        —
                       </Badge>
                     </dd>
                   </div>

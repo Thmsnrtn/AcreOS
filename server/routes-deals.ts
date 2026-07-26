@@ -658,6 +658,59 @@ export function registerDealRoutes(app: Express): void {
               },
               outcomeAt: new Date(),
             });
+
+            // Feed the closed deal's REAL sale price into the valuation training
+            // corpus (transaction_training) — the arm's-length ground truth the
+            // weekly retrain + MAE-gated promotion flywheel trains on. Until now
+            // the actual only landed in mlSnapshots, which nothing trains from,
+            // so this proprietary signal (an on-platform closed price) was
+            // stranded and the moat could never learn from real deals. The row
+            // is anonymized by recordTransactionForTraining, deduped by
+            // transaction_hash, non-blocking, and marked high-quality because an
+            // on-platform close IS an arm's-length transaction.
+            void (async () => {
+              try {
+                const prop = await storage.getProperty(org.id, deal.propertyId!);
+                const acres = prop?.sizeAcres != null ? Number(prop.sizeAcres) : 0;
+                if (prop?.state && prop?.county && Number.isFinite(acres) && acres > 0) {
+                  const { acreOSValuation } = await import("./services/acreOSValuation");
+                  await acreOSValuation.recordTransactionForTraining(
+                    String(org.id),
+                    {
+                      propertyId: String(deal.propertyId),
+                      salePrice: acceptedAmount,
+                      saleDate: new Date(),
+                      acres,
+                      pricePerAcre: acceptedAmount / acres,
+                      location: {
+                        state: prop.state,
+                        county: prop.county,
+                        zipCode: prop.zip ?? "",
+                        latitude: prop.latitude != null ? Number(prop.latitude) : 0,
+                        longitude: prop.longitude != null ? Number(prop.longitude) : 0,
+                      },
+                      characteristics: {
+                        zoning: prop.zoning ?? undefined,
+                        roadAccess: prop.roadAccess ?? undefined,
+                        topography: prop.terrain ?? undefined,
+                      },
+                      marketConditions: {
+                        quarterlyInterestRate: 0,
+                        localUnemploymentRate: 0,
+                        populationGrowth: 0,
+                        nearbyDevelopment: false,
+                      },
+                    },
+                    "high",
+                  );
+                }
+              } catch (err) {
+                logger.warn("[deal-close] recordTransactionForTraining failed", {
+                  dealId: deal.id,
+                  err: err instanceof Error ? err.message : String(err),
+                });
+              }
+            })();
           }
 
           // Pair the lead-conversion snapshot — closed = converted, cancelled = dismissed.

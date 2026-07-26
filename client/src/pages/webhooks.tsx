@@ -77,7 +77,7 @@ export default function WebhooksPage() {
     description: "",
   });
 
-  const { data, isLoading, error, refetch } = useQuery<{ endpoints: WebhookEndpoint[] }>({
+  const { data, isLoading, error, refetch } = useQuery<WebhookEndpoint[] | { endpoints?: WebhookEndpoint[] }>({
     queryKey: ["/api/webhooks"],
     queryFn: () => fetch("/api/webhooks").then(r => {
       if (!r.ok) throw new Error(`Failed to load webhooks (${r.status})`);
@@ -115,7 +115,12 @@ export default function WebhooksPage() {
     onSettled: () => setTestingUrl(null),
   });
 
-  const endpoints = data?.endpoints || [];
+  // GET /api/webhooks returns a BARE WebhookEndpoint[] array; reading
+  // data.endpoints (which doesn't exist on an array) always yielded [], so the
+  // page permanently showed the "No webhook endpoints" empty state even when
+  // endpoints were configured. Accept both a bare array and an { endpoints }
+  // envelope defensively.
+  const endpoints: WebhookEndpoint[] = Array.isArray(data) ? data : (data?.endpoints ?? []);
 
   function addEndpoint(e: React.FormEvent) {
     e.preventDefault();

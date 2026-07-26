@@ -37,8 +37,18 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
       return res.json();
     },
     onSuccess: (data) => {
-      if (data.url) {
-        window.location.href = data.url;
+      // Server returns the Stripe Checkout URL as `checkoutUrl`; reading `url`
+      // meant the redirect never fired and the customer could never actually
+      // pay (the mutation succeeded silently). Accept both keys defensively.
+      const url = data.checkoutUrl ?? data.url;
+      if (url) {
+        window.location.href = url;
+      } else {
+        toast({
+          title: "Couldn't open checkout",
+          description: "The purchase couldn't be started. Try again or contact support.",
+          variant: "destructive",
+        });
       }
     },
     onError: (error: Error) => {

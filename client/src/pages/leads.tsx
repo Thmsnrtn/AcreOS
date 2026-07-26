@@ -1850,7 +1850,22 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                                   data-testid={`checkbox-lead-mobile-${lead.id}`}
                                 />
                               </label>
-                              <div className="flex-1 min-w-0" onClick={() => setLocation(`/leads/${lead.id}`)}>
+                              {/* Card body is the "view lead" affordance. Expose it
+                                  as a real control so keyboard/screen-reader users can
+                                  open the lead: focusable, Enter/Space navigate, labeled. */}
+                              <div
+                                className="flex-1 min-w-0"
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`View ${lead.firstName} ${lead.lastName}`}
+                                onClick={() => setLocation(`/leads/${lead.id}`)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    setLocation(`/leads/${lead.id}`);
+                                  }
+                                }}
+                              >
                                 <div className="flex items-center justify-between gap-2">
                                   <h3 className="font-medium truncate" data-testid={`text-lead-name-${lead.id}`}>
                                     {lead.firstName} {lead.lastName}
