@@ -22,6 +22,23 @@ import { Errors } from "./utils/errors";
 
 const router = Router();
 
+// Verify the :id qualification belongs to the caller's org before any read or
+// mutate. Without this, any authenticated user could read another org's buyer
+// financial + background-check data — or run checks / change status on it — just
+// by guessing the numeric id (cross-tenant IDOR). Returns the parsed id, or null
+// after having already sent the 400/404 response.
+async function requireOwnedQualificationId(req: Request, res: Response): Promise<number | null> {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { Errors.badRequest(res, "Invalid qualification ID"); return null; }
+  const org = req.organization;
+  const qualification = await buyerQualificationBotService.getQualificationById(id);
+  if (!qualification || qualification.organizationId !== org.id) {
+    Errors.notFound(res, "Qualification");
+    return null;
+  }
+  return id;
+}
+
 
 // Start qualification process for a buyer
 router.post("/start", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
@@ -47,8 +64,8 @@ router.post("/start", isAuthenticated, getOrCreateOrg, async (req: Request, res:
 // Get qualification by ID
 router.get("/:id", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return Errors.badRequest(res, "Invalid qualification ID");
+    const id = await requireOwnedQualificationId(req, res);
+    if (id === null) return;
     const qualification = await buyerQualificationBotService.getQualificationById(id);
     if (!qualification) return Errors.notFound(res, "Qualification");
     res.json({ qualification });
@@ -82,8 +99,8 @@ router.get("/org/high-risk", isAuthenticated, getOrCreateOrg, async (req: Reques
 // Run financial check
 router.post("/:id/financial", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return Errors.badRequest(res, "Invalid qualification ID");
+    const id = await requireOwnedQualificationId(req, res);
+    if (id === null) return;
     const result = await buyerQualificationBotService.runFinancialCheck(id);
     res.json({ result });
   } catch (err: any) {
@@ -94,8 +111,8 @@ router.post("/:id/financial", isAuthenticated, getOrCreateOrg, async (req: Reque
 // Run background checks
 router.post("/:id/background", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return Errors.badRequest(res, "Invalid qualification ID");
+    const id = await requireOwnedQualificationId(req, res);
+    if (id === null) return;
     const result = await buyerQualificationBotService.runBackgroundChecks(id);
     res.json({ result });
   } catch (err: any) {
@@ -106,8 +123,8 @@ router.post("/:id/background", isAuthenticated, getOrCreateOrg, async (req: Requ
 // Assess financing readiness
 router.post("/:id/financing", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return Errors.badRequest(res, "Invalid qualification ID");
+    const id = await requireOwnedQualificationId(req, res);
+    if (id === null) return;
     const result = await buyerQualificationBotService.assessFinancingReadiness(id);
     res.json({ result });
   } catch (err: any) {
@@ -118,8 +135,8 @@ router.post("/:id/financing", isAuthenticated, getOrCreateOrg, async (req: Reque
 // Generate full assessment
 router.post("/:id/assess", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return Errors.badRequest(res, "Invalid qualification ID");
+    const id = await requireOwnedQualificationId(req, res);
+    if (id === null) return;
     const assessment = await buyerQualificationBotService.generateAssessment(id);
     res.json({ assessment });
   } catch (err: any) {
@@ -130,8 +147,8 @@ router.post("/:id/assess", isAuthenticated, getOrCreateOrg, async (req: Request,
 // Get qualification report
 router.get("/:id/report", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return Errors.badRequest(res, "Invalid qualification ID");
+    const id = await requireOwnedQualificationId(req, res);
+    if (id === null) return;
     const report = await buyerQualificationBotService.generateQualificationReport(id);
     res.json({ report });
   } catch (err: any) {
@@ -142,8 +159,8 @@ router.get("/:id/report", isAuthenticated, getOrCreateOrg, async (req: Request, 
 // Estimate closing probability
 router.get("/:id/probability", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return Errors.badRequest(res, "Invalid qualification ID");
+    const id = await requireOwnedQualificationId(req, res);
+    if (id === null) return;
     // estimateClosingProbability(buyerProfileId, propertyId)
     const propertyId = parseInt(String(req.query.propertyId));
     if (isNaN(propertyId)) return Errors.badRequest(res, "propertyId query param is required");
@@ -157,8 +174,8 @@ router.get("/:id/probability", isAuthenticated, getOrCreateOrg, async (req: Requ
 // Update qualification status
 router.patch("/:id/status", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return Errors.badRequest(res, "Invalid qualification ID");
+    const id = await requireOwnedQualificationId(req, res);
+    if (id === null) return;
     const { status } = req.body;
     if (!status) return Errors.badRequest(res, "status is required");
     // updateQualificationStatus(qualificationId, status) — notes not accepted.
