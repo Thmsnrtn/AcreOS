@@ -33,7 +33,7 @@ export function CostConfirmationModal({
     enabled: open,
   });
 
-  const { data: estimateData, isLoading: isEstimating } = useQuery<{ estimatedCost: number }>({
+  const { data: estimateData, isLoading: isEstimating } = useQuery<{ totalCostCents: number }>({
     queryKey: ["/api/usage/estimate", actionType, quantity],
     queryFn: async () => {
       const res = await apiRequest("POST", "/api/usage/estimate", { actionType, quantity });
@@ -46,7 +46,12 @@ export function CostConfirmationModal({
   });
 
   const balance = balanceData?.balance ?? 0;
-  const estimatedCost = estimateData?.estimatedCost ?? 0;
+  // Server returns the estimate as `totalCostCents`; reading `estimatedCost`
+  // (which the server never sends) coerced to 0, so the pre-action credit gate
+  // always showed "$0.00" cost, never decremented "balance after", and never
+  // fired the insufficient-credits guard — letting actions through the gate as
+  // if free. Read the real cents field (render already divides by 100).
+  const estimatedCost = estimateData?.totalCostCents ?? 0;
   const hasInsufficientCredits = balance < estimatedCost;
 
   const handleConfirm = () => {

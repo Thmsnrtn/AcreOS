@@ -115,7 +115,12 @@ export default function WebhooksPage() {
     onSettled: () => setTestingUrl(null),
   });
 
-  const endpoints = data?.endpoints || [];
+  // GET /api/webhooks returns a BARE WebhookEndpoint[] array; reading
+  // data.endpoints (which doesn't exist on an array) always yielded [], so the
+  // page permanently showed the "No webhook endpoints" empty state even when
+  // endpoints were configured. Accept both a bare array and an { endpoints }
+  // envelope defensively.
+  const endpoints = Array.isArray(data) ? data : (data?.endpoints ?? []);
 
   function addEndpoint(e: React.FormEvent) {
     e.preventDefault();
