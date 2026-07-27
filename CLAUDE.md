@@ -82,6 +82,8 @@ The historical `/founder/*` set grew to ~88 routes (≥10 overlapping overviews)
 
 Each line below is an existing decision recorded in `docs/company/roadmap-2026-07.md`, the deletion ledger, or a dated founder decision. Future sessions enforce them; only the founder can rescind one, explicitly.
 
+These decisions are also mirrored, machine-readable, in `shared/governance/constitution.ts` — each tagged with *how* it is enforced (code-invariant / ratchet-test / lint / prose-only). The `constitution.test.ts` ratchet checks every enforcement pointer still resolves and holds the count of **unenforced hard-stops** at ≤ its baseline (it may only shrink). When you add real enforcement for a prose-only hard-stop, reclassify it there and lower the baseline. Keep the registry in sync with this list — the registry is the checkable form of what's written here.
+
 - **No marketplace before ~25 customers; no public API before ~50** (the approved expansion ladder).
 - **No new persona verticals**, and **no new top-level nav entries EVER** — customer or founder side. New surfaces live behind existing doors (see the two doors sections above). The five customer doors may never be hidden per-persona (`PROTECTED_DOOR_ROUTES` in `client/src/lib/sidebar-hidden-routes.ts` + `sidebarHiddenRoutes.test.ts` ratchet).
 - **No re-fronting platform send rails**: counterparty mail requires the org's own connected identity (BYO); the platform sender is for system mail only (`emailService` purpose lanes, founder decision 2026-07-17).
