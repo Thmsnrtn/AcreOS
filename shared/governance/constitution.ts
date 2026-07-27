@@ -78,8 +78,9 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "server/services/autonomousDecisionExecutor.ts",
         "tests/unit/spendHardStop.test.ts",
         "tests/unit/spendGateStatusRouting.test.ts",
+        "tests/unit/founderHardStopGuardrails.test.ts",
       ],
-      note: "spendIsAutonomous() is true only for Tier 1 ($0–$500); the executor hard-stops every other gate status.",
+      note: "Two independent enforcements: spendIsAutonomous() is true only for Tier 1 ($0–$500) and the executor hard-stops every non-approved gate status; separately checkHardGuardrails() blocks any actionPayload.amount over HARD_GUARDRAIL_AMOUNT_LIMIT (50_000 cents = $500) before the AI is consulted.",
     },
   },
   {
@@ -90,9 +91,14 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     category: "hard-stop",
     source: "CLAUDE.md DO-NOT-DO list",
     enforcement: {
-      kind: "prose-only",
-      refs: ["shared/billing/tier-pricing.ts", "server/services/railSunsetDecisionCards.ts"],
-      note: "Prices are static constants surfaced for founder decision via decision cards, but no automated gate blocks an autonomous change. GOVERNANCE DEBT — wire a gate + ratchet, then reclassify.",
+      kind: "code-invariant",
+      refs: [
+        "server/services/autonomousDecisionExecutor.ts",
+        "tests/unit/founderHardStopGuardrails.test.ts",
+        "shared/billing/tier-pricing.ts",
+        "server/services/railSunsetDecisionCards.ts",
+      ],
+      note: "checkHardGuardrails() blocks BILLING_SUBSCRIPTION_ACTIONS (incl. 'pricing_change') before the AI is consulted, matched against actionType/itemType/category. Prices themselves are static constants, and open pricing questions reach the founder as decision cards.",
     },
   },
   {
@@ -105,7 +111,14 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     enforcement: {
       kind: "prose-only",
       refs: ["CLAUDE.md"],
-      note: "No automated block found. GOVERNANCE DEBT — add a signing gate + test, then reclassify.",
+      note:
+        "THE LAST UNENFORCED HARD STOP. Unlike spend/pricing/deletion, no " +
+        "checkHardGuardrails case covers contract execution: there is no " +
+        "'legal_signing'/'contract_execute' action class in " +
+        "BILLING_SUBSCRIPTION_ACTIONS or DATA_DELETION_ACTIONS, and the " +
+        "DocuSign/e-sign surfaces are not gated by a founder-only check. " +
+        "GOVERNANCE DEBT — add a signing action class + guardrail case + " +
+        "unit ratchet, then reclassify and lower the baseline to 0.",
     },
   },
   {
@@ -116,9 +129,13 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     category: "hard-stop",
     source: "CLAUDE.md DO-NOT-DO list",
     enforcement: {
-      kind: "prose-only",
-      refs: ["CLAUDE.md"],
-      note: "Founder-chat destructive tools carry a kill switch + confirmation, but no dedicated customer-data-deletion hard gate is registered. GOVERNANCE DEBT — wire + test, then reclassify.",
+      kind: "code-invariant",
+      refs: [
+        "server/services/autonomousDecisionExecutor.ts",
+        "tests/unit/founderHardStopGuardrails.test.ts",
+        "server/services/founder-chat/tool-registry.ts",
+      ],
+      note: "checkHardGuardrails() blocks DATA_DELETION_ACTIONS (data_deletion, bulk_delete, account_deletion, record_purge, permanent_delete) AND any payload carrying a delete/permanent/purge intent flag, before the AI is consulted. Founder-chat destructive tools additionally carry a kill switch + confirmation.",
     },
   },
 

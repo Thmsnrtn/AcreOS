@@ -30,10 +30,18 @@ const ROOT = path.resolve(__dirname, "../..");
 
 /**
  * Current count of hard stops with no automated backstop. May only DECREASE.
- * 2026-07-27: 3 — pricing changes, legal signing, customer-data deletion.
- * (spends >$500 is the one hard stop already machine-enforced.)
+ *
+ * 2026-07-27 (initial): 3 — pricing changes, legal signing, customer-data
+ *   deletion. (spends >$500 was the one already machine-enforced.)
+ * 2026-07-27 (→1): auditing the actual code found checkHardGuardrails()
+ *   ALREADY blocks pricing/billing modifications and customer-data deletion
+ *   before the AI is consulted — the registry had been too pessimistic. That
+ *   enforcement is now pinned by tests/unit/founderHardStopGuardrails.test.ts,
+ *   so both were reclassified prose-only → code-invariant.
+ *
+ * Remaining: legal signing — no guardrail case covers contract execution.
  */
-const UNENFORCED_HARD_STOP_BASELINE = 3;
+const UNENFORCED_HARD_STOP_BASELINE = 1;
 
 describe("constitution registry — shape", () => {
   it("every invariant has the required non-empty fields", () => {
