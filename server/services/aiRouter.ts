@@ -344,6 +344,25 @@ export function modelForTier(tier: TaskTier): string {
   }
 }
 
+/**
+ * Read-only snapshot of the env routing flags that can silently swap which
+ * model serves a tier. Exposed for the model-change annunciator
+ * (server/services/autopilot/modelChangeAnnunciator.ts) so its fingerprint
+ * reads the SAME parsers the router itself routes by — never a re-parse that
+ * could drift.
+ */
+export function getModelRoutingFlags(): {
+  haikuDefaultEnabled: boolean;
+  cascadeEnabled: boolean;
+  qualityThreshold: number;
+} {
+  return {
+    haikuDefaultEnabled: isHaikuDefaultEnabled(),
+    cascadeEnabled: isCascadeEnabled(),
+    qualityThreshold: getQualityThreshold(),
+  };
+}
+
 /** Public for tests + founder dashboard. */
 export function getTierToModelMap(): Record<TaskTier, string> {
   if (!isHaikuDefaultEnabled()) {

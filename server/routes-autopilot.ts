@@ -98,6 +98,49 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── Guided resume — the staged, honest way BACK from the panic stop ──────
+  // Preflight: a plain-words checklist (env-override honesty, what tripped the
+  // stop where discoverable, the reused readiness checks) before anything
+  // turns on.
+  app.get(
+    "/api/founder/autopilot/resume/preflight",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { resumePreflight } = await import("./services/autopilot/guidedResume");
+        return res.json(await resumePreflight());
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // Stage: 1 cognition → 2 observe (verify-only) → 3 dispatch. Domain autonomy
+  // levels are NEVER restored automatically — the founder re-grants from the
+  // trust ledger (the autopilot restarts cautious).
+  app.post(
+    "/api/founder/autopilot/resume/stage",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { isResumeStage, resumeStage, RESUME_STAGES } = await import(
+          "./services/autopilot/guidedResume"
+        );
+        const stage = ((req.body ?? {}) as { stage?: unknown }).stage;
+        if (!isResumeStage(stage)) {
+          return Errors.badRequest(res, "Invalid stage", { allowed: RESUME_STAGES });
+        }
+        const result = await resumeStage(stage, getUserId(req));
+        logger.info("[autopilot] founder ran guided-resume stage", { stage, done: result.done });
+        return res.json(result);
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── GET the governance evidence packet (exportable, hash-sealed) ─────────
   // Foundry move #5: AcreOS's own founder-trust artifact AND the sellable
   // "proof the autonomy was governed". Composes existing durable records

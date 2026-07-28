@@ -132,6 +132,17 @@ export interface FounderBriefInputs {
    * caps at MAX_MISSES (oldest dropped). Empty → the section is silent.
    */
   misses?: Array<{ atIso: string | null; line: string; changed: string | null }> | null;
+  /**
+   * MODEL-CHANGE ANNUNCIATOR (trust audit, 2026-07-28) — non-null only when
+   * the autopilot's underlying AI model configuration genuinely changed
+   * within the last MODEL_CHANGE_NOTICE_WINDOW_DAYS. The sentence is composed
+   * server-side (modelChangeAnnunciator.buildModelChangeNotice) in plain
+   * roles — never raw model ids — and tells the founder to treat the track
+   * record as provisional while the new brain re-proves itself. null =
+   * no recent change OR the check was unreadable → render nothing, never a
+   * guessed reassurance.
+   */
+  modelChangeNotice?: string | null;
 }
 
 export interface FounderBrief {
@@ -191,6 +202,11 @@ export interface FounderBrief {
   learningLines: string[];
   /** The confession — capped at MAX_MISSES, newest first. Empty = silence. */
   misses: Array<{ atIso: string | null; line: string; changed: string | null }>;
+  /**
+   * "My brain changed" — the model-change annunciator's plain-language
+   * notice while a recent change is inside its window. null = silence.
+   */
+  modelChangeNotice: string | null;
 }
 
 const PART_OF_DAY_WORD: Record<PartOfDay, string> = {
@@ -404,6 +420,7 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
     // The confession — newest first from the gatherer; cap enforced here so
     // the Letter can never become a wall of indictments (oldest dropped).
     misses: (inp.misses ?? []).slice(0, MAX_MISSES),
+    modelChangeNotice: inp.modelChangeNotice ?? null,
   };
 }
 
@@ -749,6 +766,18 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     sweep = null;
   }
 
+  // Model-change annunciator — "my brain changed" in plain words, only when
+  // the underlying model config genuinely changed within its notice window.
+  // Best-effort: a failed check contributes nothing (silence, never invented).
+  let modelChangeNotice: string | null = null;
+  try {
+    const { checkModelChange } = await import("./modelChangeAnnunciator");
+    const res = await checkModelChange(nowMs);
+    modelChangeNotice = res.notice;
+  } catch {
+    modelChangeNotice = null;
+  }
+
   // Operating mode — read the real switches; null (silent) when unreadable.
   let operatingMode: FounderBriefInputs["operatingMode"] = null;
   try {
@@ -775,6 +804,7 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     calibration,
     trackRecord,
     misses,
+    modelChangeNotice,
     runwayWeeks,
     mrrWowPct,
     wedge,
