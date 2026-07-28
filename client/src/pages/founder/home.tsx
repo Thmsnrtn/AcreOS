@@ -68,6 +68,12 @@ interface FounderBrief {
   learningLines: string[];
   /** The confession — self-reported misses since last week. Empty = the section is silent. */
   misses: Array<{ atIso: string | null; line: string; changed: string | null }>;
+  /**
+   * "My brain changed" — plain-language notice while the underlying AI model
+   * configuration changed recently (composed server-side, never raw model
+   * ids). null = no recent change → render nothing.
+   */
+  modelChangeNotice: string | null;
 }
 
 /** Signed WoW percent → a short, signed label ("↑3%" / "↓2%" / "flat"). */
@@ -286,6 +292,21 @@ export default function FounderHomePage() {
           {receiptMetric && (
             <motion.div variants={staggerItem}>
               <WedgeReceipts metric={receiptMetric} />
+            </motion.div>
+          )}
+
+          {/* "My brain changed" — the model-change annunciator. Muted but
+              NEVER hidden when present: the track record below was earned by
+              a specific model configuration, and the founder is told, in
+              plain words, when that configuration changed. */}
+          {brief.modelChangeNotice && (
+            <motion.div variants={staggerItem}>
+              <p
+                className="rounded-lg border border-acr-warn/30 bg-acr-warn/5 p-3 text-sm leading-relaxed text-muted-foreground"
+                data-testid="letter-model-change-notice"
+              >
+                {brief.modelChangeNotice}
+              </p>
             </motion.div>
           )}
 

@@ -35,6 +35,17 @@ export function seedFounderDecisionCardsOnStartup(): void {
       }),
     );
 
+  // 2026-07 evaluation horizon — pre-commit WHEN the mail program is judged
+  // and the stop-loss SHAPE, while it's calm, before any drawdown adjudicates
+  // honest variance emotionally. Cards record rulings; nothing auto-executes.
+  void import("../services/evaluationHorizonCards")
+    .then(({ seedEvaluationHorizonCards }) => seedEvaluationHorizonCards())
+    .catch((err) =>
+      logger.warn("[seedFounderDecisionCards] evaluation-horizon seed failed (boot unaffected)", {
+        metadata: { detail: err instanceof Error ? err.message : String(err) },
+      }),
+    );
+
   // 2026-07 trust-graduation re-collar: demote auto-graduated "silent" tiers
   // lacking an explicit founder force_silent override back to notify_only.
   // One law of the leash — silent execution requires the founder's tap.

@@ -14,7 +14,7 @@ import { motion } from "framer-motion";
 import {
   Power, Send, ShieldCheck, PauseCircle, ChevronUp, Loader2, AlertCircle,
   ScrollText, MessageSquareQuote, Sparkles, ArrowRight, TrendingUp, OctagonX,
-  KeyRound, Plug,
+  KeyRound, Plug, Sunrise,
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -36,7 +36,7 @@ import { Verbs } from "@/lib/labels";
 
 interface LedgerEntry { domain: string; level: string; cleanCycleCount: number; threshold: number; qualityLine?: string | null; shadowLine?: string | null; lastPromotedAt?: string | null; lastDemotedAt?: string | null; lastDemotionReason?: string | null }
 interface ControlData {
-  settings: { dispatchEnabled: boolean; publishEnabled: boolean; selfPatchEnabled?: boolean; growthBudgetOverrideUsd: number | null; source: { dispatch: "db" | "env"; publish: "db" | "env" } };
+  settings: { dispatchEnabled: boolean; publishEnabled: boolean; cognitionEnabled?: boolean; selfPatchEnabled?: boolean; growthBudgetOverrideUsd: number | null; source: { dispatch: "db" | "env"; publish: "db" | "env" } };
   ledger: LedgerEntry[];
   openAsks: number;
   calibration: { grade: string; n: number } | null;
@@ -142,6 +142,10 @@ export default function FounderAutopilotControlPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [panicConfirming, setPanicConfirming] = useState(false);
+  // Guided resume stays visible mid-flow: stage 1 turns cognition on, which
+  // would otherwise un-render the card before stages 2–3 (and their
+  // narrations) could run.
+  const [resumePinned, setResumePinned] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useQuery<ControlData>({
     queryKey: CONTROL_KEY,
@@ -419,6 +423,18 @@ export default function FounderAutopilotControlPage() {
               )}
             </motion.section>
 
+            {/* Come back online — the guided, staged resume after a stop.
+                Shown whenever all three master switches are off (the state the
+                panic stop leaves behind — and the honest simpler condition the
+                data supports, since flipping them off by hand lands in the
+                same place). Pinned while a resume flow is in progress. */}
+            {(resumePinned ||
+              (!data.settings.dispatchEnabled && !data.settings.publishEnabled && !(data.settings.cognitionEnabled ?? false))) && (
+              <motion.section variants={staggerItem}>
+                <GuidedResumeSection onProgress={() => setResumePinned(true)} onDismiss={() => setResumePinned(false)} />
+              </motion.section>
+            )}
+
             {/* Master switches */}
             <motion.section variants={staggerItem} className="grid gap-4 sm:grid-cols-2">
               <MasterToggle
@@ -685,6 +701,167 @@ function MasterToggle({ icon: Icon, title, description, enabled, source, pending
           </Button>
         )}
         {source === "env" && <p className="text-[11px] text-muted-foreground">Currently following the server default. Flipping it here takes over.</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Come back online — guided resume (founder-trust audit: un-guided resume
+// makes the red button psychologically unusable) ────────────────────────────
+// The mirror of the panic stop: a plain-words preflight checklist, then three
+// stage buttons that unlock strictly in order. Nothing here restores domain
+// autonomy levels — post-resume everything stays watching-only and the founder
+// re-grants from the trust ledger. Auto-publish is never guessed back on (the
+// pre-stop state isn't recorded anywhere), and the server says so.
+
+interface ResumeChecklistItem { label: string; ok: boolean; detail: string }
+interface ResumePreflightData { ok: boolean; items: ResumeChecklistItem[] }
+
+const RESUME_PREFLIGHT_KEY = ["/api/founder/autopilot/resume/preflight"];
+
+const RESUME_STAGE_STEPS = [
+  { id: "cognition", label: "1. Wake the brain", line: "Thinking, watching and drafting only — its hands stay off, nothing goes out." },
+  { id: "observe", label: "2. Confirm watching-only", line: "Verifies every part sits at watching-only (the stop put them there). Changes nothing." },
+  { id: "dispatch", label: "3. Hands back on", line: "Actions run through every safety gate again. Auto-publish stays off until you flip it yourself." },
+] as const;
+type ResumeStageId = (typeof RESUME_STAGE_STEPS)[number]["id"];
+
+function GuidedResumeSection({ onProgress, onDismiss }: { onProgress: () => void; onDismiss: () => void }) {
+  const qc = useQueryClient();
+  const [doneStages, setDoneStages] = useState<ResumeStageId[]>([]);
+  const [narrations, setNarrations] = useState<Partial<Record<ResumeStageId, string>>>({});
+  const [stageError, setStageError] = useState<string | null>(null);
+
+  const preflight = useQuery<ResumePreflightData>({
+    queryKey: RESUME_PREFLIGHT_KEY,
+    queryFn: async () => {
+      const res = await fetch("/api/founder/autopilot/resume/preflight", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load the resume checklist (${res.status})`);
+      return res.json();
+    },
+    staleTime: 15_000,
+  });
+
+  const runStage = useMutation({
+    mutationFn: async (stage: ResumeStageId) => {
+      const res = await fetch("/api/founder/autopilot/resume/stage", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `Couldn't run this step (${res.status})`);
+      }
+      return res.json() as Promise<{ done: boolean; narration: string }>;
+    },
+    onSuccess: (r, stage) => {
+      setNarrations((n) => ({ ...n, [stage]: r.narration }));
+      if (r.done) {
+        setStageError(null);
+        setDoneStages((s) => (s.includes(stage) ? s : [...s, stage]));
+        onProgress();
+        void qc.invalidateQueries({ queryKey: CONTROL_KEY });
+        void qc.invalidateQueries({ queryKey: STEP_AWAY_KEY });
+      } else {
+        // The server refused honestly (e.g. the env-level stop is engaged) —
+        // its narration is the whole truth; show it where the button lives.
+        setStageError(r.narration);
+      }
+    },
+    onError: (err) => setStageError(err instanceof Error ? err.message : String(err)),
+  });
+
+  const allDone = doneStages.length === RESUME_STAGE_STEPS.length;
+
+  return (
+    <Card className="border-primary/40 bg-primary/5" data-testid="guided-resume">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="rounded-card p-2 shrink-0 bg-primary/10">
+            <Sunrise className="h-5 w-5 text-primary" aria-hidden="true" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground">Come back online</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Everything is off. Coming back is staged and cautious: everything restarts in watching-only; you re-grant
+              autonomy from the trust ledger below when you're ready.
+            </p>
+          </div>
+        </div>
+
+        {/* Preflight — the plain-words checklist before anything turns on. */}
+        {preflight.isLoading ? (
+          <Skeleton className="h-20 w-full rounded-card" />
+        ) : preflight.isError || !preflight.data ? (
+          <QueryErrorState
+            error={preflight.error instanceof Error ? preflight.error : new Error("Failed")}
+            title="Checklist unavailable"
+            onRetry={() => void preflight.refetch()}
+          />
+        ) : (
+          <ul className="divide-y divide-border/60 rounded-card border border-border/60 bg-card px-3" data-testid="resume-preflight">
+            {preflight.data.items.map((item) => (
+              <li key={item.label} className="py-2 space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${item.ok ? "bg-acr-success" : "bg-acr-neg"}`} aria-hidden="true" />
+                  <span className="text-sm text-foreground">{item.label}</span>
+                  <span className={`ml-auto text-micro ${item.ok ? "text-acr-success" : "text-acr-neg"}`}>
+                    {item.ok ? "Clear" : "In the way"}
+                  </span>
+                </div>
+                <p className="pl-3.5 text-xs text-muted-foreground">{item.detail}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* The three stages — unlock strictly in order. */}
+        <ol className="space-y-2">
+          {RESUME_STAGE_STEPS.map((step, i) => {
+            const done = doneStages.includes(step.id);
+            const unlocked = i === 0 || doneStages.includes(RESUME_STAGE_STEPS[i - 1].id);
+            const busy = runStage.isPending && runStage.variables === step.id;
+            return (
+              <li key={step.id} className="rounded-card border border-border/60 bg-card p-3 space-y-1.5" data-testid={`resume-stage-${step.id}`}>
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">{step.label}</p>
+                    <p className="text-xs text-muted-foreground">{step.line}</p>
+                  </div>
+                  {done ? (
+                    <Badge variant="outline" className="shrink-0 border-acr-success/40 text-acr-success text-micro">Done</Badge>
+                  ) : (
+                    <Button
+                      size="sm" variant={unlocked ? "default" : "outline"} className="min-h-[44px] shrink-0"
+                      disabled={!unlocked || runStage.isPending}
+                      onClick={() => { setStageError(null); runStage.mutate(step.id); }}
+                      data-testid={`resume-stage-${step.id}-run`}
+                    >
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : unlocked ? "Run this step" : "Locked"}
+                    </Button>
+                  )}
+                </div>
+                {narrations[step.id] && (
+                  <p className="text-xs text-foreground/80 rounded-md bg-muted/50 border border-border px-2.5 py-2" data-testid={`resume-narration-${step.id}`}>
+                    {narrations[step.id]}
+                  </p>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+
+        {stageError && (
+          <p className="text-xs text-acr-neg" role="alert" data-testid="resume-stage-error">
+            {stageError}
+          </p>
+        )}
+
+        {allDone && (
+          <Button size="sm" variant="outline" className="min-h-[44px]" onClick={onDismiss} data-testid="resume-dismiss">
+            Done — back online (still watching-only)
+          </Button>
+        )}
       </CardContent>
     </Card>
   );
