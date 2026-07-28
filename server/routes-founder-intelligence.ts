@@ -28,6 +28,7 @@ import {
   founderDigestHistory, companyAgents, companyBriefingCache,
   agentConversations, agentActionLog, agentGoals, trustEvolutionLog,
   agentActionUndoLog,
+  providerHealth, circuitBreakerState, discoveredEndpoints,
 } from "@shared/schema";
 import { sql, desc, eq, and, gte, lte, lt, count, sum, avg, ne, isNull } from "drizzle-orm";
 import { isFounderIdentity } from "./services/founder";
@@ -4160,6 +4161,170 @@ router.post(
     }
   },
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/data-plane
+//
+// Ruling #9 wave 4: ONE honest pane for the free-data machine — the founder
+// sees whether it is healthy without reading logs. Six sections, each read
+// BEST-EFFORT: a failed sub-read answers { available: false, reason } so the
+// pane renders "couldn't check" — a section is never omitted silently and no
+// number is ever invented (refuse-not-fabricate, same doctrine as the
+// break-glass route below).
+//
+// Sections:
+//  - probeHealth    — latest provider_health row per golden probe (the canary
+//                     dataSourceProbe writes every ~30m)
+//  - circuits       — persisted circuit_breaker_state rows (open = skipped)
+//  - recentChanges  — open_data_change_events roll-up via listRecentChangeEvents
+//  - corpora        — getCorporaStatus() (never overstates, ruling #10)
+//  - discoveryQueue — discovered_endpoints rows still status='pending'
+//  - licenses       — DATA_LICENSE_REGISTER entries by redistribution posture
+// ─────────────────────────────────────────────────────────────────────────────
+
+type DataPlaneSection<T extends object> =
+  | ({ available: true } & T)
+  | { available: false; reason: string };
+
+/** Wrap one section read; a failure becomes an explicit unavailable state. */
+async function readDataPlaneSection<T extends object>(
+  read: () => Promise<T>,
+): Promise<DataPlaneSection<T>> {
+  try {
+    return { available: true, ...(await read()) };
+  } catch (err) {
+    return {
+      available: false,
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+router.get("/data-plane", requireFounder, async (_req: Request, res: Response) => {
+  try {
+    const [probeHealthSection, circuits, recentChanges, corpora, discoveryQueue, licenses] =
+      await Promise.all([
+        // 1) Canary — latest provider_health row per probe over the last 48h.
+        //    An empty instruments list is an honest state ("the canary hasn't
+        //    reported"), not an error — the client says so out loud.
+        readDataPlaneSection(async () => {
+          const reader = await dbForReads("founder.intelligence.dataPlane");
+          const windowHours = 48;
+          const cutoff = new Date(Date.now() - windowHours * 3600 * 1000);
+          const rows = await reader
+            .select()
+            .from(providerHealth)
+            .where(gte(providerHealth.checkedAt, cutoff))
+            .orderBy(desc(providerHealth.checkedAt))
+            .limit(2000);
+          const latestByProbe = new Map<string, (typeof rows)[number]>();
+          for (const r of rows) {
+            if (!latestByProbe.has(r.probe)) latestByProbe.set(r.probe, r);
+          }
+          const instruments = [...latestByProbe.values()]
+            .map((r) => ({
+              probe: r.probe,
+              source: r.source,
+              category: r.category,
+              healthy: r.healthy,
+              latencyMs: r.latencyMs,
+              detail: r.detail,
+              lastCheckedAt: r.checkedAt,
+            }))
+            .sort((a, b) => a.probe.localeCompare(b.probe));
+          return {
+            windowHours,
+            instruments,
+            healthyCount: instruments.filter((i) => i.healthy).length,
+            darkCount: instruments.filter((i) => !i.healthy).length,
+          };
+        }),
+
+        // 2) Circuit breakers — persisted trip state. state !== 'closed' means
+        //    the registry is currently skipping that provider.
+        readDataPlaneSection(async () => {
+          const reader = await dbForReads("founder.intelligence.dataPlane");
+          const rows = await reader
+            .select()
+            .from(circuitBreakerState)
+            .orderBy(desc(circuitBreakerState.updatedAt))
+            .limit(200);
+          return {
+            circuits: rows.map((r) => ({
+              source: r.providerName,
+              state: r.state,
+              failures: r.failures,
+              updatedAt: r.updatedAt,
+            })),
+            openCount: rows.filter((r) => r.state !== "closed").length,
+          };
+        }),
+
+        // 3) Temporal spine — material open-data changes (READ-ONLY import of
+        //    the wave-3 read API; narratives are built only from real values).
+        readDataPlaneSection(async () => {
+          const { listRecentChangeEvents } = await import("./services/openData/changeDetection");
+          const windowDays = 90;
+          const events = await listRecentChangeEvents({ sinceDays: windowDays, limit: 500 });
+          return {
+            windowDays,
+            count: events.length,
+            // listRecentChangeEvents caps at 500 rows — when the cap is hit,
+            // `count` is a floor, not the total. Never presented as exact.
+            countIsLowerBound: events.length === 500,
+            latest: events.slice(0, 5).map((e) => ({
+              category: e.category,
+              severity: e.severity,
+              source: e.source,
+              narrative: e.narrative,
+              detectedAt: e.detectedAt,
+            })),
+          };
+        }),
+
+        // 4) Tier-2 corpora — the never-overstates status report (ruling #10).
+        //    Reasons pass through VERBATIM to the client.
+        readDataPlaneSection(async () => {
+          const { getCorporaStatus } = await import("./services/openData/corporaStatus");
+          return { corpora: getCorporaStatus() };
+        }),
+
+        // 5) GIS discovery queue — endpoints found but not yet reviewed.
+        readDataPlaneSection(async () => {
+          const reader = await dbForReads("founder.intelligence.dataPlane");
+          const [row] = await reader
+            .select({ c: count() })
+            .from(discoveredEndpoints)
+            .where(eq(discoveredEndpoints.status, "pending"));
+          return { pendingReviewCount: Number(row?.c ?? 0) };
+        }),
+
+        // 6) License register — build-time constant, grouped by posture.
+        readDataPlaneSection(async () => {
+          const { DATA_LICENSE_REGISTER } = await import("./services/providers/data-licenses");
+          const entries = Object.values(DATA_LICENSE_REGISTER);
+          const byClassification: Record<string, number> = {};
+          for (const entry of entries) {
+            byClassification[entry.redistributable] =
+              (byClassification[entry.redistributable] ?? 0) + 1;
+          }
+          return { totalSources: entries.length, byClassification };
+        }),
+      ]);
+
+    res.json({
+      generatedAt: new Date().toISOString(),
+      probeHealth: probeHealthSection,
+      circuits,
+      recentChanges,
+      corpora,
+      discoveryQueue,
+      licenses,
+    });
+  } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/founder/intelligence/break-glass/email

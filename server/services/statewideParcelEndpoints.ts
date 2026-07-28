@@ -1,20 +1,29 @@
 /**
  * Statewide parcel endpoints — Open-Data Program Phase 3.
  *
- * Seven states publish FREE statewide parcel layers with public ArcGIS
+ * Ten states publish FREE statewide parcel layers with public ArcGIS
  * REST query endpoints. Instead of bulk-ingesting millions of rows, we
  * seed the existing `county_gis_endpoints` seam with one STATEWIDE row
  * per state (county = "*", the wildcard sentinel) and add a
  * point-intersection lookup path so coordinate lookups in these states
  * hit the free service before paid Regrid.
  *
- * Every endpoint + field name below was verified LIVE on 2026-07-13 with
- * a real point-intersection query (f=json, geometry point inside the
- * state) returning parcel attributes. No unverified endpoints are seeded
- * (no-fabrication rule). States checked but NOT seeded this pass:
- *   - NY: only ~38 counties in the public polygon download; no verified
- *     single statewide polygon query service.
- *   - OR/KS/WI/UT/MD/VT/MA: coverage or public REST access unverified.
+ * Every endpoint + field name below was verified LIVE (first wave
+ * 2026-07-13: FL/MT/NC/WA/NJ/AR/TN; discovery-pipeline wave 2026-07-28:
+ * NY/WI/MD) with a real point-intersection query (f=json, geometry point
+ * inside the state) returning parcel attributes. No unverified endpoints
+ * are seeded (no-fabrication rule). Promotion now flows through the
+ * candidate → live_verified → license_reviewed → seeded pipeline in
+ * ./openData/discoveryPipeline.ts. Candidates checked but NOT seeded as
+ * of 2026-07-28 (see the pipeline registry for evidence):
+ *   - VT/UT/MA: point queries verified live, but the state's published
+ *     terms found this pass are warranty disclaimers only — no
+ *     affirmative open/free statement located, so license stays
+ *     unresolved and they are NOT seeded.
+ *   - OR: no public statewide REST query service found (DOR ORMAP
+ *     taxlot service is secured — HTTP 403; coverage still maturing).
+ *   - KS: license documented UNCLEAR in the research doc — excluded on
+ *     license regardless of technical reachability (founder rule).
  *
  * Statewide rows are used ONLY for point-intersection (coordinate)
  * lookups. APN lookups keep the per-county rows: APN uniqueness across
@@ -252,6 +261,103 @@ export const STATEWIDE_PARCEL_ENDPOINTS: StatewideParcelEndpointSeed[] = [
     notes:
       "TN Property Boundaries Public Use (~86 counties; Davidson/Knox/Hamilton/Shelby self-mapping counties excluded). Statewide point-lookup row; verified live 2026-07-13.",
   },
+  {
+    // NYS Tax Parcels Public (NYS ITS Geospatial Services + Tax & Finance
+    // ORPTS) — ONLY counties that opted into public sharing (~38 of 62);
+    // points in non-participating counties return zero features and fall
+    // through to the next provider (same partial-coverage model as TN).
+    // Verified point query at the NYS Capitol (Albany) returned
+    // PRINT_KEY/PRIMARY_OWNER/PARCEL_ADDR/TOTAL_AV/FULL_MARKET_VAL/ACRES.
+    // Layer 1 = parcels (layer 0 is the county-footprint layer).
+    // Research doc §1 lists the program as a verified free statewide
+    // program (license reviewed 2026-07-28).
+    state: "NY",
+    county: STATEWIDE_COUNTY,
+    endpointType: "arcgis_rest",
+    baseUrl:
+      "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/MapServer",
+    layerId: "1",
+    apnField: "PRINT_KEY",
+    ownerField: "PRIMARY_OWNER",
+    fieldMappings: {
+      apn: "PRINT_KEY",
+      owner: "PRIMARY_OWNER",
+      address: "PARCEL_ADDR",
+      acres: "ACRES",
+      assessedValue: "TOTAL_AV",
+      marketValue: "FULL_MARKET_VAL",
+    },
+    sourceUrl: "https://gis.ny.gov/parcels",
+    termsUrl: "https://gis.ny.gov/parcels",
+    attribution:
+      "NYS Office of Information Technology Services Geospatial Services / NYS Tax & Finance ORPTS + contributing counties",
+    notes:
+      "NYS Tax Parcels Public (~38 opted-in counties; non-participating counties fall through). Statewide point-lookup row; verified live 2026-07-28 via discovery pipeline.",
+  },
+  {
+    // Wisconsin Statewide Parcel Map Initiative (V12) — State
+    // Cartographer's Office + WLIP (Dept. of Administration), hosted on
+    // the WI DOA ArcGIS org. Verified point query at the WI Capitol
+    // (Madison) returned STATEID/PARCELID/OWNERNME1/SITEADRESS/DEEDACRES.
+    // Item license states: "This data free for public consumption as of:
+    // 06/30/2026" (license reviewed 2026-07-28). PARCELID is the
+    // county-native parcel number; STATEID (county FIPS + PARCELID) is
+    // the statewide-unique variant.
+    state: "WI",
+    county: STATEWIDE_COUNTY,
+    endpointType: "arcgis_feature",
+    baseUrl:
+      "https://services3.arcgis.com/n6uYoouQZW75n5WI/arcgis/rest/services/Wisconsin_Statewide_Parcels_DB/FeatureServer",
+    layerId: "0",
+    apnField: "PARCELID",
+    ownerField: "OWNERNME1",
+    fieldMappings: {
+      apn: "PARCELID",
+      owner: "OWNERNME1",
+      address: "SITEADRESS",
+      acres: "DEEDACRES",
+      assessedValue: "CNTASSDVALUE",
+      marketValue: "ESTFMKVALUE",
+      taxAmount: "NETPRPTA",
+    },
+    sourceUrl: "https://www.sco.wisc.edu/parcels/data/",
+    termsUrl:
+      "https://www.arcgis.com/home/item.html?id=2386813b23ea4e51a009f7d1d6b76e02",
+    attribution:
+      "Wisconsin State Cartographer's Office / Wisconsin Land Information Program (WLIP), Dept. of Administration",
+    notes:
+      "WI Statewide Parcel Map Initiative V12 layer (V1200_WisconsinParcels_2026). Item terms: free for public consumption. Statewide point-lookup row; verified live 2026-07-28 via discovery pipeline.",
+  },
+  {
+    // MD iMAP Parcel Boundaries (MDP/SDAT PropertyView-derived). Verified
+    // point query at the MD State House (Annapolis) returned
+    // ACCTID/NFMTTLVL/ACRES/ZONING. The layer carries NO owner-NAME
+    // fields (owner mailing address only) — owner resolves "Unknown"
+    // like WA; parcel id + assessment values + acreage are still free
+    // wins. Item license (mdimapdatacatalog): "The Data can be freely
+    // distributed as long as the metadata entry is not modified or
+    // deleted" (license reviewed 2026-07-28).
+    state: "MD",
+    county: STATEWIDE_COUNTY,
+    endpointType: "arcgis_rest",
+    baseUrl:
+      "https://mdgeodata.md.gov/imap/rest/services/PlanningCadastre/MD_ParcelBoundaries/MapServer",
+    layerId: "0",
+    apnField: "ACCTID",
+    fieldMappings: {
+      apn: "ACCTID",
+      address: "ADDRESS",
+      acres: "ACRES",
+      assessedValue: "NFMTTLVL",
+      zoning: "ZONING",
+    },
+    sourceUrl: "https://imap.maryland.gov/",
+    termsUrl:
+      "https://www.arcgis.com/home/item.html?id=b33e5f03d50844b8819a4046ecfe0d97",
+    attribution: "MD iMAP / Maryland Department of Planning / SDAT",
+    notes:
+      "MD iMAP statewide Parcel Boundaries (SDAT-derived). No owner-name field in the layer; freely distributable per item terms (keep metadata/attribution intact). Statewide point-lookup row; verified live 2026-07-28 via discovery pipeline.",
+  },
 ];
 
 /**
@@ -271,6 +377,9 @@ const STATE_BBOXES: Record<
   NJ: { minLat: 38.8, maxLat: 41.4, minLng: -75.6, maxLng: -73.8 },
   AR: { minLat: 32.9, maxLat: 36.6, minLng: -94.7, maxLng: -89.5 },
   TN: { minLat: 34.9, maxLat: 36.8, minLng: -90.4, maxLng: -81.5 },
+  NY: { minLat: 40.4, maxLat: 45.1, minLng: -79.9, maxLng: -71.8 },
+  WI: { minLat: 42.4, maxLat: 47.2, minLng: -93.0, maxLng: -86.7 },
+  MD: { minLat: 37.8, maxLat: 39.8, minLng: -79.5, maxLng: -74.9 },
 };
 
 /**

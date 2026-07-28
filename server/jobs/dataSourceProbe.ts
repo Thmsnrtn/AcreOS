@@ -304,6 +304,21 @@ export async function runAndRecordDataSourceProbes(): Promise<{ ran: number; fai
     }
   }
 
+  // 4) Self-Healing Data Plane annunciation loop (ruling #9 wave 4): evaluate
+  //    the provider_health history this run just extended; PERSISTENT failure
+  //    (never a single blip) becomes one founder decision card, and recovery
+  //    silently closes the drift window. Best-effort — a sweep failure must
+  //    never break the probe itself.
+  try {
+    const { runSelfHealingSweep } = await import("../services/openData/selfHealing");
+    await runSelfHealingSweep();
+  } catch (err) {
+    logger.warn("[dataSourceProbe] self-healing sweep failed (non-blocking)", {
+      source: "dataSourceProbe",
+      metadata: { error: err instanceof Error ? err.message : String(err) },
+    });
+  }
+
   logger.info(`[dataSourceProbe] ran ${outcomes.length} probes, ${failed.length} failing`, {
     source: "dataSourceProbe",
   });
