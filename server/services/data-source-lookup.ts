@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import type { DataSource, DataSourceCache } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { safeWgs84, parseSdaColumnRows } from "./data-source-broker";
 
 interface LookupResult {
   success: boolean;
@@ -328,39 +329,54 @@ export class DataSourceLookupService {
     }
   }
 
-  private async querySoilService(lat: number, lng: number): Promise<any> {
+  /** POST one T-SQL query to SDA and return { column: value } rows. */
+  private async postSdaQuery(query: string, timeoutMs: number): Promise<Array<Record<string, string>>> {
     const baseUrl = "https://SDMDataAccess.nrcs.usda.gov/Tabular/post.rest";
-    
-    const query = `SELECT musym, muname, mukind, hydgrpdcd, drclassdcd
-      FROM mapunit
-      INNER JOIN component ON component.mukey = mapunit.mukey
-      WHERE mupolygonkey IN (
-        SELECT mupolygonkey FROM mupolygon
-        WHERE mupolygonGeometry.STContains(geometry::Point(${lng}, ${lat}, 4326)) = 1
-      )
-      LIMIT 1`;
-    
     const response = await fetch(baseUrl, {
       method: "POST",
-      headers: { 
+      headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "AcreOS Land Investment Platform" 
+        "User-Agent": "AcreOS Land Investment Platform",
       },
-      body: `query=${encodeURIComponent(query)}&format=json`,
-      signal: AbortSignal.timeout(15000),
+      // `json+columnname` so rows carry their column names (plain `json`
+      // returns bare value arrays — live-verified 2026-07-28).
+      body: `query=${encodeURIComponent(query)}&format=${encodeURIComponent("json+columnname")}`,
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    
     if (!response.ok) {
       throw new Error(`USDA Soil API error: ${response.status}`);
     }
-    
-    const data = await response.json();
-    
+    // SDA answers invalid SQL with an XML ServiceExceptionReport (HTTP 200) —
+    // surface that as a real error instead of a JSON parse crash.
+    const text = await response.text();
+    let payload: unknown;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      throw new Error(`USDA Soil API returned non-JSON response: ${text.slice(0, 160)}`);
+    }
+    return parseSdaColumnRows(payload);
+  }
+
+  private async querySoilService(lat: number, lng: number): Promise<any> {
+    // Uses SDA's documented point-intersection helper
+    // (SDA_Get_Mukey_from_intersection_with_WktWgs84) — the previous
+    // `mupolygonGeometry.STContains(...)` T-SQL is rejected by SDA today
+    // (live-verified wave 2), which silently killed this lookup. Same
+    // canonical pattern as data-source-broker.querySoilData; coordinates go
+    // through safeWgs84 so nothing non-numeric can reach the query text.
+    // The dominant-condition hydrologic group / drainage class come from
+    // muaggatt, keyed on the same mukey. Output shape unchanged.
+    const { latStr, lngStr } = safeWgs84(lat, lng);
+    const query = `SELECT TOP 1 mu.musym, mu.muname, muag.hydgrpdcd, muag.drclassdcd FROM mapunit mu LEFT JOIN muaggatt muag ON muag.mukey = mu.mukey WHERE mu.mukey IN (SELECT mukey FROM SDA_Get_Mukey_from_intersection_with_WktWgs84('point(${lngStr} ${latStr})'))`;
+    const rows = await this.postSdaQuery(query, 15000);
+    const row = rows[0];
+
     return {
-      soilType: data.Table?.[0]?.muname || "Unknown",
-      soilSymbol: data.Table?.[0]?.musym || "Unknown",
-      hydrologicGroup: data.Table?.[0]?.hydgrpdcd || "Unknown",
-      drainageClass: data.Table?.[0]?.drclassdcd || "Unknown",
+      soilType: row?.muname || "Unknown",
+      soilSymbol: row?.musym || "Unknown",
+      hydrologicGroup: row?.hydgrpdcd || "Unknown",
+      drainageClass: row?.drclassdcd || "Unknown",
       source: "USDA NRCS SSURGO",
       lastUpdated: new Date().toISOString(),
     };

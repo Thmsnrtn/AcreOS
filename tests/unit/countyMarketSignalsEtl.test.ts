@@ -84,16 +84,16 @@ describe("parseIrsMigrationCsv", () => {
   it("extracts only the 96/000 'Total Migration-US and Foreign' summary rows", () => {
     const totals = parseIrsMigrationCsv(IRS_INFLOW_SAMPLE, "inflow");
     expect(totals).toEqual([
-      { stateFips: "01", countyFips: "001", returns: 2148, individuals: 4413, agiThousands: 138794 },
-      { stateFips: "01", countyFips: "003", returns: 7573, individuals: 14221, agiThousands: 643854 },
+      { stateFips: "01", countyFips: "001", countyName: "Autauga County", returns: 2148, individuals: 4413, agiThousands: 138794 },
+      { stateFips: "01", countyFips: "003", countyName: "Baldwin County", returns: 7573, individuals: 14221, agiThousands: 643854 },
     ]);
   });
 
   it("parses the outflow orientation with the same column positions", () => {
     const totals = parseIrsMigrationCsv(IRS_OUTFLOW_SAMPLE, "outflow");
     expect(totals).toEqual([
-      { stateFips: "01", countyFips: "001", returns: 1920, individuals: 3869, agiThousands: 118308 },
-      { stateFips: "01", countyFips: "003", returns: 5593, individuals: 9559, agiThousands: 398374 },
+      { stateFips: "01", countyFips: "001", countyName: "Autauga County", returns: 1920, individuals: 3869, agiThousands: 118308 },
+      { stateFips: "01", countyFips: "003", countyName: "Baldwin County", returns: 5593, individuals: 9559, agiThousands: 398374 },
     ]);
   });
 
@@ -106,6 +106,7 @@ describe("parseIrsMigrationCsv", () => {
     expect(row).toEqual({
       stateFips: "01",
       countyFips: "001",
+      countyName: "Autauga County",
       returns: null,
       individuals: null,
       agiThousands: 138794,
@@ -146,7 +147,7 @@ describe("joinIrsMigrationFlows", () => {
   it("leaves net null when one side is missing or suppressed — never fabricates", () => {
     const rows = joinIrsMigrationFlows(
       "2223",
-      [{ stateFips: "48", countyFips: "377", returns: 120, individuals: 210, agiThousands: 5000 }],
+      [{ stateFips: "48", countyFips: "377", countyName: "Presidio County", returns: 120, individuals: 210, agiThousands: 5000 }],
       [],
     );
     expect(rows).toHaveLength(1);
@@ -156,8 +157,8 @@ describe("joinIrsMigrationFlows", () => {
 
     const suppressed = joinIrsMigrationFlows(
       "2223",
-      [{ stateFips: "48", countyFips: "377", returns: null, individuals: null, agiThousands: null }],
-      [{ stateFips: "48", countyFips: "377", returns: 80, individuals: 150, agiThousands: 3000 }],
+      [{ stateFips: "48", countyFips: "377", countyName: "Presidio County", returns: null, individuals: null, agiThousands: null }],
+      [{ stateFips: "48", countyFips: "377", countyName: "Presidio County", returns: 80, individuals: 150, agiThousands: 3000 }],
     );
     expect(suppressed[0].netReturns).toBeNull();
     expect(suppressed[0].outflowReturns).toBe(80);
@@ -173,6 +174,7 @@ describe("parseCensusBpsCountyCsv", () => {
       {
         stateFips: "01",
         countyFips: "001",
+        countyName: "Autauga County",
         year: 2023,
         totalUnits: 260,
         singleFamilyUnits: 260,
@@ -181,6 +183,7 @@ describe("parseCensusBpsCountyCsv", () => {
       {
         stateFips: "01",
         countyFips: "003",
+        countyName: "Baldwin County",
         year: 2023,
         totalUnits: 3316 + 16 + 16 + 1015,
         singleFamilyUnits: 3316,

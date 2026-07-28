@@ -7798,6 +7798,32 @@ const STATEMENTS = [
   `ALTER TABLE "connected_mailboxes" DROP COLUMN IF EXISTS "access_token_encrypted"`,
   `ALTER TABLE "connected_mailboxes" DROP COLUMN IF EXISTS "refresh_token_encrypted"`,
   `ALTER TABLE "connected_mailboxes" DROP COLUMN IF EXISTS "token_expires_at"`,
+
+  // ── 0208 open_data_change_events — Temporal Spine core (ruling #9 wave 3) ──
+  // Open data becomes EVENTS (docs/company/founder-decisions-2026-07-28.md):
+  // when a refreshed lookup materially differs from what we previously knew
+  // for the same place, that change is durably recorded here. scope_type
+  // "point" → scope_ref "lat,lng" (4dp); "county" → "ST/countyslug".
+  // previous_value/new_value are always REAL prior observations (null→value
+  // and value→null are never recorded). Mirrors
+  // migrations/0208_open_data_change_events.sql + shared/schema.ts
+  // (openDataChangeEvents); rules in
+  // server/services/openData/changeDetection.ts.
+  `CREATE TABLE IF NOT EXISTS "open_data_change_events" (
+    "id" serial PRIMARY KEY,
+    "category" text NOT NULL,
+    "scope_type" text NOT NULL,
+    "scope_ref" text NOT NULL,
+    "field" text NOT NULL,
+    "previous_value" text NOT NULL,
+    "new_value" text NOT NULL,
+    "previous_as_of" timestamp,
+    "detected_at" timestamp NOT NULL DEFAULT now(),
+    "source" text NOT NULL,
+    "severity" text NOT NULL,
+    "narrative" text NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS "idx_odce_scope_detected" ON "open_data_change_events" ("scope_type", "scope_ref", "detected_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

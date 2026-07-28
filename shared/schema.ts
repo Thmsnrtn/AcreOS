@@ -3556,6 +3556,47 @@ export const providerCache = pgTable("provider_cache", {
 export type ProviderCache = typeof providerCache.$inferSelect;
 
 // ============================================
+// TEMPORAL SPINE — OPEN-DATA CHANGE EVENTS
+// ============================================
+//
+// Ruling #9 wave 3 (docs/company/founder-decisions-2026-07-28.md): open data
+// becomes EVENTS. When a refreshed lookup materially differs from what we
+// previously knew for the same place, that change is itself intelligence
+// ("FEMA redrew the map under this parcel") and is durably recorded here.
+//
+// scopeType/scopeRef contract (siblings build against exactly this):
+//   point  → scopeRef = "lat,lng" rounded to 4 decimal places
+//   county → scopeRef = "ST/countyslug"
+// previousValue/newValue are always REAL previously-observed values —
+// null→value (first sight) and value→null (lookup gap) are never recorded
+// as changes. narrative is one plain-words sentence built only from the two
+// real values. Diff/materiality rules live in
+// server/services/openData/changeDetection.ts.
+export const openDataChangeEvents = pgTable("open_data_change_events", {
+  id: serial("id").primaryKey(),
+  // LookupCategory value (e.g. "flood_zone") or county-signal key.
+  category: text("category").notNull(),
+  scopeType: text("scope_type").notNull(), // "point" | "county"
+  scopeRef: text("scope_ref").notNull(),
+  field: text("field").notNull(),
+  previousValue: text("previous_value").notNull(),
+  newValue: text("new_value").notNull(),
+  // When the PREVIOUS knowledge was as-of (source freshness if known, else
+  // when we cached it). Null when neither is known.
+  previousAsOf: timestamp("previous_as_of"),
+  detectedAt: timestamp("detected_at").defaultNow().notNull(),
+  // The instrument name, e.g. "FEMA NFHL", "USDA SSURGO".
+  source: text("source").notNull(),
+  severity: text("severity").notNull(), // "info" | "notable"
+  narrative: text("narrative").notNull(),
+}, (table) => [
+  index("idx_odce_scope_detected").on(table.scopeType, table.scopeRef, table.detectedAt),
+]);
+
+export type OpenDataChangeEvent = typeof openDataChangeEvents.$inferSelect;
+export type InsertOpenDataChangeEvent = typeof openDataChangeEvents.$inferInsert;
+
+// ============================================
 // PILLAR 6 — CROSS-CUSTOMER DATA CACHE
 // ============================================
 //
