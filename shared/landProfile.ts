@@ -5,7 +5,8 @@
  * nine scattered cards. The LandProfile is the single normalized object the
  * product assembles, server-side, from the EXISTING free open-data enrichment
  * (FEMA NFHL flood, USDA SSURGO soils, USFWS NWI wetlands, USGS 3DEP
- * elevation, NLCD land cover, USDA NASS ag value, county GIS parcel, …).
+ * elevation, NLCD land cover, USDA NASS ag value, county GIS parcel, USFS
+ * Wildfire Hazard Potential, FCC National Broadband Map, …).
  *
  * Every field carries its own provenance — { value, source, asOf, confidence,
  * classification } — so the customer sees exactly where each number came from,
@@ -96,6 +97,18 @@ export interface LandProfileFields {
   wetlandsPercentage?: LandField<number>;
   /** USDA land capability class, e.g. "II", "IV". */
   soilCapabilityClass?: LandField<string>;
+  /**
+   * USDA SSURGO septic (septic tank absorption fields) suitability rating,
+   * e.g. "Very limited". Only present when the soil lookup actually returned
+   * the septic interpretation — never inferred from the capability class.
+   */
+  septicSuitability?: LandField<string>;
+  /**
+   * USFS Wildfire Hazard Potential, formatted for display, e.g.
+   * "High (WHP class 4 of 5)". Only present when the USFS layer returned a
+   * class label — never derived from land cover or climate.
+   */
+  wildfireHazard?: LandField<string>;
   /** Estimated buildable percentage derived from slope/elevation (modeled). */
   buildablePercentage?: LandField<number>;
   /** Slope characterization, e.g. "Gentle (<8%)" or an elevation note. */
@@ -105,6 +118,13 @@ export interface LandProfileFields {
   roadAccess?: LandField<boolean>;
   waterAccess?: LandField<boolean>;
   powerAccess?: LandField<boolean>;
+  /**
+   * Fixed broadband availability summary (FCC National Broadband Map / BDC),
+   * formatted from ONLY the parts the lookup returned, e.g.
+   * "Served · up to 940/35 Mbps · 3 providers" or "Not served (no fixed
+   * broadband reported)". Unknown service status is a gap, never "not served".
+   */
+  broadband?: LandField<string>;
 
   // ── Supporting context ───────────────────────────────────────
   /** NLCD land-cover class name, e.g. "Pasture/Hay", "Deciduous Forest". */
@@ -136,7 +156,9 @@ export const LAND_PROFILE_FIELD_LABELS: Record<keyof LandProfileFields, string> 
   plss: "PLSS legal (section/township/range)",
   floodZone: "Flood zone",
   wetlandsPercentage: "Wetlands",
+  wildfireHazard: "Wildfire hazard",
   soilCapabilityClass: "Soil capability class",
+  septicSuitability: "Septic suitability",
   buildablePercentage: "Buildable area",
   slope: "Slope / terrain",
   roadAccess: "Road access",
@@ -144,6 +166,7 @@ export const LAND_PROFILE_FIELD_LABELS: Record<keyof LandProfileFields, string> 
   powerAccess: "Power access",
   landCover: "Land cover",
   agValuePerAcre: "Ag land value",
+  broadband: "Broadband service",
 };
 
 /** The fields, in display order. */
@@ -151,12 +174,15 @@ export const LAND_PROFILE_FIELD_ORDER: Array<keyof LandProfileFields> = [
   "acreage",
   "floodZone",
   "wetlandsPercentage",
+  "wildfireHazard",
   "soilCapabilityClass",
+  "septicSuitability",
   "buildablePercentage",
   "slope",
   "roadAccess",
   "waterAccess",
   "powerAccess",
+  "broadband",
   "owner",
   "plss",
   "legalDescription",

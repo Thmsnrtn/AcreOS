@@ -44,11 +44,18 @@ describe("dataSourceProbe", () => {
   });
 
   it("marks a probe healthy when the source returns plausible data", async () => {
-    // infrastructure is retired (HIFLD, Aug 2025): its probe expects the
-    // honest-unavailable state, so the mock returns null for it.
-    lookupMock.mockImplementation(async (category: string) =>
-      category === "infrastructure" ? null : ok(),
-    );
+    // infrastructure is retired (HIFLD, Aug 2025) and broadband is unkeyed in
+    // tests (no FCC_BDC_TOKEN): both probes expect the honest-unavailable
+    // state, so the mock returns null for them. The wildfire probe asserts a
+    // mapped WHP class at its live-verified golden coordinate, so it gets
+    // WHP-shaped data.
+    lookupMock.mockImplementation(async (category: string) => {
+      if (category === "infrastructure" || category === "broadband") return null;
+      if (category === "wildfire_hazard") {
+        return ok("USFS Wildfire Hazard Potential", 70, { whpClass: 4, whpLabel: "high", note: null });
+      }
+      return ok();
+    });
     const outcomes = await runDataSourceProbes();
     expect(outcomes).toHaveLength(GOLDEN_PROBES.length);
     // parcel probe tolerates a null hit, but a plausible result is also healthy.
@@ -62,8 +69,11 @@ describe("dataSourceProbe", () => {
       return ok("FEMA NFHL", 70, {}); // empty -> implausible
     });
     const outcomes = await runDataSourceProbes();
-    // parcel_data tolerates a miss; infrastructure EXPECTS emptiness (retired).
-    const envFails = outcomes.filter((o) => o.category !== "parcel_data" && o.category !== "infrastructure");
+    // parcel_data tolerates a miss; infrastructure EXPECTS emptiness (retired);
+    // broadband unkeyed EXPECTS emptiness (honest keyed-optional refusal).
+    const envFails = outcomes.filter(
+      (o) => o.category !== "parcel_data" && o.category !== "infrastructure" && o.category !== "broadband",
+    );
     expect(envFails.every((o) => !o.healthy)).toBe(true);
     expect(envFails[0].detail).toMatch(/empty|null/i);
   });

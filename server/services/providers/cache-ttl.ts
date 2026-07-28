@@ -26,6 +26,11 @@ export const CATEGORY_CACHE_TTL_MS: Partial<Record<DataCategory, number>> = {
   comps: 30 * DAY_MS,
   structure: 90 * DAY_MS,
   skip_trace: 30 * DAY_MS,
+  // Tier-1 open-data expansion (2026-07-28): USFS WHP is re-released roughly
+  // annually and FCC BDC availability filings update twice a year — 90d keeps
+  // both honest without re-hammering the upstreams.
+  wildfire_hazard: 90 * DAY_MS,
+  broadband: 90 * DAY_MS,
 };
 
 /**

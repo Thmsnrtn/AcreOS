@@ -43,6 +43,15 @@ const SOURCE_CONFIDENCE: Array<{ match: RegExp; confidence: number }> = [
   { match: /nlcd|mrlc/i, confidence: 82 },
   { match: /nass|ers/i, confidence: 70 },
   { match: /blm|cadnsdi|plss/i, confidence: 85 },
+  // USFS Wildfire Hazard Potential — federal open layer, same tier as the
+  // other USDA/USFS system-of-record layers. (No collision with /usfws/:
+  // "USFS" is not a substring match for the NWI entry above, and vice versa.)
+  { match: /usfs|wildfire hazard/i, confidence: 85 },
+  // FCC National Broadband Map (BDC) — the federal system of record for
+  // availability, but the underlying coverage is ISP-SELF-REPORTED and known
+  // to overstate service, so it sits below county GIS (80), well above
+  // anything modeled.
+  { match: /fcc|broadband/i, confidence: 75 },
   { match: /county|assessor|gis/i, confidence: 80 },
   { match: /open-elevation|srtm/i, confidence: 65 },
 ];
@@ -88,6 +97,61 @@ function field<T>(
     confidence,
     classification: opts.classification,
   };
+}
+
+/**
+ * Format the USFS Wildfire Hazard Potential into a display value, 1:1 from
+ * the layer's own class label — NEVER derived from land cover/climate. An
+ * unknown or missing label returns null (honest gap), never a guess.
+ */
+const WHP_LABEL_DISPLAY: Record<string, string> = {
+  very_low: "Very low",
+  low: "Low",
+  moderate: "Moderate",
+  high: "High",
+  very_high: "Very high",
+};
+
+export function formatWildfireHazardValue(
+  whpLabel: string | null | undefined,
+  whpClass: number | null | undefined
+): string | null {
+  const display = whpLabel ? WHP_LABEL_DISPLAY[whpLabel] : undefined;
+  if (!display) return null;
+  return typeof whpClass === "number" && Number.isFinite(whpClass)
+    ? `${display} (WHP class ${whpClass} of 5)`
+    : display;
+}
+
+/**
+ * Format the FCC BDC broadband availability into a display value from ONLY
+ * the parts the lookup actually returned. Unknown service status (`served`
+ * not a real boolean) returns null — an honest gap, never "not served".
+ */
+export function formatBroadbandValue(bb: {
+  served?: boolean | null;
+  maxDownMbps?: number | null;
+  maxUpMbps?: number | null;
+  technologies?: string[];
+  providerCount?: number | null;
+}): string | null {
+  if (typeof bb.served !== "boolean") return null;
+  if (!bb.served) return "Not served (no fixed broadband reported)";
+  const parts: string[] = ["Served"];
+  if (typeof bb.maxDownMbps === "number" && Number.isFinite(bb.maxDownMbps)) {
+    const up =
+      typeof bb.maxUpMbps === "number" && Number.isFinite(bb.maxUpMbps)
+        ? `/${bb.maxUpMbps}`
+        : "";
+    parts.push(`up to ${bb.maxDownMbps}${up} Mbps`);
+  }
+  if (typeof bb.providerCount === "number" && bb.providerCount > 0) {
+    parts.push(`${bb.providerCount} provider${bb.providerCount === 1 ? "" : "s"}`);
+  }
+  if (Array.isArray(bb.technologies) && bb.technologies.length > 0) {
+    parts.push(bb.technologies.join(", "));
+  }
+  return parts.join(" · ");
 }
 
 /** Map a USDA soil suitability/capability into a capability-class string. */
@@ -216,6 +280,38 @@ export function assembleLandProfile(
     { fallbackSource: "USDA NRCS SDA", classification: "authoritative" }
   );
 
+  // ── Septic suitability (USDA SSURGO septic interpretation) ────
+  // Rides on the existing "soil" category. The category can carry a per-datum
+  // source for the septic rating specifically (septicRatingSource); prefer it
+  // over the category-level provenance so the chip names the actual layer.
+  const septicSource = enrichment?.environment?.septicRatingSource;
+  fields.septicSuitability = field<string>(
+    enrichment?.environment?.septicRating,
+    septicSource
+      ? {
+          source: septicSource,
+          asOf: prov["soil"]?.asOf ?? null,
+          fromCache: prov["soil"]?.fromCache ?? false,
+        }
+      : prov["soil"],
+    { fallbackSource: "USDA NRCS SDA", classification: "authoritative" }
+  );
+
+  // ── Wildfire hazard (USFS Wildfire Hazard Potential) ──────────
+  // Formatted 1:1 from the layer's own class label — an unknown label is an
+  // honest gap, never a guess from land cover or climate.
+  fields.wildfireHazard = field<string>(
+    formatWildfireHazardValue(
+      enrichment?.wildfireHazard?.whpLabel,
+      enrichment?.wildfireHazard?.whpClass
+    ),
+    prov["wildfire_hazard"],
+    {
+      fallbackSource: "USFS Wildfire Hazard Potential",
+      classification: "authoritative",
+    }
+  );
+
   // ── Slope: REAL multi-point USGS 3DEP sampling, or an honest gap ──
   // Never the old land-cover proxy. Aspect is the real gradient azimuth.
   if (terrain?.ok) {
@@ -272,6 +368,19 @@ export function assembleLandProfile(
   );
   // Power access is not in any free coordinate layer — intentionally omitted
   // (it lands in `gaps`). We never guess utility availability.
+
+  // ── Broadband (FCC National Broadband Map / BDC) ──────────────
+  // Formatted from ONLY the parts the lookup returned; an unknown `served`
+  // status stays a gap (never coalesced to "not served"). A REAL false is
+  // honest and populates the field.
+  fields.broadband = field<string>(
+    enrichment?.broadband ? formatBroadbandValue(enrichment.broadband) : null,
+    prov["broadband"],
+    {
+      fallbackSource: "FCC National Broadband Map (BDC)",
+      classification: "authoritative",
+    }
+  );
 
   // ── Land cover (NLCD) ─────────────────────────────────────────
   fields.landCover = field<string>(enrichment?.landCover?.className, prov["land_cover"], {
@@ -340,10 +449,28 @@ function gapReason(
   const category = FIELD_TO_CATEGORY[fieldKey];
   if (!enrichment) return "not_looked_up";
   if (category && errors[category]) return "lookup_failed";
+  // Wave-2 fields: an OLDER cached enrichment may simply never have attempted
+  // their backing category. No provenance and no error for the category means
+  // "not looked up" — NOT "no data at this location". (Pre-existing fields
+  // keep their original semantics untouched.)
+  if (
+    WAVE2_FIELDS.has(fieldKey) &&
+    category &&
+    !enrichment.provenance?.[category]
+  ) {
+    return "not_looked_up";
+  }
   // power access has no backing free category — it's a structural gap, present
   // it as "no_data" (we looked at what we have and have nothing).
   return "no_data";
 }
+
+/** Fields added in wave 2, whose category may be absent from older caches. */
+const WAVE2_FIELDS: ReadonlySet<keyof LandProfileFields> = new Set([
+  "wildfireHazard",
+  "broadband",
+  "septicSuitability",
+]);
 
 /**
  * Which broker category backs each LandProfile field (for gap reasons).
@@ -359,6 +486,9 @@ const FIELD_TO_CATEGORY: Partial<Record<keyof LandProfileFields, string>> = {
   floodZone: "flood_zone",
   wetlandsPercentage: "wetlands",
   soilCapabilityClass: "soil",
+  septicSuitability: "soil",
+  wildfireHazard: "wildfire_hazard",
+  broadband: "broadband",
   buildablePercentage: "land_cover",
   roadAccess: "transportation",
   waterAccess: "water_resources",

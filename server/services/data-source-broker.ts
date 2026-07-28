@@ -34,7 +34,10 @@ export type LookupCategory =
   | "plss"
   | "watershed"
   | "fema_nri"
-  | "usda_clu";
+  | "usda_clu"
+  // Tier-1 open-data signal expansion (founder ruling #10, 2026-07-28):
+  | "wildfire_hazard"
+  | "broadband";
 
 interface BrokerLookupOptions {
   latitude: number;
@@ -141,6 +144,11 @@ const BUILTIN_FEDERAL_CATEGORIES: ReadonlySet<LookupCategory> = new Set<LookupCa
   "watershed",
   "fema_nri",
   "usda_clu",
+  // Tier-1 open-data expansion (2026-07-28): USFS WHP classified raster
+  // identify + FCC BDC broadband availability (keyed-optional — see the
+  // unkeyed short-circuit in lookup()).
+  "wildfire_hazard",
+  "broadband",
 ]);
 
 /**
@@ -173,6 +181,162 @@ export const RETIRED_CATEGORIES: Partial<Record<LookupCategory, { title: string;
       "HIFLD Open discontinued Aug 2025 — hospitals/fire-stations/schools source retired; replacement pending",
   },
 };
+
+/**
+ * Honest unkeyed state for the broadband category (KEYED-OPTIONAL pattern,
+ * mirroring how CENSUS_API_KEY / USDA_NASS_API_KEY degrade): the FCC BDC
+ * public data API requires a free FCC-account token (FCC_BDC_TOKEN). Without
+ * it we return success:false with this exact reason — NEVER a guessed
+ * served/unserved answer.
+ */
+export const FCC_BDC_UNKEYED_REASON = "FCC_BDC_TOKEN not set — broadband check unavailable";
+
+/**
+ * Documented legend of the USFS Wildfire Hazard Potential CLASSIFIED raster
+ * (Wildfire Risk to Communities / RMRS WHP): 1=very low, 2=low, 3=moderate,
+ * 4=high, 5=very high; 6=non-burnable and 7=water are legend categories, not
+ * hazard classes. Values outside the legend map to nulls, never a guess.
+ */
+export const WHP_CLASS_LABELS: Record<number, "very_low" | "low" | "moderate" | "high" | "very_high"> = {
+  1: "very_low",
+  2: "low",
+  3: "moderate",
+  4: "high",
+  5: "very_high",
+};
+
+/**
+ * Map a raw WHP classified pixel value (ImageServer identify `value`, a
+ * string per the live-verified response shape — e.g. "4" or "NoData") to the
+ * documented class/label. Unmappable/no-data → nulls + an honest note.
+ * Live-verified 2026-07-28: classified service returned "4" at 39.65,-105.35
+ * and the identify shape is {"value":"<string>"}.
+ */
+export function whpClassToLabel(raw: unknown): {
+  whpClass: number | null;
+  whpLabel: "very_low" | "low" | "moderate" | "high" | "very_high" | null;
+  note: string | null;
+} {
+  const s = raw == null ? "" : String(raw).trim();
+  if (!s || s.toLowerCase() === "nodata") {
+    return { whpClass: null, whpLabel: null, note: "USFS WHP classified raster reports no data at this point" };
+  }
+  const n = Number(s);
+  if (!Number.isInteger(n)) {
+    return { whpClass: null, whpLabel: null, note: `USFS WHP returned an unmappable raster value ("${s}")` };
+  }
+  if (n === 6) {
+    return { whpClass: null, whpLabel: null, note: "USFS WHP classifies this point as non-burnable (developed/agriculture/barren) — no hazard class" };
+  }
+  if (n === 7) {
+    return { whpClass: null, whpLabel: null, note: "USFS WHP classifies this point as water — no hazard class" };
+  }
+  const label = WHP_CLASS_LABELS[n];
+  if (!label) {
+    return { whpClass: null, whpLabel: null, note: `USFS WHP returned an unmappable raster value ("${s}")` };
+  }
+  return { whpClass: n, whpLabel: label, note: null };
+}
+
+/**
+ * FCC BDC fixed-broadband technology codes, per the published BDC data
+ * specification. Unknown codes pass through as "tech_<code>" — honest, not
+ * guessed.
+ */
+export const FCC_BDC_TECH_LABELS: Record<number, string> = {
+  0: "Other",
+  10: "Copper",
+  40: "Cable",
+  50: "Fiber",
+  60: "GSO Satellite",
+  61: "NGSO Satellite",
+  70: "Unlicensed Fixed Wireless",
+  71: "Licensed Fixed Wireless",
+  72: "LBR Fixed Wireless",
+};
+
+/**
+ * Reduce FCC BDC availability records to AVAILABILITY FACTS ONLY.
+ *
+ * LICENSE CONSTRAINT (docs/company/open-data-duediligence.md): the BDC
+ * availability data is public, but the CostQuest location Fabric underneath
+ * it is a licensed commercial dataset. We must NEVER store or re-serve Fabric
+ * location records (location_id / BSL coordinates / address attributes). This
+ * function therefore aggregates to { served, maxDownMbps, maxUpMbps,
+ * technologies, providerCount } and deliberately drops every per-location
+ * field on the floor. Do not "enrich" this result with Fabric records.
+ *
+ * Record field names follow the published BDC availability data spec
+ * (technology, max_advertised_download_speed, max_advertised_upload_speed,
+ * provider_id, brand_name) — built from documented shape; the prod canary
+ * will verify against live keyed responses.
+ */
+export function parseBdcAvailability(records: Array<Record<string, unknown>>): {
+  served: boolean | null;
+  maxDownMbps: number | null;
+  maxUpMbps: number | null;
+  technologies: string[];
+  providerCount: number | null;
+} {
+  const providers = new Set<string>();
+  const technologies = new Set<string>();
+  let maxDown: number | null = null;
+  let maxUp: number | null = null;
+
+  const num = (v: unknown): number | null => {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  for (const r of records) {
+    if (!r || typeof r !== "object") continue;
+    const down = num(r["max_advertised_download_speed"] ?? r["max_download"]);
+    const up = num(r["max_advertised_upload_speed"] ?? r["max_upload"]);
+    if (down != null) maxDown = maxDown == null ? down : Math.max(maxDown, down);
+    if (up != null) maxUp = maxUp == null ? up : Math.max(maxUp, up);
+
+    const provider = r["provider_id"] ?? r["brand_name"];
+    if (provider != null && provider !== "") providers.add(String(provider));
+
+    const techRaw = num(r["technology"] ?? r["tech_code"]);
+    if (techRaw != null) {
+      technologies.add(FCC_BDC_TECH_LABELS[techRaw] ?? `tech_${techRaw}`);
+    }
+  }
+
+  return {
+    // A keyed, successful query with zero filings for the block is an honest
+    // "no fixed service reported" — served:false. (Unkeyed never reaches here.)
+    served: records.length > 0,
+    maxDownMbps: maxDown,
+    maxUpMbps: maxUp,
+    technologies: Array.from(technologies).sort(),
+    providerCount: providers.size,
+  };
+}
+
+/**
+ * Parse a USDA Soil Data Access `format=json+columnname` payload into rows of
+ * { column: value }. Live-verified shape 2026-07-28:
+ *   {"Table":[["musym","muname","mukey"],["Gt","Glenbar clay loam...","53350"]]}
+ * (first row = column names, remaining rows = value arrays).
+ */
+export function parseSdaColumnRows(payload: unknown): Array<Record<string, string>> {
+  const table = (payload as { Table?: unknown })?.Table;
+  if (!Array.isArray(table) || table.length < 2) return [];
+  const [header, ...rows] = table;
+  if (!Array.isArray(header)) return [];
+  return rows
+    .filter((row): row is unknown[] => Array.isArray(row))
+    .map((row) => {
+      const obj: Record<string, string> = {};
+      header.forEach((col, i) => {
+        obj[String(col)] = row[i] == null ? "" : String(row[i]);
+      });
+      return obj;
+    });
+}
 
 export class DataSourceBroker {
   private healthCache: Map<number, SourceHealth> = new Map();
@@ -221,6 +385,8 @@ export class DataSourceBroker {
       watershed: ["watershed", "nhd", "huc", "waters"],
       fema_nri: ["fema_nri", "national_risk_index", "fema"],
       usda_clu: ["usda_clu", "common_land_units", "fsa"],
+      wildfire_hazard: ["wildfire_hazard", "usfs_whp"],
+      broadband: ["broadband", "fcc_bdc"],
     };
 
     const categories = categoryMappings[category] || [category];
@@ -392,6 +558,29 @@ export class DataSourceBroker {
       };
     }
 
+    // ── Broadband keyed-optional honest short-circuit ───────────────────────
+    // The FCC BDC public data API needs a free account token. Unkeyed we
+    // refuse immediately — success:false with the exact reason, no network
+    // call, no health-tracking mutation (an unset env var is a config state,
+    // not an upstream failure signal), and no cache read (any cached row was
+    // written keyed; re-serving it while unkeyed would misrepresent the
+    // current capability). Never fake coverage.
+    if (category === "broadband" && !process.env.FCC_BDC_TOKEN) {
+      return {
+        success: false,
+        data: null,
+        source: {
+          id: 0,
+          title: "FCC Broadband Data Collection",
+          tier: "free",
+          costCents: 0,
+        },
+        fromCache: false,
+        lookupTimeMs: Date.now() - startTime,
+        fallbacksUsed: [FCC_BDC_UNKEYED_REASON],
+      };
+    }
+
     if (!options.forceRefresh) {
       const cached = await this.getCachedResult(lookupKey);
       if (cached) {
@@ -553,6 +742,8 @@ export class DataSourceBroker {
       watershed: "EPA WATERS / USGS NHD",
       fema_nri: "FEMA National Risk Index",
       usda_clu: "USDA FSA CLU",
+      wildfire_hazard: "USFS Wildfire Hazard Potential",
+      broadband: "FCC Broadband Data Collection",
     };
 
     return {
@@ -745,6 +936,12 @@ export class DataSourceBroker {
     if (category === "usda_clu") {
       return this.queryUsdaClu(latitude, longitude);
     }
+    if (category === "wildfire_hazard") {
+      return this.queryWildfireHazard(latitude, longitude);
+    }
+    if (category === "broadband") {
+      return this.queryBroadband(latitude, longitude);
+    }
 
     if (source.apiUrl) {
       return this.queryGenericApi(source, options);
@@ -815,52 +1012,81 @@ export class DataSourceBroker {
     };
   }
 
-  private async querySoilData(lat: number, lng: number): Promise<any> {
+  /** POST one T-SQL query to SDA and return { column: value } rows. */
+  private async postSdaQuery(query: string, timeoutMs: number): Promise<Array<Record<string, string>>> {
     const baseUrl = "https://SDMDataAccess.nrcs.usda.gov/Tabular/post.rest";
-
-    // Basic map unit query
-    const basicQuery = `SELECT TOP 1 musym, muname, mukey FROM mapunit WHERE mukey IN (SELECT mukey FROM mupolygon WHERE mupolygonGeometry.STContains(geometry::Point(${lng}, ${lat}, 4326)) = 1)`;
     const response = await fetch(baseUrl, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "AcreOS Real Estate Platform" },
-      body: `query=${encodeURIComponent(basicQuery)}&format=json`,
-      signal: AbortSignal.timeout(15000),
+      // `json+columnname` so rows carry their column names (plain `json`
+      // returns bare value arrays — live-verified 2026-07-28).
+      body: `query=${encodeURIComponent(query)}&format=${encodeURIComponent("json+columnname")}`,
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw new Error(`USDA Soil API error: ${response.status}`);
-    const data = await response.json();
-    const basicRow = data.Table?.[0];
+    // SDA answers invalid SQL with an XML ServiceExceptionReport (HTTP 200) —
+    // surface that as a real error instead of a JSON parse crash.
+    const text = await response.text();
+    let payload: unknown;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      throw new Error(`USDA Soil API returned non-JSON response: ${text.slice(0, 160)}`);
+    }
+    return parseSdaColumnRows(payload);
+  }
+
+  private async querySoilData(lat: number, lng: number): Promise<any> {
+    // Basic map unit query. Uses SDA's documented point-intersection helper
+    // (SDA_Get_Mukey_from_intersection_with_WktWgs84) — the previous
+    // `mupolygonGeometry.STContains(...)` form is rejected by SDA today
+    // ("Cannot find either column \"mupolygonGeometry\"...", live-verified
+    // 2026-07-28), which silently killed the whole soil lookup.
+    const basicQuery = `SELECT TOP 1 musym, muname, mukey FROM mapunit WHERE mukey IN (SELECT mukey FROM SDA_Get_Mukey_from_intersection_with_WktWgs84('point(${lng} ${lat})'))`;
+    const basicRows = await this.postSdaQuery(basicQuery, 15000);
+    const basicRow = basicRows[0];
     const mukey = basicRow?.mukey;
+    // Guard: mukey is a numeric key; refuse to interpolate anything else into
+    // the follow-up T-SQL.
+    const safeMukey = mukey && /^\d+$/.test(mukey) ? mukey : null;
 
     // Extended SDA query for capability class, drainage, flooding, hydric soil, farmland class
     let extended: Record<string, any> = {};
-    if (mukey) {
+    if (safeMukey) {
       try {
         const extQuery = `SELECT TOP 1 mu.mukey, mu.muname, c.capclass, c.hydgrpdcd, c.drainagecl, c.flodfreqdcd, c.hydricrating, muag.farmlndcl FROM mapunit mu
           LEFT JOIN component c ON c.mukey = mu.mukey AND c.majcompflag = 'Yes'
           LEFT JOIN muaggatt muag ON muag.mukey = mu.mukey
-          WHERE mu.mukey = '${mukey}'`;
-        const extRes = await fetch(baseUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "AcreOS Real Estate Platform" },
-          body: `query=${encodeURIComponent(extQuery)}&format=json`,
-          signal: AbortSignal.timeout(12000),
-        });
-        if (extRes.ok) {
-          const extData = await extRes.json();
-          const row = extData.Table?.[0];
-          if (row) {
-            extended = {
-              capabilityClass: row.capclass || null,
-              hydrologicGroup: row.hydgrpdcd || null,
-              drainage: row.drainagecl || "Unknown",
-              floodingFrequency: row.flodfreqdcd || "None",
-              hydricRating: row.hydricrating || null,
-              farmlandClass: row.farmlndcl || null,
-              primeFarmland: row.farmlndcl?.toLowerCase().includes("prime") || false,
-            };
-          }
+          WHERE mu.mukey = '${safeMukey}'`;
+        const extRows = await this.postSdaQuery(extQuery, 12000);
+        const row = extRows[0];
+        if (row) {
+          extended = {
+            capabilityClass: row.capclass || null,
+            hydrologicGroup: row.hydgrpdcd || null,
+            drainage: row.drainagecl || "Unknown",
+            floodingFrequency: row.flodfreqdcd || "None",
+            hydricRating: row.hydricrating || null,
+            farmlandClass: row.farmlndcl || null,
+            primeFarmland: row.farmlndcl?.toLowerCase().includes("prime") || false,
+          };
         }
       } catch (_) { /* extended data optional */ }
+    }
+
+    // Septic-tank-absorption-fields interpretation (2026-07-28 expansion).
+    // SDA exposes the 'ENG - Septic Tank Absorption Fields' interpretation via
+    // cointerp; live-verified 2026-07-28 (returned "Very limited" for the
+    // Maricopa golden coordinate). Optional sub-fetch: failure → null rating,
+    // never a guess. ADDITIVE — the pre-existing soil result fields above and
+    // below are unchanged.
+    let septicRating: string | null = null;
+    if (safeMukey) {
+      try {
+        const septicQuery = `SELECT TOP 1 c.compname, ci.interphrc FROM component c JOIN cointerp ci ON ci.cokey = c.cokey WHERE c.mukey = '${safeMukey}' AND c.majcompflag = 'Yes' AND ci.mrulename = 'ENG - Septic Tank Absorption Fields' AND ci.ruledepth = 0 ORDER BY c.comppct_r DESC`;
+        const septicRows = await this.postSdaQuery(septicQuery, 12000);
+        septicRating = septicRows[0]?.interphrc || null;
+      } catch (_) { /* septic interpretation optional */ }
     }
 
     const capClass = extended.capabilityClass;
@@ -879,6 +1105,8 @@ export class DataSourceBroker {
       hydricRating: extended.hydricRating || null,
       farmlandClass: extended.farmlandClass || null,
       primeFarmland: extended.primeFarmland || false,
+      septicRating,
+      septicRatingSource: "USDA SSURGO septic tank absorption fields",
       source: "USDA NRCS SDA",
       lastUpdated: new Date().toISOString(),
     };
@@ -895,7 +1123,59 @@ export class DataSourceBroker {
     
     if (!response.ok) throw new Error(`EPA API error: ${response.status}`);
     const sites = await response.json();
-    
+
+    // ── EPA depth (2026-07-28 expansion) — ADDITIVE fields only ─────────────
+    // ECHO enforcement/violations radius context + UST Finder tank proximity.
+    // Both are optional sub-fetches: a failure yields an honest null + note,
+    // never a guessed count. The pre-existing superfund fields below are
+    // untouched.
+    const depthNotes: string[] = [];
+
+    // EPA ECHO get_facilities (keyless REST; live-verified 2026-07-28 —
+    // summary envelope Results.{QueryRows,CVRows,...}). CVRows = facilities
+    // currently in violation within the radius.
+    let echoFacilitiesWithViolations: number | null = null;
+    try {
+      const echoUrl = `https://echodata.epa.gov/echo/echo_rest_services.get_facilities?output=JSON&p_lat=${lat}&p_long=${lng}&p_radius=${radiusMiles}`;
+      const echoRes = await fetch(echoUrl, {
+        headers: { "User-Agent": "AcreOS Real Estate Platform", "Accept": "application/json" },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!echoRes.ok) throw new Error(`EPA ECHO error: ${echoRes.status}`);
+      const echoData = await echoRes.json();
+      const cvRows = Number.parseInt(echoData?.Results?.CVRows, 10);
+      if (Number.isFinite(cvRows)) {
+        echoFacilitiesWithViolations = cvRows;
+      } else {
+        depthNotes.push(`EPA ECHO responded without a facilities-in-violation count (${radiusMiles} mi radius)`);
+      }
+    } catch (_) {
+      depthNotes.push(`EPA ECHO enforcement lookup unavailable (${radiusMiles} mi radius)`);
+    }
+
+    // EPA UST Finder Facilities layer (keyless ArcGIS REST; live-verified
+    // 2026-07-28 — returnCountOnly=true yields {"count":N}). 1-mile proximity.
+    let ustSitesNearby: number | null = null;
+    const ustRadiusMeters = 1609; // 1 mile
+    try {
+      const ustGeometry = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
+      const ustUrl = `https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/UST_Finder_Feature_Layer_2/FeatureServer/0/query?geometry=${ustGeometry}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=${ustRadiusMeters}&units=esriSRUnit_Meter&returnCountOnly=true&f=json`;
+      const ustRes = await fetch(ustUrl, {
+        headers: { "User-Agent": "AcreOS Real Estate Platform" },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!ustRes.ok) throw new Error(`EPA UST Finder error: ${ustRes.status}`);
+      const ustData = await ustRes.json();
+      if (ustData?.error) throw new Error(ustData.error.message || "UST Finder query error");
+      if (typeof ustData?.count === "number") {
+        ustSitesNearby = ustData.count;
+      } else {
+        depthNotes.push("EPA UST Finder responded without a tank-facility count (1 mi radius)");
+      }
+    } catch (_) {
+      depthNotes.push("EPA UST Finder tank-proximity lookup unavailable (1 mi radius)");
+    }
+
     return {
       superfundSites: sites.slice(0, 10).map((site: any) => ({
         name: site.FACILITY_NAME,
@@ -905,6 +1185,10 @@ export class DataSourceBroker {
       })),
       nearestSiteDistance: sites.length > 0 ? radiusMiles : null,
       riskLevel: sites.length > 5 ? "high" : sites.length > 0 ? "medium" : "low",
+      // Additive EPA-depth fields (contract keys — do not rename):
+      echoFacilitiesWithViolations,
+      ustSitesNearby,
+      note: depthNotes.length > 0 ? depthNotes.join("; ") : null,
       source: "EPA TRI",
       lastUpdated: new Date().toISOString(),
     };
@@ -2002,6 +2286,103 @@ export class DataSourceBroker {
     } catch (error: any) {
       throw new Error(`USDA CLU query failed: ${error.message}`);
     }
+  }
+
+  // ─── USFS Wildfire Hazard Potential (classified 1–5 raster identify) ─────
+  private async queryWildfireHazard(lat: number, lng: number): Promise<any> {
+    // Point identify against the USFS WHP ImageServer family on
+    // imagery.geoplatform.gov (the endpoint vetted in
+    // docs/company/open-data-duediligence.md). Live verification 2026-07-28
+    // found the ..._WRC_WildfireHazardPotential service serves the CONTINUOUS
+    // WHP index (e.g. "4800"), while its sibling
+    // ..._WildfireHazardPotentialClassified serves the documented 1–5 class
+    // raster (returned "4" at 39.65,-105.35) — so we identify against the
+    // Classified service, which is what the whpClass contract requires.
+    const geometryParam = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
+    const url = `https://imagery.geoplatform.gov/iipp/rest/services/Fire_Aviation/USFS_EDW_RMRS_WildfireHazardPotentialClassified/ImageServer/identify?geometry=${geometryParam}&geometryType=esriGeometryPoint&returnGeometry=false&returnCatalogItems=false&f=json`;
+
+    const response = await fetch(url, {
+      headers: { "User-Agent": "AcreOS Real Estate Platform" },
+      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`USFS WHP API error: ${response.status}`);
+    const data = await response.json();
+    if (data?.error) throw new Error(data.error.message || "USFS WHP identify error");
+    if (!("value" in (data ?? {}))) {
+      throw new Error("USFS WHP identify returned no pixel value");
+    }
+
+    const mapped = whpClassToLabel(data.value);
+    return {
+      // Contract keys — sibling surfaces build against these exact names.
+      whpClass: mapped.whpClass,
+      whpLabel: mapped.whpLabel,
+      note: mapped.note,
+      source: "USFS Wildfire Hazard Potential",
+      lastUpdated: new Date().toISOString(),
+    };
+  }
+
+  // ─── FCC Broadband Data Collection availability (keyed-optional) ─────────
+  private async queryBroadband(lat: number, lng: number): Promise<any> {
+    // KEYED-OPTIONAL: normal lookups never reach here unkeyed (lookup()
+    // short-circuits with FCC_BDC_UNKEYED_REASON), but any direct/DB-row path
+    // gets the same honest refusal. Never fake coverage.
+    const token = process.env.FCC_BDC_TOKEN;
+    if (!token) throw new Error(FCC_BDC_UNKEYED_REASON);
+
+    // 1) Resolve the point to its census block (FCC Area API — keyless,
+    //    documented; same endpoint queryStormHistory already relies on).
+    const blockUrl = `https://geo.fcc.gov/api/census/block/find?latitude=${lat}&longitude=${lng}&format=json`;
+    const blockRes = await fetch(blockUrl, {
+      headers: { "User-Agent": "AcreOS Real Estate Platform" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!blockRes.ok) throw new Error(`FCC block lookup error: ${blockRes.status}`);
+    const blockData = await blockRes.json();
+    const blockGeoid: string | undefined = blockData?.Block?.FIPS;
+    if (!blockGeoid || !/^\d{15}$/.test(blockGeoid)) {
+      throw new Error("FCC block lookup returned no census block for this point");
+    }
+
+    // 2) BDC availability for the block. Auth per the published BDC public
+    //    data API spec: `username` (FCC account email, optional here) +
+    //    `hash_value` (the account token). The response envelope
+    //    {status, status_code, data:[...]} was live-verified 2026-07-28;
+    //    the per-block availability path itself is built from documented
+    //    shape — canary will verify in prod.
+    //    LICENSE: we request/keep availability facts only — never CostQuest
+    //    Fabric location records (see parseBdcAvailability).
+    const headers: Record<string, string> = {
+      "User-Agent": "AcreOS Real Estate Platform",
+      "Accept": "application/json",
+      "hash_value": token,
+    };
+    if (process.env.FCC_BDC_USERNAME) headers["username"] = process.env.FCC_BDC_USERNAME;
+
+    const availUrl = `https://broadbandmap.fcc.gov/api/public/map/availability/blockcode/${blockGeoid}`;
+    const availRes = await fetch(availUrl, {
+      headers,
+      signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    });
+    if (!availRes.ok) throw new Error(`FCC BDC API error: ${availRes.status}`);
+    const payload = await availRes.json();
+    if (payload?.status_code != null && Number(payload.status_code) >= 400) {
+      throw new Error(`FCC BDC API error: ${payload.message || payload.status_code}`);
+    }
+    if (!Array.isArray(payload?.data)) {
+      // Unknown shape → honest failure, never a guessed served/unserved.
+      throw new Error("FCC BDC returned an unrecognized response shape — refusing to guess availability");
+    }
+
+    const availability = parseBdcAvailability(payload.data);
+    return {
+      // Contract keys — sibling surfaces build against these exact names.
+      ...availability,
+      note: "Availability facts from FCC BDC filings for this census block; CostQuest Fabric location records are licensed and are never stored.",
+      source: "FCC Broadband Data Collection",
+      lastUpdated: new Date().toISOString(),
+    };
   }
 
   private async queryGenericApi(source: DataSource, options: BrokerLookupOptions): Promise<any> {

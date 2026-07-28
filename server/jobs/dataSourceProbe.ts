@@ -125,6 +125,41 @@ export const GOLDEN_PROBES: GoldenProbe[] = [
     input: { type: "coordinates", latitude: 35.0844, longitude: -106.6504, state: "NM", county: "Bernalillo" },
     check: (r) => plausibleResult(r, 20),
   },
+  // ── Tier-1 open-data expansion (2026-07-28) ──────────────────────────────
+  {
+    // Jefferson County, CO foothills — USFS WHP classified-raster canary.
+    // This exact coordinate was live-verified 2026-07-28 (classified identify
+    // returned class "4"/high), so a mapped whpLabel is the expected state; a
+    // null label here means the service or its raster drifted.
+    label: "jefferson-co-wildfire-hazard",
+    category: "wildfire_hazard",
+    input: { type: "coordinates", latitude: 39.65, longitude: -105.35, state: "CO", county: "Jefferson" },
+    check: (r) => {
+      const base = plausibleResult(r, 20);
+      if (base) return base;
+      const data = r?.data as { whpClass?: unknown; whpLabel?: unknown } | null;
+      if (!data || data.whpLabel == null || data.whpClass == null) {
+        return "WHP classified identify no longer maps to a 1-5 class at a verified wildland coordinate";
+      }
+      return null;
+    },
+  },
+  {
+    // Broadband is KEYED-OPTIONAL (FCC_BDC_TOKEN). Unkeyed, the broker must
+    // return an honest unavailable state — this probe PINS that refusal
+    // (healthy = no usable data came back, mirroring the retired-HIFLD probe).
+    // Keyed, it asserts a real availability answer instead.
+    label: "travis-tx-broadband",
+    category: "broadband",
+    input: { type: "coordinates", latitude: 30.2672, longitude: -97.7431, state: "TX", county: "Travis" },
+    check: (r) => {
+      if (!process.env.FCC_BDC_TOKEN) {
+        if (!r || !hasUsableData(r.data)) return null; // expected: honest unkeyed unavailable
+        return "broadband returned data WITHOUT FCC_BDC_TOKEN — coverage must never be fabricated";
+      }
+      return plausibleResult(r, 20);
+    },
+  },
   {
     // Infrastructure is RETIRED: HIFLD Open (its only upstream) was
     // discontinued Aug 2025, and the broker now short-circuits the category to

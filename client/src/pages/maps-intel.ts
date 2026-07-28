@@ -26,6 +26,21 @@ export interface PropertyIntelligence {
   waterAccess?: boolean;
   roadAccess?: boolean;
   powerAccess?: boolean;
+  // Wave-2 Tier-1 signals. Only ever set when the enrichment lookup ACTUALLY
+  // returned them — never derived, never defaulted:
+  //   - wildfireHazard: the USFS Wildfire Hazard Potential class label (the
+  //     federal layer's own token) — never inferred from land cover/climate.
+  //   - broadbandServed / broadbandMaxDownMbps / broadbandMaxUpMbps: FCC
+  //     National Broadband Map (BDC). `broadbandServed` is tri-state like the
+  //     access flags — unknown stays `undefined`, never silently `false`
+  //     (don't imply "no internet" on a parcel we haven't checked).
+  //   - septicRating: USDA SSURGO septic (absorption fields) suitability
+  //     rating string, straight from the soil lookup.
+  wildfireHazard?: "very_low" | "low" | "moderate" | "high" | "very_high";
+  broadbandServed?: boolean;
+  broadbandMaxDownMbps?: number;
+  broadbandMaxUpMbps?: number;
+  septicRating?: string;
   zoningCode?: string;
   zoningDescription?: string;
   opportunityScore?: number;
@@ -57,6 +72,8 @@ export const INTEL_NUMERIC_FIELDS = [
   "solarScore",
   "soilQuality",
   "opportunityScore",
+  "broadbandMaxDownMbps",
+  "broadbandMaxUpMbps",
 ] as const;
 
 /**
@@ -120,6 +137,21 @@ export function deriveIntel(
     waterAccess: typeof avm?.waterAccess === "boolean" ? avm.waterAccess : undefined,
     roadAccess: typeof avm?.roadAccess === "boolean" ? avm.roadAccess : undefined,
     powerAccess: typeof avm?.powerAccess === "boolean" ? avm.powerAccess : undefined,
+    // Wave-2 Tier-1 signals — pass-through ONLY, never coalesced. Wildfire is
+    // the USFS WHP label, broadband is FCC BDC (`broadbandServed` tri-state
+    // like the access flags: a REAL false renders "not served", an absent
+    // lookup stays `undefined`), septic is the USDA SSURGO rating string.
+    wildfireHazard: avm?.wildfireHazard,
+    broadbandServed:
+      typeof avm?.broadbandServed === "boolean" ? avm.broadbandServed : undefined,
+    broadbandMaxDownMbps:
+      typeof avm?.broadbandMaxDownMbps === "number" ? avm.broadbandMaxDownMbps : undefined,
+    broadbandMaxUpMbps:
+      typeof avm?.broadbandMaxUpMbps === "number" ? avm.broadbandMaxUpMbps : undefined,
+    septicRating:
+      typeof avm?.septicRating === "string" && avm.septicRating.trim() !== ""
+        ? avm.septicRating
+        : undefined,
     // Zoning on the property record is a customer/county fact; AVM may enrich it.
     zoningCode: property.zoning ?? avm?.zoningCode,
     zoningDescription: avm?.zoningDescription,
