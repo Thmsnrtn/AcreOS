@@ -45,3 +45,39 @@ mail/data outreach today — only the AI-dispatch monthly cap self-pauses.
 Wiring this pause to the founder's chosen shape is an approved follow-up
 change that ships as a PR the founder sees before it is live. The dollar
 number is set by the founder, never the machine (money hard-stop).
+
+---
+
+# Addendum — second picker round, same date
+
+## 5. Outreach stop-loss dollar line — $500/MONTH TO START
+
+Ruling: the monthly mail+data spend line starts at **$500/month**, coherent
+with the constitutional $500 autonomous-spend scale. Raisable by the founder
+anytime from the cost panel. The pause wiring ships as a reviewed PR.
+
+## 6. Free-taste allowance sizing — MARGIN-TIED RULE
+
+Ruling: each plan's monthly included allowance is derived, not hand-set:
+whatever quantity of platform sends/lookups costs the platform **≤ ~20% of
+that plan's monthly price**, computed from live provider prices. Margin-safe
+by construction; auto-adjusts with any future price change. Implementation
+derives counts mechanically; no number is ever hand-invented.
+
+## 7. Letter cadence — QUIET-DAY MODE NOW
+
+Ruling: on green mornings (nothing needs the founder, vitals fine) The Letter
+renders three lines — needed-line · money line · step-away line — with the
+full letter one tap away. Weekly cadence remains a FUTURE decision, gated on
+measured unattended runway existing first.
+
+## 8. External watchdog + break-glass — SCAFFOLD NOW, FOUNDER PROVISIONS LATER
+
+Ruling: build the break-glass card content ("if AcreOS is dark" one-pager),
+a Controls section with exact copy-paste steps for the two GitHub secrets
+that arm the dormant external watchdogs, and a quarterly email-the-card job.
+The founder provisions the secrets when ready. NOTHING is presented as armed
+until it actually is (no-fabrication).
+
+Implementation status: rulings 5–8 are recorded here as the spec; their
+implementation PRs follow and each is founder-reviewable before live.
