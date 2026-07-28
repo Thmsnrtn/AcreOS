@@ -24,6 +24,11 @@ import {
 } from "@shared/landProfile";
 import type { Property } from "@shared/schema";
 import type { EnrichmentResult, EnrichmentProvenance } from "./propertyEnrichment";
+import {
+  sampleParcelTerrain,
+  formatSlopeValue,
+  type TerrainSampleResult,
+} from "./terrain";
 
 /**
  * Default confidence by source authority. Federal/open system-of-record layers
@@ -96,30 +101,35 @@ function soilCapabilityClass(env: EnrichmentResult["environment"]): string | nul
 }
 
 /**
- * Derive a buildable-percentage estimate from slope/land cover. This is a
- * MODELED value — flagged as such so it never reads as an authoritative fact.
- * Honest: returns null when we have nothing to base it on.
+ * Derive a buildable-percentage BASE estimate from land cover/wetlands. This
+ * is a MODELED value — flagged as such so it never reads as an authoritative
+ * fact. Honest: returns null when we have nothing to base it on.
+ *
+ * NOTE: this no longer produces the `slope` field. Slope is REAL (multi-point
+ * USGS 3DEP sampling via the terrain service) or an honest gap — never a
+ * land-cover proxy.
  */
-function buildableEstimate(enrichment: EnrichmentResult): {
-  buildablePct: number | null;
-  slopeNote: string | null;
-} {
+function buildableEstimate(enrichment: EnrichmentResult): number | null {
   const landCover = enrichment.landCover;
-  // Without slope rasters we lean on land cover + wetlands as a coarse proxy.
   const wetlandsPct = enrichment.hazards?.wetlandsPercentage;
   if (landCover?.isWetland || (typeof wetlandsPct === "number" && wetlandsPct >= 50)) {
-    return { buildablePct: 20, slopeNote: "Wetland-dominated — limited buildable area" };
+    return 20; // Wetland-dominated — limited buildable area
   }
-  if (landCover?.isDeveloped) {
-    return { buildablePct: 90, slopeNote: "Developed / open land cover" };
-  }
-  if (landCover?.isForested) {
-    return { buildablePct: 70, slopeNote: "Forested — clearing likely required" };
-  }
-  if (landCover?.isAgricultural || landCover?.className) {
-    return { buildablePct: 85, slopeNote: "Open / agricultural land cover" };
-  }
-  return { buildablePct: null, slopeNote: null };
+  if (landCover?.isDeveloped) return 90;
+  if (landCover?.isForested) return 70; // clearing likely required
+  if (landCover?.isAgricultural || landCover?.className) return 85;
+  return null;
+}
+
+/**
+ * Down-weight the land-cover buildable estimate by the REAL sampled max
+ * grade. Conservative step factors, not a pretend engineering model.
+ */
+function slopeBuildableFactor(maxSlopePercent: number): number {
+  if (maxSlopePercent < 8) return 1;
+  if (maxSlopePercent < 15) return 0.85;
+  if (maxSlopePercent < 25) return 0.6;
+  return 0.35;
 }
 
 /**
@@ -128,6 +138,12 @@ function buildableEstimate(enrichment: EnrichmentResult): {
  * @param property   the property (for coordinates + any owner/legal from county)
  * @param enrichment the (possibly cached) EnrichmentResult; may be null/empty
  * @param fromCache  whether the enrichment came from a cache hit / persisted DB
+ * @param terrain    REAL multi-point USGS 3DEP sampling result (terrain
+ *                   service). undefined/null = sampling not attempted on this
+ *                   path (slope stays an honest "not_looked_up" gap);
+ *                   `{ ok: false }` = attempted and failed (gap with the
+ *                   sampler's reason). We NEVER fall back to the old
+ *                   land-cover proxy for slope.
  */
 export function assembleLandProfile(
   property: Pick<
@@ -135,7 +151,8 @@ export function assembleLandProfile(
     "id" | "latitude" | "longitude" | "sizeAcres" | "legalDescription"
   >,
   enrichment: EnrichmentResult | null | undefined,
-  fromCache: boolean
+  fromCache: boolean,
+  terrain?: TerrainSampleResult | null
 ): LandProfile {
   const lat = property.latitude ? parseFloat(String(property.latitude)) : NaN;
   const lng = property.longitude ? parseFloat(String(property.longitude)) : NaN;
@@ -199,20 +216,43 @@ export function assembleLandProfile(
     { fallbackSource: "USDA NRCS SDA", classification: "authoritative" }
   );
 
-  // ── Buildable % + slope (MODELED from elevation/land cover) ───
-  const { buildablePct, slopeNote } = buildableEstimate(
-    enrichment ?? ({} as EnrichmentResult)
-  );
-  fields.buildablePercentage = field<number>(buildablePct, prov["elevation"], {
-    fallbackSource: "AcreOS (modeled from land cover)",
-    classification: "modeled",
-    confidence: 50,
-  });
-  fields.slope = field<string>(slopeNote, prov["elevation"], {
-    fallbackSource: "AcreOS (modeled from land cover)",
-    classification: "modeled",
-    confidence: 50,
-  });
+  // ── Slope: REAL multi-point USGS 3DEP sampling, or an honest gap ──
+  // Never the old land-cover proxy. Aspect is the real gradient azimuth.
+  if (terrain?.ok) {
+    fields.slope = {
+      value: formatSlopeValue(terrain.summary),
+      source: "USGS 3DEP (EPQS multi-point)",
+      asOf: null,
+      // Derived from authoritative 1m DEM samples — high, but below a pure
+      // system-of-record fact (the /3dep|usgs/ point layers sit at 90).
+      confidence: 85,
+      classification: "estimate",
+    };
+  }
+
+  // ── Buildable % (MODELED from land cover, refined by REAL slope) ──
+  let buildablePct = buildableEstimate(enrichment ?? ({} as EnrichmentResult));
+  let buildableSource = "AcreOS (modeled from land cover)";
+  let buildableConfidence = 50;
+  if (buildablePct !== null && terrain?.ok) {
+    buildablePct = Math.round(
+      buildablePct * slopeBuildableFactor(terrain.summary.maxSlopePercent)
+    );
+    buildableSource = "AcreOS (modeled from land cover + USGS 3DEP slope)";
+    buildableConfidence = 60; // still modeled, but slope-backed
+  }
+  if (buildablePct !== null) {
+    // Built directly (not via field()) so the source ALWAYS reads as the
+    // AcreOS model — never inherits an upstream layer's name for a modeled
+    // number.
+    fields.buildablePercentage = {
+      value: buildablePct,
+      source: buildableSource,
+      asOf: null,
+      confidence: buildableConfidence,
+      classification: "modeled",
+    };
+  }
 
   // ── Access flags ──────────────────────────────────────────────
   // Road access: derived from transportation distance to nearest highway.
@@ -259,7 +299,7 @@ export function assembleLandProfile(
     gaps.push({
       field: key,
       label: LAND_PROFILE_FIELD_LABELS[key],
-      reason: gapReason(key, errors, enrichment),
+      reason: gapReason(key, errors, enrichment, terrain),
     });
   }
 
@@ -285,8 +325,18 @@ export function assembleLandProfile(
 function gapReason(
   fieldKey: keyof LandProfileFields,
   errors: Record<string, string>,
-  enrichment: EnrichmentResult | null | undefined
+  enrichment: EnrichmentResult | null | undefined,
+  terrain?: TerrainSampleResult | null
 ): LandProfileGap["reason"] {
+  // Slope is backed by the terrain sampler (real 3DEP), not the enrichment
+  // "elevation" category: report ITS honest outcome.
+  if (fieldKey === "slope") {
+    if (terrain && !terrain.ok) {
+      return terrain.reason === "lookup_failed" ? "lookup_failed" : "no_data";
+    }
+    // Sampling not attempted on this (sync/cached) path.
+    return "not_looked_up";
+  }
   const category = FIELD_TO_CATEGORY[fieldKey];
   if (!enrichment) return "not_looked_up";
   if (category && errors[category]) return "lookup_failed";
@@ -295,7 +345,12 @@ function gapReason(
   return "no_data";
 }
 
-/** Which broker category backs each LandProfile field (for gap reasons). */
+/**
+ * Which broker category backs each LandProfile field (for gap reasons).
+ * `slope` is intentionally absent — it is backed by the terrain sampler
+ * (real 3DEP EPQS), handled explicitly in gapReason. `buildablePercentage`
+ * maps to land_cover because that is the model's actual input.
+ */
 const FIELD_TO_CATEGORY: Partial<Record<keyof LandProfileFields, string>> = {
   acreage: "parcel_data",
   owner: "parcel_data",
@@ -304,10 +359,50 @@ const FIELD_TO_CATEGORY: Partial<Record<keyof LandProfileFields, string>> = {
   floodZone: "flood_zone",
   wetlandsPercentage: "wetlands",
   soilCapabilityClass: "soil",
-  buildablePercentage: "elevation",
-  slope: "elevation",
+  buildablePercentage: "land_cover",
   roadAccess: "transportation",
   waterAccess: "water_resources",
   landCover: "land_cover",
   agValuePerAcre: "agricultural_values",
 };
+
+/**
+ * Assemble a LandProfile WITH live multi-point 3DEP terrain sampling.
+ *
+ * Async convenience over `assembleLandProfile`: samples real slope/aspect via
+ * the terrain service (5–9 EPQS points scaled to parcel size) and feeds the
+ * result in. On sampler failure the slope field stays an honest gap with the
+ * sampler's reason — never the old land-cover proxy. Callers that must stay
+ * sync (or serve pure cache hits) keep calling `assembleLandProfile` and get
+ * a "not_looked_up" slope gap.
+ */
+export async function assembleLandProfileWithTerrain(
+  property: Pick<
+    Property,
+    "id" | "latitude" | "longitude" | "sizeAcres" | "legalDescription"
+  >,
+  enrichment: EnrichmentResult | null | undefined,
+  fromCache: boolean
+): Promise<LandProfile> {
+  const lat = property.latitude ? parseFloat(String(property.latitude)) : NaN;
+  const lng = property.longitude ? parseFloat(String(property.longitude)) : NaN;
+  let terrain: TerrainSampleResult | undefined;
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    const acres =
+      enrichment?.parcel?.acreage ??
+      (property.sizeAcres ? parseFloat(String(property.sizeAcres)) : null);
+    try {
+      terrain = await sampleParcelTerrain(lat, lng, Number.isFinite(acres as number) ? (acres as number) : null);
+    } catch {
+      terrain = {
+        ok: false,
+        reason: "lookup_failed",
+        detail: "terrain sampler threw",
+        validPoints: 0,
+        totalPoints: 0,
+        centerElevationFeet: null,
+      };
+    }
+  }
+  return assembleLandProfile(property, enrichment, fromCache, terrain);
+}

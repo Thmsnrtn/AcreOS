@@ -91,6 +91,56 @@ export const GOLDEN_PROBES: GoldenProbe[] = [
     // (handled by the runner). Assert shape only when we DID get a hit.
     check: (r) => (r ? plausibleResult(r, 1) : null),
   },
+  // ── Load-bearing free-data-plane categories (2026-07-28) ─────────────────
+  // flood_zone / soil / wetlands / elevation are the categories the due-
+  // diligence and map surfaces lean on hardest; each gets its own canary so a
+  // FEMA/USDA/USFWS/USGS drift pages the founder, not the customer.
+  {
+    // Travis County, TX — FEMA NFHL flood-zone canary (the /arcgis/ host).
+    // Even off-floodplain coordinates return an honest "Zone X" answer.
+    label: "travis-tx-flood",
+    category: "flood_zone",
+    input: { type: "coordinates", latitude: 30.2672, longitude: -97.7431, state: "TX", county: "Travis" },
+    check: (r) => plausibleResult(r, 20),
+  },
+  {
+    // Maricopa County, AZ — USDA NRCS SDA soil canary (mapunit + extended query).
+    label: "maricopa-az-soil",
+    category: "soil",
+    input: { type: "coordinates", latitude: 33.4484, longitude: -112.074, state: "AZ", county: "Maricopa" },
+    check: (r) => plausibleResult(r, 20),
+  },
+  {
+    // Polk County, FL — USFWS NWI wetlands canary (wetlands-dense state; a
+    // clean "no wetlands here" is still a usable, non-empty payload).
+    label: "polk-fl-wetlands",
+    category: "wetlands",
+    input: { type: "coordinates", latitude: 27.8947, longitude: -81.7787, state: "FL", county: "Polk" },
+    check: (r) => plausibleResult(r, 20),
+  },
+  {
+    // Bernalillo County, NM — USGS 3DEP elevation canary (epqs.nationalmap.gov).
+    label: "bernalillo-nm-elevation",
+    category: "elevation",
+    input: { type: "coordinates", latitude: 35.0844, longitude: -106.6504, state: "NM", county: "Bernalillo" },
+    check: (r) => plausibleResult(r, 20),
+  },
+  {
+    // Infrastructure is RETIRED: HIFLD Open (its only upstream) was
+    // discontinued Aug 2025, and the broker now short-circuits the category to
+    // an explicit success:false (see RETIRED_CATEGORIES in
+    // server/services/data-source-broker.ts). This probe PINS that honest
+    // behavior: healthy = no usable data came back. If it ever starts
+    // returning data, a replacement source was wired in — flip this probe to
+    // `plausibleResult` expectations at that point.
+    label: "travis-tx-infrastructure-retired",
+    category: "infrastructure",
+    input: { type: "coordinates", latitude: 30.2672, longitude: -97.7431, state: "TX", county: "Travis" },
+    check: (r) => {
+      if (!r || !hasUsableData(r.data)) return null; // expected: honest unavailable
+      return "infrastructure returned data but HIFLD is retired (Aug 2025) — if a replacement source was wired in, update this probe to assert plausible data";
+    },
+  },
 ];
 
 export interface ProbeOutcome {

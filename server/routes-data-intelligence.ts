@@ -25,6 +25,10 @@
  *   GET  /api/data-intel/migration-hotspots
  *        — Known population in-migration hotspots by state
  *
+ *   GET  /api/data-intel/county-momentum/:state/:county
+ *        — Fused county momentum (IRS SOI migration + Census BPS permits +
+ *          BLS QCEW employment) with full per-signal evidence breakdown
+ *
  *   POST /api/data-intel/campaign-sizing
  *        — Calculate how many letters to mail for a target deal count
  *          Body: { county, state, targetDealsPerMonth }
@@ -634,6 +638,47 @@ router.get("/county-migration-flows/:stateFips/:countyFips", async (req: Request
     const result = await getCountyMigrationFlows(stateFips, countyFips);
     if (!result) return Errors.notFound(res, "migration flow data");
     res.json(result);
+  } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Fused County Momentum (IRS SOI migration + Census BPS permits + BLS QCEW)
+// GET /api/data-intel/county-momentum/:state/:county
+//
+// Accepts either FIPS codes ("48"/"043") or state abbreviation + county name
+// ("TX"/"Brewster", resolved via the census FIPS map). The response is always
+// the full evidence breakdown — per-signal source labels, data years, and raw
+// numbers, plus which signals were missing and why. The composite direction
+// vote is present only when >=2 of 3 signals are ingested; otherwise
+// `composite` is null with `compositeUnavailableReason` — never a bare score.
+// Auth: router is mounted with isAuthenticated + getOrCreateOrg (routes.ts),
+// same as every other endpoint in this file.
+// ---------------------------------------------------------------------------
+
+router.get("/county-momentum/:state/:county", async (req: Request, res: Response) => {
+  try {
+    const { getCountyMomentum } = await import("./services/openData/countyMarketSignals");
+    const { state, county } = req.params;
+
+    let stateFips: string;
+    let countyFips: string;
+    if (/^\d{2}$/.test(state) && /^\d{3}$/.test(county)) {
+      stateFips = state;
+      countyFips = county;
+    } else {
+      const { getCountyFips } = await import("./services/censusDataService");
+      const fips = getCountyFips(state, county);
+      if (!fips) {
+        return Errors.notFound(res, `FIPS mapping for ${county}, ${state}`);
+      }
+      stateFips = fips.stateFips;
+      countyFips = fips.countyFips;
+    }
+
+    const momentum = await getCountyMomentum(stateFips, countyFips);
+    res.json({ ...momentum, generatedAt: new Date().toISOString() });
   } catch (err: any) {
     Errors.internal(res, err);
   }

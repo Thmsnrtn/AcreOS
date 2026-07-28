@@ -14,6 +14,8 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, asc, gte, lte, sql, isNull, or } from "drizzle-orm";
 import { DataSourceBroker, type LookupCategory } from "./data-source-broker";
+import { getCountyMomentum, type CountyMomentum } from "./openData/countyMarketSignals";
+import { getCountyFips } from "./censusDataService";
 import { logger } from "../utils/logger";
 
 const dataSourceBroker = new DataSourceBroker();
@@ -100,11 +102,28 @@ interface ScoreBreakdown {
   ownerSignals?: ScoreFactor;
 }
 
+/**
+ * County-momentum context attached to every radar scoring result.
+ *
+ * ADDITIVE + HONEST: it never moves the parcel's numeric score (county-level
+ * direction votes carry no parcel-level weight we could defend). When the
+ * fused signal can't be read, status is "unavailable" with the reason — the
+ * radar SAYS it didn't check rather than implying a neutral check.
+ */
+export interface CountyMomentumContext {
+  status: "available" | "unavailable";
+  /** Why the signal is unavailable (only when status = "unavailable"). */
+  reason?: string;
+  /** The fused momentum readout (only when status = "available"). */
+  momentum?: CountyMomentum;
+}
+
 export interface ScoringResult {
   score: number;
   opportunityType: OpportunityType;
   factors: ScoreBreakdown;
   explanation: string;
+  countyMomentum: CountyMomentumContext;
   dataSources: Array<{
     sourceId: number;
     sourceName: string;
@@ -686,6 +705,73 @@ class AcquisitionRadarService {
     return explanation;
   }
 
+  /**
+   * Read the fused county momentum for a parcel's county. Null-safe by
+   * construction: any failure or missing prerequisite yields an honest
+   * "unavailable" with a reason — never a fabricated neutral.
+   */
+  async fetchCountyMomentum(
+    state?: string,
+    county?: string
+  ): Promise<CountyMomentumContext> {
+    if (!state || !county) {
+      return {
+        status: "unavailable",
+        reason: "Parcel has no state/county — county momentum was not checked",
+      };
+    }
+
+    const fips = getCountyFips(state, county);
+    if (!fips) {
+      return {
+        status: "unavailable",
+        reason: `No FIPS mapping for ${county}, ${state} — county momentum was not checked`,
+      };
+    }
+
+    try {
+      const momentum = await getCountyMomentum(fips.stateFips, fips.countyFips);
+      if (momentum.signalsPresent === 0) {
+        return {
+          status: "unavailable",
+          reason: `No ingested county market signals (IRS SOI migration, Census BPS permits, BLS QCEW employment) for ${county}, ${state}`,
+        };
+      }
+      return { status: "available", momentum };
+    } catch (error) {
+      logger.error(
+        `[acquisition-radar] County momentum lookup failed for ${county}, ${state}`,
+        error instanceof Error ? error : undefined
+      );
+      return {
+        status: "unavailable",
+        reason: "County momentum lookup failed — signal not checked for this scan",
+      };
+    }
+  }
+
+  /**
+   * One honest sentence about county momentum for the scoring explanation.
+   * Numbers/labels restate the evidence — nothing is added or smoothed.
+   */
+  private describeCountyMomentum(context: CountyMomentumContext): string {
+    if (context.status === "unavailable" || !context.momentum) {
+      return `County momentum unavailable: ${context.reason ?? "signal not checked"}.`;
+    }
+
+    const m = context.momentum;
+    const evidenceList = m.evidence
+      .map((e) => `${e.signal} ${e.direction > 0 ? "+" : e.direction < 0 ? "-" : "flat"} (${e.source.split(" (")[0]}, ${e.years})`)
+      .join("; ");
+
+    if (!m.composite) {
+      return `County momentum: partial evidence only — ${m.signalsPresent} of 3 signals ingested (${evidenceList}); no composite (needs at least 2 signals).`;
+    }
+
+    const c = m.composite;
+    return `County momentum: ${c.direction} (direction-vote sum ${c.score >= 0 ? "+" : ""}${c.score} across ${c.outOf} of 3 signals: ${evidenceList}).`;
+  }
+
   async scoreParcel(
     parcel: ParcelData,
     config: RadarConfig
@@ -720,13 +806,20 @@ class AcquisitionRadarService {
       : 0;
 
     const opportunityType = this.determineOpportunityType(factors, enriched);
-    const explanation = this.generateExplanation(factors, normalizedScore, opportunityType);
+    const baseExplanation = this.generateExplanation(factors, normalizedScore, opportunityType);
+
+    // County momentum is ADDITIVE context: it never moves the score, and when
+    // it can't be read the explanation says so instead of implying a neutral
+    // check (see CountyMomentumContext).
+    const countyMomentum = await this.fetchCountyMomentum(parcel.state, parcel.county);
+    const explanation = `${baseExplanation} ${this.describeCountyMomentum(countyMomentum)}`;
 
     return {
       score: normalizedScore,
       opportunityType,
       factors,
       explanation,
+      countyMomentum,
       dataSources: [],
     };
   }

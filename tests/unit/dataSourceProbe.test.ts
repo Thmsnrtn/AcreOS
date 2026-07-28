@@ -34,15 +34,21 @@ describe("dataSourceProbe", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("defines 3–5 golden probes spanning multiple sources/categories", () => {
+  it("covers the load-bearing free-data categories (plus the retired-infrastructure pin)", () => {
     expect(GOLDEN_PROBES.length).toBeGreaterThanOrEqual(3);
-    expect(GOLDEN_PROBES.length).toBeLessThanOrEqual(5);
     const categories = new Set(GOLDEN_PROBES.map((p) => p.category));
-    expect(categories.size).toBeGreaterThanOrEqual(2);
+    // The categories the platform leans on hardest must each have a canary.
+    for (const required of ["environmental", "demographics", "parcel_data", "flood_zone", "soil", "wetlands", "elevation", "infrastructure"]) {
+      expect(categories).toContain(required);
+    }
   });
 
   it("marks a probe healthy when the source returns plausible data", async () => {
-    lookupMock.mockResolvedValue(ok());
+    // infrastructure is retired (HIFLD, Aug 2025): its probe expects the
+    // honest-unavailable state, so the mock returns null for it.
+    lookupMock.mockImplementation(async (category: string) =>
+      category === "infrastructure" ? null : ok(),
+    );
     const outcomes = await runDataSourceProbes();
     expect(outcomes).toHaveLength(GOLDEN_PROBES.length);
     // parcel probe tolerates a null hit, but a plausible result is also healthy.
@@ -56,9 +62,29 @@ describe("dataSourceProbe", () => {
       return ok("FEMA NFHL", 70, {}); // empty -> implausible
     });
     const outcomes = await runDataSourceProbes();
-    const envFails = outcomes.filter((o) => o.category !== "parcel_data");
+    // parcel_data tolerates a miss; infrastructure EXPECTS emptiness (retired).
+    const envFails = outcomes.filter((o) => o.category !== "parcel_data" && o.category !== "infrastructure");
     expect(envFails.every((o) => !o.healthy)).toBe(true);
     expect(envFails[0].detail).toMatch(/empty|null/i);
+  });
+
+  it("pins the retired-infrastructure expectation: unavailable = healthy, data = FAIL", async () => {
+    // Unavailable (broker short-circuit surfaces as null/empty through the
+    // registry) is the EXPECTED state.
+    lookupMock.mockImplementation(async (category: string) =>
+      category === "infrastructure" ? null : ok(),
+    );
+    let outcomes = await runDataSourceProbes();
+    let infra = outcomes.find((o) => o.category === "infrastructure")!;
+    expect(infra.healthy).toBe(true);
+
+    // If infrastructure ever RETURNS data, the pin must trip so the probe
+    // expectations get updated alongside the replacement source.
+    lookupMock.mockImplementation(async () => ok("HIFLD", 70, { hospitals: [{ NAME: "St. Somewhere" }] }));
+    outcomes = await runDataSourceProbes();
+    infra = outcomes.find((o) => o.category === "infrastructure")!;
+    expect(infra.healthy).toBe(false);
+    expect(infra.detail).toMatch(/retired/i);
   });
 
   it("FAILS a probe when all providers are exhausted (null) for a required category", async () => {

@@ -49,7 +49,17 @@ type MapStyle = MapStyleName;
 
 const MAP_STYLES: Record<MapStyle, string> = STYLE_URLS[MAP_ENGINE];
 
-const FEMA_NFHL_URL = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer";
+// FEMA migrated the public NFHL service off the old "gis" + "nfhl" path (now
+// a WebSEAL gateway that returns an HTML error page) to `/arcgis/` — same fix
+// as the server-side broker (server/services/data-source-broker.ts,
+// open-data-provider.ts healthCheck). Keep this on the `/arcgis/` host; the
+// propertyMapFemaUrl source-shape test forbids the dead path re-appearing.
+const FEMA_NFHL_URL = "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer";
+// Flood Hazard Zones layer index on the /arcgis/ NFHL service. Layer 28 is the
+// layer the server-side broker queries successfully on this host (flood zones:
+// FLD_ZONE/ZONE_SUBTY/STATIC_BFE), so the tile export pins to it rather than
+// relying on the service's default visible-layer set.
+const FEMA_NFHL_FLOOD_LAYER = 28;
 const USGS_LAND_USE_URL = "https://www.sciencebase.gov/arcgis/rest/services/Catalog/5f9637fad34eb2e5df3d40a2/MapServer";
 const USDA_CDL_URL = "https://nassgeodata.gmu.edu/arcgis/rest/services/CropScapeService/WMS_CroplandRaster/MapServer";
 const USDA_CLU_URL = "https://gis.sc.egov.usda.gov/appgeodb/rest/services/common_land_unit/MapServer";
@@ -1102,7 +1112,7 @@ export function PropertyMap({
       map.current.addSource("fema-flood", {
         type: "raster",
         tiles: [
-          `${FEMA_NFHL_URL}/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image`
+          `${FEMA_NFHL_URL}/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&layers=show:${FEMA_NFHL_FLOOD_LAYER}&f=image`
         ],
         tileSize: 256,
         attribution: "FEMA NFHL"

@@ -24,7 +24,7 @@ import {
 } from "@shared/schema";
 import { eq, and, lt, desc, sql } from "drizzle-orm";
 import { subDays, addDays } from "date-fns";
-import { landCredit } from "../services/landCredit";
+import { landCredit, LCS_METHODOLOGY_VERSION } from "../services/landCredit";
 import { logger } from "../utils/logger";
 
 export const LAND_CREDIT_RECALC_QUEUE_NAME = "land-credit-score-recalculation";
@@ -80,8 +80,8 @@ async function recalculateProperty(
   const dropped = dropAmount > SCORE_DROP_ALERT_THRESHOLD;
 
   // Map the service's ScoringFactors (0-100 per dimension) onto the
-  // land_credit_scores columns. The service has no dedicated model version,
-  // so a constant is used.
+  // land_credit_scores columns, stamped with the published methodology
+  // version (same stamp calculateCreditScore itself persists).
   const f = scoreResult.factors;
   await db.insert(landCreditScores).values({
     propertyId: property.id,
@@ -112,8 +112,11 @@ async function recalculateProperty(
       marketDemand: Math.round(f.market.score),
       economicFactors: Math.round(f.financial.score),
       timeOnMarket: Math.round(f.market.factors.daysOnMarket),
+      // Honesty contract: measured-vs-assumed per sub-factor, with sources —
+      // additive key, ignored by the calibrator readers.
+      factorProvenance: scoreResult.factorProvenance,
     },
-    modelVersion: "1.0",
+    modelVersion: LCS_METHODOLOGY_VERSION,
     validUntil: addDays(new Date(), STALE_DAYS),
   });
 

@@ -171,6 +171,32 @@ async function processDataIngestJob(job: Job): Promise<void> {
       const acres = parseFloat(property?.sizeAcres || "0");
       const pricePerAcre = price / acres;
 
+      // Environmental features from the property's persisted enrichment jsonb
+      // (FEMA NFHL / USFWS NWI / USDA NRCS via PropertyEnrichmentService) —
+      // the properties table itself has no floodZone/wetlands/soilQuality
+      // columns; enrichmentData is where the real lookups live. Honest nulls
+      // when the parcel was never enriched or a layer returned nothing.
+      const enrichment = (property?.enrichmentData ?? null) as {
+        hazards?: { floodZone?: string; wetlandsPresent?: boolean };
+        environment?: { soilSuitability?: string };
+      } | null;
+      const floodZone =
+        typeof enrichment?.hazards?.floodZone === "string" && enrichment.hazards.floodZone.trim()
+          ? enrichment.hazards.floodZone
+          : null;
+      const hasWetlands =
+        typeof enrichment?.hazards?.wetlandsPresent === "boolean"
+          ? enrichment.hazards.wetlandsPresent
+          : null;
+      // The broker's suitability is capability-derived only for
+      // prime/suitable/limited; "good" is its no-capability-data default and
+      // must not be stored as a measured soil fact (refuse-not-fabricate).
+      const soilSuitability = enrichment?.environment?.soilSuitability;
+      const soilQuality =
+        soilSuitability === "prime" || soilSuitability === "suitable" || soilSuitability === "limited"
+          ? soilSuitability
+          : null;
+
       // Insert into training table
       try {
         await db.insert(transactionTraining).values({
@@ -184,10 +210,9 @@ async function processDataIngestJob(job: Job): Promise<void> {
           hasRoadAccess: property?.roadAccess ? property.roadAccess !== "none" : null,
           hasUtilities: property?.utilities ? Object.values(property.utilities).some(Boolean) : null,
           hasWater: property?.utilities?.water ?? null,
-          // TODO(tsc): properties has no floodZone/wetlands/soilQuality columns; left null until source columns exist.
-          floodZone: null,
-          hasWetlands: null,
-          soilQuality: null,
+          floodZone,
+          hasWetlands,
+          soilQuality,
           countyMedianIncome: null,
           populationDensity: null,
           distanceToMetro: null,
