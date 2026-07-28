@@ -16,8 +16,10 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FounderAuthError } from "@/components/founder/FounderAuthError";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
+import { GlassEngine } from "@/components/founder/GlassEngine";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { formatRelative } from "@/lib/format";
 import { staggerContainer, staggerItem } from "@/lib/animations";
@@ -273,20 +275,38 @@ export default function FounderAutopilotStoryPage() {
             title="The story isn't available right now"
             onRetry={() => void refetch()}
           />
-        ) : entries.length === 0 ? (
-          <p className="text-sm text-muted-foreground" data-testid="story-empty">
-            Nothing here yet. Once the autopilot is acting, every move it makes will appear here with its full reasoning.
-          </p>
         ) : (
-          <Card>
-            <CardContent className="p-2 sm:p-3">
-              <motion.ul variants={staggerContainer} initial="hidden" animate="visible">
-                {entries.map((e) => (
-                  <StoryRow key={e.id} entry={e} />
-                ))}
-              </motion.ul>
-            </CardContent>
-          </Card>
+          <Tabs defaultValue="timeline">
+            <TabsList>
+              <TabsTrigger value="timeline" data-testid="story-tab-timeline">The timeline</TabsTrigger>
+              <TabsTrigger value="engine" data-testid="story-tab-engine">The engine</TabsTrigger>
+            </TabsList>
+            <TabsContent value="timeline" className="mt-4">
+              {entries.length === 0 ? (
+                <p className="text-sm text-muted-foreground" data-testid="story-empty">
+                  Nothing here yet. Once the autopilot is acting, every move it makes will appear here with its full
+                  reasoning.
+                </p>
+              ) : (
+                <Card>
+                  <CardContent className="p-2 sm:p-3">
+                    <motion.ul variants={staggerContainer} initial="hidden" animate="visible">
+                      {entries.map((e) => (
+                        <StoryRow key={e.id} entry={e} />
+                      ))}
+                    </motion.ul>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+            <TabsContent value="engine" className="mt-4">
+              {/* The Engine derives from the SAME loaded entries as the
+                  timeline — a failed load is caught by the shared error
+                  branch above, so it never renders "no moves yet" over a
+                  fetch failure. */}
+              <GlassEngine entries={entries} />
+            </TabsContent>
+          </Tabs>
         )}
       </div>
     </PageShell>
