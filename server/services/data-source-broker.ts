@@ -322,6 +322,25 @@ export function parseBdcAvailability(records: Array<Record<string, unknown>>): {
  *   {"Table":[["musym","muname","mukey"],["Gt","Glenbar clay loam...","53350"]]}
  * (first row = column names, remaining rows = value arrays).
  */
+/**
+ * Validate WGS84 coordinates and return canonical fixed-format strings for
+ * interpolation into constructed URLs and T-SQL text. Throws on anything that
+ * is not a finite in-range number, and the returned strings are derived
+ * purely from the validated numbers (`toFixed`), so no caller-supplied string
+ * can ever reach a query or URL.
+ */
+export function safeWgs84(lat: unknown, lng: unknown): { latStr: string; lngStr: string } {
+  const nlat = typeof lat === "number" ? lat : Number(lat);
+  const nlng = typeof lng === "number" ? lng : Number(lng);
+  if (!Number.isFinite(nlat) || nlat < -90 || nlat > 90) {
+    throw new Error("Invalid WGS84 latitude");
+  }
+  if (!Number.isFinite(nlng) || nlng < -180 || nlng > 180) {
+    throw new Error("Invalid WGS84 longitude");
+  }
+  return { latStr: nlat.toFixed(6), lngStr: nlng.toFixed(6) };
+}
+
 export function parseSdaColumnRows(payload: unknown): Array<Record<string, string>> {
   const table = (payload as { Table?: unknown })?.Table;
   if (!Array.isArray(table) || table.length < 2) return [];
@@ -1042,7 +1061,8 @@ export class DataSourceBroker {
     // `mupolygonGeometry.STContains(...)` form is rejected by SDA today
     // ("Cannot find either column \"mupolygonGeometry\"...", live-verified
     // 2026-07-28), which silently killed the whole soil lookup.
-    const basicQuery = `SELECT TOP 1 musym, muname, mukey FROM mapunit WHERE mukey IN (SELECT mukey FROM SDA_Get_Mukey_from_intersection_with_WktWgs84('point(${lng} ${lat})'))`;
+    const { latStr, lngStr } = safeWgs84(lat, lng);
+    const basicQuery = `SELECT TOP 1 musym, muname, mukey FROM mapunit WHERE mukey IN (SELECT mukey FROM SDA_Get_Mukey_from_intersection_with_WktWgs84('point(${lngStr} ${latStr})'))`;
     const basicRows = await this.postSdaQuery(basicQuery, 15000);
     const basicRow = basicRows[0];
     const mukey = basicRow?.mukey;
@@ -1135,8 +1155,9 @@ export class DataSourceBroker {
     // summary envelope Results.{QueryRows,CVRows,...}). CVRows = facilities
     // currently in violation within the radius.
     let echoFacilitiesWithViolations: number | null = null;
+    const safeCoords = safeWgs84(lat, lng);
     try {
-      const echoUrl = `https://echodata.epa.gov/echo/echo_rest_services.get_facilities?output=JSON&p_lat=${lat}&p_long=${lng}&p_radius=${radiusMiles}`;
+      const echoUrl = `https://echodata.epa.gov/echo/echo_rest_services.get_facilities?output=JSON&p_lat=${safeCoords.latStr}&p_long=${safeCoords.lngStr}&p_radius=${radiusMiles}`;
       const echoRes = await fetch(echoUrl, {
         headers: { "User-Agent": "AcreOS Real Estate Platform", "Accept": "application/json" },
         signal: AbortSignal.timeout(10000),
@@ -1158,7 +1179,9 @@ export class DataSourceBroker {
     let ustSitesNearby: number | null = null;
     const ustRadiusMeters = 1609; // 1 mile
     try {
-      const ustGeometry = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
+      const ustGeometry = encodeURIComponent(
+        JSON.stringify({ x: Number(safeCoords.lngStr), y: Number(safeCoords.latStr), spatialReference: { wkid: 4326 } }),
+      );
       const ustUrl = `https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/UST_Finder_Feature_Layer_2/FeatureServer/0/query?geometry=${ustGeometry}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=${ustRadiusMeters}&units=esriSRUnit_Meter&returnCountOnly=true&f=json`;
       const ustRes = await fetch(ustUrl, {
         headers: { "User-Agent": "AcreOS Real Estate Platform" },
@@ -2298,7 +2321,10 @@ export class DataSourceBroker {
     // ..._WildfireHazardPotentialClassified serves the documented 1–5 class
     // raster (returned "4" at 39.65,-105.35) — so we identify against the
     // Classified service, which is what the whpClass contract requires.
-    const geometryParam = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
+    const whpCoords = safeWgs84(lat, lng);
+    const geometryParam = encodeURIComponent(
+      JSON.stringify({ x: Number(whpCoords.lngStr), y: Number(whpCoords.latStr), spatialReference: { wkid: 4326 } }),
+    );
     const url = `https://imagery.geoplatform.gov/iipp/rest/services/Fire_Aviation/USFS_EDW_RMRS_WildfireHazardPotentialClassified/ImageServer/identify?geometry=${geometryParam}&geometryType=esriGeometryPoint&returnGeometry=false&returnCatalogItems=false&f=json`;
 
     const response = await fetch(url, {
@@ -2333,7 +2359,8 @@ export class DataSourceBroker {
 
     // 1) Resolve the point to its census block (FCC Area API — keyless,
     //    documented; same endpoint queryStormHistory already relies on).
-    const blockUrl = `https://geo.fcc.gov/api/census/block/find?latitude=${lat}&longitude=${lng}&format=json`;
+    const bdcCoords = safeWgs84(lat, lng);
+    const blockUrl = `https://geo.fcc.gov/api/census/block/find?latitude=${bdcCoords.latStr}&longitude=${bdcCoords.lngStr}&format=json`;
     const blockRes = await fetch(blockUrl, {
       headers: { "User-Agent": "AcreOS Real Estate Platform" },
       signal: AbortSignal.timeout(10000),

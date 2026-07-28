@@ -525,3 +525,21 @@ describe("category registration completeness (types/provider/TTL/license/credits
     expect(wf.check(mapped)).toBeNull();
   });
 });
+
+// ── safeWgs84 — the coordinate sanitizer every constructed URL/T-SQL uses ──
+import { safeWgs84 } from "../../server/services/data-source-broker";
+
+describe("safeWgs84 — no caller-supplied string ever reaches a query or URL", () => {
+  it("canonicalizes valid coordinates to fixed-format numeric strings", () => {
+    expect(safeWgs84(33.4484, -112.074)).toEqual({ latStr: "33.448400", lngStr: "-112.074000" });
+    expect(safeWgs84("33.4484", "-112.074")).toEqual({ latStr: "33.448400", lngStr: "-112.074000" });
+  });
+  it("throws on out-of-range, non-finite, and injection-shaped inputs", () => {
+    expect(() => safeWgs84(91, 0)).toThrow(/latitude/);
+    expect(() => safeWgs84(0, -181)).toThrow(/longitude/);
+    expect(() => safeWgs84(NaN, 0)).toThrow(/latitude/);
+    expect(() => safeWgs84(Infinity, 0)).toThrow(/latitude/);
+    expect(() => safeWgs84("33'); DROP TABLE mapunit;--", 0)).toThrow(/latitude/);
+    expect(() => safeWgs84(0, "../../etc")).toThrow(/longitude/);
+  });
+});
