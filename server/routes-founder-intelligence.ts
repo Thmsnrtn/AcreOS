@@ -4088,4 +4088,77 @@ router.get(
   },
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/autopilot/worst-day
+//
+// Founder-trust audit (2026-07) gap #1: the ONE number a non-technical
+// founder can hold — "if everything went maximally wrong autonomously in one
+// day, the most it could cost is $X" — composed from the REAL enforced caps
+// (platform AI daily ceiling + current-month remaining agent budget
+// envelopes, bounded by the absolute financial hard cap). Honest by
+// construction: unreadable components come back null with a caveat, never a
+// fabricated zero. See server/services/autopilot/worstDay.ts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get(
+  "/autopilot/worst-day",
+  requireFounder,
+  async (_req: Request, res: Response) => {
+    try {
+      const { loadWorstDayInputs, composeWorstDayBound } = await import(
+        "./services/autopilot/worstDay"
+      );
+      const bound = composeWorstDayBound(await loadWorstDayInputs());
+      res.json(bound);
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/founder/intelligence/autopilot/test-page
+//
+// Founder-trust audit (2026-07) gap #3: the pager path was never
+// synthetically verified — the founder could only learn whether pages reach
+// their phone during a REAL incident. This sends a clearly-labeled drill
+// through the exact production send path (solene pagerService, normal
+// priority) and reports the honest outcome: sent:false with the real reason
+// when the topic is unconfigured or both channels fail — never a pretend
+// success.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post(
+  "/autopilot/test-page",
+  requireFounder,
+  async (_req: Request, res: Response) => {
+    try {
+      const { sendSolenePage } = await import("./services/solene/pagerService");
+      // interruptClass "A" — this is a founder-INITIATED synchronous drill:
+      // the founder is holding their phone waiting for the buzz. Letting the
+      // interrupt arbiter defer it to the next pulse would break the drill
+      // and falsely report the pager path as unreachable.
+      const result = await sendSolenePage({
+        severity: "urgent",
+        subject: "Test page (you asked for this drill)",
+        body: "Test page — tap nothing, this is only a drill.",
+        interruptClass: "A",
+      });
+      const sent = result.deliveryStatus === "delivered";
+      const channel = sent
+        ? result.deliveryDetail?.includes("email fallback delivered")
+          ? "email"
+          : "push"
+        : null;
+      res.json({
+        sent,
+        channel,
+        reason: sent ? null : result.deliveryDetail ?? "page was not delivered (no further detail recorded)",
+      });
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  },
+);
+
 export default router;

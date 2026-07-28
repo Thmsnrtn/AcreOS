@@ -311,6 +311,11 @@ export default function FounderAutopilotControlPage() {
             {/* The "can I leave?" answer — machine-verified, never vibes. */}
             <motion.section variants={staggerItem}>
               <StepAwaySection />
+              {/* Founder-trust audit gap #3 — the pager path is only trustworthy
+                  if it's been fired synthetically. */}
+              <div className="mt-3">
+                <TestPageButton />
+              </div>
             </motion.section>
 
             {/* Live heartbeat — what it last did + whether it's healthy. */}
@@ -447,6 +452,14 @@ export default function FounderAutopilotControlPage() {
                       <p className="text-xs text-muted-foreground">
                         Halt everything at once — all switches off, every part back to watching-only. Reversible: re-enable above when you're ready.
                       </p>
+                      {/* Founder-trust audit gap #2 — say honestly what this button
+                          does NOT stop. Verified: panic-stop halts the autopilot
+                          brain/hands but not the scheduled-job fleet, customer-side
+                          Pax, or founder-chat tools. */}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        This stops the autopilot's brain and hands. Scheduled billing/mail jobs and the customer-facing assistant have
+                        their own switches — this button does not touch them.
+                      </p>
                     </div>
                   </div>
                   {panicConfirming ? (
@@ -473,6 +486,10 @@ export default function FounderAutopilotControlPage() {
                   )}
                 </CardContent>
               </Card>
+              {/* The one worst-day number (founder-trust audit gap #1). */}
+              <div className="mt-3">
+                <WorstDaySection />
+              </div>
             </motion.section>
 
             {/* Pending decisions + calibration */}
@@ -670,6 +687,170 @@ function MasterToggle({ icon: Icon, title, description, enabled, source, pending
         {source === "env" && <p className="text-[11px] text-muted-foreground">Currently following the server default. Flipping it here takes over.</p>}
       </CardContent>
     </Card>
+  );
+}
+
+// ── Worst-day number (founder-trust audit gap #1) ───────────────────────────
+// The single figure a layperson founder can hold: "if everything went
+// maximally wrong autonomously in one day, the most it could cost is $X".
+// Composed server-side from the REAL enforced caps (worstDay.ts); any
+// component the server couldn't read arrives null and we say so — nothing
+// here is ever a guess.
+
+interface WorstDayData {
+  aiDailyCeilingCents: number | null;
+  spendRemainingCents: number | null;
+  hardCapCents: number | null;
+  boundCents: number | null;
+  caveats: string[];
+}
+
+function wholeDollars(cents: number) {
+  return `$${Math.round(cents / 100).toLocaleString()}`;
+}
+
+function WorstDaySection() {
+  const [open, setOpen] = useState(false);
+  const q = useQuery<WorstDayData>({
+    queryKey: ["/api/founder/intelligence/autopilot/worst-day"],
+    queryFn: async () => {
+      const res = await fetch("/api/founder/intelligence/autopilot/worst-day", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load worst-day bound (${res.status})`);
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  if (q.isLoading) return <Skeleton className="h-12 w-full rounded-card" />;
+  if (q.isError || !q.data) {
+    return (
+      <p className="text-xs text-muted-foreground" data-testid="worst-day-unavailable">
+        Couldn't compute the worst-day spend number right now — showing nothing rather than a guess.
+      </p>
+    );
+  }
+  const d = q.data;
+
+  return (
+    <div className="rounded-card border border-border bg-card p-4" data-testid="worst-day">
+      <button
+        type="button"
+        className="flex w-full items-start gap-2 text-left min-h-[44px]"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        data-testid="worst-day-toggle"
+      >
+        <p className="min-w-0 flex-1 text-sm text-foreground">
+          {d.boundCents !== null ? (
+            <>
+              If everything went wrong for a whole day, the most the autopilot could spend is about{" "}
+              <span className="font-semibold">{wholeDollars(d.boundCents)}</span> — tap for how that's calculated.
+            </>
+          ) : (
+            <>Couldn't compute the worst-day spend number — showing nothing rather than a guess. Tap for what's missing.</>
+          )}
+        </p>
+        {open ? (
+          <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
+        ) : (
+          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
+        )}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2 text-xs text-muted-foreground" data-testid="worst-day-detail">
+          <ul className="space-y-1">
+            <li>
+              AI thinking, per day (platform-wide hard ceiling):{" "}
+              {d.aiDailyCeilingCents !== null ? `${wholeDollars(d.aiDailyCeilingCents)}` : "couldn't read — not counted"}
+            </li>
+            <li>
+              Money left in this month's agent budgets:{" "}
+              {d.spendRemainingCents !== null ? wholeDollars(d.spendRemainingCents) : "couldn't read — not counted"}
+            </li>
+            <li>
+              Absolute hard cap on any single request:{" "}
+              {d.hardCapCents !== null ? wholeDollars(d.hardCapCents) : "couldn't read — not counted"}
+            </li>
+          </ul>
+          {d.boundCents !== null && (
+            <p>
+              The number is the smaller of the hard cap and the remaining budgets, plus the AI ceiling. Any single
+              transaction over $500 always waits for your tap.
+            </p>
+          )}
+          {d.caveats.length > 0 && (
+            <div className="space-y-1">
+              <p className="font-medium text-foreground">The honest fine print:</p>
+              <ul className="list-disc space-y-1 pl-4">
+                {d.caveats.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── "Send me a test page" (founder-trust audit gap #3) ──────────────────────
+// Fires a clearly-labeled drill through the REAL paging path so the founder
+// learns whether pages reach their phone BEFORE a real incident. The toast
+// reports the honest outcome — including "not delivered" with the server's
+// real reason when the pager topic is unconfigured.
+
+function TestPageButton() {
+  const { toast } = useToast();
+  // allow-no-invalidation: a test page is a fire-and-forget drill — no cached
+  // query reads its result; the toast is the entire outcome surface.
+  const testPage = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/founder/intelligence/autopilot/test-page", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!res.ok) throw new Error(`Couldn't send (${res.status})`);
+      return res.json() as Promise<{ sent: boolean; channel: string | null; reason: string | null }>;
+    },
+    onSuccess: (r) => {
+      if (r.sent) {
+        toast({
+          title: "Test page sent",
+          description:
+            r.channel === "email"
+              ? "The push channel didn't work, so it went to your email instead. If you expected a phone buzz, the push path needs attention."
+              : "Sent as a push. If nothing arrived on your phone, the path is broken even though the server thinks it worked — that's exactly what this drill exists to catch.",
+        });
+      } else {
+        toast({
+          title: "Test page NOT delivered",
+          description: r.reason ?? "No reason recorded.",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (err) =>
+      toast({ title: "Couldn't send test page", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+
+  return (
+    <div className="flex flex-col gap-3 rounded-card border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-foreground">Does the pager actually reach you?</p>
+        <p className="text-xs text-muted-foreground">
+          Send yourself a drill through the real paging path. The message says it's a drill; you don't need to do anything.
+        </p>
+      </div>
+      <Button
+        size="sm" variant="outline" className="min-h-[44px] shrink-0"
+        onClick={() => testPage.mutate()}
+        disabled={testPage.isPending}
+        data-testid="send-test-page"
+      >
+        {testPage.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Send me a test page"}
+      </Button>
+    </div>
   );
 }
 

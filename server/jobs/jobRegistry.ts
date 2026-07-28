@@ -201,7 +201,13 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // Wall-clock daily 06:00 (local==UTC on the Fly worker). cron not yet consumed.
   { name: "churn_engine_daily", intervalMs: DAY, critical: true, cron: "0 6 * * *" },
   // Wall-clock daily 07:00. cron not yet consumed.
-  { name: "founder_briefing_daily", intervalMs: DAY, critical: false, cron: "0 7 * * *" },
+  // Founder-trust audit (2026-07) gap #4 — critical: the system that tells
+  // the founder everything is fine must be watched at least as strictly as
+  // what it reports on. A dead daily briefing is silence that reads as calm.
+  // (founder_digest, company_briefing_generator and customer_letters_monthly
+  // deliberately stay non-critical: they overlap this briefing + the monthly
+  // letter, which are the two canonical founder-truth channels.)
+  { name: "founder_briefing_daily", intervalMs: DAY, critical: true, cron: "0 7 * * *" },
   { name: "atlas_morning_brief_daily", intervalMs: DAY, critical: true },
   { name: "error_boundary_spike_detect", intervalMs: 15 * MIN, critical: true },
   { name: "outcome_analyzer", intervalMs: DAY, critical: false },
@@ -238,7 +244,10 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // Wall-clock 1st-of-month 10:00 UTC. cron not yet consumed.
   { name: "strategic_proposals_monthly_synthesis", intervalMs: MONTH, critical: false, cron: "0 10 1 * *" },
   // Wall-clock 1st-of-month 12:00 UTC. cron not yet consumed.
-  { name: "founder_letter_monthly", intervalMs: MONTH, critical: false, cron: "0 12 1 * *" },
+  // Founder-trust audit (2026-07) gap #4 — critical: the system that tells
+  // the founder everything is fine must be watched at least as strictly as
+  // what it reports on (see founder_briefing_daily above).
+  { name: "founder_letter_monthly", intervalMs: MONTH, critical: true, cron: "0 12 1 * *" },
   { name: "autonomy_outcome_grader", intervalMs: DAY, critical: false },
   // Horizon A1 — outcome-ledger 30/90-day check-in scorer, daily 12:00 UTC.
   // Non-critical: a dark pass delays scoring by a day; the unscored rows

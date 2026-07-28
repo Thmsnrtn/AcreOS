@@ -107,6 +107,31 @@ export interface FounderBriefInputs {
    * interrupts and never pads). null = omit the sentence.
    */
   sweep?: { findingsCount: number } | null;
+  /**
+   * TRACK RECORD (trust audit, 2026-07-28) — per-domain recorded outcomes,
+   * counted from the experience log's REAL votes (founder verdicts where
+   * given, otherwise support/eval/mechanical/consequence signals). Only
+   * domains with n > 0 are listed; zeros/unreadable → [] → the section
+   * renders nothing for that piece. Never dollar-weighted — per-action
+   * dollar outcomes aren't recorded, so no weighting is invented.
+   */
+  trackRecord?: Array<{ domain: string; n: number; good: number; bad: number }> | null;
+  /**
+   * "What's been working" as plain sentences built from the RAW
+   * success/failure counts (the brief's `learning` carries only the
+   * posterior rate, which would overstate at small n). Built via
+   * learningLine() so small samples say so.
+   */
+  learningLines?: string[] | null;
+  /**
+   * CONFESSION ("Since last week — what went wrong") — self-reported misses
+   * from REAL sources only: negative outcome-ledger scores recorded in the
+   * trailing week, trust-ledger circuit-breaker demotions, and overdue
+   * outcome check-ins. `changed` is what changed because of the miss when
+   * genuinely known, else null — never invented. Newest first; the builder
+   * caps at MAX_MISSES (oldest dropped). Empty → the section is silent.
+   */
+  misses?: Array<{ atIso: string | null; line: string; changed: string | null }> | null;
 }
 
 export interface FounderBrief {
@@ -151,6 +176,21 @@ export interface FounderBrief {
   learning: Array<{ playId: string; rate: number; n: number }>;
   /** The system's own calibration — "how right I usually am." */
   calibration: { grade: string; n: number; brier: number | null } | null;
+  /**
+   * Track record — per-domain recorded outcomes with a pre-worded plain
+   * line (wording lives server-side, in ONE place, like the wedge receipts).
+   */
+  trackRecord: Array<{ domain: string; n: number; good: number; bad: number; line: string }>;
+  /**
+   * Calibration in plain words, with the small-n guard applied: below
+   * CALIBRATION_MIN_N it says "Too early to score …" instead of claiming a
+   * grade. null when calibration itself was unreadable — render nothing.
+   */
+  calibrationLine: string | null;
+  /** "What's been working" — plain sentences from raw counts (small-n labeled). */
+  learningLines: string[];
+  /** The confession — capped at MAX_MISSES, newest first. Empty = silence. */
+  misses: Array<{ atIso: string | null; line: string; changed: string | null }>;
 }
 
 const PART_OF_DAY_WORD: Record<PartOfDay, string> = {
@@ -158,6 +198,74 @@ const PART_OF_DAY_WORD: Record<PartOfDay, string> = {
   afternoon: "afternoon",
   evening: "evening",
 };
+
+// ── Track record / confession helpers (pure, exported for unit tests) ────────
+
+/**
+ * The minimum checked-prediction count before the Letter claims ANY
+ * calibration standing. Mirrors forecast.calibrationReport's minN=10 — below
+ * it the grade is "unproven" and the honest sentence is "too early", never a
+ * score. Kept as its own constant so the wording layer can't drift looser
+ * than the scoring layer.
+ */
+export const CALIBRATION_MIN_N = 10;
+
+/** The confession never runs past this — a cap, newest kept, oldest dropped. */
+export const MAX_MISSES = 5;
+
+/**
+ * Calibration in plain founder words. Pure + total.
+ *  - null input (calibration unreadable) → null: render NOTHING, never a guess.
+ *  - below CALIBRATION_MIN_N → the small-n guard: "Too early to score…".
+ *  - at/above it, the grade is stated plainly; "over-confident" is a caution
+ *    stated at full severity, never softened. The basis is labeled because
+ *    these are automatic prediction-vs-outcome checks, not founder judgments.
+ */
+export function calibrationLine(
+  cal: { grade: string; n: number; brier: number | null } | null,
+): string | null {
+  if (!cal) return null;
+  if (cal.n < CALIBRATION_MIN_N || cal.grade === "unproven") {
+    return `Too early to score my own predictions — ${cal.n} checked so far (I need ${CALIBRATION_MIN_N} before a score means anything).`;
+  }
+  const basis = "based on automatic outcome checks, not your judgment";
+  switch (cal.grade) {
+    case "well-calibrated":
+      return `When I say how confident I am, reality has matched — checked against ${cal.n} predictions (${basis}).`;
+    case "fair":
+      return `When I say how confident I am, reality has roughly matched, but not tightly — checked against ${cal.n} predictions (${basis}).`;
+    case "over-confident":
+      return `A caution: I have been over-confident — I claimed more than reality delivered, across ${cal.n} checked predictions (${basis}). Weigh my confidence accordingly.`;
+    default:
+      // An unknown grade is never dressed up as a score.
+      return `Too early to score my own predictions — ${cal.n} checked so far (I need ${CALIBRATION_MIN_N} before a score means anything).`;
+  }
+}
+
+/**
+ * One per-domain track-record line in plain words. Counts only — no rates, no
+ * weighting — and a small sample says so. Pure + total.
+ */
+export function trackRecordLine(t: { domain: string; n: number; good: number; bad: number }): string {
+  const name = cap(t.domain);
+  const actions = countNoun(t.n, "action", "actions");
+  const smallN = t.n < 5 ? " (small sample — early days)" : "";
+  if (t.bad === 0) {
+    return `${name}: ${actions} with a recorded outcome — all turned out fine so far${smallN}.`;
+  }
+  return `${name}: ${actions} with a recorded outcome — ${t.good} turned out fine, ${t.bad} went wrong${smallN}.`;
+}
+
+/**
+ * One "what's been working" line from RAW counts (never the posterior rate,
+ * which would overstate at small n). Small samples are labeled. Pure + total.
+ */
+export function learningLine(playId: string, successes: number, failures: number): string {
+  const s = Math.max(0, successes);
+  const n = s + Math.max(0, failures);
+  const smallN = n < 5 ? " — small sample, treat as an early signal" : "";
+  return `“${playId}” went well in ${s} of ${n} recorded ${n === 1 ? "try" : "tries"}${smallN}.`;
+}
 
 /**
  * Compose the founder's daily brief from the real state. Pure + total.
@@ -286,6 +394,16 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
     trustLedger: inp.trustLedger,
     learning: inp.learning ?? [],
     calibration: inp.calibration ?? null,
+    // Track record — only entries with real recorded outcomes; the wording
+    // is composed HERE so every surface says it the same honest way.
+    trackRecord: (inp.trackRecord ?? [])
+      .filter((t) => t.n > 0)
+      .map((t) => ({ ...t, line: trackRecordLine(t) })),
+    calibrationLine: calibrationLine(inp.calibration ?? null),
+    learningLines: inp.learningLines ?? [],
+    // The confession — newest first from the gatherer; cap enforced here so
+    // the Letter can never become a wall of indictments (oldest dropped).
+    misses: (inp.misses ?? []).slice(0, MAX_MISSES),
   };
 }
 
@@ -379,8 +497,10 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     plannedFocus = null;
   }
 
-  // Trust Ledger — the felt sense of earning.
+  // Trust Ledger — the felt sense of earning. The raw rows also carry the
+  // last circuit-breaker demotion (when + why), which the confession reads.
   let trustLedger: FounderBrief["trustLedger"] = [];
+  let trustDemotions: Array<{ domain: string; at: Date; reason: string | null }> = [];
   try {
     const { getTrustLedger } = await import("./domainAutonomy");
     const rows = await getTrustLedger();
@@ -390,23 +510,147 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
       cleanCycleCount: r.cleanCycleCount,
       threshold: r.threshold,
     }));
+    trustDemotions = rows
+      .filter((r) => r.lastDemotedAt != null)
+      .map((r) => ({ domain: r.domain, at: r.lastDemotedAt as Date, reason: r.lastDemotionReason }));
   } catch {
     trustLedger = [];
+    trustDemotions = [];
   }
 
   // What's working — top plays by real efficacy across the engine domains.
+  // learningLines carries the same top plays as RAW counts ("3 of 4"), so the
+  // rendered sentence can never overstate the posterior rate at small n.
   let learning: FounderBrief["learning"] = [];
+  let learningLines: string[] = [];
   try {
     const { getPlayStats } = await import("./experienceLog");
     const { efficacyOf } = await import("./efficacy");
     const allStats = (await Promise.all(["growth", "support"].map((d) => getPlayStats(d)))).flat();
-    learning = allStats
-      .map((s) => ({ playId: s.playId, ...efficacyOf(s) }))
+    const ranked = allStats
+      .map((s) => ({ ...s, ...efficacyOf(s) }))
       .filter((x) => x.n > 0)
       .sort((a, b) => b.rate - a.rate || b.n - a.n)
       .slice(0, 3);
+    learning = ranked.map((s) => ({ playId: s.playId, rate: s.rate, n: s.n }));
+    learningLines = ranked.map((s) => learningLine(s.playId, s.successes, s.failures));
   } catch {
     learning = [];
+    learningLines = [];
+  }
+
+  // Track record — per-domain recorded outcomes across ALL autopilot domains,
+  // summed from the same experience-log votes the learning loop reads. Only
+  // real counts; a domain with nothing recorded simply isn't listed.
+  let trackRecord: FounderBriefInputs["trackRecord"] = [];
+  try {
+    const { getPlayStats } = await import("./experienceLog");
+    const { AUTOPILOT_DOMAINS } = await import("./domainAutonomy");
+    const perDomain = await Promise.all(
+      AUTOPILOT_DOMAINS.map(async (domain) => {
+        const stats = await getPlayStats(domain);
+        let good = 0;
+        let bad = 0;
+        for (const s of stats) {
+          good += Math.max(0, s.successes);
+          bad += Math.max(0, s.failures);
+        }
+        return { domain, n: good + bad, good, bad };
+      }),
+    );
+    trackRecord = perDomain.filter((t) => t.n > 0);
+  } catch {
+    trackRecord = [];
+  }
+
+  // The confession — "since last week, what went wrong", from REAL sources
+  // only. Best-effort per source; a failed read contributes nothing (never a
+  // guessed miss, never fake reassurance).
+  let misses: FounderBriefInputs["misses"] = [];
+  try {
+    const sinceMs = nowMs - 7 * 24 * 60 * 60 * 1000;
+    const collected: Array<{ atIso: string | null; line: string; changed: string | null }> = [];
+
+    // (a) Outcome-ledger scores that came back NEGATIVE in the trailing week.
+    // actualOutcome is the ledger's own honest sentence (it already carries
+    // "causality uncertain" where that applies) — quoted, never re-worded.
+    try {
+      const { db } = await import("../../db");
+      const { decisionsInboxItems } = await import("@shared/schema");
+      const { and, desc, gte, isNotNull, lte } = await import("drizzle-orm");
+      const rows = await db
+        .select({
+          label: decisionsInboxItems.recommendedActionLabel,
+          actualOutcome: decisionsInboxItems.actualOutcome,
+          outcomeScore: decisionsInboxItems.outcomeScore,
+          recordedAt: decisionsInboxItems.outcomeRecordedAt,
+        })
+        .from(decisionsInboxItems)
+        .where(
+          and(
+            isNotNull(decisionsInboxItems.outcomeRecordedAt),
+            gte(decisionsInboxItems.outcomeRecordedAt, new Date(sinceMs)),
+            isNotNull(decisionsInboxItems.outcomeScore),
+            lte(decisionsInboxItems.outcomeScore, -1),
+          ),
+        )
+        .orderBy(desc(decisionsInboxItems.outcomeRecordedAt))
+        .limit(MAX_MISSES);
+      for (const r of rows) {
+        const what =
+          r.actualOutcome ??
+          ((r.outcomeScore ?? -1) <= -2
+            ? "it was scored “wrong call” at check-in."
+            : "it was scored “didn't help” at check-in.");
+        collected.push({
+          atIso: r.recordedAt ? new Date(r.recordedAt).toISOString() : null,
+          line: r.label
+            ? `“${r.label}” didn't turn out as predicted: ${what}`
+            : `A decision didn't turn out as predicted: ${what}`,
+          // No concrete per-outcome follow-up is recorded — nothing invented.
+          changed: null,
+        });
+      }
+    } catch {
+      /* this source contributes nothing */
+    }
+
+    // (b) Trust-ledger circuit-breaker demotions in the trailing week. The
+    // "what changed" here is real: the demotion itself (recordAnomaly drops
+    // the level and resets clean-cycle progress).
+    for (const d of trustDemotions) {
+      if (d.at.getTime() >= sinceMs) {
+        collected.push({
+          atIso: d.at.toISOString(),
+          line: `I pulled back my own authority in ${d.domain} after a problem${d.reason ? ` — ${d.reason}` : ""}.`,
+          changed:
+            "That area now runs at a lower trust level and has to re-earn clean runs before it can act more freely.",
+        });
+      }
+    }
+
+    // (c) Overdue outcome check-ins — promised verifications not yet done.
+    // A self-reported miss about the verifying itself.
+    try {
+      const { getOutcomeLedgerCounts } = await import("../outcomeLedger");
+      const counts = await getOutcomeLedgerCounts(new Date(nowMs));
+      if (counts.overdue > 0) {
+        collected.push({
+          atIso: null,
+          line: `${countNoun(counts.overdue, "outcome check is", "outcome checks are")} past due — I said I'd verify how those decisions turned out, and I haven't yet.`,
+          changed: null,
+        });
+      }
+    } catch {
+      /* this source contributes nothing */
+    }
+
+    // Newest first (undated lines last); the builder caps at MAX_MISSES.
+    const ts = (x: { atIso: string | null }) => (x.atIso ? Date.parse(x.atIso) : 0);
+    collected.sort((a, b) => ts(b) - ts(a));
+    misses = collected;
+  } catch {
+    misses = [];
   }
 
   // Calibration — how well the system's own predictions have matched reality.
@@ -527,7 +771,10 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     operatingMode,
     trustLedger,
     learning,
+    learningLines,
     calibration,
+    trackRecord,
+    misses,
     runwayWeeks,
     mrrWowPct,
     wedge,
