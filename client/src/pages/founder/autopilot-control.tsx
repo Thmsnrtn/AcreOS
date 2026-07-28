@@ -320,6 +320,11 @@ export default function FounderAutopilotControlPage() {
               <div className="mt-3">
                 <TestPageButton />
               </div>
+              {/* Founder decision 2026-07-28 #8 — the safety net that lives
+                  OUTSIDE the app, shown with honest armed/dormant states. */}
+              <div className="mt-3">
+                <ExternalSafetyNetSection />
+              </div>
             </motion.section>
 
             {/* Live heartbeat — what it last did + whether it's healthy. */}
@@ -1027,6 +1032,173 @@ function TestPageButton() {
       >
         {testPage.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Send me a test page"}
       </Button>
+    </div>
+  );
+}
+
+// ── Safety net outside the app (founder decision 2026-07-28 #8) ─────────────
+// Three watchdogs run on GitHub Actions — genuinely outside AcreOS, so they
+// still work when the app is dark. HONESTY RULE: this app CANNOT read GitHub
+// repo secrets, so nothing here is ever shown as armed ("no green check") —
+// each entry says exactly what is knowable from here and how the founder can
+// verify or arm it themselves. Arming steps live in the break-glass card
+// (docs/runbooks/break-glass-card.md), which must ALSO exist outside the app:
+// the email button below sends the founder their own copy to print or file.
+
+interface ExternalWatchdogInfo {
+  key: string;
+  title: string;
+  what: string;
+  /** What is honestly knowable from inside the app — never an armed claim. */
+  stateLine: string;
+  /** The GitHub repo secrets that arm it (exact names). */
+  secrets: string[];
+  /** Copy-paste arming steps (mirrors the break-glass card). */
+  how: string[];
+}
+
+const EXTERNAL_WATCHDOGS: ExternalWatchdogInfo[] = [
+  {
+    key: "daily-pulse",
+    title: "Daily pulse",
+    what: "Pushes a one-line health text to your phone every morning (~7:07am ET), from GitHub's computers.",
+    stateLine:
+      "Can't verify from here — the real check is your phone: did this morning's one-liner arrive? No line means it needs NTFY_TOPIC (or GitHub Actions is having trouble).",
+    secrets: ["NTFY_TOPIC"],
+    how: [
+      'Terminal: gh secret set NTFY_TOPIC --body "<your-private-topic>"',
+      "Web: github.com/Thmsnrtn/AcreOS → Settings → Secrets and variables → Actions → New repository secret → name it exactly NTFY_TOPIC.",
+      "Prove it: Actions tab → Daily Pulse → Run workflow → the line should hit your phone within a minute.",
+    ],
+  },
+  {
+    key: "uptime-probe",
+    title: "Uptime probe",
+    what: "Pings the site from GitHub every ~5 minutes and records real outside-in uptime.",
+    stateLine:
+      "Can't verify from here — dormant until you set UPTIME_PROBE_URL and UPTIME_PROBE_TOKEN; here's how.",
+    secrets: ["UPTIME_PROBE_URL", "UPTIME_PROBE_TOKEN"],
+    how: [
+      'Terminal: gh secret set UPTIME_PROBE_URL --body "https://acreos.io"',
+      'Terminal: gh secret set UPTIME_PROBE_TOKEN --body "<long-random-string>"',
+      'Server half: fly secrets set UPTIME_PROBE_TOKEN="<the same string>" — the site refuses the probe without it.',
+      "Web: github.com/Thmsnrtn/AcreOS → Settings → Secrets and variables → Actions → New repository secret (exact names above).",
+      'Prove it: Actions tab → uptime-probe → Run workflow → the log must say it recorded a sample, not "probe dormant".',
+    ],
+  },
+  {
+    key: "release-watchdog",
+    title: "Release watchdog",
+    what: "Hourly, checks the live site is running the latest code and pages your phone if not.",
+    stateLine:
+      "Can't verify from here — it can't alert until you set DEPLOY_ALERT_WEBHOOK (its runs deliberately fail red until then); here's how.",
+    secrets: ["DEPLOY_ALERT_WEBHOOK"],
+    how: [
+      'Terminal: gh secret set DEPLOY_ALERT_WEBHOOK --body "https://ntfy.sh/<your-private-topic>"',
+      "Web: github.com/Thmsnrtn/AcreOS → Settings → Secrets and variables → Actions → New repository secret → name it exactly DEPLOY_ALERT_WEBHOOK.",
+      'Prove it: Actions tab → Release Watchdog → Run workflow → the run should end green with "Alert spine wired".',
+    ],
+  },
+];
+
+function ExternalSafetyNetSection() {
+  const { toast } = useToast();
+  const [openKey, setOpenKey] = useState<string | null>(null);
+
+  // allow-no-invalidation: emailing the card is fire-and-forget — no cached
+  // query reads its result; the honest toast is the entire outcome surface.
+  const emailCard = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/founder/intelligence/break-glass/email", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!res.ok) throw new Error(`Couldn't send (${res.status})`);
+      return res.json() as Promise<{ sent: boolean; reason: string | null }>;
+    },
+    onSuccess: (r) => {
+      if (r.sent) {
+        toast({
+          title: "Break-glass card sent",
+          description: "Check your inbox — then print it or file it somewhere you can reach when the app is dark.",
+        });
+      } else {
+        toast({
+          title: "Card NOT sent",
+          description: r.reason ?? "No reason recorded.",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (err) =>
+      toast({ title: "Couldn't send the card", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+
+  return (
+    <div className="rounded-card border border-border bg-card p-4 space-y-3" data-testid="external-safety-net">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">Safety net outside the app</p>
+          <p className="text-xs text-muted-foreground">
+            Three watchdogs run on GitHub's computers, independent of AcreOS — they keep working when the app is dark.
+            This app cannot read GitHub's secrets, so it never claims one is armed: each line below says what's honestly
+            knowable and how to arm or verify it yourself.
+          </p>
+        </div>
+        <Button
+          size="sm" variant="outline" className="min-h-[44px] shrink-0"
+          onClick={() => emailCard.mutate()}
+          disabled={emailCard.isPending}
+          data-testid="email-break-glass-card"
+        >
+          {emailCard.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Email me the break-glass card"}
+        </Button>
+      </div>
+      <ul className="divide-y divide-border/60">
+        {EXTERNAL_WATCHDOGS.map((w) => {
+          const open = openKey === w.key;
+          return (
+            <li key={w.key} className="py-2" data-testid={`watchdog-${w.key}`}>
+              <button
+                type="button"
+                className="flex w-full items-start gap-2 text-left min-h-[44px]"
+                onClick={() => setOpenKey(open ? null : w.key)}
+                aria-expanded={open}
+                data-testid={`watchdog-${w.key}-toggle`}
+              >
+                {/* Amber, always — an unverifiable watchdog is never shown green. */}
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-acr-warn" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-foreground">{w.title}</span>
+                  <span className="block text-xs text-muted-foreground">{w.what}</span>
+                  <span className="block text-xs text-acr-warn">{w.stateLine}</span>
+                </span>
+                {open ? (
+                  <ChevronUp className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                ) : (
+                  <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                )}
+              </button>
+              {open && (
+                <div className="mt-2 ml-3.5 rounded-md border border-border bg-muted/50 px-2.5 py-2" data-testid={`watchdog-${w.key}-how`}>
+                  <p className="text-micro font-medium text-foreground mb-1">
+                    Secret{w.secrets.length === 1 ? "" : "s"} to set: {w.secrets.join(" + ")}
+                  </p>
+                  <ol className="list-decimal space-y-1 pl-4">
+                    {w.how.map((step) => (
+                      <li key={step} className="text-micro text-muted-foreground break-words">{step}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-micro text-muted-foreground">
+        The full "if AcreOS is dark" one-pager (who hosts what, first steps, vendor support) is the break-glass card —
+        it must also live outside the app. Email yourself a copy above, then print it or file it.
+      </p>
     </div>
   );
 }

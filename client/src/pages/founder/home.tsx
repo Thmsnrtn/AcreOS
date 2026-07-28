@@ -74,6 +74,14 @@ interface FounderBrief {
    * ids). null = no recent change → render nothing.
    */
   modelChangeNotice: string | null;
+  /**
+   * QUIET-DAY MODE (ruling #7, 2026-07-28) — server-computed: true ONLY when
+   * nothing needs the founder, the confession is empty, no model-change
+   * notice, AND the budget envelope is a verified green ("unknown" is never
+   * quiet). When true the page renders the compact three-line letter with
+   * the full letter one tap away; quiet mode is subtraction only.
+   */
+  quietDay: boolean;
 }
 
 /** Signed WoW percent → a short, signed label ("↑3%" / "↓2%" / "flat"). */
@@ -111,6 +119,11 @@ export default function FounderHomePage() {
   useDocumentTitle("Your company · Founder");
   // F3 receipts — which wedge tile's rows are open (null = none).
   const [receiptMetric, setReceiptMetric] = useState<"outreach" | "replies" | "offers" | null>(null);
+  // Quiet-day (ruling #7) — on a green morning the letter opens compact;
+  // "Read the full letter" expands the complete letter client-side. This is
+  // display-only subtraction: nothing exists in the full view that quiet
+  // mode would suppress forever — it's all one tap away.
+  const [showFullLetter, setShowFullLetter] = useState(false);
   const { data, isLoading, error, refetch } = useQuery<{ brief: FounderBrief }>({
     queryKey: ["/api/founder/solene/brief"],
     queryFn: async () => (await apiRequest("GET", "/api/founder/solene/brief")).json(),
@@ -133,6 +146,52 @@ export default function FounderHomePage() {
         <QueryErrorState error={error as Error} onRetry={() => refetch()} title="Couldn't load your company's brief" />
       ) : !brief ? (
         <QueryErrorState error={new Error("No brief available")} onRetry={() => refetch()} title="No brief yet" />
+      ) : brief.quietDay && !showFullLetter ? (
+        /* QUIET-DAY MODE (ruling #7) — a green morning reads as three lines:
+           needed-line · money line · step-away line. Subtraction only: the
+           complete letter is one tap away and nothing here differs from what
+           the full view would say. A non-empty confession (misses) can never
+           reach this branch — quietDay is false by definition then. */
+        <motion.div className="space-y-5" variants={staggerContainer} initial="hidden" animate="visible" data-testid="letter-quiet-day">
+          {/* 1 — the needed-line ("Nothing needs you today.") */}
+          <motion.div variants={staggerItem}>
+            <p className="text-sm text-muted-foreground">{brief.greeting}</p>
+            <h1 className="mt-1 font-serif text-2xl leading-snug md:text-3xl">{brief.neededLine}</h1>
+          </motion.div>
+
+          {/* 2 — the money line: the REAL weekly spend + budget status the
+              vitals show, linking to the costs hub where every charge lives. */}
+          <motion.div variants={staggerItem}>
+            <PrefetchLink
+              href="/founder/admin/costs"
+              className="flex items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm hover-elevate"
+              data-testid="letter-quiet-money-line"
+            >
+              <span className="min-w-0 flex-1">
+                Spent {usd(brief.vitalSign.weeklySpendUsd, { noCents: true })} on AI + data this week, budget{" "}
+                {BUDGET_STATUS[brief.vitalSign.envelopeStatus].label.toLowerCase()} — tap for every charge
+              </span>
+              <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            </PrefetchLink>
+          </motion.div>
+
+          {/* 3 — the step-away verdict (the same component the full letter renders). */}
+          <motion.div variants={staggerItem}>
+            <StepAwayLine />
+          </motion.div>
+
+          {/* The full letter is always one tap away. */}
+          <motion.div variants={staggerItem}>
+            <button
+              type="button"
+              onClick={() => setShowFullLetter(true)}
+              className="rounded-sm text-sm text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="letter-read-full-toggle"
+            >
+              Read the full letter →
+            </button>
+          </motion.div>
+        </motion.div>
       ) : (
         <motion.div className="space-y-5" variants={staggerContainer} initial="hidden" animate="visible">
           {/* Lead with the one thing that matters: does the founder need to act? */}

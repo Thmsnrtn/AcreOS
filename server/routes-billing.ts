@@ -127,6 +127,107 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
+  // ============================================
+  // DERIVED FREE-TASTE ALLOWANCES (founder decisions 2026-07-28, #2 + #6)
+  // ============================================
+  //
+  // Each plan's monthly included allowance of platform sends/lookups is
+  // DERIVED, never hand-set: whatever quantity costs the platform ≤ ~20% of
+  // that plan's monthly price, computed from the real per-unit provider
+  // costs already in code. The derivation itself lives in the pure
+  // shared/billing/allowanceEngine.ts; this endpoint supplies the VERIFIED
+  // unit costs (sources below — never invented numbers) and returns the full
+  // derivation inputs so the founder can audit the math.
+  //
+  // FOUNDER/INTERNAL-FACING for now: this powers the founder cost panel.
+  // Customer-facing display of allowances is a separate reviewed change —
+  // do not wire this response into customer UI without that review.
+  api.get("/api/billing/allowances", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      if (!org.isFounder) {
+        return Errors.forbidden(res, "Founder only");
+      }
+
+      const { deriveAllowances, formatAllowanceSummary, ALLOWANCE_RAIL_WEIGHTS } =
+        await import("@shared/billing/allowanceEngine");
+      const { TIERS, TIER_PRICES_CENTS } = await import("@shared/billing/tier-pricing");
+
+      // ── Verified per-unit platform costs (cents) — sources, not guesses ──
+      //
+      // Letters: LOB_LETTER_COST in server/services/mailProvider.ts ($0.85),
+      // read via its exported getProviderInfo() so a future Lob price change
+      // there flows through here automatically.
+      const { getProviderInfo, MailProvider } = await import("./services/mailProvider");
+      const letterCents = Math.round(getProviderInfo().costs[MailProvider.LOB].letter * 100);
+
+      // Data lookups: the provider registry's paid providers each publish
+      // costPerLookupCents(category) (regrid / batchdata / attom category
+      // tables). Category costs range 3¢–20¢; we derive the allowance at the
+      // MAXIMUM published category cost across the paid providers, so the
+      // included count can never cost more than budgeted regardless of which
+      // lookup mix the customer actually uses (round down, never overpromise).
+      const { regridProvider } = await import("./services/providers/regrid-provider");
+      const { batchdataProvider } = await import("./services/providers/batchdata-provider");
+      const { attomProvider } = await import("./services/providers/attom-provider");
+      const paidProviders = [regridProvider, batchdataProvider, attomProvider];
+      let dataLookupCents = 0;
+      for (const provider of paidProviders) {
+        for (const category of provider.categories) {
+          dataLookupCents = Math.max(dataLookupCents, provider.costPerLookupCents(category));
+        }
+      }
+
+      // Email: USAGE_ACTION_TYPES.email_sent.defaultCostCents in
+      // shared/schema.ts (1¢ / email) — the platform's canonical metered
+      // email unit cost, also used by the campaign send path.
+      const { USAGE_ACTION_TYPES } = await import("@shared/schema");
+      const emailCents = USAGE_ACTION_TYPES.email_sent.defaultCostCents;
+
+      const unitCosts = { dataLookupCents, letterCents, emailCents };
+      const unitCostSources = {
+        letterCents: {
+          cents: letterCents,
+          source: "server/services/mailProvider.ts LOB_LETTER_COST via getProviderInfo()",
+        },
+        dataLookupCents: {
+          cents: dataLookupCents,
+          source:
+            "max costPerLookupCents(category) across paid providers " +
+            "(regrid-provider / batchdata-provider / attom-provider CATEGORY_COSTS)",
+        },
+        emailCents: {
+          cents: emailCents,
+          source: "shared/schema.ts USAGE_ACTION_TYPES.email_sent.defaultCostCents",
+        },
+      };
+
+      const tiers: Record<string, unknown> = {};
+      for (const tier of TIERS) {
+        const derived = deriveAllowances({
+          planPriceCents: TIER_PRICES_CENTS[tier].priceMonthlyCents,
+          unitCosts,
+        });
+        tiers[tier] = {
+          displayName: TIER_PRICES_CENTS[tier].displayName,
+          ...derived,
+          summary: formatAllowanceSummary(derived),
+        };
+      }
+
+      res.json({
+        derivedNotHandSet: true,
+        rulings: ["founder-decisions-2026-07-28 #2", "founder-decisions-2026-07-28 #6"],
+        marginFraction: 0.2,
+        weights: ALLOWANCE_RAIL_WEIGHTS,
+        unitCostSources,
+        tiers,
+      });
+    } catch (error: any) {
+      Errors.internal(res, error);
+    }
+  });
+
   // T6: Idempotency on payment mutations to prevent duplicate charges
   const creditPurchaseSchema = z.object({
     packId: z.string().min(1, "packId is required"),

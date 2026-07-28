@@ -244,6 +244,16 @@ export class DirectMailService {
       usedTestEnv = orgClient.isTestKey;
     } else {
       const effective = this.effectiveMode(mode);
+      // Outreach stop-loss gate (founder rulings #4/#5, 2026-07-28): a
+      // platform-credential LIVE send spends the founder's mail budget, so
+      // it's checked against the monthly mail+data line. Throws
+      // OutreachPausedError when paused — nothing sends, nothing is
+      // fabricated; the caller's queue item stays put. BYO-key (orgClient)
+      // and test-env sends spend nothing and are not gated.
+      if (effective === 'live') {
+        const { assertOutreachNotPaused } = await import('./outreachStopLoss');
+        await assertOutreachNotPaused('directMail.sendPostcard');
+      }
       lob = this.getLobClient(effective);
       usedTestEnv = effective === 'test';
     }
@@ -310,6 +320,11 @@ export class DirectMailService {
       usedTestEnv = orgClient.isTestKey;
     } else {
       const effective = this.effectiveMode(mode);
+      // Outreach stop-loss gate — see sendPostcard for the full rationale.
+      if (effective === 'live') {
+        const { assertOutreachNotPaused } = await import('./outreachStopLoss');
+        await assertOutreachNotPaused('directMail.sendLetter');
+      }
       lob = this.getLobClient(effective);
       usedTestEnv = effective === 'test';
     }

@@ -225,6 +225,26 @@ export interface FlushSummary {
  * never blocks the rest.
  */
 export async function flushDueMailShipments(now: Date = new Date(), limit = 50): Promise<FlushSummary> {
+  // ── Outreach stop-loss gate (founder rulings #4/#5, 2026-07-28) ──────────
+  // Checked BEFORE claiming so a paused cycle leaves every due shipment in
+  // 'queued' — skipped, never dropped, never marked failed, never refunded.
+  // getOutreachStopLossStatus never throws and fails CLOSED (unreadable
+  // ledger → paused) per the capitalTracker precedent.
+  const { getOutreachStopLossStatus, notifyOutreachPausedOnce } = await import("../outreachStopLoss");
+  const stopLoss = await getOutreachStopLossStatus();
+  if (stopLoss.paused) {
+    logger.warn("[mailFlusher] outreach stop-loss paused — leaving due shipments queued", {
+      metadata: {
+        reason: stopLoss.reason,
+        lineCents: stopLoss.lineCents,
+        mtdSpendCents: stopLoss.mtdSpendCents,
+        monthKey: stopLoss.monthKey,
+      },
+    });
+    void notifyOutreachPausedOnce(stopLoss);
+    return { claimed: 0, sent: 0, failed: 0 };
+  }
+
   const claimed = await db.execute(sql`
     UPDATE mail_shipments SET status = 'sending'
     WHERE id IN (

@@ -1007,6 +1007,48 @@ export function registerAutopilotRoutes(app: Express): void {
       }
     },
   );
+
+  // ── Outreach stop-loss (founder rulings #4/#5, 2026-07-28) ──────────────
+  // The monthly mail+data spend line that pauses outreach until the founder
+  // looks. Status feeds the card on /founder/admin/costs; resume is the
+  // founder's "I've looked — resume this month" tap.
+
+  app.get(
+    "/api/founder/autopilot/stop-loss",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { getOutreachStopLossStatus } = await import("./services/outreachStopLoss");
+        return res.json(await getOutreachStopLossStatus());
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/autopilot/stop-loss/resume",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { acknowledgeOutreachStopLoss } = await import("./services/outreachStopLoss");
+        const result = await acknowledgeOutreachStopLoss(getUserId(req));
+        if (!result.ok) {
+          // Honest refusal (e.g. ledger unreadable — resuming would spend
+          // blind), not a server fault.
+          return Errors.badRequest(res, result.message, { status: result.status });
+        }
+        logger.info("[routes-autopilot] outreach stop-loss resumed by founder", {
+          metadata: { userId: getUserId(req), monthKey: result.status.monthKey },
+        });
+        return res.json(result);
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
 }
 
 // ── Up-next plain-line formatting (kept here so the wording lives with the

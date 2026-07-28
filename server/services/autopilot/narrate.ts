@@ -207,6 +207,17 @@ export interface FounderBrief {
    * notice while a recent change is inside its window. null = silence.
    */
   modelChangeNotice: string | null;
+  /**
+   * QUIET-DAY MODE (founder decision 2026-07-28, ruling #7) — true ONLY on a
+   * genuinely green morning, i.e. when ALL hold: nothing needs the founder
+   * (the asks + queued-decisions union is zero), the confession is empty,
+   * no model-change notice is in its window, and the budget envelope reads a
+   * VERIFIED "green". "unknown" (pulse unreadable) is never quiet — an
+   * unreadable ledger is never dressed up as a green morning. The UI may
+   * SUBTRACT on a quiet day (three lines, full letter one tap away) but never
+   * hide: misses non-empty forces the full letter by definition.
+   */
+  quietDay: boolean;
 }
 
 const PART_OF_DAY_WORD: Record<PartOfDay, string> = {
@@ -281,6 +292,31 @@ export function learningLine(playId: string, successes: number, failures: number
   const n = s + Math.max(0, failures);
   const smallN = n < 5 ? " — small sample, treat as an early signal" : "";
   return `“${playId}” went well in ${s} of ${n} recorded ${n === 1 ? "try" : "tries"}${smallN}.`;
+}
+
+/**
+ * The quiet-day predicate (ruling #7, 2026-07-28). Pure + total, exported for
+ * unit tests. Quiet ONLY when ALL of these hold:
+ *  - needsYouCount === 0 — the SAME asks + queued-decisions union the
+ *    neededLine reads; anything waiting means the founder is needed.
+ *  - misses is empty — a non-empty confession ALWAYS forces the full letter.
+ *  - modelChangeNotice is null — a recent brain change is never quieted.
+ *  - envelopeStatus === "green" — a VERIFIED green budget. "amber"/"red" are
+ *    not quiet, and "unknown" (the ledger couldn't be read) is treated as NOT
+ *    quiet: unknown is never dressed up as green.
+ */
+export function isQuietDay(q: {
+  needsYouCount: number;
+  misses: ReadonlyArray<unknown>;
+  modelChangeNotice: string | null;
+  envelopeStatus: "green" | "amber" | "red" | "unknown";
+}): boolean {
+  return (
+    q.needsYouCount === 0 &&
+    q.misses.length === 0 &&
+    q.modelChangeNotice === null &&
+    q.envelopeStatus === "green"
+  );
 }
 
 /**
@@ -387,6 +423,20 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
       : `Right now I'm focused on: ${inp.plannedFocus.rationale}`
     : null;
 
+  // The confession — newest first from the gatherer; cap enforced here so
+  // the Letter can never become a wall of indictments (oldest dropped).
+  const misses = (inp.misses ?? []).slice(0, MAX_MISSES);
+  const modelChangeNotice = inp.modelChangeNotice ?? null;
+
+  // Quiet-day (ruling #7) — computed from the SAME values the brief carries,
+  // so the compact view can never quiet something the full letter would show.
+  const quietDay = isQuietDay({
+    needsYouCount,
+    misses,
+    modelChangeNotice,
+    envelopeStatus: inp.pulse.envelopeStatus,
+  });
+
   return {
     greeting,
     theWord,
@@ -417,10 +467,9 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
       .map((t) => ({ ...t, line: trackRecordLine(t) })),
     calibrationLine: calibrationLine(inp.calibration ?? null),
     learningLines: inp.learningLines ?? [],
-    // The confession — newest first from the gatherer; cap enforced here so
-    // the Letter can never become a wall of indictments (oldest dropped).
-    misses: (inp.misses ?? []).slice(0, MAX_MISSES),
-    modelChangeNotice: inp.modelChangeNotice ?? null,
+    misses,
+    modelChangeNotice,
+    quietDay,
   };
 }
 
