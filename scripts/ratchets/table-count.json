@@ -4,6 +4,7 @@
   "pattern": "pgTable\\(",
   "globs": ["shared/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/*.spec.ts"],
-  "baselineCount": 746,
-  "direction": "down"
+  "baselineCount": 747,
+  "direction": "down",
+  "lastBumpNote": "746 -> 747 on 2026-07-28: open_data_change_events (Temporal Spine, founder ruling #9 wave 3 in docs/company/founder-decisions-2026-07-28.md). Append-only open-data change event stream — a genuinely new data shape, not consolidatable into an existing table. Deliberate bump per this ratchet's own procedure."
 }

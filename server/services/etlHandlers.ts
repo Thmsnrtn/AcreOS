@@ -31,6 +31,11 @@
  * Both handlers expose a `_runtime` object that lets unit tests inject a
  * canned page-iterator (so we can verify watermark + DLQ behaviour
  * without hitting the real upstream).
+ *
+ * Ruling #9 wave 3: the three county reference ETLs additionally emit
+ * best-effort temporal change events into `open_data_change_events` when a
+ * newly ingested year materially swings a county signal — see the
+ * "County-signal temporal change events" section below.
  */
 
 import { and, eq } from "drizzle-orm";
@@ -41,7 +46,9 @@ import {
   countyMigrationSummary,
   countyBuildingPermits,
   countyEmploymentWages,
+  openDataChangeEvents,
 } from "@shared/schema";
+import { db } from "../db";
 import { logger } from "../utils/logger";
 import { fetchGeo } from "./providers/fetchGeo";
 import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observation-log";
@@ -473,6 +480,412 @@ async function publicCsvExists(url: string): Promise<boolean> {
   return true;
 }
 
+// ─── County-signal temporal change events (ruling #9 wave 3) ────────────────
+//
+// When one of the three county reference ETLs (IRS SOI migration, Census BPS
+// permits, BLS QCEW employment) ingests a NEW year for a county that already
+// has the CONSECUTIVE prior year, material county-level swings become rows in
+// `open_data_change_events` (read back via the change-detection service's
+// `listRecentChangeEvents`). Honesty rules mirror countyMarketSignals.ts:
+//   - suppressed/NULL years never produce events,
+//   - no percent is ever computed against zero,
+//   - a county's first-ever ingested year is not a change,
+//   - narratives contain only real ingested values.
+// Emission is strictly best-effort: every failure is logged and swallowed so
+// it can never fail a record upsert, poison the DLQ, or hold back the
+// watermark. Tests inject `changeEventsRuntime` (same seam pattern as the
+// handlers' `_runtime`) to supply canned prior-year rows and capture emitted
+// events without a database.
+
+/** One open_data_change_events row, typed against the wave-3 contract. */
+export interface OpenDataChangeEventRow {
+  category: "migration" | "permits" | "employment";
+  scopeType: "county";
+  /** "ST/countyslug", e.g. "TX/travis" (see countyScopeRef for the QCEW fallback). */
+  scopeRef: string;
+  field: string;
+  previousValue: string;
+  newValue: string;
+  /**
+   * Source freshness of the PREVIOUS knowledge. Annual county data for year Y
+   * is as-of the end of that year (UTC), so this is the prior data-year's end
+   * — a real property of the source's coverage, not an invented timestamp.
+   */
+  previousAsOf: Date | null;
+  detectedAt: Date;
+  source: string;
+  severity: "info" | "notable";
+  narrative: string;
+}
+
+/** End of a data year, UTC — the as-of instant of annual county data. */
+function yearEndUtc(year: number): Date {
+  return new Date(Date.UTC(year, 11, 31));
+}
+
+/**
+ * As-of instant for an IRS filing-year pair label: "2223" covers tax years
+ * 2022→2023, so the data is as-of end of the second year. Null on junk.
+ * (Labels are 2000s-era by construction — the IRS scheme is 'YYZZ'.)
+ */
+function filingYearAsOf(label: string): Date | null {
+  if (!/^\d{4}$/.test(label)) return null;
+  return yearEndUtc(2000 + parseInt(label.slice(2), 10));
+}
+
+/** Census state FIPS → USPS abbreviation (states + DC + territories). */
+const STATE_FIPS_TO_USPS: Record<string, string> = {
+  "01": "AL", "02": "AK", "04": "AZ", "05": "AR", "06": "CA", "08": "CO",
+  "09": "CT", "10": "DE", "11": "DC", "12": "FL", "13": "GA", "15": "HI",
+  "16": "ID", "17": "IL", "18": "IN", "19": "IA", "20": "KS", "21": "KY",
+  "22": "LA", "23": "ME", "24": "MD", "25": "MA", "26": "MI", "27": "MN",
+  "28": "MS", "29": "MO", "30": "MT", "31": "NE", "32": "NV", "33": "NH",
+  "34": "NJ", "35": "NM", "36": "NY", "37": "NC", "38": "ND", "39": "OH",
+  "40": "OK", "41": "OR", "42": "PA", "44": "RI", "45": "SC", "46": "SD",
+  "47": "TN", "48": "TX", "49": "UT", "50": "VT", "51": "VA", "53": "WA",
+  "54": "WV", "55": "WI", "56": "WY",
+  "60": "AS", "66": "GU", "69": "MP", "72": "PR", "78": "VI",
+};
+
+/**
+ * Slugify a county label the same way growthTargets.countySlugFromLabel does
+ * ("Travis County" → "travis") so change-event scopeRefs line up with the
+ * "ST/countyslug" keys used elsewhere on the platform.
+ */
+function countySlug(label: string): string {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/\bcounty\b/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+/**
+ * Build the "ST/countyslug" scope ref. The county name comes from the source
+ * file when the upstream publishes one (IRS county flow files and Census BPS
+ * annual files both carry the county name; both are threaded through the
+ * parsed rows). The BLS QCEW industry file publishes NO county name — for
+ * employment events the 3-digit county FIPS stands in as the slug
+ * ("TX/453"), which is real data, never a guessed name.
+ * Returns null (→ no event) when the state FIPS is unknown.
+ */
+export function countyScopeRef(
+  stateFips: string,
+  countyName: string | null,
+  countyFips: string,
+): string | null {
+  const st = STATE_FIPS_TO_USPS[stateFips];
+  if (!st) return null;
+  const slug = countyName ? countySlug(countyName) : "";
+  return `${st}/${slug || countyFips}`;
+}
+
+/** "+1,204" / "-312" — signed, thousands-separated, from the real value. */
+function fmtSigned(n: number): string {
+  return `${n >= 0 ? "+" : "-"}${Math.abs(n).toLocaleString("en-US")}`;
+}
+
+/** Consecutive prior IRS filing-year pair label: "2324" → "2223"; null on junk. */
+export function priorFilingYearLabel(label: string): string | null {
+  if (!/^\d{4}$/.test(label)) return null;
+  const a = parseInt(label.slice(0, 2), 10);
+  const b = parseInt(label.slice(2), 10);
+  const pad = (n: number) => String((n + 99) % 100).padStart(2, "0");
+  return `${pad(a)}${pad(b)}`;
+}
+
+/**
+ * Migration rule (IRS SOI net returns), both years non-suppressed:
+ *   - net-returns sign flip (inflow↔outflow, both strictly non-zero) → notable
+ *   - else |netReturns| change ≥50% of the prior absolute value → info
+ * A flip takes precedence — one event per ingest, the stronger signal wins.
+ * Suppressed (NULL) years and a zero prior (percent-against-zero) → no event.
+ */
+export function detectMigrationChangeEvent(args: {
+  scopeRef: string;
+  prev: { filingYear: string; netReturns: number | null };
+  next: { filingYear: string; netReturns: number | null };
+  detectedAt: Date;
+}): OpenDataChangeEventRow | null {
+  const { scopeRef, prev, next, detectedAt } = args;
+  if (prev.netReturns === null || next.netReturns === null) return null;
+  const p = prev.netReturns;
+  const n = next.netReturns;
+
+  const base = {
+    category: "migration" as const,
+    scopeType: "county" as const,
+    scopeRef,
+    field: "netReturns",
+    previousValue: String(p),
+    newValue: String(n),
+    previousAsOf: filingYearAsOf(prev.filingYear),
+    detectedAt,
+    source: "irs_soi_migration_v1",
+  };
+
+  const flipped = (p > 0 && n < 0) || (p < 0 && n > 0);
+  if (flipped) {
+    const prevDir = p > 0 ? "inflow" : "outflow";
+    const nextDir = n > 0 ? "inflow" : "outflow";
+    return {
+      ...base,
+      severity: "notable",
+      narrative: `IRS migration for ${scopeRef} flipped from net ${prevDir} (${fmtSigned(p)} returns) to net ${nextDir} (${fmtSigned(n)}) in filing year ${next.filingYear}`,
+    };
+  }
+
+  if (p === 0) return null; // no percent against zero
+  const changePct = ((n - p) / Math.abs(p)) * 100;
+  if (Math.abs(changePct) < 50) return null;
+  return {
+    ...base,
+    severity: "info",
+    narrative: `IRS net migration for ${scopeRef} moved from ${fmtSigned(p)} to ${fmtSigned(n)} returns (${changePct >= 0 ? "+" : ""}${changePct.toFixed(1)}%) between filing years ${prev.filingYear} and ${next.filingYear}`,
+  };
+}
+
+/**
+ * Permits rule (Census BPS total permitted units), consecutive years:
+ *   latest-year units ≥2x or ≤0.5x the prior year, both years >0 → notable.
+ * A zero year never produces an event (a ratio against zero would be
+ * fabricated). Note: the BPS annual county files include Census-imputed
+ * values and our schema keeps the full (reported+imputed) unit totals with no
+ * per-row estimation flag, so both-years>0 + consecutive-years are the
+ * enforceable guards here.
+ */
+export function detectPermitChangeEvent(args: {
+  scopeRef: string;
+  prev: { year: number; totalUnits: number };
+  next: { year: number; totalUnits: number };
+  detectedAt: Date;
+}): OpenDataChangeEventRow | null {
+  const { scopeRef, prev, next, detectedAt } = args;
+  if (next.year !== prev.year + 1) return null;
+  if (prev.totalUnits <= 0 || next.totalUnits <= 0) return null;
+  const ratio = next.totalUnits / prev.totalUnits;
+  if (ratio < 2 && ratio > 0.5) return null;
+  return {
+    category: "permits",
+    scopeType: "county",
+    scopeRef,
+    field: "totalUnits",
+    previousValue: String(prev.totalUnits),
+    newValue: String(next.totalUnits),
+    previousAsOf: yearEndUtc(prev.year),
+    detectedAt,
+    source: "census_bps_permits_v1",
+    severity: "notable",
+    narrative: `Census BPS permitted units for ${scopeRef} went from ${prev.totalUnits.toLocaleString("en-US")} (${prev.year}) to ${next.totalUnits.toLocaleString("en-US")} (${next.year}) — ${ratio.toFixed(2)}x year over year`,
+  };
+}
+
+/**
+ * Employment rule (BLS QCEW): the year-over-year employment trend percent
+ * crossing the +10% or -10% line between consecutive ingests → info.
+ * Needs three consecutive non-suppressed years (two consecutive trends);
+ * any suppressed (NULL) year or zero denominator → no event. The first-ever
+ * computable trend has nothing to cross from → no event.
+ */
+export function detectEmploymentTrendCrossing(args: {
+  scopeRef: string;
+  /** year-2 / year-1 / newly ingested year, consecutive. */
+  oldest: { year: number; avgEmployment: number | null };
+  middle: { year: number; avgEmployment: number | null };
+  newest: { year: number; avgEmployment: number | null };
+  detectedAt: Date;
+}): OpenDataChangeEventRow | null {
+  const { scopeRef, oldest, middle, newest, detectedAt } = args;
+  if (middle.year !== oldest.year + 1 || newest.year !== middle.year + 1) return null;
+  if (oldest.avgEmployment === null || middle.avgEmployment === null || newest.avgEmployment === null) {
+    return null; // BLS-suppressed year — never an event
+  }
+  if (oldest.avgEmployment === 0 || middle.avgEmployment === 0) return null; // no percent against zero
+
+  const prevTrend = ((middle.avgEmployment - oldest.avgEmployment) / oldest.avgEmployment) * 100;
+  const newTrend = ((newest.avgEmployment - middle.avgEmployment) / middle.avgEmployment) * 100;
+
+  const crossed = (t: number): boolean =>
+    (prevTrend < t && newTrend >= t) || (prevTrend > t && newTrend <= t);
+  const lines: string[] = [];
+  if (crossed(10)) lines.push("+10%");
+  if (crossed(-10)) lines.push("-10%");
+  if (lines.length === 0) return null;
+
+  const fmtPct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+  return {
+    category: "employment",
+    scopeType: "county",
+    scopeRef,
+    field: "employmentTrendPercent",
+    previousValue: prevTrend.toFixed(1),
+    newValue: newTrend.toFixed(1),
+    previousAsOf: yearEndUtc(middle.year),
+    detectedAt,
+    source: "bls_qcew_employment_v1",
+    severity: "info",
+    narrative: `BLS QCEW employment trend for ${scopeRef} crossed ${lines.join(" and ")}: ${fmtPct(prevTrend)} (${oldest.year}→${middle.year}) to ${fmtPct(newTrend)} (${middle.year}→${newest.year})`,
+  };
+}
+
+/**
+ * Injection seam for change-event emission (same pattern as the handlers'
+ * `_runtime`). Tests replace the loaders with canned prior-year rows and
+ * `insert` with a capturing stub — no database needed. Production code never
+ * reassigns it.
+ */
+export const changeEventsRuntime = {
+  now: () => new Date(),
+
+  /** Insert one row into open_data_change_events. Fails loudly here; callers swallow + log. */
+  insert: async (event: OpenDataChangeEventRow): Promise<void> => {
+    await db.insert(openDataChangeEvents).values({ ...event });
+  },
+
+  loadPriorMigration: async (
+    stateFips: string,
+    countyFips: string,
+    filingYear: string,
+  ): Promise<{ filingYear: string; netReturns: number | null } | null> => {
+    const [row] = await db
+      .select({
+        filingYear: countyMigrationSummary.filingYear,
+        netReturns: countyMigrationSummary.netReturns,
+      })
+      .from(countyMigrationSummary)
+      .where(
+        and(
+          eq(countyMigrationSummary.stateFips, stateFips),
+          eq(countyMigrationSummary.countyFips, countyFips),
+          eq(countyMigrationSummary.filingYear, filingYear),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  },
+
+  loadPermitYear: async (
+    stateFips: string,
+    countyFips: string,
+    year: number,
+  ): Promise<{ year: number; totalUnits: number } | null> => {
+    const [row] = await db
+      .select({
+        year: countyBuildingPermits.year,
+        totalUnits: countyBuildingPermits.totalUnits,
+      })
+      .from(countyBuildingPermits)
+      .where(
+        and(
+          eq(countyBuildingPermits.stateFips, stateFips),
+          eq(countyBuildingPermits.countyFips, countyFips),
+          eq(countyBuildingPermits.year, year),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  },
+
+  loadEmploymentYear: async (
+    stateFips: string,
+    countyFips: string,
+    year: number,
+  ): Promise<{ year: number; avgEmployment: number | null } | null> => {
+    const [row] = await db
+      .select({
+        year: countyEmploymentWages.year,
+        avgEmployment: countyEmploymentWages.avgEmployment,
+      })
+      .from(countyEmploymentWages)
+      .where(
+        and(
+          eq(countyEmploymentWages.stateFips, stateFips),
+          eq(countyEmploymentWages.countyFips, countyFips),
+          eq(countyEmploymentWages.year, year),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  },
+};
+
+function logChangeEventFailure(
+  category: OpenDataChangeEventRow["category"],
+  meta: Record<string, unknown>,
+  err: unknown,
+): void {
+  logger.warn(`[etl:change-events] ${category} change-event emission failed (non-fatal)`, {
+    metadata: { ...meta, error: err instanceof Error ? err.message : String(err) },
+  });
+}
+
+/** Best-effort — never throws. Called only when a NEW filing year was inserted. */
+export async function emitMigrationChangeEvent(r: CountyMigrationUpsertRow): Promise<void> {
+  try {
+    const scopeRef = countyScopeRef(r.stateFips, r.countyName ?? null, r.countyFips);
+    if (!scopeRef) return;
+    const priorLabel = priorFilingYearLabel(r.filingYear);
+    if (!priorLabel) return;
+    const prev = await changeEventsRuntime.loadPriorMigration(r.stateFips, r.countyFips, priorLabel);
+    if (!prev) return; // first-ever year (or a gap) is not a change
+    const event = detectMigrationChangeEvent({
+      scopeRef,
+      prev,
+      next: { filingYear: r.filingYear, netReturns: r.netReturns },
+      detectedAt: changeEventsRuntime.now(),
+    });
+    if (event) await changeEventsRuntime.insert(event);
+  } catch (err) {
+    logChangeEventFailure("migration", { stateFips: r.stateFips, countyFips: r.countyFips, filingYear: r.filingYear }, err);
+  }
+}
+
+/** Best-effort — never throws. Called only when a NEW survey year was inserted. */
+export async function emitPermitChangeEvent(r: BpsCountyPermitRow): Promise<void> {
+  try {
+    const scopeRef = countyScopeRef(r.stateFips, r.countyName ?? null, r.countyFips);
+    if (!scopeRef) return;
+    const prev = await changeEventsRuntime.loadPermitYear(r.stateFips, r.countyFips, r.year - 1);
+    if (!prev) return; // first-ever year (or a gap) is not a change
+    const event = detectPermitChangeEvent({
+      scopeRef,
+      prev,
+      next: { year: r.year, totalUnits: r.totalUnits },
+      detectedAt: changeEventsRuntime.now(),
+    });
+    if (event) await changeEventsRuntime.insert(event);
+  } catch (err) {
+    logChangeEventFailure("permits", { stateFips: r.stateFips, countyFips: r.countyFips, year: r.year }, err);
+  }
+}
+
+/** Best-effort — never throws. Called only when a NEW data year was inserted. */
+export async function emitEmploymentChangeEvent(r: QcewCountyRow): Promise<void> {
+  try {
+    if (r.avgEmployment === null) return; // suppressed new year — never an event
+    // QCEW's industry file carries no county name; FIPS stands in as the slug.
+    const scopeRef = countyScopeRef(r.stateFips, null, r.countyFips);
+    if (!scopeRef) return;
+    const [middle, oldest] = await Promise.all([
+      changeEventsRuntime.loadEmploymentYear(r.stateFips, r.countyFips, r.year - 1),
+      changeEventsRuntime.loadEmploymentYear(r.stateFips, r.countyFips, r.year - 2),
+    ]);
+    if (!middle || !oldest) return; // no prior consecutive trend to cross from
+    const event = detectEmploymentTrendCrossing({
+      scopeRef,
+      oldest,
+      middle,
+      newest: { year: r.year, avgEmployment: r.avgEmployment },
+      detectedAt: changeEventsRuntime.now(),
+    });
+    if (event) await changeEventsRuntime.insert(event);
+  } catch (err) {
+    logChangeEventFailure("employment", { stateFips: r.stateFips, countyFips: r.countyFips, year: r.year }, err);
+  }
+}
+
 // ─── IRS SOI county migration (Open-Data Program 2.1) ──────────────────────
 
 const IRS_SOI_BASE = "https://www.irs.gov/pub/irs-soi";
@@ -484,6 +897,12 @@ const IRS_SOI_BASE = "https://www.irs.gov/pub/irs-soi";
 export interface IrsCountyFlowTotals {
   stateFips: string;
   countyFips: string;
+  /**
+   * County name as published in the flow file's summary row (e.g.
+   * "Autauga County", stripped of the "Total Migration-…" suffix). Null when
+   * the upstream cell is blank. Used only for change-event scope refs.
+   */
+  countyName: string | null;
   returns: number | null;
   individuals: number | null;
   agiThousands: number | null;
@@ -493,6 +912,8 @@ export interface IrsCountyFlowTotals {
 export interface CountyMigrationUpsertRow {
   stateFips: string;
   countyFips: string;
+  /** From the source file's summary row; not persisted — change-event scope only. */
+  countyName: string | null;
   filingYear: string;
   inflowReturns: number | null;
   inflowIndividuals: number | null;
@@ -556,9 +977,14 @@ export function parseIrsMigrationCsv(
     // state-level rollups on the subject side (county 000) just in case.
     if (cols[2] !== "96" || cols[3] !== "000") continue;
     if (cols[1] === "000") continue;
+    // Summary rows label the subject county as e.g.
+    // "Autauga County Total Migration-US and Foreign" — keep the real name,
+    // drop the flow-total suffix. Never invented: blank stays null.
+    const rawName = (cols[5] ?? "").replace(/\s+Total Migration-.*$/i, "").trim();
     totals.push({
       stateFips: cols[0],
       countyFips: cols[1],
+      countyName: rawName || null,
       returns: irsCell(cols[6], line),
       individuals: irsCell(cols[7], line),
       agiThousands: irsCell(cols[8], line),
@@ -583,6 +1009,7 @@ export function joinIrsMigrationFlows(
   const blank = (stateFips: string, countyFips: string): CountyMigrationUpsertRow => ({
     stateFips,
     countyFips,
+    countyName: null,
     filingYear,
     inflowReturns: null,
     inflowIndividuals: null,
@@ -597,6 +1024,7 @@ export function joinIrsMigrationFlows(
   for (const f of inflows) {
     const key = `${f.stateFips}${f.countyFips}`;
     const row = byKey.get(key) ?? blank(f.stateFips, f.countyFips);
+    row.countyName = row.countyName ?? f.countyName;
     row.inflowReturns = f.returns;
     row.inflowIndividuals = f.individuals;
     row.inflowAgiThousands = f.agiThousands;
@@ -605,6 +1033,7 @@ export function joinIrsMigrationFlows(
   for (const f of outflows) {
     const key = `${f.stateFips}${f.countyFips}`;
     const row = byKey.get(key) ?? blank(f.stateFips, f.countyFips);
+    row.countyName = row.countyName ?? f.countyName;
     row.outflowReturns = f.returns;
     row.outflowIndividuals = f.individuals;
     row.outflowAgiThousands = f.agiThousands;
@@ -738,6 +1167,11 @@ export const irsSoiMigrationEtlHandler: EtlProviderHandler & {
       filingYear: r.filingYear,
       ...values,
     });
+    // A NEW filing year just landed for this county — compare it against the
+    // consecutive prior year and emit a change event on a material swing.
+    // Best-effort by construction: emitMigrationChangeEvent never throws, so
+    // the upsert result (and the run's DLQ/watermark accounting) is untouched.
+    await emitMigrationChangeEvent(r);
     return { action: "inserted" };
   },
 };
@@ -750,6 +1184,8 @@ const CENSUS_BPS_COUNTY_BASE = "https://www2.census.gov/econ/bps/County";
 export interface BpsCountyPermitRow {
   stateFips: string;
   countyFips: string;
+  /** From the source file's county-name column; not persisted — change-event scope only. */
+  countyName: string | null;
   year: number;
   totalUnits: number;
   singleFamilyUnits: number;
@@ -811,6 +1247,7 @@ export function parseCensusBpsCountyCsv(text: string, year: number): BpsCountyPe
     rows.push({
       stateFips,
       countyFips,
+      countyName: cols[5]?.trim() || null,
       year: rowYear,
       totalUnits: singleFamilyUnits + multiFamilyUnits,
       singleFamilyUnits,
@@ -918,6 +1355,8 @@ export const censusBpsPermitsEtlHandler: EtlProviderHandler & {
       year: r.year,
       ...values,
     });
+    // New survey year for the county — best-effort change event (never throws).
+    await emitPermitChangeEvent(r);
     return { action: "inserted" };
   },
 };
@@ -1138,6 +1577,8 @@ export const blsQcewEmploymentEtlHandler: EtlProviderHandler & {
       year: r.year,
       ...values,
     });
+    // New data year for the county — best-effort change event (never throws).
+    await emitEmploymentChangeEvent(r);
     return { action: "inserted" };
   },
 };

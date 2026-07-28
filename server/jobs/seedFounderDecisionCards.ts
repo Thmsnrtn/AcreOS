@@ -46,6 +46,18 @@ export function seedFounderDecisionCardsOnStartup(): void {
       }),
     );
 
+  // 2026-07 open-data corpora (ruling #10) — the founder approved OWNING the
+  // Tier-2 public-domain corpora; this card asks them to provision the object
+  // storage (~$10–30/mo). actionPayload null — money/vendor stay in the
+  // founder's hands; nothing ingests until they set the bucket keys.
+  void import("../services/openData/corporaStatus")
+    .then(({ seedOpenDataCorporaDecisionCard }) => seedOpenDataCorporaDecisionCard())
+    .catch((err) =>
+      logger.warn("[seedFounderDecisionCards] open-data corpora seed failed (boot unaffected)", {
+        metadata: { detail: err instanceof Error ? err.message : String(err) },
+      }),
+    );
+
   // 2026-07 trust-graduation re-collar: demote auto-graduated "silent" tiers
   // lacking an explicit founder force_silent override back to notify_only.
   // One law of the leash — silent execution requires the founder's tap.

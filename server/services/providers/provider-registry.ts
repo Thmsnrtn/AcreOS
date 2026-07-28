@@ -27,6 +27,11 @@ import { getConnectedDataProviders, resolveDataProviderKey } from "../byok/dataB
 // Telemetry calls remain fire-and-forget at every callsite — only the module
 // loading is eager now, not the work.
 import * as providerIntel from "../providerIntelligence";
+// Temporal Spine (ruling #9 wave 3): when a cache upsert REPLACES what we
+// previously knew for the same key with materially different data, the change
+// is itself intelligence and is durably recorded (best-effort, never blocks
+// the lookup). No cycle: changeDetection only pulls db/schema/logger.
+import { recordCategoryChanges, pointScopeRef } from "../openData/changeDetection";
 
 /**
  * Build a deterministic cache key from provider + category + input.
@@ -309,7 +314,7 @@ class ProviderRegistry {
         // posture is yes/attribution. Proprietary / review-required sources
         // are live-passthrough only — never persisted to the shared cache.
         if (mayCacheAndRedistribute(finalResult.source)) {
-          this.writeCache(cacheKey, provider.name, category, finalResult).catch((writeErr) => {
+          this.writeCache(cacheKey, provider.name, category, finalResult, input).catch((writeErr) => {
             logger.warn(`Cache write error (non-fatal)`, {
               source: "ProviderRegistry",
               metadata: { error: writeErr instanceof Error ? writeErr.message : String(writeErr) },
@@ -719,9 +724,27 @@ class ProviderRegistry {
     providerName: string,
     category: DataCategory,
     result: LookupResult,
+    input?: LookupInput,
   ): Promise<void> {
     const ttlMs = cacheTtlMs(category, result.source);
     const expiresAt = new Date(Date.now() + ttlMs);
+
+    // ── Temporal Spine (ruling #9 wave 3) ────────────────────
+    // Read what we previously knew for this key BEFORE the upsert replaces
+    // it. Point scope only (coordinate lookups) — the county-signal leg
+    // writes its own events. Best-effort: a read failure just means no diff.
+    let previousRow: typeof providerCache.$inferSelect | undefined;
+    if (input?.type === "coordinates") {
+      try {
+        [previousRow] = await db
+          .select()
+          .from(providerCache)
+          .where(eq(providerCache.cacheKey, cacheKey))
+          .limit(1);
+      } catch {
+        previousRow = undefined;
+      }
+    }
 
     const responseData = {
       data: result.data,
@@ -750,6 +773,29 @@ class ProviderRegistry {
           createdAt: new Date(),
         },
       });
+
+    // ── Temporal Spine: diff + persist change events ─────────
+    // The upsert above REPLACED an existing entry for this key — if the new
+    // data materially differs, that change is intelligence. Fire-and-forget:
+    // recordCategoryChanges catches internally, and the outer .catch at the
+    // lookup() callsite guards this whole method — a diff/persist failure
+    // never breaks the lookup.
+    if (previousRow && input?.type === "coordinates") {
+      const prevEnvelope = previousRow.responseData as Record<string, unknown>;
+      // Mirror rowToResult's hydration: provenance-era rows nest the payload
+      // under .data; pre-provenance rows ARE the payload.
+      const prevData = prevEnvelope?.data ?? prevEnvelope;
+      const prevAsOfRaw = prevEnvelope?.sourceAsOf as string | number | null | undefined;
+      recordCategoryChanges({
+        category,
+        scopeType: "point",
+        scopeRef: pointScopeRef(input.latitude, input.longitude),
+        previous: prevData,
+        next: result.data,
+        previousAsOf: prevAsOfRaw != null ? new Date(prevAsOfRaw) : previousRow.createdAt ?? null,
+        source: result.source,
+      }).catch(() => {});
+    }
   }
 }
 

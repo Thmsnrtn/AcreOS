@@ -45,6 +45,11 @@
  *          instruments (FEMA NFHL, USFWS NWI, USDA SSURGO, MRLC NLCD)
  *          triangulated; agreement raises confidence, contradiction is
  *          surfaced as a finding. Query: ?lat=&lng=[&state=&county=]
+ *
+ *   GET  /api/data-intel/data-changes
+ *        — Recent open-data change events (county-signal temporal swings
+ *          emitted by the IRS SOI / Census BPS / BLS QCEW ETLs).
+ *          Query: ?scopeType=county&scopeRef=TX/travis&sinceDays=90&limit=50
  */
 
 import { Router, type Request, type Response } from "express";
@@ -765,6 +770,67 @@ router.get("/corroboration/:lat/:lng", async (req: Request, res: Response) => {
       ...report,
       lookups,
       lookupTimeMs: multi.totalLookupTimeMs,
+    });
+  } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Open-data change events (ruling #9 wave 3)
+// GET /api/data-intel/data-changes
+//   ?scopeType=county&scopeRef=TX/travis&sinceDays=90&limit=50
+//
+// Lists recent temporal change events emitted by the county reference ETLs
+// (IRS SOI migration flips/swings, Census BPS permit doublings/halvings,
+// BLS QCEW employment-trend threshold crossings) via the change-detection
+// service. Filters are QUERY params — scopeRef contains a slash
+// ("TX/travis"), so unlike /corroboration/:lat/:lng (where the coordinates
+// ARE the resource) it cannot be a path segment; this endpoint is a filtered
+// listing, matching the file's query-param convention for listings.
+// An empty result is answered honestly: no events means no material swing
+// was detected in the window — never padded with placeholder activity.
+// Auth: router is mounted with isAuthenticated + getOrCreateOrg (routes.ts),
+// same as every other endpoint in this file.
+// ---------------------------------------------------------------------------
+
+router.get("/data-changes", async (req: Request, res: Response) => {
+  try {
+    const rawScopeType = req.query.scopeType ? String(req.query.scopeType).trim() : undefined;
+    if (rawScopeType !== undefined && rawScopeType !== "point" && rawScopeType !== "county") {
+      return Errors.badRequest(res, 'scopeType must be "point" or "county"');
+    }
+    const scopeType = rawScopeType;
+    const scopeRef = req.query.scopeRef ? String(req.query.scopeRef).trim() : undefined;
+
+    const parseBoundedInt = (raw: unknown, fallback: number, min: number, max: number): number | null => {
+      if (raw === undefined) return fallback;
+      const n = parseInt(String(raw), 10);
+      if (!Number.isFinite(n) || String(raw).trim() !== String(n)) return null;
+      return Math.min(max, Math.max(min, n));
+    };
+    const sinceDays = parseBoundedInt(req.query.sinceDays, 90, 1, 365);
+    const limit = parseBoundedInt(req.query.limit, 50, 1, 200);
+    if (sinceDays === null || limit === null) {
+      return Errors.badRequest(res, "sinceDays and limit must be integers");
+    }
+
+    const { listRecentChangeEvents } = await import("./services/openData/changeDetection");
+    const events = await listRecentChangeEvents({ scopeType, scopeRef, sinceDays, limit });
+
+    res.json({
+      events,
+      count: events.length,
+      window: { sinceDays },
+      filters: { scopeType: scopeType ?? null, scopeRef: scopeRef ?? null },
+      // Honest empty state: change events only exist when a newly ingested
+      // data year materially shifted a county signal. An empty list means no
+      // such swing was detected in the window — not that data is broken.
+      emptyReason:
+        events.length === 0
+          ? `No open-data change events recorded in the last ${sinceDays} days${scopeRef ? ` for ${scopeRef}` : ""}. Events are emitted only when a newly ingested data year materially shifts a county signal (migration flip/swing, permit doubling/halving, employment-trend threshold crossing).`
+          : null,
+      generatedAt: new Date().toISOString(),
     });
   } catch (err: any) {
     Errors.internal(res, err);

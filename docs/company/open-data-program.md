@@ -148,6 +148,21 @@ map stack". Sequence:
 Total recurring cost of the whole stack: **~$10–30/mo** (R2). The spend is
 engineering time, not licenses.
 
+**Status 2026-07-28 (Tier-2 corpora scaffold — founder ruling #10, rides
+Wave 3):** the honest scaffold shipped: a machine-readable registry of the
+12 approved bulk corpora (`shared/openData/corporaManifest.ts` — key, source
+org, verified license class incl. the Overture ODbL share-alike note, cadence,
+what each unlocks), a status service that never overstates
+(`server/services/openData/corporaStatus.ts` — `getCorporaStatus()` reports
+every corpus `not_provisioned` until the `OPEN_DATA_BUCKET_*` keys are set,
+and at most `storage_configured_pipeline_pending` after; an "ingested" state
+does not exist in this wave's vocabulary because no ingestion code exists),
+and a one-shot founder decision card (provision R2 / provision S3 / hold —
+answering records a ruling; the founder creates the bucket and sets the keys
+manually, money/vendor being founder-only). **Object storage is NOT
+provisioned and the multi-GB ingestion pipeline is NOT yet built** — no corpus
+byte has been ingested, and nothing claims otherwise.
+
 ### Phase 5 — New DD checks (net-new customer value)
 
 USFS wildfire WHP (30 m raster identify) · FCC BDC broadband availability
