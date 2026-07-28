@@ -38,8 +38,36 @@ export interface EnrichmentResult {
   environment?: {
     soilType?: string;
     soilSuitability?: string;
+    /**
+     * USDA SSURGO septic (septic tank absorption fields) interpretation
+     * rating, e.g. "Very limited". Only set when the soil lookup actually
+     * returned it (wave-2 signal on the existing "soil" category).
+     */
+    septicRating?: string;
+    /** Named source for the septic rating specifically, when carried. */
+    septicRatingSource?: string;
     epaFacilitiesNearby?: number;
     epaRiskLevel?: "low" | "medium" | "high";
+  };
+
+  /** USFS Wildfire Hazard Potential (wave-2 Tier-1 signal; lat/lng-only). */
+  wildfireHazard?: {
+    whpClass?: number | null;
+    whpLabel?: "very_low" | "low" | "moderate" | "high" | "very_high" | null;
+    source?: string;
+  };
+
+  /**
+   * FCC National Broadband Map (BDC) fixed-broadband availability (wave-2
+   * Tier-1 signal; lat/lng-only). `served` is tri-state: null = unknown.
+   */
+  broadband?: {
+    served?: boolean | null;
+    maxDownMbps?: number | null;
+    maxUpMbps?: number | null;
+    technologies?: string[];
+    providerCount?: number | null;
+    source?: string;
   };
   
   infrastructure?: {
@@ -234,6 +262,10 @@ export const LAND_PROFILE_COORDINATE_CATEGORIES: LookupCategory[] = [
   "agricultural_values",
   "plss",
   "water_resources",
+  // Wave-2 Tier-1 signals — both are pure lat/lng lookups (USFS WHP raster,
+  // FCC BDC availability), no county seeding required.
+  "wildfire_hazard",
+  "broadband",
 ];
 
 export class PropertyEnrichmentService {
@@ -358,6 +390,10 @@ export class PropertyEnrichmentService {
           result.environment = result.environment || {};
           result.environment.soilType = data.soilType;
           result.environment.soilSuitability = data.suitability;
+          // Wave-2: the soil category also carries the SSURGO septic
+          // interpretation when available. Honest-null: absent stays absent.
+          result.environment.septicRating = data.septicRating ?? undefined;
+          result.environment.septicRatingSource = data.septicRatingSource ?? undefined;
           break;
           
         case "environmental":
@@ -549,6 +585,38 @@ export class PropertyEnrichmentService {
             source: data.source,
           };
           break;
+
+        case "wildfire_hazard":
+          result.wildfireHazard = {
+            whpClass: typeof data.whpClass === "number" ? data.whpClass : null,
+            whpLabel: data.whpLabel ?? null,
+            source: data.source,
+          };
+          break;
+
+        case "broadband": {
+          // The free FCC BDC path can legitimately be UNAVAILABLE (no token
+          // configured). The broker normally reports that as a failed lookup
+          // (→ errors), but if it arrives as a success payload flagged
+          // unavailable, route it to errors too so the LandProfile surfaces an
+          // honest lookup_failed gap instead of "no data at this location".
+          const unavailableReason =
+            (typeof data.unavailableReason === "string" && data.unavailableReason) ||
+            (data.unavailable === true ? "FCC broadband data unavailable" : null);
+          if (unavailableReason) {
+            errors[category] = unavailableReason;
+            break;
+          }
+          result.broadband = {
+            served: typeof data.served === "boolean" ? data.served : null,
+            maxDownMbps: typeof data.maxDownMbps === "number" ? data.maxDownMbps : null,
+            maxUpMbps: typeof data.maxUpMbps === "number" ? data.maxUpMbps : null,
+            technologies: Array.isArray(data.technologies) ? data.technologies : [],
+            providerCount: typeof data.providerCount === "number" ? data.providerCount : null,
+            source: data.source,
+          };
+          break;
+        }
 
         case "usda_clu":
           result.usdaClu = {

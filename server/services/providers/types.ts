@@ -99,7 +99,13 @@ export type DataCategory =
   | "plss"
   | "watershed"
   | "fema_nri"
-  | "usda_clu";
+  | "usda_clu"
+  // Tier-1 open-data signal expansion (founder ruling #10, 2026-07-28):
+  // USFS Wildfire Hazard Potential (classified 1–5 raster identify) and FCC
+  // Broadband Data Collection availability. Both free/open; never billed
+  // (creditActionForCategory returns null for them).
+  | "wildfire_hazard"
+  | "broadband";
 
 // ── Subscription Tiers ────────────────────────────────────────
 

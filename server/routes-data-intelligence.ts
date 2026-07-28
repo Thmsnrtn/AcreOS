@@ -39,6 +39,12 @@
  *
  *   GET  /api/data-intel/state-land-rankings
  *        — Rank target states by land value appreciation (USDA data)
+ *
+ *   GET  /api/data-intel/corroboration/:lat/:lng
+ *        — Cross-source corroboration for a point: independent federal
+ *          instruments (FEMA NFHL, USFWS NWI, USDA SSURGO, MRLC NLCD)
+ *          triangulated; agreement raises confidence, contradiction is
+ *          surfaced as a finding. Query: ?lat=&lng=[&state=&county=]
  */
 
 import { Router, type Request, type Response } from "express";
@@ -679,6 +685,87 @@ router.get("/county-momentum/:state/:county", async (req: Request, res: Response
 
     const momentum = await getCountyMomentum(stateFips, countyFips);
     res.json({ ...momentum, generatedAt: new Date().toISOString() });
+  } catch (err: any) {
+    Errors.internal(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Corroboration Engine (ruling #9 wave 2 — founder-decisions-2026-07-28 §9)
+// GET /api/data-intel/corroboration/:lat/:lng[?state=..&county=..]
+// Path params (matching /county-momentum/:state/:county in this file) —
+// coordinates are the resource being queried, not query modifiers.
+//
+// Cross-source triangulation of independent free federal instruments for a
+// point: the wetness triangle (USFWS NWI wetlands vs USDA SSURGO hydric
+// rating vs MRLC NLCD wetland land cover) and flood coherence (FEMA NFHL
+// zone vs SSURGO flooding frequency). Agreement raises confidence
+// mechanically; CONTRADICTION is surfaced as a finding — never smoothed
+// over. Category results are fetched through the EXISTING broker seam
+// (dataSourceBroker.lookupMultiple, maxTier "free" — same free-federal path
+// as routes-public-parcel-check); the engine itself is pure. Missing or
+// failed categories are reported as unchecked — never assumed.
+// Auth: router is mounted with isAuthenticated + getOrCreateOrg (routes.ts),
+// same as every other endpoint in this file.
+// ---------------------------------------------------------------------------
+
+router.get("/corroboration/:lat/:lng", async (req: Request, res: Response) => {
+  try {
+    const lat = parseFloat(String(req.params.lat));
+    const lng = parseFloat(String(req.params.lng));
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+      return Errors.badRequest(res, "lat and lng path segments must be valid WGS84 coordinates");
+    }
+    const state = req.query.state ? String(req.query.state).trim() : undefined;
+    const county = req.query.county ? String(req.query.county).trim() : undefined;
+
+    const { dataSourceBroker } = await import("./services/data-source-broker");
+    const { corroborateParcel, CORROBORATION_CATEGORIES } = await import(
+      "./services/openData/corroboration"
+    );
+
+    const multi = await dataSourceBroker.lookupMultiple(
+      [...CORROBORATION_CATEGORIES],
+      { latitude: lat, longitude: lng, state, county, maxTier: "free" }
+    );
+
+    const pick = (category: (typeof CORROBORATION_CATEGORIES)[number]) => {
+      const r = multi.results[category];
+      return r?.success && r.data ? r.data : undefined;
+    };
+
+    const report = corroborateParcel({
+      floodZone: pick("flood_zone"),
+      wetlands: pick("wetlands"),
+      soil: pick("soil"),
+      landCover: pick("land_cover"),
+    });
+
+    // Per-category lookup provenance so "unchecked" is explainable: which
+    // upstream answered, from cache or live, and the honest failure trail
+    // when a source produced nothing.
+    const lookups = Object.fromEntries(
+      CORROBORATION_CATEGORIES.map((category) => {
+        const r = multi.results[category];
+        return [
+          category,
+          {
+            fetched: !!r?.success,
+            source: r?.success ? r.source.title : null,
+            fromCache: !!r?.fromCache,
+            failureReasons: r && !r.success && r.fallbacksUsed.length > 0 ? r.fallbacksUsed : undefined,
+          },
+        ];
+      })
+    );
+
+    res.json({
+      latitude: lat,
+      longitude: lng,
+      ...report,
+      lookups,
+      lookupTimeMs: multi.totalLookupTimeMs,
+    });
   } catch (err: any) {
     Errors.internal(res, err);
   }

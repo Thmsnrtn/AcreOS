@@ -142,6 +142,18 @@ export const DATA_LICENSE_REGISTER: Record<string, DataLicenseEntry> = {
     lastReviewed: "2026-06-06",
     reviewedBy: "Beatrice",
   },
+  // EPA UST Finder (federal composite of state UST/LUST data) — added with
+  // the 2026-07-28 environmental-depth expansion. EPA FRS + EPA ECHO entries
+  // already existed above/below.
+  "EPA UST Finder": {
+    source: "EPA UST Finder",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Underground storage tank data: U.S. EPA UST Finder",
+    termsUrl: "https://www.epa.gov/ust/ust-finder",
+    lastReviewed: "2026-07-28",
+    reviewedBy: "Iris",
+  },
   "FEMA NRI": {
     source: "FEMA NRI",
     license: "public-domain-usgov",
@@ -176,6 +188,33 @@ export const DATA_LICENSE_REGISTER: Record<string, DataLicenseEntry> = {
     attributionText: "Land cover: MRLC National Land Cover Database",
     termsUrl: "https://www.mrlc.gov",
     lastReviewed: "2026-06-07",
+    reviewedBy: "Iris",
+  },
+  // Tier-1 open-data expansion (founder ruling #10, 2026-07-28).
+  "USFS Wildfire Hazard Potential": {
+    source: "USFS Wildfire Hazard Potential",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Wildfire hazard: USFS Wildfire Hazard Potential (Wildfire Risk to Communities)",
+    termsUrl: "https://research.fs.usda.gov/firelab/products/dataandtools/wildfire-hazard-potential",
+    lastReviewed: "2026-07-28",
+    reviewedBy: "Iris",
+  },
+  // FCC BDC: the AVAILABILITY data (provider/technology/speed filings) is
+  // public and freely redistributable. The CostQuest location Fabric
+  // UNDERNEATH it is a licensed commercial dataset — we must never persist or
+  // redistribute Fabric location records (location IDs/coordinates/address
+  // attributes of Broadband Serviceable Locations). Our broadband results are
+  // availability facts only (served/speeds/technologies/provider count), so
+  // the "yes" posture applies to what we actually store. See
+  // docs/company/open-data-duediligence.md (licensing flag).
+  "FCC Broadband Data Collection": {
+    source: "FCC Broadband Data Collection",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Broadband availability: FCC Broadband Data Collection (National Broadband Map)",
+    termsUrl: "https://broadbandmap.fcc.gov/data-download",
+    lastReviewed: "2026-07-28",
     reviewedBy: "Iris",
   },
   // Umbrella name for mixed federal/open delegated lookups whose specific

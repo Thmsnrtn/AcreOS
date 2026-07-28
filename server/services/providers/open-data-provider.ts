@@ -56,6 +56,9 @@ const BROKER_CATEGORY: Partial<Record<DataCategory, LookupCategory>> = {
   watershed: "watershed",
   fema_nri: "fema_nri",
   usda_clu: "usda_clu",
+  // Tier-1 open-data expansion (founder ruling #10, 2026-07-28).
+  wildfire_hazard: "wildfire_hazard",
+  broadband: "broadband",
 };
 
 const SUPPORTED_CATEGORIES: DataCategory[] = [
@@ -96,6 +99,8 @@ const SOURCE_BY_CATEGORY: Partial<Record<DataCategory, string>> = {
   watershed: "USGS",
   fema_nri: "FEMA NRI",
   usda_clu: "USDA SSURGO",
+  wildfire_hazard: "USFS Wildfire Hazard Potential",
+  broadband: "FCC Broadband Data Collection",
 };
 
 export const openDataProvider: DataProvider = {
