@@ -27,7 +27,8 @@ import { insertCountyGisEndpointSchema } from "../../shared/schema";
 import { checkOperatorUrl } from "../../server/services/providers/ssrf-guard";
 
 // One live-verified probe point per seeded state (the same points used to
-// verify the services empirically on 2026-07-13).
+// verify the services empirically — 2026-07-13 first wave, 2026-07-28
+// discovery-pipeline wave for NY/WI/MD).
 const PROBE_POINTS: Record<string, { lat: number; lng: number }> = {
   FL: { lat: 30.438, lng: -84.2821 }, // Tallahassee (FL Capitol parcel)
   MT: { lat: 45.677, lng: -111.0429 }, // Bozeman
@@ -36,7 +37,15 @@ const PROBE_POINTS: Record<string, { lat: number; lng: number }> = {
   NJ: { lat: 40.2206, lng: -74.7699 }, // Trenton
   AR: { lat: 34.7465, lng: -92.2896 }, // Little Rock
   TN: { lat: 35.9965, lng: -85.9032 }, // DeKalb County
+  NY: { lat: 42.6529, lng: -73.7594 }, // Albany (NYS Capitol parcel)
+  WI: { lat: 43.0747, lng: -89.3844 }, // Madison (WI Capitol parcel)
+  MD: { lat: 38.9788, lng: -76.491 }, // Annapolis (MD State House parcel)
 };
+
+// The seeded set is pinned: a state may ONLY be added here after the
+// discovery pipeline's live verification + open-license review (see
+// discoveryPipeline.test.ts), and may only leave via a founder decision.
+const SEEDED_STATES = ["AR", "FL", "MD", "MT", "NC", "NJ", "NY", "TN", "WA", "WI"];
 
 describe("STATEWIDE_PARCEL_ENDPOINTS seed rows", () => {
   it("every row validates against the county_gis_endpoints insert schema", () => {
@@ -52,6 +61,11 @@ describe("STATEWIDE_PARCEL_ENDPOINTS seed rows", () => {
       const check = checkOperatorUrl(seed.baseUrl);
       expect(check.ok, `${seed.state}: ${check.reason ?? ""}`).toBe(true);
     }
+  });
+
+  it("seeds exactly the pinned live-verified + license-reviewed state set", () => {
+    const states = STATEWIDE_PARCEL_ENDPOINTS.map((s) => s.state).sort();
+    expect(states).toEqual(SEEDED_STATES);
   });
 
   it("rows use the statewide sentinel and unique 2-letter states", () => {
