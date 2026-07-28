@@ -19,6 +19,7 @@
 import { db } from "../db";
 import { properties } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { sampleParcelTerrain } from "./terrain";
 
 // ============================================
 // TYPES
@@ -661,84 +662,57 @@ async function checkRoadAccess(lat: number, lng: number): Promise<RoadAccessResu
 
 // ============================================
 // USGS ELEVATION CHECK
-// Uses USGS National Map Elevation Point Query Service (free)
+// Real multi-point 3DEP sampling via the shared terrain service
+// (server/services/terrain.ts): 5–9 EPQS points scaled to parcel size,
+// least-squares slope fit + steepest sampled grade, EPQS -1000000 no-data
+// handling, and fetchGeo's per-host token bucket for federal courtesy.
 // ============================================
 
-async function queryElevationFeet(lat: number, lng: number): Promise<number | null> {
-  try {
-    const url = `https://epqs.nationalmap.gov/v1/json?x=${safeCoord(lng, "lng")}&y=${safeCoord(lat, "lat")}&wkid=4326&units=Feet&includeDate=false`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
-    const resp = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    const v = data.value !== undefined && data.value !== null ? parseFloat(data.value) : NaN;
-    return Number.isFinite(v) ? v : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * Real slope from 3DEP: sample the parcel center plus four points ~150 m
- * out (N/S/E/W) against the USGS Elevation Point Query Service (1 m DEM
- * under the hood) and take the steepest center-to-offset gradient.
- * Cross-parcel grade at 150 m spacing understates short micro-slopes but
- * honestly classifies buildability — which is what land buyers ask.
- * Falls back to "unknown" (never a guess) when fewer than two offsets
- * resolve.
+ * Elevation + slope from real 3DEP sampling. Honest degradation ladder:
+ *   - sampler succeeds → real slope band from the steepest sampled grade;
+ *   - too few points but the CENTER point resolved → real elevation, slope
+ *     "unknown" (never extrapolated from 1–2 points);
+ *   - nothing resolved → status "error", everything unknown.
+ * Extreme-elevation risk flags (<0 ft, >8000 ft) retain their old severity.
  */
-async function checkElevation(lat: number, lng: number): Promise<ElevationResult> {
-  const SPACING_METERS = 150;
-  const dLat = SPACING_METERS / 111_320; // meters → degrees latitude
-  const dLng = SPACING_METERS / (111_320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
+async function checkElevation(
+  lat: number,
+  lng: number,
+  acreage: number | null
+): Promise<ElevationResult> {
+  try {
+    const sample = await sampleParcelTerrain(lat, lng, acreage);
 
-  const [center, north, south, east, west] = await Promise.all([
-    queryElevationFeet(lat, lng),
-    queryElevationFeet(lat + dLat, lng),
-    queryElevationFeet(lat - dLat, lng),
-    queryElevationFeet(lat, lng + dLng),
-    queryElevationFeet(lat, lng - dLng),
-  ]);
+    if (!sample.ok) {
+      const centerFt = sample.centerElevationFeet;
+      if (centerFt === null) {
+        return { status: "error", elevationFeet: null, slope: "unknown", risk: "unknown" };
+      }
+      let risk: RiskLevel = "unknown";
+      if (centerFt < 0) risk = "high";
+      else if (centerFt > 8000) risk = "medium";
+      return { status: "done", elevationFeet: centerFt, slope: "unknown", risk };
+    }
 
-  if (center === null) {
+    const s = sample.summary;
+    let risk: RiskLevel;
+    if (s.maxSlopePercent < 8) risk = "low";
+    else if (s.maxSlopePercent < 15) risk = "medium";
+    else risk = "high";
+
+    // Center point is the canonical elevation; fall back to the sampled
+    // min/max midpoint (still REAL measured data) if the center failed.
+    const elevationFeet =
+      s.centerElevationFeet ?? Math.round((s.elevationMinFeet + s.elevationMaxFeet) / 2);
+
+    if (elevationFeet < 0) risk = "high";
+    else if (elevationFeet > 8000 && risk === "low") risk = "medium";
+
+    return { status: "done", elevationFeet, slope: s.slopeBand, risk };
+  } catch {
     return { status: "error", elevationFeet: null, slope: "unknown", risk: "unknown" };
   }
-
-  const runFeet = SPACING_METERS * 3.28084;
-  const gradients = [north, south, east, west]
-    .filter((v): v is number => v !== null)
-    .map((v) => (Math.abs(v - center) / runFeet) * 100);
-
-  let slope: string;
-  let risk: RiskLevel;
-
-  if (gradients.length >= 2) {
-    const maxGradePercent = Math.max(...gradients);
-    if (maxGradePercent < 3) {
-      slope = "flat (<3%)";
-      risk = "low";
-    } else if (maxGradePercent < 8) {
-      slope = "gentle (3-8%)";
-      risk = "low";
-    } else if (maxGradePercent < 15) {
-      slope = "moderate (8-15%)";
-      risk = "medium";
-    } else {
-      slope = "steep (>15%)";
-      risk = "high";
-    }
-  } else {
-    slope = "unknown";
-    risk = "unknown";
-  }
-
-  // Extreme-elevation flags retain their old severity regardless of grade.
-  if (center < 0) risk = "high";
-  else if (center > 8000 && risk === "low") risk = "medium";
-
-  return { status: "done", elevationFeet: Math.round(center), slope, risk };
 }
 
 // ============================================
@@ -1456,7 +1430,7 @@ export async function runAutoDueDiligence(
     checkEnvironmental(lat, lng),
     checkRoadAccess(lat, lng),
     checkSoil(lat, lng),
-    checkElevation(lat, lng),
+    checkElevation(lat, lng, acreage || null),
     // Epic B additions
     checkLandCover(lat, lng),
     checkBLMAdjacency(lat, lng, 2),

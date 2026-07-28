@@ -123,7 +123,8 @@ const BUILTIN_FEDERAL_CATEGORIES: ReadonlySet<LookupCategory> = new Set<LookupCa
   "wetlands",
   "soil",
   "environmental",
-  "infrastructure",
+  // "infrastructure" removed 2026-07-28: its only built-in upstream (HIFLD
+  // Open) was discontinued Aug 2025 — see RETIRED_CATEGORIES below.
   "natural_hazards",
   "demographics",
   "public_lands",
@@ -149,6 +150,29 @@ const BUILTIN_FEDERAL_CATEGORIES: ReadonlySet<LookupCategory> = new Set<LookupCa
  * colliding with any real row.
  */
 const BUILTIN_FEDERAL_SOURCE_ID = -1;
+
+/**
+ * Categories whose ONLY upstream source is dead/retired, with no replacement
+ * wired in yet. `lookup()` short-circuits these to an explicit, immediate
+ * `success:false` (reason in `fallbacksUsed`) instead of timing out against
+ * endpoints that no longer exist — refuse-not-fabricate, and don't waste
+ * 12s per call pretending the source might answer.
+ *
+ * infrastructure: the HIFLD hospitals/fire-stations/schools FeatureServers at
+ * services1.arcgis.com/Hp6G80Pky0om7QvQ were the sole implementation. HIFLD
+ * Open was discontinued Aug 2025 (portal offline) — see
+ * docs/company/open-data-program.md ("needs replacement, not extension").
+ * When a replacement (state/Overture/NCES) is wired in, delete the entry here
+ * and restore the category's fetch implementation + BUILTIN_FEDERAL_CATEGORIES
+ * membership.
+ */
+export const RETIRED_CATEGORIES: Partial<Record<LookupCategory, { title: string; reason: string }>> = {
+  infrastructure: {
+    title: "HIFLD (discontinued)",
+    reason:
+      "HIFLD Open discontinued Aug 2025 — hospitals/fire-stations/schools source retired; replacement pending",
+  },
+};
 
 export class DataSourceBroker {
   private healthCache: Map<number, SourceHealth> = new Map();
@@ -345,6 +369,28 @@ export class DataSourceBroker {
     const lookupKey = this.generateLookupKey(category, options);
     const fallbacksUsed: string[] = [];
     const maxTierIndex = options.maxTier ? TIER_PRIORITY.indexOf(options.maxTier) : TIER_PRIORITY.length - 1;
+
+    // ── Retired-source honest short-circuit ─────────────────────────────────
+    // The category's only upstream is dead (see RETIRED_CATEGORIES). Return an
+    // explicit unavailable state immediately: no network calls, no timeouts,
+    // no cache reads (any cached HIFLD payload predates the Aug 2025 shutdown
+    // and must not be presented as a live source).
+    const retired = RETIRED_CATEGORIES[category];
+    if (retired) {
+      return {
+        success: false,
+        data: null,
+        source: {
+          id: 0,
+          title: retired.title,
+          tier: "free",
+          costCents: 0,
+        },
+        fromCache: false,
+        lookupTimeMs: Date.now() - startTime,
+        fallbacksUsed: [retired.reason],
+      };
+    }
 
     if (!options.forceRefresh) {
       const cached = await this.getCachedResult(lookupKey);
@@ -893,58 +939,14 @@ export class DataSourceBroker {
     });
   }
 
-  private async queryInfrastructure(lat: number, lng: number): Promise<any> {
-    const radiusMeters = 16093;
-    const geometryParam = encodeURIComponent(JSON.stringify({ 
-      x: lng, y: lat, spatialReference: { wkid: 4326 } 
-    }));
-
-    const endpoints = [
-      {
-        name: "hospitals",
-        url: `https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Hospitals_1/FeatureServer/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=${radiusMeters}&units=esriSRUnit_Meter&outFields=NAME,ADDRESS,CITY,STATE,ZIP,TELEPHONE,TYPE,STATUS&returnGeometry=false&f=json`,
-      },
-      {
-        name: "fire_stations",
-        url: `https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Fire_Stations/FeatureServer/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=${radiusMeters}&units=esriSRUnit_Meter&outFields=NAME,ADDRESS,CITY,STATE,ZIP,TELEPHONE&returnGeometry=false&f=json`,
-      },
-      {
-        name: "schools",
-        url: `https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Public_Schools/FeatureServer/0/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=${radiusMeters}&units=esriSRUnit_Meter&outFields=NAME,ADDRESS,CITY,STATE,ZIP,PHONE,LEVEL_,STATUS&returnGeometry=false&f=json`,
-      },
-    ];
-
-    const results: Record<string, any[]> = {};
-
-    await Promise.all(endpoints.map(async (endpoint) => {
-      try {
-        const response = await fetch(endpoint.url, {
-          headers: { "User-Agent": "AcreOS Real Estate Platform" },
-          signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          results[endpoint.name] = (data.features || []).slice(0, 10).map((f: any) => f.attributes);
-        } else {
-          results[endpoint.name] = [];
-        }
-      } catch (error) {
-        results[endpoint.name] = [];
-      }
-    }));
-
-    return {
-      hospitals: results.hospitals || [],
-      fireStations: results.fire_stations || [],
-      schools: results.schools || [],
-      source: "HIFLD",
-      lastUpdated: new Date().toISOString(),
-      summary: {
-        nearbyHospitals: (results.hospitals || []).length,
-        nearbyFireStations: (results.fire_stations || []).length,
-        nearbySchools: (results.schools || []).length,
-      },
-    };
+  private async queryInfrastructure(_lat: number, _lng: number): Promise<any> {
+    // The former implementation queried HIFLD hospitals/fire-stations/schools
+    // FeatureServers at services1.arcgis.com/Hp6G80Pky0om7QvQ. HIFLD Open was
+    // discontinued Aug 2025 (portal offline); those endpoints are dead. Normal
+    // lookups never reach here — `lookup()` short-circuits via
+    // RETIRED_CATEGORIES — but any direct/DB-row-driven path gets the same
+    // honest refusal instead of a fetch against a dead host.
+    throw new Error(RETIRED_CATEGORIES.infrastructure!.reason);
   }
 
   private async queryNaturalHazards(lat: number, lng: number): Promise<any> {

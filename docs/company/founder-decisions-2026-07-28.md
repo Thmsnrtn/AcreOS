@@ -93,3 +93,32 @@ default (5), margin-tied allowance engine deriving counts from live provider
 unit costs (6), quiet-day Letter mode (7), and the break-glass card +
 dormant-watchdog Controls section + email-the-card route (8) — the watchdog
 secrets remain unprovisioned and NOTHING is shown as armed until they are.
+
+---
+
+# Addendum — open-data intelligence program, same date
+
+## 9. Open-data intelligence program — ALL FOUR MOVES, IN SEQUENCE
+
+Ruling: pursue the full reasoning-fabric program in order: (1) Truth Loop
+(close every ingested-but-unread circuit: LCS real inputs, county momentum
+consumers, real 3DEP slope, dead-endpoint fixes), (2) Corroboration Engine
+(cross-source triangulation; contradictions surfaced as findings, never
+smoothed), (3) Temporal Spine (snapshots + diffs — open data as events),
+(4) Self-Healing Data Plane (canary→auto-discovery→decision-card repair,
+then coverage expansion). Shipped as reviewed PRs, wave by wave.
+
+## 10. Data expansion — WEAVE INTO THE WAVES
+
+Ruling: drastically expand open-source coverage (toward 50+ independent
+instruments) but sequenced INSIDE the intelligence waves rather than as a
+separate sprint: Tier-1 new per-parcel signals (wildfire WHP, FCC broadband,
+SSURGO septic suitability, EPA ECHO/UST/radon depth, mining claims, TX/OK
+wells, rail) ride with Wave 2; bulk public-domain corpora ownership (NAIP,
+3DEP 1m terrain, statewide parcel bulk, annual NLCD, PLSS, TIGER, NAD,
+Overture — ~$10–30/mo storage) rides with Wave 3; the county/state GIS
+discovery engine (systematic discover→verify→license-review→seed toward
+3,000+ counties) rides with Wave 4. Confirmed-unusable sources (HUD USPS
+vacancy, First Street, GreatSchools, U-Haul, PHMSA bulk, ND wells, OSM tile
+hotlinking, Stadia free tier) stay excluded; license-verified or it doesn't
+ship.

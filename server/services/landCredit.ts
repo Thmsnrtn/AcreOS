@@ -6,6 +6,8 @@ import {
 import { eq, and, desc } from 'drizzle-orm';
 import { logger } from "../utils/logger";
 import { DISCLAIMER_INFORMATIONAL_SCORE } from "./legalDisclaimers";
+// Type-only import (erased at build) — no runtime cycle with the enrichment stack.
+import type { EnrichmentResult } from "./propertyEnrichment";
 
 interface ScoringFactors {
   location: {
@@ -120,6 +122,174 @@ export function lcsGradeForScore(score: number): LcsGrade {
   return 'F';
 }
 
+// ── Factor provenance: measured vs assumed (honesty contract) ───────────────
+//
+// The properties table has NO floodZone / wetlands / soilQuality columns —
+// the old code read `property.floodZone`, a column that never existed, so
+// every environmental factor silently sat at its hardcoded default while
+// presenting as a scored fact. The REAL stored open data lives in the
+// `properties.enrichmentData` jsonb persisted by PropertyEnrichmentService
+// (FEMA NFHL flood, USFWS NWI wetlands, USDA NRCS SDA soil — see
+// savePropertyEnrichment). The scorers now read that, and every sub-factor
+// carries a provenance entry so an ASSUMED default can never masquerade as a
+// MEASURED fact. Default VALUES are unchanged — only their labeling is honest.
+
+export type FactorProvenanceStatus = "measured" | "assumed";
+
+export interface FactorProvenance {
+  status: FactorProvenanceStatus;
+  /** Named data source — present only when status === "measured". */
+  source?: string;
+  /** ISO date the source reported the fact as-of (measured only, when known). */
+  asOf?: string | null;
+  /** Why the default/heuristic stands — present only when status === "assumed". */
+  basis?: string;
+}
+
+export type DimensionProvenance = Record<string, FactorProvenance>;
+
+// Type alias (not interface) on purpose: aliases carry an implicit index
+// signature, so this stays assignable to the schema's persisted
+// scoreBreakdown.factorProvenance Record type.
+export type ScoreProvenance = {
+  location: DimensionProvenance;
+  physical: DimensionProvenance;
+  legal: DimensionProvenance;
+  financial: DimensionProvenance;
+  environmental: DimensionProvenance;
+  market: DimensionProvenance;
+};
+
+function measured(source: string, asOf?: string | null): FactorProvenance {
+  return { status: "measured", source, asOf: asOf ?? null };
+}
+
+function assumed(basis: string): FactorProvenance {
+  return { status: "assumed", basis };
+}
+
+/** Owner/county-entered property-record fields (zoning, road access, …). */
+const PROPERTY_RECORD_SOURCE = "Property record";
+
+/**
+ * Default (assumed) factor values — deliberately unchanged from the
+ * pre-provenance model so missing data scores exactly as before; the ONLY
+ * change for a data-less parcel is that the payload now says "assumed".
+ */
+export const ASSUMED_FACTOR_DEFAULTS = {
+  floodRisk: 80,
+  wetlands: 85,
+  soilQuality: 50,
+  growthRate: 60,
+} as const;
+
+function enrichmentOf(property: any): EnrichmentResult | null {
+  const e = property?.enrichmentData;
+  return e && typeof e === "object" ? (e as EnrichmentResult) : null;
+}
+
+/** Source/asOf for one enrichment category, falling back to the layer name. */
+function categoryProvenance(
+  enrichment: EnrichmentResult | null | undefined,
+  category: string,
+  fallbackSource: string
+): { source: string; asOf: string | null } {
+  const p = (
+    enrichment?.provenance as
+      | Record<string, { source?: string; asOf?: string | null }>
+      | undefined
+  )?.[category];
+  return { source: p?.source || fallbackSource, asOf: p?.asOf ?? null };
+}
+
+/**
+ * FEMA flood zone → floodRisk sub-factor. Handles both bare zone codes the
+ * old code expected ("AE", "X") and the raw NFHL strings the broker actually
+ * stores ("Zone AE", "Zone X (Minimal Risk)") — same zone-family mapping as
+ * the public partial LCS (publicParcelReport.floodZoneSubScore). Zone D /
+ * unstudied stays ASSUMED — an indeterminate zone is not a measurement.
+ */
+export function floodRiskFromEvidence(
+  enrichment: EnrichmentResult | null | undefined
+): { score: number; provenance: FactorProvenance } {
+  const zoneRaw = enrichment?.hazards?.floodZone;
+  if (typeof zoneRaw === "string" && zoneRaw.trim()) {
+    const normalized = zoneRaw
+      .toUpperCase()
+      .replace(/ZONE/g, " ")
+      .replace(/SHADED\s+X/g, "X500");
+    const m = /\b(VE|V|AE|AH|AO|AR|A99|A|X500|X|B|C|D)\b/.exec(normalized);
+    if (m) {
+      const zone = m[1];
+      const { source, asOf } = categoryProvenance(enrichment, "flood_zone", "FEMA NFHL");
+      if (zone === "V" || zone === "VE") return { score: 20, provenance: measured(source, asOf) }; // coastal high-hazard
+      if (zone.startsWith("A")) return { score: 40, provenance: measured(source, asOf) }; // high risk (A/AE/AH/AO/AR/A99)
+      if (zone === "B" || zone === "X500") return { score: 75, provenance: measured(source, asOf) }; // moderate
+      if (zone === "X" || zone === "C") return { score: 95, provenance: measured(source, asOf) }; // minimal
+      // Zone D — studied-but-undetermined; fall through to the honest default.
+    }
+  }
+  return {
+    score: ASSUMED_FACTOR_DEFAULTS.floodRisk,
+    provenance: assumed(
+      "No FEMA flood-zone determination stored for this parcel — default assumes low risk"
+    ),
+  };
+}
+
+/**
+ * USFWS NWI wetlands → wetlands sub-factor. Mirrors the public partial LCS
+ * (publicParcelReport.wetlandsSubScore): mapped wetlands on the parcel are a
+ * real development constraint (40); a clean NWI lookup scores 85 — the same
+ * VALUE as the default, but MEASURED, not assumed.
+ */
+export function wetlandsFromEvidence(
+  enrichment: EnrichmentResult | null | undefined
+): { score: number; provenance: FactorProvenance } {
+  const hazards = enrichment?.hazards;
+  const pct = hazards?.wetlandsPercentage;
+  const present =
+    typeof hazards?.wetlandsPresent === "boolean"
+      ? hazards.wetlandsPresent
+      : typeof pct === "number" && Number.isFinite(pct)
+        ? pct > 0
+        : null;
+  if (present !== null) {
+    const { source, asOf } = categoryProvenance(enrichment, "wetlands", "USFWS NWI");
+    return { score: present ? 40 : 85, provenance: measured(source, asOf) };
+  }
+  return {
+    score: ASSUMED_FACTOR_DEFAULTS.wetlands,
+    provenance: assumed(
+      "No USFWS NWI wetlands lookup stored for this parcel — default assumes no protected-area drag"
+    ),
+  };
+}
+
+/**
+ * USDA SSURGO capability-derived suitability → soilQuality sub-factor. The
+ * broker emits suitability "prime"/"suitable"/"limited" ONLY when a real
+ * capability class was retrieved; "good" is its no-capability-data default
+ * and is treated as NOT measured — the same honesty rule as
+ * publicParcelReport.soilSubScore, with the same score mapping.
+ */
+export function soilQualityFromEvidence(
+  enrichment: EnrichmentResult | null | undefined
+): { score: number; provenance: FactorProvenance } {
+  const suitability = enrichment?.environment?.soilSuitability;
+  const scoreFor: Record<string, number> = { prime: 90, suitable: 70, limited: 45 };
+  if (typeof suitability === "string" && suitability in scoreFor) {
+    const { source, asOf } = categoryProvenance(enrichment, "soil", "USDA NRCS SDA");
+    return { score: scoreFor[suitability], provenance: measured(source, asOf) };
+  }
+  return {
+    score: ASSUMED_FACTOR_DEFAULTS.soilQuality,
+    provenance: assumed(
+      "No USDA soil capability class stored for this parcel — neutral default"
+    ),
+  };
+}
+
 interface CreditScoreConfidence {
   low: number;
   high: number;
@@ -131,6 +301,13 @@ interface CreditScore {
   overall: number; // 300-850 (like FICO)
   grade: 'A+' | 'A' | 'B+' | 'B' | 'C+' | 'C' | 'D' | 'F';
   factors: ScoringFactors;
+  /**
+   * Per-sub-factor measured|assumed provenance (honesty contract). A factor
+   * is "measured" only when a real stored value backed it (enrichment open
+   * data or a property-record field); everything defaulted or inferred from
+   * a state-level heuristic is "assumed" with a stated basis.
+   */
+  factorProvenance: ScoreProvenance;
   riskLevel: 'excellent' | 'good' | 'fair' | 'poor' | 'high';
   strengths: string[];
   weaknesses: string[];
@@ -220,12 +397,23 @@ class LandCreditScoring {
 
       // Analyze strengths and weaknesses
       const factors: ScoringFactors = {
-        location: { ...location, weight: weights.location },
-        physical: { ...physical, weight: weights.physical },
-        legal: { ...legal, weight: weights.legal },
-        financial: { ...financial, weight: weights.financial },
-        environmental: { ...environmental, weight: weights.environmental },
-        market: { ...market, weight: weights.market },
+        location: { score: location.score, factors: location.factors, weight: weights.location },
+        physical: { score: physical.score, factors: physical.factors, weight: weights.physical },
+        legal: { score: legal.score, factors: legal.factors, weight: weights.legal },
+        financial: { score: financial.score, factors: financial.factors, weight: weights.financial },
+        environmental: { score: environmental.score, factors: environmental.factors, weight: weights.environmental },
+        market: { score: market.score, factors: market.factors, weight: weights.market },
+      };
+
+      // Per-sub-factor measured|assumed provenance — travels with the payload
+      // AND the persisted breakdown so an old score stays auditable.
+      const factorProvenance: ScoreProvenance = {
+        location: location.provenance,
+        physical: physical.provenance,
+        legal: legal.provenance,
+        financial: financial.provenance,
+        environmental: environmental.provenance,
+        market: market.provenance,
       };
 
       const { strengths, weaknesses } = this.identifyStrengthsWeaknesses(factors);
@@ -278,8 +466,11 @@ class LandCreditScoring {
           marketDemand: market.score,
           economicFactors: financial.score,
           timeOnMarket: legal.score,
+          // Honesty contract: which sub-factors were measured vs assumed,
+          // with sources — additive key, ignored by the calibrator readers.
+          factorProvenance,
         },
-        modelVersion: "v1",
+        modelVersion: LCS_METHODOLOGY_VERSION,
         validUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
       });
 
@@ -287,6 +478,7 @@ class LandCreditScoring {
         overall: creditScore,
         grade,
         factors,
+        factorProvenance,
         riskLevel,
         strengths,
         weaknesses,
@@ -347,23 +539,40 @@ class LandCreditScoring {
   /**
    * Score location factors (25% weight)
    */
-  private async scoreLocation(property: any): Promise<{ score: number; factors: any }> {
+  private async scoreLocation(
+    property: any
+  ): Promise<{ score: number; factors: any; provenance: DimensionProvenance }> {
     const factors = {
       marketStrength: 70, // Default - would pull from marketPredictions
-      growthRate: 60, // Default - would pull from census data
+      // Default — county growth series (county_building_permits /
+      // county_employment_wages, migrations 0201/0202) are not consumed by
+      // this scorer yet; the factor stays at its default and is honestly
+      // marked "assumed" rather than presenting as census-backed.
+      growthRate: ASSUMED_FACTOR_DEFAULTS.growthRate as number,
       economicHealth: 65, // Default - would pull from BLS data
       accessibility: 50, // Default - would calculate from highway/airport distance
     };
+    const provenance: DimensionProvenance = {
+      marketStrength: assumed("No market-momentum measurement wired — default value"),
+      growthRate: assumed(
+        "No county growth measurement wired (county permit/employment series not consumed here yet) — default value"
+      ),
+      economicHealth: assumed("No BLS employment/income measurement wired — default value"),
+      accessibility: assumed("No highway/airport distance measurement wired — default value"),
+    };
 
-    // Would integrate with actual data sources
-    // For now, make educated guesses based on property data
-
+    // State-level heuristics — still ASSUMED: a statewide generalization is
+    // not a parcel or county measurement.
     if (property.state === 'TX' || property.state === 'FL') {
       factors.growthRate = 80; // High growth states
       factors.economicHealth = 75;
+      provenance.growthRate = assumed("State-level heuristic (high-growth state) — not a county measurement");
+      provenance.economicHealth = assumed("State-level heuristic — not a county measurement");
     } else if (property.state === 'CA' || property.state === 'NY') {
       factors.economicHealth = 70;
       factors.accessibility = 80; // Well-connected states
+      provenance.economicHealth = assumed("State-level heuristic — not a county measurement");
+      provenance.accessibility = assumed("State-level heuristic (well-connected state) — not a parcel measurement");
     }
 
     // Calculate weighted average
@@ -374,19 +583,32 @@ class LandCreditScoring {
        factors.accessibility * 0.15)
     );
 
-    return { score, factors };
+    return { score, factors, provenance };
   }
 
   /**
    * Score physical characteristics (20% weight)
    */
-  private async scorePhysical(property: any): Promise<{ score: number; factors: any }> {
+  private async scorePhysical(
+    property: any
+  ): Promise<{ score: number; factors: any; provenance: DimensionProvenance }> {
+    // Soil quality from REAL stored open data (USDA SSURGO via the persisted
+    // enrichment jsonb) — previously hardcoded 50 while presenting as scored.
+    const soil = soilQualityFromEvidence(enrichmentOf(property));
+
     const factors = {
       topography: 50,
-      soilQuality: 50,
+      soilQuality: soil.score,
       waterAccess: 50,
       utilities: 50,
       roadAccess: 50,
+    };
+    const provenance: DimensionProvenance = {
+      topography: assumed("No topography recorded for this property — default value"),
+      soilQuality: soil.provenance,
+      waterAccess: assumed("No water rights/frontage/well data recorded — default value"),
+      utilities: assumed("No utility availability recorded — default value"),
+      roadAccess: assumed("No road access recorded — default value"),
     };
 
     // Topography
@@ -395,14 +617,18 @@ class LandCreditScoring {
     else if (topography === 'rolling') factors.topography = 70;
     else if (topography === 'hilly') factors.topography = 50;
     else if (topography === 'steep') factors.topography = 30;
+    if (topography) provenance.topography = measured(PROPERTY_RECORD_SOURCE);
 
     // Water access
     if (property.waterRights) {
       factors.waterAccess = 95;
+      provenance.waterAccess = measured(PROPERTY_RECORD_SOURCE);
     } else if (property.waterFrontage) {
       factors.waterAccess = 80;
+      provenance.waterAccess = measured(PROPERTY_RECORD_SOURCE);
     } else if (property.wellDepth && property.wellDepth < 200) {
       factors.waterAccess = 70;
+      provenance.waterAccess = measured(PROPERTY_RECORD_SOURCE);
     }
 
     // Utilities - count available
@@ -412,6 +638,7 @@ class LandCreditScoring {
     if (property.sewerAvailable) utilityCount++;
     if (property.internetAvailable) utilityCount++;
     factors.utilities = Math.min(100, 50 + (utilityCount * 12));
+    if (utilityCount > 0) provenance.utilities = measured(PROPERTY_RECORD_SOURCE);
 
     // Road access
     const roadAccess = property.roadAccess?.toLowerCase();
@@ -419,6 +646,7 @@ class LandCreditScoring {
     else if (roadAccess === 'gravel') factors.roadAccess = 70;
     else if (roadAccess === 'dirt') factors.roadAccess = 50;
     else if (roadAccess === 'none') factors.roadAccess = 20;
+    if (roadAccess) provenance.roadAccess = measured(PROPERTY_RECORD_SOURCE);
 
     const score = Math.round(
       (factors.topography * 0.20 +
@@ -428,19 +656,28 @@ class LandCreditScoring {
        factors.roadAccess * 0.15)
     );
 
-    return { score, factors };
+    return { score, factors, provenance };
   }
 
   /**
    * Score legal factors (15% weight)
    */
-  private async scoreLegal(property: any): Promise<{ score: number; factors: any }> {
+  private async scoreLegal(
+    property: any
+  ): Promise<{ score: number; factors: any; provenance: DimensionProvenance }> {
     const factors = {
       zoning: 50,
       restrictions: 70, // Assume few restrictions by default
       mineralRights: 50,
       waterRights: 50,
       clearTitle: 90, // Assume clear title by default
+    };
+    const provenance: DimensionProvenance = {
+      zoning: assumed("No zoning recorded for this property — default value"),
+      restrictions: assumed("Assumed few restrictions — no covenant/HOA data recorded"),
+      mineralRights: assumed("No mineral-rights status recorded — default value"),
+      waterRights: assumed("No water-rights status recorded — default value"),
+      clearTitle: assumed("Assumed clear title — no title search data"),
     };
 
     // Zoning
@@ -450,10 +687,12 @@ class LandCreditScoring {
     else if (zoning?.includes('industrial')) factors.zoning = 85;
     else if (zoning?.includes('agricultural')) factors.zoning = 70;
     else if (zoning?.includes('conservation')) factors.zoning = 40;
+    if (zoning) provenance.zoning = measured(PROPERTY_RECORD_SOURCE);
 
     // Water rights
     if (property.waterRights) {
       factors.waterRights = 95;
+      provenance.waterRights = measured(PROPERTY_RECORD_SOURCE);
     }
 
     // Mineral rights
@@ -464,10 +703,14 @@ class LandCreditScoring {
     } else if (property.mineralRights === 'severed') {
       factors.mineralRights = 30;
     }
+    if (['owned', 'partial', 'severed'].includes(property.mineralRights)) {
+      provenance.mineralRights = measured(PROPERTY_RECORD_SOURCE);
+    }
 
     // HOA restrictions
     if (property.hoaFees && property.hoaFees > 0) {
       factors.restrictions = 50; // HOAs reduce flexibility
+      provenance.restrictions = measured(PROPERTY_RECORD_SOURCE);
     }
 
     const score = Math.round(
@@ -478,13 +721,15 @@ class LandCreditScoring {
        factors.clearTitle * 0.15)
     );
 
-    return { score, factors };
+    return { score, factors, provenance };
   }
 
   /**
    * Score financial factors (20% weight)
    */
-  private async scoreFinancial(property: any): Promise<{ score: number; factors: any }> {
+  private async scoreFinancial(
+    property: any
+  ): Promise<{ score: number; factors: any; provenance: DimensionProvenance }> {
     const factors = {
       cashFlow: 50,
       appreciation: 60,
@@ -492,9 +737,17 @@ class LandCreditScoring {
       taxBurden: 70,
       maintenanceCost: 75,
     };
+    const provenance: DimensionProvenance = {
+      cashFlow: assumed("No income records — assumed non-income-generating"),
+      appreciation: assumed("No purchase-price + current-value pair recorded — default value"),
+      liquidity: assumed("No acreage/value recorded — default value"),
+      taxBurden: assumed("No property-tax record — default value"),
+      maintenanceCost: assumed("No maintenance records — default value"),
+    };
 
     // Cash flow - if generating income
     if (property.monthlyIncome && property.monthlyIncome > 0) {
+      provenance.cashFlow = measured(PROPERTY_RECORD_SOURCE);
       const annualIncome = property.monthlyIncome * 12;
       const value = property.estimatedValue || property.purchasePrice || 0;
       const yieldPercent = (annualIncome / value) * 100;
@@ -509,6 +762,7 @@ class LandCreditScoring {
 
     // Appreciation - historical
     if (property.purchasePrice && property.estimatedValue) {
+      provenance.appreciation = measured(PROPERTY_RECORD_SOURCE);
       const appreciation = ((property.estimatedValue - property.purchasePrice) / property.purchasePrice) * 100;
       const annualAppreciation = appreciation / ((new Date().getTime() - new Date(property.purchaseDate).getTime()) / (365 * 24 * 60 * 60 * 1000));
       
@@ -524,6 +778,7 @@ class LandCreditScoring {
     const acres = property.acres || 0;
     const value = property.estimatedValue || property.purchasePrice || 0;
     const pricePerAcre = acres > 0 ? value / acres : 0;
+    if (acres > 0 || value > 0) provenance.liquidity = measured(PROPERTY_RECORD_SOURCE);
 
     // Smaller parcels and reasonable prices = higher liquidity
     if (acres < 5 && pricePerAcre < 10000) factors.liquidity = 85;
@@ -540,6 +795,12 @@ class LandCreditScoring {
       else if (taxRate < 1.5) factors.taxBurden = 65;
       else if (taxRate < 2.0) factors.taxBurden = 50;
       else factors.taxBurden = 35;
+      // Only a real tax record makes this a measurement — a missing tax
+      // amount computed against a real value is still an assumption.
+      provenance.taxBurden =
+        property.annualPropertyTax != null
+          ? measured(PROPERTY_RECORD_SOURCE)
+          : assumed("No property-tax record — rate computed with tax = 0");
     }
 
     const score = Math.round(
@@ -550,36 +811,44 @@ class LandCreditScoring {
        factors.maintenanceCost * 0.10)
     );
 
-    return { score, factors };
+    return { score, factors, provenance };
   }
 
   /**
    * Score environmental factors (10% weight)
    */
-  private async scoreEnvironmental(property: any): Promise<{ score: number; factors: any }> {
+  private async scoreEnvironmental(
+    property: any
+  ): Promise<{ score: number; factors: any; provenance: DimensionProvenance }> {
+    // REAL stored open data: the properties table has no floodZone/wetlands
+    // columns — the old `property.floodZone` read hit a column that never
+    // existed, so floodRisk always sat at the 80 default. The persisted
+    // enrichment jsonb (FEMA NFHL / USFWS NWI via the broker) is the actual
+    // per-parcel evidence; defaults stand, honestly marked, when it's absent.
+    const enrichment = enrichmentOf(property);
+    const flood = floodRiskFromEvidence(enrichment);
+    const wetlands = wetlandsFromEvidence(enrichment);
+
     const factors = {
-      floodRisk: 80, // Assume low risk by default
+      floodRisk: flood.score,
       wildfire: 80,
       contamination: 90,
-      wetlands: 85,
+      wetlands: wetlands.score,
       endangered: 85,
     };
+    const provenance: DimensionProvenance = {
+      floodRisk: flood.provenance,
+      wildfire: assumed("No parcel-level wildfire measurement — default value"),
+      contamination: assumed("No parcel-level contamination lookup stored — default assumes none"),
+      wetlands: wetlands.provenance,
+      endangered: assumed("No parcel-level endangered-species lookup stored — default value"),
+    };
 
-    // Flood risk
-    const floodZone = property.floodZone?.toUpperCase();
-    if (floodZone === 'X' || floodZone === 'C') {
-      factors.floodRisk = 95; // Minimal risk
-    } else if (floodZone === 'B' || floodZone === 'SHADED X') {
-      factors.floodRisk = 75; // Moderate risk
-    } else if (floodZone === 'A' || floodZone === 'AE') {
-      factors.floodRisk = 40; // High risk
-    } else if (floodZone === 'V' || floodZone === 'VE') {
-      factors.floodRisk = 20; // Coastal high-hazard area
-    }
-
-    // Wildfire risk - approximate by state
+    // Wildfire risk - approximate by state. Still ASSUMED: a statewide
+    // generalization is not a parcel measurement.
     if (['CA', 'CO', 'OR', 'WA', 'MT', 'ID'].includes(property.state)) {
       factors.wildfire = 60; // Higher risk western states
+      provenance.wildfire = assumed("State-level wildfire heuristic — not a parcel measurement");
     }
 
     const score = Math.round(
@@ -590,19 +859,28 @@ class LandCreditScoring {
        factors.endangered * 0.10)
     );
 
-    return { score, factors };
+    return { score, factors, provenance };
   }
 
   /**
    * Score market factors (10% weight)
    */
-  private async scoreMarket(property: any): Promise<{ score: number; factors: any }> {
+  private async scoreMarket(
+    property: any
+  ): Promise<{ score: number; factors: any; provenance: DimensionProvenance }> {
     const factors = {
       demand: 60,
       supply: 60,
       priceHistory: 70,
       daysOnMarket: 60,
       comparables: 65,
+    };
+    const provenance: DimensionProvenance = {
+      demand: assumed("No buyer-interest measurement wired — default value"),
+      supply: assumed("No comparable-inventory measurement wired — default value"),
+      priceHistory: assumed("No price-history measurement wired — default value"),
+      daysOnMarket: assumed("No listing days-on-market recorded — default value"),
+      comparables: assumed("No comps quality measurement wired — default value"),
     };
 
     // Would integrate with marketPrediction service
@@ -615,6 +893,7 @@ class LandCreditScoring {
       else if (property.daysOnMarket < 180) factors.daysOnMarket = 55;
       else if (property.daysOnMarket < 365) factors.daysOnMarket = 40;
       else factors.daysOnMarket = 25;
+      provenance.daysOnMarket = measured(PROPERTY_RECORD_SOURCE);
     }
 
     const score = Math.round(
@@ -625,7 +904,7 @@ class LandCreditScoring {
        factors.comparables * 0.15)
     );
 
-    return { score, factors };
+    return { score, factors, provenance };
   }
 
   /**

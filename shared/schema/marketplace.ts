@@ -541,6 +541,17 @@ export const landCreditScores = pgTable("land_credit_scores", {
     environmental?: number;
     market?: number;
     factors?: Record<string, { score: number; weight: number }>;
+    // Honesty contract (2026-07): per-sub-factor measured|assumed provenance
+    // ({ dimension: { subFactor: { status, source?, asOf?, basis? } } }) so a
+    // defaulted factor can never masquerade as a measured fact. Optional —
+    // older rows predate it; type-only jsonb change, no migration.
+    factorProvenance?: Record<
+      string,
+      Record<
+        string,
+        { status: "measured" | "assumed"; source?: string; asOf?: string | null; basis?: string }
+      >
+    >;
     characteristics: number;
     marketDemand: number;
     economicFactors: number;
