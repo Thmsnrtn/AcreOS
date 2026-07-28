@@ -1,10 +1,12 @@
 /**
  * Evaluation horizon — founder decision cards, seeded ONCE at boot.
  *
- * The month-3 trust breaker in land investing is "green dashboards, red bank
- * account": the machine spends real money with perfect process receipts while
- * zero deals close — which is NORMAL early, because the feedback loop is
- * months long. Without a PRE-COMMITTED evaluation frame agreed while calm,
+ * The month-3 trust breaker for the platform's customer acquisition is
+ * "green dashboards, red bank account": the machine spends real money with
+ * perfect process receipts while few or zero prospects convert to paying
+ * customers — which is NORMAL early, because the acquisition feedback loop
+ * is months long. (One founder: the platform owner. The "mail program" is
+ * AcreOS's own acquisition + free-taste spend, never customers' land deals.) Without a PRE-COMMITTED evaluation frame agreed while calm,
  * the founder ends up adjudicating honest variance emotionally mid-drawdown
  * and revoking trust in a correct system. These two cards ask the founder to
  * pre-commit the judgment rules BEFORE the drawdown: WHEN the mail program
@@ -39,8 +41,10 @@ const CARDS = [
   {
     subject: "When do we judge the mail program — decide now, while it's calm",
     analysis:
-      "Land deals close on months-long feedback loops, so the mail program will spend real money " +
-      "for a long stretch with zero closed deals — and that is NORMAL early, not a signal the " +
+      "Customer acquisition runs on months-long feedback loops — cold outreach to prospective " +
+      "land-investor customers becomes trials, and trials become paying subscribers, slowly. So " +
+      "the mail program will spend real money for a long stretch with few or zero converted " +
+      "customers — and that is NORMAL early, not a signal the " +
       "system is broken. The danger is judging that stretch in the moment: mid-drawdown, honest " +
       "variance looks like failure, and a correct system gets its trust revoked emotionally. " +
       "Deciding the judgment rules now, while it's calm, means when the uncomfortable stretch " +

@@ -4161,4 +4161,126 @@ router.post(
   },
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/founder/intelligence/break-glass/email
+//
+// Founder decision 2026-07-28 #8: the break-glass card ("if AcreOS is dark")
+// is useless if it only lives inside the app that just went dark — this
+// emails the card's markdown to the founder so a copy exists outside AcreOS
+// (inbox, print). SYSTEM mail lane only (purpose: "system") — this is AcreOS
+// talking to its own founder, exactly what the platform sender is for
+// (BYO-rails decision, 2026-07-17). Honest by construction: every failure
+// path returns { sent: false, reason } with the real reason — a missing card
+// file, no founder email configured, or the send itself failing.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Minimal markdown → email HTML. Deliberately simple: headings, code fences,
+ *  lists, tables and blockquotes render legibly; everything is HTML-escaped
+ *  first. The raw markdown rides along as the text/plain part. */
+function renderBreakGlassHtml(markdown: string): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = (s: string) =>
+    esc(s)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  const lines = markdown.split("\n");
+  const out: string[] = [];
+  let inCode = false;
+  let inList = false;
+  const closeList = () => { if (inList) { out.push("</ul>"); inList = false; } };
+  for (const line of lines) {
+    if (line.startsWith("```")) {
+      closeList();
+      out.push(inCode ? "</pre>" : '<pre style="background:#f4f4f4;padding:8px;border-radius:4px;overflow-x:auto">');
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) { out.push(esc(line)); continue; }
+    if (/^#{1,3} /.test(line)) {
+      closeList();
+      const level = line.startsWith("###") ? 3 : line.startsWith("##") ? 2 : 1;
+      out.push(`<h${level + 1}>${inline(line.replace(/^#{1,3} /, ""))}</h${level + 1}>`);
+    } else if (/^\s*[-*] /.test(line) || /^\s*\d+\. /.test(line)) {
+      if (!inList) { out.push("<ul>"); inList = true; }
+      out.push(`<li>${inline(line.replace(/^\s*(?:[-*]|\d+\.) /, ""))}</li>`);
+    } else if (line.startsWith("> ")) {
+      closeList();
+      out.push(`<p style="border-left:3px solid #b45309;padding-left:8px;color:#b45309"><strong>${inline(line.slice(2))}</strong></p>`);
+    } else if (line.trim() === "" || line.trim() === "---") {
+      closeList();
+      out.push(line.trim() === "---" ? "<hr>" : "");
+    } else {
+      closeList();
+      out.push(`<p>${inline(line)}</p>`);
+    }
+  }
+  if (inCode) out.push("</pre>");
+  closeList();
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1a1a1a;max-width:640px;margin:0 auto;padding:16px">${out.join("\n")}</div>`;
+}
+
+router.post(
+  "/break-glass/email",
+  requireFounder,
+  async (_req: Request, res: Response) => {
+    try {
+      // 1. The card itself — read from the repo copy; refuse honestly if the
+      // deployment doesn't carry it (never send a placeholder).
+      let markdown: string;
+      try {
+        const { readFile } = await import("node:fs/promises");
+        const path = await import("node:path");
+        markdown = await readFile(
+          path.resolve(process.cwd(), "docs/runbooks/break-glass-card.md"),
+          "utf-8",
+        );
+      } catch {
+        return res.json({
+          sent: false,
+          reason:
+            "The break-glass card file (docs/runbooks/break-glass-card.md) isn't present in this deployment — nothing was sent.",
+        });
+      }
+
+      // 2. The founder's address — Connections (DB) first, FOUNDER_EMAIL env
+      // fallback; same resolution the pager's email fallback uses.
+      let founderEmail = process.env.FOUNDER_EMAIL?.trim() || null;
+      try {
+        const { resolveConnection } = await import("./services/connections/platformConnections");
+        const e = await resolveConnection("paging", "founder_email");
+        if (e.source === "db" && e.value) founderEmail = e.value;
+      } catch {
+        /* env stands */
+      }
+      if (!founderEmail) {
+        return res.json({
+          sent: false,
+          reason:
+            "No founder email is configured — set it under Controls → Connections → Paging (or the FOUNDER_EMAIL server secret). Nothing was sent.",
+        });
+      }
+
+      // 3. Send on the SYSTEM lane (platform identity is exactly for this).
+      const { emailService } = await import("./services/emailService");
+      const result = await emailService.sendEmail({
+        to: founderEmail,
+        subject: "AcreOS break-glass card — print this or file it outside the app",
+        html: renderBreakGlassHtml(markdown),
+        text: markdown,
+        purpose: "system",
+        transactional: true,
+      });
+      return res.json({
+        sent: result.success,
+        reason: result.success
+          ? null
+          : result.error ?? "the email send failed (no further detail recorded)",
+      });
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  },
+);
+
 export default router;

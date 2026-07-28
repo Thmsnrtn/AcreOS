@@ -29,10 +29,17 @@ the founder's to set in the cost panel — no number is decided here.
 
 Ruling: the mail program is judged at **6 months of sending OR when total
 mail+data spend crosses a dollar line the founder will set — whichever comes
-first**. Pre-committed now, while calm, so that normal early variance (zero
-closed deals early is normal in land) is never adjudicated emotionally
-mid-drawdown. Until that horizon, drawdown alone is not grounds to revoke
-autonomy; at the horizon, the program is judged on the pre-agreed frame.
+first**. Pre-committed now, while calm, so that normal early variance (few or
+zero converted customers early is normal for cold acquisition) is never
+adjudicated emotionally mid-drawdown. Until that horizon, drawdown alone is
+not grounds to revoke autonomy; at the horizon, the program is judged on the
+pre-agreed frame.
+
+Vocabulary clarification (founder, this date): there is exactly ONE founder —
+the platform owner running AcreOS as a business. Customers run their own land
+operations inside the product and are never "founders" in this vocabulary.
+The "mail program" here is AcreOS's own customer-acquisition + free-taste
+spend, never customers' land deals.
 
 ## 4. Outreach stop-loss shape — MONTHLY SPEND LINE PAUSES
 
@@ -40,11 +47,12 @@ Ruling: a **monthly** mail+data spend line (dollar amount to be set by the
 founder in the cost panel); crossing it pauses outreach until the founder
 looks. Resets monthly so a bad month can never compound silently.
 
-Implementation status (honest): no spend-threshold auto-pause is wired for
-mail/data outreach today — only the AI-dispatch monthly cap self-pauses.
-Wiring this pause to the founder's chosen shape is an approved follow-up
-change that ships as a PR the founder sees before it is live. The dollar
-number is set by the founder, never the machine (money hard-stop).
+Implementation status: the pause is now wired (same-date follow-up PR, the
+one carrying this edit) — a monthly mail+data spend line gates the mail
+flusher and the direct-mail send paths; crossing it pauses outreach (skip,
+never drop) and pages the founder once per pause event. The line defaults to
+the founder's $500/month ruling (#5) and is founder-adjustable in the cost
+panel; the machine never picks the number (money hard-stop).
 
 ---
 
@@ -79,5 +87,9 @@ that arm the dormant external watchdogs, and a quarterly email-the-card job.
 The founder provisions the secrets when ready. NOTHING is presented as armed
 until it actually is (no-fabrication).
 
-Implementation status: rulings 5–8 are recorded here as the spec; their
-implementation PRs follow and each is founder-reviewable before live.
+Implementation status: rulings 5–8 shipped as one same-date implementation
+PR (the one carrying this edit): stop-loss pause wiring at $500/month
+default (5), margin-tied allowance engine deriving counts from live provider
+unit costs (6), quiet-day Letter mode (7), and the break-glass card +
+dormant-watchdog Controls section + email-the-card route (8) — the watchdog
+secrets remain unprovisioned and NOTHING is shown as armed until they are.

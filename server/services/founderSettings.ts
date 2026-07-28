@@ -91,6 +91,17 @@ export const KNOBS: KnobDefinition[] = [
     units: "cents",
   },
   {
+    key: "OUTREACH_STOPLOSS_MONTHLY_CENTS",
+    valueType: "number",
+    defaultValue: "50000",
+    description:
+      "Monthly mail+data outreach spend line (founder ruling #5, 2026-07-28 — $500/month to start). When month-to-date mail+data spend crosses this line, outreach pauses until you tap ‘I’ve looked — resume’ in Costs. Resets monthly. In cents.",
+    category: "safety",
+    min: 1_000, // $10 floor — a lower line would pause on the first postcard
+    max: 10_000_000, // $100,000 ceiling — raising past this is a deliberate act
+    units: "cents",
+  },
+  {
     key: "OUTCOME_GRADE_WINDOW_DAYS",
     valueType: "number",
     defaultValue: "14",
