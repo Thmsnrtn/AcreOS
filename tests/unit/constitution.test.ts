@@ -38,10 +38,12 @@ const ROOT = path.resolve(__dirname, "../..");
  *   before the AI is consulted — the registry had been too pessimistic. That
  *   enforcement is now pinned by tests/unit/founderHardStopGuardrails.test.ts,
  *   so both were reclassified prose-only → code-invariant.
- *
- * Remaining: legal signing — no guardrail case covers contract execution.
+ * 2026-07-27 (→0): legal signing wired into checkHardGuardrails() —
+ *   LEGAL_SIGNING_ACTIONS action class + sign/execute_contract payload flags,
+ *   ratcheted by tests/unit/founderHardStopGuardrails.test.ts. All four hard
+ *   stops are now machine-enforced; this baseline stays at 0 forever.
  */
-const UNENFORCED_HARD_STOP_BASELINE = 1;
+const UNENFORCED_HARD_STOP_BASELINE = 0;
 
 describe("constitution registry — shape", () => {
   it("every invariant has the required non-empty fields", () => {

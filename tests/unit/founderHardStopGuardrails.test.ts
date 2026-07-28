@@ -2,12 +2,13 @@
  * Founder hard-stop guardrails — unit ratchet over checkHardGuardrails().
  *
  * checkHardGuardrails() is the autopilot's code-level block layer, checked
- * BEFORE the AI is consulted. It already enforces three of the four standing
- * founder hard stops (CLAUDE.md DO-NOT-DO list):
+ * BEFORE the AI is consulted. It enforces all four standing founder hard
+ * stops (CLAUDE.md DO-NOT-DO list):
  *
  *   - spends over $500          → HARD_GUARDRAIL_AMOUNT_LIMIT (50_000 cents)
  *   - pricing/billing changes   → BILLING_SUBSCRIPTION_ACTIONS
  *   - customer-data deletion    → DATA_DELETION_ACTIONS + destructive flags
+ *   - legal signing             → LEGAL_SIGNING_ACTIONS + sign/execute flags
  *
  * ...but its only coverage was a DB-dependent integration test, so the
  * enforcement existed without being *ratcheted*: someone could weaken or drop
@@ -16,7 +17,8 @@
  * lesson the >$500 drift taught.
  *
  * Registry: shared/governance/constitution.ts references this file as the
- * enforcement pointer for the pricing + customer-data-deletion hard stops.
+ * enforcement pointer for the pricing + customer-data-deletion + legal-signing
+ * hard stops.
  */
 
 import { describe, expect, it } from "vitest";
@@ -113,6 +115,64 @@ describe("checkHardGuardrails — customer-data-deletion hard stop", () => {
     expect(
       checkHardGuardrails({ actionPayload: { delete: false, purge: false } }).blocked,
     ).toBe(false);
+  });
+});
+
+describe("checkHardGuardrails — legal-signing hard stop", () => {
+  // "Legal signing stays founder-only forever" (CLAUDE.md). The last of the
+  // four hard stops to be machine-enforced — this block is what lowered
+  // UNENFORCED_HARD_STOP_BASELINE to 0.
+  const blocked = [
+    "legal_signing",
+    "contract_execute",
+    "contract_sign",
+    "document_sign",
+    "esign",
+    "envelope_send",
+    "agreement_execute",
+  ];
+
+  for (const actionType of blocked) {
+    it(`blocks "${actionType}" via actionPayload.actionType`, () => {
+      const r = checkHardGuardrails({ actionPayload: { actionType } });
+      expect(r.blocked).toBe(true);
+      expect(r.reason).toMatch(/legal signing\/contract execution/i);
+    });
+
+    it(`blocks "${actionType}" via payload.category`, () => {
+      expect(
+        checkHardGuardrails({ actionPayload: { category: actionType } }).blocked,
+      ).toBe(true);
+    });
+
+    it(`blocks "${actionType}" via itemType`, () => {
+      expect(checkHardGuardrails({ itemType: actionType }).blocked).toBe(true);
+    });
+  }
+
+  it("blocks signing/execution intent flags regardless of action type", () => {
+    for (const flag of ["sign", "execute_contract"]) {
+      const r = checkHardGuardrails({ actionPayload: { [flag]: true } });
+      expect(r.blocked, `flag ${flag} must block`).toBe(true);
+      expect(r.reason).toMatch(/legal signing\/contract execution/i);
+    }
+  });
+
+  it("does not block when a signing flag is explicitly false", () => {
+    expect(
+      checkHardGuardrails({ actionPayload: { sign: false, execute_contract: false } }).blocked,
+    ).toBe(false);
+  });
+
+  it("does NOT block sending an (unsigned) offer letter", () => {
+    // Offer letters are not signing — they are covered by the spend gate and
+    // the BYO mail lanes. Blocking them here would break the product's core
+    // acquisition loop, so this pins that they stay allowed.
+    const r = checkHardGuardrails({
+      itemType: "outreach",
+      actionPayload: { actionType: "send_letter", amount: 4_50 },
+    });
+    expect(r.blocked).toBe(false);
   });
 });
 

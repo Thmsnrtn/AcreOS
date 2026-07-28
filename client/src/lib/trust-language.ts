@@ -153,6 +153,16 @@ export function naturalUrgency(score: number): string {
 }
 
 /**
+ * Translate a confidence score into plain words.
+ * The CEO never sees "72% conf" — only how sure the system is.
+ */
+export function naturalConfidence(score: number): string {
+  if (score >= 85) return "very sure";
+  if (score >= 60) return "fairly sure";
+  return "not sure";
+}
+
+/**
  * Format a risk level naturally.
  */
 export function naturalRisk(level: string): string {

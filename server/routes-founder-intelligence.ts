@@ -1233,13 +1233,15 @@ router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Authenti
     // widens a domain's autonomy through, and it requires exactly this: the
     // founder's tap (Sovereign Principle 10 — no agent may unilaterally
     // expand its own authority; promotions are Class B). Applied BEFORE the
-    // card resolves (A1 pattern, retappable). A swipe-approve without an
-    // explicit option counts as the grant tap; the level write itself is
-    // stale-guarded inside applyPromotionAnswer, so it never loosens a gate
-    // the circuit breaker has since tightened.
+    // card resolves (A1 pattern, retappable). Positive exchange of controls:
+    // widening autonomy requires the founder to EXPLICITLY pick the grant
+    // option — an ambiguous swipe-approve resolves conservative ("hold"),
+    // never as a grant. The level write itself is stale-guarded inside
+    // applyPromotionAnswer, so it never loosens a gate the circuit breaker
+    // has since tightened.
     if (item && item.itemType === "shadow_promotion_request") {
       const { applyPromotionAnswer } = await import("./services/autopilot/promotionRequest");
-      await applyPromotionAnswer({ item, optionKey: chosen?.key ?? "grant" });
+      await applyPromotionAnswer({ item, optionKey: chosen?.key ?? "hold" });
     }
 
     const result = await decisionsInboxService.approve(

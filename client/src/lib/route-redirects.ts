@@ -42,13 +42,13 @@ export const ROUTE_REDIRECTS: readonly RouteRedirect[] = [
     reason:
       "/team and /team-inbox both rendered TeamInboxPage. /team is the shorter, sidebar-linked canonical path.",
   },
-  {
-    legacy: "/founder-home",
-    canonical: "/founder",
-    sunsetOn: "2026-07-26",
-    reason:
-      "Four-door doctrine: The Letter (/founder) is the single founder home. D6 fused the Pulse + Letter overviews there; the earlier Lens-4 target /founder/bridge is now a deep chat+telemetry tool, not a home. /founder-home, /founder-dashboard, /founder/now, /founder/cockpit, /founder/dashboard all redirect to /founder.",
-  },
+  /* /founder-home entry removed 2026-07-27: its 2026-07-26 sunset passed, so
+   * per the removal protocol above the legacy <Route> was deleted from
+   * App.tsx and the last in-app references (sidebar active-state checks)
+   * were rewritten. Four-door doctrine context: The Letter (/founder) is the
+   * single founder home; /founder-dashboard, /founder/now, /founder/cockpit
+   * and /founder/dashboard below still redirect there until their own
+   * removal (they have live server-side/email links pointing at them). */
   {
     legacy: "/founder-dashboard",
     canonical: "/founder",
@@ -111,6 +111,21 @@ export const ROUTE_REDIRECTS: readonly RouteRedirect[] = [
     sunsetOn: "2026-07-02",
     reason:
       "Pre-cmdk-v2 name for the chat hub. Replaced by ⌘K's Ask Pax affordance; redirect kept for 60 days.",
+  },
+  /* ── Four-door consolidation (2026-07-27) ───────────────────────────── */
+  {
+    legacy: "/founder/asks",
+    canonical: "/founder/decisions",
+    sunsetOn: "2026-07-27",
+    reason:
+      "Two differently-named 'things that need me' queues violated the four-door doctrine. The Decisions door embeds OpenAsksSection with the same /api/founder/asks answer/supersede flows, so the standalone Agent-asks page was deleted. The redirect preserves the query string so ?id= deep links keep working.",
+  },
+  {
+    legacy: "/founder/solene-chat",
+    canonical: "/founder/chat",
+    sunsetOn: "2026-07-27",
+    reason:
+      "'Solene' is an internal codename and shouldn't leak into the founder's URL bar. Same chat page, neutral path; old bookmarks redirect.",
   },
 ] as const;
 

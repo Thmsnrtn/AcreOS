@@ -32,6 +32,8 @@ interface FounderBrief {
   theWord: string;
   neededLine: string;
   isFounderNeeded: boolean;
+  /** Total items awaiting the founder — open asks + queued decisions (the same union the neededLine reads). */
+  needsYouCount: number;
   decision: { askId: number; urgency: "urgent" | "normal" | "low"; summary: string } | null;
   vitalSign: {
     mrr: number;
@@ -121,34 +123,65 @@ export default function FounderHomePage() {
             <h1 className="mt-1 font-serif text-2xl leading-snug md:text-3xl">{brief.neededLine}</h1>
           </motion.div>
 
-          {/* What needs you — the one decision, or the all-clear */}
+          {/* What needs you — keyed on needsYouCount (the SAME union the
+              headline reads: open asks + queued decisions), so this card can
+              never say all-clear while the neededLine says work is waiting. */}
           <motion.div variants={staggerItem}>
-            {brief.decision ? (
+            {brief.needsYouCount === 0 ? (
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-4">
+                <CheckCircle2 className="h-5 w-5 text-[hsl(var(--acr-pos))]" aria-hidden="true" />
+                <p className="text-sm font-medium">Nothing needs you right now — the company is running itself.</p>
+              </div>
+            ) : brief.decision ? (
+              <div className="space-y-2">
+                <Card className="border-l-4 border-l-primary">
+                  <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+                        <span className="text-sm font-semibold">A decision needs you</span>
+                        <Badge variant={brief.decision.urgency === "urgent" ? "destructive" : "secondary"} className="text-[10px] uppercase">
+                          {brief.decision.urgency}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">{brief.decision.summary}</p>
+                    </div>
+                    <PrefetchLink
+                      href={`/founder/decisions?id=${brief.decision.askId}`}
+                      className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
+                    >
+                      Review <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </PrefetchLink>
+                  </CardContent>
+                </Card>
+                {brief.needsYouCount > 1 && (
+                  <PrefetchLink
+                    href="/founder/decisions"
+                    className="block px-1 text-sm text-muted-foreground underline-offset-2 hover:underline"
+                  >
+                    and {brief.needsYouCount - 1} more waiting in Decisions →
+                  </PrefetchLink>
+                )}
+              </div>
+            ) : (
               <Card className="border-l-4 border-l-primary">
                 <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-                      <span className="text-sm font-semibold">A decision needs you</span>
-                      <Badge variant={brief.decision.urgency === "urgent" ? "destructive" : "secondary"} className="text-[10px] uppercase">
-                        {brief.decision.urgency}
-                      </Badge>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{brief.decision.summary}</p>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+                    <span className="text-sm font-semibold">
+                      {brief.needsYouCount === 1
+                        ? "A decision is waiting for you"
+                        : `${brief.needsYouCount} decisions are waiting for you`}
+                    </span>
                   </div>
                   <PrefetchLink
-                    href={`/founder/asks?id=${brief.decision.askId}`}
+                    href="/founder/decisions"
                     className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
                   >
                     Review <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
                   </PrefetchLink>
                 </CardContent>
               </Card>
-            ) : (
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-4">
-                <CheckCircle2 className="h-5 w-5 text-[hsl(var(--acr-pos))]" aria-hidden="true" />
-                <p className="text-sm font-medium">Nothing needs you right now — the company is running itself.</p>
-              </div>
             )}
           </motion.div>
 
@@ -174,7 +207,7 @@ export default function FounderHomePage() {
               subTone={brief.vitalSign.mrrWowPct != null && brief.vitalSign.mrrWowPct < 0 ? "amber" : undefined}
             />
             <VitalStat label="Trials" value={String(brief.vitalSign.trials)} />
-            <VitalStat label="7-day spend" value={usd(brief.vitalSign.weeklySpendUsd, { noCents: true })} />
+            <VitalStat label="AI + data spend (7d)" value={usd(brief.vitalSign.weeklySpendUsd, { noCents: true })} />
             <VitalStat
               label="Budget"
               value={BUDGET_STATUS[brief.vitalSign.envelopeStatus].label}
@@ -184,13 +217,7 @@ export default function FounderHomePage() {
             <VitalStat
               label="Uptime"
               value={brief.vitalSign.uptimePct != null ? `${brief.vitalSign.uptimePct.toFixed(1)}%` : "—"}
-              sub={
-                brief.vitalSign.uptimePct == null
-                  ? "no data yet"
-                  : brief.vitalSign.prodVersion
-                    ? `on ${brief.vitalSign.prodVersion.slice(0, 7)}`
-                    : undefined
-              }
+              sub={brief.vitalSign.uptimePct == null ? "no data yet" : "last 7 days"}
             />
           </motion.div>
 
@@ -226,7 +253,7 @@ export default function FounderHomePage() {
               label="Errors (24h)"
               value={brief.vitalSign.errorRatePct != null ? `${brief.vitalSign.errorRatePct.toFixed(1)}%` : "—"}
               tone={brief.vitalSign.errorRatePct != null && brief.vitalSign.errorRatePct >= 1 ? "red" : undefined}
-              sub={brief.vitalSign.errorRatePct == null ? "no traffic yet" : "5xx share of requests"}
+              sub={brief.vitalSign.errorRatePct == null ? "no traffic yet" : "errors visitors hit"}
             />
           </motion.div>
 
@@ -240,7 +267,7 @@ export default function FounderHomePage() {
           {/* Talk to your company */}
           <motion.div variants={staggerItem}>
             <PrefetchLink
-              href="/founder/solene-chat"
+              href="/founder/chat"
               className="flex items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm font-medium hover-elevate"
             >
               <MessageSquare className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -273,11 +300,12 @@ export default function FounderHomePage() {
 
 /**
  * One-line step-away verdict on the daily read, backed by the machine-verified
- * readiness endpoint. Renders nothing while loading or on error — the Letter
- * must never block on an auxiliary signal.
+ * readiness endpoint. Renders nothing while LOADING (the Letter never blocks
+ * on an auxiliary signal) — but a FAILED check says so in a muted line. A
+ * broken check must never be pixel-identical to a calm one.
  */
 function StepAwayLine() {
-  const { data } = useQuery<{ verdict: "ready" | "not_ready"; headline: string; horizonDays: number }>({
+  const { data, isError } = useQuery<{ verdict: "ready" | "not_ready"; headline: string; horizonDays: number }>({
     queryKey: ["/api/founder/autopilot/step-away"],
     queryFn: async () => {
       const res = await fetch("/api/founder/autopilot/step-away", { credentials: "include" });
@@ -286,6 +314,13 @@ function StepAwayLine() {
     },
     staleTime: 5 * 60 * 1000,
   });
+  if (isError) {
+    return (
+      <p className="rounded-lg border border-border bg-card/60 p-3 text-sm text-muted-foreground" data-testid="letter-step-away-error">
+        Couldn't run the step-away check just now — that's about this page, not the company.
+      </p>
+    );
+  }
   if (!data) return null;
   const ready = data.verdict === "ready";
   return (

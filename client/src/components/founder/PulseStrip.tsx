@@ -39,7 +39,7 @@ function nextInLabel(nextDueAt: string | null): string | null {
 }
 
 export function FounderPulseStrip() {
-  const { data } = useQuery<LiveResponse>({
+  const { data, isLoading, isError } = useQuery<LiveResponse>({
     queryKey: ["/api/founder/autopilot/live"],
     queryFn: async () => {
       const res = await fetch("/api/founder/autopilot/live", { credentials: "include" });
@@ -50,8 +50,33 @@ export function FounderPulseStrip() {
     staleTime: 30_000,
   });
 
-  // While loading (or on error) render nothing — the strip is ambient
-  // reassurance, never a blocker or a spinner.
+  // While loading render nothing — the strip is ambient reassurance, never a
+  // blocker or a spinner.
+  if (isLoading) return null;
+
+  // A FAILED read is never pixel-identical to a calm one: say the check
+  // itself broke (about this page, not the company), in the same muted
+  // styling family as the strip.
+  if (isError) {
+    return (
+      <Link
+        href="/founder/autopilot/control"
+        data-testid="founder-pulse-strip"
+        data-pulse-state="error"
+        aria-label="Autopilot heartbeat check failed. Opens Controls."
+        className={cn(
+          "flex items-center gap-2 rounded-card border px-3 py-2 min-h-[44px] text-xs transition-colors",
+          "hover:bg-muted/40 active:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "border-border bg-card/60 text-muted-foreground",
+        )}
+      >
+        <span className="relative inline-flex h-2 w-2 shrink-0 rounded-full bg-muted-foreground/50" aria-hidden="true" />
+        <Activity className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="truncate">Couldn't check the heartbeat just now — that's about this page, not the company.</span>
+      </Link>
+    );
+  }
+
   if (!data?.loop) return null;
 
   const { loop, dispatchesCompletedLast24h = 0 } = data;

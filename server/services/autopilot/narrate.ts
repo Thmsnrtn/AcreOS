@@ -116,6 +116,13 @@ export interface FounderBrief {
   /** The load-bearing line: whether the founder is needed today. */
   neededLine: string;
   isFounderNeeded: boolean;
+  /**
+   * Total items awaiting the founder — the SAME union the neededLine reads
+   * (open asks + queued decisions from the pulse). The UI keys the
+   * all-clear/decision card on THIS, never on `decision` alone, so the card
+   * can never contradict the headline.
+   */
+  needsYouCount: number;
   /** The single hero decision, if one exists. Most days this is null. */
   decision: FounderDecisionCard | null;
   vitalSign: {
@@ -172,7 +179,8 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
   // a product whose thesis is "trust the one letter").
   const asksCount = inp.openAsks.length;
   const queueCount = Math.max(0, inp.pulse.decisionsWaitingCount);
-  const isFounderNeeded = asksCount + queueCount > 0;
+  const needsYouCount = asksCount + queueCount;
+  const isFounderNeeded = needsYouCount > 0;
 
   const neededLine = !isFounderNeeded
     ? "Nothing needs you today."
@@ -235,7 +243,7 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
   // The Letter carries the detail.
   if (inp.sweep && inp.sweep.findingsCount > 0) {
     parts.push(
-      `The weekly connections sweep flagged ${countNoun(inp.sweep.findingsCount, "item", "items")} — details in The Letter.`,
+      `The weekly connections sweep flagged ${countNoun(inp.sweep.findingsCount, "item", "items")} — the full list is in the monthly letter, under All instruments → Monthly letter.`,
     );
   }
 
@@ -260,6 +268,7 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
     theWord,
     neededLine,
     isFounderNeeded,
+    needsYouCount,
     decision,
     vitalSign: {
       mrr: inp.pulse.mrr,

@@ -243,7 +243,8 @@ export const FOUNDER_NAV_DEEP_DIVES: FounderNavDeepDive[] = [
   { label: "Agent traces", icon: FileCode, href: "/founder/traces", category: "ai" },
   { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", category: "ai" },
   { label: "Dispatches", icon: WorkflowIcon, href: "/founder/dispatches", category: "ai" },
-  { label: "Agent asks", icon: HelpCircle, href: "/founder/asks", category: "ai" },
+  // "Agent asks" removed 2026-07-27 — /founder/asks merged into the Decisions
+  // door (/founder/decisions), which is a primary door and so not listed here.
   { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", category: "ai" },
   { label: "Prompt history", icon: History, href: "/founder/prompt-history", category: "ai" },
   { label: "Memory browser", icon: Database, href: "/founder/memory", category: "ai" },

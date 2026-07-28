@@ -331,8 +331,10 @@ const FounderRecoursePage = React.lazy(() => import("@/pages/founder/recourse"))
 const FounderMarketReportsPage = React.lazy(() => import("@/pages/founder/market-reports"));
 const FounderAgentQueuePage = React.lazy(() => import("@/pages/founder/agent-queue"));
 const FounderDispatchesPage = React.lazy(() => import("@/pages/founder/dispatches"));
-// L6.32 founder-collab UI — surface for /api/founder/asks (commit 05a2e122).
-const FounderAsksPage = React.lazy(() => import("@/pages/founder/asks"));
+// FounderAsksPage deleted 2026-07-27 (four-door merge) — the standalone
+// /founder/asks queue duplicated the Decisions door; founder-decisions.tsx
+// embeds OpenAsksSection against the same /api/founder/asks backend. The
+// /founder/asks route below redirects to /founder/decisions.
 // D2 signup-to-first-value funnel UI — surface for /api/founder/onboarding-funnel.
 const FounderOnboardingFunnelPage = React.lazy(() => import("@/pages/founder/onboarding-funnel"));
 const FounderFeedPage = React.lazy(() => import("@/pages/founder/feed"));
@@ -1118,14 +1120,13 @@ function Router() {
             • /founder-dashboard  — was the legacy 7,400-line operations
               console (FounderDashboard). The legacy component stays reachable
               via the sidebar "Operations console (legacy)" overflow entry.
-            • /founder-home      — was the early "clean home" landing page.
             • /founder/now       — was the tile-driven daily inbox.
             • /founder/cockpit   — was the weekly steering surface.
+          /founder-home (the early "clean home" landing page) redirected here
+          too until its route-redirects.ts sunset (2026-07-26) passed; the
+          route was deleted 2026-07-27 per the removal protocol.
           See client/src/lib/route-redirects.ts. */}
       <Route path="/founder-dashboard">
-        {() => <Redirect to="/founder" />}
-      </Route>
-      <Route path="/founder-home">
         {() => <Redirect to="/founder" />}
       </Route>
       <Route path="/founder/now">
@@ -1206,9 +1207,15 @@ function Router() {
       </Route>
       {/* Phase 3 — iOS-Claude-UX chat surface. Consumes the Phase 2 backend
           at /api/founder/solene-chat/*. Linked from the sidebar "Chat with
-          Solene" CTA and from a compact panel on /founder/today. */}
-      <Route path="/founder/solene-chat">
+          Solene" CTA and from a compact panel on /founder/today.
+          2026-07-27: canonical path renamed to /founder/chat — "Solene" is an
+          internal codename that shouldn't leak into the founder's URL bar.
+          /founder/solene-chat redirects for old bookmarks (route-redirects.ts). */}
+      <Route path="/founder/chat">
         {() => <FounderProtectedRoute component={FounderSoleneChatPage} />}
+      </Route>
+      <Route path="/founder/solene-chat">
+        {() => <Redirect to="/founder/chat" />}
       </Route>
       {/* Phase 5 of the Solene migration — the remaining three doors next
           to /founder/today. Each is a lean aggregation view that escapes to
@@ -1358,8 +1365,14 @@ function Router() {
       <Route path="/founder/onboarding-funnel">
         {() => <FounderProtectedRoute component={FounderOnboardingFunnelPage} />}
       </Route>
+      {/* 2026-07-27 four-door merge — the standalone Agent-asks queue
+          duplicated the Decisions door: founder-decisions.tsx embeds
+          OpenAsksSection with the same /api/founder/asks answer flows. One
+          "things that need me" queue, one door. The query string is preserved
+          (wouter's Redirect drops it otherwise) so /founder/asks?id=N deep
+          links still carry the ask id. See route-redirects.ts. */}
       <Route path="/founder/asks">
-        {() => <FounderProtectedRoute component={FounderAsksPage} />}
+        {() => <Redirect to={`/founder/decisions${window.location.search}`} />}
       </Route>
       <Route path="/founder/feed">
         {() => <FounderProtectedRoute component={FounderFeedPage} />}

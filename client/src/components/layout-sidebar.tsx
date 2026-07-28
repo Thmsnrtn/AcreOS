@@ -676,7 +676,8 @@ const NAV_MODULES: NavModule[] = [
       { label: "Agent traces", icon: FileCode, href: "/founder/traces", description: "Raw LLM prompt + response for every agent call" },
       { label: "Agent queue", icon: Bot, href: "/founder/agent-queue", description: "Autonomous-agent code-change proposals, event feed, weekly LLM budget" },
       { label: "Dispatches", icon: Workflow, href: "/founder/dispatches", description: "Real-time view of the auto-dispatch queue — queued / in-progress / terminal rows + cancel + review status" },
-      { label: "Agent asks", icon: HelpCircle, href: "/founder/asks", description: "Real-time questions from agents (L6.32 founder-collab) — answer to unblock a dispatch or supersede if no longer relevant" },
+      // "Agent asks" removed 2026-07-27 — /founder/asks merged into the
+      // Decisions door (/founder/decisions), already a primary child above.
       { label: "Onboarding funnel", icon: Activity, href: "/founder/onboarding-funnel", description: "Signup-to-first-value time per org with 90s-target indicator + abandonment-by-step + per-org drill-down" },
       { label: "Prompt evolutions", icon: Brain, href: "/founder/prompt-evolutions", description: "Agent prompt revision approvals" },
       { label: "Prompt history", icon: History, href: "/founder/prompt-history", description: "Per-agent version timeline with diffs" },
@@ -1115,15 +1116,15 @@ export function Sidebar() {
             href="/founder"
             icon={Crown}
             label="Founder home"
-            isActive={location === "/founder" || location === "/founder-home"}
+            isActive={location === "/founder"}
             isCollapsed={isCollapsed}
             accentClass={
-              location === "/founder" || location === "/founder-home"
+              location === "/founder"
                 ? "bg-acr-warn text-white shadow-md"
                 : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20 active:bg-acr-warn/25"
             }
             iconClass={
-              location === "/founder" || location === "/founder-home" ? "text-white" : "text-acr-warn"
+              location === "/founder" ? "text-white" : "text-acr-warn"
             }
             testId="link-founder-dashboard"
             onMouseEnter={() => {}}
@@ -1478,7 +1479,7 @@ export function Sidebar() {
             onClick={onNavClick}
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-card transition-colors duration-150 group mb-2 min-h-[44px]",
-              location === "/founder" || location === "/founder-home"
+              location === "/founder"
                 ? "bg-acr-warn text-white shadow-md"
                 : "bg-acr-warn/10 text-acr-warn hover:bg-acr-warn/20 active:bg-acr-warn/25"
             )}
@@ -1488,7 +1489,7 @@ export function Sidebar() {
             <Crown
               className={cn(
                 "w-5 h-5",
-                location === "/founder" || location === "/founder-home" ? "text-white" : "text-acr-warn"
+                location === "/founder" ? "text-white" : "text-acr-warn"
               )}
             />
             <span className="font-medium text-sm">Founder home</span>
@@ -2022,7 +2023,7 @@ function NewFounderSidebar({
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <Link
-                  href="/founder/solene-chat"
+                  href="/founder/chat"
                   className="flex items-center justify-center w-full p-2.5 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors min-h-[44px] shadow-sm"
                   aria-label="Chat with Solene"
                   data-testid="button-chat-solene-collapsed"
@@ -2036,7 +2037,7 @@ function NewFounderSidebar({
             </Tooltip>
           ) : (
             <Link
-              href="/founder/solene-chat"
+              href="/founder/chat"
               className="flex items-center gap-2 w-full px-3 py-2 rounded-card bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors min-h-[44px] text-sm font-medium shadow-sm"
               aria-label="Chat with Solene"
               data-testid="button-chat-solene"
