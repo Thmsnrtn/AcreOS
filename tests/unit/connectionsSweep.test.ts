@@ -521,8 +521,12 @@ describe("morning pulse sentence (buildFounderBrief)", () => {
 
   it("one sentence when findings exist", () => {
     const brief = buildFounderBrief({ ...baseInputs, sweep: { findingsCount: 3 } });
+    // 2026-07-27: the sentence used to say "details in The Letter" — a
+    // self-referential dead end (the reader IS on The Letter). It now names
+    // the real destination: the monthly letter (founderNarrative.ts carries
+    // the full sweep paragraph, sidebar "Monthly letter").
     expect(brief.theWord).toContain(
-      "The weekly connections sweep flagged 3 items — details in The Letter.",
+      "The weekly connections sweep flagged 3 items — the full list is in the monthly letter",
     );
   });
 

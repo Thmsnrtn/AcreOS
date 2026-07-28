@@ -109,16 +109,24 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     category: "hard-stop",
     source: "CLAUDE.md DO-NOT-DO list",
     enforcement: {
-      kind: "prose-only",
-      refs: ["CLAUDE.md"],
+      kind: "code-invariant",
+      refs: [
+        "server/services/autonomousDecisionExecutor.ts",
+        "tests/unit/founderHardStopGuardrails.test.ts",
+      ],
       note:
-        "THE LAST UNENFORCED HARD STOP. Unlike spend/pricing/deletion, no " +
-        "checkHardGuardrails case covers contract execution: there is no " +
-        "'legal_signing'/'contract_execute' action class in " +
-        "BILLING_SUBSCRIPTION_ACTIONS or DATA_DELETION_ACTIONS, and the " +
-        "DocuSign/e-sign surfaces are not gated by a founder-only check. " +
-        "GOVERNANCE DEBT — add a signing action class + guardrail case + " +
-        "unit ratchet, then reclassify and lower the baseline to 0.",
+        "checkHardGuardrails() blocks LEGAL_SIGNING_ACTIONS (legal_signing, " +
+        "contract_execute, contract_sign, document_sign, esign, envelope_send, " +
+        "agreement_execute) matched against actionType/itemType/category, plus " +
+        "sign/execute_contract payload flags, before the AI is consulted. The " +
+        "native e-sign surfaces are human-initiated route handlers (signers " +
+        "act via HMAC-tokened links); no autonomous envelope dispatch exists — " +
+        "the DocuSign connector entry is catalog-only with no implementation. " +
+        "HONEST SCOPE: this gate covers the autonomous executor's action " +
+        "classes; it does NOT cover legal exposure from non-signing acts — an " +
+        "accepted sub-$500 offer letter can still form a contract. That " +
+        "residual exposure is real and named deliberately, per " +
+        "refuse-not-fabricate.",
     },
   },
   {

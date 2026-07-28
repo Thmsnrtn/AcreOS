@@ -5,17 +5,23 @@
  * calls `shouldAutoExecute(agent, category)` before each proposal; the
  * graduation tier short-circuits the existing confidence-threshold gate.
  *
+ * THE LAW: auto-promotion stops at notify-only; silent execution requires
+ * the founder's explicit override; demotion is always automatic.
+ *
  * Promotion rules (consecutive same-tier acceptances):
  *   manual       → notify_only after 10
- *   notify_only  → silent after 50
+ *   notify_only  → (ceiling — never auto-promotes; at 50 consecutive
+ *                  acceptances the pair is logged as silent-ELIGIBLE, and
+ *                  only the founder's force_silent override grants silent)
  *
- * Demotion rules:
+ * Demotion rules (tighten-only automation — always allowed):
  *   silent       → notify_only on first retract
  *   notify_only  → manual on first retract
  *   manual       → suspended after 3 consecutive retracts
  *
- * Founder overrides win over the auto-rules — `force_silent` jumps
- * straight to silent; `freeze_manual` pins to manual regardless of
+ * Founder overrides win over the auto-rules — `force_silent` is the ONLY
+ * path to silent (Sovereign Principle 10: no agent may unilaterally expand
+ * its own authority); `freeze_manual` pins to manual regardless of
  * acceptance streak.
  */
 
@@ -33,9 +39,12 @@ export interface AutoExecuteDecision {
   reason: string;
 }
 
-const PROMOTE_THRESHOLDS: Record<Exclude<GraduationTier, "suspended">, GraduationTier | null> = {
+// Auto-promotion CEILING: notify_only's next tier is null on purpose.
+// "silent" is reachable ONLY via overrideTier(force_silent) — the founder's
+// explicit tap. Automation may loosen supervision to notify-only at most.
+export const PROMOTE_THRESHOLDS: Record<Exclude<GraduationTier, "suspended">, GraduationTier | null> = {
   manual: "notify_only",
-  notify_only: "silent",
+  notify_only: null,
   silent: null,
 };
 const PROMOTE_AT: Record<string, number> = {
@@ -126,6 +135,11 @@ export async function recordAcceptance(
     newTier = nextTier;
     tierChanged = true;
     logger.info(`[trust-graduation] ${agentCodename}:${actionCategory} promoted ${tier} → ${nextTier} (${consecutiveAfter} consecutive accepted)`);
+  } else if (promotionThreshold && !nextTier && consecutiveAfter >= promotionThreshold) {
+    // Ceiling reached: the pair has EARNED silent eligibility, but auto-
+    // promotion stops at notify-only (Sovereign Principle 10). Only the
+    // founder's explicit force_silent override (overrideTier) grants silent.
+    logger.info(`[trust-graduation] ${agentCodename}:${actionCategory} is silent-ELIGIBLE (${consecutiveAfter} consecutive accepted at ${tier}) — awaiting founder force_silent override; not auto-promoting`);
   }
 
   await db
@@ -207,4 +221,35 @@ export async function overrideTier(
     })
     .where(eq(agentActionGraduations.id, grad.id));
   logger.info(`[trust-graduation] founder set ${agentCodename}:${actionCategory} to ${tier}${override ? ` (override=${override})` : ""}`);
+}
+
+/**
+ * One-shot re-collar: demote every pair sitting at "silent" WITHOUT the
+ * founder's explicit force_silent override back to "notify_only". These
+ * rows were auto-graduated by the old ladder (notify_only → silent at 50),
+ * which violated Sovereign Principle 10 — silent execution must be a
+ * founder grant, never an earned default. Counters are left untouched so
+ * the streak evidence survives for a future eligibility surface.
+ */
+export async function reconcileSilentTiers(): Promise<{ demoted: number }> {
+  const silentRows = await db
+    .select()
+    .from(agentActionGraduations)
+    .where(eq(agentActionGraduations.graduationTier, "silent"));
+
+  let demoted = 0;
+  for (const row of silentRows) {
+    if (row.founderOverride === "force_silent") continue; // founder-granted — stands
+    await db
+      .update(agentActionGraduations)
+      .set({
+        graduationTier: "notify_only",
+        tierChangedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(agentActionGraduations.id, row.id));
+    logger.info(`[trust-graduation] re-collar: ${row.agentCodename}:${row.actionCategory} demoted silent → notify_only (auto-graduated without founder force_silent; silent now requires explicit founder override)`);
+    demoted += 1;
+  }
+  return { demoted };
 }

@@ -215,9 +215,9 @@ export function FounderMobileBottomNav() {
       {/* Solene chat FAB — reachable from every door on mobile when the
           new founder UI is active. Sits above the bottom nav so it's
           always thumb-reachable without consuming a nav slot. */}
-      {newFounderUI && location !== "/founder/solene-chat" && (
+      {newFounderUI && location !== "/founder/chat" && (
         <Link
-          href="/founder/solene-chat"
+          href="/founder/chat"
           aria-label="Chat with Solene"
           data-testid="fab-solene-chat"
           className="fixed right-4 z-floating flex items-center justify-center h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

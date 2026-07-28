@@ -591,6 +591,16 @@ const DATA_DELETION_ACTIONS = [
   "permanent_delete",
 ];
 
+const LEGAL_SIGNING_ACTIONS = [
+  "legal_signing",
+  "contract_execute",
+  "contract_sign",
+  "document_sign",
+  "esign",
+  "envelope_send",
+  "agreement_execute",
+];
+
 export function checkHardGuardrails(action: {
   itemType?: string;
   actionPayload?: Record<string, any>;
@@ -630,11 +640,27 @@ export function checkHardGuardrails(action: {
     };
   }
 
+  // 5. Legal signing / contract execution — "legal signing is founder-only forever"
+  if (LEGAL_SIGNING_ACTIONS.some((t) => actionType.includes(t) || (payload.category ?? "").toLowerCase().includes(t))) {
+    return {
+      blocked: true,
+      reason: `Hard block: legal signing/contract execution detected (${actionType}). All legally binding acts require the founder.`,
+    };
+  }
+
   // Also check for delete-related flags in the payload itself
   if (payload.delete === true || payload.permanent === true || payload.purge === true) {
     return {
       blocked: true,
       reason: `Hard block: destructive action flag detected in payload (delete/permanent/purge). Requires founder approval.`,
+    };
+  }
+
+  // Also check for signing/execution flags in the payload itself
+  if (payload.sign === true || payload.execute_contract === true) {
+    return {
+      blocked: true,
+      reason: `Hard block: legal signing/contract execution detected (payload flag sign/execute_contract). All legally binding acts require the founder.`,
     };
   }
 

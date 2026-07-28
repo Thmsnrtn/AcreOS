@@ -11,7 +11,7 @@
  * scary decisions, the system isn't ready.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
@@ -36,6 +36,13 @@ import {
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AGENT_FRIENDLY_NAMES,
+  AGENT_ROLES,
+  naturalConfidence,
+  naturalRisk,
+  naturalUrgency,
+} from "@/lib/trust-language";
 import { dollars, relative } from "@/lib/format";
 import { PrefetchLink } from "@/components/prefetch-link";
 import { HelpCircle } from "lucide-react";
@@ -111,6 +118,66 @@ function humanizeItemType(type: string): string {
     .join(" ");
 }
 
+/** Friendly agent label — never the raw codename token. Prefers the short
+ * role ("Customer Success"), falls back to the long friendly name, and as a
+ * last resort strips underscores + title-cases so "sophie_csm" can never
+ * leak onto the trust surface. */
+function agentDisplayLabel(codename: string): string {
+  return (
+    AGENT_ROLES[codename] ??
+    AGENT_FRIENDLY_NAMES[codename] ??
+    codename
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ")
+  );
+}
+
+/** Plain words for autonomy level tokens — same vocabulary as LEVEL_LABEL on
+ * the Controls page (autopilot-control.tsx), so the promotion story reads
+ * identically on both doors. */
+const LEVEL_WORDS: Record<string, string> = {
+  observe: "Watching only",
+  draft: "Drafts — you approve",
+  execute_gated: "Acts — safety-checked",
+  autonomous_gated: "Independent — safety-checked",
+};
+
+function levelWords(level: string | undefined): string {
+  if (!level) return "its current level";
+  return LEVEL_WORDS[level] ?? level.replace(/_/g, " ");
+}
+
+// Jarvis 2.3 — phone-answerable card options live in contextBundle.options.
+// Same shape SwipeDecisionCard reads; implemented inline here because this
+// page is the mounted surface (the swipe card is not).
+interface DecisionCardOption {
+  key: string;
+  label: string;
+}
+
+function readOptions(bundle: Record<string, unknown> | null): DecisionCardOption[] {
+  const raw = (bundle as { options?: unknown } | null)?.options;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (o: unknown): o is DecisionCardOption =>
+      !!o && typeof (o as DecisionCardOption).key === "string" && typeof (o as DecisionCardOption).label === "string",
+  );
+}
+
+interface ShadowPromotionEvidence {
+  domain?: string;
+  fromLevel?: string;
+  toLevel?: string;
+  agreement?: { matched?: number; total?: number; pendingPairs?: number };
+}
+
+function readShadowPromotion(bundle: Record<string, unknown> | null): ShadowPromotionEvidence | null {
+  const sp = (bundle as { shadowPromotion?: unknown } | null)?.shadowPromotion;
+  if (!sp || typeof sp !== "object") return null;
+  return sp as ShadowPromotionEvidence;
+}
+
 // ───────────── Row component ─────────────
 
 function DecisionRowCard({
@@ -118,16 +185,58 @@ function DecisionRowCard({
   showReverse,
   onReverse,
   reverseInFlight,
+  answerable = false,
+  onAnswer,
+  answerInFlight = null,
+  highlighted = false,
 }: {
   row: DecisionRow;
   showReverse: boolean;
   onReverse?: (id: number) => void;
   reverseInFlight: number | null;
+  /** Needs-you bucket: render the card's option buttons inline so the row
+   * is actually answerable (the swipe surface is unmounted dead code). */
+  answerable?: boolean;
+  onAnswer?: (id: number, optionKey: string) => void;
+  answerInFlight?: number | null;
+  highlighted?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // Two-tap arming for the promotion grant button — first tap arms, second
+  // tap confirms. Widening the machine's authority must never be a mis-tap.
+  const [armedOption, setArmedOption] = useState<string | null>(null);
+  const options = answerable ? readOptions(row.contextBundle) : [];
+  const shadowPromotion = readShadowPromotion(row.contextBundle);
+  const isPromotionCard = row.itemType === "shadow_promotion_request";
+  const answering = answerInFlight === row.id;
+
+  const optionLabel = (opt: DecisionCardOption): string => {
+    if (isPromotionCard && opt.key === "grant" && shadowPromotion) {
+      const domain = shadowPromotion.domain
+        ? shadowPromotion.domain.charAt(0).toUpperCase() + shadowPromotion.domain.slice(1)
+        : "This domain";
+      return `Grant — ${domain} moves from ${levelWords(shadowPromotion.fromLevel)} to ${levelWords(shadowPromotion.toLevel)}`;
+    }
+    return opt.label;
+  };
+
+  const handleOptionTap = (opt: DecisionCardOption) => {
+    if (!onAnswer) return;
+    // Grant on a promotion card requires a second confirming tap; every
+    // other option (hold / deny / check-in answers) stays one-tap.
+    if (isPromotionCard && opt.key === "grant" && armedOption !== opt.key) {
+      setArmedOption(opt.key);
+      return;
+    }
+    setArmedOption(null);
+    onAnswer(row.id, opt.key);
+  };
+
   return (
     <div
-      className="border rounded-card p-4 hover:bg-muted/30 transition-colors"
+      className={`border rounded-card p-4 hover:bg-muted/30 transition-colors ${
+        highlighted ? "ring-2 ring-primary" : ""
+      }`}
       data-testid={`decision-row-${row.id}`}
     >
       {/* flex-wrap: at phone widths the nowrap timestamp column can't fit
@@ -141,12 +250,14 @@ function DecisionRowCard({
         >
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-medium text-sm">{humanizeItemType(row.itemType)}</span>
+            {/* Severity wording is plain but never softened — "Urgent" keeps
+                the red styling keyed on the raw risk level. */}
             <Badge className={`text-micro uppercase ${riskBadgeClass(row.riskLevel)}`} variant="outline">
-              {row.riskLevel}
+              {naturalRisk(row.riskLevel)}
             </Badge>
             {row.ownerAgentCodename && (
               <Badge variant="outline" className="text-micro">
-                {row.ownerAgentCodename}
+                {agentDisplayLabel(row.ownerAgentCodename)}
               </Badge>
             )}
             {typeof row.outcomeScore === "number" && (
@@ -187,11 +298,45 @@ function DecisionRowCard({
           )}
           {typeof row.sophieConfidenceScore === "number" && (
             <div className="text-micro text-muted-foreground mt-0.5">
-              {row.sophieConfidenceScore}% conf
+              {naturalConfidence(row.sophieConfidenceScore)}
             </div>
           )}
         </div>
       </div>
+
+      {/* Needs-you rows carry answerable options (contextBundle.options) —
+          render them inline, phone-sized, one tap each. Every tap posts the
+          EXPLICIT chosen option key; nothing relies on a server default. */}
+      {answerable && onAnswer && options.length > 0 && (
+        <div className="flex flex-col gap-2 mt-3" data-testid={`decision-options-${row.id}`}>
+          {options.map((opt) => {
+            const armed = armedOption === opt.key;
+            return (
+              <Button
+                key={opt.key}
+                type="button"
+                variant={opt.key === "grant" || opt.key === "approve_recommended" ? "default" : "outline"}
+                className="w-full min-h-11 justify-center whitespace-normal"
+                disabled={answering}
+                aria-busy={answering}
+                onClick={() => handleOptionTap(opt)}
+                data-testid={`decision-option-${row.id}-${opt.key}`}
+              >
+                {answering
+                  ? "Recording…"
+                  : armed
+                  ? "Tap again to confirm"
+                  : optionLabel(opt)}
+              </Button>
+            );
+          })}
+          {armedOption !== null && (
+            <p className="text-micro text-muted-foreground text-center">
+              This widens the system's authority — tap the button again to confirm, or tap another option to cancel.
+            </p>
+          )}
+        </div>
+      )}
 
       {expanded && (
         <div className="mt-3 pt-3 border-t space-y-2 text-xs">
@@ -206,11 +351,11 @@ function DecisionRowCard({
             </div>
             <div>
               <span className="text-muted-foreground">Urgency: </span>
-              <span className="font-medium">{row.urgencyScore}/100</span>
+              <span className="font-medium">{naturalUrgency(row.urgencyScore)}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Risk: </span>
-              <span className="font-medium">{row.riskLevel}</span>
+              <span className="font-medium">{naturalRisk(row.riskLevel)}</span>
             </div>
           </div>
           {row.founderOverrideAction && (
@@ -228,7 +373,7 @@ function DecisionRowCard({
           {row.contextBundle && Object.keys(row.contextBundle).length > 0 && (
             <details className="mt-1">
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-2">
-                Context bundle
+                Technical details
                 <span onClick={(e) => e.stopPropagation()} className="inline-flex">
                   <CopyButton
                     value={JSON.stringify(row, null, 2)}
@@ -239,6 +384,25 @@ function DecisionRowCard({
                   />
                 </span>
               </summary>
+              {shadowPromotion && (
+                <p
+                  className="mt-1 text-xs text-foreground"
+                  data-testid={`promotion-plain-summary-${row.id}`}
+                >
+                  It's asking to go from {levelWords(shadowPromotion.fromLevel)} to{" "}
+                  {levelWords(shadowPromotion.toLevel)}.
+                  {typeof shadowPromotion.agreement?.total === "number" && (
+                    <>
+                      {" "}On the {shadowPromotion.agreement.total} decisions where you could compare,
+                      you agreed {shadowPromotion.agreement.matched ?? 0} times
+                      {(shadowPromotion.agreement.pendingPairs ?? 0) > 0
+                        ? `; ${shadowPromotion.agreement.pendingPairs} are still unresolved`
+                        : ""}
+                      .
+                    </>
+                  )}
+                </p>
+              )}
               <pre className="mt-1 p-2 bg-muted rounded overflow-x-auto text-[10px] leading-relaxed max-h-64">
                 {JSON.stringify(row.contextBundle, null, 2)}
               </pre>
@@ -692,6 +856,62 @@ export default function FounderDecisionsPage() {
     },
   });
 
+  // Answer a needs-you card by tapping one of its options. Posts to the
+  // decisions-inbox approve route with the EXPLICIT chosen option key — the
+  // server resolves the key against contextBundle.options and fails closed
+  // on anything unknown, and an explicit key means we never lean on a
+  // server-side default action.
+  const [answerInFlight, setAnswerInFlight] = useState<number | null>(null);
+  const answerMut = useMutation({
+    mutationFn: async ({ id, optionKey }: { id: number; optionKey: string }) => {
+      setAnswerInFlight(id);
+      await apiRequest("POST", `/api/founder/intelligence/decisions-inbox/${id}/approve`, {
+        chosenOption: optionKey,
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Answered",
+        description: "Your decision was recorded and applied.",
+      });
+      qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decision-log"] });
+      qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decisions-inbox"] });
+      qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/morning-briefing"] });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Couldn't record your answer",
+        description: `${err.message} — try again in a moment.`,
+        variant: "destructive",
+      });
+    },
+    onSettled: () => setAnswerInFlight(null),
+  });
+
+  // ?id=N deep link — switch to the bucket holding that row, then scroll to
+  // and highlight it. Read once; applied once after the log loads.
+  const deepLinkId = useMemo(() => {
+    const raw = new URLSearchParams(window.location.search).get("id");
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) ? n : null;
+  }, []);
+  const [deepLinkApplied, setDeepLinkApplied] = useState(false);
+  useEffect(() => {
+    if (deepLinkApplied || deepLinkId == null || !data) return;
+    for (const key of BUCKET_ORDER) {
+      if ((data.buckets[key] ?? []).some((r) => r.id === deepLinkId)) {
+        setActiveBucket(key);
+        break;
+      }
+    }
+    setDeepLinkApplied(true);
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-testid="decision-row-${deepLinkId}"]`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }, [data, deepLinkId, deepLinkApplied]);
+
   const reverseMut = useMutation({
     mutationFn: async (id: number) => {
       setReverseInFlight(id);
@@ -854,6 +1074,10 @@ export default function FounderDecisionsPage() {
                 showReverse={activeBucket === "autoHandled"}
                 onReverse={(id) => reverseMut.mutate(id)}
                 reverseInFlight={reverseInFlight}
+                answerable={activeBucket === "needsYou"}
+                onAnswer={(id, optionKey) => answerMut.mutate({ id, optionKey })}
+                answerInFlight={answerInFlight}
+                highlighted={row.id === deepLinkId}
               />
             ))
           )}
