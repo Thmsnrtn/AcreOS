@@ -16,6 +16,16 @@ import {
 import { logger } from "../utils/logger";
 
 /**
+ * The per-class "If you do nothing" sentence (founder-trust audit 2026-07-28).
+ * Lives in shared/decisions/doNothing.ts — a pure, dependency-free module
+ * imported by BOTH this service and founder-decisions.tsx, so the server's
+ * truth and the rendered sentence can never drift. Every sentence states
+ * verified current behavior only (see the shared module's provenance header);
+ * changing behavior for a class means updating BOTH the code and its sentence.
+ */
+export { doNothingContract, DO_NOTHING_CONTRACTS } from "@shared/decisions/doNothing";
+
+/**
  * Jarvis 2.2 — route a would-be founder inbox item through the interrupt
  * arbiter BEFORE it lands in the founder's pending queue. The row is always
  * written (never dropped); the arbiter only decides which status it lands in:

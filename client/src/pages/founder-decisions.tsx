@@ -48,6 +48,12 @@ import { PrefetchLink } from "@/components/prefetch-link";
 import { HelpCircle } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
+// The "If you do nothing" contract — one verified-true sentence per decision
+// class (shared/decisions/doNothing.ts, same module the server exports via
+// decisionsInbox.ts, so the rendered sentence can never drift from the code's
+// actual do-nothing behavior). Founder-trust audit 2026-07-28: every
+// needs-you card must say what ignoring it costs — no ambient guilt.
+import { doNothingContract } from "@shared/decisions/doNothing";
 
 // ───────────── Types ─────────────
 
@@ -338,6 +344,18 @@ function DecisionRowCard({
         </div>
       )}
 
+      {/* The do-nothing contract — only on needs-you cards (the bucket that
+          generates ambient guilt). Muted, one sentence, verified-true: what
+          actually happens if the founder never answers this card. */}
+      {answerable && (
+        <p
+          className="text-micro text-muted-foreground mt-3"
+          data-testid={`decision-do-nothing-${row.id}`}
+        >
+          {doNothingContract(row.itemType)}
+        </p>
+      )}
+
       {expanded && (
         <div className="mt-3 pt-3 border-t space-y-2 text-xs">
           <div className="grid grid-cols-2 gap-2">
@@ -543,6 +561,14 @@ function PendingActionCard({
           {busy ? "Sending…" : "Approve & send"}
         </Button>
       </div>
+      {/* Verified truth (pendingHands.ts): unanswered drafts never send and
+          expire after 24h — say so on every frozen card. */}
+      <p
+        className="text-micro text-muted-foreground mt-2"
+        data-testid={`pending-action-do-nothing-${action.id}`}
+      >
+        {doNothingContract("witnessed_send")}
+      </p>
     </div>
   );
 }
@@ -696,6 +722,14 @@ function OpenAsksSection() {
             All {data.count} open questions →
           </PrefetchLink>
         )}
+        {/* Verified truth (founderCollab.ts): agents never act on an
+            unanswered ask; timeouts close it to the safe side. */}
+        <p
+          className="text-micro text-muted-foreground"
+          data-testid="decisions-open-asks-do-nothing"
+        >
+          {doNothingContract("founder_ask")}
+        </p>
       </CardContent>
     </Card>
   );

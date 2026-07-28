@@ -12,9 +12,9 @@
  * which now redirect here. Built from the verified founder/autopilot.tsx patterns.
  */
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, BookOpen, Mic, SlidersHorizontal, LayoutGrid } from "lucide-react";
+import { Sparkles, CheckCircle2, MessageSquare, ArrowUpRight, ListChecks, BookOpen, Mic, SlidersHorizontal, LayoutGrid, Clock } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { PageShell } from "@/components/page-shell";
@@ -24,6 +24,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
+import { LetterTrackRecord } from "@/components/founder/LetterTrackRecord";
+import { LetterConfession } from "@/components/founder/LetterConfession";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd, formatRelative } from "@/lib/format";
 
@@ -56,6 +58,16 @@ interface FounderBrief {
   };
   /** The brain's current focus, in plain language (observational). Real, already computed server-side. */
   focusLine: string | null;
+  /** Per-domain Trust Ledger standing — rendered in the track-record card. */
+  trustLedger: Array<{ domain: string; level: string; cleanCycleCount: number; threshold: number }>;
+  /** Per-domain recorded outcomes, pre-worded server-side. Empty = nothing recorded yet. */
+  trackRecord: Array<{ domain: string; n: number; good: number; bad: number; line: string }>;
+  /** Calibration in plain words with the server-side small-n guard applied. null = unreadable → render nothing. */
+  calibrationLine: string | null;
+  /** "What's been working" sentences from raw counts (small samples say so). */
+  learningLines: string[];
+  /** The confession — self-reported misses since last week. Empty = the section is silent. */
+  misses: Array<{ atIso: string | null; line: string; changed: string | null }>;
 }
 
 /** Signed WoW percent → a short, signed label ("↑3%" / "↓2%" / "flat"). */
@@ -193,6 +205,19 @@ export default function FounderHomePage() {
             ) : null}
           </motion.div>
 
+          {/* The confession — "since last week, what went wrong". NEVER hidden
+              when non-empty; silent (no padding) when empty. */}
+          {(brief.misses?.length ?? 0) > 0 && (
+            <motion.div variants={staggerItem}>
+              <LetterConfession misses={brief.misses} />
+            </motion.div>
+          )}
+
+          {/* Armed intent — what runs next, with a one-tap hold on any item */}
+          <motion.div variants={staggerItem}>
+            <UpNextSection />
+          </motion.div>
+
           {/* The standing answer to "can I leave?" — one line, links to Controls */}
           <motion.div variants={staggerItem}>
             <StepAwayLine />
@@ -263,6 +288,17 @@ export default function FounderHomePage() {
               <WedgeReceipts metric={receiptMetric} />
             </motion.div>
           )}
+
+          {/* Track record — the trust evidence, collapsed by default (a
+              weekly-cadence read, never a daily indictment). */}
+          <motion.div variants={staggerItem}>
+            <LetterTrackRecord
+              trackRecord={brief.trackRecord ?? []}
+              trustLedger={brief.trustLedger ?? []}
+              calibrationLine={brief.calibrationLine ?? null}
+              learningLines={brief.learningLines ?? []}
+            />
+          </motion.div>
 
           {/* Talk to your company */}
           <motion.div variants={staggerItem}>
@@ -339,6 +375,79 @@ function StepAwayLine() {
       <span className="min-w-0 flex-1 truncate font-medium">{data.headline}</span>
       <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
     </PrefetchLink>
+  );
+}
+
+/**
+ * Up next — armed intent (trust audit, 2026-07-28). One line when queued work
+ * exists ("Up next: 3 items queued — tap to see and hold any") opening the
+ * plain server-worded list with a one-tap Hold per item. Holding is
+ * TIGHTENING, so a single tap is fine; there is deliberately no un-hold here.
+ * States: error says so (never silent-broken); empty renders nothing;
+ * loading renders nothing (the Letter never blocks on an auxiliary signal).
+ */
+function UpNextSection() {
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const { data, isError } = useQuery<{ total: number; items: Array<{ id: number; line: string }> }>({
+    queryKey: ["/api/founder/autopilot/up-next"],
+    queryFn: async () => (await apiRequest("GET", "/api/founder/autopilot/up-next")).json(),
+    staleTime: 60 * 1000,
+  });
+  const hold = useMutation({
+    mutationFn: async (id: number) =>
+      (await apiRequest("POST", `/api/founder/autopilot/up-next/${id}/hold`)).json(),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["/api/founder/autopilot/up-next"] }),
+  });
+  if (isError) {
+    return (
+      <p
+        className="rounded-lg border border-border bg-card/60 p-3 text-sm text-muted-foreground"
+        data-testid="letter-up-next-error"
+      >
+        Couldn't check what's queued right now — that's about this page, not the queue itself.
+      </p>
+    );
+  }
+  if (!data || data.total === 0) return null;
+  return (
+    <div className="rounded-lg border border-border bg-card" data-testid="letter-up-next">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 rounded-lg p-3 text-left text-sm font-medium hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        data-testid="letter-up-next-toggle"
+      >
+        <Clock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          Up next: {data.total === 1 ? "1 item queued" : `${data.total} items queued`} — tap to see and hold any
+        </span>
+      </button>
+      {open && (
+        <ul role="list" className="space-y-2 border-t border-border p-3">
+          {data.items.map((item) => (
+            <li key={item.id} className="flex items-start justify-between gap-3">
+              <span className="min-w-0 flex-1 text-sm leading-relaxed text-foreground">{item.line}</span>
+              <button
+                type="button"
+                onClick={() => hold.mutate(item.id)}
+                disabled={hold.isPending}
+                aria-label={`Hold this queued item: ${item.line}`}
+                className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              >
+                Hold
+              </button>
+            </li>
+          ))}
+          {data.total > data.items.length ? (
+            <li className="text-xs text-muted-foreground">
+              and {data.total - data.items.length} more behind these
+            </li>
+          ) : null}
+        </ul>
+      )}
+    </div>
   );
 }
 

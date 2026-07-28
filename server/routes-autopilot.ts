@@ -640,6 +640,80 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── Up next — armed intent (trust audit, 2026-07-28) ────────────────────
+  // What the autopilot will do NEXT: the QUEUED (not yet executed) dispatch
+  // rows, formatted server-side into plain lines so the Letter's client stays
+  // dumb and the wording lives in one place (same doctrine as the wedge
+  // receipts). Capped at 10 items + an honest total count.
+  app.get(
+    "/api/founder/autopilot/up-next",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { db } = await import("./db");
+        const { soleneDispatchQueue } = await import("@shared/schema/solene-dispatch");
+        const { asc, desc, eq, sql } = await import("drizzle-orm");
+        const [count] = await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(soleneDispatchQueue)
+          .where(eq(soleneDispatchQueue.status, "queued"));
+        const rows = await db
+          .select({
+            id: soleneDispatchQueue.id,
+            sourceType: soleneDispatchQueue.sourceType,
+            promptText: soleneDispatchQueue.promptText,
+            notBeforeAt: soleneDispatchQueue.notBeforeAt,
+            queuedAt: soleneDispatchQueue.queuedAt,
+          })
+          .from(soleneDispatchQueue)
+          .where(eq(soleneDispatchQueue.status, "queued"))
+          // Same order the worker claims in (priority DESC, queued_at ASC) —
+          // the list the founder sees is the list that will actually run.
+          .orderBy(desc(soleneDispatchQueue.priority), asc(soleneDispatchQueue.queuedAt))
+          .limit(10);
+        return res.json({
+          total: count?.n ?? 0,
+          items: rows.map((r) => ({ id: r.id, line: upNextLine(r) })),
+        });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Hold ONE queued item (single tap — holding is tightening) ───────────
+  // Routes through the existing queued-state cancel path
+  // (dispatchQueue.cancelQueuedDispatch): only legal from status='queued';
+  // in-flight or terminal rows are refused with an honest reason. There is
+  // deliberately NO un-hold here — a held item stays held.
+  app.post(
+    "/api/founder/autopilot/up-next/:id/hold",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid id");
+      try {
+        const { cancelQueuedDispatch } = await import("./services/solene/dispatchQueue");
+        const result = await cancelQueuedDispatch(id, "held by founder from The Letter (up-next)");
+        if (result.ok) {
+          logger.info("[autopilot] founder held a queued dispatch from The Letter", { dispatchId: id });
+          return res.json({ ok: true });
+        }
+        if (result.priorStatus === null) return Errors.notFound(res, "Queued item");
+        return Errors.badRequest(
+          res,
+          result.priorStatus === "in_progress"
+            ? "This item already started running — it can no longer be held from here."
+            : `This item already finished (${result.priorStatus}) — there's nothing to hold.`,
+        );
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── The board report (wire-for-real: boardReport + okr) ─────────────────
   // The CEO-to-board summary: what the company did, how it's tracking
   // (OKR + decision quality), and the handful of things that need the founder.
@@ -890,4 +964,57 @@ export function registerAutopilotRoutes(app: Express): void {
       }
     },
   );
+}
+
+// ── Up-next plain-line formatting (kept here so the wording lives with the
+// route, mirroring the wedge-receipts pattern) ───────────────────────────────
+
+/** Plain-words lane names for a queued dispatch's sourceType. */
+const UP_NEXT_KIND: Record<string, string> = {
+  auto_dispatch: "Autopilot task",
+  solene_manual: "Task the autopilot queued",
+  founder_manual: "Task you asked for",
+  founder_bypass: "Task you asked for",
+  detector: "Follow-up on something the system noticed",
+  code_review: "Review of earlier work",
+  self_debug: "Fix-up of work that was flagged",
+  adversarial_test: "Stress-test of earlier work",
+  verify: "Check on how earlier work turned out",
+  self_audit_drift: "Weekly self-audit",
+  letter_reply: "Task from your reply to the Letter",
+};
+
+/** ET clock label (same UTC-4 approximation narrate.ts uses; never load-bearing). */
+function formatEtTime(d: Date): string {
+  const et = new Date(d.getTime() - 4 * 60 * 60 * 1000);
+  const h = et.getUTCHours();
+  const m = et.getUTCMinutes();
+  const hr12 = ((h + 11) % 12) + 1;
+  return `${hr12}:${String(m).padStart(2, "0")} ${h < 12 ? "am" : "pm"} ET`;
+}
+
+/**
+ * One queued dispatch as one plain line — the real prompt's first line
+ * (truncated) plus honest timing: a deferred row says when it becomes
+ * claimable; anything else is simply waiting its turn in the queue.
+ */
+function upNextLine(r: {
+  sourceType: string;
+  promptText: string;
+  notBeforeAt: Date | null;
+  queuedAt: Date;
+}): string {
+  const firstLine =
+    r.promptText
+      .split("\n")
+      .map((s) => s.trim())
+      .find((s) => s.length > 0) ?? "";
+  const collapsed = firstLine.replace(/\s+/g, " ");
+  const snippet = collapsed.length > 100 ? `${collapsed.slice(0, 100)}…` : collapsed;
+  const kind = UP_NEXT_KIND[r.sourceType] ?? "Queued task";
+  const timing =
+    r.notBeforeAt && r.notBeforeAt.getTime() > Date.now()
+      ? `queued for ${formatEtTime(r.notBeforeAt)}`
+      : "ready to run, waiting its turn";
+  return snippet ? `${kind}: “${snippet}” — ${timing}` : `${kind} — ${timing}`;
 }
