@@ -206,11 +206,11 @@ describe("broker broadband lookup — keyed-optional honesty", () => {
     process.env.FCC_BDC_USERNAME = "probe@example.com";
 
     fetchSpy.mockImplementation(async (rawUrl: string) => {
-      const url = String(rawUrl);
-      if (url.includes("geo.fcc.gov/api/census/block/find")) {
+      const url = new URL(String(rawUrl));
+      if (url.hostname === "geo.fcc.gov" && url.pathname === "/api/census/block/find") {
         return jsonResponse({ Block: { FIPS: "480453795003021" } });
       }
-      if (url.includes("broadbandmap.fcc.gov/api/public/map/availability/blockcode/480453795003021")) {
+      if (url.hostname === "broadbandmap.fcc.gov" && url.pathname === "/api/public/map/availability/blockcode/480453795003021") {
         // Envelope shape live-verified 2026-07-28; record columns per the
         // published BDC availability data spec. location_id is a Fabric field
         // and must NOT survive into our result.
@@ -245,7 +245,7 @@ describe("broker broadband lookup — keyed-optional honesty", () => {
     expect(JSON.stringify(result.data)).not.toContain("999111");
 
     // Documented auth headers were sent to the BDC call.
-    const bdcCall = fetchSpy.mock.calls.find((c) => String(c[0]).includes("broadbandmap.fcc.gov"))!;
+    const bdcCall = fetchSpy.mock.calls.find((c) => new URL(String(c[0])).hostname === "broadbandmap.fcc.gov")!;
     const headers = (bdcCall[1] as { headers: Record<string, string> }).headers;
     expect(headers["hash_value"]).toBe("test-token");
     expect(headers["username"]).toBe("probe@example.com");
@@ -255,7 +255,7 @@ describe("broker broadband lookup — keyed-optional honesty", () => {
     process.env.FCC_BDC_TOKEN = "test-token";
     fetchSpy.mockImplementation(async (rawUrl: string) => {
       const url = String(rawUrl);
-      if (url.includes("geo.fcc.gov")) return jsonResponse({ Block: { FIPS: "480453795003021" } });
+      if (new URL(url).hostname === "geo.fcc.gov") return jsonResponse({ Block: { FIPS: "480453795003021" } });
       return jsonResponse({ totally: "different" });
     });
 

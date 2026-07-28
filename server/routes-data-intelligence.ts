@@ -40,7 +40,7 @@
  *   GET  /api/data-intel/state-land-rankings
  *        — Rank target states by land value appreciation (USDA data)
  *
- *   GET  /api/data-intel/corroboration
+ *   GET  /api/data-intel/corroboration/:lat/:lng
  *        — Cross-source corroboration for a point: independent federal
  *          instruments (FEMA NFHL, USFWS NWI, USDA SSURGO, MRLC NLCD)
  *          triangulated; agreement raises confidence, contradiction is
@@ -692,7 +692,9 @@ router.get("/county-momentum/:state/:county", async (req: Request, res: Response
 
 // ---------------------------------------------------------------------------
 // Corroboration Engine (ruling #9 wave 2 — founder-decisions-2026-07-28 §9)
-// GET /api/data-intel/corroboration?lat=..&lng=..[&state=..&county=..]
+// GET /api/data-intel/corroboration/:lat/:lng[?state=..&county=..]
+// Path params (matching /county-momentum/:state/:county in this file) —
+// coordinates are the resource being queried, not query modifiers.
 //
 // Cross-source triangulation of independent free federal instruments for a
 // point: the wetness triangle (USFWS NWI wetlands vs USDA SSURGO hydric
@@ -707,12 +709,12 @@ router.get("/county-momentum/:state/:county", async (req: Request, res: Response
 // same as every other endpoint in this file.
 // ---------------------------------------------------------------------------
 
-router.get("/corroboration", async (req: Request, res: Response) => {
+router.get("/corroboration/:lat/:lng", async (req: Request, res: Response) => {
   try {
-    const lat = parseFloat(String(req.query.lat ?? req.query.latitude ?? ""));
-    const lng = parseFloat(String(req.query.lng ?? req.query.longitude ?? ""));
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return Errors.badRequest(res, "lat and lng are required numeric query parameters");
+    const lat = parseFloat(String(req.params.lat));
+    const lng = parseFloat(String(req.params.lng));
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+      return Errors.badRequest(res, "lat and lng path segments must be valid WGS84 coordinates");
     }
     const state = req.query.state ? String(req.query.state).trim() : undefined;
     const county = req.query.county ? String(req.query.county).trim() : undefined;
