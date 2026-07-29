@@ -204,9 +204,17 @@ export default function AuctionWorksheetPage() {
         <EmptyState
           icon={Gavel}
           headline="No listings on the worksheet"
-          subtitle="Add tax-sale listings to your watchlist via /tax-researcher, then return here to set max bids and walk-away rules before the sale."
-          // TODO(cta): listings are added via the tax-researcher; a direct link would help here
-          cta={{ label: "", _noOp: true }}
+          subtitle="Tax-sale listings flow in from your target counties. Open a county to review its auction schedule and delinquent inventory, then come back to set max bids and walk-away rules before sale day."
+          cta={{
+            label: "Open your counties",
+            href: "/counties",
+            "data-testid": "auction-worksheet-empty-counties",
+          }}
+          secondaryCta={{
+            label: "Review state rules",
+            href: "/state-rules",
+            "data-testid": "auction-worksheet-empty-state-rules",
+          }}
         />
       ) : courthouseMode ? (
         <CourthouseMode

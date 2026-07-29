@@ -215,18 +215,53 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "creative_finance",
     label: "Creative finance",
     shortDescription: "Subject-to, wraps, lease-options.",
-    // 2026-07-29 (founder ruling #11, wave V1 truth pass): beta → roadmap.
-    // "Beta" was aspirational — there is ZERO dedicated surface: no
-    // businessTypeOnly sidebar module, no creative-finance tables, routes,
-    // or pages; the only code references are the onboarding/contextProfile
-    // persona mappings. Ruling #11's honesty bar says gated-with-gap-stated
-    // beats activated-on-hope, so it goes to the waitlist honestly. Build
-    // wave V2 brings it back to beta when a real subject-to / wrap /
-    // lease-option surface actually exists.
-    maturity: "roadmap",
-    workflowTemplateIds: [],
-    spotlightModules: [],
-    integrations: [],
+    // 2026-07-29 (founder ruling #11, wave V2): roadmap → beta. V1 demoted
+    // this honestly (zero dedicated surface); V2 assembled the surface from
+    // the seller-finance rails that already shipped — verified against the
+    // tree, not hope:
+    //   - dedicated "Creative finance" sidebar module (layout-sidebar id
+    //     "creative-finance", businessTypeOnly creative_finance): /deals
+    //     pipeline, /finance carried-note book, /dodd-frank checker,
+    //     /regulatory-intel state rules — all routed in App.tsx and none
+    //     nav-hidden for this profile;
+    //   - the Close & Carry deal→note bridge: CarryNoteDialog on /deals/:id
+    //     → POST /api/notes/from-deal/:dealId (mapDealToNoteFields in
+    //     server/routes-notes.ts, pinned by tests/unit/carryNoteFromDeal
+    //     .test.ts) — a closed seller-finance deal becomes a serviced note
+    //     with no re-keying, landing "pending" behind the Reg-Z chokepoint;
+    //   - origination compliance: the Dodd-Frank checker page (/dodd-frank →
+    //     /api/dodd-frank/check), the ATR/Reg-Z §1026.43 activation gate
+    //     (AtrGate in the /finance note drawer), the RMLO advisor
+    //     (shared/regulatory/rmloAdvisor.ts), and amortization schedules on
+    //     every serviced note;
+    //   - /today "Creative-finance surfaces" cluster (today-vertical-
+    //     surfaces.ts) for the morning loop;
+    //   - onboarding CREATIVE_FINANCE_TEMPLATES (subject-to + lease-option
+    //     campaigns, tags, owner-carry note settings) + a seeded subject-to
+    //     lead/deal + note-shaped sample fixtures (server/services/
+    //     onboarding.ts).
+    // Known gap, stated: the Mortgage Notes module itself stays nav-hidden
+    // for this vertical (creative_finance derives orgInvestorType "land";
+    // byOrgInvestorType.land hides /notes) — the carried book is reached via
+    // the Finance door instead. The seller-finance workflow runs on deal/
+    // note rails and does NOT touch the residential-comps data plane, so the
+    // "no residential comps before its revenue trigger" hard-stop is
+    // unaffected (fix_and_flip stays roadmap for exactly that reason).
+    maturity: "beta",
+    // All four exist in workflow-engine.ts: deal close (with the
+    // seller-financed note-setup task), owner-finance note setup, missed-
+    // payment dunning, and the balloon 90-day countdown (balloons being a
+    // hallmark of wrap/owner-carry paper).
+    workflowTemplateIds: [
+      "tpl_deal_closed",
+      "tpl_note_setup",
+      "tpl_payment_missed_dunning",
+      "tpl_balloon_approaching",
+    ],
+    spotlightModules: ["deals", "finance", "dodd-frank", "regulatory-intel"],
+    // Serviced notes ride the same Stripe rails as the note vertical
+    // (payment links / Stripe Connect in the /finance note drawer).
+    integrations: ["stripe"],
   },
   developer: {
     id: "developer",

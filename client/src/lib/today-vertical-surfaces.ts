@@ -120,6 +120,29 @@ const REGISTRY: Array<{
     },
   },
   {
+    // V2 (founder ruling #11): creative finance = seller financing /
+    // subject-to / wrap / lease-option operators. Their morning loop runs on
+    // rails that already shipped: the deal pipeline (Close & Carry on the
+    // closed deal → serviced note), the carried book behind the Finance
+    // door, and the origination-compliance surfaces. Deliberately no /notes
+    // link — that route is nav-hidden for the "land" orgInvestorType this
+    // businessType derives (see sidebar-hidden-routes.ts); /finance is the
+    // carried-book surface that can never be hidden (protected door).
+    match: (i) => i.businessType === "creative_finance",
+    cluster: {
+      id: "creative-finance",
+      title: "Creative-finance surfaces",
+      description: "Seller-finance pipeline, Close & Carry into the serviced book, Dodd-Frank / Reg-Z checks, per-state seller-financing rules.",
+      priority: 55,
+      links: [
+        { label: "Pipeline", href: "/deals" },
+        { label: "Carried notes", href: "/finance" },
+        { label: "Dodd-Frank", href: "/dodd-frank" },
+        { label: "State rules", href: "/regulatory-intel" },
+      ],
+    },
+  },
+  {
     // Note investor matches on investorType (org-level), not businessType.
     // 'both' = land + notes mixed; we still surface notes because the rest
     // of the page already shows land-flavored content.

@@ -71,9 +71,11 @@ describe("PERSONAS registry — completeness", () => {
     }
   });
 
-  it("land_investing is the only production-ready vertical at launch", () => {
+  it("land_investing and wholesaling are the only production-ready verticals", () => {
+    // land_investing shipped production-ready at launch; wholesaling was
+    // deepened in wave V2 of ruling #11. The other four stay scaffolded.
     const productionReady = PAX_VERTICALS.filter((v) => PERSONAS[v].productionReady);
-    expect(productionReady).toEqual(["land_investing"]);
+    expect(productionReady).toEqual(["land_investing", "wholesaling"]);
   });
 
   it("scaffolded verticals include a [TODO: deepen] marker somewhere", () => {
@@ -82,6 +84,73 @@ describe("PERSONAS registry — completeness", () => {
       const haystack = JSON.stringify(PERSONAS[v]);
       expect(haystack).toMatch(/\[TODO: deepen/);
     }
+  });
+
+  it("production-ready verticals contain NO TODO markers of any kind", () => {
+    for (const v of PAX_VERTICALS) {
+      if (!PERSONAS[v].productionReady) continue;
+      const haystack = JSON.stringify(PERSONAS[v]);
+      expect(haystack).not.toContain("[TODO");
+      expect(haystack).not.toContain("TODO:");
+    }
+  });
+});
+
+describe("wholesaling — deepened to production (wave V2 of ruling #11)", () => {
+  const p = PERSONAS.wholesaling;
+
+  it("is production-ready with the correct identity", () => {
+    expect(p.vertical).toBe("wholesaling");
+    expect(p.verticalLabel).toBe("Wholesaling");
+    expect(p.productionReady).toBe(true);
+  });
+
+  it("matches the land_investing depth bar on every field", () => {
+    // land_investing is the quality bar: 12+ terminology entries, 5+
+    // mistakes, 7 metrics, 4 references, a rich deal shape, and a
+    // multi-paragraph appendix.
+    expect(p.domainTerminology.length).toBeGreaterThanOrEqual(10);
+    expect(p.commonMistakes.length).toBeGreaterThanOrEqual(5);
+    expect(p.keyMetrics.length).toBeGreaterThanOrEqual(6);
+    expect(p.expertReferences.length).toBeGreaterThanOrEqual(4);
+    expect(p.exampleDealShape.length).toBeGreaterThan(300);
+    expect(p.systemPromptAppendix.length).toBeGreaterThan(200);
+  });
+
+  it("no field carries a TODO or scaffold disclaimer", () => {
+    const haystack = JSON.stringify(p);
+    expect(haystack).not.toContain("[TODO");
+    expect(haystack).not.toContain("scaffolded");
+    expect(haystack).not.toContain("depth is roadmap");
+  });
+
+  it("voice is grounded in the real wholesale stack — assignment vs double close, EMD, state rules, TCPA", () => {
+    // Every one of these maps to shipped capability:
+    //   - assignment-vs-double-close state rules → wholesaler_state_rules (W-1)
+    //   - earnest-money / inspection-period discipline → earnest_money_holds (W-2)
+    //   - transactional funding → double_close_deals (W-3)
+    //   - buyer list / cash buyers → buyer_blasts + buyer analytics (W-4)
+    //   - TCPA-compliant outreach → tcpaCompliance + dncScrub + consentEvents
+    const haystack = JSON.stringify(p);
+    expect(haystack).toContain("double close");
+    expect(haystack).toMatch(/EMD|earnest money/i);
+    expect(haystack).toMatch(/inspection period/i);
+    expect(haystack).toContain("transactional fund");
+    expect(haystack).toMatch(/buyer list|cash buyer/i);
+    expect(haystack).toContain("TCPA");
+    expect(haystack).toMatch(/license.required|advertising.restricted/i);
+  });
+
+  it("keeps the compliance guardrail: flags for attorney review, never legal advice (immutable #12)", () => {
+    expect(p.systemPromptAppendix).toContain("never give legal advice");
+    expect(p.systemPromptAppendix).toContain("immutable #12");
+  });
+
+  it("MAO is glossed correctly as maximum allowable offer", () => {
+    // The old stub misglossed MAO as "maximum allowable offset".
+    const haystack = JSON.stringify(p);
+    expect(haystack).toContain("maximum allowable offer");
+    expect(haystack).not.toContain("allowable offset");
   });
 });
 

@@ -66,6 +66,8 @@ export type FinanceHero =
   | "portfolio"
   | "assignment"
   | "projectPnl"
+  | "lotEconomics"
+  | "certificates"
   | null;
 
 /** The five doors + the two top-bar surfaces, with their real routes. */
@@ -479,7 +481,7 @@ const SEEDS: PersonaSeed[] = [
     narrative: "Parent parcel → lots; needs the parcel map + subdivision editor; vocabulary 'Parent parcel'.",
     goals: ["Open the subdivision editor", "Use the parcel map", "Confirm 'Parent parcel' vocab"],
     expect: {
-      financeHero: "projectPnl",
+      financeHero: "lotEconomics",
       modulesVisible: ["/maps", "/parcels", "/deals"],
       modulesHidden: ["/notes", "/capital-markets"],
       vocab: { deals: ["Parent parcel"] },
@@ -496,7 +498,7 @@ const SEEDS: PersonaSeed[] = [
     narrative: "Reviews plats on a big tablet; map + GIS filters must be touch-usable.",
     goals: ["Touch-pan the parcel map", "Apply GIS filters", "Open a parcel detail"],
     expect: {
-      financeHero: "projectPnl",
+      financeHero: "lotEconomics",
       modulesVisible: ["/maps", "/parcels", "/deals"],
       modulesHidden: ["/notes"],
       vocab: {},
@@ -515,7 +517,7 @@ const SEEDS: PersonaSeed[] = [
     narrative: "Acquires via tax sales; needs the tax-delinquent module (redemption clock, auction worksheet).",
     goals: ["Open the redemption clock", "Use the auction worksheet", "Read state rules", "Vocabulary 'Tax-delinquent owner'/'Awarded'"],
     expect: {
-      financeHero: null,
+      financeHero: "certificates",
       modulesVisible: ["/redemption-clock", "/auction-worksheet", "/state-rules", "/deals"],
       modulesHidden: ["/notes"],
       vocab: { deals: ["Tax-delinquent owner"], money: ["Awarded"] },
@@ -532,7 +534,7 @@ const SEEDS: PersonaSeed[] = [
     narrative: "New to tax deeds; the redemption-clock empty state must teach the workflow.",
     goals: ["Find the redemption clock", "Add a target property", "Understand quiet title"],
     expect: {
-      financeHero: null,
+      financeHero: "certificates",
       modulesVisible: ["/redemption-clock", "/deals"],
       modulesHidden: ["/notes"],
       vocab: { deals: ["Tax-delinquent owner"] },
@@ -603,7 +605,7 @@ const SEEDS: PersonaSeed[] = [
     narrative: "Roadmap → subdivider persona; power user pushing a not-yet-shipped vertical hard.",
     goals: ["Confirm subdivider surfacing", "No broken builder-only pages", "Finance + deals usable"],
     expect: {
-      financeHero: "projectPnl",
+      financeHero: "lotEconomics",
       modulesVisible: ["/deals"],
       modulesHidden: ["/notes"],
       vocab: {},

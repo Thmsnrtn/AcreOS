@@ -16,6 +16,7 @@
  *   POST  /api/parcels/:id/basis-allocation     — (re)compute allocations
  *   GET   /api/parcels/:id/basis-allocation     — read current allocations
  *   POST  /api/lots/:childId/realize-cogs       — record COGS at sale
+ *   GET   /api/lots/economics-summary           — org-level lot-economics roll-up
  */
 
 import type { Express, Response } from "express";
@@ -25,6 +26,7 @@ import { db } from "./db";
 import {
   lotBasisAllocations,
   properties,
+  subdivisionPlans,
   BASIS_ALLOCATION_METHODS,
 } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
@@ -265,6 +267,59 @@ export function registerLotBasisRoutes(app: Express): void {
         });
 
         return res.json({ allocation: updated });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Org-level lot-economics roll-up ───────────────────────────────────────
+  // GET /api/lots/economics-summary — the Finance door's subdivider hero
+  // (wave V2, founder ruling #11 2026-07-28). Real org-scoped aggregates
+  // straight from subdivision_plans + lot_basis_allocations: plans on file,
+  // lots with allocated basis, lots sold (realized), and basis allocated vs
+  // sale proceeds where a closing was actually recorded. Customer-scoped —
+  // same isAuthenticated + getOrCreateOrg chain as the rest of this file.
+  // Single round-trip instead of computing client-side (mirrors the
+  // tax-certificates dashboard/summary pattern).
+  app.get(
+    "/api/lots/economics-summary",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+
+        const [{ plansCount = 0 } = {}] = await db
+          .select({ plansCount: sql<number>`COUNT(*)::int` })
+          .from(subdivisionPlans)
+          .where(eq(subdivisionPlans.organizationId, orgId));
+
+        const [agg = {
+          lotsAllocated: 0,
+          lotsSold: 0,
+          basisAllocatedCents: 0,
+          realizedSaleProceedsCents: 0,
+          realizedCogsCents: 0,
+        }] = await db
+          .select({
+            lotsAllocated: sql<number>`COUNT(*)::int`,
+            lotsSold: sql<number>`COUNT(*) FILTER (WHERE ${lotBasisAllocations.realizedAt} IS NOT NULL)::int`,
+            basisAllocatedCents: sql<number>`COALESCE(SUM(${lotBasisAllocations.allocatedBasisCents}), 0)::bigint`,
+            realizedSaleProceedsCents: sql<number>`COALESCE(SUM(${lotBasisAllocations.realizedSalePriceCents}) FILTER (WHERE ${lotBasisAllocations.realizedAt} IS NOT NULL), 0)::bigint`,
+            realizedCogsCents: sql<number>`COALESCE(SUM(${lotBasisAllocations.realizedCogsCents}) FILTER (WHERE ${lotBasisAllocations.realizedAt} IS NOT NULL), 0)::bigint`,
+          })
+          .from(lotBasisAllocations)
+          .where(eq(lotBasisAllocations.organizationId, orgId));
+
+        return res.json({
+          plansCount: Number(plansCount),
+          lotsAllocated: Number(agg.lotsAllocated),
+          lotsSold: Number(agg.lotsSold),
+          basisAllocatedCents: Number(agg.basisAllocatedCents),
+          realizedSaleProceedsCents: Number(agg.realizedSaleProceedsCents),
+          realizedCogsCents: Number(agg.realizedCogsCents),
+        });
       } catch (err) {
         return Errors.internal(res, err);
       }

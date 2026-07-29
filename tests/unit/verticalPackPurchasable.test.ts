@@ -62,12 +62,15 @@ describe("vertical pack purchasability", () => {
     expect(purchasableVerticalPacks().map((p) => p.key)).toContain("buy_and_hold");
   });
 
-  it("creative_finance has no pack and stays unsold while roadmap (ruling #11 honesty bar)", () => {
-    // 2026-07-29 truth pass: creative_finance demoted beta → roadmap (zero
-    // dedicated surface). There is deliberately NO vertical pack for it, so
-    // nothing creative-finance-shaped can be sold until wave V2 builds a
-    // real surface and flips the maturity back.
-    expect(getBusinessType("creative_finance")?.maturity).toBe("roadmap");
+  it("creative_finance is beta (ruling #11, wave V2) yet still has no pack — nothing to sell", () => {
+    // 2026-07-29 wave V2: creative_finance flipped roadmap → beta because a
+    // real surface now exists (Creative finance sidebar module + /today
+    // cluster + the Close & Carry deal→note bridge + Dodd-Frank/Reg-Z
+    // compliance stack — see the registry entry's evidence comment). There
+    // is still deliberately NO vertical pack for it: adding one is a
+    // pricing decision (founder hard-stop), not a maturity side effect —
+    // pinned here so a pack can't appear silently.
+    expect(getBusinessType("creative_finance")?.maturity).toBe("beta");
     const packVerticalIds = Object.values(VERTICAL_PACKS).map((p) => p.businessTypeId);
     expect(packVerticalIds).not.toContain("creative_finance");
   });
