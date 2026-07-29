@@ -645,6 +645,11 @@ function HomeRoute() {
 // Onboarding consolidation (Lens 5, 2026-05-27). Fresh signups land on
 // `/today` from the auth page; this gate intercepts them and routes
 // to `/onboarding-v2` until the org's `onboardingCompleted` flag flips.
+// Skip semantics (2026-07-29, founder ruling #12(b)): the wizard's
+// "Skip for now" hits POST /api/onboarding/skip, which marks onboarding
+// complete (skipped:true, nothing seeded) — so needsOnboarding goes false
+// and a skipped user is never re-gated. Only an explicit Settings
+// "Re-run onboarding" reset flips the flag back.
 // The fetch is unauthenticated-tolerant (returns null on 401) so the
 // gate never strands a user with a render error. Whilst the org
 // status is loading we render PageLoader rather than the page itself

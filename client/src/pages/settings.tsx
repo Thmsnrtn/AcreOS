@@ -825,13 +825,18 @@ export default function Settings() {
                     />
                   </div>
                   
+                  {/* Re-run onboarding — labeled for what it actually does
+                      (re-runs the setup wizard; there is no separate "tour").
+                      Reset PRESERVES the org's businessType/noteRole, and the
+                      wizard prefills from them — a re-run never flips the org
+                      back to the land_flipper default. */}
                   <div className="flex items-center justify-between gap-4 pt-4 border-t">
                     <div className="space-y-0.5">
-                      <Label className="text-base">Start Onboarding Tour</Label>
+                      <Label className="text-base">Re-run onboarding</Label>
                       <p className="text-sm text-muted-foreground">
-                        {settings?.onboardingCompleted 
-                          ? "Re-run the guided setup wizard to update your configuration"
-                          : "Complete the guided setup wizard to configure your account"}
+                        {settings?.onboardingCompleted
+                          ? "Run the setup wizard again — your business type and answers are kept and prefilled."
+                          : "Finish the setup wizard to configure your workspace."}
                       </p>
                     </div>
                     <Button
@@ -845,15 +850,11 @@ export default function Settings() {
                             headers: { "Content-Type": "application/json" },
                             credentials: "include",
                           });
-                          if (res.ok) {
-                            queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
-                            queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
-                            toast({
-                              title: "Onboarding reset",
-                              description: "Navigate to the Dashboard to start the setup wizard.",
-                            });
-                            window.location.href = "/";
-                          }
+                          if (!res.ok) throw new Error("Reset failed");
+                          queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/me/needs-onboarding"] });
+                          setLocation("/onboarding-v2");
                         } catch (error) {
                           toast({
                             title: "Couldn't reset onboarding",
@@ -866,7 +867,7 @@ export default function Settings() {
                       data-testid="button-restart-onboarding"
                     >
                       <RotateCcw className="w-4 h-4 mr-2" />
-                      {settings?.onboardingCompleted ? "Restart Tour" : "Start Tour"}
+                      {settings?.onboardingCompleted ? "Re-run onboarding" : "Resume onboarding"}
                     </Button>
                   </div>
                 </CardContent>

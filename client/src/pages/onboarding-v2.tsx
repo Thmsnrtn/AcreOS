@@ -7,7 +7,20 @@
  *   Step 1 — Workspace + business type (two inputs, one screen)
  *   Step 2 — Sample data (one big calm primary CTA; manual paths demoted to
  *             secondary text links, all inline — no window.open anywhere)
- *   Step 3 — Reveal ("Pax loaded 50 sample leads") → navigate /today
+ *   Step 3 — Reveal ("Pax loaded 50 sample leads") → navigate to the
+ *             vertical's finishing destination
+ *
+ * Founder ruling #12(b) — tailored / skippable / re-runnable:
+ *   - TAILORED: every one of the 15 registry verticals gets its own data-step
+ *     copy + finishing destination, data-driven from a single per-type map in
+ *     client/src/lib/onboarding-verticals.ts (no 15-way component fork).
+ *   - SKIPPABLE: a "Skip for now" affordance is visible in the header on
+ *     every step → POST /api/onboarding/skip (marks complete with
+ *     skipped:true, seeds nothing) → lands on /today. No fake progress.
+ *   - RE-RUNNABLE: Settings → "Re-run onboarding" calls POST
+ *     /api/onboarding/reset (which PRESERVES businessType/noteRole) and
+ *     routes back here; the wizard prefills from the stored onboardingData so
+ *     a re-run never silently flips the org back to the land_flipper default.
  *
  * Target: 3 taps + ~45-60 seconds from signup-complete to Today with realistic
  * state (Decision Queue, MorningBrief, Cash Strip). Hank-the-operator approved.
@@ -76,6 +89,11 @@ import { staggerContainer, staggerItem } from "@/lib/animations";
 import { clientLogger } from "@/lib/clientLogger";
 import type { Persona } from "@shared/models/auth";
 import { derivePersona, type BusinessType, type NoteRole } from "@shared/models/persona-mapping";
+import {
+  getVerticalOnboarding,
+  getDataStepCopy,
+  resolveWizardPrefill,
+} from "@/lib/onboarding-verticals";
 import "./styles/onboarding-v2.css";
 
 // ---------------------------------------------------------------------------
@@ -258,8 +276,12 @@ export default function OnboardingV2() {
   // Drives which persona we persist (invest/originate/service) and how the
   // data step is framed for that role's actual job.
   const [noteRole, setNoteRole] = useState<NoteRole>("invest");
+  // Once the user touches the type/role pickers, server prefill must never
+  // overwrite their in-progress selection.
+  const typeTouchedRef = useRef(false);
   const isNoteBusiness = businessType === "note_investor";
   const resolvedPersona = resolvePersona(businessType, noteRole);
+  const vertical = getVerticalOnboarding(businessType);
 
   // Data-path state (Step 2)
   const [dataPath, setDataPath] = useState<"sample" | "csv" | null>(null);
@@ -307,6 +329,27 @@ export default function OnboardingV2() {
       setWorkspaceName(orgData.name);
     }
   }, [orgData, workspaceName]);
+
+  // ── Re-run prefill ────────────────────────────────────────────────────────
+  // POST /api/onboarding/reset preserves businessType/noteRole in the org's
+  // onboardingData, so a re-run must start from the org's CURRENT type — not
+  // the land_flipper default. resolveWizardPrefill only yields values the
+  // registry recognizes; anything else leaves the wizard's defaults alone.
+  const { data: onboardingStatus } = useQuery<{
+    completed: boolean;
+    data?: Record<string, unknown>;
+  }>({
+    queryKey: ["/api/onboarding/status"],
+    enabled: !disclosureRequired,
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (typeTouchedRef.current) return;
+    const prefill = resolveWizardPrefill(onboardingStatus?.data);
+    if (prefill.businessType) setBusinessType(prefill.businessType);
+    if (prefill.noteRole) setNoteRole(prefill.noteRole);
+  }, [onboardingStatus]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
@@ -431,11 +474,24 @@ export default function OnboardingV2() {
   });
 
   const completeMutation = useMutation({
-    // W2.2: the finish screen drives toward the first OFFER, so completion
-    // can land on the Map (offer flow) as well as Today.
-    mutationFn: async (_destination?: "/today" | "/maps") => {
+    // The finish screen drives toward the vertical's first real job, so the
+    // destination is whatever the per-type config names (Map for land loops,
+    // rent roll for landlords, redemption clock for tax certs, …).
+    mutationFn: async (_destination?: string) => {
       const res = await apiRequest("POST", "/api/onboarding/complete", {
-        formData: { businessType, workspaceName },
+        formData: {
+          businessType,
+          orgName: workspaceName,
+          // noteRole is persisted server-side for the note vertical so a
+          // re-run prefills the same role.
+          ...(isNoteBusiness ? { noteRole } : {}),
+        },
+        // Sample-data opt-in. The server seeds by DEFAULT when this flag is
+        // absent, so it must be explicit: true only when the user actually
+        // took the sample-data path at step 2 (idempotent re-seed), false
+        // when they imported a CSV or chose to set up data later — those
+        // users must never get surprise sample records.
+        seedSampleData: sampleDataLoaded,
         path: "fast",
       });
       if (!res.ok) throw new Error("Failed to complete onboarding");
@@ -450,6 +506,32 @@ export default function OnboardingV2() {
     onError: (error) => {
       toast({
         title: getErrorTitle(error),
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Skip — honest and always available (header affordance on every step).
+  // POST /api/onboarding/skip marks onboarding complete with skipped:true and
+  // seeds NOTHING; the user lands in the real app with an empty workspace.
+  // Because the server flips onboardingCompleted, /api/me/needs-onboarding
+  // goes false and the OnboardingGate never re-gates a skipped user.
+  const skipMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/onboarding/skip", {});
+      if (!res.ok) throw new Error("Failed to skip onboarding");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me/needs-onboarding"] });
+      navigate("/today");
+    },
+    onError: (error) => {
+      toast({
+        title: "Couldn't skip onboarding",
         description: getErrorMessage(error),
         variant: "destructive",
       });
@@ -557,11 +639,11 @@ export default function OnboardingV2() {
   const handleGoToToday = async () => {
     await completeMutation.mutateAsync("/today");
   };
-  // W2.2 — the activation target is the first OFFER, not the sample-data
-  // load. The Map's parcel → blind-offer → hand-to-Pax flow is the fastest
-  // first win, so the finish screen's primary action lands there.
-  const handleMakeFirstOffer = async () => {
-    await completeMutation.mutateAsync("/maps");
+  // The activation target is the vertical's first real job — the per-type
+  // config names the destination (Map/offer for land loops, note book for
+  // paper, rent roll for landlords, redemption clock for tax certs, …).
+  const handleFinish = async () => {
+    await completeMutation.mutateAsync(vertical.finish.path);
   };
 
   // ── Motion: step transition ──────────────────────────────────────────────
@@ -591,42 +673,22 @@ export default function OnboardingV2() {
 
   const isPendingComplete = completeMutation.isPending;
 
-  // Step 2 copy + entrypoint, tailored to the resolved persona. The note
-  // roles each have a real first job that isn't "load 50 leads" — so we
-  // re-frame the data step and offer a direct link into that job's surface.
-  // Sample data + CSV stay available for everyone as the fast path.
-  const dataStepCopy = (() => {
-    switch (resolvedPersona) {
-      case "note_investor":
-        return {
-          title: <>Bring in <span className="ob2-title-italic">your portfolio.</span></>,
-          sub: "Your job is yield on paper you own. Import the notes you've acquired — payer, balance, rate, and payment — or load sample data first to see the book come alive.",
-          jobLabel: "Import your note portfolio",
-          jobHref: "/notes?action=new",
-        };
-      case "note_originator":
-        return {
-          title: <>Set up <span className="ob2-title-italic">origination.</span></>,
-          sub: "Your job is creating paper. Set your default rate and term, then turn deals into seller-financed notes — or load sample data first to see the pipeline.",
-          jobLabel: "Set origination terms",
-          jobHref: "/settings?tab=tax-compliance",
-        };
-      case "note_servicer":
-        return {
-          title: <>Bring in <span className="ob2-title-italic">your book.</span></>,
-          sub: "Your job is servicing notes for others. Import the serviced book and set your fee & escrow handling — or load sample data first to see delinquency and escrow tracking.",
-          jobLabel: "Import the serviced book",
-          jobHref: "/notes?action=new",
-        };
-      default:
-        return {
-          title: <>See AcreOS <span className="ob2-title-italic">in action.</span></>,
-          sub: "Pax can load 50 realistic leads right now so Today shows you exactly what the product does — Decision Queue, Morning Brief, Cash Strip, all live. Wipe them whenever you're ready.",
-          jobLabel: null as string | null,
-          jobHref: null as string | null,
-        };
-    }
-  })();
+  // Step 2 copy + entrypoint, tailored per vertical from the single per-type
+  // config (client/src/lib/onboarding-verticals.ts). The note vertical's
+  // three roles each override with their real first job ("load 50 leads"
+  // isn't it). Sample data + CSV stay available for everyone as the fast path.
+  const dataStep = getDataStepCopy(businessType, noteRole);
+  const dataStepCopy = {
+    title: (
+      <>
+        {dataStep.dataTitle[0]}{" "}
+        <span className="ob2-title-italic">{dataStep.dataTitle[1]}</span>
+      </>
+    ),
+    sub: dataStep.dataSub,
+    jobLabel: dataStep.jobLabel,
+    jobHref: dataStep.jobHref,
+  };
 
   // ── Skeleton while disclosure status loads ───────────────────────────────
   if (disclosureLoading) {
@@ -683,23 +745,37 @@ export default function OnboardingV2() {
           <span className="ob2-logo-mark" aria-hidden="true">A</span>
           AcreOS
         </div>
-        {/* Progress strip */}
-        <nav
-          className="ob2-progress"
-          aria-label={`Step ${stepIndex + 1} of ${totalSteps}`}
-        >
-          {STEPS.map((_, i) => (
-            <div
-              key={i}
-              className={cn(
-                "ob2-progress-pip",
-                i < stepIndex && "ob2-progress-pip--done",
-                i === stepIndex && "ob2-progress-pip--active",
-              )}
-              aria-hidden="true"
-            />
-          ))}
-        </nav>
+        <div className="flex items-center gap-4">
+          {/* Progress strip */}
+          <nav
+            className="ob2-progress"
+            aria-label={`Step ${stepIndex + 1} of ${totalSteps}`}
+          >
+            {STEPS.map((_, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "ob2-progress-pip",
+                  i < stepIndex && "ob2-progress-pip--done",
+                  i === stepIndex && "ob2-progress-pip--active",
+                )}
+                aria-hidden="true"
+              />
+            ))}
+          </nav>
+          {/* Skip — always visible, on every step. Honest: marks onboarding
+              skipped (no fake progress, nothing seeded) and lands in the app.
+              Onboarding can be re-run anytime from Settings. */}
+          <button
+            type="button"
+            className="ob2-link"
+            onClick={() => skipMutation.mutate()}
+            disabled={skipMutation.isPending || isPendingComplete}
+            data-testid="button-skip-onboarding"
+          >
+            {skipMutation.isPending ? "Skipping…" : "Skip for now"}
+          </button>
+        </div>
       </header>
 
       {/* Main content area — step transitions */}
@@ -761,7 +837,10 @@ export default function OnboardingV2() {
                   </span>
                   <RadioGroup
                     value={businessType}
-                    onValueChange={(v) => setBusinessType(v as BusinessType)}
+                    onValueChange={(v) => {
+                      typeTouchedRef.current = true;
+                      setBusinessType(v as BusinessType);
+                    }}
                     className="ob2-type-cards"
                     aria-labelledby="ob2-biztype-label"
                   >
@@ -808,7 +887,10 @@ export default function OnboardingV2() {
                     </summary>
                     <RadioGroup
                       value={businessType}
-                      onValueChange={(v) => setBusinessType(v as BusinessType)}
+                      onValueChange={(v) => {
+                      typeTouchedRef.current = true;
+                      setBusinessType(v as BusinessType);
+                    }}
                       className="ob2-type-cards"
                       aria-labelledby="ob2-biztype-label"
                     >
@@ -851,7 +933,10 @@ export default function OnboardingV2() {
                     </span>
                     <RadioGroup
                       value={noteRole}
-                      onValueChange={(v) => setNoteRole(v as NoteRole)}
+                      onValueChange={(v) => {
+                        typeTouchedRef.current = true;
+                        setNoteRole(v as NoteRole);
+                      }}
                       className="ob2-type-cards"
                       aria-labelledby="ob2-noterole-label"
                     >
@@ -1141,30 +1226,21 @@ export default function OnboardingV2() {
                       }
                 }
               >
-                {sampleDataLoaded || csvImportDone ? (
-                  <>
-                    {sampleDataLoaded ? "50 sample leads are" : "Your leads are"}{" "}
-                    loaded and Today is live. Now the real win: open a parcel on
-                    the Map, get a recommended blind offer, and hand it to Pax to
-                    draft — your first offer can be out the door in minutes.
-                  </>
-                ) : (
-                  <>
-                    Pax is ready. The fastest first win: open a parcel on the
-                    Map and make your first blind offer — Pax drafts it, you
-                    approve it. Data import waits on the checklist whenever you
-                    need it.
-                  </>
-                )}
+                {sampleDataLoaded
+                  ? "Sample data is loaded and Today is live. "
+                  : csvImportDone
+                    ? "Your leads are imported and Today is live. "
+                    : "Pax is ready — data can wait on the checklist whenever you need it. "}
+                {vertical.finish.blurb}
               </motion.p>
             </div>
 
             <footer className="ob2-footer">
               <Button
                 className="ob2-btn-primary w-full"
-                onClick={handleMakeFirstOffer}
+                onClick={handleFinish}
                 disabled={isPendingComplete}
-                data-testid="button-make-first-offer"
+                data-testid="button-finish-onboarding"
               >
                 {isPendingComplete ? (
                   <>
@@ -1175,18 +1251,20 @@ export default function OnboardingV2() {
                     Opening…
                   </>
                 ) : (
-                  "Make your first offer →"
+                  vertical.finish.cta
                 )}
               </Button>
-              <Button
-                variant="ghost"
-                className="w-full mt-2"
-                onClick={handleGoToToday}
-                disabled={isPendingComplete}
-                data-testid="button-go-to-today"
-              >
-                Go to Today instead
-              </Button>
+              {vertical.finish.path !== "/today" && (
+                <Button
+                  variant="ghost"
+                  className="w-full mt-2"
+                  onClick={handleGoToToday}
+                  disabled={isPendingComplete}
+                  data-testid="button-go-to-today"
+                >
+                  Go to Today instead
+                </Button>
+              )}
             </footer>
           </motion.main>
         )}
