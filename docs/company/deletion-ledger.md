@@ -86,7 +86,50 @@ correctness risks across 2+ machines. Disposition:
 
 ## Executed deletions (log)
 
-- 2026-07-09 — **Remote branch prune** (founder-requested) — **BLOCKED,
+- 2026-07-29 — **Nothing-lies wave A (agent A7)** — four honesty deletions/blocks:
+  - `server/routes-tax-optimization.ts` (105 LOC) deleted, with its
+    `routes.ts` registration and `routeManifest.ts` entry. 10 of its 11
+    endpoints returned 501; the one working endpoint
+    (`POST /api/tax-optimization/analyze`) had zero client callers. The real
+    tax-optimizer API is `/api/tax-optimizer/*` in `routes-misc.ts`.
+    (`services/taxOptimizationEngine.ts` is now consumer-less apart from a
+    `companyAgents.ts` ownership listing — candidate for a follow-up wave.)
+  - `client/src/pages/field-scout.tsx` (~1,600 LOC) +
+    `client/src/components/field-scout/*` (5 files) deleted, plus the
+    dangling `FieldScoutPage` lazy import in `App.tsx` and the dead
+    `/field-scout` FAB-suppression prefix in `MobileBottomNav.tsx`. The
+    `/field-scout` route had already been removed, leaving the page
+    unreachable from any surface. Server `routes-field-scout.ts` (mounted,
+    tested) kept — DriveMode's `/api/field-scout/quick-add` lives in
+    `routes-drive-mode.ts`; the visits/photos API is now consumer-less and is
+    a candidate for a follow-up wave.
+  - EDDM demo-geometry queue **hard-blocked**: `POST /api/outreach/mail/eddm/queue`
+    now returns an honest 400 (nothing queued, no credits charged) instead of
+    inserting a real `mail_shipments` row against synthetic carrier routes
+    that the mailFlusher would have handed to a real provider with placeholder
+    addresses. Client Queue button disabled while routes are demo, with the
+    reason shown. Pinned by `tests/unit/routes-eddm.test.ts`.
+  - `/deals/discover` pretend-surface retired: route now redirects to `/deals`
+    (it rendered the identical DealsPage), and the sidebar "Discover" child
+    entry advertising a non-existent "scored opportunities + hunter + feed +
+    patterns" surface was deleted.
+  - Verified (item a of the audit): `offer-wizard.tsx` no longer exists in the
+    repo and no code references to the killed `/api/negotiation/pipeline/*`
+    endpoints remain (docs/ledger mentions only).
+
+- 2026-07-29 — **/automation rules twin** (Wave A "Nothing lies", agent A2).
+  Deleted the dead parallel automation surface: `client/src/pages/automation.tsx`
+  (778 LOC, full rules CRUD UI), the `/api/automation-rules` +
+  `/api/automation-executions` endpoint block in `server/routes-analytics.ts`,
+  and the automation-rule/execution methods in
+  `server/storage/automationRepo.ts` (+ their IStorage declarations). Rationale:
+  the surface had NO execution engine — `createAutomationExecution` had zero
+  call sites — so customers could author rules that could never run
+  (fabricated capability). `/automation` now redirects to `/workflows`, the
+  real engine-backed surface. The `automation_rules` / `automation_executions`
+  tables remain in `shared/schema.ts` pending a drop migration (execution
+  rule 2). The repo module itself survives (its tasks / notifications /
+  activity-feed / job-cursor methods are live). — **BLOCKED,
   needs founder's own credentials**. Seven stale branches were vetted for
   deletion and their tip SHAs recorded below for recovery, but the actual
   remote deletion is impossible from the agent environment: the session's

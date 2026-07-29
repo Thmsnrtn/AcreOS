@@ -5,6 +5,7 @@ import { paxScheduledTaskRuns } from "@shared/schema";
 import type { PaxScheduledTask } from "@shared/schema";
 import type { Organization } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { getPaxPauseState } from "./paxPause";
 
 // ── Schedule preset → next run time ─────────────────────────────────────────
 
@@ -205,6 +206,32 @@ export async function processPaxScheduledTasks(): Promise<void> {
         logger.warn(`[pax-scheduler] Org ${task.organizationId} not found for task ${task.id}`);
         continue;
       }
+
+      // ── Pax pause kill-switch (Workstream A honesty) ──────────────────
+      // pax.pausedUntil (written by /settings/pax) pauses ALL Pax automation
+      // for the org. Skip the run with a logged, recorded reason — never
+      // silently — and schedule the task to fire right when the pause lifts
+      // (or shortly, if the pause read failed and we're failing closed).
+      const pause = await getPaxPauseState(org.id);
+      if (pause.paused) {
+        const resumeAt =
+          pause.pausedUntil ?? new Date(Date.now() + 15 * 60 * 1000);
+        logger.info(
+          `[pax-scheduler] Skipping task ${task.id} "${task.name}" — Pax is paused for org ${org.id}` +
+            (pause.checkFailed
+              ? " (pause-state read failed; failing closed, retrying soon)"
+              : ` until ${pause.pausedUntil!.toISOString()}`),
+        );
+        await storage.updatePaxScheduledTask(task.id, {
+          nextRunAt: resumeAt,
+          lastRunStatus: "skipped_paused",
+          lastRunSummary: pause.checkFailed
+            ? "Skipped: could not verify the Pax pause setting (failing closed). Will retry shortly."
+            : `Skipped: Pax is paused until ${pause.pausedUntil!.toISOString()}. Resume in Settings → Pax controls.`,
+        });
+        continue;
+      }
+
       await executeTask(task, org);
     } catch (err: any) {
       logger.error(`[pax-scheduler] Unexpected error for task ${task.id}`, err);

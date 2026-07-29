@@ -23,13 +23,13 @@ import { Errors } from "./utils/errors";
 const router = Router();
 
 
-router.get("/", (req: Request, res: Response) => {
+router.get("/", async (req: Request, res: Response) => {
   const org = req.organization;
-  const tests = listTests(org.id);
+  const tests = await listTests(org.id);
   res.json({ tests });
 });
 
-router.post("/", (req: Request, res: Response) => {
+router.post("/", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const { id, name, variants, metric } = req.body;
@@ -45,28 +45,28 @@ router.post("/", (req: Request, res: Response) => {
       return Errors.badRequest(res, "Variant weights must sum to 100");
     }
 
-    const test = createTest({ id, name, orgId: org.id, variants, metric });
+    const test = await createTest({ id, name, orgId: org.id, variants, metric });
     res.status(201).json(test);
   } catch (err) {
     Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
 });
 
-router.get("/:id", (req: Request, res: Response) => {
-  const test = getTest(req.params.id);
+router.get("/:id", async (req: Request, res: Response) => {
+  const test = await getTest(req.params.id, req.organization.id);
   if (!test) return Errors.notFound(res, "Test");
   res.json(test);
 });
 
-router.get("/:id/results", (req: Request, res: Response) => {
-  const test = getTest(req.params.id);
+router.get("/:id/results", async (req: Request, res: Response) => {
+  const test = await getTest(req.params.id, req.organization.id);
   if (!test) return Errors.notFound(res, "Test");
-  const results = getResults(test);
+  const results = await getResults(test);
   res.json(results);
 });
 
-router.get("/:id/variant/:leadId", (req: Request, res: Response) => {
-  const test = getTest(req.params.id);
+router.get("/:id/variant/:leadId", async (req: Request, res: Response) => {
+  const test = await getTest(req.params.id, req.organization.id);
   if (!test) return Errors.notFound(res, "Test");
   const leadId = parseInt(req.params.leadId);
   if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");

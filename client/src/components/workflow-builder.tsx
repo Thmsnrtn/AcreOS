@@ -37,6 +37,10 @@ import type {
   WorkflowActionType
 } from "@shared/schema";
 import { Verbs } from "@/lib/labels";
+import {
+  isLiveWorkflowTriggerEvent,
+  TRIGGER_NOT_LIVE_MESSAGE,
+} from "@shared/workflow-live-triggers";
 
 // ─── WorkflowConfig type (spec-compatible) ───────────────────────────────────
 
@@ -572,13 +576,32 @@ export function WorkflowBuilder({ open, onOpenChange, workflow, onSave, isSaving
                       {TRIGGER_OPTIONS.map((trigger) => (
                         <SelectItem key={trigger.value} value={trigger.value}>
                           <div className="flex flex-col">
-                            <span>{trigger.label}</span>
+                            <span className="flex items-center gap-2">
+                              {trigger.label}
+                              {!isLiveWorkflowTriggerEvent(trigger.value) && (
+                                <Badge variant="outline" className="text-xs font-normal">
+                                  Not yet live
+                                </Badge>
+                              )}
+                            </span>
                             <span className="text-xs text-muted-foreground">{trigger.description}</span>
                           </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {triggerEvent && !isLiveWorkflowTriggerEvent(triggerEvent) && (
+                    <div
+                      className="flex items-start gap-2 rounded-md border border-acr-warn/30 bg-acr-warn/5 px-3 py-2 mt-2"
+                      data-testid="trigger-not-live-notice"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5 text-acr-warn mt-0.5 shrink-0" aria-hidden="true" />
+                      <p className="text-xs text-acr-warn leading-snug">
+                        {TRIGGER_NOT_LIVE_MESSAGE} You can still save this workflow — it will
+                        activate automatically once the event goes live.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Conditions */}
@@ -1141,7 +1164,16 @@ export function WorkflowBuilderPanel({ onSave, onClose, existingWorkflow }: Work
                         {group}
                       </div>
                       {PANEL_TRIGGERS.filter((t) => t.group === group).map((t) => (
-                        <SelectItem key={t.event} value={t.event}>{t.label}</SelectItem>
+                        <SelectItem key={t.event} value={t.event}>
+                          <span className="flex items-center gap-2">
+                            {t.label}
+                            {!isLiveWorkflowTriggerEvent(t.event) && (
+                              <Badge variant="outline" className="text-xs font-normal">
+                                Not yet live
+                              </Badge>
+                            )}
+                          </span>
+                        </SelectItem>
                       ))}
                     </span>
                   ))}
@@ -1152,6 +1184,18 @@ export function WorkflowBuilderPanel({ onSave, onClose, existingWorkflow }: Work
                   <Zap className="w-3.5 h-3.5 text-acr-warn shrink-0" />
                   <p className="text-xs text-foreground">
                     <strong>When:</strong> {panelGetTriggerLabel(triggerEvent)}
+                  </p>
+                </div>
+              )}
+              {triggerEvent && !isLiveWorkflowTriggerEvent(triggerEvent) && (
+                <div
+                  className="flex items-start gap-2 rounded-md border border-acr-warn/30 bg-acr-warn/5 px-3 py-2"
+                  data-testid="panel-trigger-not-live-notice"
+                >
+                  <AlertCircle className="w-3.5 h-3.5 text-acr-warn mt-0.5 shrink-0" aria-hidden="true" />
+                  <p className="text-xs text-acr-warn leading-snug">
+                    {TRIGGER_NOT_LIVE_MESSAGE} You can still save this workflow — it will
+                    activate automatically once the event goes live.
                   </p>
                 </div>
               )}

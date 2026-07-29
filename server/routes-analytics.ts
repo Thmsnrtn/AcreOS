@@ -9,7 +9,6 @@ import { eq, and, gte, lte, count, sql, desc } from "drizzle-orm";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
-import { omitProtectedFields } from "./utils/updatePayload";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 
@@ -209,93 +208,13 @@ export function registerAnalyticsRoutes(app: Express): void {
   });
 
   // ============================================
-  // AUTOMATION RULES (Phase 8.1)
+  // AUTOMATION RULES — REMOVED (Wave A "Nothing lies", 2026-07-29).
+  // The /api/automation-rules CRUD + /api/automation-executions endpoints
+  // backed a dead parallel automation surface: rules could be authored but
+  // no execution engine ever ran them (createAutomationExecution had zero
+  // call sites). The real, engine-backed surface is /api/workflows
+  // (server/services/workflow-engine.ts). See docs/company/deletion-ledger.md.
   // ============================================
-
-  // GET /api/automation-rules - List all automation rules
-  api.get("/api/automation-rules", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const rules = await storage.getAutomationRules(org.id);
-      res.json(rules);
-    } catch (error: any) {
-      logger.error("Get automation rules error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  // GET /api/automation-rules/:id - Get single rule
-  api.get("/api/automation-rules/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const id = parseInt(req.params.id);
-      const rule = await storage.getAutomationRule(org.id, id);
-      if (!rule) {
-        return Errors.notFound(res, "Automation rule");
-      }
-      res.json(rule);
-    } catch (error: any) {
-      logger.error("Get automation rule error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  // POST /api/automation-rules - Create new rule
-  api.post("/api/automation-rules", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const user = req.user as any;
-      const userId = user?.id || user.id;
-      
-      const rule = await storage.createAutomationRule({
-        ...req.body,
-        organizationId: org.id,
-        createdBy: userId,
-      });
-      res.status(201).json(rule);
-    } catch (error: any) {
-      logger.error("Create automation rule error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  // PUT /api/automation-rules/:id - Update rule
-  api.put("/api/automation-rules/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const id = parseInt(req.params.id);
-      
-      const existing = await storage.getAutomationRule(org.id, id);
-      if (!existing) {
-        return Errors.notFound(res, "Automation rule");
-      }
-      
-      const updated = await storage.updateAutomationRule(id, omitProtectedFields(req.body));
-      res.json(updated);
-    } catch (error: any) {
-      logger.error("Update automation rule error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  // DELETE /api/automation-rules/:id - Delete rule
-  api.delete("/api/automation-rules/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const id = parseInt(req.params.id);
-      
-      const existing = await storage.getAutomationRule(org.id, id);
-      if (!existing) {
-        return Errors.notFound(res, "Automation rule");
-      }
-      
-      await storage.deleteAutomationRule(id);
-      res.json({ success: true });
-    } catch (error: any) {
-      logger.error("Delete automation rule error", error);
-      Errors.internal(res, error);
-    }
-  });
 
   // ============================================
   // WORKSPACE PRESETS - Power User Features
@@ -346,41 +265,6 @@ export function registerAnalyticsRoutes(app: Express): void {
       res.json({ success: true });
     } catch (error: any) {
       logger.error("Delete workspace preset error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  // POST /api/automation-rules/:id/toggle - Toggle rule enabled status
-  api.post("/api/automation-rules/:id/toggle", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const id = parseInt(req.params.id);
-      const { enabled } = req.body;
-      
-      const existing = await storage.getAutomationRule(org.id, id);
-      if (!existing) {
-        return Errors.notFound(res, "Automation rule");
-      }
-      
-      const updated = await storage.toggleAutomationRule(id, enabled);
-      res.json(updated);
-    } catch (error: any) {
-      logger.error("Toggle automation rule error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  // GET /api/automation-executions - Get execution log
-  api.get("/api/automation-executions", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const ruleId = req.query.ruleId ? parseInt(req.query.ruleId as string) : undefined;
-      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
-      
-      const executions = await storage.getAutomationExecutions(org.id, ruleId, limit);
-      res.json(executions);
-    } catch (error: any) {
-      logger.error("Get automation executions error", error);
       Errors.internal(res, error);
     }
   });

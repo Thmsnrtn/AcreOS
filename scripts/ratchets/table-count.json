@@ -4,7 +4,7 @@
   "pattern": "pgTable\\(",
   "globs": ["shared/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/*.spec.ts"],
-  "baselineCount": 747,
+  "baselineCount": 752,
   "direction": "down",
-  "lastBumpNote": "746 -> 747 on 2026-07-28: open_data_change_events (Temporal Spine, founder ruling #9 wave 3 in docs/company/founder-decisions-2026-07-28.md). Append-only open-data change event stream — a genuinely new data shape, not consolidatable into an existing table. Deliberate bump per this ratchet's own procedure."
+  "lastBumpNote": "747 -> 752 on 2026-07-29: abTestOutcomes/marketWatchlist persistence tables (founder ruling #12(c) Wave A — 'Nothing lies': three shipped features ran on in-memory Maps that vanished on every restart). Deliberate bump per this ratchet's own procedure. The five: market_watchlist_entries, market_watchlist_alerts, outreach_ab_tests, outreach_ab_outcomes (T117 + T22), plus investor_verification_requests for the KYC state machine ported in the same wave."
 }

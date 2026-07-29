@@ -33,7 +33,6 @@ import {
   rentCharges,
   rentPayments,
   lateFeeRules,
-  properties,
 } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
@@ -306,23 +305,68 @@ export function registerRentLedgerRoutes(app: Express): void {
       const [lease] = await db.select().from(rentalLeases).where(eq(rentalLeases.id, charge.leaseId as string));
       if (!lease) return Errors.notFound(res, "Lease");
 
-      // Unit count from property.
-      const [prop] = await db.select({ id: properties.id }).from(properties)
-        .where(eq(properties.id, lease.propertyId));
-      // We don't have a unit_count on properties yet — assume 1 SFR / 4+ multifam
-      // based on lease.unitLabel presence. Conservative: small_property by default.
-      const unitCount = lease.unitLabel ? 4 : 1;
+      // Unit count — derived from real data, never a guess. Statutory caps
+      // (e.g. Tex. Prop. Code §92.019 keys its percentage off the property's
+      // unit count) must not ride on a heuristic that can overcharge a
+      // tenant. properties has no unit_count column yet, so the only ground
+      // truth we hold is the number of DISTINCT units this org has ever put
+      // on a lease at this property — a floor on the true unit count:
+      //   - floor >= 4 → the large-property branch applies with certainty;
+      //   - floor <  4 → the true count is unknowable from our data, so we
+      //     compute the fee under BOTH branches, charge the LOWER one
+      //     (legally conservative — never overcharges the tenant under
+      //     either reality), and log that the conservative branch was used.
+      const unitCountRow = await db.execute(sql`
+        SELECT COUNT(DISTINCT COALESCE(unit_label, ''))::int AS c
+        FROM rental_leases
+        WHERE property_id = ${lease.propertyId}
+          AND organization_id = ${orgId}
+      `);
+      // drizzle's execute() result shape is driver-dependent (node-postgres
+      // wraps rows in `.rows`; others return the array directly). Narrow to a
+      // precise row shape rather than `as any`: this figure picks the statutory
+      // late-fee cap, and an untyped hop is exactly where a mispriced charge
+      // hides. `as unknown as <shape>` keeps the property access type-checked.
+      const unitCountRows: Array<{ c?: number }> = Array.isArray(unitCountRow)
+        ? (unitCountRow as unknown as Array<{ c?: number }>)
+        : ((unitCountRow as unknown as { rows?: Array<{ c?: number }> }).rows ?? []);
+      const knownUnitCount = Math.max(1, Number(unitCountRows[0]?.c ?? 0) || 0);
 
       const today = new Date();
       const due = new Date(charge.dueDate);
       const daysLate = Math.floor((today.getTime() - due.getTime()) / 86_400_000);
 
-      const result = await computeLateFee(orgId, {
+      const feeCtxBase = {
         monthlyRentCents: lease.monthlyRentCents,
         daysLate,
-        unitCount,
         state: lease.state,
-      });
+      };
+
+      let result: Awaited<ReturnType<typeof computeLateFee>>;
+      if (knownUnitCount >= 4) {
+        result = await computeLateFee(orgId, { ...feeCtxBase, unitCount: knownUnitCount });
+      } else {
+        const asSmall = await computeLateFee(orgId, { ...feeCtxBase, unitCount: knownUnitCount });
+        const asLarge = await computeLateFee(orgId, { ...feeCtxBase, unitCount: 4 });
+        result = asLarge.feeCents < asSmall.feeCents ? asLarge : asSmall;
+        if (asSmall.feeCents !== asLarge.feeCents) {
+          result = {
+            ...result,
+            explanation:
+              `${result.explanation} Property unit count not on record — ` +
+              "lower-fee cap branch applied (tenant-conservative).",
+          };
+          logger.warn("[BH-3] unit count unknowable — tenant-conservative late-fee branch applied", {
+            orgId,
+            leaseId: lease.id,
+            propertyId: lease.propertyId,
+            knownUnitCount,
+            smallBranchFeeCents: asSmall.feeCents,
+            largeBranchFeeCents: asLarge.feeCents,
+            appliedFeeCents: result.feeCents,
+          });
+        }
+      }
 
       if (result.feeCents > 0) {
         await db.update(rentCharges).set({

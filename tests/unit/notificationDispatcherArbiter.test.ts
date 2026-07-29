@@ -17,8 +17,29 @@ vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-// dispatcher imports db/sql at module load; it never queries in dispatch().
-vi.mock("../../server/db", () => ({ db: {} }));
+// Wave A: the dispatcher now persists through storage (dynamic import) and
+// resolves the founder recipient — mock both so this suite stays hermetic
+// (no DATABASE_URL, no heavy storage module graph).
+vi.mock("../../server/storage", () => {
+  let nextId = 1;
+  return {
+    storage: {
+      createNotification: vi.fn(async (n: any) => ({
+        id: nextId++,
+        isRead: false,
+        readAt: null,
+        createdAt: new Date(),
+        ...n,
+      })),
+      getNotifications: vi.fn(async () => []),
+      markNotificationRead: vi.fn(async () => undefined),
+    },
+  };
+});
+vi.mock("../../server/services/founder", () => ({
+  getFounderPrimaryOrgId: vi.fn(async () => 1),
+  getFounderUserIds: vi.fn(async () => ["founder_user"]),
+}));
 
 const ORG_BROADCASTS: Array<{ orgId: number; event: string }> = [];
 const FOUNDER_BROADCASTS: Array<{ channel: string; eventType: string }> = [];
@@ -73,6 +94,7 @@ beforeEach(() => {
   DEFERRALS.length = 0;
   arbiterMode = "deliver";
   vi.mocked(logger.info).mockClear();
+  vi.mocked(logger.warn).mockClear();
   vi.mocked(logger.error).mockClear();
 });
 
@@ -122,10 +144,15 @@ describe("founder legs vs customer-facing org broadcast", () => {
     expect(FOUNDER_BROADCASTS).toEqual([
       { channel: "founder:activity", eventType: "agent:escalation" },
     ]);
-    const smsLogs = vi
-      .mocked(logger.info)
-      .mock.calls.filter(([msg]) => String(msg).includes("SMS queued"));
-    expect(smsLogs).toHaveLength(1);
+    // Wave A honesty: the SMS rail is not wired, so the urgent SMS leg is
+    // recorded channel_unavailable (warn log) — never a fabricated "queued".
+    const smsUnavailableLogs = vi
+      .mocked(logger.warn)
+      .mock.calls.filter(([msg]) => String(msg).includes("sms rail not wired"));
+    expect(smsUnavailableLogs).toHaveLength(1);
+    expect(
+      vi.mocked(logger.info).mock.calls.filter(([msg]) => String(msg).includes("queued")),
+    ).toHaveLength(0);
   });
 
   it("suppress (Class C) → org broadcast still fires; founder broadcast, SMS and email do not", async () => {
@@ -140,9 +167,10 @@ describe("founder legs vs customer-facing org broadcast", () => {
 
     expect(ORG_BROADCASTS).toHaveLength(1);
     expect(FOUNDER_BROADCASTS).toHaveLength(0);
+    // Suppressed founder legs record "suppressed" — no rail warns, no sends.
     const founderLegLogs = vi
-      .mocked(logger.info)
-      .mock.calls.filter(([msg]) => String(msg).includes("SMS queued") || String(msg).includes("Email queued"));
+      .mocked(logger.warn)
+      .mock.calls.filter(([msg]) => String(msg).includes("rail not wired"));
     expect(founderLegLogs).toHaveLength(0);
     expect(DEFERRALS).toHaveLength(0); // suppression is not a deferral
   });

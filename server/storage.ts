@@ -93,8 +93,6 @@ import {
   type Signature, type InsertSignature,
   type DocumentVersion, type InsertDocumentVersion,
   type DocumentPackage, type InsertDocumentPackage,
-  type AutomationRule, type InsertAutomationRule,
-  type AutomationExecution, type InsertAutomationExecution,
   type Notification, type InsertNotification,
   type ActivityLogEntry,
   type JobCursor,
@@ -791,17 +789,9 @@ export interface IStorage {
     lossReasons: { reason: string; count: number }[];
   }>;
 
-  // Automation Rules (8.1)
-  getAutomationRules(orgId: number): Promise<AutomationRule[]>;
-  getAutomationRule(orgId: number, id: number): Promise<AutomationRule | undefined>;
-  createAutomationRule(rule: InsertAutomationRule): Promise<AutomationRule>;
-  updateAutomationRule(id: number, updates: Partial<InsertAutomationRule>): Promise<AutomationRule>;
-  deleteAutomationRule(id: number): Promise<void>;
-  toggleAutomationRule(id: number, enabled: boolean): Promise<AutomationRule>;
-  
-  // Automation Executions
-  getAutomationExecutions(orgId: number, ruleId?: number, limit?: number): Promise<AutomationExecution[]>;
-  createAutomationExecution(execution: InsertAutomationExecution): Promise<AutomationExecution>;
+  // Automation Rules (8.1) — REMOVED (Wave A "Nothing lies", 2026-07-29):
+  // dead parallel /automation surface; rules could never run (no engine).
+  // The real automation data layer is workflows/workflow_runs below.
 
   // Enhanced Tasks (8.2)
   getMyTasks(orgId: number, userId: string): Promise<Task[]>;

@@ -40,6 +40,23 @@ These are the moat AcreOS keeps — but the founder plan defers paid data
 | Key(s) | Capability | Note |
 |---|---|---|
 | `REGRID_API_KEY` / `ATTOM_API_KEY` / `BATCHDATA_API_KEY` / `RAPIDAPI_KEY` | paid parcel / owner / comps data | free open-data (FEMA/USDA/USGS/Census) works with NO key; add these when volume justifies |
+
+**ATTOM — provisioned 2026-07-29 (founder).** An ATTOM key is live and was
+verified against the property API (HTTP 200, real record returned). It is on
+the **API Free Trial (30 days)** plan, so it lapses on/around **2026-08-28**
+unless converted to a paid plan. Two consequences worth tracking:
+
+- ATTOM is the sole routed source for **residential comps**
+  (`server/services/residentialComps.ts`, `allowProviders: ["attom"]` — no
+  land-comp fallback by design), which is what resolved fix_and_flip's stated
+  gap and moved it roadmap → beta. If the trial lapses, that vertical's comps
+  degrade to the honest "unavailable" path rather than silently guessing —
+  but it degrades, so the expiry is a real product event, not just billing.
+- The key value lives **only** in the deployment secret of the same name
+  (`server/routes-founder-integrations.ts` declares
+  `flySecretName: "ATTOM_API_KEY"`). It is never committed; `.env` is
+  gitignored. `scripts/vendor-health-probe.mjs` already probes this key by
+  name and is the right place to catch a lapse early.
 | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (or Cloudflare R2 S3 creds) | file storage — uploads, PDFs, reports | needed once document features are used |
 | `AWS_SES_FROM_EMAIL` (+ AWS creds) | the platform's OWN notification/briefing email | Clerk sends the AUTH emails; SES only for platform-originated notices |
 | `VITE_SENTRY_DSN` | error monitoring | pure ops hygiene |

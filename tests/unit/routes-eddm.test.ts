@@ -43,6 +43,13 @@ const fakeParcels = [
 ];
 
 let lastWhereArgs: unknown = null;
+// vi.mock factories are hoisted above module-level consts, so the spy has to
+// be hoisted with them — a plain `const` here is still in its temporal dead
+// zone when the factory runs (`insert:` is read eagerly, unlike the `where`
+// closure below, which is why only this one blew up).
+const { dbInsertSpy } = vi.hoisted(() => ({
+  dbInsertSpy: vi.fn(() => ({ values: () => ({ returning: async () => [{ id: 999 }] }) })),
+}));
 vi.mock("../../server/db", () => {
   const chain = {
     from: () => chain,
@@ -56,7 +63,7 @@ vi.mock("../../server/db", () => {
   return {
     db: {
       select: () => chain,
-      insert: () => ({ values: () => ({ returning: chain.returning }) }),
+      insert: dbInsertSpy,
     },
   };
 });
@@ -166,6 +173,41 @@ describe("routes-eddm", () => {
       // introspect drizzle SQL fragments cleanly, but the call should have
       // executed (non-null args).
       expect(lastWhereArgs).not.toBeNull();
+    });
+  });
+
+  // Nothing-lies wave A (2026-07-29): all carrier-route geometry this surface
+  // can produce is synthetic (synthesizeRoutes is the only source), so the
+  // queue endpoint must NEVER create a shipment. These tests pin the
+  // end-to-end block: a well-formed queue request is rejected with an honest
+  // 400 and nothing is written to the database.
+  describe("POST /api/outreach/mail/eddm/queue (hard-blocked on demo geometry)", () => {
+    it("rejects a well-formed queue request with 400 + honest copy, without touching the DB", async () => {
+      dbInsertSpy.mockClear();
+      const res = await request(app)
+        .post("/api/outreach/mail/eddm/queue")
+        .send({
+          routeIds: ["TX-hidalgo-R00", "TX-hidalgo-R01"],
+          pieceType: "postcard_4x6",
+          householdCount: 350,
+        });
+
+      expect(res.status).toBe(400);
+      // Honest copy: says WHY (demo geometry) and that nothing was queued/charged.
+      expect(res.body.message).toMatch(/demo geometry/i);
+      expect(res.body.message).toMatch(/nothing was queued/i);
+      expect(res.body.message).toMatch(/no credits were charged/i);
+      // No shipment / pieces rows were created.
+      expect(dbInsertSpy).not.toHaveBeenCalled();
+    });
+
+    it("still validates input shape first (422 on malformed body)", async () => {
+      dbInsertSpy.mockClear();
+      const res = await request(app)
+        .post("/api/outreach/mail/eddm/queue")
+        .send({ routeIds: [], pieceType: "postcard_4x6", householdCount: 0 });
+      expect(res.status).toBe(422);
+      expect(dbInsertSpy).not.toHaveBeenCalled();
     });
   });
 });

@@ -268,10 +268,21 @@ export class DigestService {
       );
   }
 
-  async processWeeklyDigests(): Promise<{ sent: number; failed: number }> {
+  /**
+   * Process due weekly digests.
+   *
+   * Honesty contract (Wave A, "Nothing lies"): a digest is counted `sent` and
+   * stamped delivered (lastSentAt) ONLY when the email provider actually
+   * accepted it. An unconfigured/failed send is counted `failed` with the
+   * reason logged and the subscription left unstamped so it retries on the
+   * next run. A subscriber with no email address is `skipped` (nothing to
+   * send to) and also left unstamped.
+   */
+  async processWeeklyDigests(): Promise<{ sent: number; failed: number; skipped: number }> {
     const subscriptions = await this.getSubscriptionsNeedingDigest('weekly');
     let sent = 0;
     let failed = 0;
+    let skipped = 0;
 
     for (const sub of subscriptions) {
       try {
@@ -310,14 +321,21 @@ export class DigestService {
               await this.markDigestSent(sub.userId, sub.organizationId);
               sent++;
             } else {
-              logger.info(`[Digest] Email delivery logged for org ${sub.organizationId}: ${result.error || 'No email provider configured'}`);
-              await this.markDigestSent(sub.userId, sub.organizationId);
-              sent++;
+              // NOT sent, NOT stamped — an unconfigured provider or a failed
+              // send must never be recorded as a delivery. Leaving lastSentAt
+              // untouched means this subscription is retried next run.
+              logger.warn(
+                `[Digest] Weekly digest NOT delivered for org ${sub.organizationId} (user ${sub.userId}): ${result.error || 'No email provider configured'} — will retry next run`
+              );
+              failed++;
             }
           } else {
-            logger.info(`[Digest] No email address for user ${sub.userId}`);
-            failed++;
+            logger.warn(`[Digest] Skipped weekly digest for org ${sub.organizationId}: no email address for user ${sub.userId}`);
+            skipped++;
           }
+        } else {
+          logger.warn(`[Digest] Skipped weekly digest: organization ${sub.organizationId} not found`);
+          skipped++;
         }
       } catch (error) {
         logger.error(`[Digest] Failed for org ${sub.organizationId}`, error);
@@ -325,7 +343,7 @@ export class DigestService {
       }
     }
 
-    return { sent, failed };
+    return { sent, failed, skipped };
   }
 }
 

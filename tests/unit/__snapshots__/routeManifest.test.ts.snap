@@ -256,7 +256,6 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-syndication.ts",
   "routes-tax-certificates.ts",
   "routes-tax-delinquent.ts",
-  "routes-tax-optimization.ts",
   "routes-tax-researcher.ts",
   "routes-tax-rules.ts",
   "routes-team-improvement.ts",

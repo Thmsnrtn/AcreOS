@@ -5,13 +5,16 @@
  * 1. Event type → channel mapping (defaults)
  * 2. Founder preferences (overrides defaults)
  *
- * Supported channels: in_app (WebSocket toast), email, sms
- * Push notifications are queued but not sent until Capacitor integration is complete.
+ * Delivery honesty (Wave A, "Nothing lies"):
+ * - Every notification is persisted to the `notifications` table (write-through)
+ *   so the tray survives restarts/deploys — the in-memory array is only a cache.
+ * - Channels without a real delivery rail (SMS / email / push — Wave C wires
+ *   them) record `channel_unavailable`, NEVER `sent`. The in-app leg (WebSocket
+ *   toast + persisted tray row) is the honest fallback that always carries the
+ *   notification.
  */
 
 import { wsServer } from "../websocket";
-import { db } from "../db";
-import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import {
   arbitrateFounderInterrupt,
@@ -44,6 +47,17 @@ interface ChannelConfig {
   founderClass: "B" | "C";
 }
 
+/**
+ * Honest per-channel delivery status (Wave A):
+ * - `sent`                — the leg actually executed against a real rail
+ * - `failed`              — the leg was attempted and errored
+ * - `channel_unavailable` — no real delivery rail exists for this channel yet
+ *                           (SMS/email/push until Wave C); nothing was sent
+ * - `suppressed`          — the interrupt arbiter deliberately held the
+ *                           founder-facing leg (deferral/suppression/failure)
+ */
+export type ChannelDeliveryStatus = "sent" | "failed" | "channel_unavailable" | "suppressed";
+
 // ─── Event → Channel Mapping ─────────────────────────────────────────────────
 
 const EVENT_CHANNEL_MAP: Record<string, ChannelConfig> = {
@@ -61,7 +75,7 @@ const EVENT_CHANNEL_MAP: Record<string, ChannelConfig> = {
 
 // ─── Notification Storage (in-app history) ───────────────────────────────────
 
-interface StoredNotification {
+export interface StoredNotification {
   id: string;
   eventType: string;
   title: string;
@@ -71,19 +85,45 @@ interface StoredNotification {
   read: boolean;
   createdAt: string;
   payload: Record<string, any>;
+  /** Honest per-leg delivery record (Wave A). */
+  delivery: Record<string, ChannelDeliveryStatus>;
+  /** True once the row is in the `notifications` table (survives restart). */
+  persisted: boolean;
+  /** DB row id in the `notifications` table, when persisted. */
+  dbId?: number;
 }
 
-// MODULE-STATE PIN (audit 2026-07-07): per-process, in-memory — on 2+ Fly
-// machines a notification written here on one machine is invisible on the
-// other, and all are lost on deploy. Fix before load-bearing use: persist to
-// the existing `notifications` table (shared/schema.ts) — tracked in
-// docs/company/deletion-ledger.md "Module-state residue".
-const notificationStore: StoredNotification[] = [];
 const MAX_NOTIFICATIONS = 200;
+/** Tray reads older than this trigger a background DB reconcile. */
+const REFRESH_INTERVAL_MS = 15_000;
+/** Marker so hydration only pulls rows this dispatcher wrote. */
+const METADATA_SOURCE = "notification_dispatcher";
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
-class NotificationDispatcher {
+export class NotificationDispatcher {
+  /**
+   * Write-through cache over the `notifications` table. The DB row is the
+   * source of truth (survives restart/deploy — module-state pin, audit
+   * 2026-07-07, resolved Wave A); this array only serves the sync tray API.
+   */
+  private store: StoredNotification[] = [];
+  private lastRefreshAt = 0;
+  private recipient: { orgId: number; userId: string } | null = null;
+  private readonly hydration: Promise<void>;
+
+  constructor() {
+    // Hydrate the tray cache from the DB so a restart loses nothing that was
+    // persisted. Fail-open with a logged error: the tray degrades to
+    // memory-only, it never blocks startup.
+    this.hydration = this.refreshFromDb("hydrate");
+  }
+
+  /** Resolves when initial DB hydration has completed (success or logged failure). */
+  whenReady(): Promise<void> {
+    return this.hydration;
+  }
+
   /**
    * Dispatch a notification event to the appropriate channels.
    */
@@ -104,13 +144,16 @@ class NotificationDispatcher {
       read: false,
       createdAt: new Date().toISOString(),
       payload: event.payload,
+      delivery: {},
+      persisted: false,
     };
 
-    // Store in history
-    notificationStore.unshift(notification);
-    if (notificationStore.length > MAX_NOTIFICATIONS) {
-      notificationStore.length = MAX_NOTIFICATIONS;
+    // Store in the tray cache (pull-based in-app leg — always available)
+    this.store.unshift(notification);
+    if (this.store.length > MAX_NOTIFICATIONS) {
+      this.store.length = MAX_NOTIFICATIONS;
     }
+    notification.delivery.in_app = "sent";
 
     // Jarvis 2.2 — the FOUNDER-facing legs (founder broadcast + SMS + email)
     // route through the interrupt arbiter. The org broadcast (customer-facing)
@@ -154,34 +197,55 @@ class NotificationDispatcher {
       founderLegsAllowed = false;
     }
 
-    // Route to channels
+    // Route to channels, recording an HONEST status per leg. A channel with
+    // no real rail is `channel_unavailable`, never `sent` — the in-app leg
+    // above is the degrade path that actually carries the notification.
     try {
       // Customer-facing org broadcast — always, never arbitrated.
-      await this.sendInAppOrg(event, notification);
+      const orgStatus = await this.sendInAppOrg(event, notification);
+      if (orgStatus) notification.delivery.in_app_org = orgStatus;
+
+      const wantsSms = isUrgent && config?.urgentChannel === "sms";
+      const wantsPush = isUrgent && config?.urgentChannel === "push";
+      const wantsEmail = channel === "email" || (isUrgent && channel !== "sms");
 
       if (founderLegsAllowed) {
-        await this.sendInAppFounder(event, notification);
+        notification.delivery.in_app_founder = await this.sendInAppFounder(event, notification);
 
-        // If urgent and has an urgent channel, also send there
-        if (isUrgent && config?.urgentChannel === "sms") {
-          await this.sendSms(event, notification);
+        if (wantsSms) notification.delivery.sms = this.recordChannelUnavailable("sms", notification);
+        if (wantsPush) notification.delivery.push = this.recordChannelUnavailable("push", notification);
+        if (wantsEmail) notification.delivery.email = this.recordChannelUnavailable("email", notification);
+        // Defensive: a default channel pointing at an unwired rail degrades
+        // to the in-app leg with honest status, same as above.
+        if ((channel === "sms" || channel === "push") && !notification.delivery[channel]) {
+          notification.delivery[channel] = this.recordChannelUnavailable(channel, notification);
         }
-
-        // Email for non-urgent but important
-        if (channel === "email" || (isUrgent && channel !== "sms")) {
-          await this.queueEmail(event, notification);
-        }
+      } else {
+        // Arbiter held the founder legs — record the hold, don't pretend.
+        notification.delivery.in_app_founder = "suppressed";
+        if (wantsSms) notification.delivery.sms = "suppressed";
+        if (wantsPush) notification.delivery.push = "suppressed";
+        if (wantsEmail) notification.delivery.email = "suppressed";
       }
     } catch (err: any) {
       logger.error(`[notification-dispatcher] Error dispatching ${event.eventType}`, err);
     }
+
+    // Persist with the final delivery record so the tray (and the honest
+    // statuses) survive restart. Fail-open with a loud log: a DB outage
+    // degrades to memory-only, it never blocks dispatch.
+    await this.persist(event, notification);
   }
 
   /**
    * In-app notification via WebSocket toast — customer-facing org broadcast.
    */
-  private async sendInAppOrg(event: NotificationEvent, notification: StoredNotification): Promise<void> {
-    if (event.orgId) {
+  private async sendInAppOrg(
+    event: NotificationEvent,
+    notification: StoredNotification,
+  ): Promise<ChannelDeliveryStatus | undefined> {
+    if (!event.orgId) return undefined;
+    try {
       wsServer.broadcastToOrg(event.orgId, "notification", {
         id: notification.id,
         title: notification.title,
@@ -191,6 +255,13 @@ class NotificationDispatcher {
         actionUrl: this.getActionUrl(event),
         createdAt: notification.createdAt,
       });
+      return "sent";
+    } catch (err) {
+      logger.error(
+        `[notification-dispatcher] org broadcast failed for ${event.eventType}`,
+        err instanceof Error ? err : undefined,
+      );
+      return "failed";
     }
   }
 
@@ -198,34 +269,149 @@ class NotificationDispatcher {
    * In-app notification via WebSocket toast — founder-facing broadcast
    * (arbitrated; Jarvis 2.2).
    */
-  private async sendInAppFounder(event: NotificationEvent, notification: StoredNotification): Promise<void> {
-    wsServer.broadcast("founder:activity", "notification", {
-      id: notification.id,
-      title: notification.title,
-      message: notification.message,
-      priority: event.priority,
-      eventType: event.eventType,
-      actionUrl: this.getActionUrl(event),
-    });
+  private async sendInAppFounder(
+    event: NotificationEvent,
+    notification: StoredNotification,
+  ): Promise<ChannelDeliveryStatus> {
+    try {
+      wsServer.broadcast("founder:activity", "notification", {
+        id: notification.id,
+        title: notification.title,
+        message: notification.message,
+        priority: event.priority,
+        eventType: event.eventType,
+        actionUrl: this.getActionUrl(event),
+      });
+      return "sent";
+    } catch (err) {
+      logger.error(
+        `[notification-dispatcher] founder broadcast failed for ${event.eventType}`,
+        err instanceof Error ? err : undefined,
+      );
+      return "failed";
+    }
   }
 
   /**
-   * SMS via Twilio (logs intent — actual sending requires Twilio credentials)
+   * SMS / email / push have NO delivery rail wired here yet (Wave C owns the
+   * rails). Record `channel_unavailable` honestly — never claim `sent`,
+   * never log "queued". The in-app leg carries the notification instead.
    */
-  private async sendSms(event: NotificationEvent, notification: StoredNotification): Promise<void> {
-    // Log SMS intent — actual sending handled by existing Twilio service
-    logger.info(`[notification-dispatcher] SMS queued: ${notification.title} — ${notification.message}`);
-    // In production, this would call twilioService.sendSms(founderPhone, message)
+  private recordChannelUnavailable(
+    channel: "sms" | "email" | "push",
+    notification: StoredNotification,
+  ): ChannelDeliveryStatus {
+    logger.warn(
+      `[notification-dispatcher] ${channel} rail not wired — recording channel_unavailable for "${notification.title}"; nothing was sent on ${channel}, the in-app leg carries this notification`,
+    );
+    return "channel_unavailable";
+  }
+
+  // ─── Persistence (notifications table — source of truth) ──────────────────
+
+  /**
+   * Resolve the founder recipient the dispatcher tray persists under. The
+   * tray is the founder's pull-based surface, so rows are keyed to the
+   * founder's primary org + user id; the originating customer org (if any)
+   * rides along in metadata.sourceOrgId.
+   */
+  private async resolveRecipient(): Promise<{ orgId: number; userId: string }> {
+    if (this.recipient) return this.recipient;
+    const { getFounderPrimaryOrgId, getFounderUserIds } = await import("./founder");
+    const orgId = await getFounderPrimaryOrgId();
+    const userIds = await getFounderUserIds();
+    this.recipient = { orgId, userId: userIds[0] ?? "founder" };
+    return this.recipient;
+  }
+
+  private async persist(event: NotificationEvent, notification: StoredNotification): Promise<void> {
+    try {
+      const { storage } = await import("../storage");
+      const recipient = await this.resolveRecipient();
+      const row = await storage.createNotification({
+        organizationId: recipient.orgId,
+        userId: recipient.userId,
+        type: notification.eventType,
+        title: notification.title,
+        message: notification.message,
+        metadata: {
+          source: METADATA_SOURCE,
+          trayId: notification.id,
+          priority: notification.priority,
+          channel: notification.channel,
+          payload: notification.payload,
+          delivery: notification.delivery,
+          sourceOrgId: event.orgId ?? null,
+        },
+      });
+      notification.dbId = row.id;
+      notification.persisted = true;
+    } catch (err) {
+      notification.persisted = false;
+      logger.error(
+        `[notification-dispatcher] failed to persist ${event.eventType} to the notifications table — this notification will NOT survive a restart`,
+        err instanceof Error ? err : undefined,
+      );
+    }
   }
 
   /**
-   * Queue email for batch delivery
+   * Reconcile the tray cache from the `notifications` table. Local-only
+   * (unpersisted) items are kept; a locally-set read flag wins over a stale
+   * DB row (the read write-back is fire-and-forget).
    */
-  private async queueEmail(event: NotificationEvent, notification: StoredNotification): Promise<void> {
-    // Log email intent — actual sending handled by existing email service
-    logger.info(`[notification-dispatcher] Email queued: ${notification.title} — ${notification.message}`);
-    // In production, this would call emailService.send(founderEmail, subject, body)
+  private async refreshFromDb(reason: string): Promise<void> {
+    try {
+      const { storage } = await import("../storage");
+      const recipient = await this.resolveRecipient();
+      const rows = await storage.getNotifications(recipient.orgId, recipient.userId, false);
+
+      const fromDb: StoredNotification[] = rows
+        .filter((r) => (r.metadata as any)?.source === METADATA_SOURCE)
+        .map((r) => {
+          const m = (r.metadata ?? {}) as Record<string, any>;
+          return {
+            id: typeof m.trayId === "string" ? m.trayId : String(r.id),
+            dbId: r.id,
+            eventType: r.type,
+            title: r.title,
+            message: r.message ?? "",
+            priority: typeof m.priority === "number" ? m.priority : 3,
+            channel: typeof m.channel === "string" ? m.channel : "in_app",
+            read: !!r.isRead,
+            createdAt:
+              r.createdAt instanceof Date
+                ? r.createdAt.toISOString()
+                : String(r.createdAt ?? new Date().toISOString()),
+            payload: (m.payload as Record<string, any>) ?? {},
+            delivery: (m.delivery as Record<string, ChannelDeliveryStatus>) ?? {},
+            persisted: true,
+          };
+        });
+
+      const byId = new Map<string, StoredNotification>(fromDb.map((n) => [n.id, n]));
+      for (const local of this.store) {
+        const dbItem = byId.get(local.id);
+        if (!dbItem) {
+          byId.set(local.id, local);
+        } else if (local.read && !dbItem.read) {
+          dbItem.read = true;
+        }
+      }
+
+      this.store = [...byId.values()]
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, MAX_NOTIFICATIONS);
+      this.lastRefreshAt = Date.now();
+    } catch (err) {
+      logger.error(
+        `[notification-dispatcher] ${reason}: failed to load persisted notifications — serving the in-memory view only`,
+        err instanceof Error ? err : undefined,
+      );
+    }
   }
+
+  // ─── Message / URL builders ────────────────────────────────────────────────
 
   /**
    * Build human-readable notification message from event payload
@@ -286,30 +472,48 @@ class NotificationDispatcher {
     }
   }
 
+  // ─── Tray API (sync — served from the write-through cache) ────────────────
+
   /**
-   * Get stored in-app notifications (for notification tray)
+   * Get stored in-app notifications (for notification tray). Served from the
+   * cache; a throttled background reconcile keeps the cache converging on
+   * the DB (other machines' writes appear within one tray poll).
    */
   getNotifications(limit: number = 50): StoredNotification[] {
-    return notificationStore.slice(0, limit);
+    if (Date.now() - this.lastRefreshAt > REFRESH_INTERVAL_MS) {
+      this.lastRefreshAt = Date.now();
+      void this.refreshFromDb("tray-read");
+    }
+    return this.store.slice(0, limit);
   }
 
   /**
-   * Mark a notification as read
+   * Mark a notification as read. Updates the cache synchronously and writes
+   * the read flag back to the DB fire-and-forget (poll/refresh reconciles).
    */
   markAsRead(notificationId: string): boolean {
-    const notif = notificationStore.find((n) => n.id === notificationId);
-    if (notif) {
-      notif.read = true;
-      return true;
+    const notif = this.store.find((n) => n.id === notificationId);
+    if (!notif) return false;
+    notif.read = true;
+    if (notif.dbId != null) {
+      const dbId = notif.dbId;
+      void import("../storage")
+        .then(({ storage }) => storage.markNotificationRead(dbId))
+        .catch((err) =>
+          logger.error(
+            `[notification-dispatcher] failed to persist read state for notification ${notificationId}`,
+            err instanceof Error ? err : undefined,
+          ),
+        );
     }
-    return false;
+    return true;
   }
 
   /**
    * Get unread count
    */
   getUnreadCount(): number {
-    return notificationStore.filter((n) => !n.read).length;
+    return this.store.filter((n) => !n.read).length;
   }
 }
 

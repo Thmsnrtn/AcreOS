@@ -743,6 +743,41 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     executedAt: new Date(),
   };
 
+  // ── Pax pause kill-switch (Workstream A honesty) ────────────────────────
+  // pax.pausedUntil (written by /settings/pax, org-level semantics — see
+  // server/services/paxPause.ts) pauses ALL autonomous action for the org.
+  // Org-scoped items are deferred until the pause lifts, with the skip
+  // reason logged — never silently. Checked BEFORE triage/LLM/execution so
+  // a paused org's item can neither auto-approve nor auto-execute.
+  if (item.organizationId != null) {
+    const { getPaxPauseState } = await import("./paxPause");
+    const pause = await getPaxPauseState(item.organizationId);
+    if (pause.paused) {
+      const resumeAt =
+        pause.pausedUntil ?? new Date(Date.now() + 4 * 60 * 60 * 1000);
+      result.decision = {
+        action: "defer",
+        confidence: 100,
+        reasoning: pause.checkFailed
+          ? `Pax pause state for org #${item.organizationId} could not be verified — failing closed and deferring.`
+          : `Pax is paused for org #${item.organizationId} until ${pause.pausedUntil!.toISOString()} (pax.pausedUntil kill switch). Deferred until the pause lifts.`,
+      };
+      result.executedAction = "skipped_pax_paused";
+      result.executionSuccess = true;
+      await db
+        .update(decisionsInboxItems)
+        .set({ status: "deferred", deferredUntil: resumeAt, updatedAt: new Date() })
+        .where(eq(decisionsInboxItems.id, item.id));
+      logger.info(
+        `[AutonomousExecutor] Skipping item #${item.id} — Pax is paused for org ${item.organizationId}` +
+          (pause.checkFailed
+            ? " (pause-state read failed; failing closed)"
+            : ` until ${pause.pausedUntil!.toISOString()}`),
+      );
+      return result;
+    }
+  }
+
   // ── Agent Attribution (Sovereign Company Protocol) ──
   const ownerAgent = companyAgentService.getOwnerForDecisionType(item.itemType);
   if (ownerAgent && !item.ownerAgentCodename) {

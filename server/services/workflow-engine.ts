@@ -10,6 +10,46 @@ import {
   WORKFLOW_ACTION_TYPES,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import {
+  LIVE_WORKFLOW_TRIGGER_EVENTS,
+  isLiveWorkflowTriggerEvent,
+} from "@shared/workflow-live-triggers";
+
+// Re-export the live-trigger source of truth for server-side consumers and
+// tests. The list itself lives in shared/ so the client (builder + gallery
+// badges) reads the exact same constant.
+export { LIVE_WORKFLOW_TRIGGER_EVENTS, isLiveWorkflowTriggerEvent };
+
+// ---------------------------------------------------------------------------
+// Action honesty (Wave A "Nothing lies", 2026-07-29).
+//
+// Some declared action types have NO real execution rail yet (send_email has
+// no delivery rail wired; run_agent_skill has no skill registry dispatch).
+// Their handlers must never fabricate success. Instead they return an
+// ActionUnavailableResult, and executeWorkflow records the step in the run
+// log with status "unavailable" — distinct from "completed" (it did happen)
+// and "failed" (it was attempted and errored). Nothing happened; the log
+// says so.
+// ---------------------------------------------------------------------------
+
+export const ACTION_STATUS_UNAVAILABLE = "unavailable" as const;
+
+export type ActionUnavailableResult = {
+  status: typeof ACTION_STATUS_UNAVAILABLE;
+  /** Plain-words explanation, surfaced verbatim in the run log. */
+  reason: string;
+  [key: string]: unknown;
+};
+
+export function isActionUnavailableResult(
+  result: unknown,
+): result is ActionUnavailableResult {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    (result as { status?: unknown }).status === ACTION_STATUS_UNAVAILABLE
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Pre-built workflow templates for land investing.
@@ -1787,12 +1827,26 @@ class WorkflowEngine {
 
         try {
           const result = await this.executeAction(action, context);
-          executionLog[i].status = "completed";
-          executionLog[i].completedAt = new Date().toISOString();
-          executionLog[i].result = result;
+          if (isActionUnavailableResult(result)) {
+            // The action has no real execution rail yet — nothing happened.
+            // Record it distinctly from "completed" so the run log never
+            // claims work that didn't occur, and do NOT merge the result
+            // into workflow variables (there is no real output to pass on).
+            // TODO(tsc): "unavailable" is not yet declared in the frozen
+            // shared WorkflowExecutionLogEntry status union; widen locally
+            // (same convention as ExtendedTriggerEvent above).
+            (executionLog[i] as { status: string }).status =
+              ACTION_STATUS_UNAVAILABLE;
+            executionLog[i].completedAt = new Date().toISOString();
+            executionLog[i].result = result;
+          } else {
+            executionLog[i].status = "completed";
+            executionLog[i].completedAt = new Date().toISOString();
+            executionLog[i].result = result;
 
-          if (result) {
-            Object.assign(context.variables, result);
+            if (result) {
+              Object.assign(context.variables, result);
+            }
           }
         } catch (actionError: any) {
           executionLog[i].status = "failed";
@@ -1885,14 +1939,27 @@ class WorkflowEngine {
   private async executeSendEmail(
     action: WorkflowAction,
     context: WorkflowExecutionContext
-  ): Promise<{ emailSent: boolean }> {
+  ): Promise<ActionUnavailableResult> {
+    // HONESTY (Wave A "Nothing lies"): workflow email has NO delivery rail
+    // wired — there is no emailService call here, and per the standing
+    // founder decision (2026-07-17) counterparty mail requires the org's
+    // own connected identity (BYO), which workflows can't use yet. Until
+    // that rail ships, this action must not pretend it sent anything.
+    // Do NOT flip this back to `{ emailSent: true }` without invoking a
+    // real send rail — tests/unit/workflowActionHonesty.test.ts pins this.
     const config = action.config;
     const to = this.interpolateTemplate(config.to || "", context.variables);
     const subject = this.interpolateTemplate(config.subject || "", context.variables);
-    const body = this.interpolateTemplate(config.body || "", context.variables);
 
-    logger.info(`[WorkflowEngine] Sending email to ${to}: ${subject}`);
-    return { emailSent: true };
+    logger.warn(
+      `[WorkflowEngine] send_email action is not yet wired to a delivery rail — no email was sent (to=${to}, subject="${subject}")`
+    );
+    return {
+      status: ACTION_STATUS_UNAVAILABLE,
+      emailSent: false,
+      reason:
+        "Email sending from workflows is not yet available: no delivery rail is wired, so no email was sent. This step will start working when workflow email ships (using your organization's own connected email identity).",
+    };
   }
 
   private async executeCreateTask(
@@ -1964,10 +2031,26 @@ class WorkflowEngine {
   private async executeRunAgentSkill(
     action: WorkflowAction,
     context: WorkflowExecutionContext
-  ): Promise<{ skillExecuted: boolean; result?: any }> {
+  ): Promise<ActionUnavailableResult> {
+    // HONESTY (Wave A "Nothing lies"): there is NO skill dispatch here — no
+    // registry lookup, no agent invocation. The skillIds referenced by
+    // templates (score_lead, find_matching_buyers) resolve in no registry.
+    // Until a real skill-execution rail is wired, this action must not
+    // pretend a skill ran. Do NOT flip this back to
+    // `{ skillExecuted: true }` without invoking a real skill rail —
+    // tests/unit/workflowActionHonesty.test.ts pins this.
     const config = action.config;
-    logger.info(`[WorkflowEngine] Running agent skill: ${config.skillId}`);
-    return { skillExecuted: true };
+    const skillId = config.skillId || "(none)";
+
+    logger.warn(
+      `[WorkflowEngine] run_agent_skill action is not yet wired to a skill-execution rail — skill "${skillId}" did not run`
+    );
+    return {
+      status: ACTION_STATUS_UNAVAILABLE,
+      skillExecuted: false,
+      skillId,
+      reason: `Agent skills in workflows are not yet available: skill "${skillId}" has no execution rail wired, so nothing ran. This step will start working when workflow skill execution ships.`,
+    };
   }
 
   private async executeSendNotification(

@@ -438,7 +438,10 @@ const NAV_MODULES: NavModule[] = [
     description: "Deal pipeline, leads + discovery",
     children: [
       { label: "Pipeline", icon: GitBranch, href: "/deals", description: "Kanban view of active deals" },
-      { label: "Discover", icon: Target, href: "/deals/discover", description: "Scored deal opportunities + hunter + feed + patterns" },
+      // "Discover" entry deleted 2026-07-29 (Nothing-lies wave A): the
+      // /deals/discover route rendered the same DealsPage as /deals — the
+      // advertised "scored opportunities + hunter + feed + patterns" surface
+      // does not exist. The route now redirects to /deals.
       // Leads folded in from the former top-level Leads door (2026-05-29):
       // leads feed the pipeline, so they live behind the Deals door.
       { label: "Leads", icon: ContactRound, href: "/leads", description: "Land seller leads CRM" },

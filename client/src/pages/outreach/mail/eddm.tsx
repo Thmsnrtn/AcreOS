@@ -8,8 +8,10 @@
  * tab.
  *
  * Carrier-route geometry today is a synthetic 5×4 grid stub — the demo
- * badge surfaces that fact, and the production wire-up lands when USPS BCG
- * permitting trips at $1k MRR. See routes-eddm.ts for the server side.
+ * badge surfaces that fact, the Queue button is disabled while routes are
+ * demo geometry, and the server hard-blocks the queue endpoint to match.
+ * The production wire-up lands when USPS BCG permitting trips at $1k MRR.
+ * See routes-eddm.ts for the server side.
  *
  * Engine choice: Mapbox stays here (per Pillar 8.3) — EDDM benefits from
  * Mapbox's data pipeline. Other surfaces are migrating to MapLibre.
@@ -378,8 +380,14 @@ export default function EddmTab() {
 
   const handleClear = () => setSelectedRouteIds(new Set());
 
+  // Demo geometry is never queueable — the server hard-blocks
+  // /api/outreach/mail/eddm/queue (400) while routes are synthetic, and the
+  // button below is disabled with the same explanation. Today ALL routes are
+  // synthetic (see routes-eddm.ts); this flips when real USPS BCG data lands.
+  const routesAreDemo = routesQuery.data?.synthetic === true;
+
   const handleQueue = async () => {
-    if (selectedRouteIds.size === 0 || selectedHouseholds === 0) return;
+    if (selectedRouteIds.size === 0 || selectedHouseholds === 0 || routesAreDemo) return;
     try {
       const result = await queueMutation.mutateAsync({
         routeIds: Array.from(selectedRouteIds),
@@ -604,9 +612,16 @@ export default function EddmTab() {
             <p className="text-xs text-muted-foreground">
               $0.31/household · EDDM postcard 4×6
             </p>
+            {routesAreDemo && (
+              <p className="text-xs text-muted-foreground" data-testid="text-eddm-demo-block">
+                Queueing is disabled: these are demo carrier routes, not real
+                USPS geometry. Real route data (and queueing) arrives with the
+                USPS BCG permit.
+              </p>
+            )}
           </div>
           <Button
-            disabled={selectedRouteIds.size === 0 || queueMutation.isPending}
+            disabled={selectedRouteIds.size === 0 || queueMutation.isPending || routesAreDemo}
             onClick={handleQueue}
             data-testid="button-eddm-queue"
           >

@@ -36,6 +36,41 @@ import {
 // INVESTOR VERIFICATION
 // ============================================
 
+// KYC verification requests — the request-level state machine
+// (pending → reviewing → approved | rejected | more_info_needed).
+// DB-BACKED (Wave A "Nothing lies", founder ruling #12(c), 2026-07-29):
+// this state previously lived in a module-level Map inside
+// server/services/investorVerification.ts and vanished on every
+// restart/deploy — losable KYC state. The two sibling tables below
+// (investor_verification_documents / investor_verification_history) carry
+// per-document uploads and the org-wide audit trail, but neither holds the
+// request entity itself (its id, status, submitted/reviewed timestamps,
+// accreditation attestation) — hence this table. `documents` and `history`
+// mirror the exact shapes the service API returns.
+export const investorVerificationRequests = pgTable("investor_verification_requests", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  investorProfileId: integer("investor_profile_id").references(() => investorProfiles.id).notNull(),
+  status: text("status").notNull().default("pending"), // pending | reviewing | approved | rejected | more_info_needed
+  documents: jsonb("documents").$type<Array<{ docType: string; fileData: any; uploadedAt: string }>>().notNull().default([]),
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: integer("reviewed_by"),
+  decision: text("decision"),
+  reason: text("reason"),
+  accreditationData: jsonb("accreditation_data").$type<{ netWorth: number; annualIncome: number }>(),
+  history: jsonb("history").$type<Array<{ status: string; changedAt: string; changedBy?: number; note?: string }>>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("investor_ver_requests_org_status_idx").on(table.organizationId, table.status),
+  index("investor_ver_requests_profile_created_idx").on(table.investorProfileId, table.createdAt),
+]);
+
+export const insertInvestorVerificationRequestSchema = createInsertSchema(investorVerificationRequests).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertInvestorVerificationRequest = z.infer<typeof insertInvestorVerificationRequestSchema>;
+export type InvestorVerificationRequest = typeof investorVerificationRequests.$inferSelect;
+
 // KYC document uploads for investor verification
 export const investorVerificationDocuments = pgTable("investor_verification_documents", {
   id: serial("id").primaryKey(),

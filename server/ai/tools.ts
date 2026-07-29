@@ -26,6 +26,7 @@ import {
   proposePendingAction,
   pendingActionArtifact,
 } from "../services/approvalKernel";
+import { getPaxPauseState, paxPauseRefusalMessage } from "../services/paxPause";
 
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
@@ -939,6 +940,69 @@ export const toolDefinitions = {
 // importers (executive.ts historical, appIntents catalog, MCP safe intents).
 export { APPROVAL_REQUIRED_TOOLS } from "../services/approvalKernel";
 
+// ── Pause-safe tools (Workstream A honesty — the Pax kill switch) ────────────
+// Explicit allowlist of tools with NO side effects beyond the conversation:
+// lookups, calculations, external READ-only research, and drafts that don't
+// send. While the org's Pax pause (pax.pausedUntil, written by /settings/pax)
+// is active, executeTool refuses every tool NOT on this list with an honest,
+// user-visible message — drafting isn't automation acting, but record writes,
+// sends, queue/campaign actions, and external triggers are.
+//
+// DEFAULT-DENY: a new tool is side-effecting until someone deliberately adds
+// it here. That is the safe failure mode for a kill switch.
+export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
+  // System / dashboard reads
+  "get_system_context",
+  "get_dashboard_stats",
+  "get_pipeline_summary",
+  // CRM / inventory / finance reads
+  "get_leads",
+  "get_lead_details",
+  "get_stale_leads",
+  "get_properties",
+  "get_property_details",
+  "get_property_enrichment",
+  "get_deals",
+  "get_tasks",
+  "get_notes",
+  "get_cashflow_summary",
+  // Pure calculations
+  "calculate_amortization",
+  "calculate_payment_schedule",
+  "calculate_roi",
+  // Analysis / research (reads external data, changes nothing of the user's)
+  "run_comps",
+  "run_comps_analysis",
+  "research_property",
+  "browse_web",
+  "extract_properties_from_text",
+  "retrieve_land_knowledge",
+  // Drafts that don't send (the pause promise: "Pax will still draft and ask")
+  "generate_offer",
+  "draft_offer",
+  "draft_outreach_message",
+  // Connector READS (their write counterparts — send_gmail, send_slack_message,
+  // create_stripe_payment_link, create_calendar_event, trigger_zapier/make —
+  // are deliberately absent)
+  "search_gmail",
+  "search_drive",
+  "get_drive_file",
+  "list_calendar_events",
+  "get_stripe_customer",
+  "list_stripe_payments",
+  "propstream_lookup",
+  "propstream_comps",
+  "batch_leads_skip_trace",
+  "search_mls_listings",
+  "get_mls_comps",
+  // Org memory — conversation-scoped notes, not actions on the world
+  "remember_fact",
+  "recall_facts",
+  // Sub-agents recurse through executeTool, so their side-effecting calls hit
+  // this same gate with the same org
+  "spawn_subagent",
+]);
+
 // Options threaded into executeTool by TRUSTED SERVER CODE only — never
 // derived from model output. See the witnessed-send kernel gate below.
 export interface ExecuteToolOptions {
@@ -996,6 +1060,36 @@ export async function executeTool(
         createdByUserId: options?.userId ?? null,
       });
       return { success: true, data: pendingActionArtifact(pending) };
+    }
+
+    // ── Pax pause kill-switch gate (Workstream A honesty, 2026-07-29) ──────
+    // /settings/pax writes pax.pausedUntil; THIS read is what makes that
+    // switch real at the tool chokepoint. While the org is paused, any tool
+    // not on the PAUSE_SAFE_TOOLS allowlist is refused with an honest,
+    // user-visible message — nothing executes, and nothing pretends to.
+    //
+    // Ordering is deliberate:
+    //  - AFTER the approval kernel: an unapproved approval-required send has
+    //    already been frozen as an ask above (asking is allowed while paused —
+    //    "Pax will still draft and ask, it just won't act").
+    //  - trustedApproval bypasses the gate: a human explicitly tapping "Send"
+    //    is the human acting, not Pax automation.
+    // Expiry is implicit — getPaxPauseState compares timestamps, so behavior
+    // resumes automatically the moment pausedUntil passes. On a failed pause
+    // read the gate fails CLOSED (refuses, saying the check failed).
+    if (!trustedApproval && !PAUSE_SAFE_TOOLS.has(toolName)) {
+      const pause = await getPaxPauseState(org.id);
+      if (pause.paused) {
+        logger.info("[executeTool] Refused side-effecting tool — Pax is paused for this org", {
+          orgId: org.id,
+          metadata: {
+            toolName,
+            pausedUntil: pause.pausedUntil?.toISOString() ?? null,
+            checkFailed: pause.checkFailed,
+          },
+        });
+        return { success: false, error: paxPauseRefusalMessage(pause) };
+      }
     }
 
     switch (toolName) {
