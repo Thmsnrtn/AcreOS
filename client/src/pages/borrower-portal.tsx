@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,6 +38,42 @@ type BorrowerLoanData = {
   note: Note & { property?: Property };
   payments: Payment[];
   borrower?: { firstName: string; lastName: string } | null;
+};
+
+/**
+ * What the server will actually do about autopay — the whole point of this
+ * shape. Before Wave C the Switch wrote one boolean and the page promised the
+ * payment would be collected automatically; nothing debited. The toggle now
+ * renders from THIS, so it can only promise collection when `mandate.armed` is
+ * true (a stored NACHA authorization with a confirmed bank instrument), and it
+ * is disabled with the server's own reason when ACH isn't available.
+ */
+type AutopayStatus = {
+  autopayEnabled: boolean;
+  nextPaymentDate: string | null;
+  mandate: {
+    armed: boolean;
+    status: "none" | "pending" | "active" | "revoked" | "invalid" | "superseded";
+    bankName: string | null;
+    accountLast4: string | null;
+    maxAmountCents: number | null;
+    scheduleDescription: string | null;
+    agreedAt: string | null;
+    authorizationTextVersion: string | null;
+  };
+  achAvailable: boolean;
+  achUnavailableReason: string | null;
+  achUnavailableMessage: string | null;
+  /** The VERBATIM authorization to render. Null when setup isn't offered. */
+  authorization: {
+    authorizationText: string;
+    authorizationTextVersion: string;
+    maxAmountCents: number;
+    scheduleDescription: string;
+    scheduledDebitCents: number;
+  } | null;
+  scheduledDebitCents: number;
+  statusMessage: string;
 };
 
 type PayoffQuote = {
@@ -398,7 +435,17 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   
   const [autopayEnabled, setAutopayEnabled] = useState(note.autoPayEnabled || false);
   const [isTogglingAutopay, setIsTogglingAutopay] = useState(false);
-  
+  // ACH autopay (Wave C). Until this loads we know the flag but not whether a
+  // debit could actually be created, so the switch stays disabled rather than
+  // offering something we can't yet promise.
+  const [autopayStatus, setAutopayStatus] = useState<AutopayStatus | null>(null);
+  const [isLoadingAutopayStatus, setIsLoadingAutopayStatus] = useState(true);
+  const [showAuthorizationDialog, setShowAuthorizationDialog] = useState(false);
+  const [authorizationAccepted, setAuthorizationAccepted] = useState(false);
+  const [isStartingBankSetup, setIsStartingBankSetup] = useState(false);
+
+  const autopayArmed = autopayStatus?.mandate.armed === true;
+
   const [showPayoffQuote, setShowPayoffQuote] = useState(false);
   const [payoffQuote, setPayoffQuote] = useState<PayoffQuote | null>(null);
   const [isLoadingPayoff, setIsLoadingPayoff] = useState(false);
@@ -491,7 +538,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
-  
+
   const verifyPayment = async (sessionId: string) => {
     try {
       // Session-based. /api/borrower/verify established the cookie;
@@ -555,25 +602,53 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
     }
   };
   
-  const handleToggleAutopay = async () => {
+  const loadAutopayStatus = useCallback(async () => {
+    setIsLoadingAutopayStatus(true);
+    try {
+      const res = await fetch('/api/borrower/autopay', { credentials: 'include' });
+      if (!res.ok) {
+        // Leave autopayStatus null — the switch stays disabled and says so
+        // rather than guessing that autopay is armed.
+        setAutopayStatus(null);
+        return;
+      }
+      const data: AutopayStatus = await res.json();
+      setAutopayStatus(data);
+      setAutopayEnabled(data.autopayEnabled);
+    } catch {
+      setAutopayStatus(null);
+    } finally {
+      setIsLoadingAutopayStatus(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAutopayStatus();
+  }, [loadAutopayStatus]);
+
+  /** Persist the flag. Only ever called for a transition the server allows. */
+  const submitAutopayToggle = useCallback(async (enabled: boolean) => {
     setIsTogglingAutopay(true);
     try {
       const res = await fetch(`/api/borrower/autopay`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !autopayEnabled }),
+        body: JSON.stringify({ enabled }),
       });
-      
+
       if (res.ok) {
         const data = await res.json();
         setAutopayEnabled(data.autopayEnabled);
         setPaymentStatusMessage({
           type: 'success',
-          message: data.autopayEnabled ? 'Autopay has been enabled' : 'Autopay has been disabled',
+          message: data.statusMessage || (data.autopayEnabled
+            ? 'Autopay is on.'
+            : 'Autopay is off. Your bank authorization has been withdrawn.'),
         });
+        await loadAutopayStatus();
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         setPaymentStatusMessage({
           type: 'error',
           message: (data.message || "We couldn't update autopay.") + " Your current autopay setting hasn't changed.",
@@ -587,8 +662,125 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
     } finally {
       setIsTogglingAutopay(false);
     }
+  }, [loadAutopayStatus]);
+
+  const handleToggleAutopay = async () => {
+    // Turning it ON without a stored bank authorization can't collect anything,
+    // so we open the authorization step instead of writing a flag that lies.
+    if (!autopayEnabled && !autopayArmed) {
+      if (autopayStatus?.achAvailable && autopayStatus.authorization) {
+        setAuthorizationAccepted(false);
+        setShowAuthorizationDialog(true);
+      } else {
+        setPaymentStatusMessage({
+          type: 'error',
+          message: autopayStatus?.achUnavailableMessage
+            || "Bank autopay isn't available on this loan yet. Nothing was changed and nothing is debited.",
+        });
+      }
+      return;
+    }
+    await submitAutopayToggle(!autopayEnabled);
   };
-  
+
+  /**
+   * Record the agreement and hand off to hosted bank verification. The exact
+   * text rendered above is echoed back so the server refuses if the terms moved
+   * while this page was open.
+   */
+  const handleAuthorizeBankAutopay = async () => {
+    const authorization = autopayStatus?.authorization;
+    if (!authorization || !authorizationAccepted) return;
+    setIsStartingBankSetup(true);
+    try {
+      const res = await fetch('/api/borrower/autopay/mandate', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          authorizationAccepted: true,
+          displayedAuthorizationText: authorization.authorizationText,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.setupUrl) {
+        window.location.href = data.setupUrl;
+        return;
+      }
+      setShowAuthorizationDialog(false);
+      setPaymentStatusMessage({
+        type: 'error',
+        message: (data.message || "We couldn't start bank verification.")
+          + " Autopay is unchanged and nothing was debited.",
+      });
+    } catch {
+      setShowAuthorizationDialog(false);
+      setPaymentStatusMessage({
+        type: 'error',
+        message: "We couldn't reach the server to start bank verification. Autopay is unchanged and nothing was debited.",
+      });
+    } finally {
+      setIsStartingBankSetup(false);
+    }
+  };
+
+  const confirmBankSetup = useCallback(async (setupReference: string) => {
+    try {
+      const res = await fetch('/api/borrower/autopay/mandate/confirm', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setupReference }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setPaymentStatusMessage({
+          type: 'success',
+          message: data.autopayEnabled
+            ? 'Bank account authorized — autopay is on. We\'ll debit each payment on its due date.'
+            : 'Your bank account was saved. Autopay stays off until verification finishes.',
+        });
+      } else {
+        setPaymentStatusMessage({
+          type: 'error',
+          message: (data.message || "We couldn't confirm your bank setup.") + ' Autopay stays off and nothing was debited.',
+        });
+      }
+    } catch {
+      setPaymentStatusMessage({
+        type: 'error',
+        message: "We couldn't confirm your bank setup right now. Autopay stays off and nothing was debited.",
+      });
+    } finally {
+      await loadAutopayStatus();
+    }
+  }, [loadAutopayStatus]);
+
+  // Return leg of hosted bank verification (see services/achMandateSetup.ts).
+  // Separate from the card-payment effect above so each owns exactly one
+  // redirect contract. The ref guard keeps a re-render from confirming twice —
+  // the confirm endpoint is idempotent anyway, and no debit is created here.
+  const achReturnHandledRef = useRef(false);
+  useEffect(() => {
+    if (achReturnHandledRef.current) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const achSetup = urlParams.get('ach_setup');
+    const setupRef = urlParams.get('setup_ref');
+    if (achSetup === 'success' && setupRef) {
+      achReturnHandledRef.current = true;
+      void confirmBankSetup(setupRef);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (achSetup === 'cancelled') {
+      achReturnHandledRef.current = true;
+      setPaymentStatusMessage({
+        type: 'error',
+        message: 'Bank setup was cancelled — no bank details were saved, autopay stays off, and nothing was debited.',
+      });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [confirmBankSetup]);
+
+
   const handleRequestPayoffQuote = async () => {
     setIsLoadingPayoff(true);
     setShowPayoffQuote(true);
@@ -927,9 +1119,19 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                     Due {format(new Date(note.nextPaymentDate), 'MMMM d, yyyy')}
                   </p>
                 )}
-                {autopayEnabled && (
+                {/* Only claim automatic collection when a debit could really
+                    be created: autopay on AND a stored, confirmed bank
+                    authorization. Anything less says what's still missing. */}
+                {autopayEnabled && autopayArmed && (
                   <p className="text-xs text-acr-pos dark:text-acr-pos mt-1 flex items-center gap-1 justify-center sm:justify-start">
-                    <CheckCircle className="w-3 h-3" aria-hidden="true" /> Autopay is on — we'll collect this payment automatically.
+                    <CheckCircle className="w-3 h-3" aria-hidden="true" /> Autopay is on — we'll debit your
+                    {autopayStatus?.mandate.accountLast4 ? ` account ending ${autopayStatus.mandate.accountLast4}` : ' authorized bank account'} on this due date.
+                  </p>
+                )}
+                {autopayEnabled && !autopayArmed && !isLoadingAutopayStatus && (
+                  <p className="text-xs text-acr-warn dark:text-acr-warn mt-1 flex items-center gap-1 justify-center sm:justify-start">
+                    <AlertTriangle className="w-3 h-3" aria-hidden="true" /> Autopay is on but no bank account is
+                    authorized yet, so this payment will not be collected automatically.
                   </p>
                 )}
               </div>
@@ -940,18 +1142,20 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                   onClick={handleMakePayment}
                   disabled={isProcessingPayment}
                   data-testid="button-make-payment"
-                  variant={autopayEnabled ? "outline" : "default"}
+                  variant={autopayEnabled && autopayArmed ? "outline" : "default"}
                 >
                   {isProcessingPayment ? (
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" aria-hidden="true" />
                   ) : (
                     <CreditCard className="w-5 h-5 mr-2" aria-hidden="true" />
                   )}
-                  {autopayEnabled ? "Pay early" : "Pay now"}
+                  {autopayEnabled && autopayArmed ? "Pay early" : "Pay now"}
                 </Button>
-                {!autopayEnabled && (
+                {/* Only invite the borrower to enable autopay when enabling it
+                    would actually collect. */}
+                {!autopayEnabled && autopayStatus?.achAvailable === true && (
                   <p className="text-xs text-center text-muted-foreground">
-                    Enable autopay below to pay automatically each month.
+                    Authorize bank autopay below to have each payment collected automatically.
                   </p>
                 )}
               </div>
@@ -1053,20 +1257,59 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                   </div>
                   <div>
                     <p className="text-xs sm:text-sm text-muted-foreground" id="autopay-label">Autopay</p>
-                    <p className="text-sm font-medium" data-testid="text-autopay-status">
-                      {autopayEnabled ? 'Enabled' : 'Disabled'}
-                    </p>
+                    {isLoadingAutopayStatus ? (
+                      <Skeleton className="h-5 w-24 mt-1" />
+                    ) : (
+                      <p className="text-sm font-medium" data-testid="text-autopay-status">
+                        {autopayEnabled && autopayArmed
+                          ? 'Enabled'
+                          : autopayEnabled
+                            ? 'On — not yet collecting'
+                            : autopayStatus?.mandate.status === 'pending'
+                              ? 'Bank verification pending'
+                              : 'Disabled'}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <Switch
                   checked={autopayEnabled}
                   onCheckedChange={handleToggleAutopay}
-                  disabled={isTogglingAutopay}
+                  // Disabled — never merely non-functional — whenever turning it
+                  // on could not result in a real debit. The copy below always
+                  // says what is missing.
+                  disabled={
+                    isTogglingAutopay
+                    || isLoadingAutopayStatus
+                    || (!autopayEnabled && !autopayArmed && autopayStatus?.achAvailable !== true)
+                  }
                   aria-labelledby="autopay-label"
+                  aria-describedby="autopay-help"
                   aria-label={`Autopay ${autopayEnabled ? 'enabled' : 'disabled'}. Toggle to ${autopayEnabled ? 'disable' : 'enable'}.`}
                   data-testid="switch-autopay"
                 />
               </div>
+              {!isLoadingAutopayStatus && (
+                <p
+                  id="autopay-help"
+                  className="text-xs text-muted-foreground mt-3"
+                  data-testid="text-autopay-help"
+                >
+                  {autopayStatus
+                    ? autopayStatus.statusMessage
+                    : "We couldn't check your autopay setup, so the switch is disabled. Nothing is debited automatically."}
+                  {autopayArmed && autopayStatus?.mandate.accountLast4 && (
+                    <>
+                      {' '}
+                      {autopayStatus.mandate.bankName ?? 'Bank account'} ending{' '}
+                      <span className="tabular-nums">{autopayStatus.mandate.accountLast4}</span>
+                      {autopayStatus.mandate.maxAmountCents != null && (
+                        <> · authorized up to {usd(autopayStatus.mandate.maxAmountCents / 100)} per payment</>
+                      )}
+                    </>
+                  )}
+                </p>
+              )}
             </CardContent>
           </Card>
         </motion.div>
@@ -1621,6 +1864,78 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         </DialogContent>
       </Dialog>
 
+      {/* ACH autopay authorization. The text below is the VERBATIM disclosure
+          the server stores on the mandate (NACHA §2.3 requires we retain what
+          the borrower agreed to), rendered from the server response rather than
+          restated here so the two can never diverge. */}
+      <Dialog open={showAuthorizationDialog} onOpenChange={setShowAuthorizationDialog}>
+        <DialogContent className="sm:max-w-lg" data-testid="dialog-ach-authorization">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building className="w-5 h-5" aria-hidden="true" />
+              Authorize bank autopay
+            </DialogTitle>
+            <DialogDescription>
+              Read and agree to this authorization, then verify your bank account. Nothing is
+              debited until your bank confirms the account.
+            </DialogDescription>
+          </DialogHeader>
+
+          {autopayStatus?.authorization ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-card bg-muted/50 p-4 text-sm whitespace-pre-line max-h-64 overflow-y-auto">
+                {autopayStatus.authorization.authorizationText}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Today's scheduled payment is {usd(autopayStatus.authorization.scheduledDebitCents / 100)}.
+                You are authorizing up to {usd(autopayStatus.authorization.maxAmountCents / 100)} per
+                payment ({autopayStatus.authorization.scheduleDescription}). Version{' '}
+                {autopayStatus.authorization.authorizationTextVersion}.
+              </p>
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="ach-authorization-accept"
+                  checked={authorizationAccepted}
+                  onCheckedChange={(checked) => setAuthorizationAccepted(checked === true)}
+                  data-testid="checkbox-ach-authorization"
+                />
+                <Label htmlFor="ach-authorization-accept" className="text-sm leading-snug font-normal">
+                  I have read and agree to this ACH debit authorization.
+                </Label>
+              </div>
+            </div>
+          ) : (
+            <p className="py-4 text-sm text-muted-foreground">
+              {autopayStatus?.achUnavailableMessage
+                ?? "Bank autopay isn't available on this loan right now. Nothing was changed."}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="min-h-11"
+              onClick={() => setShowAuthorizationDialog(false)}
+            >
+              {Verbs.CANCEL}
+            </Button>
+            <Button
+              className="min-h-11"
+              onClick={handleAuthorizeBankAutopay}
+              disabled={!authorizationAccepted || isStartingBankSetup || !autopayStatus?.authorization}
+              data-testid="button-authorize-ach"
+            >
+              {isStartingBankSetup ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />
+              ) : (
+                <Building className="w-4 h-4 mr-2" aria-hidden="true" />
+              )}
+              Agree and add bank account
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <nav
         className="fixed bottom-0 left-0 right-0 sm:hidden border-t bg-surface-chrome backdrop-blur"
         aria-label="Primary actions"
@@ -1634,7 +1949,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             data-testid="mobile-button-pay"
           >
             <CreditCard className="w-5 h-5" aria-hidden="true" />
-            <span className="text-xs">{autopayEnabled ? "Pay early" : "Pay now"}</span>
+            <span className="text-xs">{autopayEnabled && autopayArmed ? "Pay early" : "Pay now"}</span>
           </Button>
           <Button
             variant="ghost"

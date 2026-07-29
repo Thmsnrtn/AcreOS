@@ -7960,6 +7960,132 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "mail_qr_scan_events_org_scanned_idx" ON "mail_qr_scan_events" ("organization_id", "scanned_at")`,
   `ALTER TABLE "tracking_number_assignments" ADD COLUMN IF NOT EXISTS "mail_shipment_id" integer`,
   `CREATE INDEX IF NOT EXISTS "tracking_number_assignments_mail_shipment_idx" ON "tracking_number_assignments" ("mail_shipment_id")`,
+
+  // ── 0212 payoff quote ledger (Wave C "Money moves") ──
+  // A payoff statement is a representation the holder is bound by. Payoff
+  // quotes were computed in three places, with three different day-count
+  // behaviours, and persisted in none of them — so when a closer wires the
+  // quoted figure and the ledger disagrees, nothing recorded what was quoted,
+  // as of what date, or from which inputs. Wave C unified the arithmetic into
+  // one engine (notePaymentMath.computePayoffQuote); this table makes each
+  // quote provable after the fact. Deliberately spans BOTH note books
+  // (acquired_notes uuid / notes integer id) via note_system + note_ref, with
+  // no FK to either: the evidence of what was quoted must outlive the note
+  // row it describes. Mirrors migrations/0212_note_payoff_quotes.sql +
+  // shared/schema/notes-vertical.ts.
+  `CREATE TABLE IF NOT EXISTS "note_payoff_quotes" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+    "note_system" text NOT NULL,
+    "note_ref" text NOT NULL,
+    "note_number" text,
+    "payer_name" text,
+    "quoted_by_user_id" text,
+    "channel" text NOT NULL DEFAULT 'operator_api',
+    "quoted_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "payoff_date" date NOT NULL,
+    "good_through_date" date NOT NULL,
+    "principal_balance_cents" bigint NOT NULL,
+    "annual_rate_bps_hundredths" integer NOT NULL,
+    "accrual_start_date" date NOT NULL,
+    "days_accrued" integer NOT NULL,
+    "day_count_convention" text NOT NULL,
+    "per_diem_interest_cents" bigint NOT NULL,
+    "accrued_interest_cents" bigint NOT NULL,
+    "unapplied_credit_cents" bigint NOT NULL DEFAULT 0,
+    "late_fees_outstanding_cents" bigint NOT NULL DEFAULT 0,
+    "payoff_fee_cents" bigint NOT NULL DEFAULT 0,
+    "total_payoff_cents" bigint NOT NULL,
+    "engine_version" text NOT NULL,
+    "engine_input_json" jsonb NOT NULL,
+    "notes" text,
+    "created_at" timestamp with time zone NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "note_payoff_quotes_note_quoted_idx" ON "note_payoff_quotes" ("note_system", "note_ref", "quoted_at")`,
+  `CREATE INDEX IF NOT EXISTS "note_payoff_quotes_org_quoted_idx" ON "note_payoff_quotes" ("organization_id", "quoted_at")`,
+
+  // ── 0213 borrower ACH autopay (Wave C "Money moves") ──
+  // The borrower portal's autopay Switch wrote ONE boolean
+  // (notes.auto_pay_enabled) and scheduled no debit at all; its only reader
+  // was cashFlowForecaster, which FORECAST money that was never collected
+  // while the portal told the borrower "Autopay is on — we'll collect this
+  // payment automatically". Two tables make it real: `ach_mandates` retains
+  // the NACHA §2.3 authorization (verbatim text + version, agreed_at, IP/UA,
+  // the dollar ceiling and frequency authorized, and the processor's
+  // corroborating mandate id — last4 only, never bank credentials), and
+  // `ach_debit_attempts` holds one row per (note, period, attempt) where the
+  // unique index IS the double-charge guard (the same key is replayed as the
+  // processor idempotency key, and the resulting PaymentIntent id becomes the
+  // unique payments.transaction_id). Mirrors migrations/0213_ach_autopay.sql
+  // + shared/schema/ach-autopay.ts.
+  `CREATE TABLE IF NOT EXISTS "ach_mandates" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+    "note_id" integer NOT NULL REFERENCES "notes" ("id") ON DELETE CASCADE,
+    "borrower_lead_id" integer REFERENCES "leads" ("id") ON DELETE SET NULL,
+    "rail" text NOT NULL DEFAULT 'stripe_us_bank_account',
+    "processor_account_id" text,
+    "processor_customer_id" text,
+    "processor_payment_method_id" text,
+    "processor_mandate_id" text,
+    "processor_setup_intent_id" text,
+    "setup_reference" text,
+    "bank_name" text,
+    "account_last4" text,
+    "account_type" text,
+    "authorization_text" text NOT NULL,
+    "authorization_text_version" text NOT NULL,
+    "authorization_method" text NOT NULL DEFAULT 'web',
+    "agreed_at" timestamp NOT NULL,
+    "agreed_ip_address" text,
+    "agreed_user_agent" text,
+    "agreed_by_email" text NOT NULL,
+    "debit_type" text NOT NULL DEFAULT 'recurring',
+    "max_amount_cents" integer NOT NULL,
+    "frequency" text NOT NULL DEFAULT 'monthly',
+    "schedule_description" text NOT NULL,
+    "status" text NOT NULL DEFAULT 'pending',
+    "confirmed_at" timestamp,
+    "revoked_at" timestamp,
+    "revoked_reason" text,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ach_mandates_note_status_idx" ON "ach_mandates" ("note_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "ach_mandates_org_note_status_idx" ON "ach_mandates" ("organization_id", "note_id", "status")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ach_mandates_setup_reference_uidx" ON "ach_mandates" ("setup_reference")`,
+  `CREATE TABLE IF NOT EXISTS "ach_debit_attempts" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+    "note_id" integer NOT NULL REFERENCES "notes" ("id") ON DELETE CASCADE,
+    "mandate_id" integer NOT NULL REFERENCES "ach_mandates" ("id") ON DELETE RESTRICT,
+    "period_key" text NOT NULL,
+    "attempt_number" integer NOT NULL DEFAULT 1,
+    "idempotency_key" text NOT NULL,
+    "amount_cents" integer NOT NULL,
+    "due_date" timestamp NOT NULL,
+    "status" text NOT NULL DEFAULT 'created',
+    "processor_payment_intent_id" text,
+    "processor_charge_id" text,
+    "return_code" text,
+    "return_category" text,
+    "returned_at" timestamp,
+    "failure_reason" text,
+    "next_retry_at" timestamp,
+    "retry_of_attempt_id" integer,
+    "payment_id" integer REFERENCES "payments" ("id") ON DELETE SET NULL,
+    "reversal_payment_id" integer REFERENCES "payments" ("id") ON DELETE SET NULL,
+    "submitted_at" timestamp,
+    "settled_at" timestamp,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ach_debit_attempts_period_uidx" ON "ach_debit_attempts" ("note_id", "period_key", "attempt_number")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ach_debit_attempts_idem_uidx" ON "ach_debit_attempts" ("idempotency_key")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ach_debit_attempts_pi_uidx" ON "ach_debit_attempts" ("processor_payment_intent_id")`,
+  `CREATE INDEX IF NOT EXISTS "ach_debit_attempts_status_idx" ON "ach_debit_attempts" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "ach_debit_attempts_retry_idx" ON "ach_debit_attempts" ("next_retry_at")`,
+  `CREATE INDEX IF NOT EXISTS "ach_debit_attempts_org_note_idx" ON "ach_debit_attempts" ("organization_id", "note_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -32,6 +32,10 @@ const SCANNED_FILES = [
   // S3 slice 2 (Wave B, 2026-07-29): workflow_delay_resume owns its own
   // process*/start*Job pair in its module, same as leadCampaignJobs.
   "../../server/jobs/workflowDelayResume.ts",
+  // S3 slice 3 (Wave C, 2026-07-29): ach_autopay_cycle owns its own
+  // process/start-job pair in its module — runScheduledJobs.ts is under a
+  // strictly-DOWN line-count ratchet, so a money job must not grow it.
+  "../../server/jobs/achAutopayRun.ts",
   "../../server/jobs/atlasPendingConfirmationNudger.ts",
   "../../server/jobs/autonomousTaskProcessor.ts",
   "../../server/services/founderDigest.ts",
@@ -81,8 +85,9 @@ describe("JOB_ROSTER entry sanity", () => {
     const gated = JOB_ROSTER.filter((e) => e.disabledWhen);
     // The three env-kill-switched AI jobs + fly_night_mode (prod+token gated)
     // + the Tier 1E config-dormant set (backup pipeline + SES-gated course
-    // completion).
+    // completion + Wave C's Stripe-gated borrower ACH autopay cycle).
     expect(gated.map((e) => e.name).sort()).toEqual([
+      "ach_autopay_cycle",
       "autonomous_decision_executor",
       "backup_restore_verify",
       "campaign_optimizer",

@@ -132,7 +132,11 @@ const BASELINE_OFFENDERS = new Set([
   "escrow_checklists",
   "event_subscriptions",
   "feature_requests",
-  "financial_ledger",
+  // "financial_ledger" removed 2026-07-29: it was never actually
+  // non-conforming. The paren-walker mistook an apostrophe in one of its
+  // comments for a string literal and swallowed the index callback, so the
+  // table was allowlisted to silence a false positive. With comment-skipping
+  // fixed above, it parses as conforming.
   "form_1099_batches",
   "generated_documents",
   "go_nogo_memos",
@@ -220,6 +224,15 @@ const BASELINE_OFFENDERS = new Set([
   "white_label_configs",
   "workflows",
   "writing_style_profiles",
+  // ── Revealed 2026-07-29 by the comment-skipping fix above ──────────────
+  // These three were ALWAYS non-conforming; the paren-walker bug hid them by
+  // mis-parsing apostrophes in nearby comments, so they never reached this
+  // list. They are pre-existing debt, not new offenders — recorded here so the
+  // debt is visible rather than invisible. Widen each to an org-leading
+  // composite when its dominant query pattern is confirmed.
+  "provisioned_phone_numbers",
+  "va_actions",
+  "move_inspections",
 ]);
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -281,9 +294,38 @@ function extractPgTableBlocks(source) {
     let depth = 0;
     let endIdx = -1;
     let inString = null;
+    let inComment = null; // "line" | "block" | null
     let prevChar = "";
     for (let i = openIdx; i < source.length; i++) {
       const ch = source[i];
+      const next = source[i + 1];
+      // Comment tracking MUST come before string tracking. An apostrophe in
+      // prose ("the processor's own record") is not a string delimiter, but a
+      // naive tracker treats it as one, swallows the rest of the pgTable call
+      // including its index callback, and reports a conforming table as having
+      // no org-leading index. That false positive cost real debugging time in
+      // Wave C and had been "fixed" by banning apostrophes from schema
+      // comments — a booby trap for the next author. Skip comments instead.
+      if (inComment === "line") {
+        if (ch === "\n") inComment = null;
+        prevChar = ch;
+        continue;
+      }
+      if (inComment === "block") {
+        if (prevChar === "*" && ch === "/") inComment = null;
+        prevChar = ch;
+        continue;
+      }
+      if (!inString && ch === "/" && next === "/") {
+        inComment = "line";
+        prevChar = ch;
+        continue;
+      }
+      if (!inString && ch === "/" && next === "*") {
+        inComment = "block";
+        prevChar = ch;
+        continue;
+      }
       // String tracking — skip parens inside strings.
       if (inString) {
         if (ch === inString && prevChar !== "\\") inString = null;

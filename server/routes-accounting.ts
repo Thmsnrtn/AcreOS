@@ -26,6 +26,7 @@ import {
   generate1099Batch,
   getForm1099BatchStatus,
 } from "./services/form1099Batch";
+import { generate1098Batch } from "./services/form1098Batch";
 import {
   generateInvestorStatementBatch,
   aggregateInvestorIncomeForYear,
@@ -270,16 +271,80 @@ router.post("/1099-batch", async (req: AuthenticatedRequest, res: Response) => {
       errors: result.errors,
     });
   } catch (err) {
-    if (err instanceof TaxIdentityError) {
-      return res.status(422).json({
-        error: "tax_identity_missing",
-        message: err.message,
-        code: err.code,
-        orgId: err.orgId,
-        noteId: err.noteId,
-        statusCode: 422,
-      });
+    if (sendTaxIdentityError(res, err)) return;
+    Errors.internal(res, err);
+  }
+});
+
+/**
+ * Shared handler for a missing/unusable tax identity on a batch generate.
+ *
+ * Both the 1099-INT and 1098 batches fail the same way — a payer or payee TIN
+ * is absent or a placeholder — and both need the offending orgId/noteId in the
+ * body so the operator knows whose W-9 to chase. There is no `Errors.*` helper
+ * for this shape (it carries entity ids, not zod issues), so it lives here as
+ * one function rather than as the same raw `res.status(422)` block copied into
+ * every batch route.
+ *
+ * Returns true when it handled the error, so callers read as:
+ *   if (sendTaxIdentityError(res, err)) return;
+ */
+function sendTaxIdentityError(res: Response, err: unknown): boolean {
+  if (!(err instanceof TaxIdentityError)) return false;
+  res.status(422).json({
+    error: "tax_identity_missing",
+    message: err.message,
+    code: err.code,
+    orgId: err.orgId,
+    noteId: err.noteId,
+    statusCode: 422,
+  });
+  return true;
+}
+
+// ── POST /1098-batch ──────────────────────────────────────────────────────
+// Mortgage-interest-RECEIVED reporting, the servicer-side twin of the
+// 1099-INT batch above (Wave C, founder ruling #12(c)). A note servicer must
+// issue 1098s to its borrowers; until now AcreOS only let a borrower pull
+// their own, so the tax story was one-sided.
+//
+// `refusals` and `exclusions` are surfaced in the response ON PURPOSE and are
+// not errors. A form is REFUSED (never approximated) when its inputs are
+// incomplete — most often a missing borrower TIN — and the operator needs to
+// see exactly which borrowers to chase for a W-9. An EXCLUSION is a note that
+// legitimately requires no form (under the $600 threshold, no interest
+// received, entity payer). A wrong tax form is worse than a missing one.
+router.post("/1098-batch", async (req: AuthenticatedRequest, res: Response) => {
+  if (!requireOrgOwnerOrAdmin(req, res)) return;
+  try {
+    const org = getOrganization(req);
+    const taxYear = parseInt(
+      (req.query.taxYear as string) ?? String(new Date().getFullYear() - 1),
+    );
+    if (Number.isNaN(taxYear) || taxYear < 2000 || taxYear > 2100) {
+      return Errors.badRequest(res, "taxYear must be a valid 4-digit year");
     }
+
+    const result = await generate1098Batch(org.id, taxYear);
+    logger.info("accounting.1098Batch.completed", {
+      organizationId: org.id,
+      taxYear,
+      formCount: result.formCount,
+      refusalCount: result.refusals.length,
+      exclusionCount: result.exclusions.length,
+      fireBytes: result.fireFileBytes,
+    });
+    res.json({
+      taxYear,
+      formCount: result.formCount,
+      totalInterestReceivedCents: result.totalInterestReceivedCents,
+      refusals: result.refusals,
+      exclusions: result.exclusions,
+      fireRecordCounts: result.fireRecordCounts,
+      fireFileBytes: result.fireFileBytes,
+    });
+  } catch (err) {
+    if (sendTaxIdentityError(res, err)) return;
     Errors.internal(res, err);
   }
 });

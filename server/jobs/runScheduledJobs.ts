@@ -27,6 +27,7 @@ import { jobSupervisor } from "../services/jobSupervisor";
 import { instanceId as _instanceId, trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
 import { startLeadNurturingJob, startCampaignOptimizationJob } from "./leadCampaignJobs"; // S3 decomposition slice 1
 import { startWorkflowDelayResumeJob } from "./workflowDelayResume"; // S3 decomposition slice 2 (Wave B)
+import { startAchAutopayJob } from "./achAutopayRun"; // S3 decomposition slice 3 (Wave C — money moves)
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 
 // Touch unused imports to keep them part of the symbol table (their
@@ -4158,8 +4159,7 @@ export async function runScheduledJobs(): Promise<void> {
   startDomainAuditJob();
   startOperatorCycleJob();
 
-  // Start sequence processor background job (every 60 seconds)
-  startSequenceProcessorJob();
+  startSequenceProcessorJob(); // sequence processor, every 60 seconds
 
   // Start autonomous agent task processor (every 30 seconds)
   import('./autonomousTaskProcessor').then(({ startAutonomousTaskProcessor }) => {
@@ -4169,8 +4169,8 @@ export async function runScheduledJobs(): Promise<void> {
   // Start scheduled task runner background job (every minute)
   startScheduledTaskRunnerJob();
 
-  // Start workflow durable-delay resume job (every minute) — see ./workflowDelayResume
-  startWorkflowDelayResumeJob();
+  startWorkflowDelayResumeJob(); // workflow durable-delay resume, every minute — see ./workflowDelayResume
+  startAchAutopayJob(); // borrower ACH autopay submit+reconcile, hourly — see ./achAutopayRun
 
   // Start Pax scheduled tasks (every minute)
   startPaxSchedulerJob();

@@ -982,3 +982,103 @@ export const servicerLicenses = pgTable(
 
 export type ServicerLicense = typeof servicerLicenses.$inferSelect;
 export type InsertServicerLicense = typeof servicerLicenses.$inferInsert;
+
+// ============================================================================
+// PAYOFF QUOTE LEDGER — Wave C "Money moves" (agent C3)
+// ----------------------------------------------------------------------------
+// Payoff quotes were computed and handed to borrowers, closers, and title
+// companies, and then forgotten. Nothing recorded WHAT was quoted, WHEN, to
+// what date, or FROM WHICH INPUTS — so when a closer wires the quoted figure
+// and the ledger disagrees, there is no way to prove which side moved. That
+// is a legal exposure, not a reporting gap: a payoff statement is a
+// representation the holder is bound by.
+//
+// One row per quote issued, storing the full engine input snapshot alongside
+// the output. Immutable by convention — quotes are never updated, only
+// superseded by a newer quote.
+//
+// Deliberately spans BOTH note books (see the cents↔decimal boundary note in
+// server/services/notePaymentMath.ts): `note_system` + `note_ref` identify
+// either an acquired_notes row (uuid) or a notes row (integer id, stored as
+// text). There is no FK to either book on purpose — an audit artifact must
+// outlive the row it describes; deleting a note must never destroy the
+// evidence of what was quoted on it.
+//
+// RELATIONSHIP TO THE LEGACY `payoff_quotes` TABLE (shared/schema.ts ~9468):
+// `payoff_quotes` predates this and is NOT a substitute. It stores OUTPUTS
+// ONLY (principal / interest / fees / total as decimal strings) with no
+// record of the accrual start, day count, rate, convention, per-diem, or
+// engine that produced them — so a row there cannot be recomputed or
+// defended — and POST /api/payoff-quotes writes whatever numbers the CALLER
+// supplies (`...req.body`), so those rows are not necessarily engine-derived
+// at all. It is also `note_id integer NOT NULL REFERENCES notes(id)`, so it
+// structurally cannot hold a quote on an acquired note (uuid-keyed), which is
+// why extending it was not an option for Wave C.
+// CONSOLIDATION DEBT, deliberately recorded: migrating the legacy writers
+// (server/routes-va-engine.ts payoff-quote CRUD, server/services/agent-skills.ts
+// "calculate payoff" skill) onto this engine + table and dropping
+// `payoff_quotes` is the follow-up that LOWERS the table-count baseline back.
+// ============================================================================
+
+export const PAYOFF_QUOTE_NOTE_SYSTEMS = ["acquired_note", "serviced_note"] as const;
+export type PayoffQuoteNoteSystem = typeof PAYOFF_QUOTE_NOTE_SYSTEMS[number];
+
+export const PAYOFF_QUOTE_CHANNELS = ["operator_api", "borrower_portal", "servicer_batch"] as const;
+export type PayoffQuoteChannel = typeof PAYOFF_QUOTE_CHANNELS[number];
+
+export const notePayoffQuotes = pgTable(
+  "note_payoff_quotes",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id")
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .notNull(),
+    // Which book the quoted note lives in, and its key there.
+    noteSystem: text("note_system").$type<PayoffQuoteNoteSystem>().notNull(),
+    noteRef: text("note_ref").notNull(),
+    // Snapshot of the human-facing identifiers at quote time.
+    noteNumber: text("note_number"),
+    payerName: text("payer_name"),
+    // Provenance.
+    quotedByUserId: text("quoted_by_user_id"),
+    channel: text("channel").$type<PayoffQuoteChannel>().notNull().default("operator_api"),
+    quotedAt: timestamp("quoted_at", { withTimezone: true }).defaultNow().notNull(),
+    // ── The inputs the number was computed FROM ────────────────────────────
+    // As-of date the payoff was computed to. `good_through_date` is the last
+    // date the quoted total is valid: the engine accrues interest THROUGH the
+    // payoff date, so a quote is only good through that date. Extending it
+    // costs `per_diem_interest_cents` per additional day.
+    payoffDate: date("payoff_date").notNull(),
+    goodThroughDate: date("good_through_date").notNull(),
+    principalBalanceCents: bigint("principal_balance_cents", { mode: "number" }).notNull(),
+    // Rate in HUNDREDTHS of a basis point — exact for rates finer than 1 bp
+    // (9.875% = 987.5 bps = 98750 hundredths), which the decimal servicing
+    // book can express and an integer bps column cannot.
+    annualRateBpsHundredths: integer("annual_rate_bps_hundredths").notNull(),
+    accrualStartDate: date("accrual_start_date").notNull(),
+    daysAccrued: integer("days_accrued").notNull(),
+    dayCountConvention: text("day_count_convention").notNull(),
+    // ── The outputs ───────────────────────────────────────────────────────
+    perDiemInterestCents: bigint("per_diem_interest_cents", { mode: "number" }).notNull(),
+    accruedInterestCents: bigint("accrued_interest_cents", { mode: "number" }).notNull(),
+    unappliedCreditCents: bigint("unapplied_credit_cents", { mode: "number" }).notNull().default(0),
+    lateFeesOutstandingCents: bigint("late_fees_outstanding_cents", { mode: "number" }).notNull().default(0),
+    payoffFeeCents: bigint("payoff_fee_cents", { mode: "number" }).notNull().default(0),
+    totalPayoffCents: bigint("total_payoff_cents", { mode: "number" }).notNull(),
+    // Which engine produced it, plus the verbatim input snapshot so the
+    // number can be recomputed and defended years later.
+    engineVersion: text("engine_version").notNull(),
+    engineInputJson: jsonb("engine_input_json").notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // "show me every quote issued on this note, newest first"
+    index("note_payoff_quotes_note_quoted_idx").on(table.noteSystem, table.noteRef, table.quotedAt),
+    // Org-scoped audit read.
+    index("note_payoff_quotes_org_quoted_idx").on(table.organizationId, table.quotedAt),
+  ],
+);
+
+export type NotePayoffQuote = typeof notePayoffQuotes.$inferSelect;
+export type InsertNotePayoffQuote = typeof notePayoffQuotes.$inferInsert;

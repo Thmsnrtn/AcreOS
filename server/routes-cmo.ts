@@ -187,7 +187,7 @@ export function registerCmoRoutes(app: Express) {
       where: eq(decisionsInboxItems.id, inboxItemId),
     });
     if (!item || item.itemType !== "cmo_ad_review") {
-      return res.status(404).json({ error: "inbox item not found or not a CMO bundle" });
+      return Errors.notFound(res, "CMO ad-review bundle");
     }
     if (item.status !== "pending") {
       return res.status(409).json({ error: `item is ${item.status}, not pending` });

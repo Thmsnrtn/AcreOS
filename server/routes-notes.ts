@@ -15,10 +15,11 @@
 import type { Express, Response } from "express";
 import { z } from "zod";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { db } from "./db";
+import { db, withTransaction } from "./db";
 import {
   acquiredNotes,
   notePayments,
+  notePayoffQuotes,
   noteAssignments,
   noteOwnershipSplits,
   noteLossMitCases,
@@ -41,6 +42,18 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { encrypt as encryptField } from "./services/fieldEncryption";
 import { emitPaymentEvent } from "./services/workflow-engine";
+// The ONE payoff engine (Wave C "Money moves"). Every payoff number this file
+// quotes comes from computePayoffQuote — no local per-diem arithmetic.
+import {
+  computePayoffQuote,
+  resolvePayoffAccrualStart,
+  parseIsoDateUtc,
+  isoDateUtc,
+  PAYOFF_DAY_COUNT_CONVENTION,
+  PAYOFF_ENGINE_VERSION,
+  type PayoffQuote,
+  type PayoffQuoteInput,
+} from "./services/notePaymentMath";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -728,6 +741,146 @@ export function computeBasisSchedule(input: BasisScheduleInput): BasisScheduleRo
   return rows;
 }
 
+// ─── Payoff: one resolver, one engine ────────────────────────────────────────
+//
+// Wave C "Money moves". Every acquired-note payoff entry point — the
+// calculator (GET :id/payoff), the recorded quote (POST :id/payoff/quotes),
+// and anything added later — goes through THIS function, which reads the
+// ledger and hands the numbers to `computePayoffQuote`. There is deliberately
+// no per-diem arithmetic left in this file: a second implementation is how the
+// engines diverged in the first place.
+//
+// Day-count convention (actual/365 fixed, half-open [accrualStart, payoff),
+// whole days floored, single rounding on the total) is documented in
+// server/services/notePaymentMath.ts. Do not restate it here — restating it is
+// how it drifts.
+
+/** The note fields a payoff needs. Selected explicitly so the shape is stable. */
+interface PayoffNoteRow {
+  id: string;
+  noteNumber: string;
+  payerName: string;
+  status: string;
+  currentBalanceCents: number;
+  unappliedBalanceCents: number;
+  interestRateBps: number;
+  originationDate: string;
+}
+
+export interface AcquiredNotePayoffResult {
+  note: PayoffNoteRow;
+  /** Verbatim engine input — persisted with a recorded quote so it is provable. */
+  input: PayoffQuoteInput;
+  quote: PayoffQuote;
+  /**
+   * SUM(note_payments.late_fee_cents) — late fees ALREADY COLLECTED through
+   * the ledger. Informational only. It is deliberately NOT fed to the engine
+   * as `lateFeesOutstandingCents`: the ledger records fees as they are
+   * collected and carries no assessed-but-unpaid concept, so adding this to a
+   * payoff would bill the borrower a second time for fees already paid. Until
+   * the schema can distinguish the two, the honest answer for outstanding late
+   * fees is "not tracked", which is what the endpoints report.
+   */
+  lateFeesCollectedToDateCents: number;
+}
+
+/**
+ * Ledger-derived payoff for one acquired note. Returns null when the note
+ * doesn't exist in this org (callers turn that into a 404).
+ *
+ * `dbOrTx` accepts a transaction so a payoff computed as part of a larger
+ * money operation reads the same snapshot as the write.
+ */
+export async function computeAcquiredNotePayoff(
+  dbOrTx: Pick<typeof db, "select">,
+  orgId: number,
+  noteId: string,
+  payoffDate: Date,
+  opts: { payoffFeeCents?: number } = {},
+): Promise<AcquiredNotePayoffResult | null> {
+  const [note] = await dbOrTx
+    .select({
+      id: acquiredNotes.id,
+      noteNumber: acquiredNotes.noteNumber,
+      payerName: acquiredNotes.payerName,
+      status: acquiredNotes.status,
+      currentBalanceCents: acquiredNotes.currentBalanceCents,
+      unappliedBalanceCents: acquiredNotes.unappliedBalanceCents,
+      interestRateBps: acquiredNotes.interestRateBps,
+      originationDate: acquiredNotes.originationDate,
+    })
+    .from(acquiredNotes)
+    .where(and(eq(acquiredNotes.id, noteId), eq(acquiredNotes.organizationId, orgId)))
+    .limit(1);
+  if (!note) return null;
+
+  // The most recent posting that settled interest. One indexed row — the
+  // RULE for which row counts lives in resolvePayoffAccrualStart, not here.
+  const lastInterestRows = await dbOrTx
+    .select({
+      paymentDate: notePayments.paymentDate,
+      interestCents: notePayments.interestCents,
+    })
+    .from(notePayments)
+    .where(and(eq(notePayments.noteId, noteId), sql`${notePayments.interestCents} > 0`))
+    .orderBy(desc(notePayments.paymentDate))
+    .limit(1);
+
+  const [lateFeeRow] = await dbOrTx
+    .select({ sum: sql<number>`COALESCE(SUM(${notePayments.lateFeeCents}), 0)::bigint` })
+    .from(notePayments)
+    .where(eq(notePayments.noteId, noteId));
+
+  const accrualStartDate = resolvePayoffAccrualStart(
+    lastInterestRows,
+    note.originationDate as unknown as string,
+  );
+
+  const input: PayoffQuoteInput = {
+    principalBalanceCents: note.currentBalanceCents,
+    annualRateBps: note.interestRateBps,
+    accrualStartDate,
+    payoffDate,
+    unappliedCreditCents: note.unappliedBalanceCents ?? 0,
+    // See AcquiredNotePayoffResult.lateFeesCollectedToDateCents.
+    lateFeesOutstandingCents: 0,
+    payoffFeeCents: opts.payoffFeeCents ?? 0,
+  };
+
+  return {
+    note: note as PayoffNoteRow,
+    input,
+    quote: computePayoffQuote(input),
+    lateFeesCollectedToDateCents: Number(lateFeeRow?.sum ?? 0),
+  };
+}
+
+/** Wire shape shared by the calculator and the recorded-quote endpoints. */
+function payoffResponseBody(result: AcquiredNotePayoffResult) {
+  const q = result.quote;
+  return {
+    asOf: q.payoffDate,
+    principalCents: q.principalBalanceCents,
+    accruedInterestCents: q.accruedInterestCents,
+    unappliedCreditCents: q.unappliedCreditCents,
+    payoffFeeCents: q.payoffFeeCents,
+    totalPayoffCents: q.totalPayoffCents,
+    daysAccrued: q.daysAccrued,
+    accrualStart: q.accrualStartDate,
+    /** Back-compat alias for `perDiemInterestCents` (the note-payoff calculator reads it). */
+    dailyInterestCents: q.perDiemInterestCents,
+    perDiemInterestCents: q.perDiemInterestCents,
+    dayCountConvention: q.dayCountConvention,
+    engineVersion: q.engineVersion,
+    annualRateBps: q.annualRateBps,
+    lateFeesAppliedToDateCents: result.lateFeesCollectedToDateCents,
+    // Not tracked, therefore not asserted as zero-owed. Refuse, don't fabricate.
+    lateFeesOutstandingCents: null as number | null,
+    lateFeesOutstandingNote:
+      "Outstanding late fees are not tracked separately from collected late fees in this ledger, so they are excluded from the payoff total rather than estimated.",
+  };
+}
+
 // ─── Route registration ──────────────────────────────────────────────────────
 
 export function registerNoteRoutes(app: Express): void {
@@ -1048,6 +1201,25 @@ export function registerNoteRoutes(app: Express): void {
   );
 
   // ── Record payment ───────────────────────────────────────────────────────
+  //
+  // ATOMICITY (Wave C "Money moves"). This writes TWO things — the
+  // note_payments ledger row and the denormalized running balances on
+  // acquired_notes — and before Wave C it wrote them as two independent
+  // statements. Any failure between them (a dropped connection, a constraint
+  // trip, a process restart) left the ledger and the balance permanently
+  // disagreeing, which is precisely the drift the /reconciliation endpoint
+  // below exists to surface. Both writes now commit or roll back together.
+  //
+  // The note row is read FOR UPDATE inside the same transaction, so two
+  // concurrent payments on one note serialize instead of both computing a new
+  // balance from the same stale read (last-writer-wins, one payment's
+  // principal silently lost from the balance while its ledger row survives).
+  //
+  // Emit discipline, unchanged from Wave B and load-bearing: `payment.received`
+  // fires AFTER the transaction commits — never inside it (a workflow must not
+  // be able to roll back money, and must not observe uncommitted rows) and
+  // never on a rollback (no ledger row means nothing happened, so there is
+  // nothing to announce).
   app.post(
     "/api/notes/:id/payments",
     isAuthenticated,
@@ -1063,161 +1235,198 @@ export function registerNoteRoutes(app: Express): void {
         }
         const data = parsed.data;
 
-        // Confirm the note belongs to this org BEFORE inserting (cross-org
-        // payment rows would corrupt the 1099-INT aggregation).
-        const [note] = await db
-          .select({
-            id: acquiredNotes.id,
-            currentBalanceCents: acquiredNotes.currentBalanceCents,
-            unappliedBalanceCents: acquiredNotes.unappliedBalanceCents,
-            status: acquiredNotes.status,
-            // Read for the workflow event payload only (same row, no extra
-            // query): note number + payer name identify the note in
-            // automations, due day + scheduled payment let conditions decide
-            // "was this late / partial?".
-            noteNumber: acquiredNotes.noteNumber,
-            payerName: acquiredNotes.payerName,
-            paymentAmountCents: acquiredNotes.paymentAmountCents,
-            paymentDueDay: acquiredNotes.paymentDueDay,
-          })
-          .from(acquiredNotes)
-          .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
-          .limit(1);
-        if (!note) {
-          return Errors.notFound(res, "Note");
-        }
+        // Everything below either rejects (returning a reason, having written
+        // nothing) or posts BOTH writes. Rejections return normally rather
+        // than throwing: no write has happened at that point, so there is
+        // nothing to roll back and an error path would be noise.
+        type Outcome =
+          | { kind: "not_found" }
+          | { kind: "bad_request"; message: string }
+          | { kind: "posted"; posted: PostedNotePayment; row: typeof notePayments.$inferSelect };
 
-        // Per-type validation. The zod schema accepts negative cents on
-        // every type so NSF reversals can pass; here we tighten for the
-        // common cases.
-        const isReversal = data.paymentType === "nsf_reversal";
-        const isUnappliedApply = data.paymentType === "unapplied_apply";
-        const allowNegative = isReversal || isUnappliedApply;
-        for (const [field, val] of [
-          ["principalCents", data.principalCents],
-          ["interestCents", data.interestCents],
-          ["escrowCents", data.escrowCents],
-          ["lateFeeCents", data.lateFeeCents],
-        ] as const) {
-          if (!allowNegative && val < 0) {
-            return Errors.badRequest(res, `${field} must be non-negative for ${data.paymentType} payments`);
+        const outcome: Outcome = await withTransaction(async (tx) => {
+          // Confirm the note belongs to this org BEFORE inserting (cross-org
+          // payment rows would corrupt the 1099-INT aggregation), and hold the
+          // row so the balance we compute from is the balance we write to.
+          const [note] = await tx
+            .select({
+              id: acquiredNotes.id,
+              currentBalanceCents: acquiredNotes.currentBalanceCents,
+              unappliedBalanceCents: acquiredNotes.unappliedBalanceCents,
+              status: acquiredNotes.status,
+              // Read for the workflow event payload only (same row, no extra
+              // query): note number + payer name identify the note in
+              // automations, due day + scheduled payment let conditions decide
+              // "was this late / partial?".
+              noteNumber: acquiredNotes.noteNumber,
+              payerName: acquiredNotes.payerName,
+              paymentAmountCents: acquiredNotes.paymentAmountCents,
+              paymentDueDay: acquiredNotes.paymentDueDay,
+            })
+            .from(acquiredNotes)
+            .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
+            .limit(1)
+            .for("update");
+          if (!note) {
+            return { kind: "not_found" };
           }
-        }
 
-        if (isReversal && !data.originalPaymentId) {
-          return Errors.badRequest(res, "originalPaymentId is required for nsf_reversal");
-        }
-
-        // For 'partial' payments — no principal/interest applied, all into
-        // unapplied. We force the buckets to zero so callers can't sneak
-        // a regular split through under the partial label.
-        if (data.paymentType === "partial") {
-          if (data.unappliedCents <= 0) {
-            return Errors.badRequest(res, "partial payments must supply a positive unappliedCents");
+          // Per-type validation. The zod schema accepts negative cents on
+          // every type so NSF reversals can pass; here we tighten for the
+          // common cases.
+          const isReversal = data.paymentType === "nsf_reversal";
+          const isUnappliedApply = data.paymentType === "unapplied_apply";
+          const allowNegative = isReversal || isUnappliedApply;
+          for (const [field, val] of [
+            ["principalCents", data.principalCents],
+            ["interestCents", data.interestCents],
+            ["escrowCents", data.escrowCents],
+            ["lateFeeCents", data.lateFeeCents],
+          ] as const) {
+            if (!allowNegative && val < 0) {
+              return {
+                kind: "bad_request",
+                message: `${field} must be non-negative for ${data.paymentType} payments`,
+              };
+            }
           }
-          if (data.principalCents !== 0 || data.interestCents !== 0) {
-            return Errors.badRequest(res, "partial payments don't apply to principal/interest — use 'unapplied_apply' to consume held funds");
-          }
-        }
 
-        // Extra-principal: principal-only, no other buckets.
-        if (data.paymentType === "extra_principal") {
-          if (data.principalCents <= 0) {
-            return Errors.badRequest(res, "extra_principal must supply a positive principalCents");
+          if (isReversal && !data.originalPaymentId) {
+            return { kind: "bad_request", message: "originalPaymentId is required for nsf_reversal" };
           }
-          if (data.interestCents !== 0 || data.escrowCents !== 0 || data.lateFeeCents !== 0) {
-            return Errors.badRequest(res, "extra_principal payments must be principal-only — clear the other buckets");
+
+          // For 'partial' payments — no principal/interest applied, all into
+          // unapplied. We force the buckets to zero so callers can't sneak
+          // a regular split through under the partial label.
+          if (data.paymentType === "partial") {
+            if (data.unappliedCents <= 0) {
+              return { kind: "bad_request", message: "partial payments must supply a positive unappliedCents" };
+            }
+            if (data.principalCents !== 0 || data.interestCents !== 0) {
+              return {
+                kind: "bad_request",
+                message: "partial payments don't apply to principal/interest — use 'unapplied_apply' to consume held funds",
+              };
+            }
           }
-        }
 
-        // Unapplied-apply: consumes from unapplied, must be a draw-down.
-        if (isUnappliedApply) {
-          if (data.unappliedCents >= 0) {
-            return Errors.badRequest(res, "unapplied_apply must supply negative unappliedCents (the amount being consumed from the held balance)");
+          // Extra-principal: principal-only, no other buckets.
+          if (data.paymentType === "extra_principal") {
+            if (data.principalCents <= 0) {
+              return { kind: "bad_request", message: "extra_principal must supply a positive principalCents" };
+            }
+            if (data.interestCents !== 0 || data.escrowCents !== 0 || data.lateFeeCents !== 0) {
+              return {
+                kind: "bad_request",
+                message: "extra_principal payments must be principal-only — clear the other buckets",
+              };
+            }
           }
-          const drawDown = -data.unappliedCents;
-          if (drawDown > (note.unappliedBalanceCents ?? 0)) {
-            return Errors.badRequest(res, `unapplied_apply draw of ${drawDown}¢ exceeds available unapplied balance of ${note.unappliedBalanceCents ?? 0}¢`);
+
+          // Unapplied-apply: consumes from unapplied, must be a draw-down.
+          if (isUnappliedApply) {
+            if (data.unappliedCents >= 0) {
+              return {
+                kind: "bad_request",
+                message: "unapplied_apply must supply negative unappliedCents (the amount being consumed from the held balance)",
+              };
+            }
+            const drawDown = -data.unappliedCents;
+            if (drawDown > (note.unappliedBalanceCents ?? 0)) {
+              return {
+                kind: "bad_request",
+                message: `unapplied_apply draw of ${drawDown}¢ exceeds available unapplied balance of ${note.unappliedBalanceCents ?? 0}¢`,
+              };
+            }
           }
-        }
 
-        // Insert payment row. Drizzle handles the bigint serialization.
-        const [row] = await db
-          .insert(notePayments)
-          .values({
-            noteId: id,
-            organizationId: orgId,
-            paymentDate: data.paymentDate,
-            principalCents: data.principalCents,
-            interestCents: data.interestCents,
-            escrowCents: data.escrowCents,
-            lateFeeCents: data.lateFeeCents,
-            unappliedCents: data.unappliedCents,
-            paymentType: data.paymentType,
-            originalPaymentId: data.originalPaymentId ?? null,
-            paymentMethod: data.paymentMethod,
-            referenceNumber: data.referenceNumber ?? null,
-            notes: data.notes ?? null,
-          })
-          .returning();
+          // ── Write 1: the ledger row. Drizzle handles bigint serialization.
+          const [row] = await tx
+            .insert(notePayments)
+            .values({
+              noteId: id,
+              organizationId: orgId,
+              paymentDate: data.paymentDate,
+              principalCents: data.principalCents,
+              interestCents: data.interestCents,
+              escrowCents: data.escrowCents,
+              lateFeeCents: data.lateFeeCents,
+              unappliedCents: data.unappliedCents,
+              paymentType: data.paymentType,
+              originalPaymentId: data.originalPaymentId ?? null,
+              paymentMethod: data.paymentMethod,
+              referenceNumber: data.referenceNumber ?? null,
+              notes: data.notes ?? null,
+            })
+            .returning();
 
-        // Update denormalized running balances on the note.
-        // currentBalance: subtract principal applied (negative principal on
-        //   reversal restores balance).
-        // unappliedBalance: add unapplied delta (positive on partial,
-        //   negative on unapplied_apply or unapplied-restoring reversal).
-        // status flips to 'paid_off' on a payoff that zeroes the balance.
-        const newCurrentBalance = Math.max(
-          0,
-          (note.currentBalanceCents ?? 0) - data.principalCents,
-        );
-        const newUnappliedBalance = Math.max(
-          0,
-          (note.unappliedBalanceCents ?? 0) + data.unappliedCents,
-        );
-        const updates: Partial<typeof acquiredNotes.$inferInsert> = {
-          currentBalanceCents: newCurrentBalance,
-          unappliedBalanceCents: newUnappliedBalance,
-          updatedAt: new Date(),
-        };
-        if (data.paymentType === "payoff" && newCurrentBalance === 0) {
-          updates.status = "paid_off";
-        }
-        await db
-          .update(acquiredNotes)
-          .set(updates)
-          .where(eq(acquiredNotes.id, id));
+          // ── Write 2: the denormalized running balances on the note.
+          // currentBalance: subtract principal applied (negative principal on
+          //   reversal restores balance).
+          // unappliedBalance: add unapplied delta (positive on partial,
+          //   negative on unapplied_apply or unapplied-restoring reversal).
+          // status flips to 'paid_off' on a payoff that zeroes the balance.
+          const newCurrentBalance = Math.max(
+            0,
+            (note.currentBalanceCents ?? 0) - data.principalCents,
+          );
+          const newUnappliedBalance = Math.max(
+            0,
+            (note.unappliedBalanceCents ?? 0) + data.unappliedCents,
+          );
+          const updates: Partial<typeof acquiredNotes.$inferInsert> = {
+            currentBalanceCents: newCurrentBalance,
+            unappliedBalanceCents: newUnappliedBalance,
+            updatedAt: new Date(),
+          };
+          if (data.paymentType === "payoff" && newCurrentBalance === 0) {
+            updates.status = "paid_off";
+          }
+          await tx.update(acquiredNotes).set(updates).where(eq(acquiredNotes.id, id));
 
-        // Ledger is committed (payment row + note balances). Only now do we
-        // tell the workflow engine. Fire-and-forget, never throws.
-        emitNotePaymentWorkflowEvent({
-          organizationId: orgId,
-          noteId: id,
-          noteNumber: note.noteNumber ?? null,
-          payerName: note.payerName ?? null,
-          paymentId: row.id,
-          paymentType: data.paymentType,
-          paymentMethod: data.paymentMethod,
-          paymentDate: data.paymentDate,
-          principalCents: data.principalCents,
-          interestCents: data.interestCents,
-          escrowCents: data.escrowCents,
-          lateFeeCents: data.lateFeeCents,
-          unappliedCents: data.unappliedCents,
-          scheduledPaymentAmountCents: note.paymentAmountCents ?? null,
-          paymentDueDay: note.paymentDueDay ?? null,
-          remainingBalanceCents: newCurrentBalance,
-          unappliedBalanceCents: newUnappliedBalance,
-          noteStatus: updates.status ?? note.status,
+          return {
+            kind: "posted",
+            row,
+            posted: {
+              organizationId: orgId,
+              noteId: id,
+              noteNumber: note.noteNumber ?? null,
+              payerName: note.payerName ?? null,
+              paymentId: row.id,
+              paymentType: data.paymentType,
+              paymentMethod: data.paymentMethod,
+              paymentDate: data.paymentDate,
+              principalCents: data.principalCents,
+              interestCents: data.interestCents,
+              escrowCents: data.escrowCents,
+              lateFeeCents: data.lateFeeCents,
+              unappliedCents: data.unappliedCents,
+              scheduledPaymentAmountCents: note.paymentAmountCents ?? null,
+              paymentDueDay: note.paymentDueDay ?? null,
+              remainingBalanceCents: newCurrentBalance,
+              unappliedBalanceCents: newUnappliedBalance,
+              noteStatus: updates.status ?? note.status,
+            },
+          };
         });
+
+        if (outcome.kind === "not_found") return Errors.notFound(res, "Note");
+        if (outcome.kind === "bad_request") return Errors.badRequest(res, outcome.message);
+
+        // Both ledger writes are COMMITTED. Only now do we tell the workflow
+        // engine. Fire-and-forget, never throws. If the transaction had rolled
+        // back we would be in the catch below and no event would be emitted.
+        emitNotePaymentWorkflowEvent(outcome.posted);
 
         return res.status(201).json({
-          payment: row,
-          currentBalanceCents: newCurrentBalance,
-          unappliedBalanceCents: newUnappliedBalance,
-          status: updates.status ?? note.status,
+          payment: outcome.row,
+          currentBalanceCents: outcome.posted.remainingBalanceCents,
+          unappliedBalanceCents: outcome.posted.unappliedBalanceCents,
+          status: outcome.posted.noteStatus,
         });
       } catch (err) {
+        // A throw here means the transaction rolled back: no ledger row, no
+        // balance change, and — critically — no workflow event.
         logger.error("notes.recordPayment failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
@@ -1976,11 +2185,19 @@ export function registerNoteRoutes(app: Express): void {
 
   // ── Payoff calculator ────────────────────────────────────────────────────
   // GET /api/notes/:id/payoff?date=YYYY-MM-DD
-  // Returns the dollar amount required to fully settle the note as of the
-  // requested close date — principal + accrued interest through that date
-  // − unapplied funds held. Linnea: "Borrower calls Tuesday. 'What's my
-  // payoff if I close Friday at 2 PM?' I need a payoff calculator. One
-  // button." This is the one-button.
+  // Returns the amount required to fully settle the note as of the requested
+  // close date — principal + accrued interest through that date − unapplied
+  // funds held. Linnea: "Borrower calls Tuesday. 'What's my payoff if I close
+  // Friday at 2 PM?' I need a payoff calculator. One button." This is the
+  // one-button.
+  //
+  // This is an INDICATIVE quote: a GET must not write, so nothing is recorded.
+  // To issue a payoff a third party will rely on, POST :id/payoff/quotes —
+  // same engine, same numbers, plus a durable row proving what was quoted.
+  //
+  // Wave C: the per-diem arithmetic that used to live inline here (float
+  // multiply, days ROUNDED rather than floored — a payoff quoted 12 hours out
+  // charged a whole extra day) is gone. It delegates.
   app.get(
     "/api/notes/:id/payoff",
     isAuthenticated,
@@ -1990,72 +2207,199 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const id = req.params.id;
-        const dateParam = (req.query.date as string | undefined) ?? new Date().toISOString().slice(0, 10);
-        const closeDate = new Date(dateParam);
-        if (isNaN(closeDate.getTime())) {
+        const dateParam =
+          (req.query.date as string | undefined) ?? new Date().toISOString().slice(0, 10);
+        let payoffDate: Date;
+        try {
+          payoffDate = parseIsoDateUtc(dateParam);
+        } catch {
           return Errors.badRequest(res, "date must be a valid ISO date (YYYY-MM-DD)");
         }
 
-        const [note] = await db
-          .select()
-          .from(acquiredNotes)
-          .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
-          .limit(1);
-        if (!note) {
-          return Errors.notFound(res, "Note");
-        }
+        const result = await computeAcquiredNotePayoff(db, orgId, id, payoffDate);
+        if (!result) return Errors.notFound(res, "Note");
 
-        // Find the most recent payment that included an interest component;
-        // accrued-interest base = days since that payment * daily rate *
-        // current balance. If no prior payments, accrue from origination.
-        const lastInterestRow = await db
-          .select({ paymentDate: notePayments.paymentDate })
-          .from(notePayments)
-          .where(and(eq(notePayments.noteId, id), sql`${notePayments.interestCents} > 0`))
-          .orderBy(desc(notePayments.paymentDate))
-          .limit(1);
-
-        const accrualStart = new Date(
-          lastInterestRow[0]?.paymentDate
-            ? (lastInterestRow[0].paymentDate as unknown as string)
-            : (note.originationDate as unknown as string),
-        );
-        const daysAccrued = Math.max(
-          0,
-          Math.round((closeDate.getTime() - accrualStart.getTime()) / 86_400_000),
-        );
-
-        // Daily interest = balance * (annualRateBps / 10000) / 365
-        const annualRate = note.interestRateBps / 10_000;
-        const dailyRateCents = (note.currentBalanceCents * annualRate) / 365;
-        const accruedInterestCents = Math.round(dailyRateCents * daysAccrued);
-
-        const principalCents = note.currentBalanceCents;
-        const unappliedCreditCents = note.unappliedBalanceCents ?? 0;
-        // Late fees outstanding: track by summing lateFeeCents and netting
-        // off any reversed/applied. For now, lateFeeCents on the ledger sums.
-        const lateFeeRows = await db
-          .select({ sum: sql<number>`COALESCE(SUM(${notePayments.lateFeeCents}), 0)::bigint` })
-          .from(notePayments)
-          .where(eq(notePayments.noteId, id));
-        const lateFeesAppliedCents = Number(lateFeeRows[0]?.sum ?? 0);
-
-        const totalPayoffCents =
-          principalCents + accruedInterestCents - unappliedCreditCents;
-
-        return res.json({
-          asOf: dateParam,
-          principalCents,
-          accruedInterestCents,
-          unappliedCreditCents,
-          lateFeesAppliedToDateCents: lateFeesAppliedCents,
-          totalPayoffCents: Math.max(0, totalPayoffCents),
-          daysAccrued,
-          accrualStart: accrualStart.toISOString().slice(0, 10),
-          dailyInterestCents: Math.round(dailyRateCents),
-        });
+        return res.json({ ...payoffResponseBody(result), recorded: false });
       } catch (err) {
         logger.error("notes.payoff failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── Payoff quote ledger ──────────────────────────────────────────────────
+  // A payoff statement is a representation the holder is bound by. Quoting a
+  // number and keeping no record of it means that when a closer wires the
+  // quoted figure and the ledger disagrees, nobody can establish which side
+  // moved. These three routes make a quote provable: same engine as the
+  // calculator, plus a durable row carrying the OUTPUT and the INPUTS it was
+  // computed from (balance, rate, accrual start, day count, convention,
+  // engine version) so the number can be recomputed years later.
+  //
+  // Path note: deliberately /payoff/quotes, NOT /payoff-quotes —
+  // server/routes-va-engine.ts already owns GET /api/notes/:noteId/payoff-quotes
+  // for the legacy decimal `payoff_quotes` table, and two handlers on the same
+  // pattern would silently shadow each other by registration order.
+
+  const createPayoffQuoteSchema = z.object({
+    /** Date the payoff funds are good. Defaults to today (UTC). */
+    payoffDate: z.string().min(1).optional(),
+    /** Org-configured payoff/processing fee. Must be supplied, never assumed. */
+    payoffFeeCents: z.number().int().nonnegative().optional(),
+    channel: z.enum(["operator_api", "borrower_portal", "servicer_batch"]).optional(),
+    notes: z.string().max(2_000).optional(),
+  });
+
+  // POST /api/notes/:id/payoff/quotes — compute AND record.
+  app.post(
+    "/api/notes/:id/payoff/quotes",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const userId = getUserId(req);
+        const id = req.params.id;
+        const parsed = createPayoffQuoteSchema.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          return Errors.validationFailed(res, parsed.error.flatten());
+        }
+
+        let payoffDate: Date;
+        try {
+          payoffDate = parseIsoDateUtc(
+            parsed.data.payoffDate ?? new Date().toISOString().slice(0, 10),
+          );
+        } catch {
+          return Errors.badRequest(res, "payoffDate must be a valid ISO date (YYYY-MM-DD)");
+        }
+
+        const result = await computeAcquiredNotePayoff(db, orgId, id, payoffDate, {
+          payoffFeeCents: parsed.data.payoffFeeCents ?? 0,
+        });
+        if (!result) return Errors.notFound(res, "Note");
+
+        const q = result.quote;
+        const [quoteRow] = await db
+          .insert(notePayoffQuotes)
+          .values({
+            organizationId: orgId,
+            noteSystem: "acquired_note",
+            noteRef: result.note.id,
+            noteNumber: result.note.noteNumber,
+            payerName: result.note.payerName,
+            quotedByUserId: userId,
+            channel: parsed.data.channel ?? "operator_api",
+            payoffDate: q.payoffDate,
+            // The engine accrues interest THROUGH payoffDate, so that IS the
+            // last date the quoted total is valid. Extending it costs
+            // perDiemInterestCents per additional day — we publish the
+            // per-diem rather than quietly quoting a stale total.
+            goodThroughDate: q.payoffDate,
+            principalBalanceCents: q.principalBalanceCents,
+            annualRateBpsHundredths: Math.round(q.annualRateBps * 100),
+            accrualStartDate: q.accrualStartDate,
+            daysAccrued: q.daysAccrued,
+            dayCountConvention: q.dayCountConvention,
+            perDiemInterestCents: q.perDiemInterestCents,
+            accruedInterestCents: q.accruedInterestCents,
+            unappliedCreditCents: q.unappliedCreditCents,
+            lateFeesOutstandingCents: q.lateFeesOutstandingCents,
+            payoffFeeCents: q.payoffFeeCents,
+            totalPayoffCents: q.totalPayoffCents,
+            engineVersion: q.engineVersion,
+            // Verbatim inputs. Dates as ISO strings so the snapshot is
+            // self-describing without knowing the engine's Date handling.
+            engineInputJson: {
+              principalBalanceCents: result.input.principalBalanceCents,
+              annualRateBps: result.input.annualRateBps,
+              accrualStartDate: isoDateUtc(result.input.accrualStartDate),
+              payoffDate: isoDateUtc(result.input.payoffDate),
+              unappliedCreditCents: result.input.unappliedCreditCents ?? 0,
+              lateFeesOutstandingCents: result.input.lateFeesOutstandingCents ?? 0,
+              payoffFeeCents: result.input.payoffFeeCents ?? 0,
+              dayCountConvention: PAYOFF_DAY_COUNT_CONVENTION,
+              engineVersion: PAYOFF_ENGINE_VERSION,
+            },
+            notes: parsed.data.notes ?? null,
+          })
+          .returning();
+
+        logger.info("notes.payoffQuote recorded", {
+          organizationId: orgId,
+          noteId: id,
+          quoteId: quoteRow?.id,
+          totalPayoffCents: q.totalPayoffCents,
+          payoffDate: q.payoffDate,
+        });
+
+        return res.status(201).json({
+          quote: quoteRow,
+          ...payoffResponseBody(result),
+          recorded: true,
+        });
+      } catch (err) {
+        logger.error("notes.payoffQuote.create failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // GET /api/notes/:id/payoff/quotes — every quote issued on this note.
+  app.get(
+    "/api/notes/:id/payoff/quotes",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const id = req.params.id;
+        const rows = await db
+          .select()
+          .from(notePayoffQuotes)
+          .where(
+            and(
+              eq(notePayoffQuotes.organizationId, orgId),
+              eq(notePayoffQuotes.noteSystem, "acquired_note"),
+              eq(notePayoffQuotes.noteRef, id),
+            ),
+          )
+          .orderBy(desc(notePayoffQuotes.quotedAt))
+          .limit(500);
+        return res.json({ quotes: rows });
+      } catch (err) {
+        logger.error("notes.payoffQuote.list failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // GET /api/notes/:id/payoff/quotes/:quoteId — retrieve one quote as issued.
+  app.get(
+    "/api/notes/:id/payoff/quotes/:quoteId",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const [row] = await db
+          .select()
+          .from(notePayoffQuotes)
+          .where(
+            and(
+              eq(notePayoffQuotes.id, req.params.quoteId),
+              eq(notePayoffQuotes.organizationId, orgId),
+              eq(notePayoffQuotes.noteRef, req.params.id),
+            ),
+          )
+          .limit(1);
+        if (!row) return Errors.notFound(res, "Payoff quote");
+        return res.json({ quote: row });
+      } catch (err) {
+        logger.error("notes.payoffQuote.get failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },
