@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildRouterShipment, type FlushShipment, type FlushPiece } from "../../server/services/mail/mailFlusher";
+import {
+  buildRouterShipment,
+  responseBlockHtml,
+  type FlushShipment,
+  type FlushPiece,
+} from "../../server/services/mail/mailFlusher";
 
 /**
  * Gap 2 (product-truth audit) — the mail flusher's pure mapper. The DB
@@ -71,5 +76,48 @@ describe("buildRouterShipment", () => {
   it("handles an empty copy snapshot without throwing", () => {
     const s = buildRouterShipment(ship({ copySnapshot: null }), [piece()]);
     expect(s.pieces[0].vars?.htmlContent).toBe("");
+  });
+});
+
+/**
+ * Wave B completeness audit (2026-07-29). The per-piece attribution code was
+ * minted at queue time and stored on the row, but the flusher never read the
+ * column — so nothing about it reached the printed piece and `/r/:code` could
+ * only ever be hit by someone who already knew the URL. These pin the fix:
+ * an instrumented piece PRINTS its response link; an uninstrumented one
+ * prints nothing at all (never a placeholder, never a dead link).
+ */
+describe("printed attribution block", () => {
+  it("prints nothing for an uninstrumented piece", () => {
+    expect(responseBlockHtml(null)).toBe("");
+    expect(responseBlockHtml(undefined)).toBe("");
+    expect(responseBlockHtml("")).toBe("");
+    const s = buildRouterShipment(ship({ copySnapshot: "BODY" }), [piece()]);
+    expect(s.pieces[0].vars?.htmlContent).toBe("BODY");
+    expect(s.pieces[0].vars?.backHtml).toBe("");
+  });
+
+  it("prints the piece's own short link when the piece is instrumented", () => {
+    const s = buildRouterShipment(ship({ copySnapshot: "BODY" }), [
+      piece({ qrCode: "a-1b2c3d4e" }),
+    ]);
+    // The back of a postcard carries the response block; the front stays the
+    // operator's artwork.
+    expect(s.pieces[0].vars?.backHtml).toContain("/r/a-1b2c3d4e");
+    expect(s.pieces[0].vars?.frontHtml).toBe("BODY");
+    // Letters have one canvas — the block is appended to the body.
+    expect(s.pieces[0].vars?.htmlContent).toContain("BODY");
+    expect(s.pieces[0].vars?.htmlContent).toContain("/r/a-1b2c3d4e");
+  });
+
+  it("gives each piece ITS OWN code (attribution is per piece, not per shipment)", () => {
+    const s = buildRouterShipment(ship(), [
+      piece({ id: 10, qrCode: "a-11111111" }),
+      piece({ id: 11, qrCode: "b-22222222" }),
+      piece({ id: 12, qrCode: null }),
+    ]);
+    expect(s.pieces[0].vars?.backHtml).toContain("/r/a-11111111");
+    expect(s.pieces[1].vars?.backHtml).toContain("/r/b-22222222");
+    expect(s.pieces[2].vars?.backHtml).toBe("");
   });
 });

@@ -85,6 +85,14 @@ export interface MailShipmentPieceRow {
   returnedAt: string | null;
   qrScanCount: number;
   inboundCallCount: number;
+  /**
+   * The response URL printed on THIS piece, or null when the piece carries no
+   * response code (queued before instrumentation, or no signing secret). Null
+   * means `qrScanCount` was never measured — render it as such, never as 0.
+   * The server has sent this since Wave B; the client ignored it until the
+   * 2026-07-29 completeness audit.
+   */
+  qrUrl?: string | null;
 }
 
 // ── Query keys ──────────────────────────────────────────────────────────────
@@ -305,6 +313,25 @@ export function useShipmentPieces(shipmentId: number | null) {
 
 // ── Results tab hooks (Pillar 3 Tab 3) ──────────────────────────────────────
 
+/**
+ * Which of a funnel's numbers are actually MEASURED.
+ *
+ * The server has sent this envelope since Wave B; the client ignored it until
+ * the 2026-07-29 completeness audit, so an uninstrumented shipment rendered a
+ * bare "0 QR scans" — indistinguishable from "nobody scanned", which is a
+ * fabricated measurement. Optional on the type so an older response degrades
+ * to "not measured" rather than to a confident zero.
+ */
+export interface FunnelMeasurement {
+  qrTrackingEnabled: boolean;
+  piecesInstrumented: number;
+  deliveryEventsReceived: number;
+  /** False while nothing increments mail_shipment_pieces.inbound_call_count. */
+  inboundCallTracking?: boolean;
+  callsAnsweredTracked: boolean;
+  dealAttributionTracked: boolean;
+}
+
 export interface FunnelResponse {
   sent: number;
   delivered: number;
@@ -313,6 +340,7 @@ export interface FunnelResponse {
   callsAnswered: number;
   dealsOpened: number;
   dealsClosed: number;
+  measurement?: FunnelMeasurement;
   costCentsTotal: number;
   costPerSentCents: number;
   costPerDeliveredCents: number;

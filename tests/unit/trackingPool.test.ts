@@ -185,6 +185,44 @@ describe("tracking-pool.assignNumber", () => {
   });
 });
 
+describe("tracking-pool.assignTrackingNumberForMailShipment", () => {
+  beforeEach(() => {
+    reset();
+    vi.clearAllMocks();
+  });
+
+  /**
+   * 2026-07-29 Wave B completeness audit. Queueing mail called this helper on
+   * every shipment, and an empty pool provisioned a BRAND-NEW carrier number —
+   * a recurring monthly charge on the customer's own Twilio account — to
+   * attribute inbound calls that nothing can currently measure: the number is
+   * never printed on the piece, and nothing increments
+   * mail_shipment_pieces.inbound_call_count. Recycling an idle number is free
+   * and still allowed; renting is not.
+   */
+  it("never provisions a new carrier number just to queue mail", async () => {
+    const { assignTrackingNumberForMailShipment } = await import(
+      "../../server/services/comms/tracking-pool"
+    );
+    const { commsRouter } = (await import("../../server/services/comms/router")) as any;
+
+    const result = await assignTrackingNumberForMailShipment(1, 55);
+
+    expect(commsRouter.rentNumber).not.toHaveBeenCalled();
+    // Honest null — the queue response reports call attribution as off rather
+    // than claiming a number it did not get.
+    expect(result).toBeNull();
+    expect(store).toHaveLength(0);
+  });
+
+  it("still rents for the campaign path (the default is unchanged)", async () => {
+    const { assignNumber } = await import("../../server/services/comms/tracking-pool");
+    const { commsRouter } = (await import("../../server/services/comms/router")) as any;
+    await assignNumber(1, 100);
+    expect(commsRouter.rentNumber).toHaveBeenCalled();
+  });
+});
+
 describe("tracking-pool.releaseNumber", () => {
   beforeEach(() => reset());
 

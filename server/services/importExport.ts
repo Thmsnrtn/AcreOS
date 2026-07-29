@@ -5,6 +5,13 @@ import { db } from "../db";
 // Wave B "Wire the engine" — CSV/bulk imports are a lead-creation path, so
 // they must fire lead.created just like the single-create route does.
 import { emitLeadCreated } from "./leadEvents";
+// 2026-07-29 Wave B completeness audit: the lead importer fired
+// `lead.created`, but the property and deal importers in this same file
+// created rows silently — so a workflow on `property.created` / `deal.created`
+// ran for a single-record create and not for a CSV import of a thousand.
+// Same rule, same file, same event contract.
+import { emitPropertyCreated } from "./propertyEvents";
+import { emitDealCreated } from "./dealEvents";
 
 export interface ImportResult {
   totalRows: number;
@@ -512,13 +519,16 @@ export async function importProperties(
         throw new Error(errorMessages);
       }
 
-      await storage.createProperty({
+      const createdProperty = await storage.createProperty({
         ...parseResult.data,
         sizeAcres: String(parseResult.data.sizeAcres),
         organizationId,
       });
 
       result.successCount++;
+      // Same per-entity contract (and the same volume note) as the lead
+      // importer above.
+      emitPropertyCreated(organizationId, createdProperty);
     } catch (error) {
       result.errorCount++;
       result.errors.push({
@@ -559,7 +569,7 @@ export async function importDeals(
         throw new Error("Property not found or doesn't belong to this organization");
       }
 
-      await storage.createDeal({
+      const createdDeal = await storage.createDeal({
         organizationId,
         propertyId,
         type: row.type || "acquisition",
@@ -574,6 +584,7 @@ export async function importDeals(
       });
 
       result.successCount++;
+      emitDealCreated(organizationId, createdDeal);
     } catch (error) {
       result.errorCount++;
       result.errors.push({

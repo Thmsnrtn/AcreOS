@@ -30,6 +30,15 @@ const CSRF_EXEMPT_PATHS = new Set([
   "/webhooks/twilio/sms-status",
   "/webhooks/twilio/recording-status",
   "/webhooks/meta-lead-ads",
+  // Lob direct-mail delivery events (Wave B "Wire the engine"). Lob posts
+  // server-to-server and cannot carry our double-submit token, so without
+  // this entry EVERY delivery webhook 403'd here before reaching the
+  // handler — the piece timestamps (printed/in transit/delivered) would
+  // have stayed permanently NULL while the code that fills them looked
+  // wired. Safe to exempt: the route authenticates with Lob's own
+  // HMAC-SHA256 signature over `${timestamp}.${rawBody}` and rejects every
+  // unsigned post (server/routes/lob-webhooks.ts).
+  "/webhooks/lob",
   // STR-009: analytics/telemetry are fire-and-forget beacons that can't
   // set a CSRF cookie before the first page load, and sendBeacon() can't
   // attach custom headers. They're auth-gated and don't mutate user data,
@@ -50,6 +59,34 @@ const CSRF_EXEMPT_PATHS = new Set([
   "/webhook/twilio/recording-complete",
   "/webhook/disclosure",
 ]);
+
+/**
+ * Exempt callback routes whose path carries a PARAMETER, so an exact-match
+ * Set entry can never fire. Kept deliberately tiny and deliberately anchored
+ * (^…$): a loose prefix here would exempt far more than the callback.
+ *
+ * Found 2026-07-29 by the webhook-reachability guard
+ * (tests/unit/lobWebhookIngest.test.ts): the title-partner status callback
+ * had been mounted, HMAC-verified and API-key-authenticated — and 403'd here
+ * on every real post, because a title partner cannot carry our double-submit
+ * token any more than Stripe or Lob can.
+ */
+const CSRF_EXEMPT_PATTERNS: RegExp[] = [
+  // POST /api/webhooks/title-orders/:orderId/status — partner-tier inbound
+  // status callback. Authenticated by bearer API key + HMAC-SHA256 over the
+  // raw body (server/routes-title-partners.ts); fails closed without both.
+  /^\/webhooks\/title-orders\/[^/]+\/status$/,
+];
+
+/**
+ * True when this (prefix-stripped) path is an external callback that cannot
+ * supply a CSRF token. Exported so the reachability guard can assert every
+ * mounted webhook route is actually reachable.
+ */
+export function isCsrfExemptPath(path: string): boolean {
+  if (CSRF_EXEMPT_PATHS.has(path)) return true;
+  return CSRF_EXEMPT_PATTERNS.some((re) => re.test(path));
+}
 
 const CSRF_COOKIE = "csrf_token";
 // ~32 hex chars of entropy, readable by JS (not httpOnly) so the client
@@ -94,7 +131,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
   }
 
   // Skip CSRF for specific external webhook callback paths
-  if (CSRF_EXEMPT_PATHS.has(req.path)) {
+  if (isCsrfExemptPath(req.path)) {
     next();
     return;
   }

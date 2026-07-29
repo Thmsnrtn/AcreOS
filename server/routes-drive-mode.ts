@@ -34,6 +34,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { emitLeadCreated } from "./services/leadEvents";
 
 /**
  * Reverse-geocode (lat, lng) via Regrid when configured. Returns null if
@@ -134,6 +135,12 @@ export function registerDriveModeRoutes(app: Express): void {
           userId,
           metadata: { leadId: row.id, geocoded: geo !== null },
         });
+
+        // 2026-07-29 Wave B completeness audit: curb capture is a real
+        // lead-creation path and was creating rows silently, so a
+        // `lead.created` workflow ran for a typed lead but not for the one
+        // the investor is standing in front of. Fire-and-forget.
+        emitLeadCreated(orgId, row);
 
         return res.status(201).json({
           leadId: row.id,

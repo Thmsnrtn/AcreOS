@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readdirSync } from "fs";
+import { existsSync, readdirSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { ROUTE_MANIFEST, KNOWN_NON_MOUNTED } from "../../server/routeManifest";
 
@@ -112,4 +112,77 @@ describe("route manifest", () => {
   it("snapshot: sorted KNOWN_NON_MOUNTED allowlist", () => {
     expect([...allowlistSet].sort()).toMatchSnapshot();
   });
+});
+
+/**
+ * Wave B ("Wire the engine", 2026-07-29) introduced a SECOND route location:
+ * `server/routes/` (lob-webhooks.ts, public-qr-redirect.ts), mounted from
+ * inside `registerOutreachMailRoutes` rather than from server/routes.ts. The
+ * orphan check above only walks `server/routes-*.ts`, so a file dropped into
+ * that new directory was covered by nothing — exactly the "built but unwired"
+ * hole the manifest exists to close, reopened one directory over.
+ *
+ * This closes it structurally rather than by hand-maintained list: every
+ * module under server/routes/ must export at least one `registerXRoutes`
+ * function AND be imported by some other file under server/. An import is not
+ * proof the handler runs, but a missing import IS proof it cannot.
+ */
+describe("server/routes/ sub-directory is not an orphan blind spot", () => {
+  const SUBDIR = resolve(SERVER_DIR, "routes");
+
+  const subFiles = existsSync(SUBDIR)
+    ? readdirSync(SUBDIR)
+        .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+        .sort()
+    : [];
+
+  /** Every non-test .ts under server/, excluding the file being checked. */
+  function serverSources(exclude: string): string[] {
+    const out: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = resolve(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name === "node_modules") continue;
+          walk(full);
+          continue;
+        }
+        if (!entry.name.endsWith(".ts")) continue;
+        if (entry.name.endsWith(".test.ts")) continue;
+        if (full === exclude) continue;
+        out.push(full);
+      }
+    };
+    walk(SERVER_DIR);
+    return out;
+  }
+
+  it("finds the sub-directory at all (guards the guard)", () => {
+    expect(subFiles.length).toBeGreaterThan(0);
+  });
+
+  for (const file of subFiles) {
+    it(`server/routes/${file} exports a register fn and is imported by server code`, () => {
+      const full = resolve(SUBDIR, file);
+      const src = readFileSync(full, "utf-8");
+      const exported = [...src.matchAll(/export function (register\w+)\s*\(/g)].map(
+        (m) => m[1],
+      );
+      expect(
+        exported.length,
+        `server/routes/${file} exports no registerXRoutes() — nothing can mount it`,
+      ).toBeGreaterThan(0);
+
+      const importers = serverSources(full).filter((p) => {
+        const code = readFileSync(p, "utf-8");
+        return exported.some((fn) => code.includes(fn));
+      });
+      expect(
+        importers.length,
+        `server/routes/${file} exports ${exported.join(", ")} but NOTHING in ` +
+          `server/ references it — the route file is an orphan. Mount it (or ` +
+          `delete it).`,
+      ).toBeGreaterThan(0);
+    });
+  }
 });

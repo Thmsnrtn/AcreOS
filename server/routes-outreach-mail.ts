@@ -510,10 +510,14 @@ export function registerOutreachMailRoutes(app: Express): void {
               )
               .returning({ id: mailShipmentPieces.id });
 
-            // Wave B — mint the per-piece QR short code and RENDER IT INTO
-            // THE PIECE PAYLOAD. The piece row is the contract the flusher
-            // reads when it composes the provider payload, so `qr_code` (and
-            // the URL derived from it) is the piece's printed tracking token.
+            // Wave B — mint the per-piece attribution short code. The piece
+            // row is the contract the flusher reads when it composes the
+            // provider payload: mailFlusher.buildRouterShipment selects
+            // `qr_code` and prints the derived short link on the piece
+            // (`responseBlockHtml`), which is what makes /r/:code reachable
+            // by the person holding the mail. (Minting alone did NOT do that
+            // — the flusher did not read the column until the 2026-07-29
+            // Wave B completeness audit.)
             //
             // The code is a deterministic HMAC over the piece id, so it can
             // only be minted after the insert assigns those ids — hence the
@@ -804,9 +808,11 @@ export function registerOutreachMailRoutes(app: Express): void {
         res.json({
           pieces: pieces.map((p) => ({
             ...p,
-            // The URL actually encoded in this piece's printed QR. Null when
-            // the piece was queued before QR instrumentation existed — the
-            // client renders "not instrumented", never a measured zero.
+            // The response URL printed on this piece (see
+            // mailFlusher.responseBlockHtml). Null when the piece was queued
+            // before attribution instrumentation existed, or when this
+            // deployment has no signing secret — the client renders "not
+            // instrumented", never a measured zero.
             qrUrl: p.qrCode ? qrRedirectUrl(p.qrCode) : null,
           })),
           total,
@@ -901,6 +907,15 @@ export function registerOutreachMailRoutes(app: Express): void {
             piecesInstrumented: pieceAgg?.piecesInstrumented ?? 0,
             deliveryEventsReceived: pieceAgg?.deliveryEventsReceived ?? 0,
             // Never measured, and honest about it — see the TODOs below.
+            //
+            // `callsReceived` sums mail_shipment_pieces.inbound_call_count,
+            // which is READ in six places and WRITTEN in NONE: Wave B assigned
+            // a tracking number to the shipment but no inbound-call path ever
+            // increments the piece counter, and the number is not printed on
+            // the piece either. So the figure is a permanent zero, not a
+            // measurement — flagged here (2026-07-29 completeness audit) so
+            // the client stops rendering it as "0 calls".
+            inboundCallTracking: false,
             callsAnsweredTracked: false,
             dealAttributionTracked: false,
           },
