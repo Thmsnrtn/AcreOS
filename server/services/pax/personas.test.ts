@@ -4,9 +4,15 @@
  * Coverage:
  *  1. Production persona accessor (land_investing) returns full content
  *  2. Default-fallback when vertical is null / unknown
- *  3. Scaffolded-vertical accessor returns productionReady: false
- *  4. Every vertical has all required fields populated (loop)
- *  5. Competitor-name discipline: forbidden strings absent from PERSONAS
+ *  3. Every vertical has all required fields populated (loop)
+ *  4. ALL SIX verticals are production-ready (launch → wave V2 → wave V4 of
+ *     ruling #11) and carry zero TODO / scaffold markers
+ *  5. Per-vertical depth bars + capability-grounding strings for the four
+ *     wave-V4 personas (notes, single_family_rentals, multi_family,
+ *     mobile_homes) mirroring the wholesaling (wave V2) pattern
+ *  6. Honest-gap discipline: multi_family / mobile_homes / SFR voices state
+ *     the platform's real gaps instead of promising unshipped features
+ *  7. Competitor-name discipline: forbidden strings absent from PERSONAS
  *     per feedback_competitor_refs.md
  */
 
@@ -14,6 +20,12 @@ import { describe, expect, it } from "vitest";
 
 import { PAX_VERTICALS } from "@shared/schema/pax-verticals";
 import { PERSONAS, getPersona, getPersonaOrDefault } from "./personas";
+
+/**
+ * The appendices are hard-wrapped template literals, so multi-word phrases
+ * can span a line break. Normalize whitespace before phrase assertions.
+ */
+const norm = (s: string) => s.replace(/\s+/g, " ");
 
 describe("getPersona", () => {
   it("returns the production land_investing persona", () => {
@@ -24,10 +36,10 @@ describe("getPersona", () => {
     expect(p.systemPromptAppendix.length).toBeGreaterThan(200);
   });
 
-  it("returns the scaffolded mobile_homes persona with productionReady=false", () => {
+  it("returns the production mobile_homes persona (deepened in wave V4)", () => {
     const p = getPersona("mobile_homes");
     expect(p.vertical).toBe("mobile_homes");
-    expect(p.productionReady).toBe(false);
+    expect(p.productionReady).toBe(true);
   });
 });
 
@@ -45,7 +57,7 @@ describe("getPersonaOrDefault", () => {
   it("returns the requested persona for a valid vertical", () => {
     const p = getPersonaOrDefault("mobile_homes");
     expect(p.vertical).toBe("mobile_homes");
-    expect(p.productionReady).toBe(false);
+    expect(p.productionReady).toBe(true);
   });
 });
 
@@ -71,30 +83,46 @@ describe("PERSONAS registry — completeness", () => {
     }
   });
 
-  it("land_investing and wholesaling are the only production-ready verticals", () => {
+  it("ALL SIX verticals are production-ready (ruling #11 close-out, wave V4)", () => {
     // land_investing shipped production-ready at launch; wholesaling was
-    // deepened in wave V2 of ruling #11. The other four stay scaffolded.
+    // deepened in wave V2; notes, single_family_rentals, multi_family, and
+    // mobile_homes were deepened in wave V4 — the close-out of the ruling
+    // #11 vertical program. No scaffolded personas remain.
     const productionReady = PAX_VERTICALS.filter((v) => PERSONAS[v].productionReady);
-    expect(productionReady).toEqual(["land_investing", "wholesaling"]);
+    expect(productionReady).toEqual([...PAX_VERTICALS]);
   });
 
-  it("scaffolded verticals include a [TODO: deepen] marker somewhere", () => {
+  it("NO persona carries a TODO or scaffold marker of any kind", () => {
     for (const v of PAX_VERTICALS) {
-      if (PERSONAS[v].productionReady) continue;
-      const haystack = JSON.stringify(PERSONAS[v]);
-      expect(haystack).toMatch(/\[TODO: deepen/);
-    }
-  });
-
-  it("production-ready verticals contain NO TODO markers of any kind", () => {
-    for (const v of PAX_VERTICALS) {
-      if (!PERSONAS[v].productionReady) continue;
       const haystack = JSON.stringify(PERSONAS[v]);
       expect(haystack).not.toContain("[TODO");
       expect(haystack).not.toContain("TODO:");
+      expect(haystack).not.toContain("scaffolded");
+      expect(haystack).not.toContain("depth is roadmap");
+    }
+  });
+
+  it("every persona keeps the no-legal-advice guardrail (immutable #12)", () => {
+    for (const v of PAX_VERTICALS) {
+      expect(norm(PERSONAS[v].systemPromptAppendix)).toContain("never give legal advice");
+      expect(PERSONAS[v].systemPromptAppendix).toContain("immutable #12");
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Shared depth bar — the land_investing / wholesaling structural pattern:
+// 10+ terminology entries, 5+ mistakes, 6+ metrics, 4+ references, a rich
+// deal shape, and a multi-paragraph appendix.
+// ---------------------------------------------------------------------------
+function expectProductionDepth(p: (typeof PERSONAS)[keyof typeof PERSONAS]) {
+  expect(p.domainTerminology.length).toBeGreaterThanOrEqual(10);
+  expect(p.commonMistakes.length).toBeGreaterThanOrEqual(5);
+  expect(p.keyMetrics.length).toBeGreaterThanOrEqual(6);
+  expect(p.expertReferences.length).toBeGreaterThanOrEqual(4);
+  expect(p.exampleDealShape.length).toBeGreaterThan(300);
+  expect(p.systemPromptAppendix.length).toBeGreaterThan(200);
+}
 
 describe("wholesaling — deepened to production (wave V2 of ruling #11)", () => {
   const p = PERSONAS.wholesaling;
@@ -106,22 +134,7 @@ describe("wholesaling — deepened to production (wave V2 of ruling #11)", () =>
   });
 
   it("matches the land_investing depth bar on every field", () => {
-    // land_investing is the quality bar: 12+ terminology entries, 5+
-    // mistakes, 7 metrics, 4 references, a rich deal shape, and a
-    // multi-paragraph appendix.
-    expect(p.domainTerminology.length).toBeGreaterThanOrEqual(10);
-    expect(p.commonMistakes.length).toBeGreaterThanOrEqual(5);
-    expect(p.keyMetrics.length).toBeGreaterThanOrEqual(6);
-    expect(p.expertReferences.length).toBeGreaterThanOrEqual(4);
-    expect(p.exampleDealShape.length).toBeGreaterThan(300);
-    expect(p.systemPromptAppendix.length).toBeGreaterThan(200);
-  });
-
-  it("no field carries a TODO or scaffold disclaimer", () => {
-    const haystack = JSON.stringify(p);
-    expect(haystack).not.toContain("[TODO");
-    expect(haystack).not.toContain("scaffolded");
-    expect(haystack).not.toContain("depth is roadmap");
+    expectProductionDepth(p);
   });
 
   it("voice is grounded in the real wholesale stack — assignment vs double close, EMD, state rules, TCPA", () => {
@@ -141,16 +154,205 @@ describe("wholesaling — deepened to production (wave V2 of ruling #11)", () =>
     expect(haystack).toMatch(/license.required|advertising.restricted/i);
   });
 
-  it("keeps the compliance guardrail: flags for attorney review, never legal advice (immutable #12)", () => {
-    expect(p.systemPromptAppendix).toContain("never give legal advice");
-    expect(p.systemPromptAppendix).toContain("immutable #12");
-  });
-
   it("MAO is glossed correctly as maximum allowable offer", () => {
     // The old stub misglossed MAO as "maximum allowable offset".
     const haystack = JSON.stringify(p);
     expect(haystack).toContain("maximum allowable offer");
     expect(haystack).not.toContain("allowable offset");
+  });
+});
+
+describe("notes — deepened to production (wave V4 of ruling #11)", () => {
+  const p = PERSONAS.notes;
+
+  it("is production-ready with the correct identity", () => {
+    expect(p.vertical).toBe("notes");
+    expect(p.verticalLabel).toBe("Notes");
+    expect(p.productionReady).toBe(true);
+  });
+
+  it("matches the depth bar on every field", () => {
+    expectProductionDepth(p);
+  });
+
+  it("voice is grounded in the shipped note stack — servicing compliance, acquisition pipeline, paperwork, tax", () => {
+    // Every one of these maps to shipped capability:
+    //   - UPB / collateral file / BPO / tape → note_acquisitions pipeline +
+    //     diligenceChecklist (shared/schema/notes-vertical.ts)
+    //   - §1026.41 statements + servicer-vs-holder → reg-z.ts +
+    //     periodicStatements predicate (Beatrice 4-gate tree)
+    //   - §1024.39 day-36 / day-45 clocks → respa/earlyIntervention
+    //   - §1024.17 escrow analysis + cushion → respaEscrowAnalysis
+    //   - §1026.36(c) suspense + late-fee non-pyramiding → lateFees +
+    //     suspense_balances
+    //   - allonge / assignment → noteAssignmentPdf + note_assignments
+    //   - SCRA gate → note_loss_mit_cases.scraCheckedAt
+    //   - reperforming streak (12) → acquired_notes.consecutiveOnTimePayments
+    //   - per-diem payoff (APR/365) → notePaymentMath.computePayoffCents
+    //   - 1099-INT / 1096 / FIRE → form1099Batch
+    const haystack = JSON.stringify(p);
+    expect(haystack).toContain("UPB");
+    expect(haystack).toContain("collateral file");
+    expect(haystack).toContain("BPO");
+    expect(haystack).toContain("1026.41");
+    expect(haystack).toMatch(/1024\.39|day-36/);
+    expect(haystack).toMatch(/1024\.17|escrow analysis/);
+    expect(haystack).toContain("suspense");
+    expect(haystack).toMatch(/non-pyramid|never pyramid|1026\.36\(c\)\(2\)/);
+    expect(haystack).toContain("allonge");
+    expect(haystack).toContain("SCRA");
+    expect(haystack).toContain("reperforming");
+    expect(haystack).toContain("APR/365");
+    expect(haystack).toContain("1099-INT");
+  });
+
+  it("keeps the servicer-vs-holder duty distinction (Beatrice ruling) in the voice", () => {
+    // §1026.41 / §1024.39 attach to the SERVICER — the persona must never
+    // coach a passive holder into sending statements it doesn't owe.
+    expect(p.systemPromptAppendix).toContain("not the holder");
+  });
+
+  it("aligns with the paxPersona.ts note voices — held for yield, not flipped", () => {
+    // VERTICAL_CONTEXTS.note_investor: "Avoid 'resale' or 'flip' — notes
+    // are held for yield." The unified vertical voice must not contradict.
+    expect(p.systemPromptAppendix).toContain("held for yield");
+    expect(p.systemPromptAppendix).not.toMatch(/\bflip the note\b/i);
+  });
+});
+
+describe("single_family_rentals — deepened to production (wave V4 of ruling #11)", () => {
+  const p = PERSONAS.single_family_rentals;
+
+  it("is production-ready with the correct identity", () => {
+    expect(p.vertical).toBe("single_family_rentals");
+    expect(p.verticalLabel).toBe("Single-Family Rentals");
+    expect(p.productionReady).toBe(true);
+  });
+
+  it("matches the depth bar on every field", () => {
+    expectProductionDepth(p);
+  });
+
+  it("voice is grounded in the shipped rental stack — FCRA, ledger, HAP, deposits, inspections", () => {
+    // Every one of these maps to shipped capability in shared/schema/
+    // rental.ts + routes-rentals / routes-rent-ledger / routes-rent-roll-
+    // import + the four landlord workflow templates:
+    //   - FCRA attestation + adverse action → tenant_screenings +
+    //     fcra_attestations
+    //   - partial-aware ledger + legal posture → rent_charges / rent_payments
+    //   - state late-fee rules → late_fee_rules
+    //   - Section-8 HAP split → rental_leases.hapPortionCents +
+    //     rent_payments.payorType 'hap'
+    //   - lead-paint gate → rental_leases.leadPaintDisclosureAttachedAt
+    //     (24 C.F.R. §35.92)
+    //   - photo-gated inspections → move_inspections.photoCount
+    //   - deposit deadlines → security_deposits.statutoryDeadline
+    //   - renewal countdown + notice window → tpl_landlord_lease_renewal_
+    //     countdown + computeNoticeWindow
+    const haystack = JSON.stringify(p);
+    expect(haystack).toContain("FCRA");
+    expect(haystack).toMatch(/adverse.action/i);
+    expect(haystack).toMatch(/HAP|Section 8/);
+    expect(haystack).toMatch(/rent ledger|ledger/i);
+    expect(haystack).toMatch(/partial (rent|payment)/i);
+    expect(haystack).toMatch(/late-fee|late fee/i);
+    expect(haystack).toMatch(/lead-paint|lead paint/i);
+    expect(haystack).toMatch(/move-in/i);
+    expect(haystack).toMatch(/statutory (return )?deadline/i);
+    expect(haystack).toMatch(/renewal/i);
+  });
+
+  it("is honest about the manual rails — records rent, doesn't move money or draft notices", () => {
+    // business-types.ts buy_and_hold: manual-entry ledger (no ACH), no
+    // screening-bureau provider, eviction-notice generation deferred.
+    expect(norm(p.systemPromptAppendix)).toContain("does not move money");
+    expect(norm(p.systemPromptAppendix)).toContain("does not draft legal notices");
+    expect(norm(p.systemPromptAppendix)).toMatch(/no bureau pull/i);
+  });
+});
+
+describe("multi_family — deepened to production (wave V4 of ruling #11)", () => {
+  const p = PERSONAS.multi_family;
+
+  it("is production-ready with the correct identity", () => {
+    expect(p.vertical).toBe("multi_family");
+    expect(p.verticalLabel).toBe("Multi-Family");
+    expect(p.productionReady).toBe(true);
+  });
+
+  it("matches the depth bar on every field", () => {
+    expectProductionDepth(p);
+  });
+
+  it("voice is grounded in the shipped unit-scale rental stack", () => {
+    // Every one of these maps to shipped capability:
+    //   - rent-roll import (6-plex → tenants by unit + NOI) →
+    //     routes-rent-roll-import
+    //   - unit turn / renew-or-turn / two-week relet target →
+    //     tpl_multifamily_unit_turn
+    //   - per-unit vs joint-and-several + acknowledgment gate →
+    //     lease_tenants.holdsJointAndSeveral (rental.ts)
+    //   - 4+ unit late-fee caps → late_fee_rules.capPctLargeProperty
+    //   - unit labels on leases → rental_leases.unitLabel
+    const haystack = JSON.stringify(p);
+    expect(haystack).toContain("rent roll");
+    expect(haystack).toMatch(/unit turn|make-ready/i);
+    expect(haystack).toContain("joint-and-several");
+    expect(haystack).toMatch(/4\+ unit|4-plus-unit/);
+    expect(haystack).toMatch(/pro-forma/i);
+    expect(haystack).toContain("NOI");
+  });
+
+  it("does NOT promise the platform's known gaps — unit inventory, building rollups, T-12 surfaces", () => {
+    // business-types.ts multifamily entry: units exist only as a free-text
+    // unitLabel per lease; no building-level rollups; no T-12/underwriting
+    // surfaces. The voice must state the gap, not promise the feature.
+    expect(p.systemPromptAppendix).toContain("no building-level");
+    expect(p.systemPromptAppendix).toContain("never imply those exist");
+    expect(p.systemPromptAppendix).toMatch(/units are labels on leases/i);
+  });
+});
+
+describe("mobile_homes — deepened to production (wave V4 of ruling #11)", () => {
+  const p = PERSONAS.mobile_homes;
+
+  it("is production-ready with the correct identity", () => {
+    expect(p.vertical).toBe("mobile_homes");
+    expect(p.verticalLabel).toBe("Mobile Homes");
+    expect(p.productionReady).toBe(true);
+  });
+
+  it("matches the depth bar on every field", () => {
+    expectProductionDepth(p);
+  });
+
+  it("voice is grounded in shipped lot-lease operations + the Dodd-Frank checker", () => {
+    // Every one of these maps to shipped capability or named research:
+    //   - lot leases on the rentals stack + lot-rent receipt →
+    //     rental_leases / rent ledger + tpl_mobile_home_lot_rent_receipt
+    //   - renewal countdown → tpl_landlord_lease_renewal_countdown
+    //   - financed POH sales → doddFrankChecker (manufactured home = dwelling,
+    //     safe harbors, balloon < 60mo, HOEPA personal-property trigger)
+    //   - DMV/VIN vs real-property titling → pillar-K Iris persona +
+    //     note-investor-followups §10
+    const haystack = JSON.stringify(p);
+    expect(haystack).toContain("lot rent");
+    expect(haystack).toContain("lot lease");
+    expect(haystack).toContain("POH");
+    expect(haystack).toContain("TOH");
+    expect(haystack).toContain("Dodd-Frank");
+    expect(haystack).toMatch(/DMV|VIN/);
+    expect(haystack).toMatch(/well|septic/i);
+    expect(haystack).toMatch(/receipt/i);
+  });
+
+  it("does NOT promise the platform's known gaps — pad inventory, chattel titles, submetering", () => {
+    // business-types.ts mobile_home entry: no lot/pad inventory model, no
+    // home-as-chattel handling, no utilities pass-through billing. The
+    // voice must state the gap, not promise the feature.
+    expect(p.systemPromptAppendix).toContain("no lot/pad inventory model");
+    expect(p.systemPromptAppendix).toContain("no chattel-title tracking");
+    expect(p.systemPromptAppendix).toMatch(/no utilities pass-through/i);
   });
 });
 

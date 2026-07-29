@@ -4,7 +4,8 @@
  * Coverage:
  *  1. Land-investing appendix surfaces land-investing terminology
  *  2. Null vertical falls back to land_investing
- *  3. Scaffolded vertical (mobile_homes) preserves [TODO: deepen] marker
+ *  3. mobile_homes (deepened in wave V4 of ruling #11) renders the
+ *     production voice — no TODO markers, no scaffold-honesty flag
  *  4. Experience-level tone differs across beginner/intermediate/expert
  *  5. Goals framing composes multiple goals
  *  6. Empty goals returns a generic default
@@ -44,16 +45,20 @@ describe("buildVerticalPromptAppendix", () => {
     expect(out).toContain("Land Investing");
   });
 
-  it("for mobile_homes, includes the scaffolded appendix + a [TODO: deepen] marker", () => {
+  it("for mobile_homes (production since wave V4), renders the deepened voice without scaffold markers", () => {
     const out = buildVerticalPromptAppendix({
       vertical: "mobile_homes",
       experienceLevel: "intermediate",
       investmentGoals: ["cash_flow"],
     });
     expect(out).toContain("Mobile Home");
-    expect(out).toMatch(/\[TODO: deepen/);
-    // Honesty flag for scaffolded verticals should be present.
-    expect(out).toContain("Depth posture");
+    // Deepened in wave V4 of ruling #11: no TODO markers remain, and the
+    // generic scaffold-honesty flag is replaced by the appendix's own
+    // specific capability honesty (no pad inventory / chattel titles /
+    // submetering promised).
+    expect(out).not.toMatch(/\[TODO/);
+    expect(out).not.toContain("Depth posture");
+    expect(out).toContain("no lot/pad inventory model");
   });
 
   it("defaults experienceLevel to intermediate when null", () => {
