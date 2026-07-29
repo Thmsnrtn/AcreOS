@@ -191,7 +191,18 @@ interface FunnelStage {
   icon: typeof Send;
   count: number;
   cssToken: string; // text color token
+  /**
+   * False when NOTHING instruments this stage for this shipment. The count is
+   * then not a result — it is the absence of a measurement, and rendering it
+   * as "0" would be a fabricated one. See FunnelMeasurement.
+   */
+  measured?: boolean;
+  /** Plain-words reason shown in place of the number when unmeasured. */
+  unmeasuredNote?: string;
 }
+
+/** Rendered instead of a count for a stage nothing measures. */
+const NOT_MEASURED_LABEL = "Not measured";
 
 function FunnelCard({
   funnel,
@@ -233,6 +244,13 @@ function FunnelCard({
 }
 
 function FunnelBars({ data }: { data: FunnelResponse }) {
+  // Absent envelope ⇒ assume NOT measured. Degrading to a confident zero is
+  // the failure mode this exists to prevent.
+  const m = data.measurement;
+  const qrMeasured = m?.qrTrackingEnabled === true;
+  const deliveryMeasured = (m?.deliveryEventsReceived ?? 0) > 0;
+  const dealsMeasured = m?.dealAttributionTracked === true;
+
   const stages: FunnelStage[] = [
     { key: "sent", label: "Sent", icon: Send, count: data.sent, cssToken: "text-foreground" },
     {
@@ -241,14 +259,27 @@ function FunnelBars({ data }: { data: FunnelResponse }) {
       icon: PackageCheck,
       count: data.delivered,
       cssToken: "text-acr-pos",
+      measured: deliveryMeasured,
+      unmeasuredNote: "No carrier delivery events received for this shipment yet",
     },
-    { key: "qr", label: "QR scans", icon: QrCode, count: data.qrScans, cssToken: "text-acr-pos" },
+    {
+      key: "qr",
+      label: "QR scans",
+      icon: QrCode,
+      count: data.qrScans,
+      cssToken: "text-acr-pos",
+      measured: qrMeasured,
+      unmeasuredNote:
+        "These pieces carry no response code, so scans were never measured — not zero scans",
+    },
     {
       key: "calls",
       label: "Calls",
       icon: Phone,
       count: data.callsReceived,
       cssToken: "text-acr-pos",
+      measured: m?.inboundCallTracking === true,
+      unmeasuredNote: "Inbound-call attribution for mail is not wired yet",
     },
     {
       key: "dealsOpened",
@@ -256,6 +287,8 @@ function FunnelBars({ data }: { data: FunnelResponse }) {
       icon: Inbox,
       count: data.dealsOpened,
       cssToken: "text-acr-pos",
+      measured: dealsMeasured,
+      unmeasuredNote: "Mail-piece → deal attribution is not wired yet",
     },
     {
       key: "dealsClosed",
@@ -263,14 +296,19 @@ function FunnelBars({ data }: { data: FunnelResponse }) {
       icon: Sparkles,
       count: data.dealsClosed,
       cssToken: "text-acr-pos",
+      measured: dealsMeasured,
+      unmeasuredNote: "Mail-piece → deal attribution is not wired yet",
     },
   ];
-  const max = Math.max(1, ...stages.map((s) => s.count));
+  // Unmeasured stages contribute nothing to the scale — a bar drawn from a
+  // non-measurement would rescale the ones that ARE real.
+  const max = Math.max(1, ...stages.filter((s) => s.measured !== false).map((s) => s.count));
 
   return (
     <ol className="space-y-2" aria-label="Campaign funnel" data-testid="funnel-bars">
       {stages.map((s) => {
-        const pct = Math.max(2, Math.round((s.count / max) * 100));
+        const unmeasured = s.measured === false;
+        const pct = unmeasured ? 0 : Math.max(2, Math.round((s.count / max) * 100));
         const Icon = s.icon;
         return (
           <li key={s.key} className="flex items-center gap-3">
@@ -279,18 +317,32 @@ function FunnelBars({ data }: { data: FunnelResponse }) {
               <span className="font-medium">{s.label}</span>
             </div>
             <div className="flex-1 h-6 rounded-md bg-muted/30 overflow-hidden">
-              <div
-                role="progressbar"
-                aria-valuenow={s.count}
-                aria-valuemin={0}
-                aria-valuemax={max}
-                aria-label={`${s.label}: ${s.count}`}
-                className="h-full bg-primary/60 transition-[width] duration-500"
-                style={{ width: `${pct}%` }}
-              />
+              {unmeasured ? (
+                <div
+                  className="h-full flex items-center px-2 text-micro text-muted-foreground"
+                  data-testid={`funnel-unmeasured-${s.key}`}
+                >
+                  {s.unmeasuredNote}
+                </div>
+              ) : (
+                <div
+                  role="progressbar"
+                  aria-valuenow={s.count}
+                  aria-valuemin={0}
+                  aria-valuemax={max}
+                  aria-label={`${s.label}: ${s.count}`}
+                  className="h-full bg-primary/60 transition-[width] duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              )}
             </div>
-            <div className={`w-16 text-right text-sm font-mono ${s.cssToken}`}>
-              {s.count.toLocaleString()}
+            <div
+              className={`w-16 text-right text-sm font-mono ${unmeasured ? "text-muted-foreground" : s.cssToken}`}
+              aria-label={
+                unmeasured ? `${s.label}: ${NOT_MEASURED_LABEL}` : `${s.label}: ${s.count}`
+              }
+            >
+              {unmeasured ? "—" : s.count.toLocaleString()}
             </div>
           </li>
         );
@@ -304,28 +356,61 @@ function FunnelBars({ data }: { data: FunnelResponse }) {
 function CostPerStageRow({ funnel }: { funnel: ReturnType<typeof useResultsFunnel> }) {
   if (funnel.isLoading || !funnel.data) return null;
   const d = funnel.data;
-  const items: Array<{ label: string; cents: number }> = [
+  // A cost-per-X over a denominator nothing measures is not a cheap campaign,
+  // it is an unmeasured one. The server divides by zero to 0 cents; showing
+  // that as "$0.00" would read as spectacular efficiency.
+  const m = d.measurement;
+  const items: Array<{ label: string; cents: number; measured?: boolean }> = [
     { label: "$ / sent", cents: d.costPerSentCents },
-    { label: "$ / delivered", cents: d.costPerDeliveredCents },
-    { label: "$ / QR scan", cents: d.costPerQrScanCents },
-    { label: "$ / call", cents: d.costPerCallCents },
-    { label: "$ / deal", cents: d.costPerDealCents },
+    {
+      label: "$ / delivered",
+      cents: d.costPerDeliveredCents,
+      measured: (m?.deliveryEventsReceived ?? 0) > 0,
+    },
+    {
+      label: "$ / QR scan",
+      cents: d.costPerQrScanCents,
+      measured: m?.qrTrackingEnabled === true,
+    },
+    {
+      label: "$ / call",
+      cents: d.costPerCallCents,
+      measured: m?.inboundCallTracking === true,
+    },
+    {
+      label: "$ / deal",
+      cents: d.costPerDealCents,
+      measured: m?.dealAttributionTracked === true,
+    },
   ];
   return (
     <div
       className="grid grid-cols-2 md:grid-cols-5 gap-2"
       data-testid="cost-per-stage"
     >
-      {items.map((it) => (
-        <Card key={it.label}>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">{it.label}</p>
-            <p className="text-lg font-semibold font-mono text-acr-warn">
-              {formatCentsCompact(it.cents)}
-            </p>
-          </CardContent>
-        </Card>
-      ))}
+      {items.map((it) => {
+        const unmeasured = it.measured === false;
+        return (
+          <Card key={it.label}>
+            <CardContent className="p-3">
+              <p className="text-xs text-muted-foreground">{it.label}</p>
+              <p
+                className={`text-lg font-semibold font-mono ${unmeasured ? "text-muted-foreground" : "text-acr-warn"}`}
+                aria-label={
+                  unmeasured
+                    ? `${it.label}: ${NOT_MEASURED_LABEL}`
+                    : `${it.label}: ${formatCentsCompact(it.cents)}`
+                }
+              >
+                {unmeasured ? "—" : formatCentsCompact(it.cents)}
+              </p>
+              {unmeasured && (
+                <p className="text-micro text-muted-foreground m-0">{NOT_MEASURED_LABEL}</p>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }

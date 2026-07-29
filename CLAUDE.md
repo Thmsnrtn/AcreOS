@@ -91,3 +91,40 @@ These decisions are also mirrored, machine-readable, in `shared/governance/const
 - **No new AI destinations** — Pax stays ambient fabric behind the doors, never a separate app-within-the-app.
 - **Fabrication is never acceptable**: no invented numbers, no fake activity, no placeholder data presented as real. Refuse-not-fabricate everywhere (`lint:no-fabrication` gate).
 - **Hard-stops stay founder-only forever**: pricing changes, legal signing, spends >$500, customer-data deletion.
+
+## Wave discipline — never trust a wave's self-report
+
+Large changes ship as "waves": a fleet of parallel agents with exclusive file
+sets, then central verification, then one PR. This works, but it has one
+repeatable failure mode, and it has bitten this repo more than once:
+
+**An agent reports success for the part it built, and is blind to the part it
+didn't.** Wave B ("Wire the engine", `86e46f59`) wired workflow emitters for
+deal/property/payment but added only the *lead* lane to
+`shared/workflow-live-triggers.ts` — so six triggers that genuinely fired were
+still badged "Not yet live" in the builder. Every agent involved reported
+success. In the same program a schema table shipped with no migration (would
+have 500'd on deploy), a *selected* DNC provider without credentials silently
+collapsed to "no vendor configured" and passed every number, and an `as any`
+widened `leads.organizationId` — a `NOT NULL` tenant key — to
+`number | undefined`.
+
+So, for every wave:
+
+1. **Verify claims against code, never against reports.** Run the gates
+   yourself (`npm run check`, `npm test`, `npm run build`). A green agent
+   report is a hypothesis.
+2. **Run an independent completeness audit before the PR merges** — a fresh
+   agent that did not build the wave, told to treat each claim as a hypothesis
+   and hunt for residue. Cheap relative to shipping a lie.
+3. **Hunt "built but unwired" specifically.** It is this codebase's single most
+   common defect: new route files never mounted, jobs never registered,
+   services with zero call sites, schema without migrations, tables nothing
+   reads. Grep new exports for call sites.
+4. **When a wave makes a stubbed thing real, update the test that pinned the
+   stub — do not delete it.** Rewrite the assertion to the new truth so the
+   original invariant survives (see `workflowActionHonesty.test.ts`, whose
+   live-trigger check is now *derived* from real emitter call sites rather than
+   a hardcoded list, so it cannot go stale again).
+5. **Fix the occurrence, not the baseline.** Ratchets are load-bearing; when a
+   count legitimately drops, lower it in the same commit.

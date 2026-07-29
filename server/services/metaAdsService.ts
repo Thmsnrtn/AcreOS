@@ -15,6 +15,7 @@ import { db } from "../db";
 import { leads, properties, organizations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { emitLeadCreated } from "./leadEvents";
 
 const META_API_BASE = "https://graph.facebook.com/v21.0";
 
@@ -126,7 +127,14 @@ export async function processLeadAdSubmission(
         .filter(Boolean)
         .join("\n"),
     })
-    .returning({ id: leads.id });
+    .returning();
+
+  // 2026-07-29 Wave B completeness audit: an inbound Facebook Lead Ad is a
+  // real lead-creation path, and it was creating rows silently — so a
+  // workflow on `lead.created` fired for a hand-typed lead and not for the
+  // paid-acquisition channel that most needs an instant follow-up.
+  // Fire-and-forget; never throws back into the webhook handler.
+  emitLeadCreated(orgId, newLead);
 
   return { leadId: newLead?.id || null, created: true };
 }

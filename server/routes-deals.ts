@@ -31,7 +31,7 @@ import {
 } from "./services/dealHandoffService";
 // Wave B "Wire the engine": deal automations never ran because nothing emitted
 // deal.created / deal.stage_changed. Both emitters are fire-and-forget and
-// no-op unless the status genuinely changed — see workflowEventEmitters.ts.
+// no-op unless the status genuinely changed — see services/dealEvents.ts.
 import { emitDealCreated, emitDealStageChanged } from "./services/dealEvents";
 
 // F-D39: small helper used by the due-diligence-item routes below to resolve

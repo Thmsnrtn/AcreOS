@@ -2383,7 +2383,14 @@ export async function executeTool(
         // Any other status is left alone — never fight the state machine.
         if (deal.status === "negotiating") {
           try {
-            await storage.updateDeal(deal.id, { status: "offer_sent", offerAmount: String(args.offerAmount) } as any, undefined, org.id);
+            const advanced = await storage.updateDeal(deal.id, { status: "offer_sent", offerAmount: String(args.offerAmount) } as any, undefined, org.id);
+            // 2026-07-29 Wave B completeness audit: this is the "offer bridge"
+            // the wave claimed to cover and did not — a negotiating → offer_sent
+            // transition is a stage change like any other, and a workflow on
+            // deal.stage_changed must not fire for a Kanban drag and stay
+            // silent when Pax drafts the offer. Fire-and-forget, no-ops when
+            // the status did not actually move.
+            emitDealStageChanged(org.id, deal, advanced);
           } catch (advErr) {
             logger.warn("[draft_offer] deal advance to offer_sent failed (non-fatal)", {
               metadata: { dealId: deal.id, error: advErr instanceof Error ? advErr.message : String(advErr) },

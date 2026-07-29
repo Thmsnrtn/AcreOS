@@ -6,9 +6,17 @@
  *  - progress timeline (printed → in_transit → expected → delivered → response)
  *  - expandable per-piece table with USPS scan timestamps + QR + inbound calls
  *
- * Wow moments (UI-only — wire to real data when Pax + USPS feeds land):
- *  - mailbox icon "opens" briefly when a piece's status flips to delivered
- *  - QR-scan highlight placeholder
+ * Data provenance (2026-07-29 completeness audit):
+ *  - printed / delivered timestamps are REAL once Lob delivery webhooks are
+ *    configured (POST /api/webhooks/lob); a piece with no events shows blanks.
+ *  - QR scans render "—" for a piece that carries no printed response code:
+ *    an uninstrumented piece was never measured, and "0" would say otherwise.
+ *  - inbound calls are "—" for every piece — nothing in the server increments
+ *    inbound_call_count yet. The column returns to numbers in the change that
+ *    actually attributes an inbound call to a piece.
+ *
+ * Purely decorative: the mailbox icon "opens" briefly when a piece's status
+ * flips to delivered. That is an animation on real data, not a data source.
  */
 
 import { useState } from "react";
@@ -272,12 +280,35 @@ function PiecesTable({
               <TableCell className="text-xs">{formatDateTime(p.printedAt)}</TableCell>
               <TableCell className="text-xs">{formatDateTime(p.deliveredAt)}</TableCell>
               <TableCell className="text-right">
-                <span className="inline-flex items-center gap-1 text-xs">
-                  <QrCode className="w-3 h-3" aria-hidden="true" />
-                  {p.qrScanCount}
+                {/* A piece with no printed response code was never measured —
+                    "0 scans" would be a fabricated measurement. */}
+                {p.qrUrl ? (
+                  <span className="inline-flex items-center gap-1 text-xs">
+                    <QrCode className="w-3 h-3" aria-hidden="true" />
+                    {p.qrScanCount}
+                  </span>
+                ) : (
+                  <span
+                    className="text-xs text-muted-foreground"
+                    aria-label="QR scans: not instrumented"
+                    title="This piece carries no response code, so scans were never measured"
+                  >
+                    —
+                  </span>
+                )}
+              </TableCell>
+              {/* Nothing increments inbound_call_count anywhere in the server
+                  yet (2026-07-29 audit), so every value here is the absence of
+                  a measurement rather than a count of zero calls. */}
+              <TableCell className="text-right text-xs">
+                <span
+                  className="text-muted-foreground"
+                  aria-label="Inbound calls: not tracked"
+                  title="Inbound-call attribution for mail is not wired yet"
+                >
+                  —
                 </span>
               </TableCell>
-              <TableCell className="text-right text-xs">{p.inboundCallCount}</TableCell>
             </TableRow>
           ))}
         </TableBody>

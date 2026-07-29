@@ -87,7 +87,17 @@ export async function assignTrackingNumberForMailShipment(
       };
     }
 
-    const assigned = await assignNumber(organizationId, null);
+    // RECYCLE-ONLY (2026-07-29 Wave B completeness audit). Queueing mail used
+    // to be able to PROVISION a brand-new Twilio number — a recurring monthly
+    // charge on the customer's own carrier account — for attribution that
+    // cannot currently be measured at all: the number is never printed on the
+    // piece, and nothing increments mail_shipment_pieces.inbound_call_count.
+    // Spending money for a measurement that does not exist is worse than not
+    // measuring. Recycling an already-rented idle number is free, so that
+    // still happens; an empty pool now yields `null` and the response says
+    // call attribution is off. Flip this back to renting in the same change
+    // that (a) prints the number on the piece and (b) writes the counter.
+    const assigned = await assignNumber(organizationId, null, { rentIfPoolEmpty: false });
     await db
       .update(trackingNumberAssignments)
       .set({ mailShipmentId })
@@ -109,22 +119,11 @@ export async function assignTrackingNumberForMailShipment(
   }
 }
 
-/** The active tracking number for a mail shipment, or null if none. */
-export async function trackingNumberForMailShipment(
-  mailShipmentId: number,
-): Promise<string | null> {
-  const [row] = await db
-    .select({ number: trackingNumberAssignments.number })
-    .from(trackingNumberAssignments)
-    .where(
-      and(
-        eq(trackingNumberAssignments.mailShipmentId, mailShipmentId),
-        isNull(trackingNumberAssignments.releasedAt),
-      ),
-    )
-    .limit(1);
-  return row?.number ?? null;
-}
+// REMOVED 2026-07-29 (Wave B completeness audit): `trackingNumberForMailShipment()`
+// shipped with the wave and had ZERO call sites — nothing printed the number on
+// a piece and nothing read it back, so it was an accessor implying a feature
+// that does not exist. It returns in the change that actually attributes an
+// inbound call to a mail piece; until then its absence is the honest state.
 
 /**
  * Assign a tracking number to (orgId, campaignId). Recycles from the
@@ -133,7 +132,17 @@ export async function trackingNumberForMailShipment(
 export async function assignNumber(
   organizationId: number,
   campaignId: number | null,
-  options: { preferredProvider?: CommsProviderName; areaCode?: string } = {},
+  options: {
+    preferredProvider?: CommsProviderName;
+    areaCode?: string;
+    /**
+     * Whether an EMPTY pool may provision a brand-new carrier number.
+     * Defaults true (the campaign paths want a number). Set false for callers
+     * that must never turn an empty pool into a recurring carrier charge —
+     * see assignTrackingNumberForMailShipment.
+     */
+    rentIfPoolEmpty?: boolean;
+  } = {},
 ): Promise<AssignedNumber> {
   const autoReleaseDays = await getAutoReleaseDays();
   const idleCutoff = new Date(Date.now() - autoReleaseDays * 86400 * 1000);
@@ -187,7 +196,13 @@ export async function assignNumber(
     };
   }
 
-  // Pool empty — rent a fresh number from the cheapest enabled provider.
+  // Pool empty — rent a fresh number from the cheapest enabled provider,
+  // unless the caller has told us not to turn an empty pool into a bill.
+  if (options.rentIfPoolEmpty === false) {
+    throw new Error(
+      "tracking-pool: no recycled number available and renting is disabled for this caller",
+    );
+  }
   const rented = await commsRouter.rentNumber({
     organizationId,
     areaCode: options.areaCode,

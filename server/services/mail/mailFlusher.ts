@@ -24,6 +24,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { mailShipments, mailShipmentPieces, marketingSpend, organizations } from "@shared/schema";
 import { MailRouter, type MailShipment, type MailPiece, type MailShipmentSpeed } from "./router";
+import { qrRedirectUrl } from "./qrCodes";
 import { refundPoolDebit } from "../creditPool";
 import { logger } from "../../utils/logger";
 
@@ -45,18 +46,59 @@ export interface FlushPiece {
   city: string;
   state: string;
   zip: string;
+  /**
+   * The per-piece attribution code minted at queue time
+   * (`mail_shipment_pieces.qr_code`). NULL when this deployment has no
+   * signing secret, or when the piece predates instrumentation — in which
+   * case nothing about attribution is printed and every downstream surface
+   * reports the piece as "not instrumented".
+   */
+  qrCode?: string | null;
+}
+
+/**
+ * The response block actually PRINTED on an instrumented piece.
+ *
+ * Wave B audit (2026-07-29): the QR short code was minted, stored and read
+ * back by the analytics surfaces, but NOTHING ever put it on the paper — the
+ * flusher selected five address columns and fanned only the copy snapshot
+ * into the provider payload. `/r/:code` was therefore unreachable by the one
+ * person it exists for (the human holding the postcard), so
+ * `qr_scan_count` could only ever stay zero while the API reported
+ * `qrTrackingEnabled: true`. This is the missing half.
+ *
+ * It prints the short link as TEXT, not as a QR image: this codebase has no
+ * QR encoder and inventing one here would be a bigger change than the audit
+ * warrants. A typed short link is a real, honest attribution path — a scan of
+ * it is a scan — and the day a renderer lands it draws from the same code.
+ */
+export function responseBlockHtml(qrCode: string | null | undefined): string {
+  if (!qrCode) return "";
+  const url = qrRedirectUrl(qrCode);
+  // The code is `[0-9a-z]+-[0-9a-z]{8}` by construction (services/mail/qrCodes.ts)
+  // and the base URL is operator config, so there is nothing to escape — but
+  // keep the markup trivial so no template engine can be tricked by it.
+  return (
+    `<div class="acreos-response-block">` +
+    `<p>Respond online: <strong>${url.replace(/^https?:\/\//i, "")}</strong></p>` +
+    `</div>`
+  );
 }
 
 /**
  * Pure: map a persisted shipment + its pending pieces into the router's
  * MailShipment. The copy snapshot is fanned to every piece's content vars (the
- * lob adapter reads htmlContent for letters, frontHtml for postcards). Pieces
- * keep their DB order so the router's index-aligned result maps straight back.
+ * lob adapter reads htmlContent for letters, frontHtml/backHtml for
+ * postcards). An instrumented piece also carries its response block — on the
+ * BACK for postcards (the front is the operator's artwork) and appended to the
+ * body for letters. Pieces keep their DB order so the router's index-aligned
+ * result maps straight back.
  */
 export function buildRouterShipment(ship: FlushShipment, pieces: FlushPiece[]): MailShipment {
   const copy = ship.copySnapshot ?? "";
   const mailPieces: MailPiece[] = pieces.map((p) => {
     const [firstName, ...rest] = (p.recipientName ?? "").trim().split(/\s+/);
+    const responseBlock = responseBlockHtml(p.qrCode);
     return {
       recipient: {
         firstName: firstName || undefined,
@@ -67,7 +109,11 @@ export function buildRouterShipment(ship: FlushShipment, pieces: FlushPiece[]): 
         zip: p.zip,
       },
       pieceType: ship.pieceType as MailPiece["pieceType"],
-      vars: { htmlContent: copy, frontHtml: copy, backHtml: "" },
+      vars: {
+        htmlContent: copy + responseBlock,
+        frontHtml: copy,
+        backHtml: responseBlock,
+      },
     };
   });
   return {
@@ -153,6 +199,9 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
       city: mailShipmentPieces.city,
       state: mailShipmentPieces.state,
       zip: mailShipmentPieces.zip,
+      // Wave B audit fix: without this column the minted code never reached
+      // the printed piece, so the public /r/:code scan path was unreachable.
+      qrCode: mailShipmentPieces.qrCode,
     })
     .from(mailShipmentPieces)
     .where(and(eq(mailShipmentPieces.shipmentId, ship.id), eq(mailShipmentPieces.status, "pending")))
