@@ -5,9 +5,16 @@
  * does, not why it was built. No "I built this", no founder-letter
  * tone, no audience-flattering rhetorical hooks.
  *
- * Positioning: AcreOS leads with Land Investors as the founding
- * vertical (per v6 positioning). Every other vertical is present in
- * the product at varying depth (core / beta / roadmap per
+ * Positioning (founder ruling #12(a), 2026-07-29): AcreOS speaks to
+ * PROPERTY INVESTORS generally — land flippers, note investors,
+ * wholesalers, tax-auction buyers, subdividers, flippers, landlords,
+ * commercial, creative-finance, agent-investors. Land remains the
+ * DEEPEST wedge and the page says so honestly ("deepest in land" is a
+ * self-referential depth fact backed by the registry, not a maturity
+ * claim about any other vertical); land-only surfaces (free parcel
+ * check, federal data spine, Land Credit Score) are labeled as the
+ * land toolkit rather than dressed up as universal. Every vertical is
+ * present in the product at varying depth (core / beta / roadmap per
  * shared/business-types.ts). The positioning band's chips DERIVE
  * their names and tiers from that registry (Positioning.tsx, wave V1
  * of founder ruling #11) — no vertical names are written here, so a
@@ -33,20 +40,24 @@
 
 export const LANDING_COPY = {
   hero: {
-    eyebrow: "Built for Land Investors",
+    eyebrow: "For property investors — deepest in land",
     // Static two-line headline. The italic brand-color line two is
-    // rendered by .lp-hero-line:nth-child(2). No rotation — Land
-    // Investors is the wedge and we name it.
+    // rendered by .lp-hero-line:nth-child(2). No rotation — property
+    // investors is the audience (ruling #12(a)); the eyebrow names
+    // land as the depth proof, not the gate.
     title: [
       "The operating system",
-      "for Land Investors.",
+      "for property investors.",
     ] as const,
     // The wedge sentence: one defensible line that names the
     // consolidation. Five verbs map 1:1 to the lifecycle the product
-    // owns end-to-end — find, mail, reply, close, service. Nothing
-    // else on the market does the last two for a land operator.
+    // owns end-to-end — find, mail, reply, close, service. The old
+    // "only platform" comparative was defended against the LAND
+    // category only; for the broader property-investor audience it is
+    // not defensible, so the reposition drops "only" and keeps the
+    // consolidation fact (audited in scripts/audit-public-claims.ts).
     wedge:
-      "The only platform that finds parcels, sends the mail, drafts the replies, closes the deal, and tracks the note after.",
+      "One platform that finds the deals, sends the mail, drafts the replies, closes the deal, and services the note after.",
     // Landing-benchmark pass (2026-07-17, vs Linear/Stripe/Notion + the REI
     // category): the hero previously stacked FOUR text blocks before the CTAs
     // (wedge + a 60-word paragraph + ctaSub + proof). Best-in-class pages run
@@ -61,7 +72,10 @@ export const LANDING_COPY = {
     // vs "Run it on your county" — read as the same button twice; now the
     // primary is the start action and the secondary is unmistakably the demo.)
     cta2: "Watch it run on a real parcel — no signup",
-    ctaSub: "Pax pulls your first list inside 10 minutes. Every parcel gets a Land Credit Score — a 300–850 read on the parcel itself.",
+    // "first county list" (not "first list") — the 10-minute target is
+    // the county-GIS first-list job, a land-toolkit mechanic; naming
+    // the county keeps the claim scoped to what the target covers.
+    ctaSub: "Pax pulls your first county list inside 10 minutes. Deepest in land: every parcel gets a Land Credit Score — a 300–850 read on the parcel itself.",
     // Reshape identity (home-base-reshape.md): the platform is the home base
     // you connect your own tools to. Truthful today — the BYOK vault + the
     // connectors hub (client/src/pages/settings/byok.tsx) let an org connect
@@ -76,7 +90,10 @@ export const LANDING_COPY = {
     // server/services/data-source-broker.ts (queryFemaFlood / querySoilData /
     // queryElevation / queryNwiWetlands / queryDemographics) — the same list
     // the Data section documents in depth further down the page.
-    agenciesLabel: "Every parcel checked against five federal data sources — free:",
+    // Labeled as the land toolkit (ruling #12(a)): the federal data
+    // spine is genuinely land-only, so it is presented as the depth
+    // proof, not a universal capability.
+    agenciesLabel: "The land toolkit — every parcel checked against five federal data sources, free:",
     agencies: ["FEMA", "USDA", "USGS", "USFWS", "U.S. Census"] as const,
   },
   // Simulated product screens (2026-07-17, founder request following the
@@ -93,7 +110,7 @@ export const LANDING_COPY = {
     proofCta: "Run a free parcel check",
   },
   positioning: {
-    primary: "Built for Land Investors.",
+    primary: "Built for property investors.",
     // Wave V1 (founder ruling #11, 2026-07-29): vertical NAMES no longer
     // live in this file. Positioning.tsx derives the three chip tiers
     // (core / beta / roadmap) directly from shared/business-types.ts at
@@ -108,9 +125,12 @@ export const LANDING_COPY = {
     //
     // The two prose lines below are deliberately TIER-GENERIC — the
     // chips carry the names, so no registry flip can strand a stale
-    // sentence here.
+    // sentence here. "Deepest in land" is the one deliberate
+    // exception: land is the founding wedge (ruling #12(a) keeps that
+    // honest depth fact), a founder-decision constant rather than a
+    // registry maturity that could flip.
     inProduct:
-      "Every investor type the platform serves, labeled by what's true today — full workflows, beta, or roadmap.",
+      "Deepest in land — the founding wedge — with every investor type the platform serves labeled by what's true today: full workflows, beta, or roadmap.",
     roadmap:
       "On the roadmap — promised, not sold:",
   },
@@ -121,7 +141,7 @@ export const LANDING_COPY = {
       {
         n: 1,
         t: "Define the buy-box",
-        b: "Counties, acreage, price band, owner profile. AcreOS filters new leads against it within 90 seconds of ingest.",
+        b: "Counties, price band, property type, owner profile. AcreOS filters new leads against it within 90 seconds of ingest.",
       },
       {
         n: 2,
@@ -149,14 +169,21 @@ export const LANDING_COPY = {
   },
   features: {
     eyebrow: "What's in the box",
-    title: "Every tool a Land Investor needs, in one place.",
-    sub: "Find, analyze, reach, close, service. Every parcel carries a Land Credit Score — a 300–850 read on the dirt. No tab-juggling, no per-step subscriptions.",
+    title: "Every tool a property investor needs, in one place.",
+    // Breadth is stated as the shipped cross-vertical surfaces (deals,
+    // mail, inbox, offers, notes, rentals — audited in
+    // scripts/audit-public-claims.ts); the land depth is scoped with
+    // "on land" instead of implied as universal.
+    sub: "Find, analyze, reach, close, service — deals, mail, inbox, offers, notes, and rentals under one roof. On land it runs deepest: every parcel carries a Land Credit Score — a 300–850 read on the dirt. No tab-juggling, no per-step subscriptions.",
   },
   data: {
-    eyebrow: "The data",
+    // Labeled as the land toolkit (ruling #12(a)) — parcel checks are
+    // genuinely land-only, so the section owns that instead of
+    // pretending universality.
+    eyebrow: "The land toolkit",
     title: "Premium government data, free.",
     sub:
-      "AcreOS runs flood, soil, elevation, and wetlands checks on every parcel from public government data — before you ever pay for a data subscription. Paid providers come later, when your deal volume earns them.",
+      "Where AcreOS runs deepest for Land Investors: flood, soil, elevation, and wetlands checks on every parcel from public government data — before you ever pay for a data subscription. Paid providers come later, when your deal volume earns them.",
     // source: server/services/data-source-broker.ts wires each of these
     // government APIs live (queryFemaFlood / querySoilData / queryElevation /
     // queryNwiWetlands / queryDemographics).

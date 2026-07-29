@@ -7,7 +7,7 @@
  * Uses founder-owned Meta ad account credentials stored in founder_ad_accounts table.
  *
  * Templates:
- *   - land_investors_signup   → Targets Land Investors to sign up for AcreOS
+ *   - land_investors_signup   → Targets property investors to sign up for AcreOS
  *   - retargeting_visitors    → Retargets landing page visitors who didn't convert
  *   - lookalike_subscribers   → Custom audience of current subscribers + lookalike
  */
@@ -114,8 +114,8 @@ const CAMPAIGN_TEMPLATES: Record<string, CampaignTemplate> = {
     adCopy: {
       headline: "Run Your Land Business on Autopilot",
       primaryText:
-        "AcreOS is the all-in-one CRM built for Land Investors. AI-powered lead scoring, automated follow-ups, deal pipelines, and seller financing — all in one place. Try free for 14 days.",
-      description: "The software serious Land Investors use.",
+        "AcreOS is the all-in-one CRM built for property investors — deepest in land. AI-powered lead scoring, automated follow-ups, deal pipelines, and seller financing — all in one place. Try free for 14 days.",
+      description: "Built for serious property investors.",
       callToAction: "LEARN_MORE",
     },
     landingPagePath: "/",
@@ -154,10 +154,10 @@ const CAMPAIGN_TEMPLATES: Record<string, CampaignTemplate> = {
       custom_audiences: [],
     },
     adCopy: {
-      headline: "The CRM Built for Land Investors",
+      headline: "The CRM Built for Property Investors",
       primaryText:
-        "Join hundreds of Land Investors using AcreOS to source more deals, automate follow-ups, and close faster. AI deal scoring. Seller financing tracking. 14-day free trial.",
-      description: "Trusted by active Land Investors.",
+        "Source more deals, automate follow-ups, and close faster with AcreOS. AI deal scoring. Seller financing tracking. 14-day free trial.",
+      description: "The property-investor operating system.",
       callToAction: "LEARN_MORE",
     },
     landingPagePath: "/?utm_source=meta&utm_medium=lookalike",

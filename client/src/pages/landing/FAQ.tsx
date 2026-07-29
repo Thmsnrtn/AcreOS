@@ -24,7 +24,7 @@ const ITEMS = [
   },
   {
     q: "Does this replace an existing CRM?",
-    a: "Yes. AcreOS includes a CRM purpose-built for land — pipeline stages, contact records, callback queues, and a lead inbox with Pax drafts in one place.",
+    a: "Yes. AcreOS includes a CRM purpose-built for property investing — pipeline stages, contact records, callback queues, and a lead inbox with Pax drafts in one place.",
   },
   {
     q: "What about existing notes and loans?",

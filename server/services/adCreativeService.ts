@@ -52,7 +52,7 @@ const TEMPLATE_CONTEXT: Record<string, {
 }> = {
   land_investors_signup: {
     audience: "Land Investors and rural property buyers aged 30–65 in the US",
-    product: "AcreOS — an all-in-one CRM built exclusively for Land Investors with AI-powered lead scoring, automated follow-up sequences, visual deal pipelines, seller financing note tracking, and parcel data integration",
+    product: "AcreOS — the property-investor operating system, deepest in land, with AI-powered lead scoring, automated follow-up sequences, visual deal pipelines, seller financing note tracking, and parcel data integration",
     benefits: [
       "AI lead scoring that predicts which motivated sellers will close",
       "Automated follow-up sequences so no lead ever goes cold",
@@ -87,7 +87,7 @@ const TEMPLATE_CONTEXT: Record<string, {
     audience: "people who look like current AcreOS subscribers — Land Investors and rural property buyers",
     product: "AcreOS — the operating system serious Land Investors use to systematize and scale their acquisitions",
     benefits: [
-      "Join hundreds of Land Investors already closing more deals with AI automation",
+      "AI automation that works your pipeline overnight — comps, follow-ups, drafts",
       "AI-scored leads, automated follow-ups, deal tracking — all in one platform",
       "Seller financing tracking built in — no spreadsheets needed",
       "Free 14-day trial, cancel anytime",
@@ -104,7 +104,7 @@ const COPY_ANGLE_INSTRUCTIONS: Record<CopyAngle, string> = {
 
   aspiration: `Paint a vivid, tangible picture of what this investor's business looks like when it runs on AcreOS. Tap into the dream of systematized, scalable deal flow. Use aspirational but grounded language — freedom, growth, focus on the deals that matter. Make them see the version of themselves they want to become.`,
 
-  social_proof: `Open with credibility — make the reader feel they're late to something proven. Use numbers, community, and implied results to lower the risk of trying AcreOS. The reader should feel that smart Land Investors have already figured this out. Social pressure is the lever.`,
+  social_proof: `Open with credibility grounded ONLY in verifiable product facts (federal data sources wired live, data traces on every AI draft, pricing on the page). NEVER invent customer counts, testimonials, or results — AcreOS has a strict no-fabrication rule and unverifiable social proof is prohibited. Credibility through transparency, not implied crowds.`,
 
   curiosity: `Open with a bold provocative claim, surprising insight, or sharp question that creates an information gap. Make the reader NEED to know more. Don't reveal everything — just enough to make them click. Use counterintuitive or contrarian angles to stop the scroll.`,
 };

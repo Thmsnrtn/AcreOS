@@ -2,9 +2,10 @@
  * Positioning band — explicit, visible, between Hero and HowItWorks.
  *
  * Answers the first question every visitor has: "is this for me?"
- * Primary positioning is exclusive: built for Land Investors. Below the
- * headline, EVERY vertical in the business-type registry appears in one
- * of three tiers, DERIVED at build time from shared/business-types.ts
+ * Primary positioning (founder ruling #12(a), 2026-07-29): built for
+ * property investors, with land named honestly as the deepest wedge.
+ * Below the headline, EVERY vertical in the business-type registry
+ * appears in one of three tiers, DERIVED at build time from shared/business-types.ts
  * (read-only import — the registry is the single source of truth; wave
  * V1 of founder ruling #11, 2026-07-29). When a maturity flips in the
  * registry, the landing follows automatically — no hardcoded lists to

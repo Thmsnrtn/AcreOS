@@ -599,7 +599,7 @@ export default function PublicParcelReportPage() {
               <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
                 AcreOS scores all {report.lcs.totalDimensions} dimensions — location,
                 legal, financial, and market data join the government layers above —
-                across every parcel in a buy-box. Built for Land Investors.
+                across every parcel in a buy-box. Built for property investors — deepest in land.
               </p>
               <Link
                 href={signupHref}

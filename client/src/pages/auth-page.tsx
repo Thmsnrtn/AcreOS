@@ -43,7 +43,7 @@ export default function AuthPage() {
 function AuthPageProviderless() {
   usePageMeta(
     "Sign in",
-    "Sign in to AcreOS — the operating system Land Investors use to manage leads, properties, deals, notes, and rehabs in one place."
+    "Sign in to AcreOS — the operating system property investors use to manage leads, properties, deals, notes, and rehabs in one place."
   );
   const { user, isLoading } = useAuth();
   if (user) return <Redirect to="/today" />;
@@ -83,7 +83,7 @@ function AuthPageProviderless() {
 function AuthPageClerk() {
   usePageMeta(
     "Sign in",
-    "Sign in to AcreOS — the operating system Land Investors use to manage leads, properties, deals, notes, and rehabs in one place."
+    "Sign in to AcreOS — the operating system property investors use to manage leads, properties, deals, notes, and rehabs in one place."
   );
   const { user, isLoading, authFailCount } = useAuth();
   const clerk = useClerk();
@@ -494,7 +494,7 @@ function AuthPageClerk() {
             <span className="text-2xl font-bold tracking-tight" aria-hidden="true">{brandName}</span>
           </div>
           <p className="text-sm text-muted-foreground text-center">
-            The operating system for Land Investors
+            The operating system for property investors
           </p>
         </div>
 
