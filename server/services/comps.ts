@@ -88,6 +88,15 @@ export interface ComparableProperty {
     lat: number;
     lng: number;
   };
+  // ── Residential (house) comp fields — wave V3, founder ruling #11 ──
+  // Present only on comps served by the residential seam (ATTOM). House
+  // comps are valued per sale / per sqft, never per acre: the seam sets
+  // pricePerAcre to null on them, which keeps every land $/acre model
+  // (calculateMarketValue, the price/disposition optimizers) structurally
+  // inert on house data.
+  sqft?: number | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
 }
 
 export interface CompsFilters {
@@ -146,6 +155,13 @@ export interface CompsSearchResult {
   limitedData?: boolean;
   message?: string;
   credentialSource?: 'organization' | 'platform';
+  /**
+   * True when this result came from the RESIDENTIAL seam (ATTOM house
+   * comps) rather than the land-parcel path. Consumers must not run land
+   * math (price-per-acre market analysis, land desirability scoring) on a
+   * residential result — getPropertyComps already skips both.
+   */
+  residential?: boolean;
 }
 
 interface RegridCredentials {
@@ -238,6 +254,108 @@ function getCacheKey(lat: number, lng: number, radius: number, filters: CompsFil
   return `${lat.toFixed(4)}_${lng.toFixed(4)}_${radius}_${JSON.stringify(filters)}`;
 }
 
+// ─── Residential fork (wave V3, founder ruling #11) ─────────────────────────
+//
+// The 2026-07-11 fix_and_flip demotion root cause: every consumer of this
+// module (property comps endpoints, due diligence, Pax tools, agent skills,
+// the offer/price/disposition engines) got LAND parcel comps regardless of
+// the org's vertical, because the investorType fork maps the residential
+// businessTypes to "land". The fork below routes RESIDENTIAL orgs through
+// the residential seam (server/services/residentialComps.ts → provider
+// registry → ATTOM) BEFORE any Regrid/land code runs — including before the
+// shared compsCache, which is keyed by coordinates only and must never serve
+// a land result to a flip org (or vice versa).
+//
+// Honest degradation: no ATTOM key (platform or BYOK) → an explicit
+// unavailable error, never a land comp under a house label.
+
+async function getResidentialSearchResult(
+  lat: number,
+  lng: number,
+  filters: CompsFilters,
+  orgId: number,
+): Promise<CompsSearchResult> {
+  const { getResidentialComps, extractResidentialComps } = await import("./residentialComps");
+  const outcome = await getResidentialComps(orgId, { kind: "coordinates", latitude: lat, longitude: lng });
+
+  if (outcome.status === "unavailable") {
+    return {
+      success: false,
+      comps: [],
+      error: outcome.message,
+      limitedData: true,
+      residential: true,
+    };
+  }
+
+  if (outcome.status === "no_data") {
+    return {
+      success: true,
+      comps: [],
+      limitedData: true,
+      message: outcome.message,
+      residential: true,
+    };
+  }
+
+  const parsed = extractResidentialComps(outcome.result.data);
+
+  let comps: ComparableProperty[] = parsed.map((c, i) => ({
+    id: `attom-comp-${i + 1}`,
+    apn: "",
+    address: c.address ?? "Unknown Address",
+    city: c.city ?? "",
+    state: c.state ?? "",
+    county: "",
+    acreage: c.lotAcres ?? 0,
+    saleDate: c.saleDate,
+    salePrice: c.salePrice,
+    // House comps are never priced per acre — null keeps land $/acre math
+    // structurally inert on residential results (see ComparableProperty).
+    pricePerAcre: null,
+    assessedValue: null,
+    landValue: null,
+    propertyType: c.propertyType ?? "Residential",
+    zoning: "",
+    distance: c.distanceMiles ?? 0,
+    coordinates: {
+      lat: c.latitude ?? lat,
+      lng: c.longitude ?? lng,
+    },
+    sqft: c.sqft,
+    bedrooms: c.bedrooms,
+    bathrooms: c.bathrooms,
+  }));
+
+  // Sale-date recency filters translate directly; the acreage filters are
+  // land semantics and deliberately do not apply to house comps.
+  if (filters.minSaleDate) {
+    const minDate = new Date(filters.minSaleDate);
+    comps = comps.filter((c) => c.saleDate != null && new Date(c.saleDate) >= minDate);
+  }
+  if (filters.maxSaleDate) {
+    const maxDate = new Date(filters.maxSaleDate);
+    comps = comps.filter((c) => c.saleDate != null && new Date(c.saleDate) <= maxDate);
+  }
+  if (filters.maxResults && comps.length > filters.maxResults) {
+    comps = comps.slice(0, filters.maxResults);
+  }
+  comps.sort((a, b) => a.distance - b.distance);
+
+  const pricedCount = comps.filter((c) => c.salePrice && c.salePrice > 0).length;
+  return {
+    success: true,
+    comps,
+    limitedData: pricedCount < 3,
+    message:
+      comps.length > 0
+        ? "Residential comps: ATTOM Data (house sales — valued per sale, not per acre)."
+        : "ATTOM returned no residential comparables for this property.",
+    credentialSource: outcome.byok ? "organization" : "platform",
+    residential: true,
+  };
+}
+
 /**
  * Get comparable properties within a radius
  */
@@ -248,6 +366,16 @@ export async function getComparableProperties(
   filters: CompsFilters = {},
   orgId?: number
 ): Promise<CompsSearchResult> {
+  // Residential verticals never touch the land path (see fork note above).
+  if (orgId) {
+    const { getOrgBusinessType } = await import("./residentialComps");
+    const { isResidentialBusinessType } = await import("@shared/models/persona-mapping");
+    const businessType = await getOrgBusinessType(orgId);
+    if (isResidentialBusinessType(businessType)) {
+      return getResidentialSearchResult(lat, lng, filters, orgId);
+    }
+  }
+
   const credentials = await getRegridCredentials(orgId);
   
   if (!credentials) {
@@ -641,21 +769,30 @@ export async function getPropertyComps(
   orgId?: number
 ): Promise<CompsSearchResult> {
   const result = await getComparableProperties(lat, lng, radiusMiles, filters, orgId);
-  
+
+  // Land math stays OFF residential results (wave V3): price-per-acre market
+  // analysis, acreage-band offer prices, and the land desirability score are
+  // land-domain models — running them on house comps would present land math
+  // under house labels. Residential consumers get the raw ATTOM comps (or
+  // the honest unavailable state) and the AVM seam for valuation.
+  if (result.residential) {
+    return result;
+  }
+
   if (result.success && result.comps.length > 0) {
     const marketAnalysis = calculateMarketValue(subjectAcreage, result.comps)!;
     result.marketAnalysis = marketAnalysis;
-    
+
     // Calculate offer prices if we have estimated value
     if (marketAnalysis.estimatedValue) {
       result.offerPrices = calculateOfferPrices(marketAnalysis.estimatedValue);
     }
   }
-  
+
   // Calculate desirability score if property attributes provided
   if (propertyAttributes) {
     result.desirabilityScore = calculateDesirabilityScore(propertyAttributes);
   }
-  
+
   return result;
 }

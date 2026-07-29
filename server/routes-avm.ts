@@ -192,6 +192,10 @@ const METHODOLOGY_LABELS: Record<string, string> = {
   hybrid_comps_ml: 'AcreOS Valuation Model (comparable sales + market adjustments)',
   gbm_model: 'AcreOS trained model estimate (no local comparables)',
   ai_market_estimate: 'AI estimate (no local comparables) — an educated guess by a language model, not a comps-based value',
+  // Wave V3 (founder ruling #11): residential orgs' valuations come from the
+  // residentialComps seam → ATTOM AVM. Label them as ATTOM's estimate — they
+  // must never masquerade as the AcreOS land model.
+  attom_avm: 'ATTOM AVM (residential) — automated valuation by ATTOM Data, not the AcreOS land model',
   regional_baseline: 'Legacy flat-rate estimate (recorded before the honesty patch — treat with caution)',
   baseline: 'Legacy flat-rate estimate (recorded before the honesty patch — treat with caution)',
 };
@@ -314,14 +318,17 @@ router.get('/:propertyId', cacheResponse(300), async (req: Request, res: Respons
 
     const acres = prop.sizeAcres ? parseFloat(prop.sizeAcres) : null;
     const estimatedValue = Number(latest.predictedValue);
+    // Wave V3: attom_avm rows are ATTOM's residential estimate, not our
+    // model — the pin-tap chip must say so (source + classification).
+    const isAttomAvm = latest.modelVersion === 'attom_avm';
     res.json({
       valuation: {
         estimatedValue,
         confidence: Number(latest.confidenceScore) || undefined,
         pricePerAcre: acres && acres > 0 ? Math.round(estimatedValue / acres) : undefined,
-        source: 'AcreOS valuation model',
+        source: isAttomAvm ? 'ATTOM AVM (residential)' : 'AcreOS valuation model',
         sourceAsOf: latest.createdAt ?? undefined,
-        classification: 'modeled',
+        classification: isAttomAvm ? 'estimate' : 'modeled',
       },
     });
   } catch (error: any) {

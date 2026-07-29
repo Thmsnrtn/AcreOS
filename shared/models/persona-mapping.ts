@@ -117,6 +117,40 @@ export const BUSINESS_TYPE_TO_INVESTOR_TYPE: Record<BusinessType, InvestorType> 
   agent_investor: "land",
 };
 
+// ─── Residential data-plane routing (wave V3, founder ruling #11) ──────────
+//
+// BUSINESS_TYPE_TO_INVESTOR_TYPE maps every non-note vertical to the "land"
+// investorType. That fork exists for the NOTE-vertical modules (1099-INT
+// batches, lender/servicer surfaces) — it says nothing about which DATA
+// sources should serve a vertical's comps/valuation. Using it for data
+// routing is exactly how fix_and_flip customers got LAND comps/AVM/due-
+// diligence under house labels (the 2026-07-11 demotion root cause).
+//
+// This set names the businessTypes whose SUBJECT PROPERTIES are houses/units.
+// Their comps + valuation lookups must route through the residential seam
+// (server/services/residentialComps.ts → provider registry restricted to
+// residential-capable providers, i.e. ATTOM, pay-per-call) and must NEVER
+// silently fall back to land-parcel sources. Deliberately a separate,
+// explicit set — NOT derived from investorType — because the data-plane fork
+// is orthogonal to the notes/land module fork.
+//
+// residential_wholesaler is deliberately NOT in this set yet: the sanctioned
+// wave-V3 scope is fix_and_flip plus the landlord family (buy_and_hold /
+// short_term_rental / multifamily / mobile_home). Widening the set is a
+// deliberate follow-up decision, not a drive-by.
+export const RESIDENTIAL_BUSINESS_TYPES: ReadonlySet<BusinessType> = new Set<BusinessType>([
+  "fix_and_flip",
+  "buy_and_hold",
+  "short_term_rental",
+  "multifamily",
+  "mobile_home",
+]);
+
+/** True when the (possibly unknown) businessType string is a residential vertical. */
+export function isResidentialBusinessType(value: string | null | undefined): boolean {
+  return value != null && RESIDENTIAL_BUSINESS_TYPES.has(value as BusinessType);
+}
+
 const NOTE_ROLE_TO_PERSONA: Record<NoteRole, Persona> = {
   invest: "note_investor",
   originate: "note_originator",

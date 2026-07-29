@@ -102,6 +102,21 @@ interface Registration {
   priority: number; // lower = tried first within same tier
 }
 
+// ── Per-lookup options ────────────────────────────────────────
+
+/**
+ * Optional per-lookup routing constraints (wave V3, founder ruling #11).
+ * `allowProviders` restricts the candidate set to the named providers. The
+ * residential comps/valuation seam (server/services/residentialComps.ts)
+ * passes ["attom"] so a HOUSE subject can never be silently served by a
+ * land-parcel source — Regrid's "comps"/"valuation" delegate to the land
+ * comps/parcel services and would otherwise win the tier ladder (starter
+ * before pro). Omitting the option preserves the historical behavior exactly.
+ */
+export interface RegistryLookupOptions {
+  allowProviders?: readonly string[];
+}
+
 // ── Circuit breaker constants ─────────────────────────────────
 
 const CB_FAILURE_THRESHOLD = 3;
@@ -141,9 +156,10 @@ class ProviderRegistry {
     input: LookupInput,
     orgTier: ProviderTier,
     creditBalance: number,
-    organizationId?: number
+    organizationId?: number,
+    opts?: RegistryLookupOptions
   ): Promise<LookupResult | null> {
-    const candidates = this.getCandidates(category, input, orgTier);
+    const candidates = this.getCandidates(category, input, orgTier, opts?.allowProviders);
     const { state, county } = extractStateCounty(input);
 
     if (candidates.length === 0) {
@@ -548,7 +564,8 @@ class ProviderRegistry {
   private getCandidates(
     category: DataCategory,
     input: LookupInput,
-    orgTier: ProviderTier
+    orgTier: ProviderTier,
+    allowProviders?: readonly string[]
   ): Registration[] {
     const perfScores = this.getPerfScoresSync(category);
     return this.registrations
@@ -557,7 +574,10 @@ class ProviderRegistry {
           r.category === category &&
           r.provider.supportedInputTypes.includes(input.type) &&
           tierAllowed(r.provider.tierRequired, orgTier) &&
-          this.paidProviderAllowed(r.provider)
+          this.paidProviderAllowed(r.provider) &&
+          // Residential seam restriction (RegistryLookupOptions.allowProviders):
+          // when present, only the named providers are candidates.
+          (allowProviders == null || allowProviders.includes(r.provider.name))
       )
       .sort((a, b) => {
         // Sort by tier (free first), then by cost, then by performance

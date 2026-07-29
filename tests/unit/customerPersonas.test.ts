@@ -4,7 +4,7 @@ import {
   DOOR_ROUTES,
   type Device,
 } from "../../tests/personas/customer-personas";
-import { BUSINESS_TYPE_IDS } from "../../shared/business-types";
+import { BUSINESS_TYPE_IDS, BUSINESS_TYPES } from "../../shared/business-types";
 import {
   derivePersona,
   BUSINESS_TYPE_TO_INVESTOR_TYPE,
@@ -75,6 +75,22 @@ describe("customer persona catalog", () => {
       const visible = new Set(p.expect.modulesVisible);
       for (const hidden of p.expect.modulesHidden) {
         expect(visible.has(hidden)).toBe(false);
+      }
+    }
+  });
+
+  // 2026-07-29 (ruling #11 waves V1/V2): "Lena — buy-and-hold rentals
+  // (waitlist)" sat stale in this catalog after the registry promoted
+  // buy_and_hold to beta. Pin the display-name maturity tags to the
+  // registry so a maturity flip forces the catalog row to update too.
+  it("display-name maturity tags never contradict the registry", () => {
+    for (const p of CUSTOMER_PERSONAS) {
+      const maturity = BUSINESS_TYPES[p.businessType].maturity;
+      if (p.displayName.includes("(waitlist)")) {
+        expect(maturity, `${p.slug} is labeled (waitlist) but registry says ${maturity}`).toBe("roadmap");
+      }
+      if (p.displayName.includes("(beta)")) {
+        expect(maturity, `${p.slug} is labeled (beta) but registry says ${maturity}`).toBe("beta");
       }
     }
   });

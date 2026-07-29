@@ -24,6 +24,16 @@
  *   tier        — free → enterprise
  *   need/goal   — find parcels · run mail · work a pipeline · collect on notes ·
  *                 assign contracts · manage a team · just kicking the tires
+ *
+ * 2026-07-29 (founder ruling #11 waves V1/V2, PRs #250/#251): rows
+ * re-verified against the CURRENT registry. buy_and_hold and creative_finance
+ * are beta (the Rentals and Creative-finance sidebar modules are live);
+ * fix_and_flip is roadmap (demoted 2026-07-11 pending a residential data
+ * plane — existing orgs keep their Flip surfaces); the landlord family
+ * (short_term_rental / multifamily / mobile_home) reaches the shared Rentals
+ * module even while their own verticals stay waitlisted. A unit test pins
+ * "(beta)"/"(waitlist)" display-name tags to registry maturity so these
+ * labels can't silently go stale again.
  */
 
 import {
@@ -398,7 +408,9 @@ const SEEDS: PersonaSeed[] = [
     },
   },
 
-  // ── FIX-AND-FLIP (beta) × 2
+  // ── FIX-AND-FLIP (roadmap — demoted beta → roadmap 2026-07-11 pending a
+  //    residential comps/data plane; ruling #11 keeps it gated with the gap
+  //    stated. Existing fix_and_flip orgs keep the Flip module + surfaces.) × 2
   {
     slug: "flipper-rehab",
     displayName: "Felix — rehab projects, project P&L",
@@ -410,7 +422,7 @@ const SEEDS: PersonaSeed[] = [
     goals: ["See project P&L hero", "Track a flip through stages", "Confirm 'Distressed owner' / 'Sold' vocab"],
     expect: {
       financeHero: "projectPnl",
-      modulesVisible: ["/properties", "/deals"],
+      modulesVisible: ["/properties", "/deals", "/rehabs"],
       modulesHidden: ["/notes"],
       vocab: { deals: ["Distressed owner", "Project"], money: ["Sold"] },
       gatedCapabilities: ["Twilio SMS", "Stripe Connect payments"],
@@ -423,8 +435,8 @@ const SEEDS: PersonaSeed[] = [
     device: "iphone-se",
     tier: "sprout",
     businessType: "fix_and_flip",
-    narrative: "New flipper on a small phone; the beta badges + empty rehab state must read clearly.",
-    goals: ["Understand the beta surface", "Create her first project", "See what's coming vs available"],
+    narrative: "New flipper on a small phone; the vertical is waitlisted (no residential data plane yet) so the honest gap framing + empty rehab state must read clearly.",
+    goals: ["Understand what's gated and why", "Create her first project", "See what's coming vs available"],
     expect: {
       financeHero: "projectPnl",
       modulesVisible: ["/properties", "/deals"],
@@ -434,7 +446,9 @@ const SEEDS: PersonaSeed[] = [
     },
   },
 
-  // ── CREATIVE FINANCE (beta) × 2
+  // ── CREATIVE FINANCE (beta — promoted roadmap → beta in ruling #11 wave
+  //    V2 with a dedicated sidebar module; /notes stays deliberately
+  //    nav-hidden for this profile — the carried book lives behind Finance) × 2
   {
     slug: "creative-subto",
     displayName: "Cleo — subject-to + wraps",
@@ -442,12 +456,12 @@ const SEEDS: PersonaSeed[] = [
     device: "desktop-1280",
     tier: "pro",
     businessType: "creative_finance",
-    narrative: "Creative deals collapse to the land_investor persona; confirm she gets notes+deals spotlight without the full note vertical.",
-    goals: ["See deals + notes spotlight", "Confirm land_investor vocabulary default", "Build a creative deal"],
+    narrative: "Subject-to / wrap operator on the beta Creative-finance module: deal pipeline with Close & Carry into a serviced note, carried book via the Finance door, Dodd-Frank checker, per-state rules.",
+    goals: ["Open the Creative finance module", "Run the Dodd-Frank exemption check", "Close & Carry a seller-finance deal into the carried book"],
     expect: {
       financeHero: null,
-      modulesVisible: ["/deals", "/money"],
-      modulesHidden: [],
+      modulesVisible: ["/deals", "/money", "/finance", "/dodd-frank", "/regulatory-intel"],
+      modulesHidden: ["/notes"],
       vocab: { deals: ["Deal", "Pipeline"] },
       gatedCapabilities: ["Stripe Connect payments"],
     },
@@ -464,7 +478,7 @@ const SEEDS: PersonaSeed[] = [
     expect: {
       financeHero: null,
       modulesVisible: ["/deals", "/money"],
-      modulesHidden: [],
+      modulesHidden: ["/notes"],
       vocab: {},
       gatedCapabilities: ["Stripe Connect payments"],
     },
@@ -478,11 +492,11 @@ const SEEDS: PersonaSeed[] = [
     device: "desktop-ultrawide",
     tier: "scale",
     businessType: "subdivider",
-    narrative: "Parent parcel → lots; needs the parcel map + subdivision editor; vocabulary 'Parent parcel'.",
-    goals: ["Open the subdivision editor", "Use the parcel map", "Confirm 'Parent parcel' vocab"],
+    narrative: "Parent parcel → lots; needs the parcel map + the Subdivision module (subdivision editing lives on the parcel-detail Subdivision tab); vocabulary 'Parent parcel'.",
+    goals: ["Open the Subdivision tab on a parent parcel", "Use the parcel map", "Confirm 'Parent parcel' vocab"],
     expect: {
       financeHero: "lotEconomics",
-      modulesVisible: ["/maps", "/parcels", "/deals"],
+      modulesVisible: ["/maps", "/parcels", "/deals", "/permits", "/lot-pricing"],
       modulesHidden: ["/notes", "/capital-markets"],
       vocab: { deals: ["Parent parcel"] },
       gatedCapabilities: ["Regrid parcel enrichment"],
@@ -542,25 +556,34 @@ const SEEDS: PersonaSeed[] = [
     },
   },
 
-  // ── ROADMAP verticals (UI suppressed → collapse to a base persona). These
-  //    test that a waitlist vertical degrades gracefully, never crashes.
+  // ── BUY-AND-HOLD RENTALS (beta — promoted roadmap → beta in ruling #11
+  //    wave V1; the dedicated Rentals module is live: rent roll, tenants,
+  //    leases, maintenance, investor analytics) × 1
   {
     slug: "rental-landlord",
-    displayName: "Lena — buy-and-hold rentals (waitlist)",
+    displayName: "Lena — buy-and-hold rentals (beta)",
     experience: "returning_beginner",
     device: "iphone-14",
     tier: "sprout",
     businessType: "buy_and_hold",
-    narrative: "Roadmap vertical → landlord persona; confirm she lands on a working surface, not a 404.",
-    goals: ["Land on a usable Today", "See rental vocabulary where present", "No dead/blank vertical pages"],
+    narrative: "Beta vertical → landlord persona; the Rentals module (rent roll, tenants, leases, maintenance) is her workspace and Finance leads with the project P&L hero.",
+    goals: ["Open the rent roll", "Find tenants + leases", "File a maintenance ticket", "See rental vocabulary + project P&L on Finance"],
     expect: {
       financeHero: "projectPnl",
-      modulesVisible: ["/deals", "/money"],
+      modulesVisible: ["/rent-roll", "/tenants", "/leases", "/maintenance", "/investor-analytics", "/deals", "/money"],
       modulesHidden: ["/notes"],
       vocab: { deals: ["Rental"] },
       gatedCapabilities: ["Stripe Connect payments"],
     },
   },
+
+  // ── ROADMAP verticals (UI suppressed → collapse to a base persona). These
+  //    test that a waitlist vertical degrades gracefully, never crashes.
+  //    Per ruling #11 the remaining waitlist set (short_term_rental,
+  //    commercial, developer, multifamily, mobile_home, agent_investor —
+  //    plus the demoted fix_and_flip) stays gated with its gap stated until
+  //    each build passes the honesty bar. The landlord family among them
+  //    already reaches the shared Rentals module (wave V1 reachability).
   {
     slug: "str-operator",
     displayName: "Sky — short-term rental operator (waitlist)",
@@ -568,11 +591,11 @@ const SEEDS: PersonaSeed[] = [
     device: "ipad-portrait",
     tier: "free",
     businessType: "short_term_rental",
-    narrative: "Airbnb operator exploring; roadmap vertical must show a graceful 'coming soon', not break.",
-    goals: ["Reach Today + Finance", "See honest roadmap framing", "No crash on suppressed modules"],
+    narrative: "Airbnb operator exploring; her own vertical is waitlisted but she lands on the shared landlord surface — Rentals module reachable, honest framing, no breakage.",
+    goals: ["Reach Today + Finance", "See honest roadmap framing", "Reach the shared Rentals module", "No crash on suppressed modules"],
     expect: {
       financeHero: "projectPnl",
-      modulesVisible: ["/deals", "/money"],
+      modulesVisible: ["/deals", "/money", "/rent-roll"],
       modulesHidden: ["/notes"],
       vocab: {},
       gatedCapabilities: ["Stripe Connect payments"],
@@ -602,11 +625,11 @@ const SEEDS: PersonaSeed[] = [
     device: "desktop-1280",
     tier: "scale",
     businessType: "developer",
-    narrative: "Roadmap → subdivider persona; power user pushing a not-yet-shipped vertical hard.",
-    goals: ["Confirm subdivider surfacing", "No broken builder-only pages", "Finance + deals usable"],
+    narrative: "Roadmap → subdivider persona; his own vertical is waitlisted but the Subdivision module (permits, county timelines, lot pricing, CC&Rs) serves developers too.",
+    goals: ["Confirm subdivider surfacing", "Open the Subdivision module", "Finance + deals usable"],
     expect: {
       financeHero: "lotEconomics",
-      modulesVisible: ["/deals"],
+      modulesVisible: ["/deals", "/permits", "/county-timelines"],
       modulesHidden: ["/notes"],
       vocab: {},
       gatedCapabilities: ["Regrid parcel enrichment"],
@@ -619,11 +642,11 @@ const SEEDS: PersonaSeed[] = [
     device: "galaxy-s9",
     tier: "starter",
     businessType: "multifamily",
-    narrative: "Roadmap → landlord persona on mobile; the suppressed-vertical mobile check.",
+    narrative: "Roadmap → landlord persona on mobile; her vertical is waitlisted but the shared Rentals module serves the landlord family.",
     goals: ["Reach all doors on mobile", "Finance loads", "No dead modules"],
     expect: {
       financeHero: "projectPnl",
-      modulesVisible: ["/deals", "/money"],
+      modulesVisible: ["/deals", "/money", "/rent-roll"],
       modulesHidden: ["/notes"],
       vocab: {},
       gatedCapabilities: ["Stripe Connect payments"],
@@ -636,11 +659,11 @@ const SEEDS: PersonaSeed[] = [
     device: "iphone-se",
     tier: "free",
     businessType: "mobile_home",
-    narrative: "Roadmap → landlord; smallest iPhone with the least-built vertical — the graceful-degradation floor.",
+    narrative: "Roadmap → landlord; smallest iPhone with a waitlisted vertical — since wave V1 he reaches the shared Rentals module instead of a dead end.",
     goals: ["Land somewhere usable", "No crash", "Understand it's early"],
     expect: {
       financeHero: "projectPnl",
-      modulesVisible: ["/deals"],
+      modulesVisible: ["/deals", "/rent-roll"],
       modulesHidden: ["/notes"],
       vocab: {},
       gatedCapabilities: ["Stripe Connect payments"],

@@ -73,8 +73,26 @@ tax-lien and wholesaler graduate from beta next (they feed the same deal
 flow); buy-and-hold, STR, commercial and the rest activate later, in
 whatever order demand evidence dictates.
 
+> **Amendment 2026-07-29 — founder ruling #11 supersedes the conveyor
+> rule** (`founder-decisions-2026-07-28.md` §11). The one-at-a-time
+> activation gate and the profitably-won precondition are explicitly
+> rescinded: every ALREADY-REGISTERED vertical is built to genuine
+> completeness and activated as soon as its build passes the same honesty
+> bar as the land wedge — **build completeness replaces profitability as
+> the activation criterion**. A vertical that cannot honestly reach the
+> bar ships gated with its gap stated (fix_and_flip stays roadmap on the
+> residential-comps data-plane hard-stop). Unchanged: the playbook itself
+> (wedge → data moat → autonomy), no NEW persona verticals, verticals as
+> content behind the fixed doors, the marketplace/API ladder, and all
+> hard-stops. Executed wave by wave as reviewed PRs (V1 #250, V2 #251
+> shipped 2026-07-28/29). Conveyor references elsewhere in this document
+> are reinterpreted per this note rather than rewritten.
+
 **Frozen ≠ deleted.** Beta verticals are frozen with written reactivation
 criteria in the deletion ledger. Genuinely speculative modules are deleted.
+*(2026-07-29: the beta-verticals FREEZE verdict itself is rescinded by
+ruling #11 — see the dated note on that deletion-ledger row; the
+frozen-≠-deleted principle still governs everything else in the ledger.)*
 
 ### 1.3 Revenue architecture at maturity (target composition)
 
@@ -82,7 +100,7 @@ criteria in the deletion ledger. Genuinely speculative modules are deleted.
 |---|---|---|
 | Subscriptions + seats | Base | 30–40% |
 | Note-servicing per-loan fees | Regulated, stickiest | 20–25% |
-| Vertical packs (the conveyor's output) | Expansion | 10–15% |
+| Vertical packs (the conveyor's output; since ruling #11, all packs open as their builds pass the honesty bar — target share unchanged) | Expansion | 10–15% |
 | Usage credits (data, AI, mail) | Activity-scaled | 10% |
 | Marketplace take-rate | Liquidity-scaled | 10% |
 | Land Credit Score API / data licensing | Highest margin | 10–15% |
@@ -219,13 +237,17 @@ Theme: the data business becomes real.
   metered data product.
 - Second ad channel (the Google adapter is prewired).
 - **First conveyor activation** (tax-lien or wholesaler out of freeze).
+  *(2026-07-29, ruling #11: reinterpreted as a build-completion milestone —
+  activation is no longer profitability-sequenced; see the §1.2 amendment.)*
 - **Switches**: ads acting within ramp; self-patch auto-merge for deletion
   + green dependency patches; autonomous incident response GA.
 
 ### H4 — The data & servicing business ($60K → $150K MRR) · debt floor 20%
 
 - API/data licensing GA (lenders, title, funds); marketplace take-rate
-  meaningful; the servicing book compounds; next conveyor activation.
+  meaningful; the servicing book compounds; next conveyor activation
+  *(2026-07-29, ruling #11: likewise a build-completion milestone — §1.2
+  amendment)*.
 - Multi-region/DR posture finally justified — not before — proven by a
   rehearsed cold rebuild from the infra portability doc.
 
@@ -314,7 +336,10 @@ tracked there and in the deletion ledger, not here.
 ## 7. Traps (named, so future-us doesn't step in them)
 
 1. **Fifteen verticals before one is won** — the conveyor rule (§1.2)
-   exists to prevent exactly this.
+   exists to prevent exactly this. *(2026-07-29, ruling #11: the founder
+   accepted this trap's risk knowingly — the guard is now the honesty bar
+   per vertical (gated-with-gap-stated), not one-at-a-time sequencing; see
+   the §1.2 amendment.)*
 2. **Marketplace polish before liquidity** — it's built; the scarce input
    is cross-customer deal flow. Gate on that.
 3. **Autonomy switches before revenue** — trust needs real outcomes;

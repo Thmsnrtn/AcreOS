@@ -160,9 +160,11 @@ interface ValuationResult {
   /**
    * What actually produced the number, for honest labeling downstream:
    * comps_model (comps + adjustments), trained_model (GBM), ai_estimate
-   * (LLM guess — must render as an AI estimate, never as a modeled value).
+   * (LLM guess — must render as an AI estimate, never as a modeled value),
+   * attom_avm (ATTOM's residential AVM via the residentialComps seam —
+   * wave V3; must render as ATTOM's estimate, never as the AcreOS land model).
    */
-  classification: "comps_model" | "trained_model" | "ai_estimate" | "insufficient_data";
+  classification: "comps_model" | "trained_model" | "ai_estimate" | "attom_avm" | "insufficient_data";
   estimatedValue: number;
   pricePerAcre: number;
   confidenceInterval: {
@@ -276,6 +278,26 @@ class AcreOSValuationModel {
           .from(properties)
           .where(eq(properties.id, propertyIdNum));
         assertFeeSimpleOrThrow(parcel ?? null, "valuation");
+      }
+
+      // ── Residential fork (wave V3, founder ruling #11) ────────────────
+      // Everything below this block is the LAND model: land transaction
+      // training rows, a land-feature GBM, and a "rural land valuation
+      // expert" LLM prompt. Serving that to a fix_and_flip / landlord-family
+      // org is the 2026-07-11 demotion root cause. Residential orgs route
+      // through the residentialComps seam (registry → ATTOM AVM) and degrade
+      // honestly (insufficient_data + the real fix path) when no ATTOM key
+      // exists — never a land number under a house label.
+      {
+        const orgIdNum = Number(organizationId);
+        if (Number.isFinite(orgIdNum) && orgIdNum > 0) {
+          const { getOrgBusinessType } = await import("./residentialComps");
+          const { isResidentialBusinessType } = await import("@shared/models/persona-mapping");
+          const businessType = await getOrgBusinessType(orgIdNum);
+          if (isResidentialBusinessType(businessType)) {
+            return await this.generateResidentialValuation(orgIdNum, request);
+          }
+        }
       }
 
       // Step 1: Find comparable sales
@@ -394,6 +416,103 @@ class AcreOSValuationModel {
       logger.error('Valuation generation failed', error);
       throw error;
     }
+  }
+
+  /**
+   * Residential (house) valuation — wave V3 of founder ruling #11.
+   * Routes through the residentialComps seam (provider registry restricted
+   * to ATTOM) instead of the land comps/GBM/LLM ladder. Honest refusal
+   * (status insufficient_data, with the real fix path in `missing`) when no
+   * ATTOM key is connected or ATTOM returns no usable value — the AVM route
+   * already refunds the pool debit on insufficient_data, so an honest
+   * refusal is never billed.
+   */
+  private async generateResidentialValuation(
+    organizationId: number,
+    request: ValuationRequest
+  ): Promise<ValuationResult> {
+    const refuse = (missing: string[]): ValuationResult => ({
+      status: "insufficient_data",
+      classification: "insufficient_data",
+      estimatedValue: 0,
+      pricePerAcre: 0,
+      confidenceInterval: { low: 0, high: 0 },
+      confidence: 0,
+      methodology: 'No residential valuation — not enough data to produce one honestly',
+      missing,
+      comparables: [],
+      marketAdjustments: [],
+    });
+
+    const { latitude, longitude } = request.location;
+    if (!latitude || !longitude) {
+      return refuse(['Property coordinates (required for a residential ATTOM valuation)']);
+    }
+
+    const { getResidentialValuation, extractResidentialAvm } = await import("./residentialComps");
+    const outcome = await getResidentialValuation(organizationId, {
+      kind: "coordinates",
+      latitude,
+      longitude,
+    });
+
+    if (outcome.status === "unavailable") {
+      logger.info('[avm] refusing residential valuation — ATTOM unavailable', {
+        metadata: { organizationId, reason: outcome.reason },
+      });
+      return refuse([outcome.message]);
+    }
+    if (outcome.status === "no_data") {
+      return refuse([outcome.message]);
+    }
+
+    const avm = extractResidentialAvm(outcome.result.data);
+    if (!avm) {
+      return refuse(['ATTOM AVM returned no usable value for this property']);
+    }
+
+    const estimatedValue = Math.round(avm.value);
+    const confidenceInterval = {
+      // When ATTOM provides no band, low = high = value states "no band
+      // provided" rather than inventing a spread.
+      low: Math.round(avm.low ?? avm.value),
+      high: Math.round(avm.high ?? avm.value),
+    };
+    // ATTOM's own confidence score when present; otherwise the provider-
+    // declared lookup confidence — never an invented number.
+    const confidence = Math.max(
+      0,
+      Math.min(100, Math.round(avm.score ?? outcome.result.confidence)),
+    );
+
+    // Persist with an honest model version so history/labels can never
+    // masquerade as the AcreOS land model (see routes-avm METHODOLOGY_LABELS).
+    try {
+      await db.insert(valuationPredictions).values({
+        propertyId: Number(request.propertyId),
+        predictedValue: String(estimatedValue),
+        confidenceScore: String(confidence),
+        valueRange: confidenceInterval,
+        modelVersion: 'attom_avm',
+        featuresUsed: [],
+        comparableCount: 0,
+        validUntil: addMonths(new Date(), 3),
+      });
+    } catch {
+      // Non-fatal — the valuation response is still returned.
+    }
+
+    return {
+      status: "ok",
+      classification: "attom_avm",
+      estimatedValue,
+      pricePerAcre: request.acres > 0 ? Math.round(estimatedValue / request.acres) : 0,
+      confidenceInterval,
+      confidence,
+      methodology: 'ATTOM AVM (residential) — automated valuation by ATTOM Data, not the AcreOS land model',
+      comparables: [],
+      marketAdjustments: [],
+    };
   }
 
   /**

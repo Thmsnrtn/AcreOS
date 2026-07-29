@@ -145,3 +145,26 @@ marketplace (~25 customers) and public API (~50) ladder stays; all four
 hard-stops stay. Implementation ships as reviewed PRs, wave by wave, and
 any vertical that cannot honestly reach the bar ships gated with its gap
 stated rather than activated on hope.
+
+Implementation status (2026-07-29): waves V1 + V2 shipped as reviewed PRs.
+**V1 (PR #250, `f2704d17`)** — taxonomy truth pass (`shared/business-types.ts`:
+buy_and_hold roadmap → beta on cited build evidence; creative_finance
+honestly demoted beta → roadmap pending a real surface; dangling
+workflow-template ids replaced with real `tpl_*` ids verified in
+`workflow-engine.ts`); Pax persona completeness (all 9 personas resolve to
+their own voice, incl. new note_servicer / note_originator / subdivider
+contexts); pack-commerce surface (`GET /api/billing/packs` + the pricing
+page's Vertical Packs section); landing tiers derived from the registry
+(Beta badges, waitlist chips); landlord-family reachability (the Rentals
+module now serves buy_and_hold + short_term_rental + multifamily +
+mobile_home). **V2 (PR #251, `c1368eff`)** — beta-four completion:
+certificates-book Finance hero (tax_lien_deed) + lot-economics hero
+(subdivider); SubdividerStrip + truthful landlord map-strip labels; widget
+fabrication purge (all `*_MOCK` constants deleted + `noMockWidgets`
+ratchet); creative_finance's first real surface (sidebar module, Today
+cluster, Close & Carry deal → note bridge) and promotion roadmap → beta;
+wholesaling Pax voice to production (`productionReady: true`). **V3**
+(record/doc alignment — the wave carrying this edit) and **V4** are in
+flight. fix_and_flip remains roadmap-gated with its gap stated (2026-07-11
+residential-comps decision) — the ruling's gated-with-gap-stated path, not
+a freeze.
