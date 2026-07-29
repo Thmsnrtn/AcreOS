@@ -592,6 +592,36 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
 
+  // ── Creative-finance vertical (ruling #11, wave V2) ───────────────
+  // Visible to operators whose businessType is 'creative_finance'
+  // (subject-to / wrap / owner-carry / lease-option operators). The module
+  // is assembled from the seller-finance rails that already shipped: the
+  // deal pipeline (Close & Carry lives on /deals/:id — CarryNoteDialog →
+  // POST /api/notes/from-deal/:dealId), the carried-note book behind the
+  // Finance door (Loan Portfolio + Book tabs, ATR/Reg-Z activation gate,
+  // amortization schedules), the Dodd-Frank exemption checker, and the
+  // per-state seller-financing rules library.
+  // NOTE deliberately absent: a "/notes" child. creative_finance derives
+  // orgInvestorType "land" (persona-mapping.ts), and byOrgInvestorType.land
+  // hides "/notes" (sidebar-hidden-routes.ts) — a child there would be
+  // filtered out for exactly the orgs this module gates to. The carried
+  // book is reached via /finance instead (also where the deal-detail
+  // "View originated note" link lands).
+  {
+    id: "creative-finance",
+    label: "Creative finance",
+    icon: Lightbulb,
+    href: "/deals",
+    description: "Seller-finance deals — carry the note, service it, stay compliant",
+    businessTypeOnly: ["creative_finance"],
+    children: [
+      { label: "Deal pipeline", icon: GitBranch, href: "/deals", description: "Subject-to / wrap / owner-carry deals — Close & Carry on the closed deal" },
+      { label: "Carried notes", icon: Banknote, href: "/finance", description: "Originated paper — book, ATR/Reg-Z gate, amortization schedules" },
+      { label: "Dodd-Frank checker", icon: Scale, href: "/dodd-frank", description: "Reg-Z seller-financing exemption screen (informational, not legal advice)" },
+      { label: "State rules", icon: BookOpen, href: "/regulatory-intel", description: "Per-state seller-financing risk, usury ceilings, contract-for-deed rules" },
+    ],
+  },
+
   // ── Finance (door 4 — the module formerly id "money") ─────────────
   // Finance is the canonical customer surface for finance/portfolio/
   // cash-flow. The legacy /finance + /portfolio + /analytics surfaces are

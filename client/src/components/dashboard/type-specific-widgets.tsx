@@ -17,13 +17,11 @@ import {
   Filter,
   Hammer,
   BarChart3,
-  Timer,
   Percent,
   Building,
   Droplets,
   CalendarClock,
   Wallet,
-  PieChart,
   ArrowUpRight,
   Home,
   Landmark,
@@ -46,69 +44,13 @@ export interface TypeSpecificWidgetsProps {
 
 type BusinessCategory = "land" | "wholesaler" | "flipper" | "buy_and_hold" | "commercial" | "subdivider" | "tax_delinquent";
 
-// ── Mock data structures (to be wired to API later) ────────────────────
-
-const LAND_MOCK = {
-  pipelineValue: 1_245_000,
-  avgDaysToClose: 47,
-  profitPerDealSparkline: [8200, 11500, 9800, 14200, 12600, 15800],
-  activeDeals: 12,
-};
-
-const WHOLESALER_MOCK = {
-  assignmentFees: 187_500,
-  avgAssignmentFee: 12_500,
-  speedToClose: 14,
-  buyerListHealth: { total: 248, active: 189, stale: 59 },
-  dealFunnel: [
-    { stage: "Leads", count: 342 },
-    { stage: "Under Contract", count: 28 },
-    { stage: "Assigned", count: 14 },
-    { stage: "Closed", count: 9 },
-  ],
-};
-
-const FLIPPER_MOCK = {
-  activeRehabs: [
-    { address: "123 Oak St", budget: 85000, spent: 52000, label: "Kitchen & Bath" },
-    { address: "456 Elm Ave", budget: 120000, spent: 98000, label: "Full Gut Rehab" },
-    { address: "789 Pine Rd", budget: 45000, spent: 12000, label: "Cosmetic" },
-  ],
-  totalARV: 1_820_000,
-  avgTimeline: 94,
-  roiSparkline: [18, 22, 15, 28, 24, 31],
-};
-
-const BUY_AND_HOLD_MOCK = {
-  monthlyCashFlow: 14_200,
-  vacancyRate: 4.2,
-  avgCapRate: 7.8,
-  leaseExpirations: [
-    { month: "Apr", count: 2 },
-    { month: "May", count: 0 },
-    { month: "Jun", count: 3 },
-    { month: "Jul", count: 1 },
-    { month: "Aug", count: 0 },
-    { month: "Sep", count: 4 },
-  ],
-  totalUnits: 36,
-};
-
-const COMMERCIAL_MOCK = {
-  monthlyNOI: 42_800,
-  vacancyRate: 6.1,
-  avgCapRate: 6.3,
-  leaseExpirations: [
-    { month: "Apr", count: 1 },
-    { month: "May", count: 0 },
-    { month: "Jun", count: 2 },
-    { month: "Jul", count: 0 },
-    { month: "Aug", count: 1 },
-    { month: "Sep", count: 3 },
-  ],
-  totalSqFt: 128_000,
-  occupiedSqFt: 120_000,
-};
+// NOTE (wave V2, founder ruling #11): this file used to open with five
+// hardcoded *-mock constants ("to be wired to API later"). Two of them were
+// still reachable in render paths (the land-category fall-through and the
+// commercial category) — fabricated numbers in a confident UI. All five are
+// deleted; every widget set below reads a real org-scoped endpoint and
+// renders an honest empty/suppressed state instead. The
+// tests/unit/noMockWidgets.test.ts ratchet keeps it that way.
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -146,35 +88,6 @@ function resolveCategory(businessType: string): BusinessCategory {
     default:
       return "land";
   }
-}
-
-function MiniSparkline({ data, color = "hsl(var(--primary))" }: { data: number[]; color?: string }) {
-  if (!data || data.length < 2) return null;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  const h = 32;
-  const w = 80;
-  const points = data
-    .map((v, i) => {
-      const x = (i / (data.length - 1)) * w;
-      const y = h - ((v - min) / range) * h;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <svg width={w} height={h} className="shrink-0">
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 function BudgetBar({ label, spent, budget }: { label: string; spent: number; budget: number }) {
@@ -224,93 +137,12 @@ function FunnelBar({ stage, count, maxCount }: { stage: string; count: number; m
   );
 }
 
-function LeaseExpirationTimeline({ data }: { data: { month: string; count: number }[] }) {
-  if (!data || data.length === 0) return null;
-  const max = Math.max(...data.map((d) => d.count), 1);
-
-  return (
-    <div className="flex items-end gap-2 h-16">
-      {data.map((d) => (
-        <div key={d.month} className="flex flex-col items-center gap-1 flex-1">
-          <div
-            className={`w-full rounded-t transition-all duration-500 ${
-              d.count > 0 ? "bg-acr-warn dark:bg-acr-warn" : "bg-muted"
-            }`}
-            style={{ height: `${Math.max((d.count / max) * 48, 4)}px` }}
-          />
-          <span className="text-micro text-muted-foreground">{d.month}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ── Widget Sets ────────────────────────────────────────────────────────
-
-function LandWidgets() {
-  const data = LAND_MOCK;
-
-  return (
-    <motion.div
-      variants={staggerContainer}
-      initial="hidden"
-      animate="visible"
-      className="grid grid-cols-1 md:grid-cols-3 gap-4"
-    >
-      <motion.div variants={fadeInUp}>
-        <Card className="floating-window h-full">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <DollarSign className="w-4 h-4 text-acr-pos" />
-              Pipeline Value
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">${data.pipelineValue.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {data.activeDeals} active deals
-            </p>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      <motion.div variants={fadeInUp}>
-        <Card className="floating-window h-full">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Clock className="w-4 h-4 text-acr-accent" />
-              Avg Days to Close
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{data.avgDaysToClose}</p>
-            <p className="text-xs text-muted-foreground mt-1">days average</p>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      <motion.div variants={fadeInUp}>
-        <Card className="floating-window h-full">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <TrendingUp className="w-4 h-4 text-primary" />
-              Profit Per Deal
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold">
-                ${data.profitPerDealSparkline[data.profitPerDealSparkline.length - 1].toLocaleString()}
-              </p>
-              <MiniSparkline data={data.profitPerDealSparkline} color="hsl(142, 71%, 45%)" />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">last 6 deals</p>
-          </CardContent>
-        </Card>
-      </motion.div>
-    </motion.div>
-  );
-}
+//
+// The land category renders LandSourcingWidgets (below) — real
+// /api/properties + /api/leads data with an honest EmptyState. The mock
+// "LandWidgets" (fabricated pipeline value / days-to-close / profit
+// sparkline) that used to live here was deleted in wave V2, ruling #11.
 
 interface WholesalerDashboard {
   hasData: boolean;
@@ -681,95 +513,15 @@ function BuyAndHoldWidgets() {
   );
 }
 
-function CommercialWidgets() {
-  const data = COMMERCIAL_MOCK;
-  const occupancyPct = Math.round((data.occupiedSqFt / data.totalSqFt) * 100);
-
-  return (
-    <motion.div
-      variants={staggerContainer}
-      initial="hidden"
-      animate="visible"
-      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
-    >
-      <motion.div variants={fadeInUp}>
-        <Card className="floating-window h-full">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <PieChart className="w-4 h-4 text-acr-pos" />
-              Monthly NOI
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">${data.monthlyNOI.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {data.totalSqFt.toLocaleString()} sq ft portfolio
-            </p>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      <motion.div variants={fadeInUp}>
-        <Card className="floating-window h-full">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Landmark className="w-4 h-4 text-acr-accent" />
-              Occupancy
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <p className="text-2xl font-bold">{occupancyPct}%</p>
-              <Badge
-                variant="outline"
-                className={`text-xs ${
-                  occupancyPct >= 90
-                    ? "border-acr-pos-soft text-acr-pos dark:border-acr-pos-soft dark:text-acr-pos"
-                    : "border-acr-warn-soft text-acr-warn dark:border-acr-warn-soft dark:text-acr-warn"
-                }`}
-              >
-                {data.vacancyRate}% vacant
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {data.occupiedSqFt.toLocaleString()} / {data.totalSqFt.toLocaleString()} sq ft
-            </p>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      <motion.div variants={fadeInUp}>
-        <Card className="floating-window h-full">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Percent className="w-4 h-4 text-primary" />
-              Avg Cap Rate
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{data.avgCapRate}%</p>
-            <p className="text-xs text-muted-foreground mt-1">across portfolio</p>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      <motion.div variants={fadeInUp}>
-        <Card className="floating-window h-full">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <CalendarClock className="w-4 h-4 text-acr-warn" />
-              Lease Expirations
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <LeaseExpirationTimeline data={data.leaseExpirations} />
-            <p className="text-xs text-muted-foreground mt-2">next 6 months</p>
-          </CardContent>
-        </Card>
-      </motion.div>
-    </motion.div>
-  );
-}
+// NOTE (wave V2, founder ruling #11): the commercial category used to render
+// a CommercialWidgets set built entirely from a hardcoded mock — fabricated
+// NOI, cap rate, sq-ft occupancy, and a lease-expiration chart. No real
+// source for NOI/cap-rate/sq-ft exists in the schema today, so those tiles
+// are gone rather than faked. Commercial landlording runs the same
+// org-scoped rent/lease/maintenance domain (rental_leases, rent_charges,
+// maintenance_tickets), so the category now renders BuyAndHoldWidgets —
+// real /api/landlord/dashboard data, suppressed (hasData=false) until the
+// org actually tracks a lease.
 
 // ── Subdivider widgets (SD-9) ──────────────────────────────────────────
 
@@ -1341,11 +1093,16 @@ export function TypeSpecificWidgets({ businessType, organizationId }: TypeSpecif
         </h3>
       </div>
 
-      {category === "land" && <LandWidgets />}
+      {/* land: real sourcing data (/api/properties + /api/leads) with an
+          honest EmptyState — the fabricated LandWidgets mock is gone. */}
+      {category === "land" && <LandSourcingWidgets />}
       {category === "wholesaler" && <WholesalerWidgets />}
       {category === "flipper" && <FlipperWidgets />}
       {category === "buy_and_hold" && <BuyAndHoldWidgets />}
-      {category === "commercial" && <CommercialWidgets />}
+      {/* commercial: same real rent/lease/maintenance domain as buy_and_hold
+          (/api/landlord/dashboard, hasData-suppressed) — see note above
+          SubdividerWidgets for why the mock NOI/cap-rate tiles are gone. */}
+      {category === "commercial" && <BuyAndHoldWidgets />}
       {category === "subdivider" && <SubdividerWidgets />}
       {category === "tax_delinquent" && <TaxDelinquentWidgets />}
     </div>

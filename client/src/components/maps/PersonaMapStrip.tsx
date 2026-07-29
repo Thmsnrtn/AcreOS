@@ -20,6 +20,7 @@ import {
   FileSignature,
   ClipboardCheck,
   PiggyBank,
+  Layers,
 } from "lucide-react";
 import type { Note, Lead, Property } from "@shared/schema";
 
@@ -62,8 +63,13 @@ interface Props {
  *     locator, not the workspace.
  *
  *   wholesaler → Curb capture: motivated-seller pin counts + DriveMode.
- *   fix_flipper / subdivider → Inventory + projects: owned-property
- *     counts by status + top active project.
+ *   fix_flipper → Inventory + projects: owned-property counts by status
+ *     + top active project, in flip vocabulary.
+ *   subdivider → Subdivision progress: parent parcels, lots sold, basis
+ *     recovered, stalled permit gates — real /api/subdivider/dashboard
+ *     data, not the flipper's inventory framing (wave V2, ruling #11).
+ *   landlord → Inventory in landlord-honest vocabulary (same real
+ *     status counts; see InventoryStrip for why NOT occupancy words).
  */
 export function PersonaMapStrip({ properties, hasAnyProperties }: Props) {
   const persona = usePersona();
@@ -92,8 +98,12 @@ export function PersonaMapStrip({ properties, hasAnyProperties }: Props) {
         />
       );
     case "fix_flipper":
-    case "subdivider":
       return <InventoryStrip properties={properties} />;
+    // Subdividers' unit of work is parent parcel → child lots, not
+    // reno/list inventory — they get real subdivision rollups, not the
+    // flipper strip with the wrong words (wave V2, ruling #11).
+    case "subdivider":
+      return <SubdividerStrip hasAnyProperties={hasAnyProperties} />;
     // tax_delinquent buyers research parcels pre-auction — the parcel tools
     // strip is their map workspace (same real data as land investors).
     case "tax_delinquent":
@@ -640,11 +650,37 @@ function CurbCaptureStrip({
   );
 }
 
-// ── Inventory + projects (fix_flipper / subdivider) ──────────────────────────
+// ── Inventory + projects (fix_flipper / landlord) ────────────────────────────
+
+/**
+ * Status-pip vocabulary, keyed by persona. The counts underneath are the
+ * SAME real buckets of properties.status (prospect/due_diligence/offer_sent/
+ * under_contract → owned → listed → sold, shared/schema.ts) — only the words
+ * change, and only where the words still describe the underlying status:
+ *
+ * - fix_flipper keeps flip vocabulary: an owned flip is a project in reno.
+ * - landlord: `owned` is labeled "Owned", deliberately NOT "Occupied"/
+ *   "Vacant" — occupancy lives in the rental_leases domain, not on
+ *   properties.status, and this strip only receives properties. Relabeling
+ *   an owned-count as an occupancy-count would present a number as a fact
+ *   the data behind it does not contain. Likewise the sold pip stays
+ *   "Sold" (NOT the registry's pipeline.stage.closed "Leased") because the
+ *   count is literally status === "sold".
+ */
+const INVENTORY_PIP_LABELS: Record<
+  "fix_flipper" | "landlord",
+  { acquisition: string; owned: string; listed: string; sold: string }
+> = {
+  fix_flipper: { acquisition: "Acquisition", owned: "Reno", listed: "Listed", sold: "Sold" },
+  landlord: { acquisition: "Acquisition", owned: "Owned", listed: "Listed", sold: "Sold" },
+};
 
 function InventoryStrip({ properties }: { properties: Property[] }) {
+  const persona = usePersona();
   const projectLabel = useTerm("entity.property");
   const projectPluralLabel = useTerm("entity.property.plural");
+  const pip =
+    INVENTORY_PIP_LABELS[persona === "landlord" ? "landlord" : "fix_flipper"];
 
   const counts = useMemo(() => {
     const acquisition = properties.filter((p) =>
@@ -659,7 +695,15 @@ function InventoryStrip({ properties }: { properties: Property[] }) {
   }, [properties]);
 
   const topProject = useMemo((): { p: Property; net: number } | null => {
-    const active = properties.filter((p) => p.status !== "sold");
+    // Spread requires BOTH sides to be real. A missing listPrice used to
+    // read as a $0 sale and rank a fabricated negative "top" number — only
+    // properties carrying both a purchase and a list price qualify.
+    const active = properties.filter(
+      (p) =>
+        p.status !== "sold" &&
+        Number(p.purchasePrice || 0) > 0 &&
+        Number(p.listPrice || 0) > 0,
+    );
     let best: { p: Property; net: number } | null = null;
     active.forEach((p) => {
       const buy = Number(p.purchasePrice || 0);
@@ -676,7 +720,11 @@ function InventoryStrip({ properties }: { properties: Property[] }) {
         <EmptyState
           icon={Hammer}
           headline={`No ${projectPluralLabel.toLowerCase()} yet`}
-          subtitle={`Add a ${projectLabel.toLowerCase()} to see acquisitions, renovations, and listings on the same map.`}
+          subtitle={
+            persona === "landlord"
+              ? `Add a ${projectLabel.toLowerCase()} to see acquisitions, owned doors, and listings on the same map.`
+              : `Add a ${projectLabel.toLowerCase()} to see acquisitions, renovations, and listings on the same map.`
+          }
           cta={{
             label: `Add ${projectLabel.toLowerCase()}`,
             onClick: () => { window.location.href = "/properties?action=new"; },
@@ -691,7 +739,7 @@ function InventoryStrip({ properties }: { properties: Property[] }) {
 
   return (
     <StripShell
-      title="Inventory + projects"
+      title={persona === "landlord" ? "Rental inventory" : "Inventory + projects"}
       shortTitle="Inventory"
       actions={
         <Button asChild size="sm" variant="outline" className="h-7 text-xs" aria-label={projectPluralLabel}>
@@ -704,21 +752,145 @@ function InventoryStrip({ properties }: { properties: Property[] }) {
       }
     >
       <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-        <StatusPip label="Acquisition" count={counts.acquisition} color="text-acr-warn" />
-        <StatusPip label="Reno" count={counts.reno} color="text-acr-brand" />
-        <StatusPip label="Listed" count={counts.list} color="text-acr-accent" />
-        <StatusPip label="Sold" count={counts.sold} color="text-acr-pos" />
+        <StatusPip label={pip.acquisition} count={counts.acquisition} color="text-acr-warn" />
+        <StatusPip label={pip.owned} count={counts.reno} color="text-acr-brand" />
+        <StatusPip label={pip.listed} count={counts.list} color="text-acr-accent" />
+        <StatusPip label={pip.sold} count={counts.sold} color="text-acr-pos" />
       </span>
       {topProject && (
         <>
           <span className="hidden md:inline text-muted-foreground">·</span>
           <span className="hidden md:inline text-sm">
-            Top: <span className="font-medium">{topProject.p.county}, {topProject.p.state}</span>{" "}
+            Top spread: <span className="font-medium">{topProject.p.county}, {topProject.p.state}</span>{" "}
             <span className={`font-mono tabular-nums ${topProject.net < 0 ? "text-acr-neg" : "text-acr-pos"}`}>
               {usd(topProject.net, { noCents: true })}
             </span>
           </span>
         </>
+      )}
+    </StripShell>
+  );
+}
+
+// ── Subdivision progress (subdivider) ────────────────────────────────────────
+
+/**
+ * A subdivider's map job is one-parent-into-many-children: which parent
+ * parcels are split, how many lots have sold, and whether basis is coming
+ * back. The flipper's reno/list framing was the wrong words for this work,
+ * so this strip reads the REAL rollup the dashboard widget already uses —
+ * GET /api/subdivider/dashboard (routes-subdivisions.ts: org-scoped parent/
+ * child/sold counts + permit_gates), hasData=false when no parcel has
+ * children yet. Nothing here is computed client-side from guesses; on any
+ * fetch failure the strip renders nothing rather than invent a number.
+ */
+interface SubdividerStripData {
+  hasData: boolean;
+  parentCount?: number;
+  totalChildLots?: number;
+  soldChildLots?: number;
+  totalParentBasisCents?: number;
+  totalSoldProceedsCents?: number;
+  recoveredPct?: number;
+  stalledGates?: number;
+}
+
+function SubdividerStrip({ hasAnyProperties }: { hasAnyProperties: boolean }) {
+  const parentPluralLabel = useTerm("entity.property.plural"); // "Parent parcels"
+  const { data: live, isLoading, isError } = useQuery<SubdividerStripData>({
+    queryKey: ["/api/subdivider/dashboard"],
+    queryFn: async () => {
+      const res = await fetch("/api/subdivider/dashboard", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  // Loading or failed: render nothing. The map stays fully usable; we never
+  // show placeholder numbers while (or because) the real ones are missing.
+  if (isLoading || isError || !live) return null;
+
+  if (!live.hasData) {
+    return (
+      <div className="px-4 md:px-6 py-3 border-b bg-acr-brand-soft/30">
+        <EmptyState
+          icon={Layers}
+          headline="Split your first parent parcel"
+          subtitle={
+            hasAnyProperties
+              ? "Pick a parent parcel and cut it into child lots — lot sales, basis recovery, and permit gates roll up here."
+              : "Add a parent parcel, then cut it into child lots — lot sales, basis recovery, and permit gates roll up here."
+          }
+          cta={{
+            label: hasAnyProperties ? "Open parent parcels" : "Add parent parcel",
+            href: hasAnyProperties ? "/properties" : "/properties?action=new",
+            "data-testid": "persona-map-split-parcel",
+          }}
+          secondaryCta={{
+            label: "Permit tracker",
+            href: "/permits",
+            "data-testid": "persona-map-permit-tracker",
+          }}
+          actionIcon={Layers}
+          className="py-6"
+        />
+      </div>
+    );
+  }
+
+  const stalled = live.stalledGates ?? 0;
+  return (
+    <StripShell
+      title="Subdivision progress"
+      shortTitle="Lots"
+      actions={
+        <>
+          <Button asChild size="sm" className="h-7 text-xs" aria-label="Lot pricing">
+            <Link href="/lot-pricing">
+              <Layers className="w-3 h-3 mr-1" aria-hidden="true" />
+              <span className="hidden sm:inline">Lot pricing</span>
+              <span className="sm:hidden">Lots</span>
+            </Link>
+          </Button>
+          <Button asChild size="sm" variant="outline" className="h-7 text-xs hidden md:inline-flex">
+            <Link href="/permits">
+              <ExternalLink className="w-3 h-3 mr-1" aria-hidden="true" />
+              Permits
+            </Link>
+          </Button>
+        </>
+      }
+    >
+      <span className="text-sm text-muted-foreground">
+        <span className="tabular-nums text-foreground font-medium">{live.parentCount ?? 0}</span>{" "}
+        {(live.parentCount ?? 0) === 1
+          ? parentPluralLabel.toLowerCase().replace(/s$/, "")
+          : parentPluralLabel.toLowerCase()}
+        {" · "}
+        <span className="tabular-nums text-foreground font-medium">
+          {live.soldChildLots ?? 0}/{live.totalChildLots ?? 0}
+        </span>{" "}
+        lots sold
+        {/* Basis-recovered only renders when a parent basis is actually
+            recorded — 0% against an unrecorded basis would be a fake stat. */}
+        {(live.totalParentBasisCents ?? 0) > 0 && (
+          <span className="hidden md:inline">
+            {" · "}
+            <span className="font-mono tabular-nums text-acr-pos font-medium">
+              {live.recoveredPct ?? 0}%
+            </span>{" "}
+            basis recovered
+          </span>
+        )}
+      </span>
+      {stalled > 0 && (
+        <span className="flex items-center gap-1.5 text-sm">
+          <AlertTriangle className="w-3.5 h-3.5 text-acr-warn shrink-0" aria-hidden="true" />
+          <span className="text-acr-warn tabular-nums">{stalled}</span>
+          <span className="text-muted-foreground hidden sm:inline">
+            stalled permit gate{stalled === 1 ? "" : "s"}
+          </span>
+        </span>
       )}
     </StripShell>
   );
