@@ -92,11 +92,30 @@ const REGISTRY: HiddenRouteRegistry = {
       "/exchange-1031",
       "/borrower-portal",
     ],
-    commercial:             ["/maps", "/land-credit"],
+    // V3 (founder ruling #11): commercial shares the landlord-family
+    // profile — the Rentals module gate now includes commercial (its
+    // lease/rent-ledger/maintenance loop runs on the shared rentals stack,
+    // and the dashboard already routes commercial to the landlord
+    // dashboard), so the coherent nav also hides the note-investor
+    // surfaces (/notes, /notes/pipeline, /borrower-portal) a commercial
+    // lease operator has no book for, alongside the land-flavored
+    // /land-credit. Previously commercial hid only /maps + /land-credit —
+    // /maps is a protected door and was never actually hidden.
+    commercial:             LANDLORD_FAMILY_HIDDEN,
     short_term_rental:      LANDLORD_FAMILY_HIDDEN,
     multifamily:            LANDLORD_FAMILY_HIDDEN,
     mobile_home:            LANDLORD_FAMILY_HIDDEN,
-    agent_investor:         ["/land-credit"],
+    // V3 (founder ruling #11): agent_investor's businessType axis hides
+    // NOTHING — the land-shaped default is deliberate (an agent who
+    // invests in land runs the full land sourcing loop, land_investor
+    // persona per persona-mapping.ts), so the self-report axis grants the
+    // full land surface exactly like land_flipper. The previous
+    // /land-credit-only hide carried no recorded rationale and contradicted
+    // the deliberate-land-default premise (the Land Credit Score scores the
+    // same parcels this operator sources). The behavioral axis is
+    // untouched: contextProfile detects agent_investor orgs as
+    // "wholesaler", which may still hide /land-credit by observed behavior.
+    agent_investor:         [],
     creative_finance:       ["/land-credit"],
     // Subdivider vertical SD-9 — Brigid: "I have no notes. […] depreciation
     // doesn't apply to me — lots held as inventory aren't depreciated.

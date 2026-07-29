@@ -733,11 +733,22 @@ export function registerPropertyRoutes(app: Express): void {
         return Errors.badRequest(res, "Property coordinates not available. Please fetch parcel data first.", { error: "missing_coordinates" });
       }
 
+      // Residential fork (wave V3, founder ruling #11): residential orgs
+      // route through the residentialComps seam (ATTOM), whose affordability
+      // + BYOK story lives in the provider registry (comps_lookup debit /
+      // BYOK pool bypass). The legacy Regrid credit pre-check below would
+      // wrongly 402 a BYOK-ATTOM org and the comps_query usage record would
+      // double-bill on top of the registry debit — both are skipped for
+      // residential orgs.
+      const { getOrgBusinessType } = await import("./services/residentialComps");
+      const { isResidentialBusinessType } = await import("@shared/models/persona-mapping");
+      const isResidentialOrg = isResidentialBusinessType(await getOrgBusinessType(org.id));
+
       // Check if org has their own Regrid credentials (BYOK) - if so, skip credit check
       const regridIntegration = await storage.getOrganizationIntegration(org.id, 'regrid');
       const usingOrgRegridCredentials = regridIntegration?.isEnabled && regridIntegration?.credentials?.encrypted;
-      
-      if (!usingOrgRegridCredentials) {
+
+      if (!usingOrgRegridCredentials && !isResidentialOrg) {
         // Credit pre-check for comps query (10 cents per query) - only when using platform credentials
         const compsCost = await usageMeteringService.calculateCost("comps_query", 1);
         const hasCredits = await creditService.hasEnoughCredits(org.id, compsCost);
@@ -750,9 +761,9 @@ export function registerPropertyRoutes(app: Express): void {
           });
         }
       } else {
-        logger.info(`[CompsEndpoint] Skipping credit pre-check for org ${org.id} - using org Regrid credentials`);
+        logger.info(`[CompsEndpoint] Skipping credit pre-check for org ${org.id} - ${isResidentialOrg ? 'residential org (registry meters comps_lookup)' : 'using org Regrid credentials'}`);
       }
-      
+
       const radiusMiles = parseFloat(req.query.radius as string) || 5;
       const filters: import("./services/comps").CompsFilters = {};
       
@@ -778,11 +789,13 @@ export function registerPropertyRoutes(app: Express): void {
       };
       
       const result = await getPropertyComps(lat, lng, subjectAcreage, radiusMiles, filters, propertyAttributes, org.id);
-      
-      // Skip credit recording if using organization's own Regrid credentials (BYOK)
+
+      // Skip credit recording if using organization's own Regrid credentials
+      // (BYOK), or when the residential seam served it — the provider
+      // registry already debits comps_lookup for a paid residential lookup.
       const usingOrgCredentials = result.credentialSource === 'organization';
-      
-      if (!usingOrgCredentials) {
+
+      if (!usingOrgCredentials && !result.residential) {
         // Record usage after successful comps query only when using platform credentials
         await usageMeteringService.recordUsage(org.id, "comps_query", 1, {
           propertyId: property.id,
@@ -791,7 +804,7 @@ export function registerPropertyRoutes(app: Express): void {
           radiusMiles,
         });
       } else {
-        logger.info(`[CompsEndpoint] Skipping credit usage for org ${org.id} - using org Regrid credentials`);
+        logger.info(`[CompsEndpoint] Skipping credit usage for org ${org.id} - ${result.residential ? 'residential seam (registry meters comps_lookup)' : 'using org Regrid credentials'}`);
       }
       
       res.json({
@@ -819,11 +832,19 @@ export function registerPropertyRoutes(app: Express): void {
       }
       const { lat, lng, radius, subjectAcreage, filters } = parsed.data;
       
+      // Residential fork (wave V3) — same skip semantics as the
+      // /api/properties/:id/comps endpoint above: the registry meters
+      // residential (ATTOM) lookups; the Regrid pre-check/usage rows are
+      // land-path billing only.
+      const { getOrgBusinessType } = await import("./services/residentialComps");
+      const { isResidentialBusinessType } = await import("@shared/models/persona-mapping");
+      const isResidentialOrg = isResidentialBusinessType(await getOrgBusinessType(org.id));
+
       // Check if org has their own Regrid credentials (BYOK) - if so, skip credit check
       const regridIntegration = await storage.getOrganizationIntegration(org.id, 'regrid');
       const usingOrgRegridCredentials = regridIntegration?.isEnabled && regridIntegration?.credentials?.encrypted;
-      
-      if (!usingOrgRegridCredentials) {
+
+      if (!usingOrgRegridCredentials && !isResidentialOrg) {
         // Credit pre-check for comps query (10 cents per query) - only when using platform credentials
         const compsCost = await usageMeteringService.calculateCost("comps_query", 1);
         const hasCredits = await creditService.hasEnoughCredits(org.id, compsCost);
@@ -836,19 +857,20 @@ export function registerPropertyRoutes(app: Express): void {
           });
         }
       } else {
-        logger.info(`[CompsSearch] Skipping credit pre-check for org ${org.id} - using org Regrid credentials`);
+        logger.info(`[CompsSearch] Skipping credit pre-check for org ${org.id} - ${isResidentialOrg ? 'residential org (registry meters comps_lookup)' : 'using org Regrid credentials'}`);
       }
-      
+
       const radiusMiles = radius || 5;
       const acreage = subjectAcreage || 0;
-      
+
       const { getPropertyComps } = await import("./services/comps");
       const result = await getPropertyComps(lat, lng, acreage, radiusMiles, filters || {}, undefined, org.id);
-      
-      // Skip credit recording if using organization's own Regrid credentials (BYOK)
+
+      // Skip credit recording if using organization's own Regrid credentials
+      // (BYOK), or when the residential seam served it (registry-metered).
       const usingOrgCredentials = result.credentialSource === 'organization';
-      
-      if (!usingOrgCredentials) {
+
+      if (!usingOrgCredentials && !result.residential) {
         // Record usage after successful comps search only when using platform credentials
         await usageMeteringService.recordUsage(org.id, "comps_query", 1, {
           lat,
@@ -856,7 +878,7 @@ export function registerPropertyRoutes(app: Express): void {
           radiusMiles,
         });
       } else {
-        logger.info(`[CompsSearch] Skipping credit usage for org ${org.id} - using org Regrid credentials`);
+        logger.info(`[CompsSearch] Skipping credit usage for org ${org.id} - ${result.residential ? 'residential seam (registry meters comps_lookup)' : 'using org Regrid credentials'}`);
       }
       
       res.json(result);

@@ -51,6 +51,22 @@ describe("vertical pack purchasability", () => {
     }
   });
 
+  it("sells the fix_and_flipper pack now that fix_and_flip is beta (ruling #11, wave V3)", () => {
+    // 2026-07-29 wave V3: fix_and_flip flipped roadmap → beta because the
+    // 2026-07-11 demotion's ROOT CAUSE is fixed — residential verticals'
+    // comps/valuation route through the residentialComps seam (provider
+    // registry restricted to ATTOM, pay-per-call, BYOK channel "attom")
+    // with honest degradation when unkeyed, instead of the LAND data plane
+    // the investorType fork implied. NOT a residential data plane — that
+    // hard-stop stands (no bulk ingest, no dedicated vendors). Verified by
+    // residentialComps / residentialNoLandFallback / residentialConsumerFork
+    // tests; pinned here so a silent re-demotion (or a silent unsellable
+    // pack) fails loudly.
+    expect(getBusinessType("fix_and_flip")?.maturity).toBe("beta");
+    expect(isVerticalPackPurchasable("fix_and_flipper")).toBe(true);
+    expect(purchasableVerticalPacks().map((p) => p.key)).toContain("fix_and_flipper");
+  });
+
   it("sells the property-management pack now that buy_and_hold is beta (ruling #11, wave V1)", () => {
     // 2026-07-29 truth pass: buy_and_hold flipped roadmap → beta because
     // the build justifies it (rental schema + routes + pages + Rentals nav

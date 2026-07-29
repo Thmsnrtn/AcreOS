@@ -143,6 +143,59 @@ const REGISTRY: Array<{
     },
   },
   {
+    // V3 (founder ruling #11): commercial stays roadmap (no dedicated CRE
+    // features — no CAM/NNN pass-throughs, no percentage rent, no
+    // escalation schedules), but its morning loop runs honestly on surfaces
+    // that already shipped: the shared rentals stack (term leases, base-rent
+    // ledger, maintenance dispatch — the same lease/rent/maintenance domain
+    // the dashboard already routes commercial to via BuyAndHoldWidgets in
+    // type-specific-widgets.tsx, wave V2), plus the deal pipeline and the
+    // property inventory. Every link is a routed page and none is nav-hidden
+    // for the commercial org fingerprint (see sidebar-hidden-routes.ts —
+    // commercial shares the landlord-family hiding profile).
+    match: (i) => i.businessType === "commercial",
+    cluster: {
+      id: "commercial",
+      title: "Commercial surfaces",
+      description:
+        "Term leases, base-rent ledger, maintenance dispatch on the shared rentals stack — plus deal pipeline and property inventory. No CAM / percentage-rent modeling yet.",
+      priority: 25,
+      links: [
+        { label: "Rent roll", href: "/rent-roll" },
+        { label: "Leases", href: "/leases" },
+        { label: "Maintenance", href: "/maintenance" },
+        { label: "Pipeline", href: "/deals" },
+        { label: "Inventory", href: "/properties" },
+      ],
+    },
+  },
+  {
+    // V3 (founder ruling #11): agent_investor's land-shaped default is
+    // DELIBERATE, not a fallback — an agent who invests in land runs the
+    // same parcel-sourcing loop as a land flipper (map → owner → offer),
+    // so the vertical maps to the land_investor persona on purpose
+    // (persona-mapping.ts) and gets the full land surface (its
+    // businessType axis hides nothing — see sidebar-hidden-routes.ts).
+    // This cluster confirms that choice with the real sourcing surfaces
+    // rather than leaving the signup to wonder whether the land framing
+    // is a bug. Agent-specific features (commission tracking, client vs.
+    // own-book separation, MLS) remain roadmap — see the registry entry.
+    match: (i) => i.businessType === "agent_investor",
+    cluster: {
+      id: "agent-investor",
+      title: "Agent-investor surfaces",
+      description:
+        "The land sourcing loop, deliberately: parcel map, seller leads, deal pipeline, owner skip tracing. Agent-side tooling (commissions, MLS) is roadmap.",
+      priority: 58,
+      links: [
+        { label: "Parcel map", href: "/maps" },
+        { label: "Leads", href: "/leads" },
+        { label: "Pipeline", href: "/deals" },
+        { label: "Skip tracing", href: "/skip-tracing" },
+      ],
+    },
+  },
+  {
     // Note investor matches on investorType (org-level), not businessType.
     // 'both' = land + notes mixed; we still surface notes because the rest
     // of the page already shows land-flavored content.

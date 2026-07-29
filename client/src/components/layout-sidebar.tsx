@@ -541,7 +541,17 @@ const NAV_MODULES: NavModule[] = [
     // same leases/rent-roll/maintenance/tenants model, so the module gate
     // matches all four businessTypes instead of stranding those signups
     // with seeded rental data and no Rentals surface.
-    businessTypeOnly: ["buy_and_hold", "short_term_rental", "multifamily", "mobile_home"],
+    // V3 (founder ruling #11): commercial added after a schema audit of
+    // shared/schema/rental.ts — the core loop (term leases, base-rent
+    // charges/payments, maintenance→contractor dispatch, security deposits)
+    // is lease-generic and genuinely serves commercial base-rent operations;
+    // Section 8 / FCRA / lead-paint fields are optional and default off. The
+    // dashboard already routes commercial to the real landlord dashboard
+    // (type-specific-widgets.tsx, wave V2), so the nav now matches. Known
+    // commercial gaps stay stated in shared/business-types.ts (entity
+    // tenants, CAM/NNN, percentage rent, escalations) — the vertical stays
+    // roadmap.
+    businessTypeOnly: ["buy_and_hold", "short_term_rental", "multifamily", "mobile_home", "commercial"],
     children: [
       { label: "Rent roll", icon: Wallet, href: "/rent-roll", description: "Org-wide aging buckets + open balances" },
       { label: "Tenants", icon: Users, href: "/tenants", description: "Tenant CRM (separate from acquisition leads)" },

@@ -1477,6 +1477,179 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       },
     ],
   },
+  // ── Wave V3 (founder ruling #11) — rental family + registry-gap templates ──
+  // Verification rules for every template below, pinned by
+  // tests/unit/workflowEngineTemplates.test.ts:
+  //   1. The trigger event is a declared member of the shared
+  //      WORKFLOW_TRIGGER_EVENTS union (legally emittable via
+  //      workflowEngine.emit and matchable by getActiveWorkflowsByTrigger) —
+  //      none of these lean on the local ExtendedTriggerEvent escape hatch.
+  //   2. Every action type has a real handler case in executeAction below.
+  // The two parcel.* templates go further: theirs is the only event family
+  // actually emitted at runtime today (parcelDeltaDetector.persistDelta),
+  // and their {{placeholders}} are restricted to the exact fields that emit
+  // call sends (apn/state/county/field/alertType/currentValue/leadId/
+  // propertyId).
+  {
+    id: "tpl_multifamily_unit_turn",
+    name: "Multifamily — Unit Turn Planner (60-day countdown)",
+    description:
+      "60 days before a unit's lease ends, surface the renew-or-turn decision and the make-ready plan for a non-renewal, so the unit is re-rented instead of sitting vacant.",
+    category: "deals",
+    trigger: { event: "lease.renewal_countdown_60d" },
+    actions: [
+      {
+        id: "action_unit_turn_decision_task",
+        type: "create_task",
+        config: {
+          title: "Renew or turn — {{propertyAddress}} / {{tenantName}} (lease ends {{leaseEndDate}})",
+          description:
+            "Current rent ${{currentRent}}; market rent ${{marketRent}}. Decide: (a) offer renewal at ${{suggestedRenewalRent}}, (b) renew at current rent to avoid a turn, or (c) plan the unit turn. A turn typically costs a month-plus of rent in make-ready and vacancy — price the renewal against that.",
+          priority: "high",
+          dueInDays: 7,
+        },
+      },
+      {
+        id: "action_unit_turn_makeready_task",
+        type: "create_task",
+        config: {
+          title: "Make-ready plan (if not renewing) — {{propertyAddress}}",
+          description:
+            "If the tenant is not renewing: schedule the move-out inspection for {{leaseEndDate}}, line up paint/clean/repair vendors, photograph the unit, and list it before it goes vacant. Target: new lease signed within 2 weeks of move-out.",
+          priority: "medium",
+          dueInDays: 14,
+        },
+      },
+      {
+        id: "action_unit_turn_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "warning",
+          message:
+            "Lease ends {{leaseEndDate}} at {{propertyAddress}} ({{tenantName}}) — renew-or-turn decision needed.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_mobile_home_lot_rent_receipt",
+    name: "Mobile Home Park — Lot Rent Received → Receipt",
+    description:
+      "On every lot-rent payment, email the resident a receipt and log the payment — the paper trail park operators need at tax time and in any dispute.",
+    category: "deals",
+    trigger: { event: "rent.received" },
+    actions: [
+      {
+        id: "action_lot_rent_receipt_email",
+        type: "send_email",
+        config: {
+          to: "{{tenantEmail}}",
+          subject: "Lot rent receipt — {{propertyAddress}} {{rentPeriodLabel}}",
+          body:
+            "Hi {{tenantName}},\n\nWe've received your lot rent of ${{rentAmount}} for {{rentPeriodLabel}} at {{propertyAddress}}. Year-to-date payments: ${{ytdPaid}}. Next payment due {{nextDueDate}}.\n\nThank you,\n{{orgName}}",
+        },
+      },
+      {
+        id: "action_lot_rent_received_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "Lot rent received: {{propertyAddress}} — ${{rentAmount}} ({{rentPeriodLabel}}).",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_tax_cert_redeemed_payoff",
+    name: "Certificate Redeemed — Payoff Processing",
+    description:
+      "When the owner redeems a tax certificate, create the payoff-processing checklist (verify funds, release the certificate, record satisfaction, book the return) and notify the operator. Completes the cert lifecycle: acquired → redemption window → redeemed OR foreclosure-eligible.",
+    category: "deals",
+    trigger: { event: "cert.redeemed" },
+    actions: [
+      {
+        id: "action_redeemed_payoff_task",
+        type: "create_task",
+        config: {
+          title: "Process redemption payoff — Cert #{{certificateId}} ({{propertyAddress}})",
+          description:
+            "Owner redeemed on {{redeemedDate}}. Verify the county's payoff of ${{redemptionAmount}} equals principal plus statutory interest at {{stateStatutoryRatePct}} ({{state}}), surrender/release the certificate per county process, record the satisfaction, and book the realized return against the certificate.",
+          priority: "high",
+          dueInDays: 3,
+        },
+      },
+      {
+        id: "action_redeemed_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "success",
+          message:
+            "Certificate redeemed: {{propertyAddress}} — Cert #{{certificateId}}, payoff ${{redemptionAmount}}.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_parcel_owner_changed_followup",
+    name: "Tracked Parcel — Owner Changed",
+    description:
+      "When county data shows a new owner (or owner mailing address) on a parcel in your pipeline, create a follow-up task and notify — mail lists go stale the day this happens, and a fresh owner is often the best moment to reach out.",
+    category: "leads",
+    trigger: { event: "parcel.owner_changed" },
+    actions: [
+      {
+        id: "action_owner_changed_task",
+        type: "create_task",
+        config: {
+          title: "Owner changed on APN {{apn}} ({{county}}, {{state}})",
+          description:
+            "County data now shows {{field}} = {{currentValue}}. Update the linked lead/property record, pull the new owner's mailing address, and decide whether to restart outreach.",
+          priority: "high",
+          dueInDays: 2,
+        },
+      },
+      {
+        id: "action_owner_changed_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "warning",
+          message:
+            "Owner change detected: APN {{apn}} ({{county}}, {{state}}) — {{field}} is now {{currentValue}}.",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_parcel_tax_delinquent_watchlist",
+    name: "Tracked Parcel — Tax Status Changed",
+    description:
+      "When a tracked parcel's tax status or tax amount changes in county data, create a review task and notify — a parcel going delinquent is an auction-watchlist candidate; one going current means the owner just cured.",
+    category: "leads",
+    trigger: { event: "parcel.tax_status_changed" },
+    actions: [
+      {
+        id: "action_tax_status_changed_task",
+        type: "create_task",
+        config: {
+          title: "Tax status changed on APN {{apn}} ({{county}}, {{state}})",
+          description:
+            "County data now shows {{field}} = {{currentValue}}. If newly delinquent: add the parcel to the auction watchlist and check the county sale calendar. If newly current: the owner cured — reassess motivation on the linked lead.",
+          priority: "high",
+          dueInDays: 3,
+        },
+      },
+      {
+        id: "action_tax_status_changed_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "warning",
+          message:
+            "Tax status change: APN {{apn}} ({{county}}, {{state}}) — {{field}} is now {{currentValue}}.",
+        },
+      },
+    ],
+  },
 ];
 
 export type WorkflowEventData = {

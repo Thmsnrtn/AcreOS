@@ -148,6 +148,11 @@ export async function generateOfferSuggestions(
       };
     }
 
+    // Wave V3 (founder ruling #11): pass the org so residential verticals
+    // route through the residential seam (ATTOM house comps / honest
+    // unavailable) instead of the land-parcel path. Previously this callsite
+    // dropped the org entirely, so flip customers' offer math ran on land
+    // comps regardless of the comps.ts fork.
     const compsResult = await getComparableProperties(
       property.latitude,
       property.longitude,
@@ -156,11 +161,16 @@ export async function generateOfferSuggestions(
         minAcreage: property.sizeAcres * 0.5,
         maxAcreage: property.sizeAcres * 2,
         maxResults: 20,
-      }
+      },
+      opts?.organizationId
     );
+    const isResidential = compsResult.residential === true;
 
+    // calculateMarketValue is $/acre land math; residential comps carry
+    // pricePerAcre=null so it stays inert on them (sampleSize 0) and the
+    // fallbacks below use the property's own recorded values.
     const marketAnalysis = calculateMarketValue(property.sizeAcres, compsResult.comps);
-    
+
     let estimatedMarketValue = marketAnalysis?.estimatedValue || 0;
     if (!estimatedMarketValue && property.marketValue) {
       estimatedMarketValue = Number(property.marketValue);
@@ -177,7 +187,15 @@ export async function generateOfferSuggestions(
       sizeAcres: property.sizeAcres,
       city: property.address,
     };
-    const desirabilityScore = calculateDesirabilityScore(propertyAttributes);
+    // The desirability score is a LAND model (acreage sweet spot, terrain,
+    // rural utilities). Never present it for a residential (house) subject.
+    const desirabilityScore: {
+      totalScore: number;
+      grade: string;
+      factors: Array<{ name: string; score: number; maxScore: number; description: string }>;
+    } = isResidential
+      ? { totalScore: 0, grade: "N/A", factors: [] }
+      : calculateDesirabilityScore(propertyAttributes);
 
     const offerPrices = calculateOfferPrices(estimatedMarketValue);
 
@@ -189,7 +207,7 @@ export async function generateOfferSuggestions(
     const _sTerrain = sanitizePromptInline(property.terrain ?? "Unknown", { maxLength: 200, source: "offer.terrain" });
     const _sRoad = sanitizePromptInline(property.roadAccess ?? "Unknown", { maxLength: 200, source: "offer.roadAccess" });
 
-    const prompt = `You are an expert real estate investment analyst specializing in land acquisitions. Analyze this property and provide strategic offer recommendations.
+    const prompt = `You are an expert real estate investment analyst specializing in ${isResidential ? "residential (house) acquisitions" : "land acquisitions"}. Analyze this property and provide strategic offer recommendations.
 
 Property Details:
 - Location: ${_sCounty}, ${_sState}
@@ -203,9 +221,11 @@ Property Details:
 
 Market Analysis:
 - Estimated Market Value: $${estimatedMarketValue.toLocaleString()}
-- Average Price/Acre in Area: $${marketAnalysis?.averagePricePerAcre?.toLocaleString() || "Unknown"}
+${isResidential
+  ? `- Comparable Sales (residential, via ATTOM): ${compsResult.comps.filter(c => c.salePrice).length}`
+  : `- Average Price/Acre in Area: $${marketAnalysis?.averagePricePerAcre?.toLocaleString() || "Unknown"}
 - Comparable Sales: ${compsResult.comps.filter(c => c.salePrice).length}
-- Desirability Score: ${desirabilityScore.totalScore}/100 (Grade: ${desirabilityScore.grade})
+- Desirability Score: ${desirabilityScore.totalScore}/100 (Grade: ${desirabilityScore.grade})`}
 
 Pre-calculated Offer Ranges:
 - Conservative (40-50%): $${offerPrices.conservative.min.toLocaleString()} - $${offerPrices.conservative.max.toLocaleString()}

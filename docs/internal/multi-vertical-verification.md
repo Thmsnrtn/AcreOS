@@ -5,6 +5,17 @@
 **Phase:** Zero-Zero — "Stabilize" gate  
 **Scope:** 5 secondary personas (Note Investor, Fix-and-Flipper, Wholesaler, Subdivider, Tax-Delinquent Buyer) + the default Land Investor, as claimed in the landing page's "already in the product" chip list.
 
+> **Status annotation 2026-07-29** — this report is a 2026-06-01 snapshot;
+> the body text below is kept as written. Everything it flagged has since
+> been re-verified in code: all three blocking bugs (B-1..B-3) and all six
+> honest-up gaps (G-1..G-6) are **CLOSED** — dated dispositions are in the
+> two tables at the bottom. Maturity has also moved: fix_and_flip was
+> demoted beta → roadmap on 2026-07-11 (residential-comps data-plane
+> decision), and under founder ruling #11 (2026-07-28,
+> `docs/company/founder-decisions-2026-07-28.md` §11) buy_and_hold and
+> creative_finance were promoted to beta (waves V1/V2, PRs #250/#251) and
+> the beta verticals are activated as each passes the honesty bar.
+
 ---
 
 ## Executive Summary
@@ -227,22 +238,26 @@ Yes — with the mandatory qualifier that four of the five are beta. The Positio
 
 ## Blocking Bugs for Iris to Ticket
 
-| # | Bug | File | Severity |
-|---|---|---|---|
-| B-1 | `/drivemode` route not registered — CurbCaptureStrip buttons 404 for Wholesaler persona | `client/src/App.tsx` + `client/src/components/mobile/DriveMode.tsx` | High |
-| B-2 | `/courthouse-mode` (or `/courthouse`) route not registered — CourthouseMode component exists but unreachable | `client/src/App.tsx` + `client/src/components/mobile/CourthouseMode.tsx` | High |
-| B-3 | Workflow template ID mismatch for fix_and_flip: `business-types.ts` says `flip_renovation_milestones`, engine defines `tpl_fix_flip_rehab_kickoff` | `shared/business-types.ts` + `server/services/workflow-engine.ts` | Medium |
+*(Status column added 2026-07-29 — each disposition re-verified in the tree, not from memory.)*
+
+| # | Bug | File | Severity | Status (2026-07-29) |
+|---|---|---|---|---|
+| B-1 | `/drivemode` route not registered — CurbCaptureStrip buttons 404 for Wholesaler persona | `client/src/App.tsx` + `client/src/components/mobile/DriveMode.tsx` | High | **CLOSED** — `/drivemode` is a registered `ProtectedRoute` in `App.tsx` (dedicated `pages/drivemode.tsx`, comment cites B-1); landed by 2026-07-02 (`1cc006e5`) |
+| B-2 | `/courthouse-mode` (or `/courthouse`) route not registered — CourthouseMode component exists but unreachable | `client/src/App.tsx` + `client/src/components/mobile/CourthouseMode.tsx` | High | **CLOSED** — `/courthouse-mode` is a registered `ProtectedRoute` in `App.tsx` (dedicated `pages/courthouse-mode.tsx`, comment cites B-2); landed by 2026-07-02 (`1cc006e5`) |
+| B-3 | Workflow template ID mismatch for fix_and_flip: `business-types.ts` says `flip_renovation_milestones`, engine defines `tpl_fix_flip_rehab_kickoff` | `shared/business-types.ts` + `server/services/workflow-engine.ts` | Medium | **CLOSED** — 2026-07-29 registry truth pass (ruling #11 wave V1, PR #250): every declared `workflowTemplateIds` entry across all 15 verticals now names a real `tpl_*` id present in `workflow-engine.ts` (fix_and_flip declares `tpl_fix_flip_rehab_kickoff` / `tpl_flip_milestone_demo_complete` / `tpl_flip_listing_ready`) |
 
 ## High-Priority Improvements (Not Blocking, but Honest-Up)
 
-| # | Gap | Affected Persona | Effort |
-|---|---|---|---|
-| G-1 | Add `tax_delinquent` persona hero to `PersonaFinanceHero` — lien acquisition cost vs. market value | Tax-Delinquent | Medium |
-| G-2 | Add a `tax_delinquent` collateral strip to `PersonaMapStrip` — properties with approaching redemption deadlines | Tax-Delinquent | Medium |
-| G-3 | Fix `InventoryStrip` vocabulary for subdivider ("Reno" → "Entitlement", "Listed" → "Platted") | Subdivider | Small |
-| G-4 | Add `subdivider` to `paxPersona.ts` `VERTICAL_CONTEXTS` as a first-class type (not falling through to `developer`) | Subdivider | Small |
-| G-5 | Add "(Beta)" visual qualifier to IN_PRODUCT_TYPES chips on the landing page (4 of the 5 are beta) | All beta verticals | Small |
-| G-6 | Verify `notes/pipeline` route is registered in App.tsx (referenced from today-vertical-surfaces but not confirmed above) | Note Investor | Small |
+*(Status column added 2026-07-29 — each disposition re-verified in the tree, not from memory.)*
+
+| # | Gap | Affected Persona | Effort | Status (2026-07-29) |
+|---|---|---|---|---|
+| G-1 | Add `tax_delinquent` persona hero to `PersonaFinanceHero` — lien acquisition cost vs. market value | Tax-Delinquent | Medium | **CLOSED** — ruling #11 wave V2 (PR #251): `tax_delinquent` renders a Certificates-book hero (deployed capital, active/overdue, deadline buckets) off the real `/api/tax-certificates/dashboard/summary`; `subdivider` also graduated from Project P&L to a lot-economics hero (`/api/lots/economics-summary`) |
+| G-2 | Add a `tax_delinquent` collateral strip to `PersonaMapStrip` — properties with approaching redemption deadlines | Tax-Delinquent | Medium | **CLOSED** (resolved differently, 2026-06-14 `98537efb`) — `tax_delinquent` no longer falls through to `null`: it routes to the ParcelToolsStrip (pre-auction parcel research is the persona's map job). Redemption-deadline urgency surfaces instead in the wave-V2 certificates Finance hero (due-30 / 90-day exposure) and `/redemption-clock`, not on the map strip |
+| G-3 | Fix `InventoryStrip` vocabulary for subdivider ("Reno" → "Entitlement", "Listed" → "Platted") | Subdivider | Small | **CLOSED** (superseded) — ruling #11 wave V2 (PR #251): instead of relabeling the flipper strip, subdivider got a dedicated `SubdividerStrip` fed by `/api/subdivider/dashboard` (parents, lots sold, basis recovered, stalled permit gates); landlord's `InventoryStrip` labels were made truthful in the same wave |
+| G-4 | Add `subdivider` to `paxPersona.ts` `VERTICAL_CONTEXTS` as a first-class type (not falling through to `developer`) | Subdivider | Small | **CLOSED** — ruling #11 wave V1 (PR #250): `VERTICAL_CONTEXTS` is typed exhaustively against `PaxVerticalContextKey` and carries a first-class `subdivider` voice (plat/permit-gate/lot-economics vocabulary); `PAX_CONTEXT_BY_PERSONA` maps all 9 personas, subdivider included |
+| G-5 | Add "(Beta)" visual qualifier to IN_PRODUCT_TYPES chips on the landing page (4 of the 5 are beta) | All beta verticals | Small | **CLOSED** — ruling #11 wave V1 (PR #250): `Positioning.tsx` derives chip tiers from the registry at build time; beta chips carry a "Beta" micro-label, roadmap chips render muted as the waitlist, and the `DEMOTE_ON_LANDING` escape hatch may only demote with a stated reason |
+| G-6 | Verify `notes/pipeline` route is registered in App.tsx (referenced from today-vertical-surfaces but not confirmed above) | Note Investor | Small | **CLOSED** — verified: `/notes/pipeline` and `/notes/pipeline/:id` are registered routes in `App.tsx` |
 
 ---
 

@@ -250,7 +250,7 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
     enforcement: {
       kind: "code-invariant",
       refs: ["shared/business-types.ts", "tests/unit/verticalPackPurchasable.test.ts"],
-      note: "Residential verticals are maturity:'roadmap' and their packs are unsellable until promoted.",
+      note: "The hard-stop bars building a dedicated residential-comps data PLANE (bulk ingest, dedicated vendors) — it does not bar routing residential lookups through the EXISTING provider registry. Ruling #11 wave V3 (2026-07-29) promoted residential verticals by routing comps/valuation via the registry's ATTOM seam (pay-per-call/BYOK, honest unkeyed degradation, server/services/residentialComps.ts); no plane was built and none ships before the revenue trigger.",
     },
   },
   {
