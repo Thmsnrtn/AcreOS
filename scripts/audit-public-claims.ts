@@ -34,18 +34,36 @@ import { verifyClaims, type Source } from "../server/services/truth-engine";
  * doesn't need engine verification because there's no numeric claim.
  */
 const CLAIMS: string[] = [
-  // copy.ts hero (line 47-53)
-  "The only platform that finds parcels, sends the mail, drafts the replies, closes the deal, and services the note after.",
+  // copy.ts hero wedge — reposition (founder ruling #12(a), 2026-07-29):
+  // the audience is property investors generally, so the old "The only
+  // platform…" comparative (defended against the LAND category only) is
+  // superseded by the consolidation fact without "only".
+  "One platform that finds the deals, sends the mail, drafts the replies, closes the deal, and services the note after.",
   "AcreOS pulls lists, runs real comparable sales (not Zillow estimates), sends direct mail, drafts seller replies",
-  "Pax pulls your first list inside 10 minutes.",
+  // copy.ts hero.ctaSub — "first county list": the 10-minute target is the
+  // county-GIS first-list job, scoped to the land toolkit by name.
+  "Pax pulls your first county list inside 10 minutes.",
 
-  // copy.ts how-it-works (line 94)
+  // copy.ts hero eyebrow / positioning band — "deepest in land" is a
+  // self-referential depth fact (land_flipper is the founding-wedge core
+  // vertical in the registry), not a maturity claim about other verticals.
+  "Deepest in land — the founding wedge.",
+
+  // copy.ts hero.agenciesLabel + data band — the land toolkit's federal
+  // data spine, wired live in server/services/data-source-broker.ts.
+  "The land toolkit — every parcel checked against five federal data sources, free",
+
+  // copy.ts features.sub — cross-vertical breadth stated as the shipped
+  // surfaces, not as universality.
+  "Deals, mail, inbox, offers, notes, and rentals under one roof.",
+
+  // copy.ts how-it-works
   "AcreOS filters new leads against it within 90 seconds of ingest.",
 
-  // copy.ts pricing (line 133)
+  // copy.ts pricing
   "Pro at $41/mo (billed annually) unlocks the full Pax assistant, unlimited counties, and bring-your-own-key",
 
-  // Pricing.tsx (annual save claim line 115)
+  // Pricing.tsx (annual save claim)
   "Annual Save 17%",
 
   // Positioning.tsx (tiers — since ruling #11 wave V1 the chips DERIVE from
@@ -76,17 +94,51 @@ function buildSources(): Source[] {
       name: "AcreOS landing copy.ts",
       ref: "client/src/pages/landing/copy.ts",
       content: `
-        The operating system for Land Investors. The only platform that
-        finds parcels, sends the mail, drafts the replies, closes the
-        deal, and services the note after. AcreOS pulls lists, runs
-        real comparable sales (not Zillow estimates), sends direct mail,
-        drafts seller replies, and tracks every parcel from cold lead
-        through closed note in one thread. Pax pulls your first list
-        inside 10 minutes. AcreOS filters new leads against the buy-box
-        within 90 seconds of ingest. Pricing: Pro at $41/mo (billed
-        annually) unlocks the full Pax assistant, unlimited counties,
-        and bring-your-own-key for the parcel and skip-trace data
-        costs you already pay.
+        The operating system for property investors — deepest in land
+        (founder ruling #12(a), 2026-07-29). One platform that finds
+        the deals, sends the mail, drafts the replies, closes the deal,
+        and services the note after. AcreOS pulls lists, runs real
+        comparable sales (not Zillow estimates), sends direct mail,
+        drafts seller replies, and tracks every deal from cold lead
+        through closed note in one thread. Pax pulls your first county
+        list inside 10 minutes. AcreOS filters new leads against the
+        buy-box within 90 seconds of ingest. Pricing: Pro at $41/mo
+        (billed annually) unlocks the full Pax assistant, unlimited
+        counties, and bring-your-own-key for the parcel and skip-trace
+        data costs you already pay.
+      `,
+    },
+    {
+      // The land-toolkit depth proof: five federal sources wired live —
+      // each function below is a real query path in the broker.
+      name: "AcreOS federal data spine (data-source-broker)",
+      ref: "server/services/data-source-broker.ts",
+      content: `
+        The land toolkit — every parcel checked against five federal
+        data sources, free: FEMA National Flood Hazard Layer
+        (queryFemaFlood), USDA SSURGO soils (querySoilData), USGS 3DEP
+        elevation (queryElevation), USFWS National Wetlands Inventory
+        (queryNwiWetlands), U.S. Census ACS demographics
+        (queryDemographics). All five wired live in
+        server/services/data-source-broker.ts.
+      `,
+    },
+    {
+      // Cross-vertical breadth: the shipped surfaces behind the five
+      // customer doors that serve every vertical, not just land.
+      name: "AcreOS cross-vertical surfaces",
+      ref: "client/src/pages/ (deals, inbox, notes-pipeline, properties, tenants) + VerticalPackSection",
+      content: `
+        Deals, mail, inbox, offers, notes, and rentals under one roof:
+        Deals pipeline (deals.tsx, deal-detail.tsx), lead Inbox with
+        Pax drafts (inbox.tsx), direct-mail platform and offer
+        composer, Notes stack (notes-pipeline.tsx, note-detail.tsx,
+        note ledger servicing), Rentals stack (properties.tsx,
+        tenants.tsx — serves buy-and-hold, multifamily, mobile-home,
+        short-term-rental personas), vertical packs commerce
+        (GET /api/billing/packs, VerticalPackSection.tsx), BYO rails
+        (BYOK vault + connectors hub). One place for the whole
+        lifecycle.
       `,
     },
     {
@@ -111,7 +163,10 @@ function buildSources(): Source[] {
         wholesaler, buy-and-hold rentals, subdivider, tax lien / deed), and
         roadmap (fix-and-flip, short-term rentals, commercial, creative
         finance, developer, multifamily, mobile home, agent-investor —
-        promised, not sold).
+        promised, not sold). Land flipper is the founding wedge — the
+        deepest workflows live there (deepest in land is a
+        self-referential depth fact backed by this registry's core
+        maturity, not a claim about competitors).
       `,
     },
     {

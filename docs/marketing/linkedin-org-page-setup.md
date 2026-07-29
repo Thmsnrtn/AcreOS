@@ -5,7 +5,7 @@ Status: prep only. No posting until Solene authorizes Phase 0 activation and Bea
 
 ## 1. Org Page Bio (≤2,000 chars)
 
-> AcreOS is the operating system for property investors. Built for Land Investors first; Note Investors today; Fix-and-Flippers, Wholesalers, and Tax-Delinquent Buyers in beta; Subdividers and Buy-and-Hold Landlords on the roadmap.
+> AcreOS is the operating system for property investors — deepest in land. Land Investors, Note Investors, and land+note hybrid operators are core; Wholesalers, Fix-and-Flippers, Buy-and-Hold Landlords, Tax-Lien/Deed Buyers, Subdividers, and Creative-Finance Investors are in beta; short-term rentals, commercial, development, multifamily, mobile-home parks, and agent-investors are on the roadmap.
 >
 > The platform consolidates the workflow an investor used to run across six tabs and four subscriptions: pull lists from county parcel records, run real comparable-sales analysis (not Zestimates), send direct mail, draft seller replies, close deals, and service the note after.
 >
@@ -40,7 +40,7 @@ These are the only three posts written in full at this stage. The other 8 hooks 
 >
 > AcreOS replaces all six. One thread per parcel, from cold lead through closed note.
 >
-> The platform serves Land Investors first. Note Investors today. Fix-and-Flippers, Wholesalers, and Tax-Delinquent Buyers in beta. Subdividers and Buy-and-Hold Landlords on the roadmap.
+> The platform serves property investors — deepest in land. Land Investors, Note Investors, and hybrid operators are core. Wholesalers, Fix-and-Flippers, Buy-and-Hold Landlords, Tax-Lien/Deed Buyers, Subdividers, and Creative-Finance Investors are in beta. The rest of the roadmap is on the landing page.
 >
 > acreos.io
 
@@ -62,9 +62,9 @@ These are the only three posts written in full at this stage. The other 8 hooks 
 >
 > The landing page tiers every investor type the platform serves:
 >
-> Core (full workflow, complete vocabulary): Land Investors, Note Investors.
-> Beta (real workflows, outer shell still maturing): Fix-and-Flippers, Wholesalers, Tax-Delinquent Buyers.
-> Roadmap (declared, not pitched): Subdividers, Buy-and-Hold Landlords.
+> Core (full workflow, complete vocabulary): Land Investors, Note Investors, land+note hybrids.
+> Beta (real workflows, outer shell still maturing): Wholesalers, Fix-and-Flippers, Buy-and-Hold Landlords, Tax-Lien/Deed Buyers, Subdividers, Creative-Finance Investors.
+> Roadmap (declared, not pitched): short-term rentals, commercial, development, multifamily, mobile-home parks, agent-investors.
 >
 > A first-time visitor sees what's live, what's maturing, and what's coming — before signing up. Honesty scales better than feature inflation.
 >
@@ -143,7 +143,7 @@ The three seed posts above were the scaffold. The three bodies below are publish
 >
 > AcreOS consolidates those six into one thread per parcel, from cold lead through closed note.
 >
-> The platform is built for Land Investors first. Note Investors are core. Fix-and-Flippers, Wholesalers, and Tax-Delinquent Buyers are in beta. Subdividers and Buy-and-Hold Landlords are on the roadmap.
+> The platform serves property investors — deepest in land. Land Investors, Note Investors, and hybrid operators are core. Wholesalers, Fix-and-Flippers, Buy-and-Hold Landlords, Tax-Lien/Deed Buyers, Subdividers, and Creative-Finance Investors are in beta.
 >
 > The maturity tier is on the landing page — visible before anyone signs up. Honesty scales better than feature inflation.
 >
@@ -191,11 +191,11 @@ The three seed posts above were the scaffold. The three bodies below are publish
 >
 > The tiers, exactly as they ship:
 >
-> Core (full workflow, complete vocabulary): Land Investors, Note Investors.
+> Core (full workflow, complete vocabulary): Land Investors, Note Investors, land+note hybrids.
 >
-> Beta (real workflows, outer shell still maturing): Fix-and-Flippers, Wholesalers, Tax-Delinquent Buyers.
+> Beta (real workflows, outer shell still maturing): Wholesalers, Fix-and-Flippers, Buy-and-Hold Landlords, Tax-Lien/Deed Buyers, Subdividers, Creative-Finance Investors.
 >
-> Roadmap (declared, not pitched): Subdividers, Buy-and-Hold Landlords.
+> Roadmap (declared, not pitched): short-term rentals, commercial, development, multifamily, mobile-home parks, agent-investors.
 >
 > A first-time visitor sees what's live, what's maturing, and what's coming — before signing up. That ordering is deliberate. A beta tag below the hero costs short-term conversion. It saves the trust the platform actually runs on.
 >

@@ -21,7 +21,7 @@ import { PRICING_TIER_COPY } from "@/lib/pricing-copy";
 const SITE_URL = "https://acreos.io";
 const ORG_NAME = "AcreOS";
 const ORG_DESCRIPTION =
-  "AcreOS is the operating system for Land Investors — find motivated sellers, analyze parcels, send direct mail, close deals, and manage seller-financed notes.";
+  "AcreOS is the operating system for property investors — deepest in land: find motivated sellers, analyze parcels, send direct mail, close deals, and manage seller-financed notes.";
 
 export function organizationSchema() {
   return {
@@ -115,7 +115,7 @@ export function securityPageSchema() {
     "@type": "WebPage",
     name: "Security at AcreOS",
     description:
-      "How AcreOS protects Land Investor data — encryption, access controls, audit logging, and incident response.",
+      "How AcreOS protects property-investor data — encryption, access controls, audit logging, and incident response.",
     url: `${SITE_URL}/security`,
     isPartOf: { "@type": "WebSite", name: ORG_NAME, url: SITE_URL },
     mainEntity: {
@@ -167,7 +167,7 @@ export function glossarySchema(terms: DefinedTermInput[]) {
   return {
     "@context": "https://schema.org",
     "@type": "DefinedTermSet",
-    name: "AcreOS Land Investor Glossary",
+    name: "AcreOS Property Investor Glossary",
     description:
       "Plain-English definitions for the vocabulary land investors encounter — yellow letter, skip trace, AVM, executory contract, and more.",
     url: `${SITE_URL}/glossary`,

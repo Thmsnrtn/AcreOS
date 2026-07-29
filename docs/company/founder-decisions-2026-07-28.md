@@ -163,8 +163,26 @@ certificates-book Finance hero (tax_lien_deed) + lot-economics hero
 fabrication purge (all `*_MOCK` constants deleted + `noMockWidgets`
 ratchet); creative_finance's first real surface (sidebar module, Today
 cluster, Close & Carry deal → note bridge) and promotion roadmap → beta;
-wholesaling Pax voice to production (`productionReady: true`). **V3**
-(record/doc alignment — the wave carrying this edit) and **V4** are in
-flight. fix_and_flip remains roadmap-gated with its gap stated (2026-07-11
-residential-comps decision) — the ruling's gated-with-gap-stated path, not
-a freeze.
+wholesaling Pax voice to production (`productionReady: true`); fix_and_flip
+promoted roadmap → beta — its 2026-07-11 residential-comps gap resolved via
+the routing-not-plane path (ATTOM-only `residentialComps.ts`, no land-comp
+fallback), so the gated-with-gap-stated hold no longer applies. **V3**
+(PR #252) shipped residential routing, the roadmap tail, verified workflow
+templates, and record truth; **V4** (PR #253) closed the program with the
+final four Pax personas.
+
+---
+
+# Addendum — platform breadth & quality program, 2026-07-29
+
+## 12. LANDING REPOSITION + UNIVERSAL ONBOARDING + FEATURE-QUALITY BAR
+
+Ruling (founder, this date): (a) the landing page repositions to PROPERTY
+INVESTORS generally — the "Built for Land Investors." primary framing is
+superseded; land remains the deepest wedge but the page speaks to every
+vertical the registry serves. (b) Every vertical gets a tailored, helpful
+onboarding that is SKIPPABLE and RE-RUNNABLE. (c) A standing quality bar:
+every module across every vertical is examined against the best competing
+product for that feature area — missing features and features-of-features
+identified exhaustively — and the platform builds to surpass that bar.
+Implementation ships as reviewed PRs, wave by wave, same honesty rules.
