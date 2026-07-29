@@ -51,6 +51,27 @@ describe("vertical pack purchasability", () => {
     }
   });
 
+  it("sells the property-management pack now that buy_and_hold is beta (ruling #11, wave V1)", () => {
+    // 2026-07-29 truth pass: buy_and_hold flipped roadmap → beta because
+    // the build justifies it (rental schema + routes + pages + Rentals nav
+    // module). isVerticalPackPurchasable derives from that maturity, so the
+    // pack becoming sellable is the ruling working as designed — pinned
+    // here so a silent demotion would fail loudly.
+    expect(getBusinessType("buy_and_hold")?.maturity).toBe("beta");
+    expect(isVerticalPackPurchasable("buy_and_hold")).toBe(true);
+    expect(purchasableVerticalPacks().map((p) => p.key)).toContain("buy_and_hold");
+  });
+
+  it("creative_finance has no pack and stays unsold while roadmap (ruling #11 honesty bar)", () => {
+    // 2026-07-29 truth pass: creative_finance demoted beta → roadmap (zero
+    // dedicated surface). There is deliberately NO vertical pack for it, so
+    // nothing creative-finance-shaped can be sold until wave V2 builds a
+    // real surface and flips the maturity back.
+    expect(getBusinessType("creative_finance")?.maturity).toBe("roadmap");
+    const packVerticalIds = Object.values(VERTICAL_PACKS).map((p) => p.businessTypeId);
+    expect(packVerticalIds).not.toContain("creative_finance");
+  });
+
   it("unknown pack key is not purchasable", () => {
     expect(isVerticalPackPurchasable("nonexistent" as VerticalPackKey)).toBe(false);
   });

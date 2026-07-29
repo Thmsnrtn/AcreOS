@@ -15,6 +15,7 @@
 
 import { describe, it, expect } from "vitest";
 import { getTodayLayout } from "../../client/src/components/today/TodayLayout";
+import { BUSINESS_TYPE_TO_PERSONA } from "../../shared/models/persona-mapping";
 import type { Persona } from "../../shared/models/auth";
 
 describe("getTodayLayout — each persona gets its own lede", () => {
@@ -77,6 +78,18 @@ describe("getTodayLayout — each persona gets its own lede", () => {
     const ledes = all.map((p) => getTodayLayout(p).Lede);
     expect(ledes.every((l) => l !== null)).toBe(true);
     expect(new Set(ledes).size).toBe(9); // no two personas share a lede component
+  });
+
+  it("the landlord businessType family (V1) all collapse to the landlord lede", () => {
+    // short_term_rental / multifamily / mobile_home derive the landlord
+    // persona (persona-mapping.ts) — the Today lede must reach all four
+    // family members, not just buy_and_hold.
+    const landlord = getTodayLayout("landlord");
+    for (const bt of ["buy_and_hold", "short_term_rental", "multifamily", "mobile_home"] as const) {
+      const layout = getTodayLayout(BUSINESS_TYPE_TO_PERSONA[bt]);
+      expect(layout.key, `${bt} should reach the landlord lede`).toBe("landlord");
+      expect(layout.Lede).toBe(landlord.Lede);
+    }
   });
 
   it("falls through to the generic default (no lede) only for undefined persona", () => {

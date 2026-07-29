@@ -48,9 +48,11 @@ const CLAIMS: string[] = [
   // Pricing.tsx (annual save claim line 115)
   "Annual Save 17%",
 
-  // Positioning.tsx (tiers — verified against business-types.ts)
-  "Note investors run a full workflow today. Fix-and-flippers, wholesalers, and tax-delinquent buyers are in beta",
-  "Subdividers and buy-and-hold landlords are on the roadmap.",
+  // Positioning.tsx (tiers — since ruling #11 wave V1 the chips DERIVE from
+  // business-types.ts maturity at build time, so the registry itself is the
+  // source and per-vertical sentences no longer exist in copy. The claim
+  // audited here is the tier-framing prose that remains.
+  "Every investor type the platform serves, labeled by what's true today",
 
   // copy.ts hero.proof — the home-base reshape identity (R2). Sourced to the
   // live BYOK vault + connectors hub.
@@ -102,12 +104,14 @@ function buildSources(): Source[] {
       name: "AcreOS business types registry",
       ref: "shared/business-types.ts",
       content: `
-        Tiering registry. Core: land_investor (primary), note_investor
-        (full workflow templates). Beta: fix_and_flip, residential_wholesaler
-        (also: fix-and-flippers, wholesalers), tax_lien_deed (tax-delinquent
-        buyers). Roadmap: subdivider (subdividers — parcel editor exists,
-        Finance generic), buy_and_hold (buy-and-hold landlords — UI suppressed).
-        Note investors run a full workflow today with complete Pax vocabulary.
+        Tiering registry — since ruling #11 wave V1 the landing chips DERIVE
+        from this registry's maturity at build time, so every investor type
+        the platform serves is labeled by what's true today: core (land
+        flipper, note investor — full workflow templates), beta (residential
+        wholesaler, buy-and-hold rentals, subdivider, tax lien / deed), and
+        roadmap (fix-and-flip, short-term rentals, commercial, creative
+        finance, developer, multifamily, mobile home, agent-investor —
+        promised, not sold).
       `,
     },
     {

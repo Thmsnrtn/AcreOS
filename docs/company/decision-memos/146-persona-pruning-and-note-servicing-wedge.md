@@ -1,6 +1,6 @@
 # Decision Memo — #146 · Persona Pruning + Repricing + Note-Servicing Wedge
 
-**Author:** Solene (COO) · **For:** Tom (CEO) · **Date:** 2026-06-02 · **Status:** awaiting founder decision
+**Author:** Solene (COO) · **For:** Tom (CEO) · **Date:** 2026-06-02 · **Status:** resolved 2026-07-29 — superseded by founder ruling #11 (docs/company/founder-decisions-2026-07-28.md: build ALL registered verticals fully and activate all, honesty bar per vertical; the prune/wedge question is closed in the expand direction)
 
 This memo prepares you to engage with #146 in one page. It does *not* make the call — this lands in the constitutional category of strategic positioning, which is founder-only. My job is to frame the trade-off honestly so the call you make is informed.
 

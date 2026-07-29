@@ -55,3 +55,39 @@ describe("five-doors doctrine — doors are unhideable", () => {
     expect(hidden).not.toContain("/finance");
   });
 });
+
+describe("landlord family (V1, founder ruling #11) — siblings share buy_and_hold's profile", () => {
+  const SIBLINGS = ["short_term_rental", "multifamily", "mobile_home"] as const;
+
+  it("STR / multifamily / mobile-home resolve to the exact same hidden set as buy_and_hold", () => {
+    const base = resolveHiddenRoutes({
+      businessType: "buy_and_hold",
+      detectedInvestorType: "new_investor",
+      orgInvestorType: "both",
+    });
+    for (const sibling of SIBLINGS) {
+      const hidden = resolveHiddenRoutes({
+        businessType: sibling,
+        detectedInvestorType: "new_investor",
+        orgInvestorType: "both",
+      });
+      expect([...hidden].sort(), `${sibling} must match buy_and_hold`).toEqual([...base].sort());
+    }
+  });
+
+  it("siblings hide note-investor surfaces like buy_and_hold (not the old /maps-only profile)", () => {
+    for (const sibling of SIBLINGS) {
+      const hidden = resolveHiddenRoutes({
+        businessType: sibling,
+        detectedInvestorType: "new_investor",
+        orgInvestorType: "both",
+      });
+      expect(hidden, sibling).toContain("/notes");
+      expect(hidden, sibling).toContain("/notes/pipeline");
+      expect(hidden, sibling).toContain("/borrower-portal");
+      expect(hidden, sibling).toContain("/land-credit");
+      // /maps is in the registry entry but is a protected door — stays visible.
+      expect(hidden, sibling).not.toContain("/maps");
+    }
+  });
+});

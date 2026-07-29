@@ -21,6 +21,7 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { pricingProductSchema, SITE } from "@/lib/jsonld-schemas";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
+import { VerticalPackSection } from "@/components/billing/VerticalPackSection";
 
 // Tier cards (name / tagline / price / CTA) come from the shared
 // pricing-copy module — the single source both this page and the landing
@@ -346,6 +347,12 @@ export default function PricingPage() {
           .
         </div>
       </section>
+
+      {/* Vertical packs — add-on subscriptions on top of any paid tier.
+          Real catalog data from GET /api/billing/packs (which reads
+          VERTICAL_PACKS in shared/billing/tier-pricing.ts); waitlisted
+          verticals stay visible with honest framing, never hidden. */}
+      <VerticalPackSection annual={annual} />
 
       {/* Feature comparison table */}
       <section className="px-6 pb-24">

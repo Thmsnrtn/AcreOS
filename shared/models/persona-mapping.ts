@@ -159,3 +159,61 @@ export function personaToInvestorType(persona: Persona): Exclude<InvestorType, "
     ? "notes"
     : "land";
 }
+
+// ─── Pax voice contexts (wave V1, founder ruling #11) ─────────────────────
+//
+// Pax's vertical voice registry (server/services/paxPersona.ts
+// VERTICAL_CONTEXTS) historically carried only the 7 contextProfile
+// InvestorType buckets, so note_servicer / note_originator collapsed to the
+// generic note-investor voice and subdivider fell through to "developer".
+// This union is the COMPLETE set of Pax voice keys: the original 7
+// contextProfile buckets plus the three persona-resolution-only voices.
+// paxPersona.ts types its registry against this union, so adding a key here
+// without a voice entry there is a compile error.
+
+export type PaxVerticalContextKey =
+  // the 7 contextProfile InvestorType buckets (keep in sync with
+  // server/services/contextProfile.ts — its InvestorType must stay a
+  // subset of this union)
+  | "wholesaler"
+  | "note_investor"
+  | "fix_and_flip"
+  | "portfolio_builder"
+  | "auction_hunter"
+  | "developer"
+  | "new_investor"
+  // persona-resolved voices with no contextProfile bucket of their own
+  | "note_servicer"
+  | "note_originator"
+  | "subdivider";
+
+/**
+ * Every one of the 9 personas resolves to a defined Pax voice — no persona
+ * may fall through to a wrong-domain voice. Notes on the non-obvious rows:
+ *   - land_investor → "new_investor": that context IS the land-investor
+ *     launch voice (noun "Land Investor"; the base prompts default to it).
+ *   - tax_delinquent → "auction_hunter": the redemption/auction voice —
+ *     previously reachable only via the businessType bridge, now wired
+ *     explicitly.
+ *   - landlord → "portfolio_builder": the long-term-hold voice (cap rate /
+ *     NOI / DSCR), matching contextProfile's buy_and_hold mapping.
+ */
+export const PAX_CONTEXT_BY_PERSONA: Record<Persona, PaxVerticalContextKey> = {
+  land_investor: "new_investor",
+  note_investor: "note_investor",
+  note_originator: "note_originator",
+  note_servicer: "note_servicer",
+  tax_delinquent: "auction_hunter",
+  wholesaler: "wholesaler",
+  subdivider: "subdivider",
+  fix_flipper: "fix_and_flip",
+  landlord: "portfolio_builder",
+};
+
+/** Pax voice key for a persona; unknown input falls back to the land launch voice. */
+export function paxContextKeyForPersona(persona: Persona | string | null | undefined): PaxVerticalContextKey {
+  if (persona && persona in PAX_CONTEXT_BY_PERSONA) {
+    return PAX_CONTEXT_BY_PERSONA[persona as Persona];
+  }
+  return "new_investor";
+}
