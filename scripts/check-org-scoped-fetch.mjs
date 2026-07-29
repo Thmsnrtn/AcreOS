@@ -63,12 +63,13 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage/supportOpsRepo.ts::acknowledgeAllAlerts",
   "server/storage/platformOpsRepo.ts::cleanExpiredBorrowerSessions",
   "server/storage/growthConfigRepo.ts::countFieldScoutVisits",
-  // createAutomationExecution / noteRepo entries below: pre-existing methods
-  // that became VISIBLE when comment-masking fixed the parser (2026-06-10) —
-  // they are not new code. getNoteByAccessToken is capability-based by design
-  // (the token IS the auth for borrower-facing links); the other two take a
-  // bare id from callers that org-verify upstream. Tighten when touched.
-  "server/storage/automationRepo.ts::createAutomationExecution",
+  // noteRepo entries below: pre-existing methods that became VISIBLE when
+  // comment-masking fixed the parser (2026-06-10) — they are not new code.
+  // getNoteByAccessToken is capability-based by design (the token IS the
+  // auth for borrower-facing links); the others take a bare id from callers
+  // that org-verify upstream. Tighten when touched.
+  // (createAutomationExecution entry removed 2026-07-29: the method was
+  // deleted with the dead automation-rules surface — Wave A "Nothing lies".)
   "server/storage.ts::createMessage",
   "server/storage/paxRepo.ts::createPaxProjectFile",
   "server/storage/platformOpsRepo.ts::deleteBorrowerSession",

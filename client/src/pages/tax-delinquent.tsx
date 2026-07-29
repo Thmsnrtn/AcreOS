@@ -20,10 +20,14 @@ interface DelinquentLead {
   propertyAddress: string;
   county: string;
   stateCode: string;
-  yearsDelinquent: number;
-  taxOwedCents: number;
-  propertyValueCents: number;
-  equityPercent: number;
+  // Nullable fields are honest unknowns — the server refuses to fabricate
+  // (no more taxOwed × 8 "property value"). Render "—" / "no assessed value
+  // on file" instead of a number when null.
+  yearsDelinquent: number | null;
+  taxOwedCents: number | null;
+  propertyValueCents: number | null;
+  equityPercent: number | null;
+  valueProvenance: "assessed" | "none";
   daysUntilTaxSale?: number;
   risk: "critical" | "high" | "medium" | "low";
   score: number;
@@ -85,9 +89,15 @@ export default function TaxDelinquentPage() {
 
   const leads = data?.leads ?? [];
   const critical = leads.filter(l => l.risk === "critical").length;
-  const avgEquity = leads.length > 0
-    ? Math.round(leads.reduce((s, l) => s + l.equityPercent, 0) / leads.length)
-    : 0;
+  // Average only over leads with a REAL (assessed-value-derived) equity figure.
+  // Leads without an assessed value have equityPercent === null and are
+  // excluded — never counted as 0% or backfilled with an invented value.
+  const leadsWithEquity = leads.filter(
+    (l): l is DelinquentLead & { equityPercent: number } => l.equityPercent !== null,
+  );
+  const avgEquity = leadsWithEquity.length > 0
+    ? Math.round(leadsWithEquity.reduce((s, l) => s + l.equityPercent, 0) / leadsWithEquity.length)
+    : null;
 
   return (
     <PageShell>
@@ -132,7 +142,21 @@ export default function TaxDelinquentPage() {
               <TrendingUp className="w-4 h-4" aria-hidden="true" />
               <span className="text-xs">Avg equity</span>
             </dt>
-            <dd className="text-2xl font-bold tabular-nums">{avgEquity}%</dd>
+            {avgEquity !== null ? (
+              <dd className="text-2xl font-bold tabular-nums">
+                {avgEquity}%
+                {leadsWithEquity.length < leads.length && (
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    {leadsWithEquity.length} of {leads.length} with assessed value
+                  </span>
+                )}
+              </dd>
+            ) : (
+              <dd className="text-2xl font-bold" aria-label="Average equity unavailable: no assessed values on file">
+                —
+                <span className="block text-xs font-normal text-muted-foreground">no assessed values on file</span>
+              </dd>
+            )}
           </CardContent>
         </Card>
       </dl>
@@ -198,14 +222,30 @@ export default function TaxDelinquentPage() {
                           <span className="truncate">{lead.propertyAddress} · {lead.county}, {lead.stateCode}</span>
                         </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                          <span className="text-acr-neg">
+                          <span className={lead.taxOwedCents !== null ? "text-acr-neg" : "text-muted-foreground"}>
                             <DollarSign className="w-3 h-3 inline" aria-hidden="true" />
-                            <span className="tabular-nums">{usd(lead.taxOwedCents / 100)}</span> owed (<span className="tabular-nums">{lead.yearsDelinquent}</span>yr)
+                            {lead.taxOwedCents !== null ? (
+                              <>
+                                <span className="tabular-nums">{usd(lead.taxOwedCents / 100)}</span> owed
+                              </>
+                            ) : (
+                              <>— no amount on file</>
+                            )}
+                            {lead.yearsDelinquent !== null && (
+                              <> (<span className="tabular-nums">{lead.yearsDelinquent}</span>yr)</>
+                            )}
                           </span>
-                          <span>
-                            <TrendingUp className="w-3 h-3 inline mr-0.5" aria-hidden="true" />
-                            <span className="tabular-nums">{lead.equityPercent}%</span> equity
-                          </span>
+                          {lead.equityPercent !== null ? (
+                            <span>
+                              <TrendingUp className="w-3 h-3 inline mr-0.5" aria-hidden="true" />
+                              <span className="tabular-nums">{lead.equityPercent}%</span> equity
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              <TrendingUp className="w-3 h-3 inline mr-0.5" aria-hidden="true" />
+                              — equity (no assessed value on file)
+                            </span>
+                          )}
                           {lead.daysUntilTaxSale !== undefined && (
                             <span className={lead.daysUntilTaxSale <= 60 ? "text-acr-neg" : "text-muted-foreground"}>
                               <Calendar className="w-3 h-3 inline mr-0.5" aria-hidden="true" />
@@ -213,17 +253,19 @@ export default function TaxDelinquentPage() {
                             </span>
                           )}
                         </div>
-                        <div>
-                          <div className="flex justify-between text-xs mb-0.5">
-                            <span className="text-muted-foreground">Equity</span>
-                            <span className="tabular-nums">{lead.equityPercent}%</span>
+                        {lead.equityPercent !== null && (
+                          <div>
+                            <div className="flex justify-between text-xs mb-0.5">
+                              <span className="text-muted-foreground">Equity</span>
+                              <span className="tabular-nums">{lead.equityPercent}%</span>
+                            </div>
+                            <Progress
+                              value={lead.equityPercent}
+                              className="h-1"
+                              aria-label={`${lead.ownerName} equity: ${lead.equityPercent}%`}
+                            />
                           </div>
-                          <Progress
-                            value={lead.equityPercent}
-                            className="h-1"
-                            aria-label={`${lead.ownerName} equity: ${lead.equityPercent}%`}
-                          />
-                        </div>
+                        )}
                       </div>
                       <Button
                         size="sm"

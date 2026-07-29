@@ -7,8 +7,11 @@
  *
  * Three controls:
  *   1. Pause all Pax automation for 24h — writes
- *      users.autonomyPreferences.pax.pausedUntil (downstream executor must
- *      respect this when wired; documented in routes-autonomy.ts).
+ *      users.autonomyPreferences.pax.pausedUntil. ENFORCED server-side
+ *      (server/services/paxPause.ts, org-level): the executeTool chokepoint
+ *      refuses side-effecting tools, the Pax scheduler skips due tasks, and
+ *      the autonomous decision executor defers org items while paused.
+ *      Read-only lookups and drafts still run; the pause expires on its own.
  *   2. Replay last 10 Pax actions — read-only feed of recent
  *      paxObservations + status.
  *   3. Reset Pax to manual-only — sets the Today threshold to the 1.01
@@ -255,10 +258,13 @@ export default function PaxControlsPage() {
           Pax controls
         </h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          Pause, replay, or reset Pax. Today's autonomy slider is still in
-          preview — Pax always asks before acting — but these controls take
-          effect the moment auto-execution turns on, and the replay below
-          shows every observation Pax has surfaced.
+          Pause, replay, or reset Pax. The pause is enforced at the server's
+          tool-execution layer the moment you tap it: while paused, Pax
+          refuses any action with side effects (record changes, sends,
+          external triggers), scheduled Pax tasks are skipped, and the
+          autonomous executor defers your org's items. Read-only lookups and
+          drafts still work. The replay below shows every observation Pax has
+          surfaced.
         </p>
       </div>
 
@@ -363,8 +369,11 @@ export default function PaxControlsPage() {
             Pause all Pax automation for 24 hours
           </CardTitle>
           <CardDescription>
-            Stops every auto-execution path for 24 hours. Pax will still draft
-            and ask — it just won't act on its own. Use this if anything Pax did
+            Stops every auto-execution path for 24 hours, enforced server-side
+            at the tool layer, the scheduler, and the autonomous executor. Pax
+            will still draft and ask — it just won't act on its own. Actions
+            you explicitly approve still go through. The pause lifts
+            automatically when the timer expires. Use this if anything Pax did
             surprised you.
           </CardDescription>
         </CardHeader>

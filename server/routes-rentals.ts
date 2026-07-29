@@ -88,6 +88,11 @@ const leaseSchema = z.object({
   state: z.string().length(2),
   notes: z.string().optional(),
   tenantIds: z.array(z.string().uuid()).optional(),
+  // Federal lead-paint hard-gate (42 U.S.C. §4852d / 24 C.F.R. §35.92):
+  // operator affirms the EPA disclosure form + "Protect Your Family From
+  // Lead in Your Home" pamphlet were provided and the lead_paint addendum
+  // is attached. Required before a pre-1978 lease may leave draft.
+  leadPaintDisclosureConfirmed: z.boolean().default(false),
 });
 
 const leaseUpdateSchema = leaseSchema.partial().omit({ propertyId: true });
@@ -110,6 +115,42 @@ const renewSchema = z.object({
   newEndDate: z.string(),
   newMonthlyRentCents: z.coerce.number().int().nonnegative().optional(),
 });
+
+// ----------------------------------------------------------------------------
+// Lead-paint hard-gate helpers — 24 C.F.R. §35.92 / 40 C.F.R. §745.113.
+// shared/schema/rental.ts documents the invariant: a lease on a property
+// with requiresLeadPaintDisclosure may not transition to
+// pending_signature / active without a confirmed disclosure.
+// ----------------------------------------------------------------------------
+
+/** Lease statuses that count as "executing" for the federal lead-paint gate. */
+const LEAD_PAINT_GATED_STATUSES: ReadonlySet<string> = new Set(["pending_signature", "active"]);
+
+/**
+ * Whether the property is federally required to carry a lead-paint
+ * disclosure. requiresLeadPaintDisclosure is authoritative when set;
+ * when NULL (unbackfilled) we fall back to yearBuilt < 1978.
+ */
+function propertyNeedsLeadPaintDisclosure(prop: {
+  yearBuilt: number | null;
+  requiresLeadPaintDisclosure: boolean | null;
+}): boolean {
+  if (prop.requiresLeadPaintDisclosure === true) return true;
+  if (prop.requiresLeadPaintDisclosure === false) return false;
+  return prop.yearBuilt !== null && prop.yearBuilt > 0 && prop.yearBuilt < 1978;
+}
+
+function leadPaintBlocked(res: Response, detail: Record<string, unknown>) {
+  return Errors.badRequest(
+    res,
+    "Lead-based-paint disclosure required: this is pre-1978 housing. Federal law " +
+      "(42 U.S.C. §4852d; 24 C.F.R. §35.92; 40 C.F.R. §745.113) requires the EPA disclosure " +
+      "form and the 'Protect Your Family From Lead in Your Home' pamphlet before the lease is " +
+      "executed. Attach the lead_paint disclosure and confirm with leadPaintDisclosureConfirmed=true, " +
+      "or keep the lease in draft.",
+    { code: "LEAD_PAINT_DISCLOSURE_REQUIRED", ...detail },
+  );
+}
 
 // ----------------------------------------------------------------------------
 // Routes
@@ -353,11 +394,13 @@ export function registerRentalRoutes(app: Express): void {
     }
   });
 
-  // RS-2: real adverse-action notice send. Replaces the flag-only
-  // status='denied' stamp with a recorded send (template version + delivery
-  // status + audit). The actual email/SMS dispatch goes through the
-  // existing emailService; for v1 the route persists the send record so
-  // a follow-up workflow can pick up un-delivered notices.
+  // RS-2: adverse-action notice RECORD. AcreOS has no adverse-action send
+  // rail yet, so this route never claims one: it records the denial with
+  // the FCRA template version and deliveryStatus='recorded', and the
+  // operator must deliver the letter manually. adverseActionNoticeSentAt
+  // stays NULL until a real dispatch pipeline stamps it — a follow-up
+  // workflow finds un-delivered notices via deliveryStatus='recorded'.
+  // "Nothing lies": never persist 'sent' without a send.
   app.post("/api/tenants/:id/adverse-action", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
@@ -395,23 +438,32 @@ export function registerRentalRoutes(app: Express): void {
       const ADVERSE_ACTION_TEMPLATE_VERSION = "2026-05-08-v1";
       const [updated] = await db.update(tenantScreenings).set({
         outcome: "denied",
-        adverseActionNoticeSentAt: new Date(),
         adverseActionTemplateVersion: ADVERSE_ACTION_TEMPLATE_VERSION,
-        adverseActionDeliveryStatus: "sent",  // real send pipeline lands in a follow-up; v1 marks "sent" once persisted
+        // NOT 'sent' — nothing was sent. adverseActionNoticeSentAt is
+        // deliberately left NULL; only an actual dispatch may stamp it.
+        adverseActionDeliveryStatus: "recorded",
         updatedAt: new Date(),
       }).where(eq(tenantScreenings.id, recent[0].id)).returning();
 
-      // Mirror the flag onto the tenant record so list views can filter.
+      // Mirror the denial onto the tenant record so list views can filter.
+      // tenants.adverseActionNoticeSentAt is NOT stamped — the tenants-list
+      // badge keys off it and must never claim a send that didn't happen.
       await db.update(tenants).set({
-        adverseActionNoticeSentAt: new Date(),
         status: "denied",
         updatedAt: new Date(),
       }).where(and(eq(tenants.id, req.params.id), eq(tenants.organizationId, orgId)));
 
-      logger.info("[FCRA] Adverse-action notice recorded", {
+      logger.info("[FCRA] Adverse-action notice recorded (manual delivery required — no send rail)", {
         orgId, userId, tenantId: req.params.id, templateVersion: ADVERSE_ACTION_TEMPLATE_VERSION,
       });
-      return res.status(201).json({ screening: updated });
+      return res.status(201).json({
+        screening: updated,
+        deliveryStatus: "recorded",
+        message:
+          `Adverse-action notice recorded (template ${ADVERSE_ACTION_TEMPLATE_VERSION}). ` +
+          "AcreOS does not send adverse-action letters yet — print and deliver the FCRA notice " +
+          "to the applicant manually within the statutory window. This record marks the denial, not delivery.",
+      });
     } catch (err) {
       return Errors.internal(res, err);
     }
@@ -486,9 +538,24 @@ export function registerRentalRoutes(app: Express): void {
       const parsed = leaseSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const [prop] = await db.select({ id: properties.id }).from(properties)
+      const [prop] = await db.select({
+        id: properties.id,
+        yearBuilt: properties.yearBuilt,
+        requiresLeadPaintDisclosure: properties.requiresLeadPaintDisclosure,
+      }).from(properties)
         .where(and(eq(properties.id, parsed.data.propertyId), eq(properties.organizationId, orgId)));
       if (!prop) return Errors.notFound(res, "Property");
+
+      // Federal lead-paint hard-gate: a pre-1978 lease may not be created
+      // in an executing status without the confirmed disclosure.
+      const needsLeadPaint = propertyNeedsLeadPaintDisclosure(prop);
+      if (
+        needsLeadPaint &&
+        LEAD_PAINT_GATED_STATUSES.has(parsed.data.status) &&
+        !parsed.data.leadPaintDisclosureConfirmed
+      ) {
+        return leadPaintBlocked(res, { propertyId: prop.id, yearBuilt: prop.yearBuilt });
+      }
 
       const created = await db.transaction(async (tx) => {
         const [lease] = await tx.insert(rentalLeases).values({
@@ -509,6 +576,7 @@ export function registerRentalRoutes(app: Express): void {
           tenantPortionCents: parsed.data.tenantPortionCents ?? null,
           state: parsed.data.state.toUpperCase(),
           notes: parsed.data.notes ?? null,
+          leadPaintDisclosureAttachedAt: parsed.data.leadPaintDisclosureConfirmed ? new Date() : null,
         }).returning();
 
         if (parsed.data.tenantIds && parsed.data.tenantIds.length > 0) {
@@ -540,11 +608,37 @@ export function registerRentalRoutes(app: Express): void {
       const parsed = leaseUpdateSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
+      // Federal lead-paint hard-gate on status transitions: a pre-1978
+      // lease may not move to pending_signature / active unless the
+      // disclosure is already attached or confirmed in this request.
+      if (parsed.data.status !== undefined && LEAD_PAINT_GATED_STATUSES.has(parsed.data.status)) {
+        const [existing] = await db.select().from(rentalLeases)
+          .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
+        if (!existing) return Errors.notFound(res, "Lease");
+        const attached =
+          existing.leadPaintDisclosureAttachedAt !== null ||
+          parsed.data.leadPaintDisclosureConfirmed === true;
+        if (!attached) {
+          const [prop] = await db.select({
+            id: properties.id,
+            yearBuilt: properties.yearBuilt,
+            requiresLeadPaintDisclosure: properties.requiresLeadPaintDisclosure,
+          }).from(properties)
+            .where(and(eq(properties.id, existing.propertyId), eq(properties.organizationId, orgId)));
+          if (prop && propertyNeedsLeadPaintDisclosure(prop)) {
+            return leadPaintBlocked(res, { propertyId: prop.id, yearBuilt: prop.yearBuilt, leaseId: existing.id });
+          }
+        }
+      }
+
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
-        if (parsed.data[k] !== undefined && k !== "tenantIds") {
+        if (parsed.data[k] !== undefined && k !== "tenantIds" && k !== "leadPaintDisclosureConfirmed") {
           updates[k] = k === "state" ? String(parsed.data[k]).toUpperCase() : parsed.data[k];
         }
+      }
+      if (parsed.data.leadPaintDisclosureConfirmed === true) {
+        updates.leadPaintDisclosureAttachedAt = new Date();
       }
       const [updated] = await db.update(rentalLeases).set(updates)
         .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)))
@@ -708,6 +802,22 @@ export function registerRentalRoutes(app: Express): void {
         .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
       if (!parent) return Errors.notFound(res, "Original lease");
 
+      // Lead-paint gate applies to renewals too — the renewal is created
+      // ACTIVE. A pre-1978 property whose original lease never confirmed
+      // the disclosure must confirm it (PATCH the original lease with
+      // leadPaintDisclosureConfirmed=true) before renewing.
+      if (parent.leadPaintDisclosureAttachedAt === null) {
+        const [prop] = await db.select({
+          id: properties.id,
+          yearBuilt: properties.yearBuilt,
+          requiresLeadPaintDisclosure: properties.requiresLeadPaintDisclosure,
+        }).from(properties)
+          .where(and(eq(properties.id, parent.propertyId), eq(properties.organizationId, orgId)));
+        if (prop && propertyNeedsLeadPaintDisclosure(prop)) {
+          return leadPaintBlocked(res, { propertyId: prop.id, yearBuilt: prop.yearBuilt, leaseId: parent.id });
+        }
+      }
+
       const newStart = parent.endDate ?? new Date().toISOString().slice(0, 10);
 
       const renewed = await db.transaction(async (tx) => {
@@ -734,6 +844,9 @@ export function registerRentalRoutes(app: Express): void {
           hapPortionCents: parent.hapPortionCents,
           tenantPortionCents: parent.tenantPortionCents,
           state: parent.state,
+          // Carry the confirmed lead-paint disclosure forward — a renewal
+          // of the same tenancy does not re-trigger the federal disclosure.
+          leadPaintDisclosureAttachedAt: parent.leadPaintDisclosureAttachedAt,
         }).returning();
 
         // Carry tenants forward.

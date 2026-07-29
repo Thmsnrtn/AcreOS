@@ -18430,3 +18430,10 @@ export * from "./schema/solene-speculations";
 export * from "./schema/solene-token-economy";
 export * from "./schema/soren-seo";
 export * from "./schema/team-improvement";
+
+// Wave A "Nothing lies" (founder ruling #12(c), 2026-07-29) — persisted
+// feature state for services that previously ran on in-memory Maps:
+// market watchlist entries/alerts + outreach A/B tests/outcomes. (The KYC
+// request table lives in ./schema/compliance with its verification siblings.)
+export * from "./schema/market-watchlist";
+export * from "./schema/outreach-ab";

@@ -207,7 +207,11 @@ const MapsPage = React.lazy(() => import("@/pages/maps"));
 // /anticipatory-enterprise redirects to /founder/bridge.
 // /real-runtime removed (Lens 4 Fix 4): customer-facing surface that
 // exposed runtime internals and had no nav link or referrers.
-const AutomationPage = React.lazy(() => import("@/pages/automation"));
+// AutomationPage deleted (Wave A "Nothing lies", 2026-07-29): the /automation
+// rules surface was a dead parallel twin of /workflows — full CRUD UI with no
+// execution engine behind it (createAutomationExecution had zero call sites),
+// so customers could author rules that could never run. /automation now
+// redirects to /workflows (the real, engine-backed surface).
 const WorkflowsPage = React.lazy(() => import("@/pages/workflows"));
 const ToolsPage = React.lazy(() => import("@/pages/tools"));
 // Public /tools/calculator + /tools/calculator/embed surfaces. No auth,
@@ -488,7 +492,10 @@ const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
 // page-route surface (recoverable on tab-close) for first-run setup; the
 // standalone `/pages/onboarding-wizard.tsx` page was deleted as redundant.
 const OnboardingV2Page = React.lazy(() => import("@/pages/onboarding-v2"));
-const FieldScoutPage = React.lazy(() => import("@/pages/field-scout"));
+// FieldScoutPage deleted 2026-07-29 (Nothing-lies wave A): its /field-scout
+// route had already been removed, leaving the lazy import dangling and the
+// page unreachable. Curb capture lives in DriveMode (/drive) via
+// POST /api/field-scout/quick-add.
 // B-1: DriveMode — full-screen mobile curb-capture surface.
 const DriveModePage = React.lazy(() => import("@/pages/drivemode"));
 // B-2: CourthouseMode — Tax-Delinquent leapfrog mobile surface.
@@ -890,17 +897,16 @@ function Router() {
       <Route path="/deals">
         {() => <ProtectedRoute component={DealsPage} />}
       </Route>
-      {/* 2026-05-11 audit — unified deal-discovery surface. Replaces the
-          previously fragmented /acquisition-radar + /deal-hunter + /deal-feed
-          + /deal-patterns + /deal-underwriting cluster. Each of those URLs
-          now redirects here; the underlying page bundles remain on disk
-          (DEPRECATED comment in each) so we can A/B them later if needed.
-          Registered BEFORE /deals/:id so wouter doesn't match "discover" as
-          the :id param. */}
+      {/* /deals/discover retired 2026-07-29 (Nothing-lies wave A): it rendered
+          the SAME DealsPage as /deals while pretending to be a distinct
+          discovery surface (no discover UI exists in DealsPage). The legacy
+          /acquisition-radar, /deal-hunter, /deal-feed, /deal-patterns and
+          /deal-underwriting redirects chain through here to /deals. Kept as a
+          Redirect (registered BEFORE /deals/:id so wouter doesn't match
+          "discover" as the :id param). Do not re-add a discover route until a
+          real discovery surface ships behind the Deals door. */}
       <Route path="/deals/discover">
-        {/* 2026-06-01 cut — AcquisitionRadarPage archived; /deals/discover kept as a ProtectedRoute
-            to DealsPage until discover tab is extracted as its own page. */}
-        {() => <ProtectedRoute component={DealsPage} />}
+        {() => <Redirect to="/deals" />}
       </Route>
       {/* P1-28 — shareable URLs for deal detail. */}
       <Route path="/deals/:id">
@@ -940,8 +946,11 @@ function Router() {
       <Route path="/team-inbox">
         {() => <Redirect to="/team" />}
       </Route>
+      {/* Dead automation-rules twin removed (Wave A "Nothing lies", 2026-07-29):
+          rules authored there could never run (no execution engine). The real
+          automation surface is /workflows. */}
       <Route path="/automation">
-        {() => <ProtectedRoute component={AutomationPage} />}
+        {() => <Redirect to="/workflows" />}
       </Route>
       <Route path="/workflows">
         {() => <ProtectedRoute component={WorkflowsPage} />}

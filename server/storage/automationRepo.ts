@@ -1,24 +1,25 @@
-// Automation + workflow data layer: automation rules + executions, enhanced
-// tasks, notifications, activity feed, and job cursors. Extracted from the
-// god-class server/storage.ts in the storage refactor. Methods are merged
-// into DatabaseStorage.prototype at construction time; `this` refers to the
-// full DatabaseStorage instance.
+// Automation + workflow data layer: enhanced tasks, notifications, activity
+// feed, and job cursors. Extracted from the god-class server/storage.ts in
+// the storage refactor. Methods are merged into DatabaseStorage.prototype at
+// construction time; `this` refers to the full DatabaseStorage instance.
+//
+// The automation-rules + automation-executions methods that used to live
+// here were REMOVED (Wave A "Nothing lies", 2026-07-29): they backed a dead
+// parallel /automation surface with no execution engine —
+// createAutomationExecution had zero call sites, so authored rules could
+// never run. The real automation data layer is the workflows/workflow_runs
+// tables (server/services/workflow-engine.ts). See
+// docs/company/deletion-ledger.md.
 
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { wsServer } from "../websocket";
 import { logger } from "../utils/logger";
 import {
-  automationRules,
-  automationExecutions,
   tasks,
   notifications,
   activityLog,
   jobCursors,
-  type AutomationRule,
-  type InsertAutomationRule,
-  type AutomationExecution,
-  type InsertAutomationExecution,
   type Task,
   type Notification,
   type InsertNotification,
@@ -28,80 +29,6 @@ import {
 import type { DatabaseStorage } from "../storage";
 
 export const automationRepo = {
-  // AUTOMATION RULES (8.1)
-  async getAutomationRules(this: DatabaseStorage, orgId: number): Promise<AutomationRule[]> {
-    return await db.select()
-      .from(automationRules)
-      .where(eq(automationRules.organizationId, orgId))
-      .orderBy(desc(automationRules.createdAt));
-  },
-
-  async getAutomationRule(this: DatabaseStorage, orgId: number, id: number): Promise<AutomationRule | undefined> {
-    const [rule] = await db.select()
-      .from(automationRules)
-      .where(and(eq(automationRules.organizationId, orgId), eq(automationRules.id, id)));
-    return rule;
-  },
-
-  async createAutomationRule(this: DatabaseStorage, rule: InsertAutomationRule): Promise<AutomationRule> {
-    const [newRule] = await db.insert(automationRules).values(rule).returning();
-    return newRule;
-  },
-
-  async updateAutomationRule(this: DatabaseStorage, id: number, updates: Partial<InsertAutomationRule>, organizationId?: number): Promise<AutomationRule> {
-    const conditions = [eq(automationRules.id, id)];
-    if (organizationId) conditions.push(eq(automationRules.organizationId, organizationId));
-    const [updated] = await db.update(automationRules)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  },
-
-  async deleteAutomationRule(this: DatabaseStorage, id: number, organizationId?: number): Promise<void> {
-    const conditions = [eq(automationRules.id, id)];
-    if (organizationId) conditions.push(eq(automationRules.organizationId, organizationId));
-    await db.delete(automationRules).where(and(...conditions));
-  },
-
-  async toggleAutomationRule(this: DatabaseStorage, id: number, enabled: boolean, organizationId?: number): Promise<AutomationRule> {
-    const conditions = [eq(automationRules.id, id)];
-    if (organizationId) conditions.push(eq(automationRules.organizationId, organizationId));
-    const [updated] = await db.update(automationRules)
-      .set({ isEnabled: enabled, updatedAt: new Date() })
-      .where(and(...conditions))
-      .returning();
-    return updated;
-  },
-
-  // Automation Executions
-  async getAutomationExecutions(this: DatabaseStorage, orgId: number, ruleId?: number, limit: number = 50): Promise<AutomationExecution[]> {
-    const conditions = [eq(automationExecutions.organizationId, orgId)];
-    if (ruleId !== undefined) {
-      conditions.push(eq(automationExecutions.ruleId, ruleId));
-    }
-    return await db.select()
-      .from(automationExecutions)
-      .where(and(...conditions))
-      .orderBy(desc(automationExecutions.executedAt))
-      .limit(limit);
-  },
-
-  async createAutomationExecution(this: DatabaseStorage, execution: InsertAutomationExecution): Promise<AutomationExecution> {
-    const [newExecution] = await db.insert(automationExecutions).values(execution).returning();
-
-    // Update the rule's execution count and last executed timestamp
-    await db.update(automationRules)
-      .set({
-        executionCount: sql`${automationRules.executionCount} + 1`,
-        lastExecutedAt: new Date(),
-        updatedAt: new Date()
-      })
-      .where(eq(automationRules.id, execution.ruleId));
-
-    return newExecution;
-  },
-
   // ENHANCED TASKS (8.2)
   async getMyTasks(this: DatabaseStorage, orgId: number, userId: string): Promise<Task[]> {
     const member = await this.getTeamMember(orgId, userId);

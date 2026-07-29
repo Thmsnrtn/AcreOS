@@ -13,7 +13,8 @@
  *
  * Server-side enforcement (agents reading this at action time and gating /
  * asking / logging accordingly) is wired progressively as Phase E surfaces
- * touch agent action paths.
+ * touch agent action paths. pax.pausedUntil is fully enforced — see
+ * server/services/paxPause.ts and the comment on the schema field below.
  */
 
 import { Router, type Response } from "express";
@@ -37,9 +38,15 @@ const agentAutonomySchema = z.object({
   perAction: z.record(z.string().max(64), autonomyLevelSchema).optional(),
   thresholdsCents: z.record(z.string().max(64), z.number().int().min(0).max(1_000_000_000)).optional(),
   // Workstream A (Honesty) — kill switch. ISO-8601 datetime. While in the
-  // future, downstream executors MUST skip auto-execution for this agent
-  // (only ask / draft, never execute). Wired progressively — schema accepts
-  // it now so the /settings/pax surface can persist it.
+  // future, downstream executors skip auto-execution for this agent (only
+  // ask / draft, never execute). ENFORCED (2026-07-29) for pax via
+  // server/services/paxPause.ts (org-level: any org user's active pause
+  // pauses the org) at three points: the executeTool chokepoint
+  // (server/ai/tools.ts refuses non-PAUSE_SAFE_TOOLS), the Pax scheduler
+  // (paxScheduler.ts skips due tasks), and the autonomous decision executor
+  // (autonomousDecisionExecutor.ts defers org-scoped items). Expiry is
+  // implicit — every read compares against now, so behavior resumes the
+  // moment the timestamp passes.
   pausedUntil: z.string().datetime().optional(),
 }).strict();
 

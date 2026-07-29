@@ -61,7 +61,6 @@ import investorVerificationRouter from "./routes-investor-verification";
 import transactionFeesRouter from "./routes-transaction-fees";
 import callRoutingRouter from "./routes-call-routing";
 import buyerNetworkRouter from "./routes-buyer-network";
-import taxOptimizationRouter from "./routes-tax-optimization";
 import dealRoomsRouter from "./routes-deal-rooms";
 import dataApiRouter from "./routes-data-api";
 import apiDocsRouter, { registerApiDocsApp } from "./routes-api-docs";
@@ -2148,7 +2147,9 @@ export async function registerRoutes(
   app.use('/api/transaction-fees', isAuthenticated, getOrCreateOrg, transactionFeesRouter);
   app.use('/api/call-routing', isAuthenticated, getOrCreateOrg, callRoutingRouter);
   app.use('/api/buyer-network', isAuthenticated, getOrCreateOrg, buyerNetworkRouter);
-  app.use('/api/tax-optimization', isAuthenticated, getOrCreateOrg, taxOptimizationRouter);
+  // routes-tax-optimization deleted 2026-07-29 (Nothing-lies wave A): 10 of 11
+  // endpoints returned 501 and no client consumed the mount. The real tax
+  // optimizer API is /api/tax-optimizer/* in routes-misc.ts.
   app.use('/api/deal-rooms', isAuthenticated, getOrCreateOrg, featureGate("feature_deal_rooms"), dealRoomsRouter);
   app.use('/api/data-api', dataApiRouter); // API key auth handled internally
   // (/api/docs registered above, before the /api catch-all auth middleware)

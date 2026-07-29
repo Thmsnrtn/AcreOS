@@ -26,8 +26,17 @@ import { eq, and, inArray, sql } from "drizzle-orm";
 // The leads table has no apn/county/taxDelinquent/delinquentAmount/metadata/
 // propertyAddress columns. Tax-delinquent imports flag the lead with the
 // TAX_DELINQUENT_TAG in `tags` and stash the extra structured fields as JSON in
-// the `notes` column. TODO(tsc): promote these to real columns (or a dedicated
-// tax_delinquent_leads table) so we can query/dedup without JSON parsing.
+// the `notes` column.
+//
+// KNOWN DEBT (groundwork, no schema change this wave): JSON-in-notes makes
+// these fields unqueryable — dedup, state/county filtering, and equity math
+// all require decoding every row in application code, and `notes` can no
+// longer hold free-form user notes for these leads. Intended fix: promote
+// apn / county / delinquentAmountCents / delinquentYears / daysUntilTaxSale /
+// propertyValueCents (+ provenance) / acres to real columns — either on
+// `leads` or a dedicated `tax_delinquent_leads` child table keyed by lead id —
+// with a backfill that decodes existing payloads and then frees `notes`.
+// TODO(tsc): column promotion tracked for the schema wave.
 const TAX_DELINQUENT_TAG = "tax_delinquent";
 
 interface TaxDelinquentPayload {
@@ -349,16 +358,32 @@ interface GetLeadsOpts {
   page?: number;
 }
 
-interface DelinquentLeadRow {
+/**
+ * Provenance of `propertyValueCents` / `equityPercent`:
+ *   - "assessed": a real assessed value arrived with the county data.
+ *   - "none":     no value on file. We REFUSE to invent one (the old code
+ *                 fabricated taxOwed × 8 and presented it as real — a direct
+ *                 fabrication-doctrine violation). Value and equity are null
+ *                 and the UI renders an explicit "no assessed value on file"
+ *                 state instead of a number.
+ */
+export type ValueProvenance = "assessed" | "none";
+
+export interface DelinquentLeadRow {
   id: number;
   ownerName: string;
   propertyAddress: string;
   county: string;
   stateCode: string;
-  yearsDelinquent: number;
-  taxOwedCents: number;
-  propertyValueCents: number;
-  equityPercent: number;
+  /** null when the county list didn't include years delinquent — never defaulted to 0. */
+  yearsDelinquent: number | null;
+  /** null when no delinquent amount is on file — never defaulted to $0. */
+  taxOwedCents: number | null;
+  /** Real assessed value only; null when valueProvenance === "none". */
+  propertyValueCents: number | null;
+  /** Derived from real values only; null when value or tax owed is unknown. */
+  equityPercent: number | null;
+  valueProvenance: ValueProvenance;
   daysUntilTaxSale?: number;
   risk: "critical" | "high" | "medium" | "low";
   score: number;
@@ -390,19 +415,102 @@ function scoreImportRecord(rec: NormalizedDelinquentRecord): number {
  * Derive risk bucket from years delinquent + equity. Marcus: "the 11-day-out
  * owner is twenty times more motivated than the 180-day-out owner" — so when
  * we know daysUntilTaxSale, that dominates.
+ *
+ * Unknown inputs (null) never escalate risk: a lead with no equity data does
+ * not get the equity-based "high" bump, and a lead with no years-delinquent
+ * data doesn't get the years-based tiers. Escalation only from real signals.
  */
-function deriveRisk(input: {
-  yearsDelinquent: number;
+export function deriveRisk(input: {
+  yearsDelinquent: number | null;
   daysUntilTaxSale?: number;
-  equityPercent: number;
+  equityPercent: number | null;
 }): "critical" | "high" | "medium" | "low" {
   const { yearsDelinquent, daysUntilTaxSale, equityPercent } = input;
   if (daysUntilTaxSale !== undefined && daysUntilTaxSale <= 30) return "critical";
-  if (yearsDelinquent >= 3) return "critical";
+  if (yearsDelinquent !== null && yearsDelinquent >= 3) return "critical";
   if (daysUntilTaxSale !== undefined && daysUntilTaxSale <= 90) return "high";
-  if (yearsDelinquent === 2 && equityPercent >= 40) return "high";
-  if (yearsDelinquent >= 1) return "medium";
+  if (yearsDelinquent === 2 && equityPercent !== null && equityPercent >= 40) return "high";
+  if (yearsDelinquent !== null && yearsDelinquent >= 1) return "medium";
   return "low";
+}
+
+/** The lead-table fields the row mapper reads. Kept narrow so the mapper is a pure, unit-testable function. */
+export interface LeadRowInput {
+  id: number;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  score: number | null;
+  notes: string | null;
+}
+
+/**
+ * Pure mapper: lead row + notes payload → API row.
+ *
+ * Refuse-not-fabricate: every field either comes from real imported data or
+ * is null. The pre-fix version invented propertyValueCents = taxOwed × 8 when
+ * no value was on file and served the derived equity% as if real; that
+ * fabrication is removed. If a labeled heuristic is ever reintroduced it must
+ * carry its own ValueProvenance tag and must never feed sorting/filtering/risk
+ * as if it were an assessed value.
+ */
+export function mapLeadToDelinquentRow(l: LeadRowInput): DelinquentLeadRow {
+  const meta = decodePayload(l.notes);
+  const ownerName =
+    [l.firstName, l.lastName].filter(Boolean).join(" ").trim() || (l.email ?? "Unknown owner");
+
+  // Tax owed: null when no delinquent amount is on file (never a fake $0).
+  const taxOwedDollars =
+    meta.delinquentAmount != null ? parseFloat(meta.delinquentAmount) : NaN;
+  const taxOwedCents = Number.isFinite(taxOwedDollars)
+    ? Math.round(taxOwedDollars * 100)
+    : null;
+
+  // Property value: assessed-only. No value on file → null + provenance "none".
+  const assessedValueCents =
+    typeof meta.propertyValueCents === "number" &&
+    Number.isFinite(meta.propertyValueCents) &&
+    meta.propertyValueCents > 0
+      ? Math.round(meta.propertyValueCents)
+      : null;
+  const valueProvenance: ValueProvenance = assessedValueCents !== null ? "assessed" : "none";
+
+  // Equity: derivable only when both real inputs exist.
+  const equityPercent =
+    assessedValueCents !== null && taxOwedCents !== null
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(((assessedValueCents - taxOwedCents) / assessedValueCents) * 100),
+          ),
+        )
+      : null;
+
+  const yearsDelinquent = meta.delinquentYears ?? null;
+  const daysUntilTaxSale = meta.daysUntilTaxSale;
+  const riskBucket = deriveRisk({ yearsDelinquent, daysUntilTaxSale, equityPercent });
+
+  return {
+    id: l.id,
+    ownerName,
+    propertyAddress: [meta.propertyAddress ?? l.address, l.city, l.state]
+      .filter(Boolean)
+      .join(", "),
+    county: meta.county ?? "",
+    stateCode: l.state ?? "",
+    yearsDelinquent,
+    taxOwedCents,
+    propertyValueCents: assessedValueCents,
+    equityPercent,
+    valueProvenance,
+    daysUntilTaxSale,
+    risk: riskBucket,
+    score: l.score ?? 0,
+  };
 }
 
 async function getLeads(opts: GetLeadsOpts): Promise<{ leads: DelinquentLeadRow[]; total: number }> {
@@ -427,38 +535,7 @@ async function getLeads(opts: GetLeadsOpts): Promise<{ leads: DelinquentLeadRow[
     .limit(limit * 4) // pull extra so post-derive risk filter still has volume
     .offset(offset);
 
-  const mapped: DelinquentLeadRow[] = rows.map((l) => {
-    const meta = decodePayload(l.notes);
-    const ownerName = [l.firstName, l.lastName].filter(Boolean).join(" ").trim() || (l.email ?? "Unknown owner");
-    const taxOwedDollars = parseFloat(meta.delinquentAmount ?? "0");
-    const taxOwedCents = Math.round(taxOwedDollars * 100);
-    // Property value is best-effort: prefer metadata.propertyValueCents,
-    // then taxOwedCents × 8 as a placeholder (industry-typical
-    // tax-to-value of ~12.5% for delinquent rural). We surface the
-    // "estimated" caveat upstream — the real value lands when AVM /
-    // assessed-value joins ship in TD-2.
-    const propertyValueCents = meta.propertyValueCents ?? Math.round(taxOwedCents * 8);
-    const equityPercent = propertyValueCents > 0
-      ? Math.max(0, Math.min(100, Math.round(((propertyValueCents - taxOwedCents) / propertyValueCents) * 100)))
-      : 0;
-    const yearsDelinquent = meta.delinquentYears ?? 0;
-    const daysUntilTaxSale = meta.daysUntilTaxSale;
-    const riskBucket = deriveRisk({ yearsDelinquent, daysUntilTaxSale, equityPercent });
-    return {
-      id: l.id,
-      ownerName,
-      propertyAddress: [meta.propertyAddress ?? l.address, l.city, l.state].filter(Boolean).join(", "),
-      county: meta.county ?? "",
-      stateCode: l.state ?? "",
-      yearsDelinquent,
-      taxOwedCents,
-      propertyValueCents,
-      equityPercent,
-      daysUntilTaxSale,
-      risk: riskBucket,
-      score: l.score ?? 0,
-    };
-  });
+  const mapped: DelinquentLeadRow[] = rows.map((l) => mapLeadToDelinquentRow(l));
 
   const filtered = risk && risk !== "all"
     ? mapped.filter((m) => m.risk === risk)

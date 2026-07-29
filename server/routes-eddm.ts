@@ -2,13 +2,13 @@
  * Pillar 3 Tab 4 — EDDM map endpoints.
  *
  * The EDDM (Every Door Direct Mail) surface lets land investors paint a
- * carrier-route map and queue a blast against the selected routes. Real
+ * carrier-route map and preview a blast against the selected routes. Real
  * USPS carrier-route geometry requires the USPS BCG (Business Customer
  * Gateway) permit, which we trigger at $1k MRR. Until then this file
  * synthesizes a deterministic 5×4 grid over the county bounding box so the
- * UI is exercisable end-to-end. The UI surfaces a clear "Demo routes"
- * badge — only the geometry is mocked, every cost/household number flows
- * through the same MailRouter cost path as the Compose tab.
+ * map + cost preview are exercisable. The UI surfaces a clear "Demo
+ * routes" badge, and the queue endpoint is HARD-BLOCKED (400) — demo
+ * geometry must never become a real queued shipment.
  *
  * TODO(usps-bcg): replace synthesizeRoutes() with a real USPS BCG fetch
  * once the permit lands ($1k MRR trigger). Smarty's carrier-route service
@@ -21,18 +21,12 @@ import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
-import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganization, getOrganizationId, getUserId } from "./types/request";
+import { getOrganizationId } from "./types/request";
 import { db } from "./db";
-import { mailShipments, mailShipmentPieces, properties } from "@shared/schema";
+import { properties } from "@shared/schema";
 
 // ── Constants ───────────────────────────────────────────────────────────────
-
-// Per Pillar 3 cost weights — postcard_eddm = 31¢/piece. Households are
-// the EDDM cost unit (one piece per household per route).
-const EDDM_PER_PIECE_CENTS = 31;
-const HOLD_WINDOW_MINUTES = 30;
 
 // Mock-grid dimensions for the synthetic carrier-route stub.
 const GRID_COLS = 5;
@@ -297,6 +291,17 @@ export function registerEddmRoutes(app: Express): void {
   );
 
   // ── POST /api/outreach/mail/eddm/queue ───────────────────────────────────
+  //
+  // HARD-BLOCKED while carrier-route geometry is the synthetic demo grid
+  // (Nothing-lies wave A, 2026-07-29). Every routeId this surface can produce
+  // comes from synthesizeRoutes() — there is no real USPS geometry to queue
+  // against, so accepting the request would create a real mail_shipments row
+  // ("queued", real leaves_at) that the mailFlusher then hands to a real
+  // provider with placeholder addresses. That is fabricated activity, and it
+  // risks real postage spend against fake households. The previous
+  // implementation (shipment insert + per-route placeholder pieces) was
+  // deleted rather than left as unreachable code; rebuild it against real
+  // route data when TODO(usps-bcg) lands ($1k MRR trigger).
   app.post(
     "/api/outreach/mail/eddm/queue",
     isAuthenticated,
@@ -306,80 +311,10 @@ export function registerEddmRoutes(app: Express): void {
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
       }
-      const org = getOrganization(req);
-      const userId = getUserId(req);
-      const { routeIds, pieceType, copy, templateId, label, householdCount } = parsed.data;
-
-      try {
-        const pieceCount = householdCount;
-        const perPieceCents = EDDM_PER_PIECE_CENTS;
-        const totalCents = perPieceCents * pieceCount;
-        const leavesAt = new Date(Date.now() + HOLD_WINDOW_MINUTES * 60 * 1000);
-
-        const [row] = await db
-          .insert(mailShipments)
-          .values({
-            organizationId: org.id,
-            createdByUserId: userId,
-            status: "queued",
-            pieceType,
-            speed: "eddm_geo",
-            provider: "eddm_usps",
-            pieceCount,
-            perPieceCents,
-            totalCents,
-            savedVsLobCents: 0,
-            deliveryEtaDays: 10,
-            label: label ?? null,
-            templateId: templateId ?? null,
-            copySnapshot: copy ?? null,
-            // Store the route selection on the audience filter snapshot
-            // (the column is jsonb — see schema.ts comment near
-            // mailShipments.audienceFilter). The TS type doesn't list
-            // `eddmRoutes` yet but jsonb accepts the extra key; this lets
-            // the worker rebuild the audience without a migration.
-            audienceFilter: { eddmRoutes: routeIds } as unknown as Record<string, unknown>,
-            leavesAt,
-          })
-          .returning({ id: mailShipments.id });
-
-        // EDDM has no per-recipient list — the carrier walks every door on
-        // the route. We persist a single piece-row per route as a
-        // placeholder so the In-Flight tracker has something to count.
-        await db.insert(mailShipmentPieces).values(
-          routeIds.map((rid) => ({
-            shipmentId: row.id,
-            organizationId: org.id,
-            leadId: null,
-            recipientName: `EDDM route ${rid}`,
-            addressLine1: `Carrier route ${rid}`,
-            city: "—",
-            state: "—",
-            zip: "—",
-            status: "pending" as const,
-          })),
-        );
-
-        res.status(201).json({
-          shipmentId: row.id,
-          leavesAt: leavesAt.toISOString(),
-          holdWindowMinutes: HOLD_WINDOW_MINUTES,
-          quote: {
-            pieceCount,
-            perPieceCents,
-            totalCents,
-            provider: "eddm_usps",
-            savedVsLobCents: 0,
-            deliveryEtaDays: 10,
-            routeCount: routeIds.length,
-          },
-        });
-      } catch (err) {
-        logger.error("[outreach-mail/eddm] queue failed", {
-          metadata: { error: err instanceof Error ? err.message : String(err) },
-        });
-        Errors.internal(res, err);
-      }
+      return Errors.badRequest(
+        res,
+        "EDDM queueing is disabled: the carrier routes on this map are demo geometry, not real USPS carrier routes. Nothing was queued and no credits were charged. Real USPS route data arrives with the USPS BCG permit ($1k MRR trigger).",
+      );
     },
   );
 }

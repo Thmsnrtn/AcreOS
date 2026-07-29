@@ -29,6 +29,10 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import type { Workflow as WorkflowType, WorkflowRun, WorkflowTrigger, WorkflowAction } from "@shared/schema";
+import {
+  isLiveWorkflowTriggerEvent,
+  TRIGGER_NOT_LIVE_MESSAGE,
+} from "@shared/workflow-live-triggers";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
@@ -282,6 +286,17 @@ export default function WorkflowsPage() {
                                 </>
                               )}
                             </Badge>
+                            {workflow.trigger?.event && !isLiveWorkflowTriggerEvent(workflow.trigger.event) && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs"
+                                title={TRIGGER_NOT_LIVE_MESSAGE}
+                                aria-label={`Trigger not yet live: ${TRIGGER_NOT_LIVE_MESSAGE}`}
+                                data-testid={`badge-trigger-not-live-${workflow.id}`}
+                              >
+                                Trigger not yet live
+                              </Badge>
+                            )}
                           </div>
 
                           {workflow.description && (
@@ -396,13 +411,31 @@ export default function WorkflowsPage() {
                           <p className="font-semibold text-sm leading-tight">
                             {template.name}
                           </p>
-                          <Badge variant="secondary" className="text-xs mt-0.5 capitalize" aria-label={`Category: ${template.category}`}>
-                            {template.category}
-                          </Badge>
+                          <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                            <Badge variant="secondary" className="text-xs capitalize" aria-label={`Category: ${template.category}`}>
+                              {template.category}
+                            </Badge>
+                            {!isLiveWorkflowTriggerEvent(template.trigger.event) && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs"
+                                title={TRIGGER_NOT_LIVE_MESSAGE}
+                                aria-label={`Trigger not yet live: ${TRIGGER_NOT_LIVE_MESSAGE}`}
+                                data-testid={`badge-template-not-live-${template.id}`}
+                              >
+                                Not yet live
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground flex-1">
                         {template.description}
+                        {!isLiveWorkflowTriggerEvent(template.trigger.event) && (
+                          <span className="block mt-1 text-acr-warn">
+                            {TRIGGER_NOT_LIVE_MESSAGE}
+                          </span>
+                        )}
                       </p>
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted-foreground tabular-nums">

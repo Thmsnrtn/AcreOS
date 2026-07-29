@@ -337,9 +337,12 @@ export const skipTracingService = {
 
   /**
    * Bulk trace — batch multiple records to minimize API calls and cost.
+   * Pass `organizationId` so each lookup goes through the cross-customer
+   * cache and posts its ledger row — omitting it silently bypassed both
+   * (the pre-2026-07 batch route did exactly that).
    */
-  async traceBatch(inputs: SkipTraceInput[]): Promise<SkipTraceResult[]> {
-    return Promise.all(inputs.map((input) => skipTracingService.trace(input)));
+  async traceBatch(inputs: SkipTraceInput[], organizationId?: number): Promise<SkipTraceResult[]> {
+    return Promise.all(inputs.map((input) => skipTracingService.trace(input, organizationId)));
   },
 
   /**
