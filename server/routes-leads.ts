@@ -23,6 +23,9 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { assertUserIsOrgMember } from "./utils/orgScope";
 import { createLeadContract } from "@shared/contracts";
+// Wave B "Wire the engine" — lead.* workflow events. Fire-and-forget: these
+// helpers never throw, so an automation failure can never fail a lead write.
+import { emitLeadCreated, emitLeadUpdated, safeEmitLeadEvent } from "./services/leadEvents";
 import { validateResponse } from "./utils/contractResponse";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 
@@ -451,6 +454,11 @@ export function registerLeadRoutes(app: Express): void {
       // insertLeadSchema strips organizationId; the repo write requires it.
       const lead = await storage.createLead({ ...input, organizationId: org.id });
 
+      // Wave B — the "New Lead Received" trigger finally fires. Emitted from
+      // the persisted row (never the request body) so workflow conditions
+      // match on what was actually stored.
+      emitLeadCreated(org.id, lead);
+
       const user = req.user as any;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
@@ -686,7 +694,13 @@ export function registerLeadRoutes(app: Express): void {
       }
 
       const lead = await storage.updateLead(leadId, validated, org.id);
-      
+
+      // Wave B — `lead.status_changed` when the status really moved,
+      // `lead.updated` for any other MATERIAL field, and NOTHING at all when
+      // the PUT was a no-op (a no-op emit would wake every idle automation
+      // on every save-without-changes).
+      emitLeadUpdated(org.id, existingLead, lead, Object.keys(validated));
+
       const user = req.user as any;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
@@ -787,10 +801,23 @@ export function registerLeadRoutes(app: Express): void {
       return Errors.notFound(res, "Lead");
     }
 
-    await db.update(leads).set({
+    const [restored] = await db.update(leads).set({
       deletedAt: null,
       deletedBy: null,
-    }).where(eq(leads.id, leadId));
+    }).where(eq(leads.id, leadId)).returning();
+
+    // Wave B — restoring a soft-deleted lead really does change its state,
+    // so automations should see it. Restoring an ALREADY-active lead changed
+    // nothing, so it emits nothing.
+    if (lead.deletedAt != null && restored) {
+      safeEmitLeadEvent(
+        "lead.updated",
+        org.id,
+        leadId,
+        { ...restored, changedFields: ["deletedAt"] },
+        { ...lead },
+      );
+    }
 
     res.json({ message: "Lead restored", id: leadId });
   });
@@ -887,6 +914,11 @@ export function registerLeadRoutes(app: Express): void {
       }
       const { ids, updates } = parsed.data;
 
+      // Wave B — snapshot the BEFORE rows once. They serve both the W3.4
+      // transition gate below and the per-lead workflow-event diff after the
+      // write, so this is one extra read for the whole batch, not per lead.
+      const beforeLeads = await storage.getLeadsByIds(org.id, ids);
+
       // W3.4 — a bulk status write must be a valid status value AND a legal
       // transition for every targeted lead (same machine as the single-lead
       // PUT; this route used to accept any string).
@@ -898,8 +930,7 @@ export function registerLeadRoutes(app: Express): void {
             `"${nextStatus}" is not a valid lead status (expected one of: ${LEAD_STATUSES.join(", ")})`,
           );
         }
-        const targeted = await storage.getLeadsByIds(org.id, ids);
-        const blocked = targeted
+        const blocked = beforeLeads
           .map((l) => ({ id: l.id, error: validateLeadTransition(l.status, nextStatus) }))
           .filter((b): b is { id: number; error: string } => b.error !== null);
         if (blocked.length > 0) {
@@ -912,7 +943,27 @@ export function registerLeadRoutes(app: Express): void {
       }
 
       const updatedCount = await storage.bulkUpdateLeads(org.id, ids, updates);
-      
+
+      // Wave B — one event per lead that ACTUALLY changed. Re-read the
+      // persisted rows rather than reconstructing `{...before, ...updates}`
+      // so the payload is real data. Leads the bulk write left untouched
+      // emit nothing.
+      if (updatedCount > 0 && beforeLeads.length > 0) {
+        try {
+          const attempted = Object.keys(updates);
+          const afterLeads = await storage.getLeadsByIds(org.id, ids);
+          const afterById = new Map(afterLeads.map((l) => [l.id, l]));
+          for (const before of beforeLeads) {
+            emitLeadUpdated(org.id, before, afterById.get(before.id), attempted);
+          }
+        } catch (emitErr) {
+          logger.warn("Bulk lead workflow events skipped (non-fatal)", {
+            organizationId: org.id,
+            error: emitErr instanceof Error ? emitErr : String(emitErr),
+          });
+        }
+      }
+
       const user = req.user as any;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
@@ -1499,7 +1550,10 @@ export function registerLeadRoutes(app: Express): void {
           }
 
           try {
-            await db.insert(leads).values({
+            // `.returning()` (added Wave B) — we need the persisted row to
+            // emit lead.created with a real entity id. Without it the
+            // workflow event would have nothing to point at.
+            const [insertedLead] = await db.insert(leads).values({
               organizationId: org.id,
               type: "seller",
               firstName,
@@ -1513,8 +1567,12 @@ export function registerLeadRoutes(app: Express): void {
               apn: apn || null,
               source: "csv_import",
               status: "new",
-            } as any);
+            }).returning();
             imported++;
+            // One event per imported lead. See the volume note on
+            // importLeads() in services/importExport.ts — the engine queues
+            // these and drains them serially off the request path.
+            emitLeadCreated(org.id, insertedLead);
           } catch (insertErr) {
             skippedInvalid++;
             errors.push({
@@ -1638,12 +1696,16 @@ export function registerLeadRoutes(app: Express): void {
         try {
           const created = await storage.createLeadsBatch(chunk.map(c => c.data));
           results.successCount += created.length;
+          // Wave B — one lead.created per imported row (no batch event exists
+          // in the engine's contract; see the volume note on importLeads()).
+          for (const lead of created) emitLeadCreated(org.id, lead);
         } catch (err) {
           // If batch fails, fall back to individual inserts for this chunk
           for (const item of chunk) {
             try {
-              await storage.createLead(item.data);
+              const single = await storage.createLead(item.data);
               results.successCount++;
+              emitLeadCreated(org.id, single);
             } catch (innerErr) {
               results.errorCount++;
               results.errors.push({

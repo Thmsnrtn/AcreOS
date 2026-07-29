@@ -2,6 +2,7 @@ import { emailService } from './emailService';
 import { smsService } from './smsService';
 import { storage } from '../storage';
 import { checkTcpaConsentFromLead, canSendViaChannel, checkTcpaConsent } from './tcpaCompliance';
+import { frequencyGateForLead, describeFrequencySkip } from './compliance/contactFrequency';
 import { lobService, LobErrorType } from './lobService';
 import { apiQueueService } from './apiQueue';
 import { logger } from "../utils/logger";
@@ -23,6 +24,8 @@ export interface CommunicationResult {
   error?: string;
   errorType?: LobErrorType;
   tcpaBlocked?: boolean;
+  /** True when the contact-frequency cap refused the send. */
+  frequencyCapped?: boolean;
   retriesExhausted?: boolean;
 }
 
@@ -62,8 +65,28 @@ export class CommunicationsService {
       };
     }
 
+    // Contact-frequency cap (2026-07-29). Every send from this service is
+    // outreach TO A LEAD — marketing class — so the fatigue detector's
+    // `suppress` verdict applies here exactly as it does at the SMS choke
+    // point. This is an ADDITIONAL refusal layered after the consent check
+    // above; SMS re-evaluates the full consent → quiet-hours → DNC →
+    // frequency chain inside sendOrgSMS, so nothing here can bypass it.
+    const frequency = await frequencyGateForLead(options.organizationId, options.leadId);
+    if (!frequency.allowed) {
+      const reason = describeFrequencySkip(frequency);
+      logger.warn('[Communications] Send refused by contact-frequency cap', {
+        metadata: { leadId: options.leadId, organizationId: options.organizationId, reason },
+      });
+      return {
+        success: false,
+        channel: options.channel ?? 'none',
+        error: reason,
+        frequencyCapped: true,
+      };
+    }
+
     const channel = options.channel || this.determinePreferredChannel(lead);
-    
+
     const channelCheck = canSendViaChannel(lead, channel === 'both' ? 'email' : channel);
     
     if (channel === 'sms') {
@@ -138,18 +161,15 @@ export class CommunicationsService {
           tcpaBlocked: true,
         };
       } else if (lead.phone) {
-        const result = await smsService.sendSMS({
-          to: lead.phone,
-          message: options.message,
-        });
+        // Route through the ORG-SCOPED choke point rather than the raw
+        // sender: sendOrgSMS applies consent → recipient-local quiet hours →
+        // DNC → contact-frequency in that order, and records the contact
+        // touch itself on success (which is why recordCommunication is not
+        // called again here — one send must produce exactly one touch row).
+        const { sendOrgSMS } = await import('./smsService');
+        const result = await sendOrgSMS(options.organizationId, lead.phone, options.message);
 
-        if (result.success) {
-          await this.recordCommunication(options.leadId, options.organizationId, 'sms', {
-            messageId: result.messageId,
-          });
-        }
-
-        smsResult = { 
+        smsResult = {
           success: result.success, 
           channel: 'sms', 
           messageId: result.messageId, 
@@ -201,10 +221,13 @@ export class CommunicationsService {
     leadIds: number[],
     channel: 'email' | 'sms',
     content: { subject?: string; message: string }
-  ): Promise<{ sent: number; failed: number; tcpaBlocked: number; errors: string[] }> {
+  ): Promise<{ sent: number; failed: number; tcpaBlocked: number; frequencyCapped: number; errors: string[] }> {
     let sent = 0;
     let failed = 0;
     let tcpaBlocked = 0;
+    // Counted separately from `failed`: nothing broke — the send was refused
+    // because the lead has already been contacted too often.
+    let frequencyCapped = 0;
     const errors: string[] = [];
 
     for (const leadId of leadIds) {
@@ -235,6 +258,8 @@ export class CommunicationsService {
       } else {
         if (result.tcpaBlocked) {
           tcpaBlocked++;
+        } else if (result.frequencyCapped) {
+          frequencyCapped++;
         } else {
           failed++;
         }
@@ -244,7 +269,7 @@ export class CommunicationsService {
       }
     }
 
-    return { sent, failed, tcpaBlocked, errors };
+    return { sent, failed, tcpaBlocked, frequencyCapped, errors };
   }
 
   async sendDirectMailToLead(

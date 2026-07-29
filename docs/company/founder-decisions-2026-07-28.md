@@ -186,3 +186,48 @@ every module across every vertical is examined against the best competing
 product for that feature area — missing features and features-of-features
 identified exhaustively — and the platform builds to surpass that bar.
 Implementation ships as reviewed PRs, wave by wave, same honesty rules.
+
+**Implementation status.** The benchmark panel (nine domain specialists, all
+190 customer-facing modules, competitors cited from public sources only)
+completed 2026-07-29; its synthesis is the wave plan below. Its first output
+was not a feature gap list but an HONESTY HOTLIST — 20 findings, 13 of them
+P0 placebo controls or fabricated success. **Wave A "Nothing lies"**
+(PR #256) shipped those fixes: the Pax pause switch was a placebo (nothing
+read `pausedUntil`), the workflow engine reported fake success from log-only
+`send_email`/`run_agent_skill` stubs, 44 of 46 templates sat on events with
+no emitter, a dead `/automation` twin let customers author rules with no
+execution engine, the weekly digest counted failed sends as sent, FCRA
+adverse-action letters were persisted as `sent` without being sent, tax
+equity was invented as `taxOwed × 8`, skip tracing was broken against its own
+API, and KYC/A-B/watchlist state evaporated on every deploy. Two latent
+production bugs surfaced while fixing them: the KYC table had no migration
+(would have 500'd on deploy) and `GET /api/ab-tests/:id` was readable across
+orgs. **Wave B "Wire the engine"** follows: the four `emit*Event` families had
+zero call sites, so lead/deal/property/payment automations could never fire.
+
+## 13. DNC VENDOR — SEARCHBUG (2026-07-29)
+
+The scrub seam has been architecturally complete since the D3 comparison but
+inert in production (only a `fixture` provider registered). Founder picks
+**Searchbug**: pay-as-you-go with no subscription, free API test account,
+covering federal/state DNC + litigators + the FCC Reassigned Numbers
+Database. At launch volume the subscription alternatives are ~99% unused
+capacity (TCPA Litigator List's cheapest API tier is $299/mo for 300K
+scrubs); revisit Contact Center Compliance when volume justifies its
+safe-harbor audit tooling, and add TCPA Litigator List as a second source if
+outbound proves litigator-risk-heavy. Standing rule for the adapter: a number
+that could NOT be checked is not a number that passed — an unavailable scrub
+must never open the gate.
+
+## 14. FIRST LARGE BET — NATIONWIDE PARCEL LAYER (2026-07-29)
+
+Of the benchmark's month-plus bets (parcel tiles, land listings corpus,
+telephony, bank feeds, tax-lien data plane, mail creative layer, 10DLC/bulk
+SMS, capture sites, STR activation), the founder queues the **nationwide
+parcel layer + map-driven list building** first, after waves C and D. Today
+`/maps` renders only the org's own saved properties — no click-any-parcel
+layer, no owner search, no list building from the map — which every panel
+independently named the single biggest competitive absence and minute-one
+table stakes at Regrid / LandGlide / PropStream / DealMachine. Gated on a
+parcel-data licensing decision, which is a founder hard-stop (spend) and
+returns as a decision card before any commitment.

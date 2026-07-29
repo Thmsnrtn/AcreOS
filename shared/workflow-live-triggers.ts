@@ -5,9 +5,36 @@
 // Wave A "Nothing lies" (2026-07-29): the workflow engine declares dozens of
 // trigger events (shared WORKFLOW_TRIGGER_EVENTS plus the engine's local
 // ExtendedTriggerEvent escape hatch), but only the events listed here have a
-// real emit call site anywhere in the server (parcelDeltaDetector.persistDelta
-// → emitParcelEvent). A workflow installed on any other trigger sits idle —
-// it will never run until its event's emitter ships.
+// real emit call site anywhere in the server. A workflow installed on any
+// other trigger sits idle — it will never run until its event's emitter ships.
+//
+// Wave B "Wire the engine" (2026-07-29) added the lead, property, deal and
+// payment lanes. Every entry below names the module that actually calls an
+// engine `emit*Event` helper — that call site IS the reason it is listed:
+//
+//   parcel.owner_changed / parcel.tax_status_changed
+//       server/services/parcelDeltaDetector.ts → emitParcelEvent
+//   lead.created / lead.updated / lead.status_changed
+//       server/services/leadEvents.ts (emitLeadCreated / emitLeadUpdated →
+//       safeEmitLeadEvent → emitLeadEvent), called from server/routes-leads.ts
+//       (single + bulk create, update, bulk update, import),
+//       server/services/importExport.ts and server/ai/tools.ts.
+//   property.created / property.status_changed
+//       server/services/propertyEvents.ts → emitPropertyEvent, called from
+//       server/routes-properties.ts (create, update, bulk status) and
+//       server/ai/tools.ts.
+//   deal.created / deal.stage_changed
+//       server/services/dealEvents.ts → emitDealEvent, called from
+//       server/routes-deals.ts (create, update, bulk status, close) and
+//       server/ai/tools.ts.
+//   payment.received / payment.missed
+//       server/routes-notes.ts, server/routes-rent-ledger.ts,
+//       server/routes-borrower.ts and
+//       server/services/notePaymentDueDetector.ts → emitPaymentEvent.
+//
+// `property.updated` and `deal.updated` are deliberately ABSENT: their emit
+// helpers declare them, but no call site ever passes them, so a workflow on
+// either still sits idle and must still be badged.
 //
 // The UI (workflow builder trigger picker, template gallery, installed
 // workflow list) badges every non-live trigger with TRIGGER_NOT_LIVE_MESSAGE
@@ -15,14 +42,25 @@
 // event never fires. Installing/saving such workflows stays allowed — they
 // activate the day the event ships — but the badge persists until then.
 //
-// When you wire a new emitter (next wave), add its event here in the SAME
-// change; tests/unit/workflowActionHonesty.test.ts pins that every entry in
-// this list has a real emit call site.
+// When you wire a new emitter, add its event here in the SAME change.
+// tests/unit/workflowActionHonesty.test.ts DERIVES the true set by scanning
+// server/ for emit call sites and asserts it equals this list exactly — in
+// both directions. Listing an event nothing emits fails; emitting an event
+// that is not listed fails. There is no hardcoded expected list to edit.
 // ---------------------------------------------------------------------------
 
 export const LIVE_WORKFLOW_TRIGGER_EVENTS = [
   "parcel.owner_changed",
   "parcel.tax_status_changed",
+  "lead.created",
+  "lead.updated",
+  "lead.status_changed",
+  "property.created",
+  "property.status_changed",
+  "deal.created",
+  "deal.stage_changed",
+  "payment.received",
+  "payment.missed",
 ] as const;
 
 export type LiveWorkflowTriggerEvent =

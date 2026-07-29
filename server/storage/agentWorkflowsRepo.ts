@@ -7,6 +7,7 @@
 
 import { and, desc, eq, lte, sql } from "drizzle-orm";
 import { db } from "../db";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import {
   agentMemory,
   agentTasks,
@@ -130,6 +131,28 @@ export const agentWorkflowsRepo = {
     return workflow;
   },
 
+  /**
+   * Workflow lookup by primary key with NO org scope. Deliberately narrow:
+   * the only caller is the durable-delay resume path, which starts from a
+   * workflow_runs row (that table carries no organization_id) and needs the
+   * workflow's own organizationId to rebuild the execution context. Never
+   * expose this to a request handler — org-scoped `getWorkflow` exists for
+   * that.
+   *
+   * The bypass goes through `unscopedForPlatformOps` rather than raw `db` so
+   * it is logged with its reason and shows up in the single greppable audit
+   * surface for tenancy bypasses (and so the org-scoped-fetch lint can see it
+   * is deliberate rather than an oversight).
+   */
+  async getWorkflowById(this: DatabaseStorage, id: number): Promise<Workflow | undefined> {
+    const platformDb = unscopedForPlatformOps(
+      "workflow durable-delay resume: workflow_runs carries no organization_id, " +
+        "so the parked run's workflow must be read by primary key to recover its org",
+    );
+    const [workflow] = await platformDb.select().from(workflows).where(eq(workflows.id, id));
+    return workflow;
+  },
+
   async getActiveWorkflowsByTrigger(this: DatabaseStorage, orgId: number, event: string): Promise<Workflow[]> {
     const allWorkflows = await db.select().from(workflows)
       .where(and(
@@ -192,6 +215,36 @@ export const agentWorkflowsRepo = {
       .where(eq(workflowRuns.id, id))
       .returning();
     return updated;
+  },
+
+  // ── Durable `delay` support (Wave B "Wire the engine", 2026-07-29) ────────
+  // A run that hits a long `delay` parks with status "waiting" + resume_at.
+  // The workflow_delay_resume job sweeps for due parked runs and continues
+  // them. See server/services/workflow-engine.ts (executeDelay / resumeRun).
+
+  /** Parked runs whose wake time has passed, oldest wake first. */
+  async getDueWaitingWorkflowRuns(this: DatabaseStorage, now: Date, limit: number = 25): Promise<WorkflowRun[]> {
+    return await db.select().from(workflowRuns)
+      .where(and(
+        eq(workflowRuns.status, "waiting"),
+        lte(workflowRuns.resumeAt, now),
+      ))
+      .orderBy(workflowRuns.resumeAt)
+      .limit(limit);
+  },
+
+  /**
+   * Atomically take ownership of a parked run: flips "waiting" → "running" and
+   * clears the wake fields, but ONLY if the row is still parked. Returns
+   * undefined when another process got there first, so a double-sweep can
+   * never execute the same remaining steps twice.
+   */
+  async claimWaitingWorkflowRun(this: DatabaseStorage, id: number): Promise<WorkflowRun | undefined> {
+    const [claimed] = await db.update(workflowRuns)
+      .set({ status: "running", resumeAt: null })
+      .where(and(eq(workflowRuns.id, id), eq(workflowRuns.status, "waiting")))
+      .returning();
+    return claimed;
   },
 
   // Scheduled Tasks CRUD

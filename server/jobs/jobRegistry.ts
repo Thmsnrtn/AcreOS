@@ -160,6 +160,9 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "domain_audit", intervalMs: DAY, critical: false },
   { name: "operator_cycle", intervalMs: DAY, critical: false },
   { name: "scheduled_tasks", intervalMs: MIN, critical: true },
+  // Wave B: without this sweep every workflow parked on a long `delay` stops
+  // forever mid-run, so its absence is a P1.
+  { name: "workflow_delay_resume", intervalMs: MIN, critical: true },
   { name: "pax_scheduler", intervalMs: MIN, critical: true },
   { name: "pax_nudges", intervalMs: 6 * HOUR, critical: true },
   { name: "voice_learning_refresh", intervalMs: 12 * HOUR, critical: false },

@@ -7918,6 +7918,48 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS "investor_ver_requests_org_status_idx" ON "investor_verification_requests" ("organization_id", "status")`,
   `CREATE INDEX IF NOT EXISTS "investor_ver_requests_profile_created_idx" ON "investor_verification_requests" ("investor_profile_id", "created_at")`,
+
+  // ── 0210 durable workflow `delay` (Wave B "Wire the engine") ──
+  // `delay` slept in-process and silently capped at 60s, so a "wait 2 days"
+  // step resumed after a minute — and a deploy mid-wait dropped the run
+  // entirely, leaving the row stuck in status "running" forever. The wake time
+  // is persisted on the run now: parked runs go to status 'waiting' with
+  // resume_at + resume_state (next action index + accumulated variables), and
+  // server/jobs/workflowDelayResume.ts continues every due run in whichever
+  // process is alive. No new table — two nullable columns + a partial index on
+  // the existing workflow_runs. Mirrors
+  // migrations/0210_workflow_delay_durability.sql + shared/schema.ts.
+  `ALTER TABLE "workflow_runs" ADD COLUMN IF NOT EXISTS "resume_at" timestamp`,
+  `ALTER TABLE "workflow_runs" ADD COLUMN IF NOT EXISTS "resume_state" jsonb`,
+  `CREATE INDEX IF NOT EXISTS "workflow_runs_waiting_resume_idx" ON "workflow_runs" ("resume_at") WHERE "status" = 'waiting'`,
+
+  // ── 0211 direct-mail attribution storage (Wave B "Wire the engine") ──
+  // The outreach benchmark's P0: mail_shipment_pieces.qr_scan_count was READ
+  // in eight places and WRITTEN in none (no QR generation, no scan endpoint);
+  // the In-Flight tracker's "USPS scan timestamps" were UI-only because no Lob
+  // delivery-event ingest existed; and the tracking-number pool was never
+  // invoked from the mail queue path, so inbound calls could not attribute to
+  // a campaign. The analytics on top were already built — they just needed
+  // real data. Mirrors migrations/0211_mail_qr_attribution.sql +
+  // shared/schema/finance.ts.
+  `ALTER TABLE "mail_shipment_pieces" ADD COLUMN IF NOT EXISTS "qr_code" text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "mail_shipment_pieces_qr_code_uidx" ON "mail_shipment_pieces" ("qr_code")`,
+  `CREATE INDEX IF NOT EXISTS "mail_shipment_pieces_provider_piece_idx" ON "mail_shipment_pieces" ("provider_piece_id")`,
+  `CREATE TABLE IF NOT EXISTS "mail_qr_scan_events" (
+    "id" serial PRIMARY KEY,
+    "piece_id" integer NOT NULL REFERENCES "mail_shipment_pieces" ("id") ON DELETE CASCADE,
+    "shipment_id" integer NOT NULL REFERENCES "mail_shipments" ("id") ON DELETE CASCADE,
+    "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+    "scanned_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "client_fingerprint" text,
+    "counted" boolean NOT NULL DEFAULT true,
+    "suppressed_reason" text
+  )`,
+  `CREATE INDEX IF NOT EXISTS "mail_qr_scan_events_piece_fp_idx" ON "mail_qr_scan_events" ("piece_id", "client_fingerprint", "scanned_at")`,
+  `CREATE INDEX IF NOT EXISTS "mail_qr_scan_events_shipment_scanned_idx" ON "mail_qr_scan_events" ("shipment_id", "scanned_at")`,
+  `CREATE INDEX IF NOT EXISTS "mail_qr_scan_events_org_scanned_idx" ON "mail_qr_scan_events" ("organization_id", "scanned_at")`,
+  `ALTER TABLE "tracking_number_assignments" ADD COLUMN IF NOT EXISTS "mail_shipment_id" integer`,
+  `CREATE INDEX IF NOT EXISTS "tracking_number_assignments_mail_shipment_idx" ON "tracking_number_assignments" ("mail_shipment_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

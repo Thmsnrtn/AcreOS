@@ -19,6 +19,114 @@ import {
   COOKIE_NAME as STMT_COOKIE_NAME,
   type BorrowerGrantResolver,
 } from "./services/borrower/statementAccess";
+import { emitPaymentEvent } from "./services/workflow-engine";
+
+// ─────────────────────────────────────────────────────────────────────
+// Workflow payment events (Wave B — "wire the engine")
+// ─────────────────────────────────────────────────────────────────────
+// The borrower portal posts to the seller-finance `payments` ledger in two
+// places: the session-based verify-payment (the live path) and the
+// deprecated token-based one. Both are Stripe-idempotent — they post at most
+// one row per checkout session and return early when the row already exists
+// — so emitting at each posting site yields exactly ONE event per payment
+// row, never one per retry.
+//
+// Money-path discipline: the emit runs AFTER the balance-mutating write has
+// committed (after storage.createPayment / after the withTransaction block),
+// and is wrapped so a workflow fault can never fail, roll back or re-post a
+// borrower payment.
+//
+// Unlike the note/rent ledgers, `payments.id` is a serial integer, so the
+// real payment id IS the emitted entityId.
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whole days between the scheduled due date and the moment the payment
+ * posted. Returns null when the note carries no next-payment date, so the
+ * event never publishes a guessed lateness. 0 means on-time-or-early.
+ */
+export function daysLateForBorrowerPayment(
+  dueDate: Date | null | undefined,
+  paymentDate: Date,
+): number | null {
+  if (!dueDate) return null;
+  const due = dueDate instanceof Date ? dueDate.getTime() : new Date(dueDate).getTime();
+  const paid = paymentDate.getTime();
+  if (Number.isNaN(due) || Number.isNaN(paid)) return null;
+  const diffDays = Math.floor((paid - due) / DAY_MS);
+  return diffDays > 0 ? diffDays : 0;
+}
+
+/** Everything the emit needs, read from rows that are already committed. */
+export interface PostedBorrowerPayment {
+  organizationId: number;
+  noteId: number;
+  paymentId: number;
+  amountCents: number;
+  principalCents: number;
+  interestCents: number;
+  lateFeeCents: number;
+  /** notes.monthly_payment in cents — null when the note has none recorded. */
+  scheduledPaymentCents: number | null;
+  dueDate: Date | null;
+  paymentDate: Date;
+  remainingBalanceCents: number;
+  paymentMethod: string;
+  /** Which portal endpoint posted it — the live session path or the legacy token path. */
+  source: string;
+}
+
+/** The `data` bag workflow conditions match on / templates interpolate. */
+export function buildBorrowerPaymentEventData(p: PostedBorrowerPayment): Record<string, any> {
+  const scheduled = p.scheduledPaymentCents;
+  return {
+    source: p.source,
+    // Identity
+    noteId: p.noteId,
+    paymentId: p.paymentId,
+    // Money
+    amountCents: p.amountCents,
+    amount: p.amountCents / 100,
+    principalCents: p.principalCents,
+    interestCents: p.interestCents,
+    lateFeeCents: p.lateFeeCents,
+    scheduledPaymentCents: scheduled,
+    // Shape
+    isFullPayment: scheduled === null ? null : p.amountCents >= scheduled,
+    isPartial: scheduled === null ? null : p.amountCents < scheduled,
+    paymentMethod: p.paymentMethod,
+    paymentDate: p.paymentDate.toISOString(),
+    dueDate: p.dueDate ? p.dueDate.toISOString() : null,
+    daysLate: daysLateForBorrowerPayment(p.dueDate, p.paymentDate),
+    // State after the payment
+    remainingBalanceCents: p.remainingBalanceCents,
+    remainingPrincipal: p.remainingBalanceCents / 100,
+    isPaidOff: p.remainingBalanceCents <= 0,
+  };
+}
+
+/**
+ * Fire-and-forget workflow emit for a borrower payment that is ALREADY
+ * committed. Never throws.
+ */
+export function emitBorrowerPaymentReceived(p: PostedBorrowerPayment): void {
+  try {
+    emitPaymentEvent(
+      "payment.received",
+      p.organizationId,
+      p.paymentId,
+      buildBorrowerPaymentEventData(p),
+    );
+  } catch (err) {
+    // Swallowed on purpose — the borrower's money is banked and the response
+    // must not change because a workflow misbehaved.
+    logger.error(
+      "Borrower payment workflow emit failed (payment already posted)",
+      err instanceof Error ? err : undefined,
+      { organizationId: p.organizationId, noteId: p.noteId, paymentId: p.paymentId },
+    );
+  }
+}
 
 // Borrower portal rate-limiters. Keyed by accessToken when present (the
 // portal endpoints carry it as a URL param) and fall back to IP. Pure IP
@@ -690,6 +798,28 @@ export function registerBorrowerRoutes(app: Express): void {
         nextPaymentDate: nextPaymentDate,
       }, note.organizationId);
 
+      // Payment row + balance are committed (storage.createPayment runs its
+      // own transaction). Fire-and-forget workflow event — never throws.
+      emitBorrowerPaymentReceived({
+        organizationId: note.organizationId,
+        noteId: note.id,
+        paymentId: payment.id,
+        amountCents: paymentAmountCents,
+        principalCents: split.principalCents,
+        interestCents: split.interestCents,
+        lateFeeCents: lateFeeAppliedCents,
+        scheduledPaymentCents: note.monthlyPayment != null
+          ? Math.round(Number(note.monthlyPayment) * 100)
+          : null,
+        // The stored schedule date, NOT the `|| new Date()` fallback used for
+        // the late-fee math — a missing due date stays null in the event.
+        dueDate: note.nextPaymentDate ?? null,
+        paymentDate,
+        remainingBalanceCents: Math.max(0, currentBalanceCents - split.principalCents),
+        paymentMethod: "card",
+        source: "borrower_portal_legacy_token",
+      });
+
       res.json({
         success: true,
         payment,
@@ -852,6 +982,30 @@ export function registerBorrowerRoutes(app: Express): void {
         { amortizationSchedule: updatedSchedule, nextPaymentDate },
         note.organizationId,
       );
+
+      // The idempotent transaction has COMMITTED and we are on the
+      // `created: true` branch (the conflict branch returned above), so this
+      // fires exactly once per payment row — never on a Stripe redelivery.
+      // Fire-and-forget: never throws.
+      emitBorrowerPaymentReceived({
+        organizationId: note.organizationId,
+        noteId: note.id,
+        paymentId: payment.id,
+        amountCents: paymentAmountCents,
+        principalCents: split.principalCents,
+        interestCents: split.interestCents,
+        lateFeeCents: lateFeeAppliedCents,
+        scheduledPaymentCents: note.monthlyPayment != null
+          ? Math.round(Number(note.monthlyPayment) * 100)
+          : null,
+        // The stored schedule date, NOT the `|| new Date()` fallback used for
+        // the late-fee math — a missing due date stays null in the event.
+        dueDate: note.nextPaymentDate ?? null,
+        paymentDate,
+        remainingBalanceCents: Math.max(0, currentBalanceCents - split.principalCents),
+        paymentMethod: "card",
+        source: "borrower_portal",
+      });
 
       // Phase 3 Week 14 — Activation telemetry. First borrower payment
       // received. Idempotent FIRST-occurrence on (org, eventName).

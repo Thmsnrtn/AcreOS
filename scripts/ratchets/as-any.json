@@ -9,6 +9,7 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 1433,
-  "direction": "down"
+  "baselineCount": 1429,
+  "direction": "down",
+  "lastBumpNote": "1433 -> 1429 on 2026-07-29: Wave B ('Wire the engine') cleanup. The wave's 7 new casts were TYPED rather than baselined — leads.deletedAt/organizationId read straight off the Lead row (organizationId is notNull, so the old `as number | undefined` was actively lying about a multi-tenant key), the CSV-import drizzle insert and the workflow_delay_resume claim-update payloads type-check as-is, isWithinQuietHoursForLead accepts a Lead unchanged, and the two contactFrequency boundaries were narrowed to precise shapes (`Record<string, unknown>` for the organizations.settings jsonb blob; `Date | string | null` for the driver-dependent timestamp) per the routes-rent-ledger.ts precedent. Fixing the underlying types also cleared 3 pre-existing casts of the same shape in sequenceProcessor.ts. Locked in per this ratchet's strictly-down rule."
 }

@@ -29,6 +29,9 @@ const SCANNED_FILES = [
   // S3 (2026-07): lead_nurturing + campaign_optimizer withJobLock literals
   // moved here as the first decomposition slice out of runScheduledJobs.ts.
   "../../server/jobs/leadCampaignJobs.ts",
+  // S3 slice 2 (Wave B, 2026-07-29): workflow_delay_resume owns its own
+  // process*/start*Job pair in its module, same as leadCampaignJobs.
+  "../../server/jobs/workflowDelayResume.ts",
   "../../server/jobs/atlasPendingConfirmationNudger.ts",
   "../../server/jobs/autonomousTaskProcessor.ts",
   "../../server/services/founderDigest.ts",

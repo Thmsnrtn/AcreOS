@@ -42,6 +42,91 @@ export interface AssignedNumber {
 }
 
 /**
+ * Wave B — attach a tracking number to a MAIL SHIPMENT at queue time.
+ *
+ * The pool existed but the mail queue path never called it, so the response
+ * phone number printed on a postcard was the org's ordinary line and an
+ * inbound call could not be told apart from any other call. `callsReceived`
+ * in the mail funnel therefore had no way to ever be non-zero.
+ *
+ * Semantics:
+ *   - IDEMPOTENT per shipment. If this shipment already has an active
+ *     assignment we return it rather than renting a second number.
+ *   - BEST EFFORT. Queueing mail must never fail because Twilio is not
+ *     configured, the pool is empty, or the carrier API is down — the send is
+ *     the customer's money and the tracking number is instrumentation. On any
+ *     failure we log and return null, and the shipment goes out with no
+ *     call attribution (which the UI reports honestly as "not instrumented",
+ *     never as "0 calls measured").
+ *   - Recorded against `mail_shipment_id`, NOT `campaign_id`: mail shipments
+ *     and marketing campaigns are different id spaces and conflating them
+ *     would attribute calls to whichever campaign happened to share the
+ *     number.
+ */
+export async function assignTrackingNumberForMailShipment(
+  organizationId: number,
+  mailShipmentId: number,
+): Promise<AssignedNumber | null> {
+  try {
+    const [existing] = await db
+      .select()
+      .from(trackingNumberAssignments)
+      .where(
+        and(
+          eq(trackingNumberAssignments.mailShipmentId, mailShipmentId),
+          isNull(trackingNumberAssignments.releasedAt),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      return {
+        number: existing.number,
+        provider: existing.provider as CommsProviderName,
+        assignmentId: existing.id,
+      };
+    }
+
+    const assigned = await assignNumber(organizationId, null);
+    await db
+      .update(trackingNumberAssignments)
+      .set({ mailShipmentId })
+      .where(eq(trackingNumberAssignments.id, assigned.assignmentId));
+
+    logger.info("[tracking-pool] tracking number attached to mail shipment", {
+      metadata: { organizationId, mailShipmentId, assignmentId: assigned.assignmentId },
+    });
+    return assigned;
+  } catch (err) {
+    logger.warn("[tracking-pool] could not attach tracking number to mail shipment", {
+      metadata: {
+        organizationId,
+        mailShipmentId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
+    return null;
+  }
+}
+
+/** The active tracking number for a mail shipment, or null if none. */
+export async function trackingNumberForMailShipment(
+  mailShipmentId: number,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ number: trackingNumberAssignments.number })
+    .from(trackingNumberAssignments)
+    .where(
+      and(
+        eq(trackingNumberAssignments.mailShipmentId, mailShipmentId),
+        isNull(trackingNumberAssignments.releasedAt),
+      ),
+    )
+    .limit(1);
+  return row?.number ?? null;
+}
+
+/**
  * Assign a tracking number to (orgId, campaignId). Recycles from the
  * pool if possible; rents a fresh number from the router otherwise.
  */

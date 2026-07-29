@@ -184,6 +184,18 @@ export const CREDENTIAL_DEFINITIONS: Array<{
   { key: "VITE_MAPBOX_ACCESS_TOKEN", service: "mapbox", label: "Mapbox Access Token", isSecret: true, isRequired: false, hint: "pk.eyJ1...", docUrl: "https://account.mapbox.com/access-tokens/" },
   // Direct Mail
   { key: "LOB_API_KEY", service: "lob", label: "Lob API Key (direct mail)", isSecret: true, isRequired: false, hint: "test_... or live_...", docUrl: "https://dashboard.lob.com/settings/api-keys" },
+  // Wave B — delivery-event ingest. Lob signs each webhook POST with
+  // HMAC-SHA256 over `${timestamp}.${rawBody}` keyed by this secret; without
+  // it POST /api/webhooks/lob rejects EVERY post, because an unauthenticated
+  // writer into the attribution tables could fabricate deliveries.
+  { key: "LOB_WEBHOOK_SECRET", service: "lob", label: "Lob Webhook Signing Secret", isSecret: true, isRequired: false, hint: "From Lob dashboard → Webhooks → your endpoint", docUrl: "https://docs.lob.com/#tag/Webhooks" },
+  // Wave B — signs the per-piece QR short codes printed on mail. Optional:
+  // falls back to FIELD_ENCRYPTION_KEY then SESSION_SECRET. If none is set we
+  // refuse to mint codes rather than mint forgeable ones.
+  { key: "MAIL_QR_SIGNING_SECRET", service: "lob", label: "Mail QR Code Signing Secret", isSecret: true, isRequired: false, hint: "Any long random string; falls back to SESSION_SECRET" },
+  // Wave B — where a scanned postcard QR lands. Constant for every code so
+  // the public redirect never reveals which org mailed the piece.
+  { key: "MAIL_QR_LANDING_URL", service: "lob", label: "Mail QR Landing URL", isSecret: false, isRequired: false, hint: "https://yourdomain.com/respond (defaults to APP_URL/tools/parcel-check)" },
   // SMS / Voice
   { key: "TWILIO_ACCOUNT_SID", service: "twilio", label: "Twilio Account SID", isSecret: false, isRequired: false, hint: "AC..." },
   { key: "TWILIO_AUTH_TOKEN", service: "twilio", label: "Twilio Auth Token", isSecret: true, isRequired: false, hint: "..." },
@@ -195,6 +207,15 @@ export const CREDENTIAL_DEFINITIONS: Array<{
   // Data Providers
   { key: "ATTOM_API_KEY", service: "attom", label: "ATTOM Data API Key", isSecret: true, isRequired: false, hint: "apikey from attomdata.com", docUrl: "https://api.gateway.attomdata.com/docs" },
   { key: "REGRID_API_KEY", service: "regrid", label: "Regrid API Key", isSecret: true, isRequired: false, hint: "API key from regrid.com", docUrl: "https://regrid.com/api" },
+  // TCPA compliance — DNC / litigator scrub. Founder decision 2026-07-29:
+  // Searchbug (docs/company/dnc-vendor-comparison.md). Auth is a CO_CODE
+  // (account id) + PASS (account password / API key) PAIR, so it declares two
+  // entries the same way AWS does — the id is not a secret, the password is.
+  // Set DNC_SCRUB_PROVIDER=searchbug to select the adapter. Until BOTH values
+  // are present the scrub returns "not checked" and lead-matched marketing
+  // sends fail CLOSED — it never silently passes numbers.
+  { key: "SEARCHBUG_CO_CODE", service: "searchbug", label: "Searchbug Account ID (CO_CODE)", isSecret: false, isRequired: false, hint: "Account ID from Your Account page after login", docUrl: "https://www.searchbug.com/api/identify-phone-number.aspx" },
+  { key: "SEARCHBUG_API_KEY", service: "searchbug", label: "Searchbug API Password (PASS)", isSecret: true, isRequired: false, hint: "Your Searchbug account password; must not contain @ # ? & or =", docUrl: "https://www.searchbug.com/api/identify-phone-number.aspx" },
 ];
 
 export const SERVICE_GROUPS: Array<{
@@ -216,4 +237,5 @@ export const SERVICE_GROUPS: Array<{
   { service: "mcp", label: "MCP API Key", description: "Internal MCP server access key", icon: "Key", required: false },
   { service: "attom", label: "ATTOM Data", description: "Property details, valuations, and sales comparables", icon: "Building", required: false },
   { service: "regrid", label: "Regrid", description: "Parcel boundaries, owner info, and land data", icon: "MapPin", required: false },
+  { service: "searchbug", label: "Searchbug (DNC scrub)", description: "Federal/state DNC + TCPA litigator scrub for outbound SMS", icon: "Phone", required: false },
 ];

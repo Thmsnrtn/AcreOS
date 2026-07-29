@@ -33,6 +33,8 @@ const state = {
   audienceSize: 3,
   poolDebitCalls: 0,
   txInserts: 0,
+  /** per-piece QR stamp updates inside the queue transaction */
+  txPieceUpdates: 0,
 };
 
 vi.mock("../../server/utils/logger", () => ({
@@ -97,6 +99,18 @@ vi.mock("../../server/db", () => {
               return p;
             },
           }),
+          // The queue transaction also stamps each piece's QR short code
+          // (mail_shipment_pieces.qr_code) after the insert assigns ids —
+          // the code is an HMAC over the piece id, so it cannot be minted
+          // before then. The gate under test runs well upstream of this;
+          // the double just has to exist so the tx completes.
+          update: () => ({
+            set: () => ({
+              where: async () => {
+                state.txPieceUpdates += 1;
+              },
+            }),
+          }),
         }),
     },
   };
@@ -149,6 +163,7 @@ beforeEach(() => {
   state.audienceSize = 3;
   state.poolDebitCalls = 0;
   state.txInserts = 0;
+  state.txPieceUpdates = 0;
 });
 
 describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", () => {

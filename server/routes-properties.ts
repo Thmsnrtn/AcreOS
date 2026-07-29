@@ -15,6 +15,10 @@ import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fil
 import { listPropertiesContract } from "@shared/contracts";
 import { validateResponse } from "./utils/contractResponse";
 import { compsGuard } from "./middleware/expensiveEndpointGuard";
+// Wave B "Wire the engine": property automations never ran because nothing
+// emitted property.created / property.status_changed. Both emitters are
+// fire-and-forget and no-op unless the pipeline status genuinely changed.
+import { emitPropertyCreated, emitPropertyStatusChanged } from "./services/propertyEvents";
 
 // Partial update schema for PUT endpoints.
 // insertPropertySchema already omits organizationId, so no further omit needed.
@@ -323,6 +327,10 @@ export function registerPropertyRoutes(app: Express): void {
         userAgent: req.headers["user-agent"],
       });
 
+      // Wave B — property.created workflow trigger. Fire-and-forget: an
+      // automation failure must never fail the property write.
+      emitPropertyCreated(org.id, property);
+
       // Phase 3 Week 14 — Activation telemetry. Idempotent FIRST-occurrence.
       try {
         const { recordActivationEventAsync } = await import("./services/activation");
@@ -388,6 +396,11 @@ export function registerPropertyRoutes(app: Express): void {
       
       const validated = updatePropertySchema.parse(sanitizedBody);
       const property = await storage.updateProperty(propertyId, validated, org.id);
+
+      // Wave B — property.status_changed. `existingProperty` is the real
+      // pre-image; a no-op update (or an edit that never touched `status`)
+      // emits nothing.
+      emitPropertyStatusChanged(org.id, existingProperty, property);
 
       const user = req.user as any;
       const userId = user?.id || user?.id;
@@ -612,8 +625,29 @@ export function registerPropertyRoutes(app: Express): void {
       }
       const { ids, updates } = parsed.data;
 
+      // Wave B — a bulk status move is N real transitions, one per property.
+      // Only pay for the pre-image read when `status` is part of the update;
+      // unchanged rows emit nothing. A pre-image read failure degrades to
+      // "no events" and never fails the bulk write.
+      const bulkStatus = typeof updates.status === "string" ? updates.status : null;
+      let beforeProperties: Array<Awaited<ReturnType<typeof storage.getProperty>>> = [];
+      if (bulkStatus) {
+        try {
+          beforeProperties = await Promise.all(ids.map((id) => storage.getProperty(org.id, id)));
+        } catch (err) {
+          logger.warn("Bulk property status pre-image read skipped (non-fatal)", {
+            metadata: { orgId: org.id, error: err instanceof Error ? err.message : String(err) },
+          });
+        }
+      }
+
       const updatedCount = await storage.bulkUpdateProperties(org.id, ids, updates);
-      
+
+      for (const before of beforeProperties) {
+        if (!before) continue;
+        emitPropertyStatusChanged(org.id, before, { ...before, status: bulkStatus });
+      }
+
       const user = req.user as any;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({

@@ -27,6 +27,15 @@ import {
   pendingActionArtifact,
 } from "../services/approvalKernel";
 import { getPaxPauseState, paxPauseRefusalMessage } from "../services/paxPause";
+// Wave B "Wire the engine" — a lead Pax creates is a lead like any other, and
+// a status Pax moves is a status change like any other. Both fire the same
+// workflow events the human routes fire. Fire-and-forget: never throws.
+import { emitLeadCreated, emitLeadUpdated } from "../services/leadEvents";
+// Same reasoning for deals + properties: a deal Pax creates (including the
+// offer-letter → pipeline bridge below) is a deal like any other, and a stage
+// Pax moves is a stage change like any other.
+import { emitDealCreated, emitDealStageChanged } from "../services/dealEvents";
+import { emitPropertyCreated, emitPropertyStatusChanged } from "../services/propertyEvents";
 
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
@@ -1134,6 +1143,15 @@ export async function executeTool(
           status: args.status,
           notes: args.notes
         }, org.id);
+        // Wave B — emits lead.status_changed ONLY when the status actually
+        // moved (Pax re-asserting the current status changes nothing and
+        // must not wake automations). `notes` alone yields lead.updated.
+        emitLeadUpdated(
+          org.id,
+          leadBeforeUpdate,
+          updated,
+          args.notes !== undefined ? ["status", "notes"] : ["status"],
+        );
         // Log activity for auditability
         if (leadBeforeUpdate) {
           await storage.logActivity({
@@ -1162,6 +1180,7 @@ export async function executeTool(
           notes: args.notes || null,
           status: "new"
         });
+        emitLeadCreated(org.id, lead);
         return { success: true, data: { message: "Lead created successfully", lead } };
       }
       
@@ -1357,6 +1376,9 @@ export async function executeTool(
           }
         }
         
+        // Wave B — property.created. Fire-and-forget; never fails the tool.
+        emitPropertyCreated(org.id, property);
+
         invalidateContextCache(org.id);
         return { success: true, data: { message: `Property created successfully${hasBoundary ? ' with parcel boundary' : ''}`, property, hasBoundary } };
       }
@@ -1377,6 +1399,11 @@ export async function executeTool(
         }
 
         const property = await storage.updateProperty(args.property_id, updates, org.id);
+
+        // Wave B — property.status_changed. `propertyBeforeUpdate` is the real
+        // pre-image; when the tool didn't move `status` this emits nothing.
+        emitPropertyStatusChanged(org.id, propertyBeforeUpdate, property);
+
         invalidateContextCache(org.id);
         return { success: true, data: { message: "Property updated successfully", property, before, after } };
       }
@@ -1406,6 +1433,9 @@ export async function executeTool(
           status: args.status || "negotiating",
           notes: args.notes || null,
         });
+        // Wave B — deal.created. Fire-and-forget; never fails the tool.
+        emitDealCreated(org.id, deal);
+
         invalidateContextCache(org.id);
         return { success: true, data: { message: "Deal created successfully", deal } };
       }
@@ -1426,6 +1456,11 @@ export async function executeTool(
         }
 
         const deal = await storage.updateDeal(args.deal_id, dealUpdates, undefined, org.id);
+
+        // Wave B — deal.stage_changed. `dealBeforeUpdate` is the real
+        // pre-image; when the tool didn't move `status` this emits nothing.
+        emitDealStageChanged(org.id, dealBeforeUpdate, deal);
+
         invalidateContextCache(org.id);
         return { success: true, data: { message: "Deal updated successfully", deal, before: dealBefore, after: dealAfter } };
       }
@@ -1591,7 +1626,10 @@ export async function executeTool(
               sizeAcres: prop.sizeAcres || "0",
               status: prop.status || "prospect",
             });
-            
+
+            // Wave B — property.created, once per row that really landed.
+            emitPropertyCreated(org.id, property);
+
             // Auto-fetch parcel boundary data after creation (only if state/county provided)
             let hasBoundary = false;
             if (prop.state && prop.county) {
@@ -1757,6 +1795,12 @@ export async function executeTool(
                 notes: `Auto-created from generated offer letter (${args.buyer_name}, $${args.offer_amount}).`,
               } as any);
               pipelineDealId = newDeal.id;
+
+              // Wave B — the offer→deal bridge is a real deal-creation path
+              // (it is how an offer letter lands on the Deals board), so it
+              // fires deal.created exactly like the manual route does.
+              emitDealCreated(org.id, newDeal);
+
               invalidateContextCache(org.id);
             }
           } catch (dealErr) {
