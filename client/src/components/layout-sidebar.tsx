@@ -536,7 +536,12 @@ const NAV_MODULES: NavModule[] = [
     icon: Home,
     href: "/rent-roll",
     description: "Tenants, leases, rent roll, maintenance, analytics",
-    businessTypeOnly: ["buy_and_hold"],
+    // V1 (founder ruling #11): short_term_rental / multifamily / mobile_home
+    // all derive the landlord persona (persona-mapping.ts) — they run the
+    // same leases/rent-roll/maintenance/tenants model, so the module gate
+    // matches all four businessTypes instead of stranding those signups
+    // with seeded rental data and no Rentals surface.
+    businessTypeOnly: ["buy_and_hold", "short_term_rental", "multifamily", "mobile_home"],
     children: [
       { label: "Rent roll", icon: Wallet, href: "/rent-roll", description: "Org-wide aging buckets + open balances" },
       { label: "Tenants", icon: Users, href: "/tenants", description: "Tenant CRM (separate from acquisition leads)" },

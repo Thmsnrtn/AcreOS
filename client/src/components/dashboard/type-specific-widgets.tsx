@@ -44,7 +44,7 @@ export interface TypeSpecificWidgetsProps {
   organizationId: number;
 }
 
-type BusinessCategory = "land" | "wholesaler" | "flipper" | "buy_and_hold" | "commercial" | "subdivider";
+type BusinessCategory = "land" | "wholesaler" | "flipper" | "buy_and_hold" | "commercial" | "subdivider" | "tax_delinquent";
 
 // ── Mock data structures (to be wired to API later) ────────────────────
 
@@ -125,9 +125,24 @@ function resolveCategory(businessType: string): BusinessCategory {
     case "fix_and_flip":
       return "flipper";
     case "buy_and_hold":
+    // V1 (founder ruling #11): the landlord family — short_term_rental /
+    // multifamily / mobile_home all derive the landlord persona
+    // (persona-mapping.ts) and run the same leases/rent-roll/maintenance
+    // domain, so they share BuyAndHoldWidgets (real /api/landlord/dashboard
+    // data) instead of falling through to the land mock. Family-specific
+    // widgets (STR occupancy/ADR, MF unit turns, MHP lot rents) are a later
+    // deepening — the shared landlord widgets are honest, same domain.
+    case "short_term_rental":
+    case "multifamily":
+    case "mobile_home":
       return "buy_and_hold";
     case "commercial":
       return "commercial";
+    // V1: tax_lien_deed previously fell through to the "land" default and
+    // rendered LAND_MOCK's fabricated pipeline numbers despite having a
+    // full nav module. It now gets its own real-data category.
+    case "tax_lien_deed":
+      return "tax_delinquent";
     default:
       return "land";
   }
@@ -868,6 +883,97 @@ function SubdividerWidgets() {
   );
 }
 
+// ── Tax-delinquent widgets (V1, founder ruling #11) ────────────────────
+
+interface TaxCertificateSummary {
+  asOf: string;
+  activeCount: number;
+  overdueCount: number;
+  within30Count: number;
+  within90Count: number;
+  totalCapitalCents: number;
+}
+
+function TaxDelinquentWidgets() {
+  // V1 — tax_lien_deed used to fall through resolveCategory to "land" and
+  // render LAND_MOCK's fabricated pipeline numbers. This widget reads the
+  // SAME real org-scoped aggregate the /redemption-clock page header uses
+  // (GET /api/tax-certificates/dashboard/summary — status counts + deadline
+  // buckets + deployed capital, routes-tax-certificates.ts). The endpoint is
+  // ownerOrAdmin-gated, so on any non-OK response (403 for members, etc.) we
+  // suppress the block entirely rather than invent numbers (Trey's W-5
+  // lesson: never show data the org doesn't actually have).
+  const { data: live, isLoading } = useQuery<TaxCertificateSummary>({
+    queryKey: ["/api/tax-certificates/dashboard/summary"],
+    queryFn: async () => {
+      const res = await fetch("/api/tax-certificates/dashboard/summary", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
+      </div>
+    );
+  }
+
+  if (!live) return null; // fetch failed — never fabricate
+
+  if (live.activeCount === 0) {
+    return (
+      <EmptyState
+        icon={Clock}
+        headline="Track your first certificate"
+        subtitle="Add the tax certificates or deeds you hold and the redemption clock sorts them by days to deadline — overdue and 30-day buckets surface here."
+        cta={{ label: "Open redemption clock", href: "/redemption-clock", "data-testid": "tax-widget-clock" }}
+        secondaryCta={{ label: "Auction worksheet", href: "/auction-worksheet", "data-testid": "tax-widget-auction" }}
+        actionIcon={Clock}
+      />
+    );
+  }
+
+  return (
+    <motion.div
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+    >
+      <PersonaStat
+        icon={Clock}
+        iconClass="text-primary"
+        label="Active certificates"
+        value={String(live.activeCount)}
+        sub={`${fmtUsdK(live.totalCapitalCents)} capital deployed`}
+      />
+      <PersonaStat
+        icon={AlertTriangle}
+        iconClass={live.overdueCount > 0 ? "text-acr-warn" : "text-acr-pos"}
+        label="Overdue"
+        value={String(live.overdueCount)}
+        sub={live.overdueCount > 0 ? "past redemption deadline" : "none past deadline"}
+      />
+      <PersonaStat
+        icon={CalendarClock}
+        iconClass="text-acr-warn"
+        label="Due in 30 days"
+        value={String(live.within30Count)}
+        sub="redemption deadlines"
+      />
+      <PersonaStat
+        icon={CalendarClock}
+        iconClass="text-acr-accent"
+        label="Due in 90 days"
+        value={String(live.within90Count)}
+        sub="redemption deadlines"
+      />
+    </motion.div>
+  );
+}
+
 // ── Persona widget sets (the four investor personas) ───────────────────
 //
 // These widgets are keyed on `users.persona`, NOT businessType — the two
@@ -1221,6 +1327,7 @@ export function TypeSpecificWidgets({ businessType, organizationId }: TypeSpecif
     buy_and_hold: { title: "Buy & Hold", icon: <Building className="w-4 h-4" /> },
     commercial: { title: "Commercial", icon: <Landmark className="w-4 h-4" /> },
     subdivider: { title: "Subdivision", icon: <Building className="w-4 h-4" /> },
+    tax_delinquent: { title: "Tax-Delinquent", icon: <Clock className="w-4 h-4" /> },
   };
 
   const { title, icon } = labels[category];
@@ -1240,6 +1347,7 @@ export function TypeSpecificWidgets({ businessType, organizationId }: TypeSpecif
       {category === "buy_and_hold" && <BuyAndHoldWidgets />}
       {category === "commercial" && <CommercialWidgets />}
       {category === "subdivider" && <SubdividerWidgets />}
+      {category === "tax_delinquent" && <TaxDelinquentWidgets />}
     </div>
   );
 }

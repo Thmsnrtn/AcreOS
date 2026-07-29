@@ -1,6 +1,6 @@
 import type { Express, Response } from "express";
 import express from "express";
-import { getOrganization, type AuthenticatedRequest } from "./types/request";
+import { getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { SUBSCRIPTION_TIERS, cancellationSurveys, refundRequests, stripeProcessedEvents } from "@shared/schema";
 import { eq, and, desc, gte } from "drizzle-orm";
@@ -519,6 +519,107 @@ export function registerBillingRoutes(app: Express): void {
 
   const stripeCheckoutSchema = z.object({
     priceId: z.string().min(1, "priceId is required"),
+  });
+
+  // ── Vertical-pack catalog (V1, founder ruling #11 2026-07-28) ──────────
+  // The pack substrate (pricing, checkout, webhook activation) existed with
+  // ZERO client surface — "The substrate is there; the surface is not"
+  // (docs/internal/pricing/alternatives-2026-06-06.md). This endpoint lists
+  // EVERY pack, purchasable or waitlisted, so the pricing page can tell the
+  // truth about all five verticals instead of hiding the frozen ones.
+  //
+  // Auth: the catalog is public — /pricing renders for logged-out prospects,
+  // mirroring GET /api/stripe/products (the tier catalog above). When the
+  // request carries a Clerk session we run the standard isAuthenticated →
+  // getOrCreateOrg chain so `owned` reflects the org's real
+  // org_vertical_packs rows; an anonymous request gets owned: false on
+  // every pack. Purchasability itself stays server-gated in the checkout
+  // route below — this endpoint only REPORTS it, never widens it.
+  const listVerticalPacks = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { VERTICAL_PACKS, isVerticalPackPurchasable } = await import("@shared/billing/tier-pricing");
+
+      // Anonymous catalog requests carry no org (the global Request
+      // augmentation types `organization` as always-present, but this
+      // endpoint also serves logged-out prospects).
+      const orgId: number | undefined = req.organization?.id;
+
+      // Active-pack detection follows the schema's own contract (see
+      // orgVerticalPacks in shared/schema.ts): active when status='active'
+      // AND (cancel_at IS NULL OR cancel_at > now()).
+      const ownedKeys = new Set<string>();
+      if (orgId) {
+        const { orgVerticalPacks } = await import("@shared/schema");
+        const rows = await db
+          .select({
+            packKey: orgVerticalPacks.packKey,
+            status: orgVerticalPacks.status,
+            cancelAt: orgVerticalPacks.cancelAt,
+          })
+          .from(orgVerticalPacks)
+          .where(eq(orgVerticalPacks.organizationId, orgId));
+        const now = new Date();
+        for (const row of rows) {
+          if (row.status === "active" && (!row.cancelAt || row.cancelAt > now)) {
+            ownedKeys.add(row.packKey);
+          }
+        }
+      }
+
+      const packs = Object.values(VERTICAL_PACKS).map((pack) => {
+        const purchasable = isVerticalPackPurchasable(pack.key);
+        return {
+          key: pack.key,
+          name: pack.displayName,
+          tagline: pack.tagline,
+          businessTypeId: pack.businessTypeId,
+          // Dollars, straight from the cents source of truth — never
+          // hardcode pack prices anywhere else.
+          priceMonthly: pack.priceMonthlyCents / 100,
+          priceYearly: pack.priceYearlyCents / 100,
+          purchasable,
+          // Honest waitlist framing in plain words. The pack stays VISIBLE
+          // — the landing promises these verticals — it just isn't sellable
+          // until its vertical passes the honesty bar.
+          waitlistReason: purchasable
+            ? null
+            : "On the waitlist until this vertical is production-ready",
+          owned: ownedKeys.has(pack.key),
+          // Same load-time env capture the checkout route reads — if a
+          // price env var is missing, checkout would 503, so the client
+          // can render an honest "purchase not yet enabled" instead.
+          stripeConfigured: {
+            monthly: Boolean(pack.stripePriceIdMonthly),
+            yearly: Boolean(pack.stripePriceIdYearly),
+          },
+        };
+      });
+
+      // `authenticated` lets the public pricing page route anonymous
+      // prospects to signup instead of firing a checkout that would 401.
+      res.json({ authenticated: Boolean(orgId), packs });
+    } catch (error: any) {
+      Errors.internal(res, error);
+    }
+  };
+
+  api.get("/api/billing/packs", (req, res, next) => {
+    // Session present → the standard authenticated chain (so `owned` is
+    // real). No session at all → serve the catalog anonymously rather than
+    // 401-ing a logged-out prospect on the public pricing page.
+    const hasSession =
+      Boolean(getClerkAuth(req)?.userId) ||
+      (req.headers.cookie ?? "").includes("__session");
+    if (!hasSession) {
+      return void listVerticalPacks(req as AuthenticatedRequest, res);
+    }
+    isAuthenticated(req, res, (err?: unknown) => {
+      if (err) return next(err);
+      void getOrCreateOrg(req, res, (err2?: unknown) => {
+        if (err2) return next(err2);
+        void listVerticalPacks(req as AuthenticatedRequest, res);
+      });
+    });
   });
 
   // ── Vertical-pack add-on checkout (S3) ─────────────────────────────────

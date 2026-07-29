@@ -6,13 +6,14 @@
  * tone, no audience-flattering rhetorical hooks.
  *
  * Positioning: AcreOS leads with Land Investors as the founding
- * vertical (per v6 positioning). Other investor types — note buyers,
- * fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers,
- * buy-and-hold landlords — are already in the product at varying
- * depth (core / beta / roadmap per shared/business-types.ts). The
- * positioning band names them honestly: what's live today vs. what's
- * still rolling out. No active CTAs for non-core types; they're named
- * so adjacent operators know the platform sees them.
+ * vertical (per v6 positioning). Every other vertical is present in
+ * the product at varying depth (core / beta / roadmap per
+ * shared/business-types.ts). The positioning band's chips DERIVE
+ * their names and tiers from that registry (Positioning.tsx, wave V1
+ * of founder ruling #11) — no vertical names are written here, so a
+ * registry maturity flip can't strand a stale sentence. No active
+ * CTAs for non-core types; they're named so adjacent operators know
+ * the platform sees them.
  *
  * 10-second test: a reader should understand within 10 seconds who
  * the platform is for, what it does, and how it works. Every section
@@ -93,34 +94,25 @@ export const LANDING_COPY = {
   },
   positioning: {
     primary: "Built for Land Investors.",
-    // Truth-engine note (verified against Rafe Castellan CCO report, 2026-06-01
-    // and shared/business-types.ts):
+    // Wave V1 (founder ruling #11, 2026-07-29): vertical NAMES no longer
+    // live in this file. Positioning.tsx derives the three chip tiers
+    // (core / beta / roadmap) directly from shared/business-types.ts at
+    // build time, using each registry entry's label — a maturity flip in
+    // the registry flows to the landing automatically. `hybrid`
+    // (land + notes) is deduped out of the chips: it is the combination
+    // of the two core verticals, not a distinct audience. Landing-side
+    // conservatism, if ever needed again, goes through the explicit
+    // DEMOTE_ON_LANDING map in Positioning.tsx (reason required),
+    // superseding the old hardcoded demotions (e.g. subdivider shown as
+    // roadmap despite its beta registry maturity).
     //
-    //   core    — land investors (primary), note investors (full workflow
-    //              templates: note_payment_missed, note_partial_payment,
-    //              note_payoff; real Finance hero; Pax vocabulary complete).
-    //
-    //   beta    — fix-and-flippers (workflow tpl_fix_flip_rehab_kickoff,
-    //              Finance hero, onboarding seed), wholesalers (Finance hero,
-    //              onboarding seed, 4 dedicated today routes), tax-delinquent
-    //              buyers (redemption clock, auction worksheet, quiet title,
-    //              courthouse mode — all real pages; Finance hero gap pending).
-    //              DriveMode route pending Iris (B-1). Courthouse route pending
-    //              Iris (B-2). Workflows real but outer shell still maturing.
-    //
-    //   roadmap — subdividers (parcel editor + CC&R templates real; Finance
-    //              hero is land-investor generic; Pax falls to developer
-    //              context — shakiest beta, demoted to roadmap on landing for
-    //              honesty), buy-and-hold landlords (declared in registry, UI
-    //              suppressed).
-    //
-    // "inProduct" copy covers core (Note Investor) + beta three.
-    // "roadmap" covers Subdivider + Buy-and-hold.
-    // The chip tiers in Positioning.tsx enforce this split visually.
+    // The two prose lines below are deliberately TIER-GENERIC — the
+    // chips carry the names, so no registry flip can strand a stale
+    // sentence here.
     inProduct:
-      "Note investors run a full workflow today. Fix-and-flippers, wholesalers, and tax-delinquent buyers are in beta — the workflows are real but still maturing. Subdividers and buy-and-hold landlords are on the roadmap.",
+      "Every investor type the platform serves, labeled by what's true today — full workflows, beta, or roadmap.",
     roadmap:
-      "Subdividers and buy-and-hold landlords are on the roadmap.",
+      "On the roadmap — promised, not sold:",
   },
   how: {
     eyebrow: "How it works",

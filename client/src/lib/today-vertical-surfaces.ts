@@ -54,7 +54,15 @@ const REGISTRY: Array<{
     },
   },
   {
-    match: (i) => i.businessType === "buy_and_hold",
+    // V1 (founder ruling #11): the whole landlord family — short_term_rental /
+    // multifamily / mobile_home derive the landlord persona (persona-mapping.ts)
+    // and run the same rent-roll/leases/maintenance morning loop, so they get
+    // the same cluster instead of no surfaces card at all.
+    match: (i) =>
+      i.businessType === "buy_and_hold" ||
+      i.businessType === "short_term_rental" ||
+      i.businessType === "multifamily" ||
+      i.businessType === "mobile_home",
     cluster: {
       id: "landlord",
       title: "Landlord surfaces",

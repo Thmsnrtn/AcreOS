@@ -56,20 +56,27 @@ interface HiddenRouteRegistry {
   byOrgInvestorType: Record<OrgInvestorType, readonly string[]>;
 }
 
+// Buy-and-hold vertical BH-9 — Imelda §3 finance/notes:
+// "I have zero notes. I have 25 leases." Hide note-investor surfaces
+// and land-flavored maps. /borrower-portal and /exchange-1031
+// (1031 exchange) is acquisition-side, not operations.
+// V1 (founder ruling #11): shared by the whole landlord family —
+// short_term_rental / multifamily / mobile_home derive the same landlord
+// persona (persona-mapping.ts) and now get the same Rentals module, so
+// they share this hiding profile for a coherent nav (they previously hid
+// only /maps + /land-credit and kept note-investor surfaces visible).
+const LANDLORD_FAMILY_HIDDEN = [
+  "/maps",
+  "/land-credit",
+  "/notes",
+  "/notes/pipeline",
+  "/borrower-portal",
+] as const;
+
 const REGISTRY: HiddenRouteRegistry = {
   byBusinessType: {
     residential_wholesaler: ["/maps", "/land-credit"],
-    // Buy-and-hold vertical BH-9 — Imelda §3 finance/notes:
-    // "I have zero notes. I have 25 leases." Hide note-investor surfaces
-    // and land-flavored maps. /borrower-portal and /exchange-1031
-    // (1031 exchange) is acquisition-side, not operations.
-    buy_and_hold: [
-      "/maps",
-      "/land-credit",
-      "/notes",
-      "/notes/pipeline",
-      "/borrower-portal",
-    ],
+    buy_and_hold: LANDLORD_FAMILY_HIDDEN,
     // Fix-and-flip vertical FF-9 — Devon §4: "Lots held as inventory aren't
     // depreciated; they're cost-of-goods-sold when sold. Different chapter
     // of the IRS code." So hide /depreciation. /notes is for note investors,
@@ -86,9 +93,9 @@ const REGISTRY: HiddenRouteRegistry = {
       "/borrower-portal",
     ],
     commercial:             ["/maps", "/land-credit"],
-    short_term_rental:      ["/maps", "/land-credit"],
-    multifamily:            ["/maps", "/land-credit"],
-    mobile_home:            ["/land-credit"],
+    short_term_rental:      LANDLORD_FAMILY_HIDDEN,
+    multifamily:            LANDLORD_FAMILY_HIDDEN,
+    mobile_home:            LANDLORD_FAMILY_HIDDEN,
     agent_investor:         ["/land-credit"],
     creative_finance:       ["/land-credit"],
     // Subdivider vertical SD-9 — Brigid: "I have no notes. […] depreciation
