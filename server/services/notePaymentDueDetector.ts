@@ -26,6 +26,7 @@ import { eventMeshEvents, notes } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { recordSense } from "./autopilot/perception";
 import { eventMeshPublisher } from "./eventMeshPublisher";
+import { emitPaymentEvent } from "./workflow-engine";
 
 export const NOTE_PAYMENT_CHANNEL = "note:payments";
 export const DUE_SOON_WINDOW_DAYS = 7;
@@ -87,6 +88,42 @@ export function classifyPaymentsDue(
     });
   }
   return findings;
+}
+
+/**
+ * Wave B ("wire the engine") — this scan is the ONLY delinquency-detection
+ * path in the repo, so it is the emit site for the workflow engine's
+ * `payment.missed` trigger (the note-servicing dunning automations).
+ *
+ * Exactly-once is inherited from the scan's existing dedupe ledger: we emit
+ * only for an OVERDUE finding whose mesh event we just published for the
+ * first time. A rerun sees the dedupeKey on the channel, skips the publish,
+ * and therefore skips the emit too — one event per (note, due date) going
+ * overdue, no matter how many times the job runs.
+ *
+ * Fire-and-forget: wrapped so a workflow fault can never fail the scan or
+ * suppress the mesh signal. `entityId` is the note id (there is no payment
+ * row for a payment that never arrived).
+ */
+export function emitPaymentMissedForFinding(f: PaymentDueFinding): void {
+  try {
+    emitPaymentEvent("payment.missed", f.orgId, f.noteId, {
+      source: "note_payment_due_detector",
+      noteId: f.noteId,
+      dueDate: f.dueDate,
+      // daysUntilDue is negative for overdue findings; publish the positive
+      // lateness so workflow conditions read naturally (daysLate > 30).
+      daysLate: Math.abs(f.daysUntilDue),
+      daysUntilDue: f.daysUntilDue,
+      classification: f.classification,
+      dedupeKey: f.dedupeKey,
+    });
+  } catch (err) {
+    logger.warn(
+      `[notePaymentDueDetector] workflow emit failed for ${f.dedupeKey} (swallowed)`,
+      err instanceof Error ? err : undefined,
+    );
+  }
 }
 
 export interface NotePaymentScanResult {
@@ -177,6 +214,15 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
         },
       );
       result.published += 1;
+
+      // The mesh event is now the ledger entry that makes this finding "old
+      // news" on every later run, so emitting here — after a SUCCESSFUL
+      // publish — gives the workflow engine exactly one `payment.missed`
+      // per note per due date. A publish failure skips the emit so the next
+      // run can retry both together.
+      if (f.classification === "overdue") {
+        emitPaymentMissedForFinding(f);
+      }
     } catch (err) {
       result.errors += 1;
       logger.warn(

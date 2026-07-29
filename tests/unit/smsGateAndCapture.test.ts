@@ -48,6 +48,10 @@ const LEAD_UPDATES: any[] = [];
 const UNATTACHED: any[] = [];
 const MESSAGES: any[] = [];
 let CONVERSATIONS: any[] = [];
+/** Prior contact touches the frequency cap counts. Empty = clean lead. */
+let TOUCHES: Array<{ createdAt: Date }> = [];
+/** Touch-ledger rows written back after a send actually succeeds. */
+const TOUCH_WRITES: any[] = [];
 
 vi.mock("../../server/db", () => ({
   db: {
@@ -60,17 +64,28 @@ vi.mock("../../server/db", () => ({
             return LEADS;
           }
           if (name === "conversations") return CONVERSATIONS;
+          // lead_activities (contact-frequency touch ledger) and
+          // organizations (per-org cap overrides) resolve empty: a lead with
+          // no prior touches and an org with no override, i.e. a
+          // frequency-clean fixture. The gate then allows on the DEFAULT
+          // caps, which is the state these consent tests are about.
+          if (name === "lead_activities") return TOUCHES;
           return [];
         };
-        return {
-          where: (_w: unknown) => {
-            const p = Promise.resolve(rowsFor());
-            return Object.assign(p, {
-              orderBy: () => ({ limit: () => p }),
-              limit: () => p,
-            });
-          },
+        // Every terminal in the builder must be thenable — the frequency gate
+        // ends its read on .orderBy(), and a non-thenable there resolves to
+        // the builder object itself, which the gate reads as "contact history
+        // unverifiable" and fails CLOSED. That is correct behaviour reacting
+        // to a broken double, so the double has to be complete.
+        const step = (): any => {
+          const p: any = Promise.resolve(rowsFor());
+          p.where = step;
+          p.orderBy = step;
+          p.limit = step;
+          p.groupBy = step;
+          return p;
         };
+        return step();
       },
     }),
     insert: (table: any) => ({
@@ -79,20 +94,20 @@ vi.mock("../../server/db", () => ({
         const sink =
           name === "unattached_inbound_messages" ? UNATTACHED :
           name === "messages" ? MESSAGES :
-          name === "conversations" ? CONVERSATIONS : [];
+          name === "conversations" ? CONVERSATIONS :
+          name === "lead_activities" ? TOUCH_WRITES : [];
         const row = { id: sink.length + 1, ...v };
-        return {
-          onConflictDoNothing: (_t?: unknown) => {
-            sink.push(row);
-            return Object.assign(Promise.resolve(), {
-              returning: () => Promise.resolve([row]),
-            });
-          },
-          returning: () => {
-            sink.push(row);
-            return Promise.resolve([row]);
-          },
-        };
+        sink.push(row);
+        // Awaited directly by some writers (the contact-frequency touch
+        // ledger) and via .returning()/.onConflictDoNothing() by others, so
+        // the builder is itself thenable.
+        const p: any = Promise.resolve([row]);
+        p.onConflictDoNothing = (_t?: unknown) =>
+          Object.assign(Promise.resolve(), {
+            returning: () => Promise.resolve([row]),
+          });
+        p.returning = () => Promise.resolve([row]);
+        return p;
       },
     }),
     update: (table: any) => ({
@@ -119,6 +134,8 @@ beforeEach(() => {
   UNATTACHED.length = 0;
   MESSAGES.length = 0;
   CONVERSATIONS = [];
+  TOUCHES = [];
+  TOUCH_WRITES.length = 0;
   vi.clearAllMocks();
 });
 
@@ -139,6 +156,35 @@ describe("sendOrgSMS — TCPA gate by construction (W1.5)", () => {
     const r = await sendOrgSMS(1, "+15551234567", "hello");
     expect(r.success).toBe(true);
     expect(ROUTED).toHaveLength(1);
+    // The touch is recorded only AFTER the carrier accepted it.
+    expect(TOUCH_WRITES).toHaveLength(1);
+    expect(TOUCH_WRITES[0].type).toBe("communication_sms");
+    expect(TOUCH_WRITES[0].leadId).toBe(9);
+  });
+
+  it("refuses a lead already at the contact-frequency cap — and records no touch", async () => {
+    LEADS = [{ id: 9, phone: "5551234567" }];
+    gateVerdict = { allowed: true };
+    // Default cap is 1 per rolling 24h; one recent touch already spends it.
+    TOUCHES = [{ createdAt: new Date(Date.now() - 60 * 60 * 1000) }];
+    const r = await sendOrgSMS(1, "+15551234567", "hello again");
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/contact-frequency cap/i);
+    expect(ROUTED).toHaveLength(0);
+    expect(TOUCH_WRITES).toHaveLength(0);
+  });
+
+  it("consent still takes precedence over the frequency cap", async () => {
+    // Both would refuse. The consent refusal must be the one reported —
+    // frequency is only ever an ADDITIONAL reason, evaluated last.
+    LEADS = [{ id: 9, phone: "5551234567" }];
+    gateVerdict = { allowed: false, reason: "no TCPA consent on record" };
+    TOUCHES = [{ createdAt: new Date(Date.now() - 60 * 60 * 1000) }];
+    const r = await sendOrgSMS(1, "+15551234567", "hello");
+    expect(r.success).toBe(false);
+    expect(r.error).toContain("no TCPA consent");
+    expect(r.error).not.toMatch(/frequency/i);
+    expect(ROUTED).toHaveLength(0);
   });
 
   it("a recipient matching no lead (customer/transactional) passes without the gate", async () => {

@@ -21,21 +21,45 @@ import {
 export { LIVE_WORKFLOW_TRIGGER_EVENTS, isLiveWorkflowTriggerEvent };
 
 // ---------------------------------------------------------------------------
-// Action honesty (Wave A "Nothing lies", 2026-07-29).
+// Action honesty (Wave A "Nothing lies" → Wave B "Wire the engine", 2026-07-29).
 //
-// Some declared action types have NO real execution rail yet (send_email has
-// no delivery rail wired; run_agent_skill has no skill registry dispatch).
-// Their handlers must never fabricate success. Instead they return an
-// ActionUnavailableResult, and executeWorkflow records the step in the run
-// log with status "unavailable" — distinct from "completed" (it did happen)
-// and "failed" (it was attempted and errored). Nothing happened; the log
-// says so.
+// Wave A: `send_email` and `run_agent_skill` were log-only stubs that returned
+// fabricated success. They were made to return an ActionUnavailableResult
+// instead, and executeWorkflow records those steps with status "unavailable"
+// — distinct from "completed" (it happened) and "failed" (attempted, errored).
+//
+// Wave B wires the real rails:
+//   - send_email  → emailService.sendEmail({ purpose: "counterparty" })
+//   - run_agent_skill → skillRegistry.executeSkill(...)
+// The honesty contract is UNCHANGED and still load-bearing: an action may only
+// report success when a rail actually ran and reported success. Three distinct
+// non-success outcomes exist so the run log can never round any of them up:
+//
+//   "unavailable" — no rail could run at all. The org has no connected sending
+//                   identity (BYO, founder decision 2026-07-17), or the
+//                   configured skillId resolves in no registry. Nothing was
+//                   attempted; the reason names what to connect/fix.
+//   "blocked"     — a rail existed and REFUSED on compliance grounds (TCPA /
+//                   do-not-contact / suppression list). The refusal is the
+//                   correct outcome, not an error, so the run continues.
+//   "failed"      — the rail ran and errored (thrown; aborts the run as before).
+//
+// Neither "unavailable" nor "blocked" results are merged into workflow
+// variables: there is no real output to pass downstream.
 // ---------------------------------------------------------------------------
 
 export const ACTION_STATUS_UNAVAILABLE = "unavailable" as const;
+export const ACTION_STATUS_BLOCKED = "blocked" as const;
 
 export type ActionUnavailableResult = {
   status: typeof ACTION_STATUS_UNAVAILABLE;
+  /** Plain-words explanation, surfaced verbatim in the run log. */
+  reason: string;
+  [key: string]: unknown;
+};
+
+export type ActionBlockedResult = {
+  status: typeof ACTION_STATUS_BLOCKED;
   /** Plain-words explanation, surfaced verbatim in the run log. */
   reason: string;
   [key: string]: unknown;
@@ -50,6 +74,54 @@ export function isActionUnavailableResult(
     (result as { status?: unknown }).status === ACTION_STATUS_UNAVAILABLE
   );
 }
+
+export function isActionBlockedResult(
+  result: unknown,
+): result is ActionBlockedResult {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    (result as { status?: unknown }).status === ACTION_STATUS_BLOCKED
+  );
+}
+
+/** True for any result meaning "the declared work did NOT happen". */
+export function isNonExecutingActionResult(
+  result: unknown,
+): result is ActionUnavailableResult | ActionBlockedResult {
+  return isActionUnavailableResult(result) || isActionBlockedResult(result);
+}
+
+// ---------------------------------------------------------------------------
+// Agent-skill id reconciliation (Wave B).
+//
+// The shipped templates were authored against snake_case skill ids that never
+// existed in `skillRegistry` (server/services/agent-skills.ts). Rather than
+// leave installed workflows pointing at ids that resolve nowhere, legacy ids
+// are mapped here to their real registry id. Anything NOT in this map is
+// looked up verbatim; an id that resolves in neither place fails honestly with
+// the id named (see executeRunAgentSkill) — it never reports a skill as run.
+//
+//   score_lead          → scoreLead              (real, registered)
+//   find_matching_buyers→ (no registry entry)    — deliberately unmapped.
+//     A real buyer-matching rail exists
+//     (buyerMatchingAIService.matchPropertyToBuyers) but it is not a
+//     registered Skill, and the engine dispatches ONLY through the registry —
+//     a private second dispatch path would be a shadow registry that drifts.
+//     Until someone registers it, this id fails honestly and says so.
+// ---------------------------------------------------------------------------
+export const WORKFLOW_SKILL_ID_ALIASES: Readonly<Record<string, string>> = {
+  score_lead: "scoreLead",
+  scoreLead: "scoreLead",
+};
+
+/**
+ * Longest a `delay` step is allowed to hold the event loop. Anything longer
+ * parks the run durably (status "waiting" + resume_at) instead of sleeping —
+ * see executeWorkflow. Short delays stay inline so a 5-second pacing gap does
+ * not need a database round-trip and a job tick.
+ */
+export const INLINE_DELAY_MAX_MS = 60_000;
 
 // ---------------------------------------------------------------------------
 // Pre-built workflow templates for land investing.
@@ -1817,26 +1889,130 @@ class WorkflowEngine {
       variables: { ...triggerData.data },
     };
 
+    return this.runActionsFrom(run, workflow, context, executionLog, 0);
+  }
+
+  /**
+   * Resume a run that parked on a durable `delay`. Called by the
+   * workflow_delay_resume job (server/jobs/workflowDelayResume.ts) for every
+   * run whose `resumeAt` has passed. The run picks up at the exact action it
+   * stopped before, with the interpolation variables it had accumulated —
+   * possibly in a completely different process than the one that parked it.
+   */
+  async resumeWorkflowRun(run: WorkflowRun): Promise<WorkflowRun> {
+    const resumeState = run.resumeState;
+    if (!resumeState) {
+      // Nothing to resume from — do not guess and do not silently "complete"
+      // a run whose remaining steps we cannot reconstruct.
+      logger.error(
+        `[WorkflowEngine] Cannot resume run ${run.id}: no resumeState persisted`,
+      );
+      return storage.updateWorkflowRun(run.id, {
+        status: "failed",
+        completedAt: new Date(),
+        error:
+          "Workflow could not be resumed after its wait: the saved resume point is missing. No further steps were run.",
+        resumeAt: null,
+      });
+    }
+
+    const workflowRow = await storage.getWorkflowById(run.workflowId);
+    if (!workflowRow) {
+      logger.error(
+        `[WorkflowEngine] Cannot resume run ${run.id}: workflow ${run.workflowId} no longer exists`,
+      );
+      return storage.updateWorkflowRun(run.id, {
+        status: "failed",
+        completedAt: new Date(),
+        error: `Workflow ${run.workflowId} was deleted while this run was waiting. No further steps were run.`,
+        resumeAt: null,
+      });
+    }
+
+    const executionLog: WorkflowExecutionLogEntry[] = Array.isArray(run.executionLog)
+      ? (run.executionLog as WorkflowExecutionLogEntry[])
+      : workflowRow.actions.map((action) => ({
+          actionId: action.id,
+          actionType: action.type,
+          status: "pending" as const,
+        }));
+
+    // The delay step itself is only now genuinely over.
+    const delayEntry = executionLog[resumeState.delayActionIndex];
+    if (delayEntry) {
+      delayEntry.status = "completed";
+      delayEntry.completedAt = new Date().toISOString();
+      delayEntry.result = {
+        delayed: true,
+        durable: true,
+        delayMinutes: resumeState.delayMinutes,
+        resumedAt: new Date().toISOString(),
+      };
+    }
+
+    const context: WorkflowExecutionContext = {
+      organizationId: workflowRow.organizationId,
+      triggerData: (run.triggerData ?? { event: workflowRow.trigger.event }) as WorkflowExecutionContext["triggerData"],
+      variables: { ...(resumeState.variables ?? {}) },
+    };
+
+    logger.info(
+      `[WorkflowEngine] Resuming run ${run.id} at action index ${resumeState.nextActionIndex} after a ${resumeState.delayMinutes}m wait`,
+    );
+
+    return this.runActionsFrom(
+      run,
+      workflowRow,
+      context,
+      executionLog,
+      resumeState.nextActionIndex,
+    );
+  }
+
+  /**
+   * The action loop, shared by a fresh execution and a post-delay resume.
+   * `startIndex` is the first action to execute; everything before it either
+   * already ran (fresh run: nothing) or is replayed from the persisted log.
+   */
+  private async runActionsFrom(
+    run: WorkflowRun,
+    workflow: Workflow,
+    context: WorkflowExecutionContext,
+    executionLog: WorkflowExecutionLogEntry[],
+    startIndex: number,
+  ): Promise<WorkflowRun> {
     try {
-      for (let i = 0; i < workflow.actions.length; i++) {
+      for (let i = startIndex; i < workflow.actions.length; i++) {
         const action = workflow.actions[i];
         executionLog[i].status = "running";
         executionLog[i].startedAt = new Date().toISOString();
 
         run = await storage.updateWorkflowRun(run.id, { executionLog });
 
+        // ── Durable delay (Wave B) ────────────────────────────────────────
+        // A long wait is NOT slept through: the run parks with a persisted
+        // wake time and the remaining work is resumed by a job. Before this,
+        // `delay` capped at 60s in-process and evaporated on restart, so a
+        // "wait 2 days" step was simply a lie.
+        if (action.type === "delay") {
+          const parked = await this.parkOrSleep(run, action, context, executionLog, i);
+          if (parked) return parked;
+          run = await storage.updateWorkflowRun(run.id, { executionLog });
+          continue;
+        }
+
         try {
           const result = await this.executeAction(action, context);
-          if (isActionUnavailableResult(result)) {
-            // The action has no real execution rail yet — nothing happened.
-            // Record it distinctly from "completed" so the run log never
-            // claims work that didn't occur, and do NOT merge the result
-            // into workflow variables (there is no real output to pass on).
-            // TODO(tsc): "unavailable" is not yet declared in the frozen
-            // shared WorkflowExecutionLogEntry status union; widen locally
-            // (same convention as ExtendedTriggerEvent above).
-            (executionLog[i] as { status: string }).status =
-              ACTION_STATUS_UNAVAILABLE;
+          if (isNonExecutingActionResult(result)) {
+            // Either no rail could run ("unavailable") or a rail refused on
+            // compliance grounds ("blocked"). Record it distinctly from
+            // "completed" so the run log never claims work that didn't occur,
+            // and do NOT merge the result into workflow variables (there is
+            // no real output to pass on).
+            // TODO(tsc): neither status is declared in the frozen shared
+            // WorkflowExecutionLogEntry status union; widen locally (same
+            // convention as ExtendedTriggerEvent above).
+            (executionLog[i] as { status: string }).status = result.status;
             executionLog[i].completedAt = new Date().toISOString();
             executionLog[i].result = result;
           } else {
@@ -1887,6 +2063,101 @@ class WorkflowEngine {
     return run;
   }
 
+  /**
+   * Handle one `delay` action. Short waits sleep inline (and the step
+   * completes normally). Anything longer than INLINE_DELAY_MAX_MS parks the
+   * run: status "waiting", `resumeAt` = the real wake time, `resumeState` =
+   * where to pick up. Returns the parked run when it parked, or null when the
+   * wait was slept through and the loop should continue.
+   */
+  private async parkOrSleep(
+    run: WorkflowRun,
+    action: WorkflowAction,
+    context: WorkflowExecutionContext,
+    executionLog: WorkflowExecutionLogEntry[],
+    index: number,
+  ): Promise<WorkflowRun | null> {
+    const rawMinutes = Number((action.config as { delayMinutes?: unknown })?.delayMinutes ?? 1);
+    const delayMinutes = Number.isFinite(rawMinutes) && rawMinutes > 0 ? rawMinutes : 1;
+    const delayMs = delayMinutes * 60 * 1000;
+
+    if (delayMs <= INLINE_DELAY_MAX_MS) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      executionLog[index].status = "completed";
+      executionLog[index].completedAt = new Date().toISOString();
+      executionLog[index].result = { delayed: true, delayMinutes, durable: false };
+      logger.info(`[WorkflowEngine] Delayed inline for ${delayMinutes} minute(s)`);
+      return null;
+    }
+
+    const resumeAt = new Date(Date.now() + delayMs);
+    // TODO(tsc): "waiting" is not declared in the frozen shared
+    // WorkflowExecutionLogEntry status union; widen locally.
+    (executionLog[index] as { status: string }).status = "waiting";
+    executionLog[index].result = {
+      delayed: true,
+      durable: true,
+      delayMinutes,
+      resumeAt: resumeAt.toISOString(),
+    };
+
+    const parked = await storage.updateWorkflowRun(run.id, {
+      status: "waiting",
+      executionLog,
+      resumeAt,
+      resumeState: {
+        delayActionIndex: index,
+        nextActionIndex: index + 1,
+        variables: { ...context.variables },
+        delayMinutes,
+      },
+    });
+
+    logger.info(
+      `[WorkflowEngine] Run ${run.id} parked on a ${delayMinutes}m delay; resumes at ${resumeAt.toISOString()}`,
+    );
+    return parked;
+  }
+
+  /**
+   * Sweep parked runs whose wake time has passed and continue them. Driven by
+   * the workflow_delay_resume job under a job lock; the per-run claim is still
+   * conditional (waiting → running) so a double-sweep can never re-run steps.
+   */
+  async resumeDueWorkflowRuns(
+    limit = 25,
+    now: Date = new Date(),
+  ): Promise<{ due: number; resumed: number; failed: number }> {
+    const due = await storage.getDueWaitingWorkflowRuns(now, limit);
+    let resumed = 0;
+    let failed = 0;
+
+    for (const parked of due) {
+      const claimed = await storage.claimWaitingWorkflowRun(parked.id);
+      if (!claimed) continue; // another process took it
+      try {
+        await this.resumeWorkflowRun(claimed);
+        resumed++;
+      } catch (error) {
+        failed++;
+        logger.error(
+          `[WorkflowEngine] Failed to resume workflow run ${parked.id}`,
+          error,
+        );
+        await storage
+          .updateWorkflowRun(parked.id, {
+            status: "failed",
+            completedAt: new Date(),
+            error: `Resume after wait failed: ${error instanceof Error ? error.message : String(error)}`,
+            resumeAt: null,
+          })
+          .catch(() => undefined);
+      }
+    }
+
+    return { due: due.length, resumed, failed };
+  }
+
   async executeAction(
     action: WorkflowAction,
     context: WorkflowExecutionContext
@@ -1905,7 +2176,10 @@ class WorkflowEngine {
       case "send_notification":
         return this.executeSendNotification(action, context);
       case "delay":
-        return this.executeDelay(action, context);
+        // Reached only for a `delay` nested in a conditional branch — the
+        // top-level loop intercepts delay steps before executeAction so they
+        // can park the run durably. See runActionsFrom.
+        return this.executeNestedDelay(action);
       case "conditional": {
         const { condition, ifTrue, ifFalse } = action.config as {
           condition: { field: string; operator: "eq" | "gt" | "lt" | "gte" | "lte" | "contains"; value: any };
@@ -1936,30 +2210,150 @@ class WorkflowEngine {
     }
   }
 
+  /**
+   * Real workflow email (Wave B "Wire the engine").
+   *
+   * Every send goes through `emailService.sendEmail` with
+   * `purpose: "counterparty"`. Workflow mail is, by definition, the customer
+   * talking to their own sellers / buyers / borrowers / tenants — never AcreOS
+   * talking to its users. Per the standing founder decision (2026-07-17) that
+   * lane REQUIRES the org's own connected identity (their SES credentials or
+   * their verified sending domain); emailService refuses it otherwise and
+   * there is deliberately NO fallback to the platform @acreos.io sender, here
+   * or anywhere else. The refusal surfaces to the customer as an honest
+   * "connect your email to enable this" — never as a silent re-fronting.
+   *
+   * Outcomes, all honest:
+   *   - rail ran, SES accepted        → completed, `emailSent: result.success`
+   *   - no connected identity         → "unavailable" (nothing was attempted)
+   *   - TCPA / do-not-contact / suppression refusal → "blocked" (rail refused)
+   *   - anything else (SES error, warmup cap, bad address) → throws → "failed"
+   *
+   * Do NOT introduce a literal `emailSent: true` here — success is always read
+   * back off the rail's own result. tests/unit/workflowActionHonesty.test.ts
+   * pins that.
+   */
   private async executeSendEmail(
     action: WorkflowAction,
     context: WorkflowExecutionContext
-  ): Promise<ActionUnavailableResult> {
-    // HONESTY (Wave A "Nothing lies"): workflow email has NO delivery rail
-    // wired — there is no emailService call here, and per the standing
-    // founder decision (2026-07-17) counterparty mail requires the org's
-    // own connected identity (BYO), which workflows can't use yet. Until
-    // that rail ships, this action must not pretend it sent anything.
-    // Do NOT flip this back to `{ emailSent: true }` without invoking a
-    // real send rail — tests/unit/workflowActionHonesty.test.ts pins this.
+  ): Promise<
+    | { emailSent: boolean; messageId?: string; emailTo: string }
+    | ActionUnavailableResult
+    | ActionBlockedResult
+  > {
     const config = action.config;
-    const to = this.interpolateTemplate(config.to || "", context.variables);
+    const to = this.interpolateTemplate(config.to || "", context.variables).trim();
     const subject = this.interpolateTemplate(config.subject || "", context.variables);
+    const body = this.interpolateTemplate(config.body || "", context.variables);
 
-    logger.warn(
-      `[WorkflowEngine] send_email action is not yet wired to a delivery rail — no email was sent (to=${to}, subject="${subject}")`
-    );
-    return {
-      status: ACTION_STATUS_UNAVAILABLE,
-      emailSent: false,
-      reason:
-        "Email sending from workflows is not yet available: no delivery rail is wired, so no email was sent. This step will start working when workflow email ships (using your organization's own connected email identity).",
-    };
+    // An unresolved placeholder (`{{borrowerEmail}}` with no such variable) is
+    // a real configuration failure, not a compliance outcome — fail loudly
+    // rather than mailing a literal template string into the void.
+    if (!to || to.includes("{{")) {
+      throw new Error(
+        `send_email has no usable recipient (resolved to "${to || "empty"}"). Check the workflow's "to" field and the trigger payload.`,
+      );
+    }
+
+    // Consent gate: when the workflow is acting on a LEAD, the lead's own
+    // TCPA / do-not-contact state decides whether we may email them at all.
+    const consent = await this.checkLeadEmailConsent(context);
+    if (consent && !consent.allowed) {
+      logger.info(
+        `[WorkflowEngine] send_email blocked by consent gate for lead ${context.triggerData.entityId}: ${consent.reason}`,
+      );
+      return {
+        status: ACTION_STATUS_BLOCKED,
+        emailSent: false,
+        emailTo: to,
+        reason: `No email sent: ${consent.reason || "this contact has opted out of contact"}. The workflow continued with its remaining steps.`,
+      };
+    }
+
+    const { emailService } = await import("./emailService");
+    const result = await emailService.sendEmail({
+      to,
+      subject,
+      html: this.textToHtml(body),
+      text: body,
+      organizationId: context.organizationId,
+      // Constitutional (founder decision 2026-07-17): BYO identity or nothing.
+      purpose: "counterparty",
+    });
+
+    if (result.success) {
+      logger.info(
+        `[WorkflowEngine] send_email delivered via emailService (to=${to}, messageId=${result.messageId})`,
+      );
+      return { emailSent: result.success, messageId: result.messageId, emailTo: to };
+    }
+
+    // The org has no connected sending identity — the rail never ran. This is
+    // the ONE outcome that must never degrade into a platform-sender send.
+    if (result.errorType === "configuration_error") {
+      logger.warn(
+        `[WorkflowEngine] send_email unavailable — org ${context.organizationId} has no connected email identity`,
+      );
+      return {
+        status: ACTION_STATUS_UNAVAILABLE,
+        emailSent: false,
+        emailTo: to,
+        reason:
+          "No email was sent: connect your email to enable this. Workflow email goes out under your organization's own connected identity (Settings → Connections — your email account or verified sending domain); AcreOS never sends to your sellers and buyers from the platform address.",
+      };
+    }
+
+    // The rail ran and refused this recipient on compliance grounds. That is a
+    // correct outcome, not an error — record it and let the run continue.
+    if (result.errorType === "recipient_rejected") {
+      logger.info(`[WorkflowEngine] send_email refused for ${to}: ${result.error}`);
+      return {
+        status: ACTION_STATUS_BLOCKED,
+        emailSent: false,
+        emailTo: to,
+        reason: `No email sent: ${result.error}`,
+      };
+    }
+
+    throw new Error(`Email send failed: ${result.error || "unknown error"}`);
+  }
+
+  /**
+   * TCPA / do-not-contact check for the lead a workflow is acting on. Returns
+   * null when the run is not lead-scoped (nothing to check) or when the lead
+   * cannot be read — an unreadable lead is left to the send rail's own gates
+   * rather than being silently treated as consenting.
+   */
+  private async checkLeadEmailConsent(
+    context: WorkflowExecutionContext,
+  ): Promise<{ allowed: boolean; reason?: string } | null> {
+    const { entityType, entityId } = context.triggerData;
+    if (entityType !== "lead" || typeof entityId !== "number") return null;
+
+    try {
+      const lead = await storage.getLead(context.organizationId, entityId);
+      if (!lead) return null;
+      const { canSendViaChannel } = await import("./tcpaCompliance");
+      return canSendViaChannel(lead, "email");
+    } catch (error) {
+      logger.warn(
+        `[WorkflowEngine] Could not read lead ${entityId} for consent check; deferring to send-rail gates`,
+        error,
+      );
+      return null;
+    }
+  }
+
+  /** Minimal plain-text → HTML for template bodies (they are authored as text). */
+  private textToHtml(text: string): string {
+    const escaped = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    return escaped
+      .split(/\n{2,}/)
+      .map((para) => `<p>${para.replace(/\n/g, "<br>")}</p>`)
+      .join("\n");
   }
 
   private async executeCreateTask(
@@ -2028,29 +2422,118 @@ class WorkflowEngine {
     return { updated: true };
   }
 
+  /**
+   * Real skill dispatch (Wave B "Wire the engine").
+   *
+   * The engine dispatches through `skillRegistry` and nothing else — a private
+   * second dispatch path would be a shadow registry that drifts. Legacy
+   * template ids are reconciled through WORKFLOW_SKILL_ID_ALIASES first; an id
+   * that resolves in neither the alias map nor the registry returns
+   * "unavailable" WITH THE ID NAMED, so the run log says exactly which skill
+   * doesn't exist instead of implying one ran.
+   *
+   * Do NOT introduce a literal `skillExecuted: true` here — success is always
+   * read back off the registry's own result.
+   * tests/unit/workflowActionHonesty.test.ts pins that.
+   */
   private async executeRunAgentSkill(
     action: WorkflowAction,
     context: WorkflowExecutionContext
-  ): Promise<ActionUnavailableResult> {
-    // HONESTY (Wave A "Nothing lies"): there is NO skill dispatch here — no
-    // registry lookup, no agent invocation. The skillIds referenced by
-    // templates (score_lead, find_matching_buyers) resolve in no registry.
-    // Until a real skill-execution rail is wired, this action must not
-    // pretend a skill ran. Do NOT flip this back to
-    // `{ skillExecuted: true }` without invoking a real skill rail —
-    // tests/unit/workflowActionHonesty.test.ts pins this.
+  ): Promise<
+    | { skillExecuted: boolean; skillId: string; skillData?: any; skillMessage?: string }
+    | ActionUnavailableResult
+  > {
     const config = action.config;
-    const skillId = config.skillId || "(none)";
+    const configuredId: string = config.skillId || "";
+    const resolvedId = WORKFLOW_SKILL_ID_ALIASES[configuredId] ?? configuredId;
 
-    logger.warn(
-      `[WorkflowEngine] run_agent_skill action is not yet wired to a skill-execution rail — skill "${skillId}" did not run`
-    );
+    if (!configuredId) {
+      return {
+        status: ACTION_STATUS_UNAVAILABLE,
+        skillExecuted: false,
+        skillId: "(none)",
+        reason:
+          "No skill ran: this step has no skillId configured. Open the workflow and choose a skill for it.",
+      };
+    }
+
+    const { skillRegistry } = await import("./agent-skills");
+    const skill = skillRegistry.getSkillById(resolvedId);
+    if (!skill) {
+      const named =
+        resolvedId === configuredId
+          ? `"${configuredId}"`
+          : `"${configuredId}" (mapped to "${resolvedId}")`;
+      logger.warn(
+        `[WorkflowEngine] run_agent_skill skipped — skill ${named} is not registered`,
+      );
+      return {
+        status: ACTION_STATUS_UNAVAILABLE,
+        skillExecuted: false,
+        skillId: configuredId,
+        resolvedSkillId: resolvedId,
+        reason: `No skill ran: skill ${named} is not registered in AcreOS, so there was nothing to execute. Edit this workflow step to pick a skill that exists.`,
+      };
+    }
+
+    const params = this.buildSkillParams(config.skillParams, context);
+    const result = await skillRegistry.executeSkill(resolvedId, params, {
+      organizationId: context.organizationId,
+      relatedLeadId:
+        context.triggerData.entityType === "lead" ? context.triggerData.entityId : undefined,
+      relatedPropertyId:
+        context.triggerData.entityType === "property" ? context.triggerData.entityId : undefined,
+      relatedDealId:
+        context.triggerData.entityType === "deal" ? context.triggerData.entityId : undefined,
+    });
+
+    if (!result.success) {
+      // The rail ran and errored — a real failure, recorded as one.
+      throw new Error(`Skill "${resolvedId}" failed: ${result.error || "unknown error"}`);
+    }
+
+    logger.info(`[WorkflowEngine] Ran skill ${resolvedId} for org ${context.organizationId}`);
     return {
-      status: ACTION_STATUS_UNAVAILABLE,
-      skillExecuted: false,
-      skillId,
-      reason: `Agent skills in workflows are not yet available: skill "${skillId}" has no execution rail wired, so nothing ran. This step will start working when workflow skill execution ships.`,
+      skillExecuted: result.success,
+      skillId: resolvedId,
+      skillData: result.data,
+      skillMessage: result.message,
     };
+  }
+
+  /**
+   * Interpolate a step's skillParams and coerce the results back to real
+   * types. Template params are authored as strings (`{{propertyId}}`) but
+   * skill input schemas are typed (`z.number()`), so a raw interpolation would
+   * fail validation on every run. Entity ids default from the trigger when the
+   * step doesn't name one.
+   */
+  private buildSkillParams(
+    raw: Record<string, any> | undefined,
+    context: WorkflowExecutionContext,
+  ): Record<string, any> {
+    const params: Record<string, any> = {};
+    for (const [key, value] of Object.entries(raw || {})) {
+      if (typeof value !== "string") {
+        params[key] = value;
+        continue;
+      }
+      const interpolated = this.interpolateTemplate(value, context.variables);
+      // An unresolved placeholder must not be passed through as the literal
+      // "{{propertyId}}" — drop it and let the defaults / schema decide.
+      if (interpolated.includes("{{")) continue;
+      const asNumber = Number(interpolated);
+      params[key] =
+        interpolated !== "" && Number.isFinite(asNumber) ? asNumber : interpolated;
+    }
+
+    const { entityType, entityId } = context.triggerData;
+    if (typeof entityId === "number") {
+      if (entityType === "lead" && params.leadId === undefined) params.leadId = entityId;
+      if (entityType === "property" && params.propertyId === undefined) params.propertyId = entityId;
+      if (entityType === "deal" && params.dealId === undefined) params.dealId = entityId;
+    }
+    return params;
   }
 
   private async executeSendNotification(
@@ -2074,17 +2557,27 @@ class WorkflowEngine {
     return { notificationSent: true };
   }
 
-  private async executeDelay(
+  // NOTE: `delay` is deliberately NOT handled in executeAction. It is the one
+  // action that can suspend the whole run, so it is handled by the action loop
+  // itself (runActionsFrom → parkOrSleep), which owns the run row. The branch
+  // below only exists for a `delay` nested inside a `conditional`, where there
+  // is no run to park — an inline sleep bounded by INLINE_DELAY_MAX_MS is the
+  // honest best we can do, and the log says how long it actually waited.
+  private async executeNestedDelay(
     action: WorkflowAction,
-    context: WorkflowExecutionContext
-  ): Promise<{ delayed: boolean; delayMinutes: number }> {
-    const delayMinutes = action.config.delayMinutes || 1;
-    const delayMs = Math.min(delayMinutes * 60 * 1000, 60000);
-    
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    
-    logger.info(`[WorkflowEngine] Delayed for ${delayMinutes} minutes`);
-    return { delayed: true, delayMinutes };
+  ): Promise<{ delayed: boolean; delayMinutes: number; actualWaitMs: number; durable: boolean }> {
+    const rawMinutes = Number((action.config as { delayMinutes?: unknown })?.delayMinutes ?? 1);
+    const delayMinutes = Number.isFinite(rawMinutes) && rawMinutes > 0 ? rawMinutes : 1;
+    const actualWaitMs = Math.min(delayMinutes * 60 * 1000, INLINE_DELAY_MAX_MS);
+
+    await new Promise((resolve) => setTimeout(resolve, actualWaitMs));
+
+    if (actualWaitMs < delayMinutes * 60 * 1000) {
+      logger.warn(
+        `[WorkflowEngine] Nested delay inside a conditional waited ${actualWaitMs}ms, not the configured ${delayMinutes}m — nested branches cannot park the run. Move long waits to a top-level delay step.`,
+      );
+    }
+    return { delayed: true, delayMinutes, actualWaitMs, durable: false };
   }
 
   private interpolateTemplate(template: string, variables: Record<string, any>): string {

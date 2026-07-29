@@ -40,6 +40,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { emitPaymentEvent } from "./services/workflow-engine";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -65,6 +66,109 @@ const postureSchema = z.object({
   legalPosture: z.enum(["ok", "late", "notice_served", "eviction_filed"]),
   notes: z.string().optional(),
 });
+
+// ----------------------------------------------------------------------------
+// Workflow payment events (Wave B — "wire the engine")
+// ----------------------------------------------------------------------------
+// POST /api/leases/:id/payments is the ONLY writer of the rent_payments
+// ledger (the single `insert(rentPayments)` in the repo), so it is the one
+// emit site for rent — exactly one `payment.received` per posted row.
+//
+// Money-path discipline: the insert + charge update run inside a db
+// transaction; the emit runs AFTER that transaction has committed and is
+// wrapped so a workflow failure can never fail, roll back, or double-post
+// rent. Never throws back into the request.
+//
+// `entityId` is 0 because rent_payments is uuid-keyed while
+// emitPaymentEvent's entityId is numeric; the real key rides in
+// `data.paymentId`.
+const UUID_KEYED_PAYMENT_ENTITY_ID = 0;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whole days between a charge's due date and the date the payment was
+ * received. Both are stored `date` columns (YYYY-MM-DD). Returns null when
+ * the payment applied to no open charge (nothing to be late against) or a
+ * date is unparseable — the event carries `null`, never a guessed number.
+ */
+export function daysLateForRentPayment(
+  dueDate: string | null | undefined,
+  receivedAt: string | null | undefined,
+): number | null {
+  if (!dueDate || !receivedAt) return null;
+  const due = new Date(`${String(dueDate).slice(0, 10)}T00:00:00.000Z`).getTime();
+  const paid = new Date(`${String(receivedAt).slice(0, 10)}T00:00:00.000Z`).getTime();
+  if (Number.isNaN(due) || Number.isNaN(paid)) return null;
+  const diffDays = Math.floor((paid - due) / DAY_MS);
+  return diffDays > 0 ? diffDays : 0;
+}
+
+/** Everything the emit needs, read from rows that are already committed. */
+export interface PostedRentPayment {
+  organizationId: number;
+  leaseId: string;
+  paymentId: string;
+  rentChargeId: string | null;
+  amountCents: number;
+  isPartial: boolean;
+  payorType: string;
+  method: string | null;
+  receivedAt: string;
+  dueDate: string | null;
+  chargeAmountCents: number | null;
+  /** rent_charges.balance_cents AFTER this payment applied. */
+  chargeBalanceAfterCents: number | null;
+  legalPosture: string | null;
+}
+
+/** The `data` bag workflow conditions match on / templates interpolate. */
+export function buildRentPaymentEventData(p: PostedRentPayment): Record<string, any> {
+  return {
+    source: "rent_ledger",
+    // Identity
+    leaseId: p.leaseId,
+    paymentId: p.paymentId,
+    rentChargeId: p.rentChargeId,
+    // Money
+    amountCents: p.amountCents,
+    amount: p.amountCents / 100,
+    chargeAmountCents: p.chargeAmountCents,
+    chargeBalanceAfterCents: p.chargeBalanceAfterCents,
+    // Shape
+    isPartial: p.isPartial,
+    isFullPayment: p.chargeBalanceAfterCents === null ? null : p.chargeBalanceAfterCents === 0,
+    payorType: p.payorType,
+    paymentMethod: p.method,
+    paymentDate: p.receivedAt,
+    dueDate: p.dueDate,
+    daysLate: daysLateForRentPayment(p.dueDate, p.receivedAt),
+    legalPosture: p.legalPosture,
+  };
+}
+
+/**
+ * Fire-and-forget workflow emit for rent that is ALREADY committed to the
+ * ledger. Never throws.
+ */
+export function emitRentPaymentReceived(p: PostedRentPayment): void {
+  try {
+    emitPaymentEvent(
+      "payment.received",
+      p.organizationId,
+      UUID_KEYED_PAYMENT_ENTITY_ID,
+      buildRentPaymentEventData(p),
+    );
+  } catch (err) {
+    // Swallowed on purpose — the rent is banked; a workflow fault must not
+    // change the response or the ledger.
+    logger.error(
+      "[BH-3] rent payment workflow emit failed (payment already posted)",
+      err instanceof Error ? err : undefined,
+      { organizationId: p.organizationId, leaseId: p.leaseId, paymentId: p.paymentId },
+    );
+  }
+}
 
 // ----------------------------------------------------------------------------
 // Late-fee compute — pulled from late_fee_rules table seeded in BH-1.
@@ -255,7 +359,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         });
       }
 
-      const payment = await db.transaction(async (tx) => {
+      const posted = await db.transaction(async (tx) => {
         const [p] = await tx.insert(rentPayments).values({
           organizationId: orgId,
           leaseId: lease.id,
@@ -271,6 +375,8 @@ export function registerRentLedgerRoutes(app: Express): void {
           notes: parsed.data.notes ?? null,
         }).returning();
 
+        let chargeBalanceAfterCents: number | null = null;
+        let chargeLegalPostureAfter: string | null = null;
         if (openCharge) {
           const newPaid = openCharge.paidCents + parsed.data.amountCents;
           const newBalance = Math.max(0, openCharge.amountCents + openCharge.lateFeeCents - newPaid);
@@ -282,12 +388,35 @@ export function registerRentLedgerRoutes(app: Express): void {
             legalPostureAt: newBalance === 0 ? new Date() : openCharge.legalPostureAt,
             updatedAt: new Date(),
           }).where(eq(rentCharges.id, openCharge.id));
+          chargeBalanceAfterCents = newBalance;
+          chargeLegalPostureAfter = newBalance === 0 ? "ok" : openCharge.legalPosture;
         }
 
-        return p;
+        return { payment: p, chargeBalanceAfterCents, chargeLegalPostureAfter };
       });
 
+      const payment = posted.payment;
+
       logger.info("[BH-3] rent payment recorded", { orgId, userId, leaseId: lease.id, amountCents: parsed.data.amountCents, isPartial });
+
+      // Transaction has COMMITTED — safe to tell the workflow engine.
+      // Fire-and-forget: never throws, never touches the ledger again.
+      emitRentPaymentReceived({
+        organizationId: orgId,
+        leaseId: lease.id,
+        paymentId: payment.id,
+        rentChargeId: openCharge?.id ?? null,
+        amountCents: parsed.data.amountCents,
+        isPartial,
+        payorType: parsed.data.payorType,
+        method: parsed.data.method ?? null,
+        receivedAt: parsed.data.receivedAt,
+        dueDate: openCharge?.dueDate ?? null,
+        chargeAmountCents: openCharge?.amountCents ?? null,
+        chargeBalanceAfterCents: posted.chargeBalanceAfterCents,
+        legalPosture: posted.chargeLegalPostureAfter,
+      });
+
       return res.status(201).json({ payment, isPartial });
     } catch (err) {
       return Errors.internal(res, err);

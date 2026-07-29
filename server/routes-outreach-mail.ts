@@ -30,6 +30,7 @@ import {
   deals,
   financialLedger,
   leads,
+  mailQrScanEvents,
   mailShipments,
   mailShipmentPieces,
   marketingLists,
@@ -45,6 +46,10 @@ import {
   type PieceType,
   type ProviderQuote,
 } from "./services/mail/router";
+import { mintQrCode, qrRedirectUrl, qrSigningConfigured } from "./services/mail/qrCodes";
+import { assignTrackingNumberForMailShipment } from "./services/comms/tracking-pool";
+import { registerQrRedirectRoutes } from "./routes/public-qr-redirect";
+import { registerLobWebhookRoutes } from "./routes/lob-webhooks";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -334,6 +339,16 @@ async function buildQuote(
 // ── Route registration ──────────────────────────────────────────────────────
 
 export function registerOutreachMailRoutes(app: Express): void {
+  // ── Wave B sub-surfaces ──────────────────────────────────────────────────
+  // Two inbound feeds that make the attribution funnel real. Both are
+  // deliberately UNAUTHENTICATED — one is scanned off a postcard by a
+  // stranger, the other is a server-to-server webhook authenticated by HMAC —
+  // so each carries its own justification and its own guard rails. They are
+  // mounted here (rather than as standalone route modules in
+  // server/routes.ts) because they exist only to feed this surface.
+  registerQrRedirectRoutes(app);   // GET  /r/:code            — public, no auth
+  registerLobWebhookRoutes(app);   // POST /api/webhooks/lob   — HMAC-verified
+
   // ── POST /api/outreach/mail/quote ────────────────────────────────────────
   app.post(
     "/api/outreach/mail/quote",
@@ -448,8 +463,9 @@ export function registerOutreachMailRoutes(app: Express): void {
 
         // Transaction: insert shipment header + per-piece rows.
         let shipmentId: number;
+        let qrCodesIssued = 0;
         try {
-          shipmentId = await db.transaction(async (tx) => {
+          const txResult = await db.transaction(async (tx) => {
             const [row] = await tx
               .insert(mailShipments)
               .values({
@@ -477,23 +493,51 @@ export function registerOutreachMailRoutes(app: Express): void {
               })
               .returning({ id: mailShipments.id });
 
-            await tx.insert(mailShipmentPieces).values(
-              recipients.map((r) => ({
-                shipmentId: row.id,
-                organizationId: org.id,
-                leadId: r.leadId,
-                recipientName: `${r.firstName} ${r.lastName}`.trim(),
-                addressLine1: r.addressLine1,
-                city: r.city,
-                state: r.state,
-                zip: r.zip,
-                status: "pending" as const,
-              })),
-            );
+            const inserted = await tx
+              .insert(mailShipmentPieces)
+              .values(
+                recipients.map((r) => ({
+                  shipmentId: row.id,
+                  organizationId: org.id,
+                  leadId: r.leadId,
+                  recipientName: `${r.firstName} ${r.lastName}`.trim(),
+                  addressLine1: r.addressLine1,
+                  city: r.city,
+                  state: r.state,
+                  zip: r.zip,
+                  status: "pending" as const,
+                })),
+              )
+              .returning({ id: mailShipmentPieces.id });
 
-            return row.id;
+            // Wave B — mint the per-piece QR short code and RENDER IT INTO
+            // THE PIECE PAYLOAD. The piece row is the contract the flusher
+            // reads when it composes the provider payload, so `qr_code` (and
+            // the URL derived from it) is the piece's printed tracking token.
+            //
+            // The code is a deterministic HMAC over the piece id, so it can
+            // only be minted after the insert assigns those ids — hence the
+            // second statement inside the same transaction. If no signing
+            // secret is configured we leave qr_code NULL rather than print a
+            // forgeable code; every downstream surface then reports the piece
+            // as "not instrumented" instead of "0 scans".
+            if (qrSigningConfigured()) {
+              for (const p of inserted) {
+                const code = mintQrCode(p.id);
+                if (!code) continue;
+                await tx
+                  .update(mailShipmentPieces)
+                  .set({ qrCode: code })
+                  .where(eq(mailShipmentPieces.id, p.id));
+                qrCodesIssued++;
+              }
+            }
+
+            return { shipmentId: row.id, pieceIds: inserted.map((p) => p.id) };
           });
+          shipmentId = txResult.shipmentId;
         } catch (txErr) {
+          qrCodesIssued = 0;
           // Persist failure: refund the pool draw before re-throwing.
           if (mailDebit.debitedCents > 0) {
             await refundPoolDebit({
@@ -520,11 +564,26 @@ export function registerOutreachMailRoutes(app: Express): void {
           });
         } catch { /* non-fatal */ }
 
+        // Wave B — attach a tracking phone number so inbound calls from this
+        // campaign are attributable. Best effort by design: the helper
+        // swallows a missing carrier config / empty pool and returns null, and
+        // the response says plainly whether call attribution is live.
+        const trackingNumber = await assignTrackingNumberForMailShipment(org.id, shipmentId);
+
         res.status(201).json({
           shipmentId,
           leavesAt: leavesAt.toISOString(),
           holdWindowMinutes: HOLD_WINDOW_MINUTES,
           quote,
+          // Honest instrumentation report — the composer shows what will
+          // actually be measured, so a later zero can be read as "nobody
+          // scanned" rather than "we never looked".
+          attribution: {
+            qrCodesIssued,
+            qrTrackingEnabled: qrCodesIssued > 0,
+            trackingNumber: trackingNumber?.number ?? null,
+            callTrackingEnabled: trackingNumber !== null,
+          },
           creditPool: {
             debitedCents: mailDebit.debitedCents,
             remaining: mailDebit.remaining,
@@ -658,11 +717,37 @@ export function registerOutreachMailRoutes(app: Express): void {
           byShipment.set(c.shipmentId, existing);
         }
 
+        // Wave B — measurement provenance, per shipment. The In-Flight tab
+        // needs to distinguish three states that a bare "0" cannot:
+        //   piecesInstrumented = 0   → we never printed a QR (not measured)
+        //   deliveryEventsReceived=0 → USPS has not scanned anything yet
+        //   qrScans = 0 with both > 0 → really nobody has scanned
+        const attribution = await db
+          .select({
+            shipmentId: mailShipmentPieces.shipmentId,
+            qrScans: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}), 0)::int`,
+            inboundCalls: sql<number>`coalesce(sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
+            piecesInstrumented: sql<number>`count(*) filter (where ${mailShipmentPieces.qrCode} is not null)::int`,
+            deliveryEventsReceived: sql<number>`count(*) filter (where ${mailShipmentPieces.printedAt} is not null or ${mailShipmentPieces.inTransitAt} is not null or ${mailShipmentPieces.deliveredAt} is not null or ${mailShipmentPieces.returnedAt} is not null)::int`,
+          })
+          .from(mailShipmentPieces)
+          .where(inArray(mailShipmentPieces.shipmentId, ids))
+          .groupBy(mailShipmentPieces.shipmentId);
+
+        const attrByShipment = new Map(attribution.map((a) => [a.shipmentId, a]));
+
         res.json({
-          shipments: shipments.map((s) => ({
-            ...serializeShipment(s),
-            stageCounts: byShipment.get(s.id) ?? {},
-          })),
+          shipments: shipments.map((s) => {
+            const a = attrByShipment.get(s.id);
+            return {
+              ...serializeShipment(s),
+              stageCounts: byShipment.get(s.id) ?? {},
+              qrScans: a?.qrScans ?? 0,
+              inboundCalls: a?.inboundCalls ?? 0,
+              piecesInstrumented: a?.piecesInstrumented ?? 0,
+              deliveryEventsReceived: a?.deliveryEventsReceived ?? 0,
+            };
+          }),
         });
       } catch (err) {
         Errors.internal(res, err);
@@ -716,7 +801,18 @@ export function registerOutreachMailRoutes(app: Express): void {
             ),
           );
 
-        res.json({ pieces, total, limit, offset });
+        res.json({
+          pieces: pieces.map((p) => ({
+            ...p,
+            // The URL actually encoded in this piece's printed QR. Null when
+            // the piece was queued before QR instrumentation existed — the
+            // client renders "not instrumented", never a measured zero.
+            qrUrl: p.qrCode ? qrRedirectUrl(p.qrCode) : null,
+          })),
+          total,
+          limit,
+          offset,
+        });
       } catch (err) {
         Errors.internal(res, err);
       }
@@ -754,6 +850,11 @@ export function registerOutreachMailRoutes(app: Express): void {
             delivered: sql<number>`count(*) filter (where ${mailShipmentPieces.status} = 'delivered')::int`,
             qrScans: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}), 0)::int`,
             callsReceived: sql<number>`coalesce(sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
+            // Measurement provenance (Wave B). Without these the client cannot
+            // tell "nobody scanned" from "nothing was ever measured", and a
+            // zero rendered as a result is a fabricated measurement.
+            piecesInstrumented: sql<number>`count(*) filter (where ${mailShipmentPieces.qrCode} is not null)::int`,
+            deliveryEventsReceived: sql<number>`count(*) filter (where ${mailShipmentPieces.printedAt} is not null or ${mailShipmentPieces.inTransitAt} is not null or ${mailShipmentPieces.deliveredAt} is not null or ${mailShipmentPieces.returnedAt} is not null)::int`,
           })
           .from(mailShipmentPieces)
           .where(eq(mailShipmentPieces.shipmentId, shipmentId));
@@ -793,6 +894,16 @@ export function registerOutreachMailRoutes(app: Express): void {
           callsAnswered,
           dealsOpened,
           dealsClosed,
+          // Wave B honesty envelope: which of the numbers above are MEASURED
+          // and which are simply not instrumented for this shipment.
+          measurement: {
+            qrTrackingEnabled: (pieceAgg?.piecesInstrumented ?? 0) > 0,
+            piecesInstrumented: pieceAgg?.piecesInstrumented ?? 0,
+            deliveryEventsReceived: pieceAgg?.deliveryEventsReceived ?? 0,
+            // Never measured, and honest about it — see the TODOs below.
+            callsAnsweredTracked: false,
+            dealAttributionTracked: false,
+          },
           costCentsTotal,
           costPerSentCents: safeDiv(costCentsTotal, sent),
           costPerDeliveredCents: safeDiv(costCentsTotal, delivered),
@@ -835,28 +946,38 @@ export function registerOutreachMailRoutes(app: Express): void {
         const anchorDate = new Date(anchor);
         const days: Array<{ day: string; qrScans: number; calls: number; cumulativeQr: number; cumulativeCalls: number }> = [];
 
-        // We approximate per-day response counts using piece.updatedAt as a
-        // proxy for "scan event posted". When a per-event log table lands,
-        // swap to that join. For now this gives a 30-day daily bucket of
-        // QR + call totals for pieces in this shipment.
+        // Wave B — real per-day scan buckets from mail_qr_scan_events, one row
+        // per HTTP hit on /r/:code with its own timestamp.
+        //
+        // This replaces the previous approximation, which bucketed each
+        // piece's ENTIRE lifetime scan total into whatever day the row was
+        // last touched (piece.updatedAt). That produced a curve that looked
+        // like a response timeline and measured nothing of the sort — a
+        // delivery webhook or any other write would teleport a piece's scans
+        // to a different day. Only COUNTED scans are charted; suppressed
+        // duplicates stay in the table for audit but never inflate the curve.
+        //
+        // `calls` stays 0 until inbound-call attribution writes
+        // inboundCallCount — no per-call event log exists, so there is
+        // nothing honest to chart per day yet.
         const rows = await db
           .select({
-            day: sql<string>`to_char(date_trunc('day', ${mailShipmentPieces.updatedAt}), 'YYYY-MM-DD')`,
-            qr: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}), 0)::int`,
-            calls: sql<number>`coalesce(sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
+            day: sql<string>`to_char(date_trunc('day', ${mailQrScanEvents.scannedAt}), 'YYYY-MM-DD')`,
+            qr: sql<number>`count(*)::int`,
           })
-          .from(mailShipmentPieces)
+          .from(mailQrScanEvents)
           .where(
             and(
-              eq(mailShipmentPieces.shipmentId, shipmentId),
-              gte(mailShipmentPieces.updatedAt, anchorDate),
-              lt(mailShipmentPieces.updatedAt, new Date(anchorDate.getTime() + 31 * 24 * 60 * 60 * 1000)),
+              eq(mailQrScanEvents.shipmentId, shipmentId),
+              eq(mailQrScanEvents.counted, true),
+              gte(mailQrScanEvents.scannedAt, anchorDate),
+              lt(mailQrScanEvents.scannedAt, new Date(anchorDate.getTime() + 31 * 24 * 60 * 60 * 1000)),
             ),
           )
-          .groupBy(sql`date_trunc('day', ${mailShipmentPieces.updatedAt})`);
+          .groupBy(sql`date_trunc('day', ${mailQrScanEvents.scannedAt})`);
 
         const byDay = new Map<string, { qr: number; calls: number }>();
-        for (const r of rows) byDay.set(r.day, { qr: r.qr, calls: r.calls });
+        for (const r of rows) byDay.set(r.day, { qr: r.qr, calls: 0 });
 
         let cumQr = 0;
         let cumCalls = 0;
@@ -1043,6 +1164,7 @@ export function registerOutreachMailRoutes(app: Express): void {
             deliveredAt: mailShipmentPieces.deliveredAt,
             qrScanCount: mailShipmentPieces.qrScanCount,
             inboundCallCount: mailShipmentPieces.inboundCallCount,
+            qrCode: mailShipmentPieces.qrCode,
           })
           .from(mailShipmentPieces)
           .where(
@@ -1070,6 +1192,9 @@ export function registerOutreachMailRoutes(app: Express): void {
           "delivered_at",
           "qr_scan_count",
           "inbound_call_count",
+          // Blank when the piece carried no printed QR: that row's scan count
+          // is "not measured", not "measured as zero".
+          "qr_code",
         ].join(",");
 
         const body = rows
@@ -1083,6 +1208,7 @@ export function registerOutreachMailRoutes(app: Express): void {
               esc(r.deliveredAt ? new Date(r.deliveredAt).toISOString() : ""),
               esc(r.qrScanCount),
               esc(r.inboundCallCount),
+              esc(r.qrCode),
             ].join(","),
           )
           .join("\n");

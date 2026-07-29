@@ -29,6 +29,10 @@ import {
   updateHandoffChecklist,
   completeHandoff,
 } from "./services/dealHandoffService";
+// Wave B "Wire the engine": deal automations never ran because nothing emitted
+// deal.created / deal.stage_changed. Both emitters are fire-and-forget and
+// no-op unless the status genuinely changed — see workflowEventEmitters.ts.
+import { emitDealCreated, emitDealStageChanged } from "./services/dealEvents";
 
 // F-D39: small helper used by the due-diligence-item routes below to resolve
 // `(itemId, orgId) → item` only when the item's parent property belongs to
@@ -471,6 +475,10 @@ export function registerDealRoutes(app: Express): void {
         return newDeal;
       });
 
+      // Wave B — deal.created workflow trigger. Fire-and-forget: an automation
+      // failure must never fail the deal write that just committed.
+      emitDealCreated(org.id, deal);
+
       // Trigger async enrichment if deal has a propertyId (non-blocking)
       if (deal.propertyId) {
         triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
@@ -551,6 +559,11 @@ export function registerDealRoutes(app: Express): void {
       }
 
       const deal = await storage.updateDeal(dealId, validated, undefined, org.id);
+
+      // Wave B — deal.stage_changed. `existingDeal` is the real pre-image, so
+      // previousData carries the honest prior stage. No-ops emit nothing: the
+      // helper compares statuses and returns early when they match.
+      emitDealStageChanged(org.id, existingDeal, deal);
 
       // Outcome loop (S2c): a deal reaching a terminal status feeds the LCS
       // calibration loop automatically. This was previously reachable only
@@ -2225,6 +2238,13 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
 
       const deal = await storage.updateDeal(dealId, { status: stage }, undefined, org.id);
       if (!deal) return Errors.notFound(res, "Deal");
+
+      // Wave B — this is the Kanban drag / keyboard-move path (client
+      // `updateDealStage` → PATCH /api/deals/:id/stage), not just the deal
+      // form. It is the most common way a stage actually changes, so the
+      // trigger has to fire from here too.
+      emitDealStageChanged(org.id, existingDeal, deal);
+
       res.json(deal);
     } catch (err: any) {
       Errors.badRequest(res, err.message || "Failed to update stage");
@@ -2256,7 +2276,31 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       if (!updates || typeof updates !== "object") {
         return Errors.badRequest(res, "updates must be an object");
       }
+
+      // Wave B — a bulk stage move is N real transitions, one per deal. Only
+      // pay for the pre-image read when `status` is actually part of the
+      // update; rows whose status is unchanged emit nothing. A pre-image read
+      // failure degrades to "no events" and never fails the bulk write.
+      const bulkStatus = typeof updates.status === "string" ? updates.status : null;
+      let beforeDeals: Array<Awaited<ReturnType<typeof storage.getDeal>>> = [];
+      if (bulkStatus) {
+        try {
+          const numericIds = ids.map((id: unknown) => Number(id)).filter((id: number) => Number.isInteger(id));
+          beforeDeals = await Promise.all(numericIds.map((id: number) => storage.getDeal(org.id, id)));
+        } catch (err) {
+          logger.warn("Bulk deal stage pre-image read skipped (non-fatal)", {
+            metadata: { orgId: org.id, error: err instanceof Error ? err.message : String(err) },
+          });
+        }
+      }
+
       const updatedCount = await storage.bulkUpdateDeals(org.id, ids, updates);
+
+      for (const before of beforeDeals) {
+        if (!before) continue;
+        emitDealStageChanged(org.id, before, { ...before, status: bulkStatus });
+      }
+
       res.json({ updatedCount });
     } catch (err: any) {
       Errors.internal(res, err instanceof Error ? err : new Error("Failed to bulk update deals"));
@@ -2450,6 +2494,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       }
 
       const deal = await storage.updateDeal(dealId, { status: nextStatus }, undefined, orgId);
+
+      // Wave B — the swipe/advance path is a stage transition like any other.
+      emitDealStageChanged(orgId, existingDeal, deal);
 
       const user = req.user as any;
       const userId = user?.id;

@@ -2,6 +2,9 @@ import { z } from "zod";
 import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes } from "@shared/schema";
 import { storage } from "../storage";
 import { db } from "../db";
+// Wave B "Wire the engine" — CSV/bulk imports are a lead-creation path, so
+// they must fire lead.created just like the single-create route does.
+import { emitLeadCreated } from "./leadEvents";
 
 export interface ImportResult {
   totalRows: number;
@@ -425,12 +428,27 @@ export async function importLeads(
         chunk.map((c) => ({ ...c.data, ...c.extras, organizationId }))
       );
       result.successCount += created.length;
+      // VOLUME NOTE (Wave B): the workflow engine's event contract is
+      // per-entity — `emitLeadEvent` takes a single leadId and there is no
+      // batch/aggregate lead event, and no pre-existing batching convention
+      // for workflow events anywhere in the engine. So a 50K-row import
+      // enqueues 50K events. That is bounded and safe by construction:
+      // `workflowEngine.emit()` pushes onto an in-process queue drained
+      // SERIALLY by a single `processQueue` loop, off the request path, and
+      // `getActiveWorkflowsByTrigger` returns [] for orgs with no
+      // lead.created workflow — so the cost for the common case is one
+      // indexed query per row, and the import response is never blocked.
+      // If import-scale fan-out ever becomes a problem, the fix belongs in
+      // the engine (a batch event or per-org coalescing), not here — do NOT
+      // silently drop per-lead events, that would make the trigger lie again.
+      for (const lead of created) emitLeadCreated(organizationId, lead);
     } catch {
       // If batch fails, fall back to individual inserts for this chunk
       for (const item of chunk) {
         try {
-          await storage.createLead({ ...item.data, ...item.extras, organizationId });
+          const single = await storage.createLead({ ...item.data, ...item.extras, organizationId });
           result.successCount++;
+          emitLeadCreated(organizationId, single);
         } catch (error) {
           result.errorCount++;
           result.errors.push({
@@ -1285,6 +1303,9 @@ export async function importNotesFromCSV(
           source: "import",
         });
         borrowerId = newLead.id;
+        // Wave B — note import creates a real borrower lead; that is a lead
+        // creation like any other and must fire the trigger.
+        emitLeadCreated(organizationId, newLead);
       }
 
       await storage.createNote({

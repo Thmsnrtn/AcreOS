@@ -40,3 +40,71 @@ publishes actual indemnification.
 The scrub seam (service + schema + gate wiring + tests) already exists and is
 vendor-agnostic. Once the founder confirms a vendor and provides an API key,
 wiring is a provider-adapter task; cold SMS stays OFF until then.
+
+## Decision — 2026-07-29: **Searchbug**
+
+Founder decision. Rationale is the recommendation above: pay-as-you-go with no
+subscription, a free API test account, and federal/state DNC + litigators + the
+FCC Reassigned Numbers Database — matching launch volume, where TCPA Litigator
+List's cheapest API tier ($299/mo for 300K scrubs) would be ~99% unused
+capacity.
+
+### What shipped
+
+`server/services/compliance/searchbugDncProvider.ts` — a real adapter registered
+as `searchbug` alongside `fixture` in the existing seam
+(`server/services/compliance/dncScrub.ts`). Select it with
+`DNC_SCRUB_PROVIDER=searchbug`.
+
+**Endpoint** (verified 2026-07-29 against Searchbug's published integration
+guide, [SearchBug_Identify_Phone_Number_API.pdf](https://www.searchbug.com/api/SearchBug_Identify_Phone_Number_API.pdf),
+linked from [identify-phone-number.aspx](https://www.searchbug.com/api/identify-phone-number.aspx)):
+
+```
+GET https://data.searchbug.com/api/search.aspx
+    ?CO_CODE=<AccountID>&PASS=<Password>&TYPE=api_dnc2&F=<Phone>&FORMAT=JSON
+```
+
+`TYPE=api_dnc2` is the "Do Not Call List and TCPA (only)" service. Auth is the
+`CO_CODE` + `PASS` pair as query params — Searchbug publishes no header scheme
+for this endpoint.
+
+**Credentials** (declared in `server/services/configManager.ts`):
+
+| Env var | Secret | Searchbug field |
+|---|---|---|
+| `SEARCHBUG_CO_CODE` | no | Account ID |
+| `SEARCHBUG_API_KEY` | yes | Account password (`PASS`) |
+
+**Verdict mapping.** `TCPA=YES` → `litigator` (always blocked, consent
+irrelevant). `DNC` != `"NO"` → `dnc_listed` (blocked without express consent);
+the raw code string (`FED`, two-letter state codes, `CPL`) is persisted as
+`listSource` for audit. `DNC=NO` + `TCPA=NO` → `clean`. Everything else →
+`error`.
+
+Note: the `CPL` (DNC Complainer) code arrives *inside* the `DNC` field per
+Searchbug's own definition, so it maps to `dnc_listed`, which express consent
+can override. Searchbug describes complainers as people who "have complained but
+have not yet sent demand letters or sued" — not litigators. Escalating `CPL` to
+always-block would be a policy invention; it remains a founder call.
+
+**Not wired:** the FCC Reassigned Numbers Database is a separate Searchbug
+service type (`TYPE=api_rnd`) and a separate verdict class the seam's status
+enum cannot express. Deliberately out of scope rather than silently folded into
+`dnc_listed`.
+
+### No key yet — how it degrades
+
+The founder has not provisioned a key. The adapter **never** reports `clean` for
+a number it did not get a verdict on. Missing credentials, non-200, timeout,
+malformed body, missing `DNC`/`TCPA` field — all resolve to `error`, the seam's
+"UNAVAILABLE / not checked" verdict, which `evaluateDncGate` fails **closed** for
+lead-matched marketing traffic.
+
+One seam change was required to make that true: `getConfiguredDncProvider()`
+previously returned `null` when a *selected* adapter lacked credentials, which
+collapsed into the inert "no vendor selected" state and allowed everything.
+Selecting a vendor and then losing its key is not the same as never selecting
+one, so a selected-but-uncredentialed adapter now stands and returns `error` on
+every scrub. Unset / `none` / `off` / an unknown name still mean inert, exactly
+as before.

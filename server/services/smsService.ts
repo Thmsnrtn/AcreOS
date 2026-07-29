@@ -191,11 +191,23 @@ export const smsService = new SmsService();
  *     litigator numbers block even with consent, DNC-listed numbers block
  *     without express consent, and both traffic classes (lead-matched and
  *     unmatched) get scrubbed. See services/compliance/dncScrub.ts.
+ *   • CONTACT-FREQUENCY cap (2026-07-29) — layered LAST, after consent,
+ *     quiet hours and DNC have all passed. The fatigue detector has always
+ *     computed a per-lead `suppress` verdict that nothing honored; this is
+ *     where it is honored. Frequency is only ever an ADDITIONAL refusal —
+ *     it can never allow a send an earlier gate refused, because it is only
+ *     reached when every earlier gate already said yes. Lead-matched
+ *     (marketing) traffic only; transactional/customer SMS never reaches it.
+ *     See services/compliance/contactFrequency.ts.
+ *
+ * The gate returns the matched lead id on success so the caller can record
+ * the touch AFTER the carrier actually accepted the message — a refused or
+ * failed send must never land in the touch ledger.
  */
 async function tcpaGateForRecipient(
   organizationId: number,
   to: string,
-): Promise<{ allowed: boolean; reason?: string }> {
+): Promise<{ allowed: boolean; reason?: string; leadId?: number }> {
   const last10 = to.replace(/\D/g, "").slice(-10);
   if (last10.length < 7) return { allowed: true }; // short codes / malformed — carrier will reject
   try {
@@ -230,7 +242,17 @@ async function tcpaGateForRecipient(
       hasConsent: true,
     });
     if (!dnc.allowed) return { allowed: false, reason: dnc.reason };
-    return { allowed: true };
+    // LAST: contact-frequency cap. Consent + quiet hours + DNC have all
+    // passed; this refuses the send that would exceed what the fatigue
+    // detector already flags as too much.
+    const { frequencyGateForLead, describeFrequencySkip } = await import(
+      "./compliance/contactFrequency"
+    );
+    const frequency = await frequencyGateForLead(organizationId, matched.id);
+    if (!frequency.allowed) {
+      return { allowed: false, reason: describeFrequencySkip(frequency), leadId: matched.id };
+    }
+    return { allowed: true, leadId: matched.id };
   } catch (err) {
     logger.error(
       "[SMS] TCPA gate could not verify consent — refusing send (fail closed)",
@@ -254,7 +276,7 @@ export async function sendOrgSMS(
   const gate = await tcpaGateForRecipient(organizationId, to);
   if (!gate.allowed) {
     logger.warn(`[SMS] send to lead blocked by TCPA gate: ${gate.reason}`, {
-      metadata: { organizationId },
+      metadata: { organizationId, leadId: gate.leadId },
     });
     return { success: false, error: `TCPA gate: ${gate.reason}` };
   }
@@ -268,6 +290,19 @@ export async function sendOrgSMS(
     });
     // Pillar 1.6 — record opex on successful real send.
     await postSmsCostToLedger(organizationId, result.sid);
+    // Contact-frequency ledger: record the touch ONLY now, after the carrier
+    // accepted it. Refused and failed sends never reach this line, so a
+    // skipped send can never inflate a lead's touch count (nor be mistaken
+    // for a delivered one).
+    if (gate.leadId) {
+      const { recordContactTouch } = await import("./compliance/contactFrequency");
+      await recordContactTouch({
+        organizationId,
+        leadId: gate.leadId,
+        channel: "sms",
+        messageId: result.sid,
+      });
+    }
     return { success: true, messageId: result.sid };
   } catch (err: any) {
     return { success: false, error: err?.message ?? "send failed" };

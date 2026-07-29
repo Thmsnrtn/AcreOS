@@ -49,10 +49,18 @@ function buildDocsUrl(opts?: ErrorOptions): string | undefined {
  * set by `correlationIdMiddleware` on `req.correlationId`; falls back to
  * the `X-Request-ID` response header (set by the same middleware) so this
  * works even on code paths that bypass the typed Express augmentation.
+ *
+ * `getHeader` is probed rather than assumed. This runs INSIDE the error
+ * responder, so a `res` that isn't a full Express response (a minimal handler
+ * double, a stream already torn down) would otherwise turn a clean 500 body
+ * into a TypeError thrown from the very code whose job is reporting the
+ * failure. Absent correlation id → the field is simply omitted; it is never
+ * invented.
  */
 function resolveRequestId(res: Response): string | undefined {
   const req = res.req as (Response["req"] & { correlationId?: string }) | undefined;
   if (req?.correlationId) return req.correlationId;
+  if (typeof res.getHeader !== "function") return undefined;
   const header = res.getHeader("X-Request-ID");
   if (typeof header === "string") return header;
   if (Array.isArray(header) && typeof header[0] === "string") return header[0];

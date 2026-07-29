@@ -25,7 +25,8 @@ import { realtimeAlertsService } from "../services/realtimeAlerts";
 import { wsServer } from "../websocket";
 import { jobSupervisor } from "../services/jobSupervisor";
 import { instanceId as _instanceId, trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
-import { startLeadNurturingJob, startCampaignOptimizationJob } from "./leadCampaignJobs";
+import { startLeadNurturingJob, startCampaignOptimizationJob } from "./leadCampaignJobs"; // S3 decomposition slice 1
+import { startWorkflowDelayResumeJob } from "./workflowDelayResume"; // S3 decomposition slice 2 (Wave B)
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 
 // Touch unused imports to keep them part of the symbol table (their
@@ -46,10 +47,6 @@ async function seedCountyGisEndpointsOnStartup() {
     log(`Failed to seed county GIS endpoints: ${err}`, 'parcel');
   }
 }
-
-// Lead-nurturing + campaign-optimization jobs live in ./leadCampaignJobs
-// (S3 decomposition slice 1). startLeadNurturingJob / startCampaignOptimizationJob
-// are imported at the top of this file and called from the orchestrator below.
 
 // Finance agent background job for delinquency detection and payment reminders
 async function processFinanceAgent() {
@@ -4171,6 +4168,9 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Start scheduled task runner background job (every minute)
   startScheduledTaskRunnerJob();
+
+  // Start workflow durable-delay resume job (every minute) — see ./workflowDelayResume
+  startWorkflowDelayResumeJob();
 
   // Start Pax scheduled tasks (every minute)
   startPaxSchedulerJob();

@@ -4,12 +4,20 @@
  * WHY THIS EXISTS (mature-machine.md §6.1, roadmap-2026-07 Founder decision #1)
  * ─────────────────────────────────────────────────────────────────────────────
  * Cold outreach to numbers on the federal/state Do-Not-Call registries — or to
- * known TCPA serial litigators — is live legal exposure. The VENDOR pick
- * (DNC.com, Contact Center Compliance, …) is a pending founder decision; this
- * module is the SEAM so that decision becomes a config change plus a ~50-line
- * adapter, not a build project. Until a vendor is configured the seam is
- * INERT: the gate allows everything exactly as before and reports
- * `scrubbed: false`.
+ * known TCPA serial litigators — is live legal exposure. This module is the
+ * SEAM so the vendor pick is a config change plus a small adapter, not a build
+ * project. VENDOR DECIDED 2026-07-29: **Searchbug** (see
+ * docs/company/dnc-vendor-comparison.md and ./searchbugDncProvider.ts).
+ *
+ * Two distinct "no verdict" states, and they are NOT the same thing:
+ *   • NO VENDOR SELECTED (`DNC_SCRUB_PROVIDER` unset/none/off/unknown) — the
+ *     seam is INERT: the gate allows everything exactly as before and reports
+ *     `scrubbed: false`. Nobody has claimed a scrub is happening.
+ *   • VENDOR SELECTED BUT UNUSABLE (named adapter is missing its credentials) —
+ *     the seam is NOT inert. It reports `error` (= "not checked"), because an
+ *     operator who set DNC_SCRUB_PROVIDER=searchbug believes numbers are being
+ *     scrubbed. Silently allowing everything in that state would be a scrub
+ *     that lies. A number that could not be checked is not a number that passed.
  *
  * POLICY (once a provider is configured)
  * ──────────────────────────────────────
@@ -17,7 +25,8 @@
  *                    plaintiff is not a lead, they are a lawsuit.
  *   • `dnc_listed` → block UNLESS the lead carries express TCPA consent
  *                    (express consent lawfully overrides registry listing).
- *   • scrub ERROR  → FAIL CLOSED for lead-matched marketing sends (a
+ *   • scrub ERROR  → i.e. UNAVAILABLE / NOT CHECKED. FAIL CLOSED for
+ *                    lead-matched marketing sends (a
  *                    marketing SMS with an unverifiable scrub is the same
  *                    class of risk as unverifiable consent — see
  *                    tcpaGateForRecipient); fail OPEN for unmatched /
@@ -37,12 +46,19 @@ import { and, desc, eq, gt } from "drizzle-orm";
 import { db } from "../../db";
 import { dncScrubResults, type DncScrubResult } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { searchbugDncProvider } from "./searchbugDncProvider";
 
 export const DNC_ENGINE_VERSION = "v1";
 
 /** Cache validity window. SAN convention is 31 days; default re-scrub at 30. */
 const DEFAULT_TTL_DAYS = 30;
 
+/**
+ * `error` is the seam's "UNAVAILABLE / NOT CHECKED" verdict. It is deliberately
+ * the only non-verdict an adapter may return: there is no third state between
+ * "checked and clean" and "could not check", so an adapter can never leak a
+ * failure through as a pass.
+ */
 export type DncScrubStatus = "clean" | "dnc_listed" | "litigator" | "error";
 
 export interface DncScrubOutcome {
@@ -90,16 +106,41 @@ export const fixtureDncProvider: DncScrubProvider = {
 
 // ─── Provider registry ────────────────────────────────────────────────────────
 // Vendor adapters register here as they are written. The founder's vendor
-// decision selects one via DNC_SCRUB_PROVIDER; anything unset/unknown means
-// "no scrub configured" and the seam stays inert.
+// decision (2026-07-29: Searchbug) selects one via DNC_SCRUB_PROVIDER; anything
+// unset/unknown means "no vendor selected" and the seam stays inert.
 const PROVIDERS: Record<string, DncScrubProvider> = {
   fixture: fixtureDncProvider,
+  searchbug: searchbugDncProvider,
 };
 
 /** Test seam / future vendor adapters. */
 export function registerDncProvider(provider: DncScrubProvider): void {
   PROVIDERS[provider.name] = provider;
 }
+
+/**
+ * Stand-in for a SELECTED adapter that cannot run (missing credentials).
+ *
+ * This is the single most important behavior in the seam. The tempting
+ * shortcut — "not configured, so return null and stay inert" — turns a
+ * deliberately-enabled scrub into a silent allow-all the moment a key is
+ * missing or rotated out. Instead the selection stands and every scrub returns
+ * `error` (= not checked), so `evaluateDncGate` applies the fail-closed posture
+ * for marketing traffic. Errors are never cached, so the real adapter takes
+ * over the instant the credential appears.
+ */
+function unavailableProviderFor(name: string, why: string): DncScrubProvider {
+  return {
+    name,
+    isConfigured: () => true,
+    async scrub() {
+      return { status: "error" as const, listSource: null, reason: why };
+    },
+  };
+}
+
+const UNCONFIGURED_LOG_INTERVAL_MS = 5 * 60 * 1000;
+let lastUnconfiguredLogAt = 0;
 
 export function getConfiguredDncProvider(): DncScrubProvider | null {
   const key = (process.env.DNC_SCRUB_PROVIDER || "").trim().toLowerCase();
@@ -111,9 +152,32 @@ export function getConfiguredDncProvider(): DncScrubProvider | null {
     });
     return null;
   }
-  return provider.isConfigured() ? provider : null;
+  if (!provider.isConfigured()) {
+    // Selected but unusable — surface it loudly and refuse to fake a pass.
+    // Throttled: this is checked on EVERY send, and a flooded log is an
+    // ignored log. The refusal itself is never throttled.
+    const now = Date.now();
+    if (now - lastUnconfiguredLogAt > UNCONFIGURED_LOG_INTERVAL_MS) {
+      lastUnconfiguredLogAt = now;
+      logger.error(
+        "[dncScrub] selected provider is missing its credentials — every scrub returns UNAVAILABLE (marketing sends fail closed)",
+        undefined,
+        { metadata: { provider: provider.name, __pii_safe: true } },
+      );
+    }
+    return unavailableProviderFor(
+      provider.name,
+      `provider "${provider.name}" is selected but not configured (missing credentials) — number NOT checked`,
+    );
+  }
+  return provider;
 }
 
+/**
+ * True when a vendor is SELECTED (the seam is live). Note this is deliberately
+ * true for a selected-but-uncredentialed adapter too — the seam is live and
+ * returning "not checked", which is very different from inert.
+ */
 export function isDncScrubConfigured(): boolean {
   return getConfiguredDncProvider() !== null;
 }

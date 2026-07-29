@@ -9220,9 +9220,30 @@ export type WorkflowAction = {
   };
 };
 
-// Workflow run statuses
-export const WORKFLOW_RUN_STATUSES = ["pending", "running", "completed", "failed"] as const;
+// Workflow run statuses.
+// "waiting" (Wave B "Wire the engine", 2026-07-29) means the run parked on a
+// durable `delay` step: it is NOT finished, NOT failed, and will be picked up
+// again by the workflow_delay_resume job once `resumeAt` passes. Before this,
+// `delay` slept in-process and silently capped at 60s, so a "wait 2 days" step
+// resumed after a minute and vanished entirely on restart.
+export const WORKFLOW_RUN_STATUSES = ["pending", "running", "waiting", "completed", "failed"] as const;
 export type WorkflowRunStatus = typeof WORKFLOW_RUN_STATUSES[number];
+
+/**
+ * Everything the engine needs to pick a parked run back up in a DIFFERENT
+ * process than the one that parked it. Persisted on the run row, so a deploy,
+ * crash, or machine swap mid-delay does not lose the workflow.
+ */
+export type WorkflowRunResumeState = {
+  /** Index of the `delay` action the run parked on. */
+  delayActionIndex: number;
+  /** Index of the action to execute when the run resumes. */
+  nextActionIndex: number;
+  /** Interpolation variables accumulated by the steps that already ran. */
+  variables: Record<string, any>;
+  /** The delay as configured, for the run log (not recomputed on resume). */
+  delayMinutes: number;
+};
 
 // Workflows table
 export const workflows = pgTable("workflows", {
@@ -9272,6 +9293,11 @@ export const workflowRuns = pgTable("workflow_runs", {
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   error: text("error"),
+  // Durable `delay` (Wave B). Set together with status "waiting"; both are
+  // cleared when the run resumes. Indexed for the due-sweep in
+  // server/jobs/workflowDelayResume.ts.
+  resumeAt: timestamp("resume_at"),
+  resumeState: jsonb("resume_state").$type<WorkflowRunResumeState>(),
 });
 
 export const insertWorkflowRunSchema = createInsertSchema(workflowRuns).omit({

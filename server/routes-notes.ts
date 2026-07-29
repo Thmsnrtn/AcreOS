@@ -40,6 +40,7 @@ import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { encrypt as encryptField } from "./services/fieldEncryption";
+import { emitPaymentEvent } from "./services/workflow-engine";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,159 @@ const recordPaymentSchema = z.object({
   referenceNumber: z.string().max(120).optional(),
   notes: z.string().max(2_000).optional(),
 });
+
+// ─── Workflow payment events (Wave B — "wire the engine") ────────────────────
+//
+// The note-servicing automations (payment receipt, dunning, partial-payment
+// handling, payoff) hang off the workflow engine's `payment.*` triggers.
+// `/api/notes/:id/payments` is the acquired-note ledger's ONLY writer
+// (the single `db.insert(notePayments)` in the repo), so this is the one and
+// only emit site for that ledger — exactly one event per posted payment row.
+//
+// Money-path discipline, in order:
+//   1. every ledger write commits first;
+//   2. the emit runs after, wrapped, and can never throw back into the
+//      request — a broken workflow must never fail, roll back, or re-post a
+//      payment. The caller gets `void`, never a rejection.
+//
+// `entityId` is 0 because `note_payments` is uuid-keyed while
+// `emitPaymentEvent`'s entityId is numeric; the real key travels as
+// `data.paymentId`.
+const UUID_KEYED_PAYMENT_ENTITY_ID = 0;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whole days between the period's due day and the day the payment posted.
+ *
+ * Derived ONLY from stored fields (`acquired_notes.payment_due_day` + the
+ * payment date), clamped to the month's length for short months. Returns
+ * `null` when the note carries no due day, so the event never publishes an
+ * invented number. 0 means on-time-or-early, never "unknown".
+ */
+export function daysLateForNotePayment(
+  paymentDate: string,
+  paymentDueDay: number | null | undefined,
+): number | null {
+  if (!paymentDueDay || !Number.isFinite(paymentDueDay)) return null;
+  const paid = new Date(`${String(paymentDate).slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(paid.getTime())) return null;
+  const year = paid.getUTCFullYear();
+  const month = paid.getUTCMonth();
+  const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const due = Date.UTC(year, month, Math.min(paymentDueDay, lastDayOfMonth));
+  const diffDays = Math.floor((paid.getTime() - due) / DAY_MS);
+  return diffDays > 0 ? diffDays : 0;
+}
+
+/** Everything the emit needs, read from rows that are already committed. */
+export interface PostedNotePayment {
+  organizationId: number;
+  noteId: string;
+  noteNumber: string | null;
+  payerName: string | null;
+  paymentId: string;
+  paymentType: string;
+  paymentMethod: string;
+  paymentDate: string;
+  principalCents: number;
+  interestCents: number;
+  escrowCents: number;
+  lateFeeCents: number;
+  unappliedCents: number;
+  /** acquired_notes.payment_amount_cents — the scheduled P&I for a period. */
+  scheduledPaymentAmountCents: number | null;
+  paymentDueDay: number | null;
+  remainingBalanceCents: number;
+  unappliedBalanceCents: number;
+  noteStatus: string;
+}
+
+/**
+ * Build the `data` bag workflow conditions match on and templates
+ * interpolate ({{amount}}, {{noteId}}, {{borrowerName}}, {{daysLate}}…).
+ *
+ * `amountCents` is the cash that moved this transaction:
+ * principal + interest + escrow + late fee + unapplied. That sums correctly
+ * for every payment type — a partial deposits into unapplied only, an
+ * `unapplied_apply` nets to 0 (funds were already held), and an NSF reversal
+ * nets negative.
+ *
+ * Fields we do not have (borrower email, on-time streak) are simply absent
+ * rather than guessed.
+ */
+export function buildNotePaymentEventData(p: PostedNotePayment): Record<string, any> {
+  const amountCents =
+    p.principalCents + p.interestCents + p.escrowCents + p.lateFeeCents + p.unappliedCents;
+  const scheduled = p.scheduledPaymentAmountCents;
+  const isReversal = p.paymentType === "nsf_reversal";
+  const isPartial =
+    p.paymentType === "partial" ||
+    (scheduled !== null && amountCents > 0 && amountCents < scheduled);
+  const isFullPayment =
+    scheduled === null || isReversal ? null : amountCents >= scheduled;
+
+  return {
+    source: "acquired_note_ledger",
+    // Identity
+    noteId: p.noteId,
+    noteNumber: p.noteNumber,
+    paymentId: p.paymentId,
+    borrowerName: p.payerName,
+    // Money
+    amountCents,
+    amount: amountCents / 100,
+    principalCents: p.principalCents,
+    interestCents: p.interestCents,
+    escrowCents: p.escrowCents,
+    lateFeeCents: p.lateFeeCents,
+    unappliedCents: p.unappliedCents,
+    scheduledPaymentAmountCents: scheduled,
+    // Shape of the payment — what conditions branch on
+    paymentType: p.paymentType,
+    paymentMethod: p.paymentMethod,
+    paymentDate: p.paymentDate,
+    isPartial,
+    isFullPayment,
+    isPayoff: p.paymentType === "payoff",
+    isReversal,
+    ...(isReversal ? { reason: "nsf_reversal" } : {}),
+    daysLate: daysLateForNotePayment(p.paymentDate, p.paymentDueDay),
+    // State after the payment
+    remainingBalanceCents: p.remainingBalanceCents,
+    remainingPrincipal: p.remainingBalanceCents / 100,
+    unappliedBalanceCents: p.unappliedBalanceCents,
+    noteStatus: p.noteStatus,
+  };
+}
+
+/**
+ * Fire-and-forget workflow emit for a payment that is ALREADY committed to
+ * the acquired-note ledger. Never throws.
+ *
+ * An NSF reversal is not a receipt — in servicing terms it is the canonical
+ * missed payment (the money bounced), so it fires `payment.missed` and every
+ * other type fires `payment.received`.
+ */
+export function emitNotePaymentWorkflowEvent(p: PostedNotePayment): void {
+  try {
+    const event = p.paymentType === "nsf_reversal" ? "payment.missed" : "payment.received";
+    emitPaymentEvent(
+      event,
+      p.organizationId,
+      UUID_KEYED_PAYMENT_ENTITY_ID,
+      buildNotePaymentEventData(p),
+    );
+  } catch (err) {
+    // Swallowed on purpose: the payment is posted and the response must not
+    // change because a workflow misbehaved.
+    logger.error(
+      "notes.recordPayment workflow emit failed (payment already posted)",
+      err instanceof Error ? err : undefined,
+      { organizationId: p.organizationId, noteId: p.noteId, paymentId: p.paymentId },
+    );
+  }
+}
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -917,6 +1071,14 @@ export function registerNoteRoutes(app: Express): void {
             currentBalanceCents: acquiredNotes.currentBalanceCents,
             unappliedBalanceCents: acquiredNotes.unappliedBalanceCents,
             status: acquiredNotes.status,
+            // Read for the workflow event payload only (same row, no extra
+            // query): note number + payer name identify the note in
+            // automations, due day + scheduled payment let conditions decide
+            // "was this late / partial?".
+            noteNumber: acquiredNotes.noteNumber,
+            payerName: acquiredNotes.payerName,
+            paymentAmountCents: acquiredNotes.paymentAmountCents,
+            paymentDueDay: acquiredNotes.paymentDueDay,
           })
           .from(acquiredNotes)
           .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
@@ -1025,6 +1187,29 @@ export function registerNoteRoutes(app: Express): void {
           .update(acquiredNotes)
           .set(updates)
           .where(eq(acquiredNotes.id, id));
+
+        // Ledger is committed (payment row + note balances). Only now do we
+        // tell the workflow engine. Fire-and-forget, never throws.
+        emitNotePaymentWorkflowEvent({
+          organizationId: orgId,
+          noteId: id,
+          noteNumber: note.noteNumber ?? null,
+          payerName: note.payerName ?? null,
+          paymentId: row.id,
+          paymentType: data.paymentType,
+          paymentMethod: data.paymentMethod,
+          paymentDate: data.paymentDate,
+          principalCents: data.principalCents,
+          interestCents: data.interestCents,
+          escrowCents: data.escrowCents,
+          lateFeeCents: data.lateFeeCents,
+          unappliedCents: data.unappliedCents,
+          scheduledPaymentAmountCents: note.paymentAmountCents ?? null,
+          paymentDueDay: note.paymentDueDay ?? null,
+          remainingBalanceCents: newCurrentBalance,
+          unappliedBalanceCents: newUnappliedBalance,
+          noteStatus: updates.status ?? note.status,
+        });
 
         return res.status(201).json({
           payment: row,

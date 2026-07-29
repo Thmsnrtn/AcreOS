@@ -4,7 +4,7 @@
   "pattern": "pgTable\\(",
   "globs": ["shared/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/*.spec.ts"],
-  "baselineCount": 752,
+  "baselineCount": 753,
   "direction": "down",
-  "lastBumpNote": "747 -> 752 on 2026-07-29: abTestOutcomes/marketWatchlist persistence tables (founder ruling #12(c) Wave A — 'Nothing lies': three shipped features ran on in-memory Maps that vanished on every restart). Deliberate bump per this ratchet's own procedure. The five: market_watchlist_entries, market_watchlist_alerts, outreach_ab_tests, outreach_ab_outcomes (T117 + T22), plus investor_verification_requests for the KYC state machine ported in the same wave."
+  "lastBumpNote": "752 -> 753 on 2026-07-29: mail_qr_scan_events (Wave B 'Wire the engine', migration 0211). The direct-mail attribution funnel was a capable-looking UI over permanent zeros — qr_scan_count was read in 8 places and written in 0, with no QR generation and no scan endpoint. The rollup column alone cannot answer 'why is this number what it is', and a QR redirect that silently swallows bot/prefetch hits without recording them is just a different kind of unaccountable number, so the scan EVENTS (counted and deliberately-not-counted alike, each with a reason) get a table. Everything else in that migration is additive columns/indexes on existing tables. Deliberate bump per this ratchet's own procedure. PRIOR NOTE — 747 -> 752 on 2026-07-29: abTestOutcomes/marketWatchlist persistence tables (founder ruling #12(c) Wave A — 'Nothing lies': three shipped features ran on in-memory Maps that vanished on every restart). Deliberate bump per this ratchet's own procedure. The five: market_watchlist_entries, market_watchlist_alerts, outreach_ab_tests, outreach_ab_outcomes (T117 + T22), plus investor_verification_requests for the KYC state machine ported in the same wave."
 }

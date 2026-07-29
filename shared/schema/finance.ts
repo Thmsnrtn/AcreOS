@@ -14,6 +14,7 @@ import {
   integer,
   bigint,
   bigserial,
+  boolean,
   timestamp,
   varchar,
   jsonb,
@@ -180,6 +181,13 @@ export const trackingNumberAssignments = pgTable("tracking_number_assignments", 
   campaignId: integer("campaign_id"),
   // Provider that owns the underlying phone number ("twilio" | "telnyx" | "bandwidth").
   provider: text("provider").notNull(),
+  // Wave B — direct-mail attribution. `campaignId` refers to a marketing
+  // campaign; a mail SHIPMENT lives in a different namespace, so it gets its
+  // own nullable pointer rather than being crammed into campaignId (which
+  // would silently mis-attribute inbound calls to a campaign with the same
+  // numeric id). Set at mail-queue time by
+  // assignTrackingNumberForMailShipment(); NULL for every non-mail assignment.
+  mailShipmentId: integer("mail_shipment_id"),
   assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull(),
   // When set, the number is no longer attributing inbound to this org/campaign.
   releasedAt: timestamp("released_at", { withTimezone: true }),
@@ -193,6 +201,9 @@ export const trackingNumberAssignments = pgTable("tracking_number_assignments", 
   index("tracking_number_assignments_number_released_idx").on(table.number, table.releasedAt),
   // Org timeline lookup.
   index("tracking_number_assignments_org_assigned_idx").on(table.organizationId, table.assignedAt),
+  // "Does this mail shipment already own a tracking number?" — the queue path
+  // reuses an existing active assignment rather than renting a second number.
+  index("tracking_number_assignments_mail_shipment_idx").on(table.mailShipmentId),
 ]);
 
 export type TrackingNumberAssignment = typeof trackingNumberAssignments.$inferSelect;
@@ -386,14 +397,68 @@ export const mailShipmentPieces = pgTable("mail_shipment_pieces", {
   returnedAt: timestamp("returned_at", { withTimezone: true }),
   qrScanCount: integer("qr_scan_count").notNull().default(0),
   inboundCallCount: integer("inbound_call_count").notNull().default(0),
+  // Wave B — the per-piece QR short code actually PRINTED on this piece.
+  // Minted at mail-queue time (see server/services/mail/qrCodes.ts): an
+  // HMAC-signed, opaque, per-piece token that the public `/r/:code` redirect
+  // resolves back to exactly this row. NULL means the piece predates QR
+  // instrumentation — the UI must say "not instrumented", never "0 scans",
+  // because an uninstrumented piece was never measured.
+  qrCode: text("qr_code"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("mail_shipment_pieces_shipment_idx").on(table.shipmentId),
   index("mail_shipment_pieces_org_status_idx").on(table.organizationId, table.status),
   index("mail_shipment_pieces_lead_idx").on(table.leadId),
+  // Public redirect lookup: `WHERE qr_code = $1`. Unique so a code can never
+  // resolve to two pieces (which would make attribution ambiguous).
+  uniqueIndex("mail_shipment_pieces_qr_code_uidx").on(table.qrCode),
+  // Provider-event ingest lookup (Lob webhook → piece).
+  index("mail_shipment_pieces_provider_piece_idx").on(table.providerPieceId),
 ]);
 
 export type MailShipmentPiece = typeof mailShipmentPieces.$inferSelect;
 export type InsertMailShipmentPiece = typeof mailShipmentPieces.$inferInsert;
+
+// ────────────────────────────────────────────────────────────────────────────
+// Wave B — QR scan events (the measured half of direct-mail attribution).
+//
+// `mail_shipment_pieces.qr_scan_count` is a rollup; THIS table is the
+// evidence behind it. One row per HTTP hit on `/r/:code`, including the hits
+// we deliberately do NOT count (bot prefetch, rapid repeat) — recorded with
+// `counted = false` + a reason so the funnel can always answer "why is this
+// number what it is" instead of asking anyone to trust a bare integer.
+//
+// Nothing here identifies the scanner. We store a truncated HMAC of
+// (ip + user-agent) purely so a repeat hit from the same client inside the
+// dedupe window can be recognised; the raw IP and UA are never persisted.
+// ────────────────────────────────────────────────────────────────────────────
+export const mailQrScanEvents = pgTable("mail_qr_scan_events", {
+  id: serial("id").primaryKey(),
+  pieceId: integer("piece_id")
+    .references(() => mailShipmentPieces.id, { onDelete: "cascade" })
+    .notNull(),
+  shipmentId: integer("shipment_id")
+    .references(() => mailShipments.id, { onDelete: "cascade" })
+    .notNull(),
+  organizationId: integer("organization_id")
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .notNull(),
+  scannedAt: timestamp("scanned_at", { withTimezone: true }).defaultNow().notNull(),
+  // Truncated HMAC of (client ip + user agent). NOT reversible to an IP.
+  clientFingerprint: text("client_fingerprint"),
+  // Did this hit increment qr_scan_count?
+  counted: boolean("counted").notNull().default(true),
+  // Why not, when counted = false: "duplicate_window" | "prefetch" | "bot".
+  suppressedReason: text("suppressed_reason"),
+}, (table) => [
+  // Dedupe lookup: most recent counted hit for (piece, fingerprint).
+  index("mail_qr_scan_events_piece_fp_idx").on(table.pieceId, table.clientFingerprint, table.scannedAt),
+  // Response-timeline bucketing: per-shipment daily histogram of real scans.
+  index("mail_qr_scan_events_shipment_scanned_idx").on(table.shipmentId, table.scannedAt),
+  index("mail_qr_scan_events_org_scanned_idx").on(table.organizationId, table.scannedAt),
+]);
+
+export type MailQrScanEvent = typeof mailQrScanEvents.$inferSelect;
+export type InsertMailQrScanEvent = typeof mailQrScanEvents.$inferInsert;
 
