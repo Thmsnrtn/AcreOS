@@ -1,30 +1,29 @@
 /**
  * Preferences card — Settings → Appearance.
  *
- * Houses the two prototype-mandated user-level preferences that aren't
+ * Houses the prototype-mandated user-level preferences that aren't
  * theme/color:
  * 1. Sound effects toggle (HANDOFF §9 Tweaks "Sound on" → real setting,
  *    off by default per founder decisions)
- * 2. Replay guided tour button (HANDOFF §9 Tweaks "Replay guided tour"
- *    → real setting; per HANDOFF §7 wired to useTour().restart())
+ * 2. Add to Home Screen (PWA install path)
  *
- * Both consume the existing useSound() / useTour() hooks. When server
- * persistence lands behind those hooks (currently localStorage), this
- * card needs no change.
+ * The "Replay guided tour" row was removed 2026-07-29 with the use-tour
+ * stub: the hook only wrote localStorage state and no overlay component
+ * ever consumed it, so the button did nothing visible — a dead stub, not
+ * a tour. Re-running onboarding lives in Settings → Help & Tips
+ * ("Re-run onboarding"), which actually re-runs the setup wizard.
  */
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useSound } from "@/hooks/use-sound";
-import { useTour } from "@/hooks/use-tour";
 import { usePWA } from "@/hooks/use-pwa";
 import { SHOW_INSTALL_EVENT } from "@/components/pwa-install-prompt";
-import { Volume2, VolumeX, RotateCcw, AlertCircle, Smartphone, CheckCircle2 } from "lucide-react";
+import { Volume2, VolumeX, AlertCircle, Smartphone, CheckCircle2 } from "lucide-react";
 
 export function PreferencesCard() {
   const { enabled, reducedMotion, setEnabled } = useSound();
-  const tour = useTour();
   const { isInstalled, canInstall, isIOS } = usePWA();
   // Only surface the install row where install is actually possible: an app
   // already installed has nothing to offer, and desktop browsers without a
@@ -111,29 +110,6 @@ export function PreferencesCard() {
           </div>
         )}
 
-        <div className="border-t pt-6">
-          {/* Replay tour */}
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              <Label className="text-sm font-medium">Guided tour</Label>
-              <p className="text-xs text-muted-foreground mt-1">
-                {tour.dismissed || tour.stepsSeen.length > 0
-                  ? `You've seen ${tour.stepsSeen.length} of ${tour.stepIds.length} steps. Replay anytime.`
-                  : "A 60-second walkthrough of the daily-driver loop."}
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => tour.restart()}
-              data-testid="button-replay-tour"
-              className="shrink-0"
-            >
-              <RotateCcw className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
-              {tour.stepsSeen.length > 0 ? "Replay tour" : "Start tour"}
-            </Button>
-          </div>
-        </div>
       </CardContent>
     </Card>
   );

@@ -638,9 +638,16 @@ export default function TodayPage() {
               </div>
             </CardContent>
           </Card>
-          <GettingStartedChecklist />
         </div>
       )}
+
+      {/* ── Getting-started checklist (onboarding rebuild, 2026-07-29) ── */}
+      {/* Mounted UNCONDITIONALLY — not inside the empty-state branch. The
+          old mount made the checklist unreachable for any org with data,
+          so it never functioned as onboarding. The component self-hides
+          (returns null) once dismissed or genuinely complete, and shows
+          for skipped-onboarding users as their gentle path in. */}
+      <GettingStartedChecklist />
 
       {/* ── Welcome back (returning user, single card) ───────────────── */}
       {showWelcomeBack && (

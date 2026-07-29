@@ -1028,16 +1028,11 @@ export function registerOrganizationRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/onboarding/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      await onboardingService.completeOnboarding(org.id);
-      res.json({ success: true });
-    } catch (error: any) {
-      Errors.internal(res, error);
-    }
-  });
-  
+  // POST /api/onboarding/complete lives in server/routes-onboarding.ts — the
+  // single code path. A duplicate handler here was dead code (the onboarding
+  // router mounts at /api/onboarding before this function runs, so it always
+  // shadowed this one) and was removed; do not re-add it.
+
   const tipsSchema = z.object({
     step: z.number().int().min(0).optional(),
   });

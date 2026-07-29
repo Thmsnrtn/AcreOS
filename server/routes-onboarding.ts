@@ -20,41 +20,74 @@ import {
   isBusinessType,
   BUSINESS_TYPE_TO_INVESTOR_TYPE,
   type BusinessType,
+  type NoteRole,
 } from "@shared/models/persona-mapping";
 import { Errors } from "./utils/errors";
+import type { AuthenticatedRequest } from "./types/request";
+import { seedSampleDataForOrg } from "./services/onboarding/sampleSeeder";
 
 const router = Router();
 
-function getUser(req: Request) { return req.user; }
+const NOTE_ROLES: readonly NoteRole[] = ["invest", "originate", "service"];
+function isNoteRole(value: unknown): value is NoteRole {
+  return typeof value === "string" && (NOTE_ROLES as readonly string[]).includes(value);
+}
 
+// THE single POST /api/onboarding/complete code path. The old duplicate in
+// routes-organization.ts was removed — this router mounts at /api/onboarding
+// before registerOrganizationRoutes runs, so this handler always won anyway;
+// now it is the only one.
 router.post("/complete", async (req: Request, res: Response) => {
   try {
-    const user = getUser(req);
-    const org = req.organization;
+    const { user, organization: org } = req as AuthenticatedRequest;
 
     // Support both v1 (flat fields) and v2 (formData wrapper) formats
     const body = req.body || {};
     const formData = body.formData || body;
-    const businessType = formData.businessType || formData.investorType || body.businessType;
+
+    // businessType: validated against the SHARED 15-value registry (which
+    // includes subdivider — previously orphaned server-side). An explicitly
+    // provided invalid value is a 400, not a silent land_flipper fallback.
+    // The legacy v1 fallback of reading formData.investorType only applies
+    // when that value actually IS a businessType (it is usually the coarse
+    // land/notes/both fork, which must not be rejected).
+    const providedBusinessType = formData.businessType ?? body.businessType;
+    if (providedBusinessType !== undefined && providedBusinessType !== null && !isBusinessType(providedBusinessType)) {
+      return Errors.badRequest(res, `Unknown businessType: ${String(providedBusinessType)}`);
+    }
+    const businessType: BusinessType | undefined =
+      providedBusinessType ??
+      (isBusinessType(formData.investorType) ? formData.investorType : undefined);
+
     const orgName = formData.orgName || body.orgName;
     const inviteEmails = formData.inviteEmails || body.inviteEmails || [];
     const goals = formData.goals || body.goals || [];
+    // noteRole: previously read for persona derivation but DROPPED from the
+    // persisted onboardingData — a reset+re-run lost the originate/service
+    // fork. Persist it alongside businessType.
+    const rawNoteRole = formData.noteRole ?? body.noteRole;
+    const noteRole: NoteRole | undefined = isNoteRole(rawNoteRole) ? rawNoteRole : undefined;
 
-    // Store onboarding preferences before completing
-    const onboardingData = {
-      ...(org.onboardingData as any || {}),
-      businessType,
-      orgName,
+    // Store onboarding preferences before completing. Keys are only written
+    // when the request actually carries them — a re-run that omits
+    // businessType/noteRole must NOT clobber the stored values (the old code
+    // wrote `businessType: undefined`, which JSON-serialization dropped,
+    // silently losing the org's persisted type).
+    const existingData = (org.onboardingData as Record<string, unknown>) || {};
+    const onboardingData: Record<string, unknown> = {
+      ...existingData,
+      ...(businessType ? { businessType } : {}),
+      ...(noteRole ? { noteRole } : {}),
+      ...(orgName ? { orgName } : {}),
       inviteEmails: Array.isArray(inviteEmails) ? inviteEmails : [],
       goals: Array.isArray(goals) ? goals : [],
-      path: body.path,
+      ...(body.path ? { path: body.path } : {}),
       userName: user?.firstName || user?.email,
     };
 
     try {
       await storage.updateOrganization(org.id, {
-        onboardingData,
-        ...(businessType ? { businessType } : {}),
+        onboardingData: onboardingData as typeof org.onboardingData,
       });
     } catch (updateErr: any) {
       logger.warn("Non-fatal: failed to save onboarding data", { error: updateErr.message });
@@ -65,31 +98,53 @@ router.post("/complete", async (req: Request, res: Response) => {
     // catches the case where that call failed (offline, 401-recovery race,
     // or dropped by the Promise.allSettled) and the user is closing out the
     // wizard with users.persona still on its "land_investor" default and
-    // organizations.investorType never set. Derives all three from the stored
-    // businessType so the sidebar/checklist/vocabulary stay consistent. No-op
-    // when values already match.
+    // organizations.investorType never set. Derives all three from the
+    // request's businessType so the sidebar/checklist/vocabulary stay
+    // consistent. Runs ONLY when the request explicitly carries a
+    // businessType — completing a re-run without picking a type never
+    // changes persona.
     if (user?.id && businessType) {
       try {
         const investorChoice = formData.investorType || body.investorType;
-        const noteRole = formData.noteRole || body.noteRole;
-        const persona = derivePersona(businessType, investorChoice, noteRole);
+        const effectiveNoteRole =
+          noteRole ?? (isNoteRole(existingData.noteRole) ? existingData.noteRole : "invest");
+        const persona = derivePersona(businessType, investorChoice, effectiveNoteRole);
         await db
           .update(users)
           .set({ persona, updatedAt: new Date() })
           .where(eq(users.id, user.id));
-        if (isBusinessType(businessType)) {
-          await db
-            .update(organizations)
-            .set({ investorType: BUSINESS_TYPE_TO_INVESTOR_TYPE[businessType as BusinessType] })
-            .where(eq(organizations.id, org.id));
-        }
+        await db
+          .update(organizations)
+          .set({ investorType: BUSINESS_TYPE_TO_INVESTOR_TYPE[businessType] })
+          .where(eq(organizations.id, org.id));
       } catch (personaErr: any) {
         logger.warn("Non-fatal: failed to derive/persist persona+investorType", { error: personaErr.message });
       }
     }
 
+    // Opt-in sample data via the idempotent persona-aware seeder (replaces
+    // the old inline non-idempotent seeding that lived in completeOnboarding).
+    // `seedSampleData` defaults to true to preserve the prior behavior of
+    // /complete (which always seeded); clients opt OUT by sending false.
+    const seedFlag = body.seedSampleData ?? formData.seedSampleData;
+    const shouldSeed = seedFlag === undefined ? true : seedFlag === true;
+    let sampleData: { seeded: boolean; counts: Record<string, number> } | undefined;
+    if (shouldSeed) {
+      const storedBusinessType = existingData.businessType as string | undefined;
+      const seedBusinessType =
+        businessType ?? (isBusinessType(storedBusinessType) ? storedBusinessType : "land_flipper");
+      try {
+        sampleData = await seedSampleDataForOrg(String(org.id), seedBusinessType, {
+          userId: user?.id,
+        });
+      } catch (seedErr: any) {
+        // Sample data failure must not block completing onboarding.
+        logger.warn("Non-fatal: sample data seeding failed", { error: seedErr?.message });
+      }
+    }
+
     await onboardingService.completeOnboarding(org.id);
-    res.json({ success: true });
+    res.json({ success: true, ...(sampleData ? { sampleData } : {}) });
   } catch (err) {
     Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }
@@ -97,8 +152,7 @@ router.post("/complete", async (req: Request, res: Response) => {
 
 router.get("/status", async (req: Request, res: Response) => {
   try {
-    const user = getUser(req);
-    const org = req.organization;
+    const { organization: org } = req as AuthenticatedRequest;
     const status = await onboardingService.getOnboardingStatus(org.id);
     res.json(status);
   } catch (err) {
@@ -106,11 +160,21 @@ router.get("/status", async (req: Request, res: Response) => {
   }
 });
 
+// Skipping is honest: it marks onboarding complete with a `skipped: true`
+// marker in onboardingData, seeds NOTHING, and fabricates no progress —
+// no sample rows, no completedSteps, no persona changes.
 router.post("/skip", async (req: Request, res: Response) => {
   try {
-    const org = req.organization;
-    // onboardingService has no skipOnboarding; skipping marks onboarding
-    // complete for the org (org-scoped onboarding state).
+    const { organization: org } = req as AuthenticatedRequest;
+    const existingData = (org.onboardingData as Record<string, unknown>) || {};
+    const nextData: Record<string, unknown> = {
+      ...existingData,
+      skipped: true,
+      skippedAt: new Date().toISOString(),
+    };
+    await storage.updateOrganization(org.id, {
+      onboardingData: nextData as typeof org.onboardingData,
+    });
     await onboardingService.completeOnboarding(org.id);
     res.json({ skipped: true });
   } catch (err) {
