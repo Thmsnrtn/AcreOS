@@ -122,3 +122,26 @@ discovery engine (systematic discover→verify→license-review→seed toward
 vacancy, First Street, GreatSchools, U-Haul, PHMSA bulk, ND wells, OSM tile
 hotlinking, Stadia free tier) stay excluded; license-verified or it doesn't
 ship.
+
+---
+
+# Addendum — vertical completeness program, same date
+
+## 11. VERTICALS: BUILD ALL FULLY AND ACTIVATE ALL
+
+Ruling: every vertical already registered in the architecture (live, beta,
+waitlisted, or frozen — the set the landing page promises) is to be built
+to genuine completeness — per-persona onboarding, door content, domain
+models, services, vocabulary, intelligence, tests — AND activated: the
+founder EXPLICITLY RESCINDS the frozen vertical-pack checkout and the
+one-at-a-time conveyor activation gate. All verticals open for
+signup/purchase once their build passes the same honesty bar as the land
+wedge (no stub presented as live, refuse-not-fabricate everywhere).
+
+What this ruling does NOT change: "no NEW persona verticals" stays (this
+completes the registered set only); the five customer doors and four
+founder doors stay; vertical content lives behind existing doors; the
+marketplace (~25 customers) and public API (~50) ladder stays; all four
+hard-stops stay. Implementation ships as reviewed PRs, wave by wave, and
+any vertical that cannot honestly reach the bar ships gated with its gap
+stated rather than activated on hope.
