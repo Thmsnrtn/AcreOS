@@ -88,6 +88,15 @@ export type AchSetupRefusal =
   | "ach_capability_inactive"
   | "no_scheduled_amount"
   | "authorization_not_accepted"
+  // Server-issued authorization challenge (see
+  // services/borrower/autopayAuthorizationChallenge.ts). `_used` is the
+  // race-backstop twin of the route's pre-check: two simultaneous redemptions
+  // of one challenge collide on the unique index and the loser lands here.
+  // `_unavailable` means this deployment has no signing material, so no
+  // challenge can be issued or verified — refuse rather than fall back to
+  // trusting the client's word.
+  | "authorization_challenge_used"
+  | "authorization_challenge_unavailable"
   | "stripe_error";
 
 export interface AchSetupNote {
@@ -115,6 +124,14 @@ export interface StartAchMandateSetupInput {
   authorizationAccepted: boolean;
   /** The text the client actually rendered, echoed back for cross-checking. */
   displayedAuthorizationText?: string;
+  /**
+   * The single-use id of the server-issued challenge the caller redeemed. It is
+   * stored on the mandate under a UNIQUE index, so this value — not the
+   * caller's word — is what makes the authorization provable and non-replayable
+   * later. The route verifies and pre-checks it; passing it here is what
+   * actually CONSUMES it.
+   */
+  authorizationChallengeId?: string;
 }
 
 export type StartAchMandateSetupResult =
@@ -276,6 +293,7 @@ export async function startAchMandateSetup(
         agreedIpAddress: input.ipAddress,
         agreedUserAgent: input.userAgent,
         agreedByEmail: input.sessionEmail.toLowerCase(),
+        authorizationChallengeId: input.authorizationChallengeId ?? null,
         debitType: "recurring",
         maxAmountCents,
         frequency: "monthly",
@@ -293,6 +311,29 @@ export async function startAchMandateSetup(
         .from(achMandates)
         .where(eq(achMandates.setupReference, checkout.id));
       if (!existing) {
+        // Not the setup_reference index, then. The other unique index on this
+        // table is the authorization challenge — i.e. a concurrent request
+        // redeemed the same server-issued challenge and won. Single use is
+        // enforced by the index, so the loser creates NO mandate and says so
+        // instead of reporting a generic processor fault.
+        if (input.authorizationChallengeId) {
+          const [byChallenge] = await db
+            .select({ id: achMandates.id })
+            .from(achMandates)
+            .where(eq(achMandates.authorizationChallengeId, input.authorizationChallengeId));
+          if (byChallenge) {
+            logger.warn("[achMandateSetup] authorization challenge already consumed — no second mandate", {
+              noteId: note.id,
+              metadata: { existingMandateId: byChallenge.id },
+            });
+            return {
+              ok: false,
+              reason: "authorization_challenge_used",
+              message:
+                "This authorization step was already completed once. Please reload your portal to see your current bank setup — nothing was authorized twice and nothing was debited.",
+            };
+          }
+        }
         return {
           ok: false,
           reason: "stripe_error",

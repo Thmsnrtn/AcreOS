@@ -267,7 +267,6 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-title-partners.ts",
   "routes-title-search.ts",
   "routes-today.ts",
-  "routes-transaction-fees.ts",
   "routes-transparency.ts",
   "routes-ui-state.ts",
   "routes-underwriting-defaults.ts",

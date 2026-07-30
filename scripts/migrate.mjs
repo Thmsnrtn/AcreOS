@@ -8086,6 +8086,25 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "ach_debit_attempts_status_idx" ON "ach_debit_attempts" ("status")`,
   `CREATE INDEX IF NOT EXISTS "ach_debit_attempts_retry_idx" ON "ach_debit_attempts" ("next_retry_at")`,
   `CREATE INDEX IF NOT EXISTS "ach_debit_attempts_org_note_idx" ON "ach_debit_attempts" ("organization_id", "note_id")`,
+
+  // ── 0215 ach_mandates.authorization_challenge_id ──
+  // CodeQL HIGH (PR #259, "user-controlled bypass of security check"):
+  // POST /api/borrower/autopay/mandate gated the creation of a NACHA ACH debit
+  // authorization on `authorizationAccepted === true` plus an echo of the
+  // authorization text — both CLIENT-supplied, so a scripted client could
+  // assert consent no human gave. GET /api/borrower/autopay (the only endpoint
+  // that renders the text) now mints a 15-minute HMAC-signed challenge bound to
+  // (borrower session id, note id, authorization text version) with a random
+  // single-use id; the POST must redeem it and the id lands here. The UNIQUE
+  // index IS the single-use guard — a replay loses the INSERT rather than
+  // minting a second authorization, exactly as
+  // ach_debit_attempts_period_uidx is the double-charge guard. Nullable:
+  // mandates predating the gate have no challenge, and NULLs don't collide.
+  // No new table — the challenge is signed, not stored. Mirrors
+  // migrations/0215_ach_mandate_authorization_challenge.sql +
+  // shared/schema/ach-autopay.ts.
+  `ALTER TABLE "ach_mandates" ADD COLUMN IF NOT EXISTS "authorization_challenge_id" text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ach_mandates_authorization_challenge_uidx" ON "ach_mandates" ("authorization_challenge_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

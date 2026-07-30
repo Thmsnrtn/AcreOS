@@ -12,7 +12,7 @@
  * All tests drive the PURE derivation layer, so none of them needs
  * DATABASE_URL or a live database.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 
 import {
   deriveForm1098,

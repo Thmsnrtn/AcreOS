@@ -1,67 +1,37 @@
 /**
- * ACH return-code taxonomy (NACHA R01–R29) + the Actum Processing client.
+ * ACH return-code taxonomy (NACHA R01–R29) and the mapping from a processor's
+ * own failure codes onto it. Rail-agnostic; no processor client lives here.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * WAVE C ("Money moves", 2026-07-29) — what changed and why
+ * 2026-07-29 — "Be the rail, not the provider" (founder ruling)
  * ─────────────────────────────────────────────────────────────────────────
- * This file used to be a complete-looking ACH processor with THREE problems:
+ * This file used to also contain an Actum Processing HTTP client:
+ * `isActumConfigured` / `createActumPaymentProfile` / `chargeActumACH` /
+ * `runMonthlyActumPaymentBatch`, driven by a SINGLE platform-wide
+ * `ACTUM_MERCHANT_ID`. That shape makes AcreOS the merchant of record for
+ * every customer's borrower debits — customer money moving on AcreOS's own
+ * merchant account. The ruling forbids exactly that: any customer-managed
+ * money movement runs on the CUSTOMER's own connected processor account, or is
+ * routed out entirely. Only subscription payments TO AcreOS are payments
+ * AcreOS is a party to.
  *
- *  1. It had zero client UI and zero credentials. `ACTUM_MERCHANT_ID` /
- *     `ACTUM_API_KEY` are commented out in .env.example, no merchant account
- *     exists, and `processActumWebhook` had ZERO call sites — nothing in the
- *     repo could ever deliver Actum a return notification.
+ * The client was already dormant (no credentials anywhere, no merchant
+ * account, every entry point refusing after Wave C), and one of its mounted
+ * endpoints — `POST /api/actum/create-profile` — accepted RAW bank routing and
+ * account numbers into AcreOS's own request path. Both the routes
+ * (routes-elite-features.ts) and the client are deleted.
  *
- *  2. **It fabricated success when unconfigured.** `createActumPaymentProfile`
- *     returned `{ success: true, profileId: "test_profile_<ts>" }` and
- *     `chargeActumACH` returned `{ success: true, transactionId: "test_txn_
- *     <ts>", status: "pending" }` whenever the credentials were missing — i.e.
- *     always. A caller that posted a ledger row on `success: true` would have
- *     booked a payment for a debit that never left the building. That is the
- *     fabrication hard-stop, on the money path. Both fallbacks are deleted:
- *     an unconfigured rail now REFUSES, loudly, with a reason.
+ * What survives is the part that was always genuinely valuable and carries no
+ * custody: the NACHA return-code table, its retry classification, and the
+ * mapper from a processor's failure code onto it. The live borrower ACH rail
+ * is Stripe `us_bank_account` on the LENDER's own Stripe Connect account
+ * (`stripeAccount` header) — see server/services/achAutopay.ts and
+ * server/services/achMandateSetup.ts — and it classifies returns against this
+ * table. Bank details are collected directly into the lender's Stripe account;
+ * AcreOS stores last4 only.
  *
- *  3. `runMonthlyActumPaymentBatch` charged every autopay note with no
- *     due-date check, no idempotency key, no mandate check, and never wrote a
- *     `payments` row — so a rerun double-debited and nothing was recorded.
- *
- * The borrower ACH rail AcreOS actually runs is Stripe `us_bank_account` on
- * the lender's own Stripe Connect account — see server/services/achAutopay.ts
- * for the reasoning and the live implementation. What survives here is the
- * part that is genuinely rail-agnostic and genuinely valuable: the NACHA
- * return-code table, its retry classification, and a mapper from processor
- * failure codes onto it. `achAutopay` consumes those.
- *
- * The Actum HTTP client stays (a real merchant account is a plausible future
- * cost win) but is now honest: it refuses when unconfigured instead of
- * pretending, and the batch runner refuses outright rather than moving money
- * on a path with no idempotency and no ledger write.
- *
- * Requires (all currently unset): ACTUM_MERCHANT_ID, ACTUM_API_KEY, ACTUM_ENDPOINT
+ * No environment variables. No network calls. No money moves through here.
  */
-
-import { logger } from "../utils/logger";
-
-const ACTUM_ENDPOINT = process.env.ACTUM_ENDPOINT || "https://portal.actumprocessing.com/api/v1";
-
-/** True only when a real Actum merchant account is provisioned. */
-export function isActumConfigured(): boolean {
-  return !!(process.env.ACTUM_MERCHANT_ID && process.env.ACTUM_API_KEY);
-}
-
-export const ACTUM_NOT_CONFIGURED =
-  "Actum Processing is not configured (ACTUM_MERCHANT_ID / ACTUM_API_KEY unset). " +
-  "No ACH transaction was created. The live borrower ACH rail is Stripe us_bank_account — see server/services/achAutopay.ts.";
-
-function getActumHeaders(): HeadersInit {
-  const merchantId = process.env.ACTUM_MERCHANT_ID;
-  const apiKey = process.env.ACTUM_API_KEY;
-  if (!merchantId || !apiKey) throw new Error(ACTUM_NOT_CONFIGURED);
-  return {
-    "Content-Type": "application/json",
-    "X-Merchant-ID": merchantId,
-    "X-API-Key": apiKey,
-  };
-}
 
 // ============================================
 // ACH RETURN CODE CLASSIFICATION (rail-agnostic)
@@ -204,202 +174,3 @@ export function mapProcessorFailureToReturnCode(
   if (!mapped) return null;
   return classifyAchReturn(mapped);
 }
-
-// ============================================
-// PAYMENT PROFILE MANAGEMENT
-// ============================================
-
-export interface CreatePaymentProfileInput {
-  firstName: string;
-  lastName: string;
-  email: string;
-  routingNumber: string;
-  accountNumber: string;
-  accountType: "checking" | "savings";
-  bankName?: string;
-}
-
-export interface PaymentProfileResult {
-  success: boolean;
-  profileId?: string;
-  error?: string;
-}
-
-/**
- * Create an Actum payment profile.
- *
- * REFUSES when Actum is unconfigured. It previously returned a fabricated
- * `test_profile_<timestamp>` id with `success: true`, which a caller would
- * have stored on `notes.payment_account_id` as if a real bank instrument
- * existed behind it.
- */
-export async function createActumPaymentProfile(
-  input: CreatePaymentProfileInput,
-): Promise<PaymentProfileResult> {
-  if (!isActumConfigured()) {
-    logger.warn("[actum] createActumPaymentProfile refused — Actum not configured");
-    return { success: false, error: ACTUM_NOT_CONFIGURED };
-  }
-  try {
-    const resp = await fetch(`${ACTUM_ENDPOINT}/payment-profiles`, {
-      method: "POST",
-      headers: getActumHeaders(),
-      body: JSON.stringify({
-        first_name: input.firstName,
-        last_name: input.lastName,
-        email: input.email,
-        bank_routing_number: input.routingNumber,
-        bank_account_number: input.accountNumber,
-        bank_account_type: input.accountType,
-        bank_name: input.bankName,
-      }),
-    });
-
-    if (!resp.ok) {
-      const err = (await resp.json().catch(() => ({}))) as { message?: string };
-      return { success: false, error: err.message || `HTTP ${resp.status}` };
-    }
-
-    const data = (await resp.json()) as { profile_id?: string };
-    if (!data.profile_id) {
-      return { success: false, error: "Actum returned no profile_id" };
-    }
-    return { success: true, profileId: data.profile_id };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error("[actum] createActumPaymentProfile failed", err instanceof Error ? err : undefined);
-    return { success: false, error: message };
-  }
-}
-
-// ============================================
-// CHARGE A PAYMENT
-// ============================================
-
-export interface ChargeActumInput {
-  profileId: string;
-  amountCents: number;
-  description: string;
-  noteId: number;
-  orgId: number;
-  effectiveDate?: string; // YYYY-MM-DD, defaults to next business day
-  /**
-   * REQUIRED. Replayed to Actum so a crash between our attempt row and their
-   * response cannot mint a second debit. There is no default: a debit without
-   * an idempotency key is a debit that can double-charge.
-   */
-  idempotencyKey: string;
-}
-
-export interface ChargeResult {
-  success: boolean;
-  transactionId?: string;
-  status?: "pending" | "approved" | "declined" | "returned";
-  returnCode?: string;
-  error?: string;
-}
-
-/**
- * Submit an ACH debit to Actum.
- *
- * REFUSES when Actum is unconfigured. It previously returned
- * `{ success: true, transactionId: "test_txn_<ts>", status: "pending" }` —
- * a fabricated debit that a ledger writer would have booked as real money.
- */
-export async function chargeActumACH(input: ChargeActumInput): Promise<ChargeResult> {
-  if (!isActumConfigured()) {
-    logger.warn("[actum] chargeActumACH refused — Actum not configured", {
-      noteId: input.noteId,
-      orgId: input.orgId,
-    });
-    return { success: false, error: ACTUM_NOT_CONFIGURED };
-  }
-  if (!input.idempotencyKey) {
-    return { success: false, error: "idempotencyKey is required for an ACH debit" };
-  }
-  try {
-    const resp = await fetch(`${ACTUM_ENDPOINT}/transactions`, {
-      method: "POST",
-      headers: {
-        ...getActumHeaders(),
-        "Idempotency-Key": input.idempotencyKey,
-      },
-      body: JSON.stringify({
-        profile_id: input.profileId,
-        amount: input.amountCents,
-        description: input.description,
-        effective_date: input.effectiveDate,
-        reference: `note_${input.noteId}`,
-        idempotency_key: input.idempotencyKey,
-      }),
-    });
-
-    if (!resp.ok) {
-      const err = (await resp.json().catch(() => ({}))) as { message?: string };
-      return { success: false, error: err.message || `HTTP ${resp.status}` };
-    }
-
-    const data = (await resp.json()) as {
-      transaction_id?: string;
-      status?: ChargeResult["status"];
-      return_code?: string;
-    };
-    if (!data.transaction_id) {
-      return { success: false, error: "Actum returned no transaction_id" };
-    }
-    return {
-      success: data.status !== "declined" && data.status !== "returned",
-      transactionId: data.transaction_id,
-      status: data.status,
-      returnCode: data.return_code,
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error("[actum] chargeActumACH failed", err instanceof Error ? err : undefined, {
-      noteId: input.noteId,
-    });
-    return { success: false, error: message };
-  }
-}
-
-// ============================================
-// BATCH MONTHLY PAYMENT RUN — RETIRED
-// ============================================
-
-export interface BatchPaymentResult {
-  total: number;
-  submitted: number;
-  failed: number;
-  results: { noteId: number; status: "submitted" | "failed"; error?: string }[];
-}
-
-/**
- * RETIRED (Wave C). This ran a monthly ACH batch that:
- *   - selected every autopay note regardless of whether a payment was DUE,
- *   - carried no idempotency key, so a rerun re-debited every borrower,
- *   - checked no stored authorization (there was none to check),
- *   - and wrote NOTHING to the `payments` ledger, so a successful debit left
- *     no record and the balance never moved.
- *
- * It is kept as a refusal rather than deleted because
- * `POST /api/actum/batch-payment-run` (routes-elite-features.ts) still calls
- * it; a 200 with `submitted: 0` and an explicit reason is honest, whereas
- * deleting the export would 500 the route. The live autopay path is
- * `runAchAutopayCycle()` in server/services/achAutopay.ts.
- */
-export async function runMonthlyActumPaymentBatch(orgId: number): Promise<BatchPaymentResult> {
-  logger.warn(
-    "[actum] runMonthlyActumPaymentBatch refused — retired in favour of the mandate-backed, idempotent ACH autopay cycle",
-    { orgId },
-  );
-  return {
-    total: 0,
-    submitted: 0,
-    failed: 0,
-    results: [],
-  };
-}
-
-/** Human-readable reason the Actum batch runner refuses, for API responses. */
-export const ACTUM_BATCH_RETIRED_REASON =
-  "The Actum monthly batch runner is retired: it had no due-date check, no idempotency key, no stored borrower authorization, and never wrote to the payments ledger. Borrower autopay now runs through the mandate-backed ACH autopay cycle (server/services/achAutopay.ts).";

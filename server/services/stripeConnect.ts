@@ -1,8 +1,39 @@
+/**
+ * Stripe Connect — onboarding the ORG'S OWN processor, and charging on it.
+ *
+ * CUSTODY (founder ruling 2026-07-29, "be the rail, not the provider")
+ * ───────────────────────────────────────────────────────────────────────────
+ * Every charge created here is CUSTOMER money (a borrower's note payment, a
+ * cash sale, a down payment). It is a DIRECT charge on the org's own connected
+ * account — scoped with the `stripeAccount` header — so the org is merchant of
+ * record, the funds settle into the org's balance, and AcreOS takes nothing.
+ *
+ * Until 2026-07-29 `createPaymentIntent` built `transfer_data.destination`
+ * plus a 2.5% `application_fee_amount` with no `on_behalf_of`. That made
+ * AcreOS the settlement merchant on consumer mortgage payments, passed the
+ * money through AcreOS's balance, and skimmed a cut of it. Both the fee and
+ * the destination-charge shape are gone. `prepareCustomerMoneyCall` now
+ * asserts, at runtime, that neither can come back — see
+ * `server/services/customerMoneyRouting.ts` for the full reasoning.
+ *
+ * AcreOS-as-vendor billing (plans, seats, credits, packs, top-ups) is a
+ * DIFFERENT lane and is untouched by this: it lives in `stripeService.ts` /
+ * `routes-billing.ts` subscription paths and charges on AcreOS's own account,
+ * as it should. The only AcreOS-account calls in THIS file are account
+ * lifecycle (`accounts.create`, `accountLinks.create`, `accounts.retrieve`),
+ * which move no money.
+ */
+
 import Stripe from "stripe";
 import { storage } from "../storage";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
 import { STRIPE_API_VERSION } from "../stripeClient";
+import {
+  resolveOrgCardProcessor,
+  prepareCustomerMoneyCall,
+  type CustomerMoneyRefusal,
+} from "./customerMoneyRouting";
 
 function isStripeConfigured(): boolean {
   return !!process.env.STRIPE_SECRET_KEY;
@@ -16,6 +47,21 @@ function getStripeClient(): Stripe | null {
     apiVersion: STRIPE_API_VERSION,
     maxNetworkRetries: 3,
   });
+}
+
+/**
+ * Thrown by the legacy throwing wrappers when the org has no usable processor.
+ * Carries the typed reason so routes can answer honestly instead of mapping a
+ * substring of an error message.
+ */
+export class CustomerMoneyRefusedError extends Error {
+  constructor(
+    readonly reason: CustomerMoneyRefusal,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CustomerMoneyRefusedError";
+  }
 }
 
 export interface StripeConnectStatus {
@@ -181,9 +227,11 @@ export class StripeConnectService {
         ...(existing?.credentials || {}),
         stripeConnectAccountId: accountId,
       },
+      // No `stripeApplicationFeePercent`. AcreOS takes no cut of customer
+      // money (founder ruling 2026-07-29) — storing a fee percent here is
+      // what made the old 2.5% destination charge look sanctioned.
       settings: existing?.settings || {
         stripeConnectOnboardingComplete: false,
-        stripeApplicationFeePercent: 2.5,
       },
       lastValidatedAt: new Date(),
     });
@@ -222,6 +270,15 @@ export class StripeConnectService {
     await storage.deleteOrganizationIntegration(organizationId, "stripe_connect");
   }
 
+  /**
+   * A customer-money PaymentIntent on the ORG'S OWN account.
+   *
+   * Direct charge (`stripeAccount` header), no `application_fee_amount`, no
+   * `transfer_data`. The returned `client_secret` is only confirmable by
+   * Stripe.js initialised with `stripeAccount: <connectedAccountId>`, which is
+   * why `createCustomerMoneyPaymentIntent` (below) hands the account id back to
+   * the caller instead of leaving the client to guess it.
+   */
   async createPaymentIntent(
     organizationId: number,
     amount: number,
@@ -233,15 +290,42 @@ export class StripeConnectService {
       description?: string;
     }
   ): Promise<Stripe.PaymentIntent> {
-    const integration = await storage.getOrganizationIntegration(organizationId, "stripe_connect");
-    
-    if (!integration?.credentials?.stripeConnectAccountId) {
-      throw new Error("Stripe Connect account not configured");
-    }
+    const result = await this.createCustomerMoneyPaymentIntent(organizationId, amount, currency, metadata);
+    if (!result.ok) throw new CustomerMoneyRefusedError(result.reason, result.operatorMessage);
+    return result.paymentIntent;
+  }
 
-    const accountId = integration.credentials.stripeConnectAccountId;
-    const applicationFeePercent = integration.settings?.stripeApplicationFeePercent || 2.5;
-    const applicationFeeAmount = Math.round(amount * (applicationFeePercent / 100));
+  /**
+   * Refusal-returning form. Callers that can render a reason (routes) should
+   * use this; `createPaymentIntent` is the throwing wrapper kept for existing
+   * call sites.
+   */
+  async createCustomerMoneyPaymentIntent(
+    organizationId: number,
+    amount: number,
+    currency: string = "usd",
+    metadata: {
+      noteId?: number;
+      propertyId?: number;
+      paymentType: "note_payment" | "cash_sale" | "down_payment";
+      description?: string;
+    }
+  ): Promise<
+    | { ok: true; paymentIntent: Stripe.PaymentIntent; connectedAccountId: string }
+    | { ok: false; reason: CustomerMoneyRefusal; operatorMessage: string; connectPath: string }
+  > {
+    const routing = await resolveOrgCardProcessor(organizationId);
+    if (!routing.ok) {
+      logger.warn("Customer-money payment intent refused — org has no usable card processor", {
+        metadata: { organizationId, reason: routing.reason, paymentType: metadata.paymentType },
+      });
+      return {
+        ok: false,
+        reason: routing.reason,
+        operatorMessage: routing.operatorMessage,
+        connectPath: routing.connectPath,
+      };
+    }
 
     const paymentMetadata: Record<string, string> = {
       organizationId: String(organizationId),
@@ -254,17 +338,20 @@ export class StripeConnectService {
     if (!stripe) {
       throw new Error("Stripe is not configured. Please contact support to enable payment processing.");
     }
-    
-    return stripe.paymentIntents.create({
-      amount,
-      currency,
-      application_fee_amount: applicationFeeAmount,
-      transfer_data: {
-        destination: accountId,
-      },
-      metadata: paymentMetadata,
-      description: metadata.description,
-    });
+
+    const { params, options } = prepareCustomerMoneyCall(
+      "connect.customer_money.payment_intent",
+      {
+        amount,
+        currency,
+        metadata: paymentMetadata,
+        description: metadata.description,
+      } satisfies Stripe.PaymentIntentCreateParams,
+      routing.processor,
+    );
+
+    const paymentIntent = await stripe.paymentIntents.create(params, options);
+    return { ok: true, paymentIntent, connectedAccountId: routing.processor.accountId };
   }
 
   async createSetupIntent(
@@ -333,6 +420,20 @@ export class StripeConnectService {
         const integration = await this.findIntegrationByAccountId(account.id);
         if (integration) {
           await this.updateAccountStatus(integration.organizationId, account.id);
+        }
+        break;
+      }
+
+      // Borrower card payments are DIRECT charges on the lender's connected
+      // account (2026-07-29), so their `checkout.session.completed` now arrives
+      // here as a Connect event rather than on the platform endpoint. Without
+      // this branch the ledger row would silently never be written — the
+      // "built but unwired" defect this repo keeps repeating.
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if (session.metadata?.type === "borrower_portal_payment") {
+          const { WebhookHandlers } = await import("../webhookHandlers");
+          await WebhookHandlers.processBorrowerPortalPayment(session);
         }
         break;
       }
@@ -475,33 +576,83 @@ export class StripeConnectService {
     logger.error(`Failure reason: ${paymentIntent.last_payment_error?.message}`);
   }
 
+  /**
+   * A shareable payment link for a note payment, hosted BY STRIPE on the org's
+   * OWN connected account.
+   *
+   * Before 2026-07-29 this minted a real, chargeable PaymentIntent and returned
+   * `${APP_URL}/pay/<client_secret>` — a route that does not exist in
+   * `client/src/App.tsx`. So every "Generate payment link" click created a live
+   * chargeable intent and handed the operator a 404 to send a borrower. Two
+   * defects in one line: a dead link, and a dangling chargeable object.
+   *
+   * The fix is a real Stripe Payment Link created on the connected account.
+   * Stripe hosts it (`https://buy.stripe.com/…`), branded by the lender's own
+   * account, settling into the lender's own balance, with no AcreOS fee and no
+   * AcreOS-hosted page in the middle. Nothing is charged until the borrower
+   * actually pays, so an unused link leaves no chargeable object behind.
+   */
   async getPaymentLink(
     organizationId: number,
     noteId: number,
     amount: number
-  ): Promise<string> {
-    const integration = await storage.getOrganizationIntegration(organizationId, "stripe_connect");
-    
-    if (!integration?.credentials?.stripeConnectAccountId) {
-      throw new Error("Stripe Connect account not configured");
-    }
-
+  ): Promise<{ url: string; paymentLinkId: string }> {
     const note = await storage.getNote(organizationId, noteId);
     if (!note) {
       throw new Error("Note not found");
     }
 
-    const paymentIntent = await this.createPaymentIntent(organizationId, amount * 100, "usd", {
-      noteId,
-      paymentType: "note_payment",
-      description: `Payment for Note #${noteId}`,
-    });
+    const routing = await resolveOrgCardProcessor(organizationId);
+    if (!routing.ok) {
+      logger.warn("Customer-money payment link refused — org has no usable card processor", {
+        metadata: { organizationId, noteId, reason: routing.reason },
+      });
+      throw new CustomerMoneyRefusedError(routing.reason, routing.operatorMessage);
+    }
 
-    const baseUrl = process.env.REPLIT_DEV_DOMAIN 
-      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-      : process.env.APP_URL || "http://localhost:5000";
+    const stripe = getStripeClient();
+    if (!stripe) {
+      throw new Error("Stripe is not configured. Please contact support to enable payment processing.");
+    }
 
-    return `${baseUrl}/pay/${paymentIntent.client_secret}`;
+    const org = await storage.getOrganization(organizationId);
+    const lenderName = org?.name || "your lender";
+
+    // A Payment Link needs a Price, and both objects must live on the same
+    // (connected) account as the eventual charge.
+    const pricePrep = prepareCustomerMoneyCall(
+      "connect.customer_money.price",
+      {
+        currency: "usd",
+        unit_amount: Math.round(amount * 100),
+        product_data: { name: `Loan payment to ${lenderName} — Note #${noteId}` },
+      } satisfies Stripe.PriceCreateParams,
+      routing.processor,
+    );
+    const price = await stripe.prices.create(pricePrep.params, pricePrep.options);
+
+    const linkPrep = prepareCustomerMoneyCall(
+      "connect.customer_money.payment_link",
+      {
+        line_items: [{ price: price.id, quantity: 1 }],
+        metadata: {
+          organizationId: String(organizationId),
+          noteId: String(noteId),
+          paymentType: "note_payment",
+        },
+        payment_intent_data: {
+          metadata: {
+            organizationId: String(organizationId),
+            noteId: String(noteId),
+            paymentType: "note_payment",
+          },
+        },
+      } satisfies Stripe.PaymentLinkCreateParams,
+      routing.processor,
+    );
+    const link = await stripe.paymentLinks.create(linkPrep.params, linkPrep.options);
+
+    return { url: link.url, paymentLinkId: link.id };
   }
 }
 

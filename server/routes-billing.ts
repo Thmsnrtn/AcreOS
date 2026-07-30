@@ -953,6 +953,17 @@ export function registerBillingRoutes(app: Express): void {
     description: z.string().optional(),
   });
 
+  // ── CUSTOMER MONEY, not AcreOS revenue ────────────────────────────────
+  // The two endpoints below collect money that belongs to the ORG's own
+  // customers (a borrower's note payment, a cash sale, a down payment). Per
+  // the founder ruling of 2026-07-29 ("be the rail, not the provider") they
+  // charge on the ORG'S OWN connected account, AcreOS takes no fee, and no
+  // funds transit AcreOS's balance. An org with no connected processor is
+  // REFUSED with the reason and a route to connect one — never quietly
+  // charged onto the platform account. Everything else in this file
+  // (subscriptions, seats, credits, packs, top-ups, dunning) is
+  // AcreOS-as-vendor and is deliberately unchanged.
+
   api.post("/api/stripe/connect/payment-intent", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
@@ -962,23 +973,33 @@ export function registerBillingRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { amount, noteId, propertyId, paymentType, description } = parsed.data;
-      
-      const paymentIntent = await stripeConnectService.createPaymentIntent(
+
+      const result = await stripeConnectService.createCustomerMoneyPaymentIntent(
         org.id,
         Math.round(amount * 100),
         "usd",
         { noteId, propertyId, paymentType, description }
       );
-      
+
+      if (!result.ok) {
+        return Errors.badRequest(res, result.operatorMessage, {
+          reason: result.reason,
+          connectPath: result.connectPath,
+        });
+      }
+
       res.json({
-        clientSecret: paymentIntent.client_secret,
-        paymentIntentId: paymentIntent.id,
-        amount: paymentIntent.amount,
+        clientSecret: result.paymentIntent.client_secret,
+        paymentIntentId: result.paymentIntent.id,
+        amount: result.paymentIntent.amount,
+        // Required to confirm the intent: a direct charge's client secret is
+        // only usable by Stripe.js initialised with this account id.
+        connectedAccountId: result.connectedAccountId,
       });
     } catch (err: any) {
       logger.error("Stripe payment intent error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
-        return res.status(503).json({ message: err.message });
+        return Errors.serviceUnavailable(res, err.message);
       }
       Errors.internal(res, err);
     }
@@ -986,23 +1007,29 @@ export function registerBillingRoutes(app: Express): void {
 
   api.get("/api/stripe/connect/payment-link/:noteId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { stripeConnectService } = await import("./services/stripeConnect");
+      const { stripeConnectService, CustomerMoneyRefusedError } = await import("./services/stripeConnect");
       const org = req.organization;
       const noteId = Number(req.params.noteId);
-      
+
       const note = await storage.getNote(org.id, noteId);
       if (!note) {
         return Errors.notFound(res, "Note");
       }
-      
+
       const amount = Number(note.monthlyPayment);
-      const paymentLink = await stripeConnectService.getPaymentLink(org.id, noteId, amount);
-      
-      res.json({ paymentLink, amount });
+      try {
+        const link = await stripeConnectService.getPaymentLink(org.id, noteId, amount);
+        res.json({ paymentLink: link.url, paymentLinkId: link.paymentLinkId, amount });
+      } catch (refusal: any) {
+        if (refusal instanceof CustomerMoneyRefusedError) {
+          return Errors.badRequest(res, refusal.message, { reason: refusal.reason });
+        }
+        throw refusal;
+      }
     } catch (err: any) {
       logger.error("Stripe payment link error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
-        return res.status(503).json({ message: err.message });
+        return Errors.serviceUnavailable(res, err.message);
       }
       Errors.internal(res, err);
     }

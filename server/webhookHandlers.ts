@@ -1456,13 +1456,22 @@ export class WebhookHandlers {
 
       logger.info(`Borrower portal payment processed: Note ${note.id}, Amount: $${amount}, New Balance: $${newBalance}`);
 
-      // Send payment receipt email to borrower
+      // Send payment receipt email to borrower.
+      //
+      // WHO COLLECTED IT. The charge is a direct charge on the lender's own
+      // connected processor (founder ruling 2026-07-29, "be the rail, not the
+      // provider") — AcreOS never held this money and took no cut of it. The
+      // receipt says so, and names the lender when the org has a name on file;
+      // it degrades to "your lender" rather than inventing one.
       try {
         const { emailService } = await import('./services/emailService');
         const borrower = note.borrowerId ? await storage.getLead(note.organizationId, note.borrowerId) : null;
         const borrowerEmail = borrower?.email;
         if (borrowerEmail) {
           const nextDue = nextPaymentDate.toLocaleDateString();
+          const lenderOrg = await storage.getOrganization(note.organizationId);
+          const collector = lenderOrg?.name?.trim() || 'your lender';
+          const custodyLine = `This payment was collected by ${collector}. AcreOS is the software your lender uses — it doesn't hold your payment or take a share of it.`;
           await emailService.sendEmail({
             to: borrowerEmail,
             subject: `Payment Receipt — $${amount.toFixed(2)}`,
@@ -1471,13 +1480,15 @@ export class WebhookHandlers {
               <p>Thank you for your payment.</p>
               <ul>
                 <li><strong>Amount Paid:</strong> $${amount.toFixed(2)}</li>
+                <li><strong>Paid To:</strong> ${collector}</li>
                 <li><strong>Payment Date:</strong> ${new Date().toLocaleDateString()}</li>
                 <li><strong>Remaining Balance:</strong> $${newBalance.toFixed(2)}</li>
                 <li><strong>Next Payment Due:</strong> ${newBalance <= 0 ? 'Paid in full!' : nextDue}</li>
               </ul>
+              <p>${custodyLine}</p>
               <p>If you have questions about your account, please contact your lender.</p>
             `,
-            text: `Payment Receipt\n\nAmount Paid: $${amount.toFixed(2)}\nPayment Date: ${new Date().toLocaleDateString()}\nRemaining Balance: $${newBalance.toFixed(2)}\nNext Payment Due: ${newBalance <= 0 ? 'Paid in full!' : nextDue}`,
+            text: `Payment Receipt\n\nAmount Paid: $${amount.toFixed(2)}\nPaid To: ${collector}\nPayment Date: ${new Date().toLocaleDateString()}\nRemaining Balance: $${newBalance.toFixed(2)}\nNext Payment Due: ${newBalance <= 0 ? 'Paid in full!' : nextDue}\n\n${custodyLine}`,
           });
           logger.info(`[webhook] Payment receipt sent to ${borrowerEmail}`);
         }

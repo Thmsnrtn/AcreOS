@@ -37,6 +37,17 @@ import {
   buildAuthorizationText,
   scheduledDebitAmountCents,
 } from "./services/achAutopay";
+import {
+  mintAutopayAuthorizationChallenge,
+  claimAutopayAuthorizationChallenge,
+  AUTOPAY_CHALLENGE_TTL_SECONDS,
+} from "./services/borrower/autopayAuthorizationChallenge";
+import {
+  resolveOrgCardProcessor,
+  prepareCustomerMoneyCall,
+  customerMoneyReadOptions,
+  buildBorrowerCardCheckoutParams,
+} from "./services/customerMoneyRouting";
 import { isCategorySimulated } from "./utils/simulationMode";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -497,10 +508,18 @@ export function registerBorrowerRoutes(app: Express): void {
         borrower = await storage.getLead(note.organizationId, note.borrowerId);
       }
       
+      // The portal is AcreOS-branded but AcreOS collects nothing here — the
+      // lender does, on the lender's own processor (founder ruling
+      // 2026-07-29). The borrower is entitled to know whose money this is
+      // before they hand over a card, so the lender's name ships with the
+      // loan data and is rendered next to the pay button.
+      const lenderOrg = await storage.getOrganization(note.organizationId);
+
       res.json({
         note: { ...note, property },
         payments: notePayments,
         borrower: borrower ? { firstName: borrower.firstName, lastName: borrower.lastName } : null,
+        lenderName: lenderOrg?.name || null,
         sessionToken, // Also return in response for clients that prefer header-based auth
       });
     } catch (err) {
@@ -687,10 +706,24 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid payment amount");
       }
       
+      // WHOSE ACCOUNT THIS LANDS IN — the lender's own, or nobody's.
+      // Founder ruling 2026-07-29 ("be the rail, not the provider"): a
+      // borrower's mortgage payment is CUSTOMER money. It moves on the org's
+      // own connected processor, with no AcreOS cut and without transiting
+      // AcreOS's balance. A lender who has not connected one is refused with
+      // a reason — there is no platform fallback, ever.
+      const routing = await resolveOrgCardProcessor(note.organizationId);
+      if (!routing.ok) {
+        logger.warn("Borrower card payment refused — lender has no usable card processor", {
+          metadata: { noteId: note.id, organizationId: note.organizationId, reason: routing.reason },
+        });
+        return Errors.badRequest(res, routing.borrowerMessage, { reason: routing.reason });
+      }
+
       // Get Stripe client
       const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
-      
+
       // Get borrower info for customer description
       let borrowerName = "Borrower";
       let borrowerEmail = session.email;
@@ -701,38 +734,34 @@ export function registerBorrowerRoutes(app: Express): void {
           borrowerEmail = borrower.email || session.email;
         }
       }
-      
-      // Create checkout session for one-time payment
+
+      const org = await storage.getOrganization(note.organizationId);
+
+      // Create checkout session for one-time payment — a DIRECT charge on the
+      // lender's account (`stripeAccount`), so the lender is merchant of
+      // record and the funds never touch AcreOS.
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const stripeSession = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: `Loan Payment - Note #${note.id}`,
-              description: `Payment for ${borrowerName}`,
-            },
-            unit_amount: Math.round(paymentAmount * 100),
-          },
-          quantity: 1,
-        }],
-        mode: 'payment',
-        success_url: `${baseUrl}/portal/${note.accessToken}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/portal/${note.accessToken}?payment=cancelled`,
-        customer_email: borrowerEmail,
-        metadata: {
-          noteId: note.id.toString(),
-          accessToken: note.accessToken || '',
-          paymentAmount: paymentAmount.toString(),
-          type: 'borrower_portal_payment',
-        },
-      });
-      
+      const { params, options } = prepareCustomerMoneyCall(
+        "borrower.card.checkout.session",
+        buildBorrowerCardCheckoutParams({
+          noteId: note.id,
+          organizationId: note.organizationId,
+          lenderName: org?.name || "your lender",
+          borrowerName,
+          borrowerEmail,
+          amountCents: Math.round(paymentAmount * 100),
+          baseUrl,
+          accessToken: note.accessToken || "",
+          source: "session",
+        }),
+        routing.processor,
+      );
+      const stripeSession = await stripe.checkout.sessions.create(params, options);
+
       // Store the checkout session ID on the note for webhook verification
       await storage.updateNote(note.id, { pendingCheckoutSessionId: stripeSession.id }, note.organizationId);
 
-      res.json({ url: stripeSession.url, sessionId: stripeSession.id });
+      res.json({ url: stripeSession.url, sessionId: stripeSession.id, collectedBy: org?.name || null });
     } catch (err) {
       logger.error("Session-based portal payment error", err);
       Errors.internal(res, err);
@@ -771,10 +800,21 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid payment amount");
       }
       
+      // Same custody rule as the session-based path above — the deprecated
+      // endpoint is not a loophole. Customer money moves on the lender's own
+      // connected processor or it does not move.
+      const routing = await resolveOrgCardProcessor(note.organizationId);
+      if (!routing.ok) {
+        logger.warn("Borrower card payment refused (legacy token path) — lender has no usable card processor", {
+          metadata: { noteId: note.id, organizationId: note.organizationId, reason: routing.reason },
+        });
+        return Errors.badRequest(res, routing.borrowerMessage, { reason: routing.reason });
+      }
+
       // Get Stripe client
-      const { getUncachableStripeClient, getStripePublishableKey } = await import("./stripeClient");
+      const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
-      
+
       // Get borrower info for customer description
       let borrowerName = "Borrower";
       let borrowerEmail = undefined;
@@ -785,38 +825,33 @@ export function registerBorrowerRoutes(app: Express): void {
           borrowerEmail = borrower.email || undefined;
         }
       }
-      
-      // Create checkout session for one-time payment
+
+      const org = await storage.getOrganization(note.organizationId);
+
+      // Create checkout session for one-time payment — direct charge on the
+      // lender's account.
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: `Loan Payment - Note #${note.id}`,
-              description: `Payment for ${borrowerName}`,
-            },
-            unit_amount: Math.round(paymentAmount * 100), // Convert to cents
-          },
-          quantity: 1,
-        }],
-        mode: 'payment',
-        success_url: `${baseUrl}/portal/${accessToken}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/portal/${accessToken}?payment=cancelled`,
-        customer_email: borrowerEmail,
-        metadata: {
-          noteId: note.id.toString(),
+      const { params, options } = prepareCustomerMoneyCall(
+        "borrower.card.checkout.session.legacy",
+        buildBorrowerCardCheckoutParams({
+          noteId: note.id,
+          organizationId: note.organizationId,
+          lenderName: org?.name || "your lender",
+          borrowerName,
+          borrowerEmail,
+          amountCents: Math.round(paymentAmount * 100),
+          baseUrl,
           accessToken,
-          paymentAmount: paymentAmount.toString(),
-          type: 'borrower_portal_payment',
-        },
-      });
-      
+          source: "legacy_token",
+        }),
+        routing.processor,
+      );
+      const session = await stripe.checkout.sessions.create(params, options);
+
       // Store the checkout session ID on the note for webhook verification
       await storage.updateNote(note.id, { pendingCheckoutSessionId: session.id }, note.organizationId);
 
-      res.json({ url: session.url, sessionId: session.id });
+      res.json({ url: session.url, sessionId: session.id, collectedBy: org?.name || null });
     } catch (err) {
       logger.error("Portal payment error", err);
       Errors.internal(res, err);
@@ -838,12 +873,27 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.notFound(res, "loan");
       }
       
-      // Verify Stripe session
+      // Verify Stripe session — the charge lives on the LENDER'S account, so
+      // the retrieve must be scoped there too. An unscoped retrieve looks in
+      // AcreOS's account, finds nothing, and would tell a borrower who really
+      // paid that they hadn't.
+      const routing = await resolveOrgCardProcessor(note.organizationId);
+      if (!routing.ok) {
+        logger.warn("Borrower payment verification refused (legacy token path) — no lender processor to read from", {
+          metadata: { noteId: note.id, organizationId: note.organizationId, reason: routing.reason },
+        });
+        return Errors.badRequest(res, routing.borrowerMessage, { reason: routing.reason });
+      }
+
       const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
-      
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
-      
+
+      const session = await stripe.checkout.sessions.retrieve(
+        sessionId,
+        undefined,
+        customerMoneyReadOptions(routing.processor, "borrower.card.checkout.retrieve.legacy"),
+      );
+
       if (session.payment_status !== 'paid') {
         return Errors.badRequest(res, "Payment not completed");
       }
@@ -979,9 +1029,23 @@ export function registerBorrowerRoutes(app: Express): void {
       if (noteResults.length === 0) return Errors.notFound(res, "loan");
       const note = noteResults[0];
 
+      // The charge is a direct charge on the lender's connected account, so
+      // read it back from that account — never from AcreOS's.
+      const routing = await resolveOrgCardProcessor(note.organizationId);
+      if (!routing.ok) {
+        logger.warn("Borrower payment verification refused — no lender processor to read from", {
+          metadata: { noteId: note.id, organizationId: note.organizationId, reason: routing.reason },
+        });
+        return Errors.badRequest(res, routing.borrowerMessage, { reason: routing.reason });
+      }
+
       const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
-      const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
+      const stripeSession = await stripe.checkout.sessions.retrieve(
+        sessionId,
+        undefined,
+        customerMoneyReadOptions(routing.processor, "borrower.card.checkout.retrieve"),
+      );
 
       if (stripeSession.payment_status !== "paid") {
         return Errors.badRequest(res, "Payment not completed");
@@ -1182,12 +1246,42 @@ export function registerBorrowerRoutes(app: Express): void {
       // Skip the availability probe when the mandate is already armed — the
       // instrument is confirmed, so a Stripe round-trip would tell us nothing
       // the borrower needs.
-      const availability: AchAvailability = mandate.armed
+      let availability: AchAvailability = mandate.armed
         ? { available: true }
         : await resolveAchAvailability(note.organizationId);
 
       const org = await storage.getOrganization(note.organizationId);
       const terms = buildAutopayAuthorizationTerms(note, org?.name || "your lender");
+
+      // Serving the authorization text is the ONLY place a challenge is minted.
+      // That is the whole mechanism: the mandate POST can only succeed if the
+      // server itself rendered this exact text version, to this session, for
+      // this note, within AUTOPAY_CHALLENGE_TTL_SECONDS. Minting is pure crypto
+      // — no row is written — so an abandoned read costs nothing.
+      const offeringAuthorization = availability.available && !mandate.armed;
+      const challenge = offeringAuthorization
+        ? mintAutopayAuthorizationChallenge({
+            sessionId: session.id,
+            noteId: note.id,
+            textVersion: terms.authorizationTextVersion,
+          })
+        : null;
+      if (offeringAuthorization && !challenge) {
+        // No signing material configured. Refuse to offer a setup flow we
+        // could only gate on the client's word — that is the exact CodeQL
+        // finding this challenge exists to close.
+        logger.error(
+          "Autopay authorization challenge cannot be signed — no signing material configured; not offering bank setup",
+          undefined,
+          { metadata: { noteId: note.id, organizationId: note.organizationId } },
+        );
+        availability = {
+          available: false,
+          reason: "authorization_challenge_unavailable",
+          message:
+            "Bank autopay setup is temporarily unavailable on this system. Autopay is off and nothing is debited automatically.",
+        };
+      }
 
       res.json({
         autopayEnabled: note.autoPayEnabled === true,
@@ -1197,8 +1291,18 @@ export function registerBorrowerRoutes(app: Express): void {
         achUnavailableReason: availability.available ? null : availability.reason,
         achUnavailableMessage: availability.available ? null : availability.message,
         // Only offered when setup is actually possible — never render an
-        // authorization we could not act on.
-        authorization: availability.available && !mandate.armed ? terms : null,
+        // authorization we could not act on, and never one we could not later
+        // prove we served (no challenge ⇒ no offer).
+        authorization:
+          availability.available && !mandate.armed && challenge
+            ? {
+                ...terms,
+                // The client must send this back on POST /autopay/mandate.
+                challengeToken: challenge.token,
+                challengeExpiresAt: challenge.expiresAt,
+                challengeTtlSeconds: AUTOPAY_CHALLENGE_TTL_SECONDS,
+              }
+            : null,
         scheduledDebitCents: terms.scheduledDebitCents,
         statusMessage: autopayStatusMessage({
           autopayEnabled: note.autoPayEnabled === true,
@@ -1217,6 +1321,23 @@ export function registerBorrowerRoutes(app: Express): void {
   // authorization text, then hand back the hosted-Checkout URL that collects
   // the bank account. Records consent BEFORE the redirect (see
   // services/achMandateSetup.ts) so an abandoned setup is visible, not lost.
+  //
+  // THREE INDEPENDENT LAYERS, DEFENCE IN DEPTH (CodeQL HIGH, PR #259 —
+  // "user-controlled bypass of security check"). This endpoint creates a NACHA
+  // ACH debit authorization, so the gate must not reduce to a client boolean:
+  //
+  //   1. `authorizationAccepted === true` — records the AFFIRMATIVE ACT. Kept,
+  //      but demoted: it is evidence of intent, not the security check.
+  //   2. `displayedAuthorizationText` echo — proves the client HAD the exact
+  //      text, byte for byte. Catches drift the version stamp can't see (the
+  //      lender renamed, the ceiling moved) because it compares the string.
+  //   3. `authorizationChallenge` — a server-minted, single-use, 15-minute
+  //      HMAC token bound to (session id, note id, authorization text version),
+  //      issued ONLY by GET /api/borrower/autopay. This is the layer that makes
+  //      the gate depend on a server-generated value. Its id is stored on the
+  //      mandate under a unique index, so it is provable and unreplayable.
+  //
+  // Every refusal below leaves autopay unchanged and creates NO mandate row.
   api.post(
     "/api/borrower/autopay/mandate",
     validateBorrowerSession,
@@ -1227,6 +1348,7 @@ export function registerBorrowerRoutes(app: Express): void {
         const body = req.body as {
           authorizationAccepted?: unknown;
           displayedAuthorizationText?: unknown;
+          authorizationChallenge?: unknown;
         };
 
         if (body.authorizationAccepted !== true) {
@@ -1271,6 +1393,31 @@ export function registerBorrowerRoutes(app: Express): void {
           );
         }
 
+        // Layer 3 — the server-issued challenge. Nothing below this line can be
+        // reached by a client that did not first receive this exact
+        // authorization version from GET /api/borrower/autopay, on this
+        // session, for this note, within the last 15 minutes, and has not
+        // already redeemed it. Missing, tampered, expired, replayed,
+        // wrong-session, wrong-note and stale-text-version all refuse here —
+        // before any processor call and before any mandate row exists.
+        const claim = await claimAutopayAuthorizationChallenge(body.authorizationChallenge, {
+          sessionId: session.id,
+          noteId: note.id,
+          textVersion: terms.authorizationTextVersion,
+        });
+        if (!claim.ok) {
+          // Never log the token itself — only the refusal reason.
+          logger.warn("Borrower ACH authorization challenge refused — no mandate created", {
+            metadata: {
+              noteId: note.id,
+              organizationId: note.organizationId,
+              reason: claim.reason,
+              expectedTextVersion: terms.authorizationTextVersion,
+            },
+          });
+          return Errors.badRequest(res, claim.message, { reason: claim.reason });
+        }
+
         const setupNote: AchSetupNote = note;
         const result = await startAchMandateSetup({
           note: setupNote,
@@ -1281,6 +1428,10 @@ export function registerBorrowerRoutes(app: Express): void {
           baseUrl: `${req.protocol}://${req.get("host")}`,
           authorizationAccepted: true,
           displayedAuthorizationText: terms.authorizationText,
+          // Writing this id onto the mandate IS the consumption of the
+          // challenge; its unique index is what makes single use true under
+          // concurrency rather than merely checked.
+          authorizationChallengeId: claim.challengeId,
         });
 
         if (!result.ok) {
@@ -1296,6 +1447,9 @@ export function registerBorrowerRoutes(app: Express): void {
             organizationId: note.organizationId,
             mandateId: result.mandateId,
             maxAmountCents: result.maxAmountCents,
+            // The challenge id, not the token. It is a stored column, so it is
+            // the handle that ties this log line to the mandate record.
+            authorizationChallengeId: claim.challengeId,
           },
         });
 

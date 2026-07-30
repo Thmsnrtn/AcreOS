@@ -229,11 +229,16 @@ export const marketplaceTransactions = pgTable("marketplace_transactions", {
   platformFeePercent: numeric("platform_fee_percent").notNull().default("1.5"),
   platformFeeCents: integer("platform_fee_cents").notNull(),
   
-  // Payment processing
-  sellerPayoutStatus: text("seller_payout_status").notNull().default("pending"), // pending, processing, completed, failed
-  sellerPayoutAmount: numeric("seller_payout_amount"),
-  sellerStripeTransferId: text("seller_stripe_transfer_id"),
-  
+  // Seller payout columns DELETED 2026-07-29 (founder ruling "be the rail, not
+  // the provider"): seller_payout_status, seller_payout_amount and
+  // seller_stripe_transfer_id encoded AcreOS receiving the sale proceeds and
+  // paying the seller out of its own balance. seller_payout_status/amount were
+  // written by marketplace.completeTransaction() and read by NOTHING;
+  // seller_stripe_transfer_id was never written either. Dropped in migration
+  // 0214. platform_fee_percent / platform_fee_cents stay: that fee is a payment
+  // TO AcreOS, which the ruling permits, and it is charged to the buyer org as
+  // AcreOS's own customer — it never carries the sale proceeds.
+
   // Status
   status: text("status").notNull().default("pending"), // pending, completed, refunded, disputed
   

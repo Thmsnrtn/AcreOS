@@ -306,7 +306,6 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-title-partners.ts", mountPath: null, kind: "register", export: "registerTitlePartnerRoutes" },
   { file: "routes-title-search.ts", mountPath: "/api/title-search", kind: "router", export: "default" },
   { file: "routes-today.ts", mountPath: "/api/today", kind: "router", export: "default" },
-  { file: "routes-transaction-fees.ts", mountPath: "/api/transaction-fees", kind: "router", export: "default" },
   { file: "routes-transparency.ts", mountPath: null, kind: "register", export: "registerTransparencyRoutes" },
   { file: "routes-ui-state.ts", mountPath: "/api/ui-state", kind: "router", export: "default" },
   { file: "routes-underwriting-defaults.ts", mountPath: null, kind: "register", export: "registerUnderwritingDefaultsRoutes" },

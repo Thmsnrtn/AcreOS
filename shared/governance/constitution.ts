@@ -27,7 +27,12 @@
 
 /** What kind of standing decision this is. */
 export type InvariantCategory =
-  | "hard-stop" // founder-only forever; MUST end up machine-enforced
+  // An absolute standing decision — either founder-only forever (pricing,
+  // legal signing, >$500 spends, customer-data deletion) or an outright ban
+  // (customer money never moves on AcreOS's own account). Either way it MUST
+  // end up machine-enforced; the ratchet in constitution.test.ts counts the
+  // ones that aren't.
+  | "hard-stop"
   | "nav-doctrine" // the fixed customer/founder doors
   | "no-fabrication" // never present invented data as real
   | "expansion-gate" // the approved growth ladder (marketplace/API triggers)
@@ -144,6 +149,44 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "server/services/founder-chat/tool-registry.ts",
       ],
       note: "checkHardGuardrails() blocks DATA_DELETION_ACTIONS (data_deletion, bulk_delete, account_deletion, record_purge, permanent_delete) AND any payload carrying a delete/permanent/purge intent flag, before the AI is consulted. Founder-chat destructive tools additionally carry a kill switch + confirmation.",
+    },
+  },
+  {
+    id: "hard-stop.no-platform-money-custody",
+    title: "Customer money never moves on AcreOS's own account",
+    statement:
+      "Customer money never moves on AcreOS's own account. Subscription payments TO AcreOS are the only payments AcreOS is a party to. Any customer-managed money movement (borrower note payments, rent, escrow, distributions) runs on the customer's OWN connected processor account or is routed out entirely — no platform-account fallback, no application fee, no funds transiting AcreOS's balance.",
+    category: "hard-stop",
+    source:
+      'CLAUDE.md DO-NOT-DO list; founder ruling 2026-07-29 ("be the rail, not the provider")',
+    enforcement: {
+      kind: "code-invariant",
+      refs: [
+        "server/services/customerMoneyRouting.ts",
+        "server/services/achMandateSetup.ts",
+        "server/services/achAutopay.ts",
+        "tests/unit/moneyCustodyHardStop.test.ts",
+      ],
+      note:
+        "Three layers. (1) RUNTIME CHOKEPOINT: prepareCustomerMoneyCall() is " +
+        "the only sanctioned way to build a customer-money Stripe call — it " +
+        "sets the org's own `stripeAccount` scope and throws " +
+        "PlatformTakeError if the params carry application_fee_amount / " +
+        "application_fee_percent / transfer_data / on_behalf_of at ANY depth, " +
+        "and UnscopedCustomerMoneyCallError when there is no org account to " +
+        "scope to. resolveOrgCardProcessor() refuses with a typed reason " +
+        "instead of falling back to the platform account; the ACH lane " +
+        "(achMandateSetup / achAutopay) does the same for us_bank_account on " +
+        "the lender's own connected account. (2) STRUCTURAL RATCHET: " +
+        "moneyCustodyHardStop.test.ts asserts those platform-take parameter " +
+        "names appear NOWHERE in server/, shared/ or client/src/ except " +
+        "inside the guard that forbids them, that no HTTP route names raw " +
+        "bank routing/account numbers, and that the deleted custody surfaces " +
+        "(transactionFeeService, /api/transaction-fees, /fee-dashboard, the " +
+        "platform-merchant /api/actum/* routes) stay deleted. (3) The " +
+        "no-fabrication scan in the same test forbids simulated processor " +
+        "identifiers in money fields — the retired escrow engine wrote " +
+        "`tr_simulated_<ts>` into a transfer-id column.",
     },
   },
 

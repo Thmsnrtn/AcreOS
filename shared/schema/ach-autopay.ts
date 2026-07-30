@@ -52,9 +52,16 @@ import { organizations, notes, leads, payments } from "../schema";
 
 /**
  * The rails a mandate can be held on. Only `stripe_us_bank_account` is
- * implemented; `actum` is listed because the ACH return-code taxonomy in
- * server/services/actumProcessing.ts predates this table and a future Actum
- * merchant account would store mandates in the same shape.
+ * implemented, and it is held on the LENDER's own connected account.
+ *
+ * `actum` remains listed only as a shape placeholder: a mandate on a future
+ * per-org Actum merchant account would store the same fields. Any such rail
+ * must be the CUSTOMER's own merchant account — the platform-wide
+ * `ACTUM_MERCHANT_ID` client that once lived in
+ * server/services/actumProcessing.ts was deleted 2026-07-29 under the "be the
+ * rail, not the provider" ruling (see shared/governance/constitution.ts
+ * `hard-stop.no-platform-money-custody`). That file now holds only the rail-agnostic
+ * NACHA return-code taxonomy this table's return handling classifies against.
  */
 export const ACH_MANDATE_RAILS = ["stripe_us_bank_account", "actum"] as const;
 export type AchMandateRail = (typeof ACH_MANDATE_RAILS)[number];
@@ -125,6 +132,26 @@ export const achMandates = pgTable(
     agreedUserAgent: text("agreed_user_agent"),
     /** The verified session email that agreed — who, not just when. */
     agreedByEmail: text("agreed_by_email").notNull(),
+    /**
+     * The server-issued authorization challenge this mandate was redeemed
+     * against (see services/borrower/autopayAuthorizationChallenge.ts).
+     *
+     * WHY IT IS A COLUMN AND NOT A LOG LINE. Everything else in this block
+     * records what the borrower's CLIENT asserted: the text it echoed, the
+     * box it says was ticked. This records what the SERVER can independently
+     * attest — that we rendered this exact authorization version, to this
+     * borrower session, for this note, minutes before the mandate was created.
+     * A CodeQL HIGH ("user-controlled bypass of security check", PR #259)
+     * named the gap: consent proven only by client assertion is weakest
+     * exactly where an R10 unauthorized-debit dispute is decided.
+     *
+     * Its UNIQUE index is also the single-use guard — the same idiom as
+     * `ach_debit_attempts_period_uidx` being the double-charge guard. A
+     * replayed challenge loses the INSERT instead of minting a second
+     * authorization. NULL only on mandates predating the challenge gate, and
+     * NULLs do not collide in a Postgres unique index.
+     */
+    authorizationChallengeId: text("authorization_challenge_id"),
 
     // ── Terms authorized (a debit outside these is NOT authorized) ───────
     debitType: text("debit_type").notNull().default("recurring"), // recurring | single
@@ -160,6 +187,12 @@ export const achMandates = pgTable(
     ),
     // The confirm callback looks the pending mandate up by this handle.
     uniqueIndex("ach_mandates_setup_reference_uidx").on(table.setupReference),
+    // Single-use enforcement for the server-issued authorization challenge.
+    // The index is the guard, not the pre-check: two simultaneous redemptions
+    // of one challenge collide here and the loser creates no mandate at all.
+    uniqueIndex("ach_mandates_authorization_challenge_uidx").on(
+      table.authorizationChallengeId,
+    ),
   ],
 );
 

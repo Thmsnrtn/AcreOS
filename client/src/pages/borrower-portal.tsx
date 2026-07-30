@@ -38,6 +38,14 @@ type BorrowerLoanData = {
   note: Note & { property?: Property };
   payments: Payment[];
   borrower?: { firstName: string; lastName: string } | null;
+  /**
+   * Who actually collects this payment. The portal is AcreOS-branded, but the
+   * charge is a direct charge on the LENDER'S own processor — AcreOS holds
+   * none of it and takes no cut (founder ruling 2026-07-29, "be the rail, not
+   * the provider"). Null only when the org has no name on file; the copy
+   * degrades to "your lender" rather than inventing one.
+   */
+  lenderName?: string | null;
 };
 
 /**
@@ -71,6 +79,16 @@ type AutopayStatus = {
     maxAmountCents: number;
     scheduleDescription: string;
     scheduledDebitCents: number;
+    /**
+     * Server-issued, single-use, short-lived proof that the server rendered
+     * THIS text version to THIS session for THIS loan. The mandate POST is
+     * refused without it, so the authorization gate no longer rests on a
+     * boolean this client supplies (CodeQL HIGH, PR #259). Opaque — this page
+     * only carries it back, never inspects or stores it.
+     */
+    challengeToken: string;
+    challengeExpiresAt: string;
+    challengeTtlSeconds: number;
   } | null;
   scheduledDebitCents: number;
   statusMessage: string;
@@ -427,6 +445,9 @@ function BorrowerLandingPage() {
 
 function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: BorrowerLoanData; accessToken: string; verifiedEmail: string }) {
   const { note, payments, borrower } = data;
+  // Never fabricated: when the org has no name on file this stays generic
+  // rather than naming a lender that isn't in the record.
+  const collectorName = data.lenderName?.trim() || "your lender";
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentStatusState, setPaymentStatusMessage] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
@@ -602,7 +623,14 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
     }
   };
   
-  const loadAutopayStatus = useCallback(async () => {
+  /**
+   * Read the truth about autopay. Returns the payload as well as storing it,
+   * because the authorization step needs the FRESHLY issued challenge in hand
+   * (React state isn't readable until the next render), and because a challenge
+   * minted on mount would have expired by the time a borrower who left the tab
+   * open finally clicks.
+   */
+  const loadAutopayStatus = useCallback(async (): Promise<AutopayStatus | null> => {
     setIsLoadingAutopayStatus(true);
     try {
       const res = await fetch('/api/borrower/autopay', { credentials: 'include' });
@@ -610,13 +638,15 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         // Leave autopayStatus null — the switch stays disabled and says so
         // rather than guessing that autopay is armed.
         setAutopayStatus(null);
-        return;
+        return null;
       }
       const data: AutopayStatus = await res.json();
       setAutopayStatus(data);
       setAutopayEnabled(data.autopayEnabled);
+      return data;
     } catch {
       setAutopayStatus(null);
+      return null;
     } finally {
       setIsLoadingAutopayStatus(false);
     }
@@ -668,13 +698,20 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
     // Turning it ON without a stored bank authorization can't collect anything,
     // so we open the authorization step instead of writing a flag that lies.
     if (!autopayEnabled && !autopayArmed) {
-      if (autopayStatus?.achAvailable && autopayStatus.authorization) {
+      // Re-read before showing the terms. This is the same GET this page
+      // already makes on mount — no NEW round-trip in the borrower's flow — but
+      // doing it here means the authorization they are about to read, and the
+      // server challenge that authorizes storing their agreement to it, are
+      // both minted at the moment the dialog opens rather than whenever the tab
+      // was loaded.
+      const fresh = await loadAutopayStatus();
+      if (fresh?.achAvailable && fresh.authorization) {
         setAuthorizationAccepted(false);
         setShowAuthorizationDialog(true);
       } else {
         setPaymentStatusMessage({
           type: 'error',
-          message: autopayStatus?.achUnavailableMessage
+          message: fresh?.achUnavailableMessage
             || "Bank autopay isn't available on this loan yet. Nothing was changed and nothing is debited.",
         });
       }
@@ -684,9 +721,12 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   };
 
   /**
-   * Record the agreement and hand off to hosted bank verification. The exact
-   * text rendered above is echoed back so the server refuses if the terms moved
-   * while this page was open.
+   * Record the agreement and hand off to hosted bank verification. Three things
+   * go up, and the server requires all three (see routes-borrower.ts): the
+   * accepted flag (the affirmative act), the exact text rendered above (so the
+   * server refuses if the terms moved while this page was open), and the
+   * single-use challenge the server issued when it served that text (so consent
+   * can't be asserted by a client that was never shown anything).
    */
   const handleAuthorizeBankAutopay = async () => {
     const authorization = autopayStatus?.authorization;
@@ -700,6 +740,7 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         body: JSON.stringify({
           authorizationAccepted: true,
           displayedAuthorizationText: authorization.authorizationText,
+          authorizationChallenge: authorization.challengeToken,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -708,6 +749,10 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         return;
       }
       setShowAuthorizationDialog(false);
+      // The server's own message already explains what to do. Re-read status so
+      // a refusal that was about a stale/spent challenge leaves the page holding
+      // a usable one for the next attempt.
+      void loadAutopayStatus();
       setPaymentStatusMessage({
         type: 'error',
         message: (data.message || "We couldn't start bank verification.")
@@ -1158,6 +1203,14 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                     Authorize bank autopay below to have each payment collected automatically.
                   </p>
                 )}
+                {/* WHO IS COLLECTING. The portal carries AcreOS branding, but
+                    the charge is a direct charge on the lender's own payment
+                    account — AcreOS never holds this money and takes no cut of
+                    it. Saying so at the pay button, not buried in a footer. */}
+                <p className="text-xs text-center text-muted-foreground max-w-xs">
+                  Payments are collected by {collectorName}. AcreOS is the software your lender uses
+                  &mdash; it doesn&rsquo;t hold your payment or take a share of it.
+                </p>
               </div>
             </div>
           </CardContent>

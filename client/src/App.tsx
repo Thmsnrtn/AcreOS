@@ -174,7 +174,6 @@ const BookkeepingPage = React.lazy(() => import("@/pages/bookkeeping"));
 const DepreciationCalculatorPage = React.lazy(() => import("@/pages/depreciation-calculator"));
 const ClosingCostsPage = React.lazy(() => import("@/pages/closing-costs"));
 const PropertyTaxPage = React.lazy(() => import("@/pages/property-tax"));
-const FeeDashboardPage = React.lazy(() => import("@/pages/fee-dashboard"));
 
 // AI / Intelligence
 const AVMPage = React.lazy(() => import("@/pages/avm"));
@@ -1594,9 +1593,11 @@ function Router() {
       <Route path="/property-tax">
         {() => <ProtectedRoute component={PropertyTaxPage} />}
       </Route>
-      <Route path="/fee-dashboard">
-        {() => <FounderProtectedRoute component={FeeDashboardPage} />}
-      </Route>
+      {/* /fee-dashboard deleted 2026-07-29 (founder ruling "be the rail, not the
+          provider"): a platform escrow/payout console — settlements, escrow
+          release, manual payout trigger — over stub endpoints that returned
+          zeros and fabricated ids. AcreOS never holds customer money, so the
+          surface has nothing honest to show. */}
 
       {/* AI / Intelligence — additional */}
       <Route path="/avm-bulk">

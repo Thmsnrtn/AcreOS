@@ -58,7 +58,6 @@ import priceOptimizerRouter from "./routes-price-optimizer";
 
 // Phase 5-6 new routes
 import investorVerificationRouter from "./routes-investor-verification";
-import transactionFeesRouter from "./routes-transaction-fees";
 import callRoutingRouter from "./routes-call-routing";
 import buyerNetworkRouter from "./routes-buyer-network";
 import dealRoomsRouter from "./routes-deal-rooms";
@@ -2144,7 +2143,10 @@ export async function registerRoutes(
 
   // Phase 5-6 routes
   app.use('/api/investor-verification', isAuthenticated, getOrCreateOrg, investorVerificationRouter);
-  app.use('/api/transaction-fees', isAuthenticated, getOrCreateOrg, transactionFeesRouter);
+  // routes-transaction-fees deleted 2026-07-29 (founder ruling "be the rail, not
+  // the provider"): a platform escrow / take-a-cut / manual-payout console over
+  // AcreOS's own balance. Every handler was a stub, and POST /fees/payouts/trigger
+  // returned 202 "processing" while doing nothing. Custody is not AcreOS's to hold.
   app.use('/api/call-routing', isAuthenticated, getOrCreateOrg, callRoutingRouter);
   app.use('/api/buyer-network', isAuthenticated, getOrCreateOrg, buyerNetworkRouter);
   // routes-tax-optimization deleted 2026-07-29 (Nothing-lies wave A): 10 of 11

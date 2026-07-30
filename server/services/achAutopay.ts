@@ -116,7 +116,11 @@ import { addMonths } from "../utils/dateUtils";
 import { emitPaymentEvent } from "./workflow-engine";
 import { isCategorySimulated } from "../utils/simulationMode";
 import {
-  classifyAchReturn,
+  // `classifyAchReturn` is deliberately NOT imported: the two helpers below
+  // already carry every decision this file makes about a return — which R-code
+  // a processor failure maps to, and whether that code revokes authorization.
+  // Importing the classifier as well left it unused, which reads like return
+  // handling was wired when part of it was not.
   mapProcessorFailureToReturnCode,
   returnRevokesAuthorization,
   type AchReturnCode,

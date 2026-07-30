@@ -354,29 +354,10 @@ test.describe.serial("Founder Thomas — Sovereign Control Plane Journey", () =>
 
   // ── Step 8: Cost dashboard / AI spending ───────────────────────────────
 
-  test("8. Fee dashboard shows AI cost and spending data", async () => {
-    await page.goto("/fee-dashboard");
-    await page.waitForTimeout(2000);
-    await page.screenshot({ path: "tests/simulation/screenshots/founder-12-fee-dashboard.png" });
-
-    const hasFeeContent = await page.locator("[class*='Card'], [class*='card']")
-      .first()
-      .isVisible()
-      .catch(() => false);
-    const hasCostMetrics = await page.getByText(/collected|pending|paid out|this month|fee rate|transaction/i)
-      .first()
-      .isVisible()
-      .catch(() => false);
-    const hasTable = await page.getByRole("table")
-      .first()
-      .isVisible()
-      .catch(() => false);
-    const accessDenied = await page.getByText(/access denied|not authorized/i)
-      .first()
-      .isVisible()
-      .catch(() => false);
-
-    // Also try the ops dashboard for broader spending view
+  // The former "/fee-dashboard" leg of this step was deleted 2026-07-29 with the
+  // platform escrow/payout console (founder ruling "be the rail, not the
+  // provider"). The ops dashboard is the real founder cost surface.
+  test("8. Ops dashboard shows AI cost and spending data", async () => {
     await page.goto("/admin/ops");
     await page.waitForTimeout(2000);
     await page.screenshot({ path: "tests/simulation/screenshots/founder-13-ops-dashboard.png" });
@@ -385,8 +366,16 @@ test.describe.serial("Founder Thomas — Sovereign Control Plane Journey", () =>
       .first()
       .isVisible()
       .catch(() => false);
+    const hasCostMetrics = await page.getByText(/cost|spend|this month|tokens|usage/i)
+      .first()
+      .isVisible()
+      .catch(() => false);
+    const accessDenied = await page.getByText(/access denied|not authorized/i)
+      .first()
+      .isVisible()
+      .catch(() => false);
 
-    expect(hasFeeContent || hasCostMetrics || hasTable || hasOps || accessDenied).toBeTruthy();
+    expect(hasOps || hasCostMetrics || accessDenied).toBeTruthy();
   });
 
   // ── Step 9: System health / status page ────────────────────────────────

@@ -99,7 +99,7 @@ const AGENT_ROSTER: AgentPersona[] = [
     title: "Revenue & Growth Lead",
     wing: "growth",
     personalityPrompt: `You are Forge, AcreOS's Revenue & Growth Lead. You are metrics-obsessed and pipeline-focused. You track MRR, churn, expansion revenue, and unit economics with surgical precision. When reporting, always lead with the number. Example: "MRR crossed $X overnight. Churn risk: 2 accounts flagged, both with rescue emails already sent." You are optimistic but grounded in data.`,
-    ownedServices: ["stripeService", "stripeConnect", "revenueProtection", "dunning", "churnEngine", "tenantMetering", "credits", "transactionFeeService"],
+    ownedServices: ["stripeService", "stripeConnect", "revenueProtection", "dunning", "churnEngine", "tenantMetering", "credits"],
     ownedJobs: ["growthAutomation", "churnEngine"],
     ownedRoutes: ["/api/billing", "/api/stripe", "/api/revenue"],
     authorityConfig: {

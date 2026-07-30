@@ -248,7 +248,8 @@ export function StripeConnectSettings() {
           Stripe Connect
         </CardTitle>
         <CardDescription>
-          Connect your Stripe account to receive payments from borrowers and buyers.
+          Connect your own Stripe account so borrower and buyer payments are collected by you, on your
+          account, and paid out to you. AcreOS never holds your customers&rsquo; money and takes no cut of it.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -399,10 +400,22 @@ export function StripeConnectSettings() {
           )}
         </div>
 
+        {/* Custody disclosure. Until 2026-07-29 this block advertised a 2.5%
+            platform fee on every payment — and the code really did take one,
+            via a destination charge that routed borrower money through
+            AcreOS's balance first. Both are gone: your customers' payments are
+            charged on YOUR Stripe account and settle to YOUR balance. */}
         <div className="pt-4 border-t">
           <p className="text-sm text-muted-foreground">
-            <strong>Platform fee:</strong> a 2.5% platform fee is applied to all payments processed through AcreOS.
-            This covers payment processing, automated payment collection, and platform infrastructure.
+            <strong>Your money, your account.</strong> Payments from your borrowers and buyers are charged on
+            your own Stripe account and settle to your own balance on your own payout schedule. AcreOS takes
+            no percentage of them and never holds them. Stripe&rsquo;s own processing fees apply and are billed
+            to you by Stripe.
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Until you connect an account there is nowhere for those payments to land, so in-product card
+            acceptance stays off &mdash; AcreOS will not collect them on your behalf. Your AcreOS subscription
+            is billed separately and is unaffected.
           </p>
         </div>
       </CardContent>
@@ -411,7 +424,7 @@ export function StripeConnectSettings() {
         open={showDisconnectConfirm}
         onOpenChange={setShowDisconnectConfirm}
         title="Disconnect your Stripe account?"
-        description="You won't be able to collect new payments through AcreOS until you reconnect. Pending payments already in Stripe will continue to process normally. You can reconnect at any time."
+        description="Card and bank payments will stop being offered in AcreOS until you reconnect — AcreOS will not collect them on your behalf in the meantime. Payments already in Stripe keep processing and paying out to you normally. You can reconnect at any time."
         confirmLabel="Disconnect Stripe"
         cancelLabel="Keep connected"
         variant="destructive"

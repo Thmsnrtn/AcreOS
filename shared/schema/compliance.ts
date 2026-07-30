@@ -2,7 +2,7 @@
 // SHARED/SCHEMA/COMPLIANCE.TS
 // ----------------------------------------------------------------------------
 // Compliance bucket — investor verification (KYC + audit + background checks),
-// fee management (collection/escrow/payout + ledger), tax & cost basis,
+// tax & cost basis,
 // voice/call recording metadata, satellite snapshots, ML model registry,
 // regulatory compliance state DB, certificate verification, tenant usage
 // metering.
@@ -27,7 +27,6 @@ import {
   organizations,
   properties,
   investorProfiles,
-  marketplaceTransactions,
   voiceCalls,
   whitelabelTenants,
 } from "../schema";
@@ -142,76 +141,20 @@ export type InsertBackgroundCheckResult = z.infer<typeof insertBackgroundCheckRe
 export type BackgroundCheckResult = typeof backgroundCheckResults.$inferSelect;
 
 // ============================================
-// FEE MANAGEMENT
+// FEE MANAGEMENT — DELETED 2026-07-29
+// --------------------------------------------
+// `transaction_fee_settlements`, `fee_payout_schedules` and `fee_audit_log`
+// were the storage for a platform escrow-and-take-a-cut engine
+// (server/services/transactionFeeService.ts) that had ZERO call sites: AcreOS
+// would have collected a buyer/seller/platform fee, HELD it on its own
+// balance for N days, then transferred it out. Founder ruling 2026-07-29 —
+// "be the rail, not the provider": customer money never moves on AcreOS's own
+// account. The service, its stub router (`/api/transaction-fees`), its founder
+// console (`/fee-dashboard`) and these three tables are all deleted; dropped
+// in migration 0214. Nothing else read them.
+//
+// See shared/governance/constitution.ts `hard-stop.no-platform-money-custody`.
 // ============================================
-
-// Fee collection / escrow / payout records
-export const transactionFeeSettlements = pgTable("transaction_fee_settlements", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  transactionId: integer("transaction_id").references(() => marketplaceTransactions.id).notNull(),
-  feeType: text("fee_type").notNull(), // platform_fee | buyer_fee | seller_fee
-  feeAmount: numeric("fee_amount").notNull(),
-  feePercent: numeric("fee_percent"),
-  status: text("status").notNull().default("pending"), // pending | held | released | refunded
-  stripePaymentIntentId: text("stripe_payment_intent_id"),
-  stripeTransferIds: text("stripe_transfer_ids").array(),
-  heldUntil: timestamp("held_until"),
-  releasedAt: timestamp("released_at"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-}, (table) => [
-  index("fee_settlements_org_idx").on(table.organizationId),
-  index("fee_settlements_transaction_idx").on(table.transactionId),
-  index("fee_settlements_status_idx").on(table.status),
-]);
-
-export const insertTransactionFeeSettlementSchema = createInsertSchema(transactionFeeSettlements).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertTransactionFeeSettlement = z.infer<typeof insertTransactionFeeSettlementSchema>;
-export type TransactionFeeSettlement = typeof transactionFeeSettlements.$inferSelect;
-
-// Automated payout scheduling config
-export const feePayoutSchedules = pgTable("fee_payout_schedules", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  cadence: text("cadence").notNull(), // daily | weekly | biweekly | monthly
-  minimumPayoutAmount: numeric("minimum_payout_amount").default("0"),
-  stripeConnectedAccountId: text("stripe_connected_account_id"),
-  nextPayoutAt: timestamp("next_payout_at"),
-  lastPayoutAt: timestamp("last_payout_at"),
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-}, (table) => [
-  index("fee_payout_schedules_org_idx").on(table.organizationId),
-  index("fee_payout_schedules_next_payout_idx").on(table.nextPayoutAt),
-]);
-
-export const insertFeePayoutScheduleSchema = createInsertSchema(feePayoutSchedules).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertFeePayoutSchedule = z.infer<typeof insertFeePayoutScheduleSchema>;
-export type FeePayoutSchedule = typeof feePayoutSchedules.$inferSelect;
-
-// Immutable ledger of all fee events
-export const feeAuditLog = pgTable("fee_audit_log", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  settlementId: integer("settlement_id").references(() => transactionFeeSettlements.id),
-  eventType: text("event_type").notNull(), // fee_collected | escrow_held | payout_sent | refund_issued
-  amount: numeric("amount").notNull(),
-  balanceBefore: numeric("balance_before").notNull(),
-  balanceAfter: numeric("balance_after").notNull(),
-  metadata: jsonb("metadata").$type<Record<string, any>>(),
-  performedBy: text("performed_by"),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("fee_audit_log_org_idx").on(table.organizationId),
-  index("fee_audit_log_settlement_idx").on(table.settlementId),
-  index("fee_audit_log_created_idx").on(table.createdAt),
-]);
-
-export const insertFeeAuditLogSchema = createInsertSchema(feeAuditLog).omit({ id: true, createdAt: true });
-export type InsertFeeAuditLog = z.infer<typeof insertFeeAuditLogSchema>;
-export type FeeAuditLog = typeof feeAuditLog.$inferSelect;
 
 // ============================================
 // TAX & COST BASIS
