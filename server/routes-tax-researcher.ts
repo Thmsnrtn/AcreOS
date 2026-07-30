@@ -37,7 +37,7 @@ import {
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganizationId, getUserId } from "./types/request";
+import { getOrganizationId } from "./types/request";
 import {
   parseDelimited,
   suggestColumnMapping,

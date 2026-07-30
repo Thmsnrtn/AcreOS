@@ -32,8 +32,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import {
-  Calculator, Mail, Send, FileText, Plus, Trash2, Edit, Eye,
-  Loader2, Calendar, DollarSign, Clock, Filter, Check, X, ClipboardCheck,
+  Calculator, Mail, Send, FileText, Plus, Trash2, Edit,
+  Loader2, Filter, ClipboardCheck,
   FileSignature, ShieldAlert, Copy, ScrollText, Info
 } from "lucide-react";
 import { format } from "date-fns";

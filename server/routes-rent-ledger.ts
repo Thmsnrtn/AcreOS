@@ -40,7 +40,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, asc, desc, sql, gt, inArray } from "drizzle-orm";
+import { and, eq, asc, desc, sql, gt } from "drizzle-orm";
 import { db } from "./db";
 import {
   rentalLeases,
