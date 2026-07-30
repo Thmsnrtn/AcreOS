@@ -1324,18 +1324,25 @@ export function registerBorrowerRoutes(app: Express): void {
   //
   // THREE INDEPENDENT LAYERS, DEFENCE IN DEPTH (CodeQL HIGH, PR #259 —
   // "user-controlled bypass of security check"). This endpoint creates a NACHA
-  // ACH debit authorization, so the gate must not reduce to a client boolean:
+  // ACH debit authorization, so the gate must not reduce to a client boolean.
   //
-  //   1. `authorizationAccepted === true` — records the AFFIRMATIVE ACT. Kept,
-  //      but demoted: it is evidence of intent, not the security check.
-  //   2. `displayedAuthorizationText` echo — proves the client HAD the exact
+  // THE ORDER BELOW IS THE POINT, and it is deliberate: the SERVER-ISSUED value
+  // is verified FIRST, before any client-supplied field is consulted at all.
+  // The nearest guard standing in front of mandate creation is therefore a value
+  // this server minted, not anything the borrower's browser asserted.
+  //
+  //   1. `authorizationChallenge` (CHECKED FIRST) — a server-minted, single-use,
+  //      15-minute HMAC token bound to (session id, note id, authorization text
+  //      version), issued ONLY by GET /api/borrower/autopay, the sole endpoint
+  //      that renders the text. This is THE security boundary. Its id is stored
+  //      on the mandate under a unique index, so it is provable and unreplayable.
+  //   2. `authorizationAccepted === true` (checked after) — records the
+  //      AFFIRMATIVE ACT for the NACHA record. Deliberately demoted: evidence of
+  //      intent and defence in depth, never the security check. A client that
+  //      forges it still cannot get past layer 1.
+  //   3. `displayedAuthorizationText` echo — proves the client HAD the exact
   //      text, byte for byte. Catches drift the version stamp can't see (the
   //      lender renamed, the ceiling moved) because it compares the string.
-  //   3. `authorizationChallenge` — a server-minted, single-use, 15-minute
-  //      HMAC token bound to (session id, note id, authorization text version),
-  //      issued ONLY by GET /api/borrower/autopay. This is the layer that makes
-  //      the gate depend on a server-generated value. Its id is stored on the
-  //      mandate under a unique index, so it is provable and unreplayable.
   //
   // Every refusal below leaves autopay unchanged and creates NO mandate row.
   api.post(
@@ -1350,14 +1357,6 @@ export function registerBorrowerRoutes(app: Express): void {
           displayedAuthorizationText?: unknown;
           authorizationChallenge?: unknown;
         };
-
-        if (body.authorizationAccepted !== true) {
-          return Errors.badRequest(
-            res,
-            "We can't set up bank autopay until you agree to the authorization shown above.",
-            { reason: "authorization_not_accepted" },
-          );
-        }
 
         const [note] = await db.select().from(notes).where(eq(notes.id, session.noteId));
         if (!note) return Errors.notFound(res, "loan");
@@ -1376,30 +1375,16 @@ export function registerBorrowerRoutes(app: Express): void {
         const lenderName = org?.name || "your lender";
         const terms = buildAutopayAuthorizationTerms(note, lenderName);
 
-        // Cross-check: the borrower must have agreed to the text we are about
-        // to store, not an older revision cached in their tab. Refuse rather
-        // than storing consent to language they never saw.
-        if (
-          typeof body.displayedAuthorizationText === "string" &&
-          body.displayedAuthorizationText !== terms.authorizationText
-        ) {
-          logger.warn("Borrower ACH authorization text mismatch — refusing to store consent", {
-            metadata: { noteId: note.id, version: terms.authorizationTextVersion },
-          });
-          return Errors.badRequest(
-            res,
-            "Your payment terms changed while this page was open. Please reload and read the updated authorization before continuing.",
-            { reason: "authorization_text_stale" },
-          );
-        }
-
-        // Layer 3 — the server-issued challenge. Nothing below this line can be
-        // reached by a client that did not first receive this exact
-        // authorization version from GET /api/borrower/autopay, on this
-        // session, for this note, within the last 15 minutes, and has not
-        // already redeemed it. Missing, tampered, expired, replayed,
-        // wrong-session, wrong-note and stale-text-version all refuse here —
-        // before any processor call and before any mandate row exists.
+        // LAYER 1, AND IT COMES FIRST — the server-issued challenge. This is the
+        // security boundary, and it is verified BEFORE any client-supplied field
+        // is consulted, so the guard nearest the sensitive action is a value the
+        // server minted rather than one the browser asserted. Nothing below this
+        // line can be reached by a client that did not first receive this exact
+        // authorization version from GET /api/borrower/autopay, on this session,
+        // for this note, within the last 15 minutes, and has not already redeemed
+        // it. Missing, tampered, expired, replayed, wrong-session, wrong-note and
+        // stale-text-version all refuse here — before any processor call, before
+        // any mandate row exists, and before `authorizationAccepted` is even read.
         const claim = await claimAutopayAuthorizationChallenge(body.authorizationChallenge, {
           sessionId: session.id,
           noteId: note.id,
@@ -1416,6 +1401,35 @@ export function registerBorrowerRoutes(app: Express): void {
             },
           });
           return Errors.badRequest(res, claim.message, { reason: claim.reason });
+        }
+
+        // LAYER 2 — the affirmative act. Only reachable once the server-issued
+        // challenge above has already been verified and found unredeemed, so this
+        // boolean cannot be the bypass: it records consent, it does not grant it.
+        // Kept because the NACHA record must show the borrower ticked the box.
+        if (body.authorizationAccepted !== true) {
+          return Errors.badRequest(
+            res,
+            "We can't set up bank autopay until you agree to the authorization shown above.",
+            { reason: "authorization_not_accepted" },
+          );
+        }
+
+        // LAYER 3 — cross-check: the borrower must have agreed to the text we are
+        // about to store, not an older revision cached in their tab. Refuse rather
+        // than storing consent to language they never saw.
+        if (
+          typeof body.displayedAuthorizationText === "string" &&
+          body.displayedAuthorizationText !== terms.authorizationText
+        ) {
+          logger.warn("Borrower ACH authorization text mismatch — refusing to store consent", {
+            metadata: { noteId: note.id, version: terms.authorizationTextVersion },
+          });
+          return Errors.badRequest(
+            res,
+            "Your payment terms changed while this page was open. Please reload and read the updated authorization before continuing.",
+            { reason: "authorization_text_stale" },
+          );
         }
 
         const setupNote: AchSetupNote = note;

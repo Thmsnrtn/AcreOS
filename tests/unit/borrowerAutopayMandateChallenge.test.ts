@@ -209,18 +209,38 @@ import {
 } from "../../server/services/borrower/autopayAuthorizationChallenge";
 import { AUTHORIZATION_TEXT_VERSION } from "../../server/services/achAutopay";
 
+/**
+ * The only cookie any borrower route reads (`req.cookies?.borrower_session`).
+ *
+ * The fake parser below deliberately does NOT build `req.cookies` by writing
+ * keys taken from the header. A `Cookie` header is attacker-controlled, so
+ * `req.cookies[k] = …` with `k` lifted out of it is a property write whose NAME
+ * comes from remote input — CodeQL "remote property injection" (PR #259), and a
+ * real hazard even in a fixture: a request carrying `__proto__=…` would write
+ * through the prototype instead of the object. Nothing here needs a general
+ * cookie jar, so the parser returns a VALUE for a name it was asked for and the
+ * request object is assembled with a literal key. No dynamic write exists.
+ */
+const BORROWER_SESSION_COOKIE = "borrower_session";
+
+/** Read one named cookie out of a `Cookie` header. Returns "" when absent. */
+function readCookieHeaderValue(header: string | undefined, name: string): string {
+  if (!header) return "";
+  for (const part of header.split(";")) {
+    const trimmed = part.trim();
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0 || trimmed.slice(0, eq) !== name) continue;
+    return decodeURIComponent(trimmed.slice(eq + 1));
+  }
+  return "";
+}
+
 function makeApp() {
   const app = express();
   app.use(express.json());
   app.use((req: any, _res, next) => {
     const header = req.headers.cookie as string | undefined;
-    req.cookies = {};
-    if (header) {
-      for (const part of header.split(";")) {
-        const [k, v] = part.trim().split("=");
-        if (k) req.cookies[k] = decodeURIComponent(v ?? "");
-      }
-    }
+    req.cookies = { borrower_session: readCookieHeaderValue(header, BORROWER_SESSION_COOKIE) };
     next();
   });
   registerBorrowerRoutes(app);
@@ -474,6 +494,17 @@ describe("POST /api/borrower/autopay/mandate — every refusal creates NO mandat
     });
     expect(res.status).toBe(400);
     expect(res.body.details?.reason).toBe("authorization_challenge_text_stale");
+    expect(MANDATE_ROWS).toHaveLength(0);
+  });
+
+  it("checks the SERVER-ISSUED challenge before the client's accepted flag", async () => {
+    // Ordering is load-bearing, not cosmetic. With neither field satisfied the
+    // refusal must name the CHALLENGE — proof that the guard standing nearest to
+    // mandate creation is the value this server minted, and that the client
+    // boolean is never the thing being relied on to let the request through.
+    const res = await postMandate({ authorizationAccepted: false });
+    expect(res.status).toBe(400);
+    expect(res.body.details?.reason).toBe("authorization_challenge_missing");
     expect(MANDATE_ROWS).toHaveLength(0);
   });
 
