@@ -17,9 +17,15 @@
  *    month" on every Reg-Z §1026.41 periodic statement regardless of the
  *    note's actual due day.
  *  - `server/services/lateFees/index.ts` and
- *    `server/services/respa/earlyIntervention.ts` are correct pure modules
- *    with ZERO production callers, because nothing could hand them a due
- *    date.
+ *    `server/services/respa/earlyIntervention.ts` were correct modules with
+ *    ZERO production callers, because nothing could hand them a due date.
+ *    `earlyIntervention` now has its first one: `server/jobs/acquiredNoteAging.ts`
+ *    calls `flagEarlyIntervention` at the §1024.39 day-36 gate, off the days
+ *    this module derives. `lateFees` still has none — `assessLateFee` /
+ *    `shouldAssessLateFee` have no production call site anywhere in the repo,
+ *    so the §1026.36(c)(2) guard and the one-fee-per-cycle write remain
+ *    unreached. `lateFeeAssessable` below is only the ADVISORY read; it
+ *    assesses nothing, and it is not that caller.
  *
  * This module is the missing input. It is deliberately PURE — no db, no
  * storage, no logger, no express, and no `new Date()` anywhere (module scope
@@ -427,6 +433,33 @@ export function deriveNextPaymentDate(
  * Capping at maturity keeps paid-through inside the note's life so that
  * `deriveNextPaymentDate` reads "paid through maturity → nothing more due"
  * rather than drifting into invented post-maturity periods.
+ *
+ * ─── THE SECOND DOOR (closed 2026-07-30) ──────────────────────────────────
+ *
+ * `nextPaymentVerdict` refuses to date a note whose servicing history
+ * predates its acquisition. This function did NOT, and it starts from the
+ * same origination anchor — so the guard had a second door standing open, on
+ * the path every operator uses first.
+ *
+ * Measured, on the module's own documented fixture (originated 2019-03-10,
+ * acquired 2026-07-01, no history imported — which is the shape of EVERY
+ * tape-imported note, since the importer sets neither anchor):
+ *
+ *     nextPaymentVerdict → { date: null, reason: "history_predates_acquisition" }
+ *     advancePaidThrough(facts, 1) → "2019-03-15"
+ *     → next due 2019-04-15 → 2,653 days delinquent → default_candidate
+ *
+ * One ordinary payment, and the platform asserts seven years of arrears
+ * against a real borrower, flips the note to `default`, and trips the RESPA
+ * §1024.39 obligation — off a date nobody verified. That is precisely the
+ * failure this module was written to prevent.
+ *
+ * So the same rule applies here. A payment is evidence that MONEY ARRIVED; it
+ * is not evidence of WHICH PERIOD it satisfied, because on a note with unseen
+ * history it could as easily be a catch-up on old arrears. With no
+ * paid-through and no first-payment anchor to stand on, the honest answer
+ * stays null, and the operator states the truth by setting `paidThroughDate`
+ * or `firstPaymentDate` on the note (both are writable on create and PATCH).
  */
 export function advancePaidThrough(
   facts: AcquiredNoteScheduleFacts,
@@ -445,6 +478,13 @@ export function advancePaidThrough(
   }
 
   const anchor = scheduleAnchor(coherent);
+
+  // Only bites when there is nothing to advance FROM. Once paid-through is
+  // established — by the operator, or by a payment on a note whose history we
+  // did see — advancing it is ordinary arithmetic and this rule steps aside.
+  if (!coherent.paidThrough && historyPredatesAcquisition(coherent, anchor)) {
+    return null;
+  }
   // With no prior paid-through, the first period satisfied is the anchor
   // period itself, so N periods lands on anchor + (N-1) months.
   const advanced = coherent.paidThrough
@@ -460,25 +500,49 @@ export function advancePaidThrough(
 /**
  * Days past due and the matching delinquency band.
  *
- * Grace: the clock starts at `nextPaymentDate + gracePeriodDays`, not at the
- * due date. A note with a 10-day grace that is 3 days past its due date is
- * `current` — the borrower is inside the terms they signed, and badging them
- * delinquent produces collection outreach that the note itself does not
- * authorize.
+ * ─── WHY GRACE DOES NOT MOVE THIS CLOCK (corrected 2026-07-30) ─────────────
+ *
+ * This function counts from the DUE DATE, not from the end of grace. The
+ * first version counted from `due + gracePeriodDays`, which felt kind and was
+ * wrong in the one direction that matters:
+ *
+ *   • RESPA §1024.39 attaches at 36 days DELINQUENT, and a loan is delinquent
+ *     from the day the payment was due. Starting the count after a 10-day
+ *     grace delays a federal early-intervention obligation by ten days.
+ *   • §1026.41(d)(8)'s 45-day disclosure and its 90-day foreclosure-risk
+ *     notice are measured the same way.
+ *   • `financeAgent.calculateDaysDelinquent` (the originated book) counts from
+ *     the due date with no grace. With the old arithmetic, one borrower 12
+ *     days past due read `delinquent` (12 days) on one book and
+ *     `early_delinquent` (2 days) on the other — exactly the two-spellings-of
+ *     -"60 days down" split the schema comment says was avoided.
+ *
+ * Grace is a term of the NOTE about FEES, not a redefinition of delinquency.
+ * It lives in `lateFeeAssessable` and nowhere else. Keeping it here also made
+ * the §1026.41 statement self-contradictory: `delinquentSinceDate` is the due
+ * date, so "delinquent since 2026-04-01 · 45 days delinquent" printed on a
+ * date 55 days after 04-01.
  *
  * The arithmetic (`Math.floor` of the ms difference, floored at 0, `current`
- * at <= 0) matches financeAgent's convention exactly so the two books agree
- * on the day count, not just the band names.
+ * at <= 0) now matches financeAgent's convention exactly, so the two books
+ * agree on the day count and not merely on the band names.
  *
  * When `nextPaymentDate` is null we report `{0, "current"}` — but that is a
  * neutral default, NOT an assertion that the note is current. Null means the
  * caller could not derive a due date; the caller should render a blank rather
- * than the word "current". Callers that need the distinction should branch on
- * the null date before calling this.
+ * than the word "current". Callers that need the distinction must branch on
+ * the null date before calling this — `notDeterminable()` below is the
+ * explicit way to say so.
  */
 export function computeNoteDelinquency(input: {
   nextPaymentDate: string | null;
-  gracePeriodDays: number;
+  /**
+   * Accepted for call-site symmetry with `lateFeeAssessable` and deliberately
+   * IGNORED. See the block above: grace governs fees, not delinquency. The
+   * parameter is kept rather than removed so a caller that passes it is not
+   * silently changed in meaning by a future edit that re-adds the offset.
+   */
+  gracePeriodDays?: number;
   asOf: Date;
 }): { daysDelinquent: number; delinquencyStatus: NoteDelinquencyStatus } {
   const due = parseIsoDate(input?.nextPaymentDate);
@@ -487,20 +551,36 @@ export function computeNoteDelinquency(input: {
     return { daysDelinquent: 0, delinquencyStatus: "current" };
   }
 
-  const grace =
-    Number.isFinite(input.gracePeriodDays) && input.gracePeriodDays > 0
-      ? Math.floor(input.gracePeriodDays)
-      : 0;
-  const graceDeadline = due.getTime() + grace * DAY_MS;
   const daysDelinquent = Math.max(
     0,
-    Math.floor((asOf.getTime() - graceDeadline) / DAY_MS),
+    Math.floor((asOf.getTime() - due.getTime()) / DAY_MS),
   );
 
   return {
     daysDelinquent,
     delinquencyStatus: bandFor(daysDelinquent),
   };
+}
+
+/**
+ * True when a note's delinquency CANNOT be determined, because there is no
+ * due date to measure from.
+ *
+ * Exists because `computeNoteDelinquency` has to return something, and the
+ * `NoteDelinquencyStatus` union has no "unknown" member — so its neutral
+ * `{0, "current"}` is indistinguishable from a genuinely current note. Two
+ * places were writing that neutral value to the database and to the screen as
+ * though it were a finding: the payment path stamped `current` over a note it
+ * could not read (permanently, since the nightly sweep then refuses to touch
+ * an undeterminable note), and the list chip rendered the literal word
+ * "Current" beside a due-date cell reading "no schedule on file".
+ *
+ * Callers branch on this BEFORE deciding to persist or display a band.
+ */
+export function delinquencyIsDeterminable(
+  nextPaymentDate: string | null | undefined,
+): boolean {
+  return parseIsoDate(nextPaymentDate ?? null) !== null;
 }
 
 function bandFor(days: number): NoteDelinquencyStatus {
@@ -553,17 +633,27 @@ export function lateFeeAssessable(input: {
     };
   }
 
-  const { daysDelinquent } = computeNoteDelinquency({
-    nextPaymentDate: input.nextPaymentDate,
-    gracePeriodDays: input.gracePeriodDays,
-    asOf: input.asOf,
-  });
+  // GRACE LIVES HERE, AND ONLY HERE.
+  //
+  // This used to delegate the whole calculation to `computeNoteDelinquency`,
+  // which applied the grace offset itself. When that function was corrected to
+  // count delinquency from the due date (RESPA's clock, not the note's fee
+  // terms), this call site silently lost its grace protection and would have
+  // reported a fee assessable on day 1 of a 10-day grace — charging a borrower
+  // who is inside the terms they signed. Its own test caught it.
+  //
+  // The arithmetic is deliberately local rather than a shared helper: grace is
+  // a fee concept, and re-entangling it with the delinquency clock is exactly
+  // the mistake that was just undone.
+  const grace =
+    Number.isFinite(input.gracePeriodDays) && input.gracePeriodDays > 0
+      ? Math.floor(input.gracePeriodDays)
+      : 0;
+  const daysPastGrace = Math.floor(
+    (input.asOf.getTime() - (due.getTime() + grace * DAY_MS)) / DAY_MS,
+  );
 
-  if (daysDelinquent <= 0) {
-    const grace =
-      Number.isFinite(input.gracePeriodDays) && input.gracePeriodDays > 0
-        ? Math.floor(input.gracePeriodDays)
-        : 0;
+  if (!Number.isFinite(daysPastGrace) || daysPastGrace <= 0) {
     return {
       assessable: false,
       reason: `Payment due ${toIsoDate(due)} is still within the ${grace}-day grace period, so no late fee is assessable.`,
@@ -572,6 +662,6 @@ export function lateFeeAssessable(input: {
 
   return {
     assessable: true,
-    reason: `Payment due ${toIsoDate(due)} is ${daysDelinquent} day(s) past the grace period. A late fee of ${feeCents} cents would be assessable; nothing has been assessed by this check.`,
+    reason: `Payment due ${toIsoDate(due)} is ${daysPastGrace} day(s) past the grace period. A late fee of ${feeCents} cents would be assessable; nothing has been assessed by this check.`,
   };
 }

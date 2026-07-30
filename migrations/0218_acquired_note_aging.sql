@@ -99,15 +99,35 @@ ALTER TABLE "acquired_notes"
 CREATE INDEX IF NOT EXISTS "acquired_notes_org_next_payment_idx"
   ON "acquired_notes" ("organization_id", "next_payment_date");
 
--- ── Backfill: paid_through_date only ────────────────────────────────────────
--- Idempotent by construction: it only fills rows still NULL, and it restates
--- the same MAX() from the same ledger rows on every re-run.
-UPDATE "acquired_notes" AS n
-SET "paid_through_date" = p."last_payment_date"
-FROM (
-  SELECT "note_id", MAX("payment_date") AS "last_payment_date"
-  FROM "note_payments"
-  GROUP BY "note_id"
-) AS p
-WHERE p."note_id" = n."id"
-  AND n."paid_through_date" IS NULL;
+-- ── NO BACKFILL. All three date columns ship NULL, on purpose. ─────────────
+--
+-- The first draft of this migration backfilled `paid_through_date` from
+-- MAX(note_payments.payment_date), described as "the one value the ledger can
+-- state from facts it already holds". That was wrong in both directions, and
+-- the column's own comment in shared/schema/notes-vertical.ts says why:
+-- paid-through is "the last period FULLY satisfied. Distinct from 'date of
+-- last payment': a borrower who sends half a payment has paid recently and is
+-- still a period behind."
+--
+--   * TOO GENEROUS. The query had no payment_type filter, so `partial`,
+--     `extra_principal`, `unapplied_apply` — and `nsf_reversal`, money that
+--     BOUNCED — would each set paid-through. A note three periods down would
+--     read current, and the aging sweep would agree with it.
+--   * TOO STINGY. A payment posted on the 3rd for a note due the 15th lands
+--     paid-through in the same month, so the next due date resolves to that
+--     same 15th and an on-time payer reads one period behind.
+--
+-- No SQL filter fixes this, because "was this period fully satisfied?" needs
+-- the scheduled payment amount, the split across principal/interest/escrow and
+-- the unapplied balance — the arithmetic that lives in
+-- server/services/notes/acquiredNoteSchedule.ts and is exercised by tests. A
+-- second implementation here is exactly how two payoff engines came to
+-- disagree once already.
+--
+-- So the honest state after this migration is "no schedule on file", which the
+-- UI renders with its reason and a named next action. The operator supplies
+-- `paid_through_date` or `first_payment_date` on the note (both writable on
+-- create and PATCH), and every derived column follows from there.
+--
+-- Do NOT add a backfill here. If one is ever wanted, it belongs in a
+-- one-shot script that calls the schedule module, not in DDL.

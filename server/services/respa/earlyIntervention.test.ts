@@ -31,13 +31,21 @@ const PAID_THROUGH = "2026-04-01";
 
 /**
  * Evaluation instants chosen so the note's STORED aging equals the day the
- * test hands to `shouldFireEarlyIntervention`. Grace deadline is
- * MISSED_DUE_DATE + GRACE_DAYS = 2026-05-11; adding the trigger day gives
- * 2026-06-16, adding 60 gives 2026-07-10. Without this the fixture would
+ * test hands to `shouldFireEarlyIntervention`. Without this the fixture would
  * quietly say "current" while the assertion says "36 days delinquent".
+ *
+ * Both instants moved 10 days earlier on 2026-07-30, when
+ * `computeNoteDelinquency` was corrected to count from the DUE DATE rather
+ * than from due-plus-grace. That correction is the point of the change, not a
+ * detail: §1024.39's duty attaches at 36 days DELINQUENT, and delinquency
+ * starts the day the payment was due. Counting after a 10-day grace delayed
+ * this federal obligation by ten days for every borrower on the book.
+ *
+ * So the offsets are now MISSED_DUE_DATE + the day count, with no grace term:
+ * 2026-05-01 + 36 = 2026-06-06, and + 60 = 2026-06-30.
  */
-const AS_OF_TRIGGER_DAY = new Date(Date.UTC(2026, 5, 16));
-const AS_OF_DAY_60 = new Date(Date.UTC(2026, 6, 10));
+const AS_OF_TRIGGER_DAY = new Date(Date.UTC(2026, 5, 6));
+const AS_OF_DAY_60 = new Date(Date.UTC(2026, 5, 30));
 
 /**
  * The stored schedule + aging columns for a note observed at `asOf`. The two

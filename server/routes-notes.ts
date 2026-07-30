@@ -47,6 +47,7 @@ import { emitPaymentEvent } from "./services/workflow-engine";
 import {
   advancePaidThrough,
   computeNoteDelinquency,
+  delinquencyIsDeterminable,
   deriveNextPaymentDate,
   lateFeeAssessable,
   nextPaymentVerdict,
@@ -176,23 +177,34 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * Whole days between the period's due day and the day the payment posted.
  *
- * Derived ONLY from stored fields (`acquired_notes.payment_due_day` + the
- * payment date), clamped to the month's length for short months. Returns
- * `null` when the note carries no due day, so the event never publishes an
- * invented number. 0 means on-time-or-early, never "unknown".
+ * ─── ONE ANSWER TO "HOW LATE?" (corrected 2026-07-30) ─────────────────────
+ *
+ * This used to measure the payment against `payment_due_day` in the PAYMENT'S
+ * OWN MONTH, and ignored grace entirely. Two consequences, both live on the
+ * wire, because `daysLate` is published on every `payment.received` /
+ * `payment.missed` event that workflow conditions branch on:
+ *
+ *   • A borrower catching up on March's payment in July was measured against
+ *     JULY's due day and read as a few days late, or on time. The arrears it
+ *     actually cleared were invisible to every workflow.
+ *   • The note row and the event disagreed about the same borrower, since the
+ *     note's `days_delinquent` is measured from the period's real due date.
+ *
+ * It now measures against the due date the note was actually sitting on — the
+ * stored `next_payment_date` before this payment posted, which is the period
+ * the money was owed for. Null when the note carries no due date, so the event
+ * publishes an absence rather than an invented number. 0 means
+ * on-time-or-early; it never means "unknown".
  */
 export function daysLateForNotePayment(
   paymentDate: string,
-  paymentDueDay: number | null | undefined,
+  dueDate: string | null | undefined,
 ): number | null {
-  if (!paymentDueDay || !Number.isFinite(paymentDueDay)) return null;
-  const paid = new Date(`${String(paymentDate).slice(0, 10)}T00:00:00.000Z`);
-  if (Number.isNaN(paid.getTime())) return null;
-  const year = paid.getUTCFullYear();
-  const month = paid.getUTCMonth();
-  const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  const due = Date.UTC(year, month, Math.min(paymentDueDay, lastDayOfMonth));
-  const diffDays = Math.floor((paid.getTime() - due) / DAY_MS);
+  if (typeof dueDate !== "string") return null;
+  const due = Date.parse(`${dueDate.slice(0, 10)}T00:00:00.000Z`);
+  const paid = Date.parse(`${String(paymentDate).slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(due) || Number.isNaN(paid)) return null;
+  const diffDays = Math.floor((paid - due) / DAY_MS);
   return diffDays > 0 ? diffDays : 0;
 }
 
@@ -213,7 +225,9 @@ export interface PostedNotePayment {
   unappliedCents: number;
   /** acquired_notes.payment_amount_cents — the scheduled P&I for a period. */
   scheduledPaymentAmountCents: number | null;
-  paymentDueDay: number | null;
+  /** The due date the note was sitting on BEFORE this payment posted — the
+   *  period the money was owed for. Null when no schedule is on file. */
+  dueDateAtPayment: string | null;
   remainingBalanceCents: number;
   unappliedBalanceCents: number;
   noteStatus: string;
@@ -268,7 +282,7 @@ export function buildNotePaymentEventData(p: PostedNotePayment): Record<string, 
     isPayoff: p.paymentType === "payoff",
     isReversal,
     ...(isReversal ? { reason: "nsf_reversal" } : {}),
-    daysLate: daysLateForNotePayment(p.paymentDate, p.paymentDueDay),
+    daysLate: daysLateForNotePayment(p.paymentDate, p.dueDateAtPayment),
     // State after the payment
     remainingBalanceCents: p.remainingBalanceCents,
     remainingPrincipal: p.remainingBalanceCents / 100,
@@ -376,8 +390,11 @@ export interface PaymentScheduleOutcome {
   periodsPaid: number;
   paidThroughDate: string | null;
   nextPaymentDate: string | null;
-  daysDelinquent: number;
-  delinquencyStatus: NoteDelinquencyStatus;
+  /** null = NOT DETERMINABLE (no due date to measure from), which is a
+   *  different thing from 0. The caller must skip the column rather than
+   *  write a fabricated "current" the nightly sweep can never correct. */
+  daysDelinquent: number | null;
+  delinquencyStatus: NoteDelinquencyStatus | null;
   status: string;
   consecutiveOnTimePayments: number;
   reperformingThresholdMet: boolean;
@@ -456,16 +473,26 @@ export function applyPaymentToSchedule(
   }
 
   const periodsPaid = periodsSatisfiedByPayment(input);
-  const paidThroughDate = advancePaidThrough(input.facts, periodsPaid);
+  // `advancePaidThrough` returns null both for "nothing was satisfied" and for
+  // "this note's history predates its acquisition, so we cannot say which
+  // period the money paid". In neither case may we DESTROY a paid-through the
+  // operator (or an earlier payment) already established — nulling it would
+  // erase the one fact the whole schedule rests on.
+  const advanced = advancePaidThrough(input.facts, periodsPaid);
+  const paidThroughDate = advanced ?? input.facts.paidThroughDate ?? null;
   const nextPaymentDate = deriveNextPaymentDate(
     { ...input.facts, paidThroughDate },
     input.asOf,
   );
-  const { daysDelinquent, delinquencyStatus } = computeNoteDelinquency({
-    nextPaymentDate,
-    gracePeriodDays: input.gracePeriodDays,
-    asOf: input.asOf,
-  });
+  // UNKNOWN IS NOT CURRENT. `computeNoteDelinquency` must return something and
+  // its union has no "unknown" member, so a null due date yields the neutral
+  // {0, "current"}. Persisting that stamps a finding over a note we cannot
+  // read — and the nightly sweep then refuses to touch an undeterminable note,
+  // so the fabrication would be permanent. Nulls here mean "leave it alone".
+  const determinable = delinquencyIsDeterminable(nextPaymentDate);
+  const measured = computeNoteDelinquency({ nextPaymentDate, asOf: input.asOf });
+  const daysDelinquent = determinable ? measured.daysDelinquent : null;
+  const delinquencyStatus = determinable ? measured.delinquencyStatus : null;
 
   // ── On-time determination ────────────────────────────────────────────────
   let onTime: boolean | null;
@@ -502,7 +529,7 @@ export function applyPaymentToSchedule(
   let status = input.status;
   if (
     !isTerminal &&
-    nextPaymentDate !== null &&
+    delinquencyStatus !== null &&
     (AGEABLE_NOTE_STATUSES as readonly string[]).includes(input.status)
   ) {
     status = noteStatusForDelinquency(delinquencyStatus);
@@ -1804,8 +1831,16 @@ export function registerNoteRoutes(app: Express): void {
 
           updates.paidThroughDate = schedule.paidThroughDate;
           updates.nextPaymentDate = schedule.nextPaymentDate;
-          updates.daysDelinquent = schedule.daysDelinquent;
-          updates.delinquencyStatus = schedule.delinquencyStatus;
+          // null = not determinable. Leave the columns at whatever was last
+          // actually known rather than stamping "current" over an unreadable
+          // note — the nightly sweep refuses to touch an undeterminable note,
+          // so a fabrication written here would never be corrected.
+          if (schedule.daysDelinquent !== null) {
+            updates.daysDelinquent = schedule.daysDelinquent;
+          }
+          if (schedule.delinquencyStatus !== null) {
+            updates.delinquencyStatus = schedule.delinquencyStatus;
+          }
           updates.consecutiveOnTimePayments = schedule.consecutiveOnTimePayments;
           updates.reperformingThresholdMet = schedule.reperformingThresholdMet;
           // `paid_off` (set above) always wins — a payoff is terminal and the
@@ -1843,7 +1878,10 @@ export function registerNoteRoutes(app: Express): void {
               lateFeeCents: data.lateFeeCents,
               unappliedCents: data.unappliedCents,
               scheduledPaymentAmountCents: note.paymentAmountCents ?? null,
-              paymentDueDay: note.paymentDueDay ?? null,
+              // The due date the note was ON before this payment — read from
+              // the same FOR UPDATE row, so the event's `daysLate` and the
+              // note's own `days_delinquent` measure from the same period.
+              dueDateAtPayment: note.nextPaymentDate ?? null,
               remainingBalanceCents: newCurrentBalance,
               unappliedBalanceCents: newUnappliedBalance,
               noteStatus: updates.status ?? note.status,
@@ -2916,7 +2954,12 @@ export function registerNoteRoutes(app: Express): void {
           interestRateBps: note.interestRateBps,
           paymentAmountCents: note.paymentAmountCents,
           termMonthsRemaining: remaining,
-          startDate: new Date(),
+          // Anchor on the note's real next due date when one is on file. Using
+          // "today" ignored paidThroughDate entirely, so the projected schedule
+          // disagreed with the due date shown everywhere else on the same note.
+          startDate: note.nextPaymentDate
+            ? new Date(`${note.nextPaymentDate}T00:00:00.000Z`)
+            : new Date(),
           paymentDueDay: note.paymentDueDay,
         });
 

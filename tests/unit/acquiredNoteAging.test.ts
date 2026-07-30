@@ -147,13 +147,34 @@ describe("the status band moves on real delinquency", () => {
     expect(plan.changes).toEqual({});
   });
 
-  it("grace is honoured — a note one day past due is NOT late", () => {
+  it("counts from the due date — one day past due IS one day delinquent", () => {
+    // REWRITTEN 2026-07-30, and inverted rather than deleted. This used to
+    // assert that a 30-day grace kept a note one day past due at 0 days
+    // delinquent. Grace governs FEES, not the delinquency clock: RESPA
+    // §1024.39's 36-day trigger and §1026.41's 45/90-day gates all run from
+    // the due date, so offsetting by grace delayed a federal obligation by the
+    // length of the grace period, and disagreed with the originated book about
+    // the same borrower. The note's own grace is still honoured where it
+    // belongs — see the late-fee advisory below.
     const plan = planNoteAging(
       note({ paidThroughDate: "2026-06-15", gracePeriodDays: 30 }),
       new Date(Date.UTC(2026, 6, 16)),
     );
-    expect(plan.daysDelinquent).toBe(0);
-    expect(plan.status).toBe("performing");
+    expect(plan.daysDelinquent).toBe(1);
+    expect(plan.delinquencyStatus).toBe("early_delinquent");
+    expect(plan.status).toBe("late");
+  });
+
+  it("but the LATE FEE still respects the note's grace", () => {
+    // The other half of the same rule: one day past due is delinquent, and a
+    // fee is NOT yet assessable on a note granting 30 days. Charging a
+    // borrower inside the terms they signed is the failure this pins shut.
+    const plan = planNoteAging(
+      note({ paidThroughDate: "2026-06-15", gracePeriodDays: 30 }),
+      new Date(Date.UTC(2026, 6, 16)),
+    );
+    expect(plan.lateFeeAdvisory?.assessable).toBe(false);
+    expect(plan.lateFeeAdvisory?.reason).toMatch(/grace/i);
   });
 
   it("flips performing → late once past grace", () => {

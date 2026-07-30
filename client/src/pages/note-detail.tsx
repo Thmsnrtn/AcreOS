@@ -15,7 +15,7 @@
 import { useState } from "react";
 import { useRoute, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, FileText, AlertCircle, MapPin, Plus, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, FileText, AlertCircle, HelpCircle, MapPin, Plus, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card } from "@/components/ui/card";
@@ -156,6 +156,27 @@ const FALLBACK_CHIP = {
   tone: "bg-muted text-muted-foreground border-transparent",
 };
 
+/**
+ * True when the note's aging can be determined at all — i.e. the server stated
+ * a due date to measure from. Mirrors `delinquencyIsDeterminable` in
+ * `server/services/notes/acquiredNoteSchedule.ts` (the client cannot import
+ * server code) and the identical helper in client/src/pages/notes.tsx.
+ *
+ * `daysDelinquent === 0` does NOT answer this question: the server writes a
+ * neutral 0 / "current" for a note whose due date it could not derive, because
+ * the band union has no "unknown" member and the columns are NOT NULL. Branch
+ * on the DATE, never on the number.
+ */
+function delinquencyIsDeterminable(
+  nextPaymentDate: string | null | undefined,
+): boolean {
+  return typeof nextPaymentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(nextPaymentDate);
+}
+
+/** The action that turns an undeterminable note into a readable one. */
+const AGING_UNKNOWN_ACTION =
+  "Set this note's paid-through or first-payment date to give the schedule an anchor.";
+
 function DelinquencyChip({
   status,
   days,
@@ -172,6 +193,51 @@ function DelinquencyChip({
       <span>{days}d</span>
       <span aria-hidden="true">·</span>
       <span>{chip.label}</span>
+    </span>
+  );
+}
+
+/**
+ * The neutral chip + sentence for a note with no due date, worded by REASON.
+ *
+ * A note paid through maturity has no due date either, but it is not a mystery
+ * — telling that operator to "go find the paid-through date" would send them
+ * after a fact they already supplied. So the two blanks get two readings.
+ */
+function agingUnknownCopy(reason: string | null | undefined): {
+  label: string;
+  detail: string;
+} {
+  if (reason === "paid_through_maturity") {
+    return {
+      label: "Schedule complete",
+      detail:
+        "This note is paid through maturity, so no monthly payment remains and there is no aging to measure. Any remaining balance is a payoff figure, not a past-due one.",
+    };
+  }
+  return {
+    label: "Aging unknown",
+    detail: `This note has no due date on file, so how far behind it is — if at all — can't be determined. ${AGING_UNKNOWN_ACTION}`,
+  };
+}
+
+/**
+ * The UNKNOWN aging state — visibly neutral, and the reason the aging block is
+ * no longer hidden on a `daysDelinquent === 0` note.
+ *
+ * Not "Current" (a claim the facts do not support), not a severity tone (we are
+ * not asserting lateness either), and not a bare dash (which reads as a
+ * rendering bug). The dashed border is the form-level tell that this row is
+ * awaiting a fact rather than reporting one.
+ */
+function AgingUnknownChip({ label }: { label: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground"
+      data-testid="note-detail-aging-unknown-chip"
+    >
+      <HelpCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span>{label}</span>
     </span>
   );
 }
@@ -486,6 +552,11 @@ export default function NoteDetailPage() {
   const principalReducedPct = note.originalPrincipalCents > 0
     ? (principalReduced / note.originalPrincipalCents) * 100
     : 0;
+  // Branch the aging block on the DATE, never on `daysDelinquent === 0` — the
+  // server writes a neutral 0 for a note it could not read, and hiding the
+  // block on that 0 made an unknown note look identical to a healthy one.
+  const agingIsDeterminable = delinquencyIsDeterminable(note.nextPaymentDate);
+  const agingUnknown = agingUnknownCopy(note.nextPaymentDateReason);
 
   return (
     <PageShell>
@@ -622,12 +693,30 @@ export default function NoteDetailPage() {
             </div>
           </div>
 
-          {/* Aging + late-fee advisory. Only rendered when there is something
-              true to say — a "0 days late" row on a current note is noise. */}
-          {(note.daysDelinquent > 0 || note.lateFeeAdvisory?.assessable) && (
+          {/* Aging + late-fee advisory.
+              Rendered when there is something true to say — a "0 days late" row
+              on a genuinely current note is noise. But "we cannot tell" is NOT
+              the same as "current": hiding the block on `daysDelinquent === 0`
+              made an UNDETERMINABLE note look identical to a healthy one, which
+              is the same fabrication in a different shape. So the unknown case
+              gets its own visible, neutral row. */}
+          {(!agingIsDeterminable ||
+            note.daysDelinquent > 0 ||
+            note.lateFeeAdvisory?.assessable) && (
             <>
               <Separator className="my-4" />
-              {note.daysDelinquent > 0 && (
+              {!agingIsDeterminable && (
+                <div
+                  className="flex flex-wrap items-center gap-2"
+                  data-testid="note-detail-aging-unknown"
+                >
+                  <AgingUnknownChip label={agingUnknown.label} />
+                  <span className="text-xs text-muted-foreground">
+                    {agingUnknown.detail}
+                  </span>
+                </div>
+              )}
+              {agingIsDeterminable && note.daysDelinquent > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   <DelinquencyChip
                     status={note.delinquencyStatus}
@@ -635,8 +724,9 @@ export default function NoteDetailPage() {
                   />
                   <span className="text-xs text-muted-foreground">
                     {note.daysDelinquent} day{note.daysDelinquent === 1 ? "" : "s"} past
-                    due, counted after the note's {note.gracePeriodDays ?? 0}-day grace
-                    period.
+                    due, counted from the due date. The note's{" "}
+                    {note.gracePeriodDays ?? 0}-day grace period governs late fees, not
+                    this count.
                   </span>
                 </div>
               )}

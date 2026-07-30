@@ -17,25 +17,19 @@
  * job's comment block from the original index.ts is preserved verbatim.
  */
 
-import { db, storage as _storage } from "../storage";
+import { db } from "../storage";
 import { sql, lt, eq } from "drizzle-orm";
 import { organizations, jobHealthLogs, agentEvents } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { realtimeAlertsService } from "../services/realtimeAlerts";
 import { wsServer } from "../websocket";
 import { jobSupervisor } from "../services/jobSupervisor";
-import { instanceId as _instanceId, trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
+import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
 import { startLeadNurturingJob, startCampaignOptimizationJob } from "./leadCampaignJobs"; // S3 decomposition slice 1
 import { startWorkflowDelayResumeJob } from "./workflowDelayResume"; // S3 decomposition slice 2 (Wave B)
 import { startAchAutopayJob } from "./achAutopayRun"; // S3 decomposition slice 3 (Wave C — money moves)
 import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-note delinquency sweep
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
-
-// Touch unused imports to keep them part of the symbol table (their
-// presence mirrors index.ts where they were originally imported at the
-// top of the file). They may be referenced by future dynamic imports.
-void _storage;
-void _instanceId;
 
 // Auto-seed county GIS endpoints on startup
 async function seedCountyGisEndpointsOnStartup() {
@@ -4184,8 +4178,10 @@ export async function runScheduledJobs(): Promise<void> {
   startJobQueueWorker();
 
   // Deal Hunter background jobs (daily scrape + hourly distress recalc) retired 2026-06-08.
-  // EPIC 1: County Assessor ingest pipeline — stub removed (was a no-op log; the
-  // real BullMQ worker is registered separately when redis is wired up).
+
+  // EPIC 1: County Assessor ingest pipeline — stub removed (was a no-op
+  // log; the real BullMQ worker is registered separately when redis is
+  // wired up).
 
   // EPIC 2: Autonomous Deal Machine (nightly at 1 AM UTC)
   startAutonomousDealMachineJob();

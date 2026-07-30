@@ -93,7 +93,7 @@ function postedNotePayment(over: Partial<PostedNotePayment> = {}): PostedNotePay
     lateFeeCents: 0,
     unappliedCents: 0,
     scheduledPaymentAmountCents: 50_000,
-    paymentDueDay: 1,
+    dueDateAtPayment: "2026-07-01",
     remainingBalanceCents: 1_980_000,
     unappliedBalanceCents: 0,
     noteStatus: "performing",
@@ -225,17 +225,32 @@ describe("acquired-note payments → payment.received", () => {
     expect(data.reason).toBe("nsf_reversal");
   });
 
-  it("never invents lateness when the note has no due day", () => {
+  it("never invents lateness when the note has no schedule on file", () => {
     expect(daysLateForNotePayment("2026-07-05", null)).toBeNull();
-    expect(buildNotePaymentEventData(postedNotePayment({ paymentDueDay: null })).daysLate).toBeNull();
+    expect(
+      buildNotePaymentEventData(postedNotePayment({ dueDateAtPayment: null })).daysLate,
+    ).toBeNull();
   });
 
-  it("clamps the due day to short months and reports 0 for on-time/early", () => {
-    // Due day 31 in February → Feb 28 (2026 is not a leap year).
-    expect(daysLateForNotePayment("2026-03-02", 31)).toBe(0); // paid before Mar 31
-    expect(daysLateForNotePayment("2026-02-28", 31)).toBe(0);
-    expect(daysLateForNotePayment("2026-02-01", 31)).toBe(0);
-    expect(daysLateForNotePayment("2026-07-01", 1)).toBe(0);
+  it("measures the PERIOD the money was owed for, not the payment's own month", () => {
+    // REWRITTEN 2026-07-30, inverted rather than deleted. This used to pass a
+    // due DAY (1-31) and measure against that day in the payment's own month,
+    // with a month-end clamp — so a borrower catching up on March's payment in
+    // July was measured against JULY and read as on time, and the arrears they
+    // actually cleared were invisible to every workflow condition matching on
+    // `daysLate`. It also disagreed with the note row's own `days_delinquent`,
+    // which measures from the period's real due date.
+    //
+    // The clamp it was testing did not disappear — it moved to the one place
+    // that derives due dates (services/notes/acquiredNoteSchedule.ts), where
+    // `next_payment_date` is computed with month-end clamping and stored. This
+    // function now just subtracts two real dates.
+    expect(daysLateForNotePayment("2026-07-20", "2026-03-15")).toBe(127);
+    // On time or early is 0, never negative — 0 means "not late", and null is
+    // the only thing that means "unknown".
+    expect(daysLateForNotePayment("2026-02-28", "2026-02-28")).toBe(0);
+    expect(daysLateForNotePayment("2026-02-01", "2026-02-28")).toBe(0);
+    expect(daysLateForNotePayment("2026-07-01", "2026-07-01")).toBe(0);
   });
 
   it("an emit that throws does NOT fail the payment", () => {

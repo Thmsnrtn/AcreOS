@@ -8259,15 +8259,24 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "acquired_notes_org_next_payment_idx" ON "acquired_notes" ("organization_id", "next_payment_date")`,
   // Backfill, idempotent: only fills rows still NULL, and restates the same
   // MAX() from the same ledger rows on every re-run.
-  `UPDATE "acquired_notes" AS n
-     SET "paid_through_date" = p."last_payment_date"
-     FROM (
-       SELECT "note_id", MAX("payment_date") AS "last_payment_date"
-       FROM "note_payments"
-       GROUP BY "note_id"
-     ) AS p
-    WHERE p."note_id" = n."id"
-      AND n."paid_through_date" IS NULL`,
+  // NO BACKFILL for the three date columns — see the long rationale in
+  // migrations/0218_acquired_note_aging.sql. MAX(note_payments.payment_date)
+  // is the date of the last payment, NOT the last period fully satisfied: it
+  // counts partials, extra-principal and BOUNCED payments as if they serviced
+  // a period, and it lands an on-time payer one period behind. "Was this
+  // period satisfied?" is arithmetic that lives in
+  // server/services/notes/acquiredNoteSchedule.ts, under test. A second
+  // implementation in DDL is how two payoff engines came to disagree once.
+  //
+  // 0076 columns the payment path now WRITES but this file never created.
+  // migrate.mjs is the migrator that actually runs on deploy (the Fly
+  // release_command), and its CREATE TABLE "acquired_notes" predates 0076, so
+  // on a database built from this file alone the reperforming write would fail
+  // with `column ... does not exist` and roll back the whole payment
+  // transaction — no ledger row for a payment the borrower really made.
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "consecutive_on_time_payments" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "reperforming_threshold_met" boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "compliance_posture_json" jsonb`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

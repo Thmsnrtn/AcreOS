@@ -19,7 +19,10 @@
  *      the signal, and rolling it forward is the fabrication this whole
  *      structural build exists to remove.
  *   2. Recomputes `daysDelinquent` + `delinquencyStatus` via
- *      `computeNoteDelinquency` (grace-aware).
+ *      `computeNoteDelinquency`, which counts from the DUE DATE. Grace is a
+ *      term about FEES, not a redefinition of delinquency — it governs step 7
+ *      and nothing else (corrected 2026-07-30; counting after grace delayed the
+ *      RESPA §1024.39 day-36 obligation by the grace period).
  *   3. Derives `status` from the band: performing ⇄ late ⇄ default.
  *   4. Writes back ONLY the fields that actually changed, and skips the UPDATE
  *      entirely when nothing did. A no-op write per note per day is pure write
@@ -50,17 +53,20 @@
  *     touches no ledger, and moves nothing. `lateFeeAdvisories` in the summary
  *     is a count of notes where a fee WOULD be assessable — that is all.
  *
- * A NOTE ON THE JOB ROSTER (deliberate, and a follow-up)
+ * A NOTE ON THE JOB ROSTER (deliberate, and now closed)
  * -----------------------------------------------------
  * This module owns its own process/start pair on the shared runtime, the same
  * convention as achAutopayRun.ts / workflowDelayResume.ts, because
- * runScheduledJobs.ts is under a strictly-DOWN line-count ratchet. It takes the
- * job lock under the literal `"acquired_note_aging"`. That name is NOT yet in
- * `JOB_ROSTER` (server/jobs/jobRegistry.ts) and this file is not yet in
- * jobRosterCoverage.test.ts's SCANNED_FILES — both files are outside this
- * change's file set. Until a follow-up adds the roster row, the deadman cannot
- * page on this job going dark. Said out loud here rather than left to be
- * discovered.
+ * runScheduledJobs.ts is under a strictly-DOWN line-count ratchet — growing it
+ * with another job's wiring would push that ratchet the wrong way. It takes the
+ * job lock under the literal `"acquired_note_aging"`.
+ *
+ * That name IS in `JOB_ROSTER` (server/jobs/jobRegistry.ts, daily interval,
+ * non-critical) and this file IS in jobRosterCoverage.test.ts's SCANNED_FILES,
+ * so the deadman can page on this job going dark and the coverage test holds
+ * the two in sync. If the lock literal above ever changes, change the roster
+ * row with it — the roster key and the `withJobLock` literal are the same
+ * string by contract, and nothing but that test enforces it.
  */
 
 import { and, asc, eq, inArray, not } from "drizzle-orm";
@@ -95,8 +101,8 @@ export const AGEABLE_NOTE_STATUSES = ["performing", "late", "default"] as const;
 export type AgeableNoteStatus = (typeof AGEABLE_NOTE_STATUSES)[number];
 
 /**
- * Band → status. `late` once the borrower is past grace at all; `default`
- * only at `default_candidate` (31+ days past grace), which is the same
+ * Band → status. `late` once the borrower is past due at all; `default`
+ * only at `default_candidate` (31+ days past due), which is the same
  * threshold the originated book uses. Shared with the payment path in
  * server/routes-notes.ts so a payment that clears arrears and the nightly
  * sweep can never disagree about what "late" means.
@@ -201,13 +207,36 @@ export function planNoteAging(note: AgingNoteRow, asOf: Date): AgingPlan {
 
   // The schedule module needs coherent facts; a note missing origination,
   // maturity or a due day cannot produce a date and must not produce a guess.
+  //
+  // This is the SECOND undeterminable branch, and it gets exactly the same
+  // treatment as RULE 2 below: we clear the stored `nextPaymentDate`. Returning
+  // an untouched `inert` here left the last-written date on the row, so a note
+  // that LOST coherent facts (a bad edit, a re-import that dropped a column)
+  // kept serving a date derived from facts that no longer exist as current
+  // server truth — a stale number rendered as a fact, which is the fabrication
+  // this build exists to remove. Reporting `nextPaymentDate: null` also makes
+  // the note reach `summary.undeterminable`, so it shows up in the job's log
+  // line instead of being silently invisible.
+  //
+  // We deliberately do NOT clear `daysDelinquent` / `delinquencyStatus`: those
+  // columns are NOT NULL and the band union has no "unknown" member, so
+  // zeroing them would stamp the word "current" over a note we cannot read.
+  // The least-wrong action is to leave the last thing actually known in place.
   if (
     note.paymentDueDay == null ||
     note.originationDate == null ||
     note.maturityDate == null ||
     note.acquisitionDate == null
   ) {
-    return { ...inert, skipReason: "note is missing schedule facts" };
+    const missingFactChanges: AgingWriteback = {};
+    if (stored.nextPaymentDate !== null) missingFactChanges.nextPaymentDate = null;
+    return {
+      ...inert,
+      skipReason: "note is missing schedule facts",
+      changes: missingFactChanges,
+      changed: Object.keys(missingFactChanges).length > 0,
+      nextPaymentDate: null,
+    };
   }
 
   const facts: AcquiredNoteScheduleFacts = {
@@ -413,6 +442,11 @@ export async function runAcquiredNoteAgingSweep(options?: {
       }
 
       if (plan.skipReason) {
+        // Both undeterminable branches of `planNoteAging` (no derivable date,
+        // and missing schedule facts) report `nextPaymentDate: null`, so both
+        // land here and show up in the job's log line. The third skip reason
+        // (terminal status) cannot reach this loop at all — those rows are
+        // excluded in SQL above — so it never inflates this count.
         if (plan.nextPaymentDate === null) summary.undeterminable++;
         continue;
       }

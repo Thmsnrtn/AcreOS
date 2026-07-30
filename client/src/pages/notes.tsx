@@ -24,7 +24,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { FileText, Filter, Upload } from "lucide-react";
+import { FileText, Filter, HelpCircle, Upload } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { Card } from "@/components/ui/card";
@@ -104,7 +104,12 @@ interface AcquiredNoteRow {
   nextPaymentDate: string | null;
   /** 'YYYY-MM-DD' — the last period FULLY satisfied (not "date of last payment"). */
   paidThroughDate: string | null;
-  /** 0 when current. Counted from the due date PLUS the note's grace period. */
+  /**
+   * Counted from the DUE DATE (grace governs late FEES, not delinquency).
+   * 0 means "not past due" ONLY when `nextPaymentDate` is non-null — for a note
+   * with no derivable due date the server writes a neutral 0 it does not mean
+   * as a finding. Always pair this with `delinquencyIsDeterminable` before
+   * showing a band. */
   daysDelinquent: number;
   delinquencyStatus: NoteDelinquencyStatus;
   /**
@@ -254,20 +259,94 @@ function chipFor(status: NoteDelinquencyStatus | string) {
 }
 
 /**
- * Days-late chip. `daysDelinquent` counts from the due date PLUS the note's
- * contractual grace period, so 0 genuinely means "inside the terms the
- * borrower signed", not "due today".
+ * True when the note's aging can be determined at all — i.e. the server was
+ * able to state a due date to measure from.
+ *
+ * Mirrors `delinquencyIsDeterminable` in
+ * `server/services/notes/acquiredNoteSchedule.ts` (the client cannot import
+ * server code, so the check is restated here rather than approximated).
+ *
+ * This is NOT the same question as `daysDelinquent === 0`. The server writes a
+ * NEUTRAL 0 / "current" for a note whose due date it could not derive, because
+ * the band union has no "unknown" member and the columns are NOT NULL. Keying
+ * the chip off the number therefore printed a reassuring "Current" in one
+ * column beside "Next payment not on file — no schedule on file…" in the next.
+ * The date is the only honest discriminator.
+ */
+export function delinquencyIsDeterminable(
+  nextPaymentDate: string | null | undefined,
+): boolean {
+  return typeof nextPaymentDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(nextPaymentDate);
+}
+
+/** The action that turns an undeterminable note into a readable one. */
+export const AGING_UNKNOWN_ACTION =
+  "Set this note's paid-through or first-payment date to give the schedule an anchor.";
+
+/**
+ * The neutral chip for a note with no due date, worded by REASON.
+ *
+ * A note paid through maturity has no due date either, but it is not a mystery
+ * — telling that operator to "go find the paid-through date" would send them
+ * after a fact they already supplied. So the two blanks get two labels.
+ */
+export function agingUnknownChipCopy(reason: string | null | undefined): {
+  label: string;
+  title: string;
+} {
+  if (reason === "paid_through_maturity") {
+    return {
+      label: "Schedule complete",
+      title:
+        "Paid through maturity — no monthly payment remains, so there is no aging to measure. Any remaining balance is a payoff figure, not a past-due one.",
+    };
+  }
+  return {
+    label: "Aging unknown",
+    title: `We can't tell how far behind this note is — it has no due date on file. ${AGING_UNKNOWN_ACTION}`,
+  };
+}
+
+/**
+ * Days-late chip. `daysDelinquent` counts from the DUE DATE — grace is a term
+ * of the note about FEES, not a redefinition of delinquency — so 0 means "not
+ * past due", and an UNKNOWN note is a third state that must not borrow the
+ * word "Current" from it.
  */
 function DelinquencyChip({
   status,
   days,
+  nextPaymentDate,
+  nextPaymentDateReason,
   testId,
 }: {
   status: NoteDelinquencyStatus | string;
   days: number;
+  /** Null/absent ⇒ the server could not derive a due date; aging is unknown. */
+  nextPaymentDate: string | null | undefined;
+  nextPaymentDateReason?: NextDueReason | string | null;
   testId?: string;
 }) {
   const chip = chipFor(status);
+
+  // UNKNOWN — visibly neutral. Not "Current" (a claim we cannot support), not a
+  // severity tone (we are not asserting lateness either), and not a bare dash
+  // (which reads as a rendering bug and gets worked around). The dashed border
+  // is the form-level tell that this cell is awaiting a fact, not reporting one.
+  if (!delinquencyIsDeterminable(nextPaymentDate)) {
+    const unknown = agingUnknownChipCopy(nextPaymentDateReason);
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground"
+        data-testid={testId}
+        title={unknown.title}
+      >
+        <HelpCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
+        <span>{unknown.label}</span>
+      </span>
+    );
+  }
+
   if (!(days > 0)) {
     return (
       <span className="text-xs text-muted-foreground" data-testid={testId}>
@@ -279,7 +358,7 @@ function DelinquencyChip({
     <span
       className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs tabular-nums ${chip.tone}`}
       data-testid={testId}
-      title={`${days} day${days === 1 ? "" : "s"} past due, after the note's grace period`}
+      title={`${days} day${days === 1 ? "" : "s"} past due, counted from the due date`}
     >
       <span>{days}d</span>
       <span aria-hidden="true">·</span>
@@ -301,6 +380,13 @@ function NextPaymentCell({ note }: { note: AcquiredNoteRow }) {
         <div className="text-xs text-muted-foreground/80 whitespace-normal">
           {nullDueCopy(note.nextPaymentDateReason)}
         </div>
+        {/* The blank is explained AND actionable — the operator is told which
+            fact to supply, not just that one is missing. */}
+        {note.nextPaymentDateReason !== "paid_through_maturity" && (
+          <div className="text-xs text-muted-foreground/80 whitespace-normal mt-0.5">
+            {AGING_UNKNOWN_ACTION}
+          </div>
+        )}
       </div>
     );
   }
@@ -510,6 +596,8 @@ export default function NotesPage() {
                     <DelinquencyChip
                       status={note.delinquencyStatus}
                       days={note.daysDelinquent}
+                      nextPaymentDate={note.nextPaymentDate}
+                      nextPaymentDateReason={note.nextPaymentDateReason}
                       testId={`notes-aging-mobile-${note.id}`}
                     />
                   </div>
@@ -526,6 +614,9 @@ export default function NotesPage() {
                     ) : (
                       <span className="text-muted-foreground">
                         Next payment not on file — {nullDueCopy(note.nextPaymentDateReason)}
+                        {note.nextPaymentDateReason !== "paid_through_maturity"
+                          ? ` ${AGING_UNKNOWN_ACTION}`
+                          : ""}
                       </span>
                     )}
                   </div>
@@ -583,6 +674,8 @@ export default function NotesPage() {
                       <DelinquencyChip
                         status={note.delinquencyStatus}
                         days={note.daysDelinquent}
+                        nextPaymentDate={note.nextPaymentDate}
+                        nextPaymentDateReason={note.nextPaymentDateReason}
                         testId={`notes-aging-${note.id}`}
                       />
                     </td>

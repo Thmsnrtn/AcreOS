@@ -759,11 +759,29 @@ describe("computeNoteDelinquency — boundaries with no grace", () => {
   });
 });
 
-describe("computeNoteDelinquency — grace offset", () => {
-  it("shifts every boundary by the grace period", () => {
-    // A 10-day grace means the delinquency clock starts on the 11th, not the
-    // 2nd. Badging a borrower delinquent inside their own contractual grace
-    // would trigger collection outreach the note does not authorize.
+describe("computeNoteDelinquency — grace does NOT move this clock", () => {
+  it("counts from the DUE DATE, whatever the note's grace period says", () => {
+    // REWRITTEN 2026-07-30. This block used to assert the opposite — that a
+    // 10-day grace shifted every boundary, so day 5 past due read `current`.
+    // That was wrong in the one direction that matters:
+    //
+    //   • RESPA §1024.39 attaches at 36 days DELINQUENT, measured from the day
+    //     the payment was due. Starting the count after grace delayed a
+    //     FEDERAL obligation by the grace period.
+    //   • §1026.41(d)(8)'s 45-day disclosure and 90-day foreclosure-risk
+    //     notice run on the same clock.
+    //   • financeAgent (the originated book) counts from the due date with no
+    //     grace, so one borrower 12 days past due read `delinquent` on one
+    //     book and `early_delinquent` on the other — the exact split the
+    //     schema comment says was avoided.
+    //   • The §1026.41 statement prints `delinquentSinceDate` = the due date
+    //     alongside this number, so a grace-offset count made the disclosure
+    //     contradict itself: "delinquent since 04-01 · 45 days delinquent",
+    //     printed 55 days after 04-01.
+    //
+    // Grace is a term of the note about FEES. It lives in `lateFeeAssessable`
+    // and nowhere else — see the block below, which pins that it still works
+    // there. The assertion is not deleted, it is inverted to the new truth.
     const withGrace = (isoAsOf: string) =>
       computeNoteDelinquency({
         nextPaymentDate: "2026-07-01",
@@ -771,30 +789,59 @@ describe("computeNoteDelinquency — grace offset", () => {
         asOf: utc(isoAsOf),
       });
 
-    expect(withGrace("2026-07-05")).toEqual({
+    expect(withGrace("2026-07-01")).toEqual({
       daysDelinquent: 0,
       delinquencyStatus: "current",
     });
-    expect(withGrace("2026-07-11")).toEqual({
-      daysDelinquent: 0,
-      delinquencyStatus: "current",
-    });
-    expect(withGrace("2026-07-12")).toEqual({
+    // Day 1 past due IS one day delinquent, grace notwithstanding.
+    expect(withGrace("2026-07-02")).toEqual({
       daysDelinquent: 1,
       delinquencyStatus: "early_delinquent",
     });
-    expect(withGrace("2026-07-16")).toEqual({
+    expect(withGrace("2026-07-06")).toEqual({
       daysDelinquent: 5,
       delinquencyStatus: "early_delinquent",
     });
-    expect(withGrace("2026-07-17")).toEqual({
+    expect(withGrace("2026-07-07")).toEqual({
       daysDelinquent: 6,
       delinquencyStatus: "delinquent",
     });
-    expect(withGrace("2026-08-11")).toEqual({
+    expect(withGrace("2026-08-01")).toEqual({
       daysDelinquent: 31,
       delinquencyStatus: "default_candidate",
     });
+  });
+
+  it("gives the SAME answer whatever grace is passed", () => {
+    // The parameter is retained for call-site symmetry with lateFeeAssessable
+    // and deliberately ignored. Pinned so a future edit cannot quietly
+    // re-introduce the offset without this failing.
+    const at = (grace: number | undefined) =>
+      computeNoteDelinquency({
+        nextPaymentDate: "2026-07-01",
+        gracePeriodDays: grace,
+        asOf: utc("2026-07-20"),
+      });
+    const expected = { daysDelinquent: 19, delinquencyStatus: "seriously_delinquent" };
+    expect(at(0)).toEqual(expected);
+    expect(at(10)).toEqual(expected);
+    expect(at(45)).toEqual(expected);
+    expect(at(undefined)).toEqual(expected);
+  });
+
+  it("agrees with the originated book on the same borrower", () => {
+    // financeAgent.calculateDaysDelinquent is `floor((now - due) / DAY)`,
+    // floored at 0. Same input, same number — that is the whole point.
+    const due = utc("2026-06-15");
+    const asOf = utc("2026-07-30");
+    const expectedDays = Math.floor((asOf.getTime() - due.getTime()) / 86_400_000);
+    expect(
+      computeNoteDelinquency({
+        nextPaymentDate: "2026-06-15",
+        gracePeriodDays: 10,
+        asOf,
+      }).daysDelinquent,
+    ).toBe(expectedDays);
   });
 
   it("treats a negative or non-finite grace as zero grace", () => {
