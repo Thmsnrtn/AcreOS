@@ -56,6 +56,28 @@ export interface AcquiredNote {
   maturityDate: string;
   acquisitionDate: string;
   acquisitionPriceCents: number;
+  // ── Server-derived aging (migration 0218 + services/notes/acquiredNoteSchedule) ──
+  /**
+   * 'YYYY-MM-DD'. SERVER TRUTH, and it may be in the PAST — that is the
+   * signal. This page used to print the bare integer `Due day 14`, which is
+   * not a date and cannot be late.
+   */
+  nextPaymentDate: string | null;
+  /** 'YYYY-MM-DD' — last period FULLY satisfied (not "date of last payment"). */
+  paidThroughDate: string | null;
+  /** 0 when current. Counted from the due date PLUS the note's grace period. */
+  daysDelinquent: number;
+  delinquencyStatus: NoteDelinquencyStatus;
+  /** Contractual grace before a payment is late. NOT NULL, defaults to 10. */
+  gracePeriodDays: number;
+  /** Why there is no next payment date; absent when the server doesn't say. */
+  nextPaymentDateReason?: NextDueReason | string | null;
+  /**
+   * ADVISORY ONLY. Says a late fee WOULD be assessable under the note's own
+   * terms; AcreOS assesses, invoices and collects nothing (founder ruling
+   * #15, "be the rail, not the provider").
+   */
+  lateFeeAdvisory?: { assessable: boolean; reason: string } | null;
   status: "performing" | "late" | "default" | "paid_off" | "sold";
   payerName: string;
   payerAddress?: { line1?: string; city?: string; state?: string; zip?: string } | null;
@@ -80,6 +102,78 @@ export interface AcquiredNote {
 
 interface NoteDetailResponse {
   note: AcquiredNote;
+}
+
+/**
+ * Delinquency bands. Mirrors `NoteDelinquencyStatus` in
+ * server/services/notes/acquiredNoteSchedule.ts, which in turn mirrors
+ * financeAgent's bands so the acquired book and the originated book use one
+ * vocabulary for one borrower reality.
+ */
+type NoteDelinquencyStatus =
+  | "current"
+  | "early_delinquent"
+  | "delinquent"
+  | "seriously_delinquent"
+  | "default_candidate";
+
+/** Reason codes emitted when the server declines to state a due date. */
+type NextDueReason =
+  | "history_predates_acquisition"
+  | "paid_through_maturity"
+  | "incoherent_facts";
+
+/**
+ * One short human sentence for a null `nextPaymentDate`. Never a computed
+ * substitute — an unexplained dash reads as a bug and gets worked around,
+ * while a guessed date is the fabrication this whole change removes.
+ * (Kept in sync with the same helper in client/src/pages/notes.tsx.)
+ */
+function nullDueCopy(reason: string | null | undefined): string {
+  switch (reason) {
+    case "history_predates_acquisition":
+      return "No schedule on file — this note was acquired after origination and no payment history was imported.";
+    case "paid_through_maturity":
+      return "Paid through maturity — nothing further is due on the monthly schedule.";
+    case "incoherent_facts":
+      return "The note's recorded dates don't line up, so no due date can be stated. Check origination, maturity and due day.";
+    default:
+      return "No next payment date could be derived from this note's recorded facts.";
+  }
+}
+
+/** Severity encoded in form as well as number — all semantic acr-* tokens. */
+const DELINQUENCY_CHIP: Record<NoteDelinquencyStatus, { label: string; tone: string }> = {
+  current: { label: "Current", tone: "bg-muted text-muted-foreground border-transparent" },
+  early_delinquent: { label: "Early", tone: "bg-acr-warn-soft text-acr-warn border-acr-warn/20" },
+  delinquent: { label: "Delinquent", tone: "bg-acr-warn-soft text-acr-warn border-acr-warn/50 font-semibold" },
+  seriously_delinquent: { label: "Serious", tone: "bg-acr-neg-soft text-acr-neg border-acr-neg/30 font-semibold" },
+  default_candidate: { label: "Default risk", tone: "bg-acr-neg-soft text-acr-neg border-acr-neg/60 font-bold" },
+};
+
+const FALLBACK_CHIP = {
+  label: "Unknown",
+  tone: "bg-muted text-muted-foreground border-transparent",
+};
+
+function DelinquencyChip({
+  status,
+  days,
+}: {
+  status: NoteDelinquencyStatus | string;
+  days: number;
+}) {
+  const chip = DELINQUENCY_CHIP[status as NoteDelinquencyStatus] ?? FALLBACK_CHIP;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs tabular-nums ${chip.tone}`}
+      data-testid="note-detail-delinquency-chip"
+    >
+      <span>{days}d</span>
+      <span aria-hidden="true">·</span>
+      <span>{chip.label}</span>
+    </span>
+  );
 }
 
 export type NotePaymentType =
@@ -473,10 +567,43 @@ export default function NoteDetailPage() {
               sub={`${principalReducedPct.toFixed(1)}% of face`}
             />
             <KV label="Interest rate" value={fmtPct(note.interestRateBps)} />
+            {/* The bare `Due day 14` sub-label is gone: an integer is not a
+                date, cannot be late, and told the operator nothing the real
+                dates below don't say better. */}
+            <KV label="Monthly payment" value={fmtUsd(note.paymentAmountCents)} />
+            {/* Server truth. A date in the past stays in the past — the old
+                list-page derivation rolled it forward and hid delinquency. */}
             <KV
-              label="Monthly payment"
-              value={fmtUsd(note.paymentAmountCents)}
-              sub={`Due day ${note.paymentDueDay}`}
+              label="Next payment due"
+              value={
+                note.nextPaymentDate ? formatDate(note.nextPaymentDate) : "Not on file"
+              }
+              sub={
+                note.nextPaymentDate
+                  ? undefined
+                  : nullDueCopy(note.nextPaymentDateReason)
+              }
+              valueClassName={
+                note.nextPaymentDate && note.daysDelinquent > 0
+                  ? "text-acr-neg"
+                  : note.nextPaymentDate
+                    ? undefined
+                    : "text-muted-foreground"
+              }
+              testid="note-detail-next-payment"
+            />
+            <KV
+              label="Paid through"
+              value={
+                note.paidThroughDate ? formatDate(note.paidThroughDate) : "Not on file"
+              }
+              sub={
+                note.paidThroughDate
+                  ? "Last period fully satisfied"
+                  : "No period recorded as fully paid"
+              }
+              valueClassName={note.paidThroughDate ? undefined : "text-muted-foreground"}
+              testid="note-detail-paid-through"
             />
             <KV label="Term" value={`${note.termMonths} months`} />
             <KV label="Maturity" value={formatDate(note.maturityDate)} />
@@ -494,6 +621,41 @@ export default function NoteDetailPage() {
               <NoteTinEditor noteId={note.id} currentTinType={note.payerTinType as any} />
             </div>
           </div>
+
+          {/* Aging + late-fee advisory. Only rendered when there is something
+              true to say — a "0 days late" row on a current note is noise. */}
+          {(note.daysDelinquent > 0 || note.lateFeeAdvisory?.assessable) && (
+            <>
+              <Separator className="my-4" />
+              {note.daysDelinquent > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <DelinquencyChip
+                    status={note.delinquencyStatus}
+                    days={note.daysDelinquent}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {note.daysDelinquent} day{note.daysDelinquent === 1 ? "" : "s"} past
+                    due, counted after the note's {note.gracePeriodDays ?? 0}-day grace
+                    period.
+                  </span>
+                </div>
+              )}
+              {note.lateFeeAdvisory?.assessable && (
+                <p
+                  className="text-xs text-muted-foreground mt-2"
+                  data-testid="note-detail-late-fee-advisory"
+                >
+                  <span className="font-medium text-foreground">
+                    Advisory: a late fee would be assessable under this note's terms.
+                  </span>{" "}
+                  AcreOS has not charged, invoiced or collected anything — it does not
+                  handle your borrowers' money. Assessing this fee, if you choose to, is
+                  done on your own servicer's rails.
+                  {note.lateFeeAdvisory.reason ? ` ${note.lateFeeAdvisory.reason}` : ""}
+                </p>
+              )}
+            </>
+          )}
         </div>
       </Card>
 
@@ -619,11 +781,29 @@ function StatCard({ label, value, sub, testid }: { label: string; value: string;
   );
 }
 
-function KV({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function KV({
+  label,
+  value,
+  sub,
+  valueClassName,
+  testid,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  /** Semantic tone override (e.g. text-acr-neg on a past-due date). */
+  valueClassName?: string;
+  testid?: string;
+}) {
   return (
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-sm font-medium mt-0.5 tabular-nums">{value}</div>
+      <div
+        className={`text-sm font-medium mt-0.5 tabular-nums ${valueClassName ?? ""}`}
+        data-testid={testid}
+      >
+        {value}
+      </div>
       {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );

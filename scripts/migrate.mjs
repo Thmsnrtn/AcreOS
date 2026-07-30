@@ -8219,6 +8219,55 @@ const STATEMENTS = [
   `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "signature_requested_by" text`,
   `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "executed_at" timestamptz`,
   `CREATE INDEX IF NOT EXISTS "rental_leases_org_signing_doc_idx" ON "rental_leases" ("organization_id", "signing_document_id")`,
+
+  // ── 0218 acquired-note aging: when money is actually due ──────────────────
+  // `acquired_notes` had `payment_due_day` (a bare 1-31) and `maturity_date`
+  // and nothing that says which period is outstanding — so the note vertical
+  // had no aging, no dunning, no delinquency derivation, and its Reg-Z
+  // §1026.41 periodic statement printed "the 1st of next month" for every
+  // borrower on the book whether they were current or four periods down.
+  // A periodic statement is a representation the holder is bound by.
+  //
+  // paid_through_date is the last period FULLY satisfied, not the date of the
+  // last payment: a half payment is recent AND still a period behind.
+  // grace_period_days defaults to 10 to match `notes.grace_period_days`, so
+  // the two books never disagree about one borrower's standing, and the
+  // delinquency_status vocabulary is identical to `notes.delinquency_status`
+  // for the same reason. late_fee_cents is CONFIG ONLY — nothing in this
+  // build assesses, accrues, invoices or collects it (founder ruling #15:
+  // AcreOS is the rail, not the provider); lateness is an advisory.
+  //
+  // BACKFILL: paid_through_date only, from MAX(note_payments.payment_date).
+  // first_payment_date stays NULL — guessing it would print a wrong date on a
+  // legal statement; the schedule service falls back to origination and says
+  // so. next_payment_date stays NULL — the daily aging job derives it, and
+  // the derivation (maturity cap, month-end clamp, paid-through semantics)
+  // lives in ONE place. Do not re-implement it here; a second implementation
+  // in SQL is exactly how two engines come to disagree.
+  //
+  // NO new tables — scripts/ratchets/table-count.json unchanged.
+  // Mirrors migrations/0218_acquired_note_aging.sql + shared/schema/notes-vertical.ts.
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "first_payment_date" date`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "next_payment_date" date`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "paid_through_date" date`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "grace_period_days" integer NOT NULL DEFAULT 10`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "late_fee_cents" bigint NOT NULL DEFAULT 0`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "days_delinquent" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "delinquency_status" text NOT NULL DEFAULT 'current'`,
+  // Org-LEADING (L3 shard-readiness) — the daily "what is due / what is late"
+  // read across the book.
+  `CREATE INDEX IF NOT EXISTS "acquired_notes_org_next_payment_idx" ON "acquired_notes" ("organization_id", "next_payment_date")`,
+  // Backfill, idempotent: only fills rows still NULL, and restates the same
+  // MAX() from the same ledger rows on every re-run.
+  `UPDATE "acquired_notes" AS n
+     SET "paid_through_date" = p."last_payment_date"
+     FROM (
+       SELECT "note_id", MAX("payment_date") AS "last_payment_date"
+       FROM "note_payments"
+       GROUP BY "note_id"
+     ) AS p
+    WHERE p."note_id" = n."id"
+      AND n."paid_through_date" IS NULL`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

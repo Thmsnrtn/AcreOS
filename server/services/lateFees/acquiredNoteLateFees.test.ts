@@ -12,11 +12,29 @@
 import { describe, expect, it } from "vitest";
 import { shouldAssessLateFee } from "./index";
 import { qualifiesForRegZStatementSync } from "../periodicStatements/predicate";
+import { computeNoteDelinquency } from "../notes/acquiredNoteSchedule";
 import type { AcquiredNote } from "@shared/schema/notes-vertical";
 
 const PERIODIC_CENTS = 50_000;
 const GRACE_DAYS = 10;
 const LATE_FEE_CENTS = 5_000;
+
+/**
+ * The cycle the fee-assessable cases below evaluate: April 2026, due the 1st.
+ * The fixture's stored schedule columns describe the SAME cycle, so the row
+ * is a note that is genuinely past grace rather than a `current` note whose
+ * stored aging contradicts the fee the test then asserts is due.
+ */
+const MISSED_CYCLE_DUE = "2026-04-01";
+/** Last period the borrower fully satisfied — the cycle before the missed one. */
+const PAID_THROUGH = "2026-03-01";
+/**
+ * "Now" for the fee-assessable cases. 2026-04-20 is 9 days past the grace
+ * deadline (MISSED_CYCLE_DUE + GRACE_DAYS = 2026-04-11). The tests pass this
+ * same instant as `evaluationDate`, so the note's stored aging and the cycle
+ * under evaluation cannot describe two different days.
+ */
+const EVALUATION_DATE = new Date(Date.UTC(2026, 3, 20));
 
 function cycle(year: number, month: number) {
   return {
@@ -44,6 +62,22 @@ function qualifyingAcquired(overrides: Partial<AcquiredNote> = {}): AcquiredNote
     maturityDate: "2050-01-01",
     acquisitionDate: "2024-06-01",
     acquisitionPriceCents: 8_500_000,
+    firstPaymentDate: "2020-02-01",
+    // The missed cycle is the note's next-due period; the cycle before it is
+    // paid through. Grace + fee are read from this file's own constants so a
+    // change to either can never leave the fixture behind.
+    nextPaymentDate: MISSED_CYCLE_DUE,
+    paidThroughDate: PAID_THROUGH,
+    gracePeriodDays: GRACE_DAYS,
+    lateFeeCents: LATE_FEE_CENTS,
+    // Derived by the same pure function the aging job uses, from this
+    // fixture's own due date + grace, as of the tests' evaluation instant.
+    // At 2026-04-20 that is 9 days past grace → `delinquent`.
+    ...computeNoteDelinquency({
+      nextPaymentDate: MISSED_CYCLE_DUE,
+      gracePeriodDays: GRACE_DAYS,
+      asOf: EVALUATION_DATE,
+    }),
     status: "late",
     payerName: "Jane Borrower",
     payerAddress: null,
@@ -71,7 +105,7 @@ function qualifyingAcquired(overrides: Partial<AcquiredNote> = {}): AcquiredNote
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
-  } as AcquiredNote;
+  };
 }
 
 describe("§1026.36(c)(2) late-fee piggyback on acquired notes", () => {
@@ -79,6 +113,12 @@ describe("§1026.36(c)(2) late-fee piggyback on acquired notes", () => {
     const note = qualifyingAcquired();
     const predicate = qualifiesForRegZStatementSync({ kind: "acquired_note", row: note });
     expect(predicate.qualifies).toBe(true);
+
+    // The stored row must itself describe a note past grace — a fee asserted
+    // against a row whose aging says `current` would be two truths at once.
+    expect(note.paidThroughDate).toBe(PAID_THROUGH);
+    expect(note.daysDelinquent).toBeGreaterThan(0);
+    expect(note.delinquencyStatus).not.toBe("current");
 
     const { periodStart, periodEnd, dueDate } = cycle(2026, 4);
     const result = shouldAssessLateFee({
@@ -88,7 +128,7 @@ describe("§1026.36(c)(2) late-fee piggyback on acquired notes", () => {
       gracePeriodDays: GRACE_DAYS,
       periodicPaymentAmountCents: PERIODIC_CENTS,
       amountCreditedToCycleCents: 0,
-      evaluationDate: new Date(Date.UTC(2026, 3, 20)),
+      evaluationDate: EVALUATION_DATE,
       configuredLateFeeCents: LATE_FEE_CENTS,
     });
     expect(result.shouldAssess).toBe(true);
@@ -134,7 +174,7 @@ describe("§1026.36(c)(2) late-fee piggyback on acquired notes", () => {
       gracePeriodDays: GRACE_DAYS,
       periodicPaymentAmountCents: PERIODIC_CENTS,
       amountCreditedToCycleCents: 0,
-      evaluationDate: new Date(Date.UTC(2026, 3, 20)),
+      evaluationDate: EVALUATION_DATE,
       configuredLateFeeCents: LATE_FEE_CENTS,
     };
     const r1 = shouldAssessLateFee(input);

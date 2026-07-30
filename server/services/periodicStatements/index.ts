@@ -31,6 +31,7 @@
 
 import { db } from "../../db";
 import { notes } from "@shared/schema";
+import { deriveNextPaymentDate } from "../notes/acquiredNoteSchedule";
 import {
   periodicStatements,
   periodicStatementSkips,
@@ -57,12 +58,57 @@ const DELIVERY_LEAD_DAYS = 21;
 // §1026.41(d)(8): delinquency disclosure threshold.
 const DELINQUENCY_DISCLOSURE_THRESHOLD_DAYS = 45;
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Why a (loan, cycle) produced no statement. Machine code + operator-facing
+ * reason + the §-section that authorises the refusal — the same shape the
+ * 1098/1099 batch services use for their refusals, and the same pair the
+ * skip ledger persists.
+ */
+export type StatementSkipCode =
+  | "PREDICATE_OUT_OF_SCOPE"
+  | "NO_DERIVABLE_DUE_DATE";
+
+export interface StatementSkip {
+  loanId: string;
+  noteTable: "notes" | "acquired_notes";
+  code: StatementSkipCode;
+  reason: string;
+  citation: string;
+}
+
+/**
+ * The §-section that authorises refusing to generate rather than printing a
+ * due date we cannot support. §1026.41(d)(1) makes the payment due date a
+ * REQUIRED disclosure — so a statement bearing a fabricated one is not a
+ * lesser version of compliance, it is an inaccurate consumer disclosure.
+ * Not generating is recoverable (backfill); telling a borrower the wrong
+ * date is not.
+ */
+export const DUE_DATE_REFUSAL_CITATION =
+  "12 C.F.R. §1026.41(d)(1) — the payment due date is a required disclosure; AcreOS refuses to state a due date it cannot derive from the note's own schedule.";
+
+function noDerivableDueDateReason(
+  noteTable: "notes" | "acquired_notes",
+  loanId: string,
+  detail: string,
+): string {
+  return `No payment due date could be derived for ${noteTable} ${loanId} (${detail}). Refusing to generate a §1026.41 periodic statement rather than print a due date the note does not support.`;
+}
+
 export interface GenerateStatementsResult {
   organizationId: number;
   asOfDate: string;
   loansEvaluated: number;
   statementsGenerated: number;
   statementsSkipped: number;
+  /**
+   * Every skip, itemised. `statementsSkipped` is the count; this is the
+   * list an operator reads to see WHOSE note lacks a schedule. Populated
+   * for predicate skips and due-date refusals alike.
+   */
+  skips: StatementSkip[];
   errors: Array<{ loanId: string; error: string }>;
   durationMs: number;
 }
@@ -105,14 +151,25 @@ export async function generateStatementsForCycle(
   const cycleStart = new Date(
     Date.UTC(asOfDate.getUTCFullYear(), asOfDate.getUTCMonth(), 1),
   );
-  // Next month's due date = first of next month (we'll override per-loan
-  // when the note has a non-default payment_due_day, below).
-  const nextDueDate = new Date(
-    Date.UTC(asOfDate.getUTCFullYear(), asOfDate.getUTCMonth() + 1, 1),
-  );
-  const deliveryDeadline = new Date(
-    nextDueDate.getTime() - DELIVERY_LEAD_DAYS * 24 * 60 * 60 * 1000,
-  );
+  // The due date is resolved PER LOAN, from that loan's own schedule.
+  //
+  // This block used to read: "Next month's due date = first of next month
+  // (we'll override per-loan when the note has a non-default
+  // payment_due_day, below)." That override was never written. The result
+  // was that every §1026.41 periodic statement AcreOS produced told the
+  // borrower their payment was due on the 1st of next month — a wrong date
+  // on a legally-required consumer disclosure, for every borrower whose
+  // note says anything else — and `deliveryDeadline` (the §1026.41(b)(2)
+  // timing obligation) was computed off the same wrong date.
+  //
+  // The note is kept rather than deleted because it is what pinned the
+  // stub: the truth now is that `resolveNoteDueDate` /
+  // `resolveAcquiredNoteDueDate` below read the loan's stored
+  // next_payment_date first and fall back to deriving from the note's own
+  // schedule facts, and `deliveryDeadlineFor` derives the delivery deadline
+  // from THAT per-loan date. There is deliberately no calendar fallback: a
+  // loan whose schedule cannot be resolved is skipped with a logged
+  // NO_DERIVABLE_DUE_DATE reason (refuse, never fabricate).
 
   // Pull active loans for the org. §1026.41 covers closed-end
   // consumer-purpose dwelling loans. We filter on status='active' as
@@ -151,8 +208,25 @@ export async function generateStatementsForCycle(
     loansEvaluated: activeLoans.length + activeAcquiredNotes.length,
     statementsGenerated: 0,
     statementsSkipped: 0,
+    skips: [],
     errors: [],
     durationMs: 0,
+  };
+
+  // One recorder for both loops: itemise on the result AND persist to the
+  // audit ledger, so the operator summary and the examiner ledger can never
+  // disagree about why a loan produced nothing.
+  const recordSkip = async (skip: StatementSkip, cycle: Date): Promise<void> => {
+    result.skips.push(skip);
+    result.statementsSkipped += 1;
+    await writeSkipLedger({
+      organizationId,
+      noteTable: skip.noteTable,
+      noteId: skip.loanId,
+      cycleStart: cycle,
+      reason: skip.reason,
+      citation: skip.citation,
+    });
   };
 
   for (const loan of activeLoans) {
@@ -165,24 +239,47 @@ export async function generateStatementsForCycle(
         organizationId,
       );
       if (!predicate.qualifies) {
-        await writeSkipLedger({
-          organizationId,
-          noteTable: "notes",
-          noteId: String(loan.id),
+        await recordSkip(
+          {
+            loanId: String(loan.id),
+            noteTable: "notes",
+            code: "PREDICATE_OUT_OF_SCOPE",
+            reason: predicate.skipReason ?? "predicate returned skip without reason",
+            citation: predicate.citation,
+          },
           cycleStart,
-          reason: predicate.skipReason ?? "predicate returned skip without reason",
-          citation: predicate.citation,
-        });
-        result.statementsSkipped += 1;
+        );
         continue;
       }
+
+      // §1026.41(d)(1): the due date on the statement is THIS loan's due
+      // date, or there is no statement.
+      const resolved = resolveNoteDueDate(loan);
+      if (!resolved) {
+        await recordSkip(
+          {
+            loanId: String(loan.id),
+            noteTable: "notes",
+            code: "NO_DERIVABLE_DUE_DATE",
+            reason: noDerivableDueDateReason(
+              "notes",
+              String(loan.id),
+              "next_payment_date is empty and the stored amortization schedule carries no unpaid entry with a usable due date",
+            ),
+            citation: DUE_DATE_REFUSAL_CITATION,
+          },
+          cycleStart,
+        );
+        continue;
+      }
+
       const generated = await generateOneStatement({
         loan,
         organizationId,
         cycleStart,
         cycleEnd,
-        nextDueDate,
-        deliveryDeadline,
+        nextDueDate: resolved.dueDate,
+        deliveryDeadline: deliveryDeadlineFor(resolved.dueDate),
         regenerate: options.regenerate ?? false,
       });
       if (generated) {
@@ -207,24 +304,49 @@ export async function generateStatementsForCycle(
         organizationId,
       );
       if (!predicate.qualifies) {
-        await writeSkipLedger({
-          organizationId,
-          noteTable: "acquired_notes",
-          noteId: acq.id,
+        await recordSkip(
+          {
+            loanId: acq.id,
+            noteTable: "acquired_notes",
+            code: "PREDICATE_OUT_OF_SCOPE",
+            reason: predicate.skipReason ?? "predicate returned skip without reason",
+            citation: predicate.citation,
+          },
           cycleStart,
-          reason: predicate.skipReason ?? "predicate returned skip without reason",
-          citation: predicate.citation,
-        });
-        result.statementsSkipped += 1;
+        );
         continue;
       }
+
+      // §1026.41(d)(1): this note's OWN due date — stored next_payment_date
+      // first, then derived from the note's schedule facts. Never the
+      // calendar.
+      const resolved = resolveAcquiredNoteDueDate(acq, asOfDate);
+      if (!resolved) {
+        await recordSkip(
+          {
+            loanId: acq.id,
+            noteTable: "acquired_notes",
+            code: "NO_DERIVABLE_DUE_DATE",
+            reason: noDerivableDueDateReason(
+              "acquired_notes",
+              acq.id,
+              "next_payment_date is empty and payment_due_day / first_payment_date / origination_date / maturity_date / paid_through_date do not yield a scheduled payment on or before maturity",
+            ),
+            citation: DUE_DATE_REFUSAL_CITATION,
+          },
+          cycleStart,
+        );
+        continue;
+      }
+
       const generated = await generateOneAcquiredStatement({
         note: acq,
         organizationId,
         cycleStart,
         cycleEnd,
-        nextDueDate,
-        deliveryDeadline,
+        asOfDate,
+        nextDueDate: resolved.dueDate,
+        deliveryDeadline: deliveryDeadlineFor(resolved.dueDate),
         regenerate: options.regenerate ?? false,
       });
       if (generated) {
@@ -246,7 +368,198 @@ export async function generateStatementsForCycle(
   logger.info(
     `[periodicStatements] org=${organizationId} loans=${result.loansEvaluated} generated=${result.statementsGenerated} skipped=${result.statementsSkipped} errors=${result.errors.length} duration=${result.durationMs}ms`,
   );
+
+  // A due-date refusal is a DATA gap, not a scope determination — the loan
+  // is in §1026.41 scope and owes a statement we could not honestly write.
+  // It gets its own line so it does not hide inside the skip total.
+  const dueDateRefusals = result.skips.filter(
+    (s) => s.code === "NO_DERIVABLE_DUE_DATE",
+  );
+  if (dueDateRefusals.length > 0) {
+    logger.warn(
+      `[periodicStatements] org=${organizationId} — ${dueDateRefusals.length} in-scope loan(s) produced NO statement because no payment due date could be derived. These owe a statement once their schedule is backfilled.`,
+      {
+        metadata: {
+          detail: {
+            loanIds: dueDateRefusals.map((s) => `${s.noteTable}:${s.loanId}`),
+          },
+        },
+      },
+    );
+  }
+
   return result;
+}
+
+// ============================================================================
+// DUE-DATE RESOLUTION — §1026.41(d)(1)
+// ----------------------------------------------------------------------------
+// Every statement's due date comes from the loan it is about. These helpers
+// are the only place that answers "when is this borrower's next payment
+// due?", and each of them can return null. Null means "we do not know", and
+// the caller's contract is to SKIP the loan — never to substitute a
+// calendar date. A wrong due date on a Reg-Z disclosure is a worse outcome
+// than a statement that was not generated.
+// ============================================================================
+
+/**
+ * Strict calendar-date coercion. Accepts a `date` column (ISO 'YYYY-MM-DD'),
+ * a `timestamp` column (Date), or an ISO datetime string, and always returns
+ * a UTC midnight Date — note due dates are calendar dates, not instants, so
+ * local-time construction would shift the answer by a day for anyone west of
+ * UTC. Returns null for anything unparseable or for a date JS would silently
+ * roll over (2026-02-30 → March 2nd); bad stored data must surface as
+ * "unknown", not as a date nobody agreed to.
+ */
+function parseCalendarDate(value: string | Date | null | undefined): Date | null {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return new Date(
+      Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()),
+    );
+  }
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return parsed;
+}
+
+/**
+ * §1026.41(b)(2): delivery no later than a reasonably prompt time before the
+ * next payment is due — industry standard 21 days BEFORE that loan's due
+ * date. Derived from the per-loan date, so the timing obligation moves with
+ * the real obligation instead of with the calendar.
+ */
+export function deliveryDeadlineFor(dueDate: Date): Date {
+  return new Date(dueDate.getTime() - DELIVERY_LEAD_DAYS * DAY_MS);
+}
+
+/**
+ * The due date for an ORIGINATED (seller-finance) note.
+ *
+ * Preference order, both readings of the note's own record:
+ *  1. `notes.next_payment_date` — server-side truth, maintained by the
+ *     payment-posting paths.
+ *  2. the earliest not-yet-paid entry of the note's stored amortization
+ *     schedule.
+ *
+ * Null when neither exists. The seller-finance path carried the identical
+ * calendar-constant defect as the acquired path (it stamped the 1st of next
+ * month too); this is its fix.
+ */
+export function resolveNoteDueDate(
+  loan: Pick<typeof notes.$inferSelect, "nextPaymentDate" | "amortizationSchedule">,
+): { dueDate: Date; source: "stored_next_payment_date" | "amortization_schedule" } | null {
+  const stored = parseCalendarDate(loan.nextPaymentDate ?? null);
+  if (stored) return { dueDate: stored, source: "stored_next_payment_date" };
+
+  let earliest: Date | null = null;
+  for (const entry of loan.amortizationSchedule ?? []) {
+    if (!entry || entry.status === "paid") continue;
+    const parsed = parseCalendarDate(entry.dueDate);
+    if (!parsed) continue;
+    if (!earliest || parsed.getTime() < earliest.getTime()) earliest = parsed;
+  }
+  if (earliest) return { dueDate: earliest, source: "amortization_schedule" };
+  return null;
+}
+
+/**
+ * The due date for an ACQUIRED note.
+ *
+ * Preference order:
+ *  1. `acquired_notes.next_payment_date` — written by the aging job from
+ *     real facts (payments posted, paid-through, maturity cap, month-end
+ *     clamp).
+ *  2. `deriveNextPaymentDate` over the note's schedule facts. That module is
+ *     pure, clamps month-end (a note due the 31st is due Feb 28/29), and
+ *     deliberately returns a PAST date for an overdue note rather than
+ *     rolling it forward to look friendly.
+ *
+ * Null when the facts support neither — including "paid through maturity",
+ * where nothing further is due on the monthly schedule and a 361st payment
+ * on a 360-month note would be an invented obligation.
+ */
+export function resolveAcquiredNoteDueDate(
+  note: Pick<
+    AcquiredNote,
+    | "nextPaymentDate"
+    | "paymentDueDay"
+    | "firstPaymentDate"
+    | "originationDate"
+    | "maturityDate"
+    | "paidThroughDate"
+    | "acquisitionDate"
+  >,
+  asOfDate: Date,
+): { dueDate: Date; source: "stored_next_payment_date" | "derived_from_schedule" } | null {
+  const stored = parseCalendarDate(note.nextPaymentDate ?? null);
+  if (stored) return { dueDate: stored, source: "stored_next_payment_date" };
+
+  const derived = deriveNextPaymentDate(
+    {
+      paymentDueDay: note.paymentDueDay,
+      firstPaymentDate: note.firstPaymentDate ?? null,
+      originationDate: note.originationDate,
+      maturityDate: note.maturityDate,
+      paidThroughDate: note.paidThroughDate ?? null,
+      acquisitionDate: note.acquisitionDate,
+    },
+    asOfDate,
+  );
+  const parsed = parseCalendarDate(derived);
+  if (parsed) return { dueDate: parsed, source: "derived_from_schedule" };
+  return null;
+}
+
+/**
+ * How many scheduled monthly payments have come due, counting the oldest
+ * unpaid one, as of `asOf`.
+ *
+ * Used only to state the amount required to bring the loan current on the
+ * §1026.41(d)(8) delinquency block. Reporting ONE payment for a borrower who
+ * has missed six understates what they owe to cure, which is exactly the
+ * kind of comfortable-but-wrong number this disclosure exists to prevent.
+ *
+ * `dueDay` is the note's CONTRACTUAL due day (1-31), not the day-of-month of
+ * the clamped oldest-unpaid date: a note due the 31st whose oldest unpaid
+ * period landed on Feb 28 must still measure March against the 31st, or the
+ * count runs one period hot for three days every March.
+ */
+function scheduledPeriodsElapsed(
+  oldestUnpaidDue: Date,
+  asOf: Date,
+  dueDay: number,
+): number {
+  if (asOf.getTime() < oldestUnpaidDue.getTime()) return 0;
+  const effectiveDueDay =
+    Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 31
+      ? dueDay
+      : oldestUnpaidDue.getUTCDate();
+
+  const monthsApart =
+    (asOf.getUTCFullYear() - oldestUnpaidDue.getUTCFullYear()) * 12 +
+    (asOf.getUTCMonth() - oldestUnpaidDue.getUTCMonth());
+
+  // Clamp the scheduled day into asOf's own month before comparing.
+  const lastDayOfAsOfMonth = new Date(
+    Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  const scheduledThisMonth = Math.min(effectiveDueDay, lastDayOfAsOfMonth);
+  const thisMonthHasComeDue = asOf.getUTCDate() >= scheduledThisMonth;
+
+  return monthsApart + (thisMonthHasComeDue ? 1 : 0);
 }
 
 interface GenerateOneInput {
@@ -605,14 +918,85 @@ interface GenerateOneAcquiredInput {
   organizationId: number;
   cycleStart: Date;
   cycleEnd: Date;
+  /** Evaluation instant — the delinquency block measures against it. */
+  asOfDate: Date;
+  /** This note's OWN next due date, already resolved. Never a calendar constant. */
   nextDueDate: Date;
   deliveryDeadline: Date;
   regenerate: boolean;
 }
 
+/**
+ * §1026.41(d)(8) delinquency block for an acquired note, built from the
+ * note's real aging columns.
+ *
+ * Returns undefined — no block at all — in exactly two cases, and neither
+ * one is "we guessed current":
+ *
+ *  1. **No determination exists.** `days_delinquent` / `delinquency_status`
+ *     are absent (a row the aging job has never touched, or a legacy row
+ *     predating those columns). Silence is the honest output; emitting
+ *     "0 days delinquent" would assert a finding nobody made.
+ *  2. **Under the 45-day threshold.** The rule only requires the block at
+ *     45+ days, and a borrower 12 days down does not get a foreclosure-risk
+ *     disclosure.
+ *
+ * `delinquentSinceDate` is the OLDEST UNPAID SCHEDULED DUE DATE — the date
+ * the account actually became delinquent, which is what the rule asks for.
+ * The originated path back-computes it as `now - daysDelinquent`, which is
+ * an approximation; here the real date is available so we use it rather than
+ * synthesise one.
+ */
+export function buildAcquiredDelinquencyInfo(input: {
+  note: Pick<
+    AcquiredNote,
+    "daysDelinquent" | "delinquencyStatus" | "paymentDueDay"
+  >;
+  oldestUnpaidDueDate: Date;
+  paymentAmountCents: number;
+  asOfDate: Date;
+}): ComputedFields["delinquencyInfo"] {
+  const { note, oldestUnpaidDueDate, paymentAmountCents, asOfDate } = input;
+
+  const daysDelinquent = note.daysDelinquent;
+  const status = note.delinquencyStatus;
+  const hasDetermination =
+    typeof daysDelinquent === "number" &&
+    Number.isFinite(daysDelinquent) &&
+    typeof status === "string" &&
+    status.length > 0;
+  if (!hasDetermination) return undefined;
+  if (daysDelinquent < DELINQUENCY_DISCLOSURE_THRESHOLD_DAYS) return undefined;
+
+  // Amount to bring the loan current: every scheduled payment that has come
+  // due since (and including) the oldest unpaid one. At least one, since we
+  // only reach here at 45+ days past due.
+  const periodsUnpaid = Math.max(
+    1,
+    scheduledPeriodsElapsed(oldestUnpaidDueDate, asOfDate, note.paymentDueDay),
+  );
+
+  return {
+    daysDelinquent,
+    delinquentSinceDate: oldestUnpaidDueDate.toISOString().slice(0, 10),
+    totalAmountDelinquentCents: periodsUnpaid * paymentAmountCents,
+    housingCounselorPhone: HUD_HOUSING_COUNSELOR_PHONE,
+    housingCounselorUrl: HUD_HOUSING_COUNSELOR_URL,
+    riskOfForeclosureNotice: daysDelinquent >= 90,
+  };
+}
+
 async function generateOneAcquiredStatement(input: GenerateOneAcquiredInput): Promise<boolean> {
-  const { note, organizationId, cycleStart, cycleEnd, nextDueDate, deliveryDeadline, regenerate } =
-    input;
+  const {
+    note,
+    organizationId,
+    cycleStart,
+    cycleEnd,
+    asOfDate,
+    nextDueDate,
+    deliveryDeadline,
+    regenerate,
+  } = input;
   const loanId = note.id;
 
   const existing = await db
@@ -711,9 +1095,25 @@ async function generateOneAcquiredStatement(input: GenerateOneAcquiredInput): Pr
   const upcomingPrincipal = Math.max(0, amountDueCents - upcomingInterest);
   const payoffCents = principalBalanceCents + upcomingInterest;
 
-  // Delinquency block — acquired_notes carries `status` but no day-counter.
-  // For this commit we leave delinquencyInfo undefined; the day-counter
-  // wiring is the RESPA §1024.39 follow-up commit.
+  // §1026.41(d)(8) delinquency block.
+  //
+  // This block used to read: "acquired_notes carries `status` but no
+  // day-counter. For this commit we leave delinquencyInfo undefined; the
+  // day-counter wiring is the RESPA §1024.39 follow-up commit." That
+  // follow-up has landed — `acquired_notes` now carries `days_delinquent`
+  // and `delinquency_status`, maintained by the aging job, using the same
+  // vocabulary as the originated book. The note is kept rather than deleted
+  // because it is what pinned the stub; the truth now is that the block is
+  // built from those real columns (see buildAcquiredDelinquencyInfo), and
+  // is left undefined ONLY when the note carries no delinquency
+  // determination at all or is under the 45-day disclosure threshold.
+  const delinquencyInfo = buildAcquiredDelinquencyInfo({
+    note,
+    oldestUnpaidDueDate: nextDueDate,
+    paymentAmountCents: amountDueCents,
+    asOfDate,
+  });
+
   const partialPaymentBalanceCents = Math.max(0, pastPaymentBreakdown.unappliedCents);
 
   const row: InsertPeriodicStatement = {
@@ -741,7 +1141,7 @@ async function generateOneAcquiredStatement(input: GenerateOneAcquiredInput): Pr
     ytdFeesCents: Number(ytdRow[0]?.fees ?? 0),
     transactions,
     partialPaymentBalanceCents,
-    delinquencyInfo: undefined,
+    delinquencyInfo,
     deliveryDeadline: deliveryDeadline.toISOString().slice(0, 10),
     deliveryStatus: "pending",
   };

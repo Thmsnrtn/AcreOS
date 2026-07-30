@@ -43,6 +43,23 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { encrypt as encryptField } from "./services/fieldEncryption";
 import { emitPaymentEvent } from "./services/workflow-engine";
+// The ONE schedule engine for the acquired book (pure — no db, no clock).
+import {
+  advancePaidThrough,
+  computeNoteDelinquency,
+  deriveNextPaymentDate,
+  lateFeeAssessable,
+  nextPaymentVerdict,
+  type AcquiredNoteScheduleFacts,
+  type NoteDelinquencyStatus,
+} from "./services/notes/acquiredNoteSchedule";
+// Status derivation is owned by the nightly aging sweep and REUSED here so a
+// payment that clears arrears and the sweep can never disagree about "late".
+import {
+  AGEABLE_NOTE_STATUSES,
+  TERMINAL_NOTE_STATUSES,
+  noteStatusForDelinquency,
+} from "./jobs/acquiredNoteAging";
 // The ONE payoff engine (Wave C "Money moves"). Every payoff number this file
 // quotes comes from computePayoffQuote — no local per-diem arithmetic.
 import {
@@ -286,6 +303,294 @@ export function emitNotePaymentWorkflowEvent(p: PostedNotePayment): void {
       { organizationId: p.organizationId, noteId: p.noteId, paymentId: p.paymentId },
     );
   }
+}
+
+// ─── Payment → schedule application (pure) ───────────────────────────────────
+//
+// Before this, recording a payment moved BALANCES and nothing else: a borrower
+// who caught up stayed badged `late` until somebody edited the note by hand,
+// because `paidThroughDate` / `nextPaymentDate` / the delinquency columns were
+// written by no code path at all. This is the function that makes a payment
+// advance the note's clock.
+//
+// It is pure — no db, no `new Date()` — so every rule below is a test.
+
+/**
+ * Consecutive on-time payments required before a note is flagged reperforming.
+ *
+ * The schema comment (shared/schema/notes-vertical.ts:200) promises "the org's
+ * configured threshold (default 12, founder-configurable via org settings)".
+ * NO org-settings key for this exists anywhere in the repo today. Rather than
+ * invent a settings surface as a side effect of this change, we use the
+ * documented default of 12 and leave the override to whoever ships the
+ * setting — `reperformingThreshold` is already a parameter here, so wiring a
+ * real org value later is a one-line change at the call site.
+ */
+export const REPERFORMING_DEFAULT_THRESHOLD = 12;
+
+/**
+ * Payment types that can satisfy a scheduled PERIOD, and therefore move
+ * `paidThroughDate` forward:
+ *   regular          — the ordinary contractual payment.
+ *   unapplied_apply  — held funds finally applied to a period.
+ *   payoff           — retires the note (handled specially below).
+ * Everything else deliberately does NOT advance the schedule:
+ *   partial          — money arrived but no period was satisfied; the borrower
+ *                      is still behind, and advancing here is exactly how a
+ *                      three-periods-down note comes to read as current.
+ *   extra_principal  — a curtailment. Not a scheduled payment at all.
+ *   nsf_reversal     — the money bounced; the canonical missed payment.
+ */
+const SCHEDULE_ADVANCING_PAYMENT_TYPES = new Set([
+  "regular",
+  "unapplied_apply",
+  "payoff",
+]);
+
+const DAY_MS_SCHEDULE = 24 * 60 * 60 * 1000;
+
+export interface PaymentScheduleInput {
+  paymentType: string;
+  /** 'YYYY-MM-DD' — when the money actually landed. */
+  paymentDate: string;
+  principalCents: number;
+  interestCents: number;
+  escrowCents: number;
+  /** acquired_notes.payment_amount_cents — the scheduled amount for a period. */
+  scheduledPaymentAmountCents: number | null;
+  /** Balance AFTER this payment (payoff detection). */
+  newCurrentBalanceCents: number;
+  /** The note's stored schedule facts, pre-payment. */
+  facts: AcquiredNoteScheduleFacts;
+  /** The stored due date this payment is being measured against. */
+  storedNextPaymentDate: string | null;
+  gracePeriodDays: number;
+  status: string;
+  consecutiveOnTimePayments: number;
+  reperformingThresholdMet: boolean;
+  reperformingThreshold: number;
+  asOf: Date;
+}
+
+export interface PaymentScheduleOutcome {
+  periodsPaid: number;
+  paidThroughDate: string | null;
+  nextPaymentDate: string | null;
+  daysDelinquent: number;
+  delinquencyStatus: NoteDelinquencyStatus;
+  status: string;
+  consecutiveOnTimePayments: number;
+  reperformingThresholdMet: boolean;
+  /** True only on the transition into "met" — the operator-facing milestone. */
+  reperformingThresholdJustMet: boolean;
+  /** null when the note carries no due date to measure against — never guessed. */
+  onTime: boolean | null;
+}
+
+/** Whole periods this payment satisfied. Late fees and unapplied DEPOSITS are
+ *  excluded: neither services the loan, and counting them would advance the
+ *  clock on money the borrower does not have applied to a period. */
+export function periodsSatisfiedByPayment(input: {
+  paymentType: string;
+  principalCents: number;
+  interestCents: number;
+  escrowCents: number;
+  scheduledPaymentAmountCents: number | null;
+}): number {
+  if (!SCHEDULE_ADVANCING_PAYMENT_TYPES.has(input.paymentType)) return 0;
+  const serviced = input.principalCents + input.interestCents + input.escrowCents;
+  if (serviced <= 0) return 0;
+  const scheduled = input.scheduledPaymentAmountCents;
+  if (!scheduled || scheduled <= 0) {
+    // No scheduled amount on file: we can tell money serviced the loan but not
+    // how many periods it covers. One period is the only defensible reading.
+    return 1;
+  }
+  return Math.floor(serviced / scheduled);
+}
+
+/**
+ * Apply a posted payment to the note's schedule + reperforming counters.
+ *
+ * Rules that carry weight:
+ *  - A payoff that zeroes the balance is paid through MATURITY and has no next
+ *    payment. Nothing further is contractually due on the monthly schedule.
+ *  - `onTime` is measured against the due date the payment was FOR (the stored
+ *    `nextPaymentDate`), plus grace. When there is no stored due date we return
+ *    `null` and leave the streak alone — "we could not tell" is not "late".
+ *  - A payment covering several periods increments the streak by ONE, not by
+ *    the number of periods: the catch-up periods were, by definition, not paid
+ *    on time.
+ *  - `reperformingThresholdMet` is DERIVED from the streak, so a note that
+ *    re-defaults stops claiming to be reperforming instead of keeping a badge
+ *    it earned last year.
+ *  - KNOWN GAP: an `nsf_reversal` cannot retreat `paidThroughDate` — the
+ *    schedule module only moves it forward (`advancePaidThrough` rejects
+ *    negative periods). The reversal therefore resets the streak and
+ *    recomputes from the UNCHANGED paid-through. Retreating it needs a
+ *    `retreatPaidThrough` in server/services/notes/acquiredNoteSchedule.ts.
+ */
+export function applyPaymentToSchedule(
+  input: PaymentScheduleInput,
+): PaymentScheduleOutcome {
+  const isTerminal = (TERMINAL_NOTE_STATUSES as readonly string[]).includes(
+    input.status,
+  );
+  const isPayoff =
+    input.paymentType === "payoff" && input.newCurrentBalanceCents === 0;
+
+  if (isPayoff) {
+    return {
+      periodsPaid: 0,
+      paidThroughDate: input.facts.maturityDate,
+      nextPaymentDate: null,
+      daysDelinquent: 0,
+      delinquencyStatus: "current",
+      // The caller's own payoff branch owns the `paid_off` write.
+      status: input.status,
+      consecutiveOnTimePayments: input.consecutiveOnTimePayments,
+      reperformingThresholdMet: input.reperformingThresholdMet,
+      reperformingThresholdJustMet: false,
+      onTime: null,
+    };
+  }
+
+  const periodsPaid = periodsSatisfiedByPayment(input);
+  const paidThroughDate = advancePaidThrough(input.facts, periodsPaid);
+  const nextPaymentDate = deriveNextPaymentDate(
+    { ...input.facts, paidThroughDate },
+    input.asOf,
+  );
+  const { daysDelinquent, delinquencyStatus } = computeNoteDelinquency({
+    nextPaymentDate,
+    gracePeriodDays: input.gracePeriodDays,
+    asOf: input.asOf,
+  });
+
+  // ── On-time determination ────────────────────────────────────────────────
+  let onTime: boolean | null;
+  if (periodsPaid <= 0) {
+    // extra_principal is neutral — a curtailment is not a missed payment.
+    onTime = input.paymentType === "extra_principal" ? null : false;
+  } else if (!input.storedNextPaymentDate) {
+    onTime = null; // no due date on file to measure against
+  } else {
+    const due = Date.parse(`${input.storedNextPaymentDate}T00:00:00.000Z`);
+    const paid = Date.parse(`${String(input.paymentDate).slice(0, 10)}T00:00:00.000Z`);
+    const grace =
+      Number.isFinite(input.gracePeriodDays) && input.gracePeriodDays > 0
+        ? Math.floor(input.gracePeriodDays)
+        : 0;
+    onTime =
+      Number.isNaN(due) || Number.isNaN(paid)
+        ? null
+        : paid <= due + grace * DAY_MS_SCHEDULE;
+  }
+
+  let streak = input.consecutiveOnTimePayments;
+  if (onTime === true) streak = input.consecutiveOnTimePayments + 1;
+  else if (onTime === false) streak = 0;
+
+  const threshold =
+    Number.isFinite(input.reperformingThreshold) && input.reperformingThreshold > 0
+      ? Math.floor(input.reperformingThreshold)
+      : REPERFORMING_DEFAULT_THRESHOLD;
+  const thresholdMet = streak >= threshold;
+
+  // Status: terminal stays terminal; an underivable due date asserts nothing
+  // (unknown is not late); otherwise the aging job's own band → status map.
+  let status = input.status;
+  if (
+    !isTerminal &&
+    nextPaymentDate !== null &&
+    (AGEABLE_NOTE_STATUSES as readonly string[]).includes(input.status)
+  ) {
+    status = noteStatusForDelinquency(delinquencyStatus);
+  }
+
+  return {
+    periodsPaid,
+    paidThroughDate,
+    nextPaymentDate,
+    daysDelinquent,
+    delinquencyStatus,
+    status,
+    consecutiveOnTimePayments: streak,
+    reperformingThresholdMet: thresholdMet,
+    reperformingThresholdJustMet: thresholdMet && !input.reperformingThresholdMet,
+    onTime,
+  };
+}
+
+/**
+ * The late-fee ADVISORY attached to an acquired-note API response.
+ *
+ * Read-only and derived from stored fields. It states whether a fee WOULD be
+ * assessable — it never asserts one was charged, and no code path in this
+ * build charges one (founder ruling #15: AcreOS is the rail, and a late fee is
+ * a proposal the operator confirms on their own processor).
+ */
+export function noteLateFeeAdvisory(
+  row: {
+    nextPaymentDate?: string | null;
+    gracePeriodDays?: number | null;
+    lateFeeCents?: number | null;
+  },
+  asOf: Date,
+): { assessable: boolean; reason: string; feeCents: number; charged: false } {
+  const advisory = lateFeeAssessable({
+    nextPaymentDate: row.nextPaymentDate ?? null,
+    gracePeriodDays: row.gracePeriodDays ?? 0,
+    lateFeeCents: row.lateFeeCents ?? 0,
+    asOf,
+  });
+  return { ...advisory, feeCents: row.lateFeeCents ?? 0, charged: false };
+}
+
+/**
+ * WHY a note has no next-payment date, for the surfaces that must render an
+ * honest blank instead of a dash.
+ *
+ * A blank due date has three quite different meanings — "we never saw this
+ * note's servicing history", "the note is paid through maturity", and "the
+ * imported facts don't parse" — and an operator can only act on the first one
+ * (import the payment history) if we say which it is. Returning `null` here
+ * when a date DOES exist keeps the field absent from the happy path rather
+ * than shipping a redundant "everything is fine" string on every row.
+ */
+export function noteNextDueReason(
+  row: {
+    nextPaymentDate?: string | null;
+    paymentDueDay?: number | null;
+    firstPaymentDate?: string | null;
+    originationDate?: string | null;
+    maturityDate?: string | null;
+    paidThroughDate?: string | null;
+    acquisitionDate?: string | null;
+  },
+  asOf: Date,
+): string | null {
+  if (row.nextPaymentDate) return null;
+  if (
+    row.paymentDueDay == null ||
+    !row.originationDate ||
+    !row.maturityDate ||
+    !row.acquisitionDate
+  ) {
+    return "incoherent_facts";
+  }
+  const verdict = nextPaymentVerdict(
+    {
+      paymentDueDay: row.paymentDueDay,
+      firstPaymentDate: row.firstPaymentDate ?? null,
+      originationDate: row.originationDate,
+      maturityDate: row.maturityDate,
+      paidThroughDate: row.paidThroughDate ?? null,
+      acquisitionDate: row.acquisitionDate,
+    },
+    asOf,
+  );
+  return verdict.date === null ? verdict.reason : null;
 }
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
@@ -938,7 +1243,16 @@ export function registerNoteRoutes(app: Express): void {
           .offset(offset);
 
         // Never leak the encrypted TIN over the wire — strip on the way out.
-        const safe = rows.map(({ payerEncryptedTin: _stripped, ...rest }) => rest);
+        // `nextPaymentDate` / `paidThroughDate` / `daysDelinquent` /
+        // `delinquencyStatus` ride along as real columns (written by the daily
+        // aging sweep and by the payment path); `lateFeeAdvisory` is derived
+        // per response and is ADVICE — nothing has been charged.
+        const asOfList = new Date();
+        const safe = rows.map(({ payerEncryptedTin: _stripped, ...rest }) => ({
+          ...rest,
+          lateFeeAdvisory: noteLateFeeAdvisory(rest, asOfList),
+          nextPaymentDateReason: noteNextDueReason(rest, asOfList),
+        }));
         // THE documented shape for the acquired book. `book` is explicit so a
         // consumer that ends up here by accident can tell which ledger — and
         // therefore which money representation — it is looking at.
@@ -1125,7 +1439,20 @@ export function registerNoteRoutes(app: Express): void {
           return Errors.notFound(res, "Note");
         }
         const { payerEncryptedTin: _stripped, ...safe } = row;
-        return res.json({ note: safe });
+        const asOfDetail = new Date();
+        // Same discriminators + the same advisory shape as the list, so a
+        // consumer never has to derive lateness itself (which is how the
+        // browser came to invent a friendly "next payment" date in the first
+        // place). ADVISORY ONLY — no fee has been assessed or charged.
+        return res.json({
+          book: ACQUIRED_BOOK_ID,
+          moneyUnit: "integer_cents",
+          note: {
+            ...safe,
+            lateFeeAdvisory: noteLateFeeAdvisory(safe, asOfDetail),
+            nextPaymentDateReason: noteNextDueReason(safe, asOfDetail),
+          },
+        });
       } catch (err) {
         logger.error("notes.get failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
@@ -1278,7 +1605,14 @@ export function registerNoteRoutes(app: Express): void {
         type Outcome =
           | { kind: "not_found" }
           | { kind: "bad_request"; message: string }
-          | { kind: "posted"; posted: PostedNotePayment; row: typeof notePayments.$inferSelect };
+          | {
+              kind: "posted";
+              posted: PostedNotePayment;
+              row: typeof notePayments.$inferSelect;
+              /** Schedule + delinquency state AFTER the payment, for the response. */
+              schedule: PaymentScheduleOutcome;
+              lateFeeAdvisory: ReturnType<typeof noteLateFeeAdvisory>;
+            };
 
         const outcome: Outcome = await withTransaction(async (tx) => {
           // Confirm the note belongs to this org BEFORE inserting (cross-org
@@ -1298,6 +1632,22 @@ export function registerNoteRoutes(app: Express): void {
               payerName: acquiredNotes.payerName,
               paymentAmountCents: acquiredNotes.paymentAmountCents,
               paymentDueDay: acquiredNotes.paymentDueDay,
+              // Schedule facts — a payment must advance the note's clock, not
+              // just its balances. Read inside the same FOR UPDATE row so two
+              // concurrent payments cannot both advance from the same
+              // paid-through and lose a period.
+              originationDate: acquiredNotes.originationDate,
+              maturityDate: acquiredNotes.maturityDate,
+              acquisitionDate: acquiredNotes.acquisitionDate,
+              firstPaymentDate: acquiredNotes.firstPaymentDate,
+              paidThroughDate: acquiredNotes.paidThroughDate,
+              nextPaymentDate: acquiredNotes.nextPaymentDate,
+              gracePeriodDays: acquiredNotes.gracePeriodDays,
+              lateFeeCents: acquiredNotes.lateFeeCents,
+              daysDelinquent: acquiredNotes.daysDelinquent,
+              delinquencyStatus: acquiredNotes.delinquencyStatus,
+              consecutiveOnTimePayments: acquiredNotes.consecutiveOnTimePayments,
+              reperformingThresholdMet: acquiredNotes.reperformingThresholdMet,
             })
             .from(acquiredNotes)
             .where(and(eq(acquiredNotes.id, id), eq(acquiredNotes.organizationId, orgId)))
@@ -1418,11 +1768,66 @@ export function registerNoteRoutes(app: Express): void {
           if (data.paymentType === "payoff" && newCurrentBalance === 0) {
             updates.status = "paid_off";
           }
+
+          // ── Write 2b: the SCHEDULE. Before this, a payment moved balances
+          // and nothing else, so a borrower who caught up kept the `late`
+          // badge until somebody hand-edited the note. paidThrough advances,
+          // the next due date is re-derived from it, delinquency is recomputed
+          // and the status badge follows — inside the SAME transaction and the
+          // SAME FOR UPDATE row as the balance write, so a concurrent payment
+          // cannot advance from a stale paid-through.
+          const asOfPayment = new Date();
+          const schedule = applyPaymentToSchedule({
+            paymentType: data.paymentType,
+            paymentDate: data.paymentDate,
+            principalCents: data.principalCents,
+            interestCents: data.interestCents,
+            escrowCents: data.escrowCents,
+            scheduledPaymentAmountCents: note.paymentAmountCents ?? null,
+            newCurrentBalanceCents: newCurrentBalance,
+            facts: {
+              paymentDueDay: note.paymentDueDay ?? 0,
+              firstPaymentDate: note.firstPaymentDate ?? null,
+              originationDate: note.originationDate ?? "",
+              maturityDate: note.maturityDate ?? "",
+              paidThroughDate: note.paidThroughDate ?? null,
+              acquisitionDate: note.acquisitionDate ?? "",
+            },
+            storedNextPaymentDate: note.nextPaymentDate ?? null,
+            gracePeriodDays: note.gracePeriodDays ?? 0,
+            status: updates.status ?? note.status,
+            consecutiveOnTimePayments: note.consecutiveOnTimePayments ?? 0,
+            reperformingThresholdMet: note.reperformingThresholdMet ?? false,
+            reperformingThreshold: REPERFORMING_DEFAULT_THRESHOLD,
+            asOf: asOfPayment,
+          });
+
+          updates.paidThroughDate = schedule.paidThroughDate;
+          updates.nextPaymentDate = schedule.nextPaymentDate;
+          updates.daysDelinquent = schedule.daysDelinquent;
+          updates.delinquencyStatus = schedule.delinquencyStatus;
+          updates.consecutiveOnTimePayments = schedule.consecutiveOnTimePayments;
+          updates.reperformingThresholdMet = schedule.reperformingThresholdMet;
+          // `paid_off` (set above) always wins — a payoff is terminal and the
+          // aging derivation must never move a note back out of it.
+          if (!updates.status && schedule.status !== note.status) {
+            updates.status = schedule.status;
+          }
+
           await tx.update(acquiredNotes).set(updates).where(eq(acquiredNotes.id, id));
 
           return {
             kind: "posted",
             row,
+            schedule,
+            lateFeeAdvisory: noteLateFeeAdvisory(
+              {
+                nextPaymentDate: schedule.nextPaymentDate,
+                gracePeriodDays: note.gracePeriodDays ?? 0,
+                lateFeeCents: note.lateFeeCents ?? 0,
+              },
+              asOfPayment,
+            ),
             posted: {
               organizationId: orgId,
               noteId: id,
@@ -1454,11 +1859,45 @@ export function registerNoteRoutes(app: Express): void {
         // back we would be in the catch below and no event would be emitted.
         emitNotePaymentWorkflowEvent(outcome.posted);
 
+        // Reperforming milestone. The state is PERSISTED above (the counters
+        // are real columns and this is their first production writer). The
+        // `note.reperforming_threshold` workflow event named by the schema
+        // comment is NOT emitted here: `emitPaymentEvent` is the only typed
+        // helper that covers this file's events, workflow-engine.ts declares no
+        // `emit*Event` helper carrying a `note.*` union, and
+        // tests/unit/workflowActionHonesty.test.ts forbids a raw
+        // `workflowEngine.emit()` outside the engine. Emitting it needs an
+        // `emitNoteEvent` helper in server/services/workflow-engine.ts plus the
+        // event added to shared/workflow-live-triggers.ts in the same change —
+        // both outside this change's file set. Logged so the milestone is at
+        // least visible while that lands.
+        if (outcome.schedule.reperformingThresholdJustMet) {
+          logger.info("notes.recordPayment reperforming threshold met", {
+            metadata: {
+              organizationId: outcome.posted.organizationId,
+              noteId: outcome.posted.noteId,
+              consecutiveOnTimePayments: outcome.schedule.consecutiveOnTimePayments,
+              threshold: REPERFORMING_DEFAULT_THRESHOLD,
+              pendingEvent: "note.reperforming_threshold",
+            },
+          });
+        }
+
         return res.status(201).json({
           payment: outcome.row,
           currentBalanceCents: outcome.posted.remainingBalanceCents,
           unappliedBalanceCents: outcome.posted.unappliedBalanceCents,
           status: outcome.posted.noteStatus,
+          // Schedule truth after the payment — a caught-up borrower's badge
+          // clears in the same response that recorded the money.
+          nextPaymentDate: outcome.schedule.nextPaymentDate,
+          paidThroughDate: outcome.schedule.paidThroughDate,
+          daysDelinquent: outcome.schedule.daysDelinquent,
+          delinquencyStatus: outcome.schedule.delinquencyStatus,
+          consecutiveOnTimePayments: outcome.schedule.consecutiveOnTimePayments,
+          reperformingThresholdMet: outcome.schedule.reperformingThresholdMet,
+          onTime: outcome.schedule.onTime,
+          lateFeeAdvisory: outcome.lateFeeAdvisory,
         });
       } catch (err) {
         // A throw here means the transaction rolled back: no ledger row, no
