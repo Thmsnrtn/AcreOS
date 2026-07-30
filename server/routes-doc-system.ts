@@ -1207,6 +1207,29 @@ export function registerDocSystemRoutes(app: Express): void {
         }
       }
 
+      // -----------------------------------------------------------------
+      // Wave D2 — reviewed-content seal (contract chain only).
+      //
+      // Contracts assembled by the accepted-offer → contract chain carry the
+      // sha256 of the exact body a human reviewed and confirmed
+      // (services/contracts/contractAssembly.ts). Re-verify it here, at the
+      // point of dispatch, so "what goes out is exactly what a person
+      // reviewed" is checkable rather than assumed. Documents without a seal
+      // (every pre-existing template flow) are untouched — verifyChainReviewSeal
+      // returns `sealed: false` and this block is a no-op.
+      // -----------------------------------------------------------------
+      {
+        const { verifyChainReviewSeal } = await import("./services/contracts/contractAssembly");
+        const verdict = verifyChainReviewSeal(document.variables, document.content);
+        if (verdict.sealed && !verdict.ok) {
+          logger.warn("Refused signature dispatch — reviewed-content seal broken", {
+            documentId: id,
+            organizationId: org.id,
+          });
+          return Errors.validationFailed(res, verdict.payload);
+        }
+      }
+
       // Format signers with IDs
       const formattedSigners = signers.map((signer: any, index: number) => ({
         id: `signer-${Date.now()}-${index}`,

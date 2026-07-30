@@ -26,6 +26,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { LetterTrackRecord } from "@/components/founder/LetterTrackRecord";
 import { LetterConfession } from "@/components/founder/LetterConfession";
+import { ReadinessLadderLetterLine } from "@/components/founder/ReadinessLadderSection";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd, formatRelative } from "@/lib/format";
 
@@ -180,6 +181,15 @@ export default function FounderHomePage() {
             <StepAwayLine />
           </motion.div>
 
+          {/* ONE setup line, and only while setup is unfinished. The Letter
+              stays a letter — this names the single highest-value next action
+              and links into Controls, where the whole ladder lives. It renders
+              NOTHING once every rung is verified, so it consumes itself along
+              with the ladder. */}
+          <motion.div variants={staggerItem}>
+            <ReadinessLadderLetterLine />
+          </motion.div>
+
           {/* The full letter is always one tap away. */}
           <motion.div variants={staggerItem}>
             <button
@@ -286,6 +296,11 @@ export default function FounderHomePage() {
           {/* The standing answer to "can I leave?" — one line, links to Controls */}
           <motion.div variants={staggerItem}>
             <StepAwayLine />
+          </motion.div>
+
+          {/* ONE setup line while setup is unfinished (see the quiet-day note). */}
+          <motion.div variants={staggerItem}>
+            <ReadinessLadderLetterLine />
           </motion.div>
 
           {/* The vital sign — Pulse strip */}

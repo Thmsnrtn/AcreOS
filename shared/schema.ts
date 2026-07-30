@@ -249,6 +249,21 @@ export const organizations = pgTable("organizations", {
       downPaymentPct: number; // 0-100, e.g. 20
       balloon: boolean; // true if a balloon payment is required at term end
     };
+    // Fix-and-flip rules consumed by the MAO chain (/api/flip-analyzer/*,
+    // server/services/flipUnderwriting.ts). The "cash-flip multipliers"
+    // extension the column was designed for — no migration needed, this is
+    // the same jsonb. Every field is optional: an absent field falls back to
+    // PLATFORM_FLIP_DEFAULTS and is BADGED as a platform default in the UI,
+    // never presented as the operator's own rule.
+    flip?: {
+      maoRulePct?: number; // percent of ARV the rule allows, e.g. 70
+      rehabContingencyPct?: number; // added on top of the rehab estimate, e.g. 10
+      sellingCostPct?: number; // resale cost as a percent of ARV, e.g. 7
+      purchaseClosingPct?: number; // acquisition closing as a percent of price, e.g. 2
+      holdMonths?: number; // months held from close to resale
+      monthlyHoldingCostCents?: number; // carry per month, integer cents
+      targetProfitPct?: number; // minimum acceptable net profit, percent of ARV
+    };
   }>(),
   // ─── Per-tenant constitutional / alignment preferences (Tahoe L11) ────
   // Schema-bind landed ahead of any consumer. Quinn's horizon vision is
@@ -10378,7 +10393,17 @@ export const taxSaleAuctions = pgTable("tax_sale_auctions", {
   
   parcelCount: integer("parcel_count"),
   totalTaxOwed: numeric("total_tax_owed"),
-  
+
+  // Capital the operator has allocated to THIS sale, integer cents. Powers the
+  // live "remaining budget" figure on the day-of worksheet.
+  //
+  // Founder ruling #15 ("be the rail, not the provider"): this is a notebook
+  // number, not a balance. Auction deposits and certificate purchases move
+  // between the operator and the county on the operator's OWN rails; no
+  // customer money transits AcreOS. Nothing writes to or reads from a
+  // processor because of this column.
+  sessionBudgetCents: bigint("session_budget_cents", { mode: "number" }),
+
   contactInfo: jsonb("contact_info").$type<{
     name?: string;
     phone?: string;
@@ -10396,14 +10421,29 @@ export const taxSaleAuctions = pgTable("tax_sale_auctions", {
   
   sourceUrl: text("source_url"),
   lastScrapedAt: timestamp("last_scraped_at"),
-  scrapeStatus: text("scrape_status").default("pending"), // pending, success, failed, stale
-  
+  // 'manual_entry' for operator-created auctions — the only insert path that
+  // exists. 'pending'/'success'/'failed'/'stale' are reserved for a county
+  // ingest that is deliberately NOT built (founder-gated large bet), so a row
+  // never implies a scrape that never happened.
+  scrapeStatus: text("scrape_status").default("pending"),
+
   status: text("status").notNull().default("scheduled"), // scheduled, in_progress, completed, cancelled, postponed
   notes: text("notes"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Org-LEADING composite indexes. Added 2026-07-30 with the table's first
+  // real insert path: every query is "this org's auctions, by date" or
+  // "this org's auctions in this county", and the table previously carried no
+  // index at all (it was in the check-org-leading-index.mjs baseline).
+  index("tax_sale_auctions_org_date_idx").on(table.organizationId, table.auctionDate),
+  index("tax_sale_auctions_org_state_county_idx").on(
+    table.organizationId,
+    table.state,
+    table.county,
+  ),
+]);
 
 // Tax Sale Listings - store individual tax sale opportunities
 // How the listing entered our pipeline. Marcus (Lens 17, 2026-05-27):
@@ -10503,18 +10543,45 @@ export const taxSaleListings = pgTable("tax_sale_listings", {
   watchlistAddedAt: timestamp("watchlist_added_at"),
   bidAmount: numeric("bid_amount"),
   bidDate: timestamp("bid_date"),
-  
+
+  // ── TD-4 pre-auction worksheet fields ───────────────────────────────────
+  // SCHEMA-DRIFT FIX (2026-07-30): these four columns have existed in the
+  // DATABASE since TD-4 (scripts/migrate.mjs ALTERs "max_bid_cents",
+  // "walk_away_above_cents", "walk_away_condition", "partner_split") but were
+  // never mirrored here. The worksheet route wrote them through
+  // `.set(update as any)`, and the cast was the only thing stopping the type
+  // checker from pointing out that Drizzle had no idea these columns existed.
+  // Integer cents, per the money rule.
+  maxBidCents: bigint("max_bid_cents", { mode: "number" }),
+  walkAwayAboveCents: bigint("walk_away_above_cents", { mode: "number" }),
+  walkAwayCondition: text("walk_away_condition"),
+  partnerSplit: jsonb("partner_split").$type<Array<{ investorName: string; splitBps: number }>>(),
+
   sourceUrl: text("source_url"),
   certificateNumber: text("certificate_number"),
-  
+
   latitude: numeric("latitude"),
   longitude: numeric("longitude"),
-  
+
   notes: text("notes"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Org-LEADING composite indexes. Added 2026-07-30 with the table's first
+  // real insert path. `tax_sale_listings_org_source_idx` already existed in
+  // migrate.mjs but was never declared here; these three are the query
+  // patterns the worksheet, the import de-dupe check and the county summary
+  // actually run.
+  index("tax_sale_listings_org_auction_idx").on(table.organizationId, table.auctionId),
+  index("tax_sale_listings_org_state_county_apn_idx").on(
+    table.organizationId,
+    table.state,
+    table.county,
+    table.apn,
+  ),
+  index("tax_sale_listings_org_status_idx").on(table.organizationId, table.status),
+]);
 
 // Tax Sale Alerts - subscription to tax sale opportunities
 export const taxSaleAlerts = pgTable("tax_sale_alerts", {

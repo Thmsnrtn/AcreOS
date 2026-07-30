@@ -184,7 +184,9 @@ const BASELINE_OFFENDERS = new Set([
   "refund_requests",
   "saved_views",
   "scheduled_tasks",
-  "security_deposits",
+  // security_deposits removed 2026-07-30 (Wave D deposit clock): the table now
+  // carries index("security_deposits_org_deadline_idx").on(organizationId,
+  // statutoryDeadline) — the org-scoped deposit-countdown read. Ratchet DOWN.
   "seller_communications",
   "seller_intent_predictions",
   "sequence_performance",
@@ -204,8 +206,14 @@ const BASELINE_OFFENDERS = new Set([
   "tasks",
   "tax_escrow_payments",
   "tax_sale_alerts",
-  "tax_sale_auctions",
-  "tax_sale_listings",
+  // tax_sale_auctions + tax_sale_listings REMOVED 2026-07-30 (Wave D): both
+  // tables got their first real insert path (manual + CSV lot-list entry) and
+  // their first org-leading composite indexes in the same commit —
+  // tax_sale_auctions_org_date_idx / _org_state_county_idx and
+  // tax_sale_listings_org_auction_idx / _org_state_county_apn_idx /
+  // _org_status_idx. Mirrored in scripts/migrate.mjs +
+  // migrations/0216_tax_sale_manual_import.sql. A permanent improvement; this
+  // allowlist only ratchets DOWN.
   "team_conversations",
   "team_member_presence",
   "team_members",

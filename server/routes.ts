@@ -206,6 +206,7 @@ import { registerRehabPhotoRoutes } from "./routes-rehab-photos";
 import { registerDriveModeRoutes } from "./routes-drive-mode";
 import { registerContractorRoutes } from "./routes-contractors";
 import { registerArvRoutes } from "./routes-arv";
+import { registerFlipAnalyzerRoutes } from "./routes-flip-analyzer";
 import { registerBidEstimateRoutes } from "./routes-bid-estimates";
 import { registerConstructionDrawRoutes } from "./routes-construction-draws";
 import { registerRentalRoutes } from "./routes-rentals";
@@ -285,6 +286,9 @@ import { registerImportExportRoutes } from "./routes-import-export";
 import { registerReferralRoutes } from "./routes-referral";
 import { registerTeamMessagingRoutes } from "./routes-team-messaging";
 import { registerDocSystemRoutes } from "./routes-doc-system";
+// Wave D2 — accepted offer → merged state-specific contract → the existing
+// e-sign rail. Lives inside the Deals door; creates drafts only, never sends.
+import { registerContractChainRoutes } from "./routes-contract-chain";
 import { registerAnalyticsRoutes } from "./routes-analytics";
 import { registerCommunicationRoutes } from "./routes-communications";
 import { registerVAEngineRoutes } from "./routes-va-engine";
@@ -2252,6 +2256,10 @@ export async function registerRoutes(
   registerContractorRoutes(app);
   // Fix-and-flip vertical FF-4 — ARV calculator (distinct from AVM).
   registerArvRoutes(app);
+  // Flip analyzer — assembles the chain the ARV calculator dead-ended in:
+  // ATTOM comps → ARV → 70%-rule MAO (was dead code) → draft offer, driven by
+  // the org's own underwriting rules.
+  registerFlipAnalyzerRoutes(app);
   // Fix-and-flip vertical FF-5 — bid comparison (side-by-side).
   registerBidEstimateRoutes(app);
   // Fix-and-flip vertical FF-6 — construction draws + holding-cost meter.
@@ -2462,6 +2470,7 @@ export async function registerRoutes(
   registerReferralRoutes(app);
   registerTeamMessagingRoutes(app);
   registerDocSystemRoutes(app);
+  registerContractChainRoutes(app);
   registerAnalyticsRoutes(app);
   registerCommunicationRoutes(app);
   await registerVAEngineRoutes(app);

@@ -226,10 +226,33 @@ describe("seam routing — keyed → registry lookup restricted to residential-c
 });
 
 describe("RESIDENTIAL_BUSINESS_TYPES — the explicit data-plane fork set", () => {
-  it("contains exactly the sanctioned wave-V3 set", () => {
+  // 2026-07-30: residential_wholesaler joined the set. The original
+  // assertion pinned the narrower wave-V3 scope ("exactly the sanctioned
+  // set"); the invariant it was protecting was never that literal list, it
+  // was EVERY VERTICAL WHOSE SUBJECT PROPERTY IS A HOUSE ROUTES RESIDENTIAL.
+  // Rewritten to that, so the pin survives the widening instead of being
+  // deleted by it.
+  const HOUSE_SUBJECT_VERTICALS = [
+    "fix_and_flip",           // buy distressed houses, renovate, resell
+    "residential_wholesaler", // assign house contracts to investor buyers
+    "buy_and_hold",           // long-term residential rentals
+    "short_term_rental",      // furnished house/unit nightly rentals
+    "multifamily",            // units
+    "mobile_home",            // homes / park lots
+  ] as const;
+
+  it("contains every house-subject vertical, and nothing else", () => {
     expect([...RESIDENTIAL_BUSINESS_TYPES].sort()).toEqual(
-      ["buy_and_hold", "fix_and_flip", "mobile_home", "multifamily", "short_term_rental"].sort(),
+      [...HOUSE_SUBJECT_VERTICALS].sort(),
     );
+  });
+
+  it("residential_wholesaler is residential (the 2026-07-11 defect, re-fixed 2026-07-30)", () => {
+    // A wholesaler values HOUSES. Before this entry existed the vertical fell
+    // through both comps chokepoints to Regrid land-parcel comps and the land
+    // AVM — the exact defect that demoted fix_and_flip.
+    expect(isResidentialBusinessType("residential_wholesaler")).toBe(true);
+    expect(RESIDENTIAL_BUSINESS_TYPES.has("residential_wholesaler")).toBe(true);
   });
 
   it("every member is a real businessType", () => {
@@ -238,11 +261,11 @@ describe("RESIDENTIAL_BUSINESS_TYPES — the explicit data-plane fork set", () =
     }
   });
 
-  it("land / notes / wholesale verticals are NOT residential-routed", () => {
-    // residential_wholesaler is deliberately outside the sanctioned wave-V3
-    // scope (documented in persona-mapping.ts) — widening the set is a
-    // deliberate decision, not a drive-by.
-    for (const bt of ["land_flipper", "note_investor", "hybrid", "residential_wholesaler", "commercial", "subdivider", "developer", "tax_lien_deed", "creative_finance", "agent_investor"]) {
+  it("land / notes / commercial verticals are NOT residential-routed", () => {
+    // These verticals' subject property is raw land, a note, or commercial
+    // real estate — the land/parcel data plane is the RIGHT source for them,
+    // so they must keep the land fork.
+    for (const bt of ["land_flipper", "note_investor", "hybrid", "commercial", "subdivider", "developer", "tax_lien_deed", "creative_finance", "agent_investor"]) {
       expect(isResidentialBusinessType(bt), bt).toBe(false);
     }
   });
@@ -250,6 +273,7 @@ describe("RESIDENTIAL_BUSINESS_TYPES — the explicit data-plane fork set", () =
   it("isResidentialBusinessType guards unknown input", () => {
     expect(isResidentialBusinessType("fix_and_flip")).toBe(true);
     expect(isResidentialBusinessType("buy_and_hold")).toBe(true);
+    expect(isResidentialBusinessType("residential_wholesaler")).toBe(true);
     expect(isResidentialBusinessType("garbage")).toBe(false);
     expect(isResidentialBusinessType(null)).toBe(false);
     expect(isResidentialBusinessType(undefined)).toBe(false);

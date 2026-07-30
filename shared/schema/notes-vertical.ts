@@ -200,6 +200,26 @@ export const acquiredNotes = pgTable(
 export type AcquiredNote = typeof acquiredNotes.$inferSelect;
 export type InsertAcquiredNote = typeof acquiredNotes.$inferInsert;
 
+/**
+ * Book discriminators for the two note ledgers.
+ *
+ * These are NOT cosmetic. The books differ in money representation
+ * (`acquired_notes` is integer cents; `notes` is decimal dollar STRINGS), in id
+ * type (uuid vs serial integer), and in authorization (the acquired book is
+ * owner/admin-gated because it carries borrower TINs). A response that says
+ * which book it came from lets a consumer that arrived by accident fail loudly
+ * instead of silently misreading dollars as cents.
+ *
+ * The two lists live on separate paths for exactly that reason — see the
+ * ONE PATH, ONE OWNER note in server/routes-notes.ts. They used to collide on
+ * GET /api/notes, and because the earlier handler returned a bare array without
+ * calling next(), the acquired list never ran and its page rendered empty for
+ * every org.
+ */
+export const ACQUIRED_BOOK_ID = "acquired" as const;
+export const SELLER_FINANCE_BOOK_ID = "seller_finance" as const;
+export type NoteBookId = typeof ACQUIRED_BOOK_ID | typeof SELLER_FINANCE_BOOK_ID;
+
 // Per-payment ledger for acquired notes. Drives the 1099-INT yearly
 // aggregation (sum interestCents per payerName per tax year) and the
 // per-note amortization variance reporting.

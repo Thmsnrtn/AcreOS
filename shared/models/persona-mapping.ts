@@ -134,12 +134,22 @@ export const BUSINESS_TYPE_TO_INVESTOR_TYPE: Record<BusinessType, InvestorType> 
 // explicit set — NOT derived from investorType — because the data-plane fork
 // is orthogonal to the notes/land module fork.
 //
-// residential_wholesaler is deliberately NOT in this set yet: the sanctioned
-// wave-V3 scope is fix_and_flip plus the landlord family (buy_and_hold /
-// short_term_rental / multifamily / mobile_home). Widening the set is a
-// deliberate follow-up decision, not a drive-by.
+// 2026-07-30: residential_wholesaler ADDED (the deliberate follow-up wave V3
+// left open). It is a shipped BETA vertical whose subject property is a house
+// — "assign contracts to investor buyers", ARV-driven — and it was the last
+// house vertical still falling through to Regrid land-parcel comps and the
+// land AVM. That is the identical defect that got fix_and_flip demoted on
+// 2026-07-11, so leaving it out was not a smaller scope, it was the same bug
+// with a different label. No new code path is introduced: the wholesaler org
+// now takes the SAME residential fork fix_and_flip has taken since wave V3
+// (ATTOM via the registry, or the explicit unavailable state — never land
+// data under a house label), and land $/acre math stays structurally inert on
+// its results (pricePerAcre is null on residential comps, and getPropertyComps
+// returns before calculateMarketValue / calculateOfferPrices / the land
+// desirability score).
 export const RESIDENTIAL_BUSINESS_TYPES: ReadonlySet<BusinessType> = new Set<BusinessType>([
   "fix_and_flip",
+  "residential_wholesaler",
   "buy_and_hold",
   "short_term_rental",
   "multifamily",

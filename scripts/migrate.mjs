@@ -8105,6 +8105,120 @@ const STATEMENTS = [
   // shared/schema/ach-autopay.ts.
   `ALTER TABLE "ach_mandates" ADD COLUMN IF NOT EXISTS "authorization_challenge_id" text`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "ach_mandates_authorization_challenge_uidx" ON "ach_mandates" ("authorization_challenge_id")`,
+
+  // ── 0216 tax-sale vertical gets an insert path (Wave D) ──
+  // The competitive benchmark's finding: a strong tax-lien workflow layer over
+  // an EMPTY data layer. `tax_sale_auctions` and `tax_sale_listings` had ZERO
+  // insert paths anywhere in the repo (importFromCounty and
+  // countyAssessorIngest.fetchTaxDelinquentList are stubs returning empty), so
+  // the flagship auction worksheet, courthouse mode, and the county
+  // upcoming-auction counts queried tables nothing could fill. The feedstock
+  // added here is manual entry + operator-supplied CSV lot lists; county
+  // scraping and a parcel data plane stay a separate founder-gated bet.
+  //
+  // session_budget_cents is the live "capital left" figure for an operator
+  // bidding at a courthouse. Founder ruling #15 ("be the rail, not the
+  // provider"): a NOTEBOOK number, not a balance — deposits and purchases move
+  // between the operator and the county on the operator's own rails and no
+  // customer money transits AcreOS.
+  //
+  // Both tables previously carried NO index and sat in the
+  // check-org-leading-index.mjs baseline. Giving a table its first insert path
+  // without its tenant-leading index is the exact defect this program keeps
+  // catching, so the indexes land in the same commit and both tables come OFF
+  // the allowlist. No new table — table-count.json stays at 753.
+  //
+  // The TD-4 worksheet columns (max_bid_cents, walk_away_above_cents,
+  // walk_away_condition, partner_split) already exist above; this commit fixes
+  // the drift by finally mirroring them into shared/schema.ts, which needs no
+  // DDL. Mirrors migrations/0216_tax_sale_manual_import.sql + shared/schema.ts.
+  `ALTER TABLE "tax_sale_auctions" ADD COLUMN IF NOT EXISTS "session_budget_cents" bigint`,
+  `CREATE INDEX IF NOT EXISTS "tax_sale_auctions_org_date_idx" ON "tax_sale_auctions" ("organization_id", "auction_date")`,
+  `CREATE INDEX IF NOT EXISTS "tax_sale_auctions_org_state_county_idx" ON "tax_sale_auctions" ("organization_id", "state", "county")`,
+  `CREATE INDEX IF NOT EXISTS "tax_sale_listings_org_auction_idx" ON "tax_sale_listings" ("organization_id", "auction_id")`,
+  `CREATE INDEX IF NOT EXISTS "tax_sale_listings_org_state_county_apn_idx" ON "tax_sale_listings" ("organization_id", "state", "county", "apn")`,
+  `CREATE INDEX IF NOT EXISTS "tax_sale_listings_org_status_idx" ON "tax_sale_listings" ("organization_id", "status")`,
+
+  // ── 0217 rent ledger: multi-charge allocation + deposit clock (Wave D) ──
+  // Wave D declared all of the below in shared/schema/rental.ts and shipped NO
+  // migration — the third time this program has caught a schema change with no
+  // DDL. The code reads and writes these, so the first SELECT would have 500'd
+  // on deploy while every local test passed.
+  //
+  // rent_payment_allocations is the money fix's audit trail. The payment route
+  // used to credit the SINGLE oldest open charge and clamp the excess with
+  // max(0, …), so a tenant two months behind who paid BOTH months had one
+  // month marked paid and the other still showing a full balance — while the
+  // ledger's own totals said the money arrived. Payments now spread across
+  // every open charge (oldest first, rent before late fees) and each
+  // (payment, charge) line is persisted, because in a dispute the question is
+  // never "what is the balance", it is "how did you get that balance". No
+  // aggregate can reconstruct a per-month rent/fee split after the fact.
+  // The UNIQUE (payment_id, rent_charge_id) index IS the double-apply guard:
+  // a retried allocation loses the INSERT instead of double-crediting.
+  //
+  // security_deposits.statutory_deadline shipped as a column with a comment
+  // and NO writer. Deposit mishandling is the most common landlord/tenant
+  // claim and the sanction is usually forfeiture of the right to withhold
+  // anything plus statutory damages, so a blank countdown reads as "no clock
+  // is running" — the worst possible lie for this column. It is now written at
+  // move-out; where the jurisdiction has no encoded rule the date stays NULL
+  // and statutory_deadline_unknown_reason carries the sentence the UI renders
+  // verbatim. AcreOS never defaults to 30 days.
+  //
+  // Money posture (founder ruling #15): every table here is a LEDGER. No
+  // processor, no collection, no tenant payment rail, no funds movement.
+  //
+  // ONE new table — scripts/ratchets/table-count.json 753 -> 754.
+  // Mirrors migrations/0217_wave_d_rent_ledger.sql + shared/schema/rental.ts.
+  `CREATE TABLE IF NOT EXISTS "rent_payment_allocations" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "payment_id" varchar NOT NULL,
+    "rent_charge_id" varchar NOT NULL,
+    "lease_id" varchar NOT NULL,
+    "sequence" integer NOT NULL,
+    "applied_to_rent_cents" bigint NOT NULL,
+    "applied_to_late_fee_cents" bigint NOT NULL,
+    "applied_cents" bigint NOT NULL,
+    "balance_before_cents" bigint NOT NULL,
+    "balance_after_cents" bigint NOT NULL,
+    "order_rule" text NOT NULL,
+    "created_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING composites (L3 shard-readiness) mirroring the two real reads,
+  // plus the double-apply guard.
+  `CREATE INDEX IF NOT EXISTS "rent_payment_allocations_org_payment_idx" ON "rent_payment_allocations" ("organization_id", "payment_id", "sequence")`,
+  `CREATE INDEX IF NOT EXISTS "rent_payment_allocations_org_charge_idx" ON "rent_payment_allocations" ("organization_id", "rent_charge_id")`,
+  `CREATE INDEX IF NOT EXISTS "rent_payment_allocations_lease_idx" ON "rent_payment_allocations" ("lease_id")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "rent_payment_allocations_payment_charge_uk" ON "rent_payment_allocations" ("payment_id", "rent_charge_id")`,
+
+  `ALTER TABLE "rent_payments" ADD COLUMN IF NOT EXISTS "allocated_cents" bigint NOT NULL DEFAULT 0`,
+  `ALTER TABLE "rent_payments" ADD COLUMN IF NOT EXISTS "unapplied_cents" bigint NOT NULL DEFAULT 0`,
+  `ALTER TABLE "rent_payments" ADD COLUMN IF NOT EXISTS "allocation_order_rule" text`,
+
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "move_out_date" date`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "statutory_deadline_days" integer`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "statutory_deadline_citation" text`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "statutory_deadline_unknown_reason" text`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "statutory_deadline_set_at" timestamptz`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "disposition_letter_markdown" text`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "disposition_letter_version" text`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "disposition_letter_generated_at" timestamptz`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "disposition_letter_delivered_at" timestamptz`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "disposition_letter_delivery_method" text`,
+  `CREATE INDEX IF NOT EXISTS "security_deposits_org_deadline_idx" ON "security_deposits" ("organization_id", "statutory_deadline")`,
+
+  // The lease ↔ e-sign join. 'pending_signature' existed as a status and the
+  // HMAC signing rail existed separately; nothing joined them, so a lease
+  // could sit in that status forever with no document, signer or consent
+  // trail. Legal signing stays a founder/operator-only hard stop — nothing
+  // here is ever written by an automation.
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "signing_document_id" integer`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "signature_packet_sent_at" timestamptz`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "signature_requested_by" text`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "executed_at" timestamptz`,
+  `CREATE INDEX IF NOT EXISTS "rental_leases_org_signing_doc_idx" ON "rental_leases" ("organization_id", "signing_document_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -17,6 +17,7 @@ import { z } from "zod";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db, withTransaction } from "./db";
 import {
+  ACQUIRED_BOOK_ID,
   acquiredNotes,
   notePayments,
   notePayoffQuotes,
@@ -887,8 +888,33 @@ export function registerNoteRoutes(app: Express): void {
   const ownerOrAdmin = requireRole(["owner", "admin"]);
 
   // ── List ─────────────────────────────────────────────────────────────────
+  //
+  // ONE PATH, ONE OWNER (2026-07-30 shadow fix).
+  //
+  // This list used to be registered at GET /api/notes — the SAME path
+  // server/routes-finance.ts registers for the seller-finance servicing book.
+  // routes-finance is registered first in server/routes.ts and its handler
+  // returns a bare ARRAY without calling next(), so this handler never ran in
+  // production. /notes read `data.notes` off that array, got `undefined`, and
+  // the Servicing book rendered EMPTY for every org.
+  //
+  // The two books are deliberately NOT merged into one response:
+  //   * money units differ — `acquired_notes` is integer cents (bigint),
+  //     `notes` is decimal dollar STRINGS ("48250.00") with a percent-string
+  //     rate. A union array would put both in one field and force every
+  //     consumer to sniff which it got. See THE CENTS ↔ DECIMAL BOUNDARY in
+  //     server/services/notePaymentMath.ts.
+  //   * id types differ — uuid here, serial integer there.
+  //   * authorization differs — the acquired book is ownerOrAdmin-gated
+  //     (it carries borrower TINs); the seller-finance list is not.
+  //
+  // So: GET /api/notes remains the seller-finance array — that is the shape
+  // documented in shared/routes.ts (`api.notes.list` → z.array(...)) and the
+  // shape `useNotes()` zod-parses. The acquired book gets its OWN path here.
+  // `/api/notes/acquired` is reachable because routes-finance's
+  // GET /api/notes/:id calls next() on a non-numeric id.
   app.get(
-    "/api/notes",
+    "/api/notes/acquired",
     isAuthenticated,
     getOrCreateOrg,
     ownerOrAdmin,
@@ -913,7 +939,17 @@ export function registerNoteRoutes(app: Express): void {
 
         // Never leak the encrypted TIN over the wire — strip on the way out.
         const safe = rows.map(({ payerEncryptedTin: _stripped, ...rest }) => rest);
-        return res.json({ notes: safe, limit, offset, count: safe.length });
+        // THE documented shape for the acquired book. `book` is explicit so a
+        // consumer that ends up here by accident can tell which ledger — and
+        // therefore which money representation — it is looking at.
+        return res.json({
+          book: ACQUIRED_BOOK_ID,
+          moneyUnit: "integer_cents",
+          notes: safe,
+          limit,
+          offset,
+          count: safe.length,
+        });
       } catch (err) {
         logger.error("notes.list failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
