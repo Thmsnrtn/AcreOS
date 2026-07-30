@@ -231,3 +231,60 @@ independently named the single biggest competitive absence and minute-one
 table stakes at Regrid / LandGlide / PropStream / DealMachine. Gated on a
 parcel-data licensing decision, which is a founder hard-stop (spend) and
 returns as a decision card before any commitment.
+
+## 15. BE THE RAIL, NOT THE PROVIDER — PAYMENTS (2026-07-29)
+
+Ruling (founder, this date): **payment architecture applies ONLY to direct
+subscription payments TO the AcreOS platform.** When a customer manages their
+own money — borrower note payments, rents, escrow, distributions — they are
+ROUTED to payment services running on their OWN connected processor account,
+so the liability stays out of AcreOS's hands. Asked to choose how far to take
+it, the founder picked **route out entirely**, explicitly accepting the loss of
+a disclosed 2.5% platform fee and accepting that a lender without a connected
+processor loses in-product card acceptance until they connect one.
+
+This is the payments analogue of the 2026-07-17 send-rail decision (counterparty
+mail requires the org's own connected identity; the platform sender is for
+system mail only). The absence of that analogue is exactly why the violations
+below survived: `shared/governance/constitution.ts` had ZERO money-custody
+entries, so nothing enforced on the money side what was already absolute on the
+sending side.
+
+**What the custody audit found** (30 money-touching surfaces inventoried):
+
+- **Wave C's borrower ACH autopay COMPLIES** and is kept as built. Every call is
+  re-scoped to the lender via the `stripeAccount` header, there is no
+  `application_fee_amount`, no `transfer_data`, no `on_behalf_of`; the
+  authorization names the lender, the borrower's bank statement shows the
+  lender, and a lender without completed Connect onboarding is refused rather
+  than routed through platform rails. On the code AcreOS is a software platform,
+  not a NACHA Third-Party Sender — it holds no ODFI relationship, transmits no
+  entries, and funds never enter its balance. (The contract chain and Connect
+  negative-balance recourse are legal questions, not code questions, and remain
+  unverified here.)
+- **VIOLATION, serious:** borrower card payments called Stripe Checkout with no
+  options argument at all — no destination, no transfer — so consumer mortgage
+  payments settled into AcreOS's OWN platform balance **with no payout path**.
+  AcreOS was merchant of record for money it could not release, with no Connect
+  check, so it worked even for orgs that never connected Stripe.
+- **VIOLATION:** a 2.5% destination charge without `on_behalf_of`, making the
+  platform the settlement merchant, transiting AcreOS's balance and taking a cut.
+  A related bug minted a real chargeable PaymentIntent behind a `/pay/<secret>`
+  route that does not exist.
+- **Dead custody surfaces removed** (zero product cost): a platform
+  escrow-and-take-a-cut engine with no call sites that also wrote a fabricated
+  `tr_simulated_…` id into a money column; Actum platform-merchant routes using
+  one merchant id for all orgs, one of which accepted raw bank routing/account
+  numbers AcreOS must never receive; a fee-payout endpoint returning 202
+  "processing" while doing nothing; and unread seller-payout columns.
+- **Already clean:** rent ledger (no processor at all), earnest money, servicer
+  remittance, investor statements — bookkeeping only. Subscriptions, credits,
+  seats and subscription dunning are correctly AcreOS-as-vendor.
+
+The routing seam this ruling leans on already existed and is good: the
+connectors hub mints Stripe Payment Links on the org's **own** `sk_live_` key,
+with AcreOS entirely out of the path and taking no fee.
+
+Standing rule added to the constitution registry and the CLAUDE.md DO-NOT-DO
+list: customer money never moves on AcreOS's own account; no platform-account
+fallback, no application fee, no funds transiting AcreOS's balance.

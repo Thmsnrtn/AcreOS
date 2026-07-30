@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Hammer, ArrowRight, PlusCircle, LayoutGrid, List } from "lucide-react";
+import { Hammer, ArrowRight, PlusCircle, LayoutGrid, List, Calculator } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -126,6 +126,15 @@ export default function RehabsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Pre-acquisition entry point: /flip-analyzer computes the MAO from a
+              real ARV before you own the house. Discoverable from here because
+              the flip module has no room for a new nav entry (five-door rule). */}
+          <Button asChild variant="outline" size="sm">
+            <Link href="/flip-analyzer">
+              <Calculator className="w-4 h-4 mr-1" aria-hidden="true" />
+              Flip analyzer (MAO)
+            </Link>
+          </Button>
           <Button variant={view === "list" ? "secondary" : "ghost"} size="sm" onClick={() => setView("list")} aria-label="List view">
             <List className="w-4 h-4" aria-hidden="true" />
           </Button>

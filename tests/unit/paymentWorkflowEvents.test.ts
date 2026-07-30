@@ -302,8 +302,13 @@ function chain(result: unknown) {
     where: () => link,
     orderBy: () => link,
     limit: () => link,
+    // `.for("update")` — the rent-payment charge read takes row locks now, so
+    // the stub has to model the lock clause too.
+    for: () => link,
+    innerJoin: () => link,
     values: () => link,
     set: () => link,
+    onConflictDoNothing: () => link,
     returning: () => Promise.resolve(result),
     then: (resolve: any, reject: any) => Promise.resolve(result).then(resolve, reject),
   };
@@ -342,6 +347,7 @@ describe("POST /api/leases/:id/payments — emit happens after the transaction c
   const lease = { id: "lease-uuid-1", organizationId: 7 };
   const openCharge = {
     id: "charge-uuid-1",
+    chargedForMonth: "2026-07-01",
     amountCents: 140_000,
     paidCents: 0,
     balanceCents: 140_000,
@@ -351,15 +357,31 @@ describe("POST /api/leases/:id/payments — emit happens after the transaction c
     dueDate: "2026-07-01",
   };
 
+  /**
+   * Wave D made the single-charge writer real: the open-charge read moved
+   * INSIDE the transaction (with `FOR UPDATE` row locks) and one
+   * rent_payment_allocations row per line is persisted alongside the payment.
+   * The stub is rewritten to the new truth rather than deleted, so the original
+   * invariant this suite pins — commit BEFORE emit, exactly one emit — still
+   * has teeth.
+   */
+  const txWrites: Array<{ op: "insert" | "update" }> = [];
+
   function primeDb() {
-    dbMock.select
-      .mockReturnValueOnce(chain([lease]))
-      .mockReturnValueOnce(chain([openCharge]));
+    txWrites.length = 0;
+    dbMock.select.mockReturnValueOnce(chain([lease]));
     dbMock.transaction.mockImplementation(async (cb: any) => {
       callOrder.push("tx:begin");
       const tx = {
-        insert: () => chain([{ id: "rent-payment-uuid-1" }]),
-        update: () => chain(undefined),
+        select: () => chain([openCharge]),
+        insert: () => {
+          txWrites.push({ op: "insert" });
+          return chain([{ id: "rent-payment-uuid-1" }]);
+        },
+        update: () => {
+          txWrites.push({ op: "update" });
+          return chain(undefined);
+        },
       };
       const out = await cb(tx);
       callOrder.push("tx:commit");
@@ -386,6 +408,12 @@ describe("POST /api/leases/:id/payments — emit happens after the transaction c
     expect(emitSpy).toHaveBeenCalledTimes(1);
     // The ordering that matters on a money path: commit BEFORE emit.
     expect(callOrder).toEqual(["tx:begin", "tx:commit", "emit"]);
+    // …and the allocation is PERSISTED, not just computed: the payment row and
+    // the allocation rows are two inserts inside the one transaction, followed
+    // by the charge update.
+    expect(txWrites).toEqual([{ op: "insert" }, { op: "insert" }, { op: "update" }]);
+    expect(res.body.allocation.appliedCents).toBe(140_000);
+    expect(res.body.allocation.unappliedCents).toBe(0);
   });
 
   it("still returns 201 with the payment when the emit throws", async () => {
@@ -405,9 +433,7 @@ describe("POST /api/leases/:id/payments — emit happens after the transaction c
   });
 
   it("a failed transaction posts nothing and emits nothing", async () => {
-    dbMock.select
-      .mockReturnValueOnce(chain([lease]))
-      .mockReturnValueOnce(chain([openCharge]));
+    dbMock.select.mockReturnValueOnce(chain([lease]));
     dbMock.transaction.mockImplementation(async () => {
       throw new Error("deadlock detected");
     });

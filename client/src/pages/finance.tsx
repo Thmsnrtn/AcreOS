@@ -705,10 +705,19 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
     setIsGeneratingLink(true);
     try {
       const res = await fetch(`/api/stripe/connect/payment-link/${note.id}`, { credentials: 'include' });
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      if (!res.ok) {
+        // The server refuses with a NAMED reason when no processor is
+        // connected — surface that reason rather than a bare status code.
+        // AcreOS never falls back to collecting on its own account.
+        const body = await res.json().catch(() => ({} as { message?: string }));
+        throw new Error(body.message || `Server returned ${res.status}`);
+      }
       const data = await res.json();
       setPaymentLink(data.paymentLink);
-      toast({ title: "Payment link generated", description: "You can now share this link with the borrower." });
+      toast({
+        title: "Payment link created",
+        description: "Stripe hosts it on your own account — the payment settles to you, and AcreOS takes no cut.",
+      });
     } catch (err: any) {
       toast({
         title: "Couldn't generate payment link",
@@ -1050,13 +1059,19 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                   <div className="p-3 rounded-full bg-muted/50 w-fit mx-auto mb-3">
                     <Settings className="w-6 h-6 text-muted-foreground" aria-hidden="true" />
                   </div>
+                  {/* Honest about WHY, and no fallback offered: AcreOS will
+                      not collect your borrower's payment onto its own account
+                      (founder ruling 2026-07-29). The link uses the HASH form
+                      — settings.tsx reads only the hash, so `?tab=payments`
+                      (what this was) silently landed on the Account tab. */}
                   <p className="text-sm text-muted-foreground mb-3">
-                    Connect Stripe to accept payments.
+                    Connect your own Stripe account to accept card payments here. Until you do, there&rsquo;s
+                    nowhere for a borrower payment to land &mdash; AcreOS won&rsquo;t collect it for you.
                   </p>
                   <Button asChild variant="outline" size="sm">
-                    <Link href="/settings?tab=payments">
+                    <Link href="/settings#billing">
                       <ExternalLink className="w-4 h-4 mr-2" aria-hidden="true" />
-                      Settings &rsaquo; Payments
+                      Settings &rsaquo; Billing
                     </Link>
                   </Button>
                 </div>
@@ -1120,7 +1135,8 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Share this link with the borrower to collect payment.
+                        Share this link with the borrower. The payment is charged on your own Stripe
+                        account and pays out to you &mdash; AcreOS doesn&rsquo;t hold it or take a share.
                       </p>
                     </div>
                   )}
@@ -1645,6 +1661,10 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
   const [paymentType, setPaymentType] = useState<string>('monthly_payment');
   const [isCreating, setIsCreating] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  // A direct charge on the org's own connected account: the client secret is
+  // ONLY confirmable by Stripe.js initialised with this account id. Showing the
+  // secret without it (as this modal used to) hands over something unusable.
+  const [connectedAccountId, setConnectedAccountId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const handleCreatePaymentIntent = async () => {
@@ -1670,7 +1690,11 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
 
       const data = await res.json();
       setClientSecret(data.clientSecret);
-      toast({ title: "Payment ready", description: "You can now enter card details to complete the payment." });
+      setConnectedAccountId(data.connectedAccountId ?? null);
+      toast({
+        title: "Payment ready",
+        description: "The charge is on your own Stripe account — it settles to you, and AcreOS takes no cut.",
+      });
     } catch (err: any) {
       toast({
         title: "Couldn't set up payment",
@@ -1772,7 +1796,8 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
                     Amount: <span className="font-mono font-bold tabular-nums">{usd(Number(amount) || 0)}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Use the client secret below with Stripe.js to complete the payment.
+                    Confirm it with Stripe.js initialised for the connected account below, or from your own
+                    Stripe dashboard. It settles to your balance; AcreOS takes no share of it.
                   </p>
                 </div>
                 <div className="space-y-1">
@@ -1785,11 +1810,28 @@ function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
                     {clientSecret}
                   </div>
                 </div>
+                {connectedAccountId && (
+                  <div className="space-y-1">
+                    <Label htmlFor="text-connected-account-id" className="text-xs text-muted-foreground">
+                      Your connected account
+                    </Label>
+                    <div
+                      id="text-connected-account-id"
+                      className="font-mono text-xs bg-muted p-2 rounded break-all select-all"
+                      tabIndex={0}
+                      data-testid="text-connected-account-id"
+                    >
+                      {connectedAccountId}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="bg-muted/50 rounded-card p-4">
                 <p className="text-sm text-muted-foreground">
-                  This will create a Stripe payment intent that can be used to process the payment via Stripe.js or the Stripe dashboard.
+                  This creates a Stripe payment intent on your own connected Stripe account. The payment
+                  settles to your balance on your payout schedule &mdash; AcreOS never holds it and takes no
+                  percentage of it.
                 </p>
               </div>
             )}

@@ -42,6 +42,14 @@ const ROOT = path.resolve(__dirname, "../..");
  *   LEGAL_SIGNING_ACTIONS action class + sign/execute_contract payload flags,
  *   ratcheted by tests/unit/founderHardStopGuardrails.test.ts. All four hard
  *   stops are now machine-enforced; this baseline stays at 0 forever.
+ * 2026-07-29 (stays 0): a FIFTH hard stop was registered —
+ *   hard-stop.no-platform-money-custody, from the founder ruling "be the rail,
+ *   not the provider". It arrived already machine-enforced (the
+ *   customerMoneyRouting chokepoint + tests/unit/moneyCustodyHardStop.test.ts),
+ *   so it added no debt. The registry had ZERO money-custody entries before
+ *   this, which is exactly why four dead platform-custody surfaces survived
+ *   several honesty waves — the ban on re-fronting platform SEND rails had no
+ *   payments analogue.
  */
 const UNENFORCED_HARD_STOP_BASELINE = 0;
 
@@ -81,9 +89,14 @@ describe("constitution registry — enforcement pointers are real", () => {
 });
 
 describe("constitution ratchet — hard stops must become machine-enforced", () => {
-  it("registers the four founder hard stops", () => {
-    // The four permanent hard stops from CLAUDE.md's DO-NOT-DO list.
-    expect(hardStops().length).toBe(4);
+  it("registers the five hard stops", () => {
+    // The permanent hard stops from CLAUDE.md's DO-NOT-DO list: four
+    // founder-only action classes (spends >$500, pricing, legal signing,
+    // customer-data deletion) plus one outright ban — customer money never
+    // moves on AcreOS's own account (founder ruling 2026-07-29, "be the rail,
+    // not the provider"). This count may only GROW by an explicit founder
+    // decision; it may never shrink, because a hard stop is permanent.
+    expect(hardStops().length).toBe(5);
   });
 
   it("the count of UNENFORCED hard stops never exceeds the baseline (it may only shrink)", () => {

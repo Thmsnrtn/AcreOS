@@ -929,6 +929,27 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // ── Founder Readiness Ladder — the founder's OWN onboarding ───────────────
+  // A sibling of step-away, not a duplicate: step-away answers "can I leave
+  // RIGHT NOW?", this answers "what do I still have to SET UP, in what order,
+  // and what does each rung buy me?". Every rung is measured; a rung that
+  // can't be read reports unverifiable, never done. Lives as a SECTION of the
+  // Controls door — deliberately NOT a new founder route (four-door doctrine).
+  app.get(
+    "/api/founder/autopilot/readiness-ladder",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { buildFounderReadinessLadder } = await import("./services/founder/readinessLadder");
+        const ladder = await buildFounderReadinessLadder();
+        return res.json(ladder);
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── WitnessGrants (step-away gap #5) — bounded delegation of the tap ──────
   // The founder issues/revokes scoped, expiring grants; the 5-minute auto-
   // witness sweep taps frozen actions a live grant covers. Zero grants =

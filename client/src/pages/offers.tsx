@@ -1,17 +1,22 @@
 import { useState, useMemo, useId } from "react";
+import DOMPurify from "isomorphic-dompurify";
 import { PageShell } from "@/components/page-shell";
 import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest, fetchJsonArray } from "@/lib/queryClient";
+import { queryClient, apiRequest, fetchJsonArray, ApiError } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import "./today.css";
 import { OfferPreflightChecklist } from "@/components/offer-preflight-checklist";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import type { OfferLetter, OfferTemplate, Lead, Property } from "@shared/schema";
+import { QueryErrorState } from "@/components/query-error-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { staggerContainer, staggerItem } from "@/lib/animations";
+import { motion } from "framer-motion";
+import type { OfferLetter, OfferTemplate, Lead, Property, Deal } from "@shared/schema";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,9 +31,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
-import { 
-  Calculator, Mail, Send, FileText, Plus, Trash2, Edit, Eye, 
-  Loader2, Calendar, DollarSign, Clock, Filter, Check, X, ClipboardCheck
+import {
+  Calculator, Mail, Send, FileText, Plus, Trash2, Edit,
+  Loader2, Filter, ClipboardCheck,
+  FileSignature, ShieldAlert, Copy, ScrollText, Info
 } from "lucide-react";
 import { format } from "date-fns";
 import { Verbs } from "@/lib/labels";
@@ -50,6 +56,630 @@ const getStatusBadge = (status: string) => {
   const statusConfig = offerStatuses.find(s => s.value === status) || offerStatuses[0];
   return <Badge className={`${statusConfig.color} no-default-hover-elevate`}>{statusConfig.label}</Badge>;
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// Wave D2 client surface — accepted offer → state-specific purchase agreement
+// → the existing e-sign rail.
+//
+// The backend (server/routes-contract-chain.ts +
+// server/services/contracts/contractAssembly.ts) shipped mounted and
+// unreachable: an accepted offer never became a merged purchase agreement in
+// the product. This section is that chain's UI, and it is deliberately THREE
+// separate human actions:
+//
+//   1. REVIEW  — GET /api/deals/:id/contract-preview assembles and returns the
+//                exact body, writing nothing. Refusals land here, named.
+//   2. CREATE  — POST /api/deals/:id/contract, gated on an explicit
+//                confirmation plus the sha256 of the content the operator was
+//                actually shown. Persists a DRAFT. Sends nothing.
+//   3. SEND    — the pre-existing rail
+//                POST /api/generated-documents/:id/request-signature, a
+//                separate click that mints per-signer links for the operator
+//                to deliver themselves.
+//
+// Legal signing is a permanent founder-only hard-stop, so nothing here fires
+// on mount, on a query, or as a side effect of another action. Founder ruling
+// #15 holds too: documents and signatures only — no payment, no escrow, no
+// funds movement.
+// ───────────────────────────────────────────────────────────────────────────
+
+/** Deal statuses the chain will assemble from (mirrors the server's list). */
+const CONTRACT_ELIGIBLE_STATUSES = ["accepted", "in_escrow"];
+
+interface ContractSignerRole {
+  role: string;
+  name: string;
+  email: string | null;
+}
+
+interface ContractPreview {
+  kind: string;
+  title: string;
+  name: string;
+  state: string;
+  stateName: string;
+  content: string;
+  contentHash: string;
+  stateRequirements: {
+    deedType: string;
+    notaryRequired: boolean;
+    witnessCount: number;
+    recordingOffice: string;
+    transferTaxPercent: number;
+    transferTaxNotes: string;
+    attorneyStateForClosing: boolean;
+    practiceNotes: string;
+  };
+  signerRoles: ContractSignerRole[];
+  advisories: string[];
+  disclaimer: string;
+  sent: boolean;
+  hardStop: string;
+}
+
+/** The server's named refusals (ContractRefusal), as they arrive in `details`. */
+interface ContractRefusal {
+  code?: string;
+  message?: string;
+  state?: string;
+  stateName?: string | null;
+  dealStatus?: string;
+  missing?: Array<{ field: string; label: string; fixAt: string }>;
+  details?: { statute?: string; friendlyName?: string };
+  recommendation?: string;
+  citation?: string | null;
+}
+
+/** Pull the named refusal out of a 422, or null when this isn't one. */
+function contractRefusalOf(error: unknown): ContractRefusal | null {
+  if (!(error instanceof ApiError) || error.status !== 422) return null;
+  const details = error.body?.details;
+  if (!details || typeof details !== "object") return null;
+  return details as ContractRefusal;
+}
+
+const REFUSAL_TITLE: Record<string, string> = {
+  STATE_NOT_CONFIGURED: "No reviewed template for this state",
+  OFFER_NOT_ACCEPTED: "This offer isn't accepted yet",
+  MISSING_REQUIRED_FIELDS: "AcreOS won't guess contract terms",
+  DISCLOSURE_MISSING: "A statutory disclosure is required here",
+  OPERATOR_REVIEW_REQUIRED: "A person has to review this first",
+  REVIEW_STALE: "This contract changed since you reviewed it",
+};
+
+/**
+ * Render a refusal in the server's own words. The state is NAMED — we never
+ * fall back to offering a generic document in its place.
+ */
+function ContractRefusalNotice({ refusal }: { refusal: ContractRefusal }) {
+  const title =
+    (refusal.code && REFUSAL_TITLE[refusal.code]) ||
+    "AcreOS will not generate this document";
+  const stateLabel = refusal.stateName || refusal.state || null;
+
+  return (
+    <div
+      role="alert"
+      className="space-y-2 rounded-card border border-acr-warn/50 bg-acr-warn-soft p-3"
+      data-testid="contract-refusal"
+    >
+      <div className="flex items-start gap-2">
+        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-acr-warn" aria-hidden="true" />
+        <div className="min-w-0 space-y-1 text-sm">
+          <p className="font-medium">
+            {title}
+            {refusal.code === "STATE_NOT_CONFIGURED" && stateLabel ? ` — ${stateLabel}` : ""}
+          </p>
+          <p className="text-muted-foreground" data-testid="contract-refusal-message">
+            {refusal.message ??
+              "The deal is not contract-ready. Fix the named gap and assemble it again."}
+          </p>
+          {refusal.missing && refusal.missing.length > 0 ? (
+            <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+              {refusal.missing.map((m) => (
+                <li key={m.field}>
+                  <span className="font-medium text-foreground">{m.label}</span> — {m.fixAt}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {refusal.recommendation ? (
+            <p className="text-muted-foreground">{refusal.recommendation}</p>
+          ) : null}
+          {refusal.citation ? (
+            <p className="text-xs text-muted-foreground">{refusal.citation}</p>
+          ) : null}
+          {refusal.details?.statute ? (
+            <p className="text-xs text-muted-foreground">
+              {refusal.details.friendlyName} ({refusal.details.statute})
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface SigningLink {
+  signerId: string;
+  name: string;
+  email: string;
+  role: string;
+  url: string;
+}
+
+/**
+ * Exported for `tests/unit/contractChainReview.test.tsx`, which pins the
+ * review-then-send gate: nothing is created without an explicit confirmation
+ * of the exact reviewed content, and nothing reaches the signing rail without
+ * a further explicit click.
+ */
+export function ContractChainSection({
+  deals,
+  dealsLoading,
+  dealsError,
+  onRetryDeals,
+  properties,
+}: {
+  deals: Deal[];
+  dealsLoading: boolean;
+  dealsError: Error | null;
+  onRetryDeals: () => void;
+  properties: Property[] | undefined;
+}) {
+  const { toast } = useToast();
+  const [reviewDealId, setReviewDealId] = useState<number | null>(null);
+  const [confirmedHash, setConfirmedHash] = useState<string | null>(null);
+  const [createdDocument, setCreatedDocument] = useState<{ id: number; name: string } | null>(null);
+  const [signerEmails, setSignerEmails] = useState<Record<string, string>>({});
+  const [signingLinks, setSigningLinks] = useState<SigningLink[]>([]);
+
+  const eligible = useMemo(
+    () => deals.filter((d) => CONTRACT_ELIGIBLE_STATUSES.includes(d.status)),
+    [deals],
+  );
+
+  const resetFlow = () => {
+    setReviewDealId(null);
+    setConfirmedHash(null);
+    setCreatedDocument(null);
+    setSignerEmails({});
+    setSigningLinks([]);
+  };
+
+  // STEP 1 — review. A read: assembles and returns, persists nothing.
+  const previewQuery = useQuery<ContractPreview>({
+    queryKey: ["/api/deals", reviewDealId, "contract-preview", "purchase_agreement"],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/deals/${reviewDealId}/contract-preview?kind=purchase_agreement`,
+      );
+      return res.json() as Promise<ContractPreview>;
+    },
+    enabled: reviewDealId !== null,
+    retry: false,
+  });
+
+  // STEP 2 — create the draft. Requires the operator's confirmation AND the
+  // hash of the content they were shown; a stale hash refuses server-side.
+  const createContract = useMutation({
+    mutationFn: async (input: { dealId: number; reviewedContentHash: string }) => {
+      const res = await apiRequest("POST", `/api/deals/${input.dealId}/contract`, {
+        kind: "purchase_agreement",
+        confirmReviewed: true,
+        reviewedContentHash: input.reviewedContentHash,
+      });
+      return res.json() as Promise<{
+        document: { id: number; name: string };
+        sent: boolean;
+        signerRoles: ContractSignerRole[];
+        nextStep: { note: string };
+      }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] });
+      setCreatedDocument(data.document);
+      toast({
+        title: "Draft contract created.",
+        description: data.nextStep.note,
+      });
+    },
+    onError: (error: Error) => {
+      if (contractRefusalOf(error)) return; // rendered in place, named
+      toast({
+        title: "Couldn't assemble the contract",
+        description: `${error.message} — nothing was created and nothing was sent.`,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // STEP 3 — the pre-existing signing rail. Separate, explicit, operator-only.
+  const requestSignature = useMutation({
+    mutationFn: async (input: { documentId: number; signers: ContractSignerRole[] }) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/generated-documents/${input.documentId}/request-signature`,
+        {
+          // Keyed by POSITION, not by role: a two-witness state (Florida) has
+          // two signers sharing the role "witness", and keying by role would
+          // silently send one person's address to both.
+          signers: input.signers.map((s, i) => ({
+            name: s.name,
+            email: signerEmails[String(i)] ?? s.email ?? "",
+            role: s.role,
+          })),
+        },
+        { idempotent: true },
+      );
+      return res.json() as Promise<{ signingLinks: SigningLink[] }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+      setSigningLinks(data.signingLinks ?? []);
+      toast({
+        title: "Signing links issued.",
+        description: "AcreOS emailed no one — copy each link into your own email or text.",
+      });
+    },
+    onError: (error: Error) => {
+      if (contractRefusalOf(error)) return;
+      toast({
+        title: "Couldn't send for signature",
+        description: `${error.message} — the draft is untouched and no one was contacted.`,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const preview = previewQuery.data;
+  const previewRefusal = contractRefusalOf(previewQuery.error);
+  const createRefusal = contractRefusalOf(createContract.error);
+  const sendRefusal = contractRefusalOf(requestSignature.error);
+  const reviewDeal = eligible.find((d) => d.id === reviewDealId) ?? null;
+  const addressOf = (deal: Deal) =>
+    properties?.find((p) => p.id === deal.propertyId)?.address ?? `Property #${deal.propertyId}`;
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <h3 className="text-lg font-medium">Accepted offers ready for a contract</h3>
+        <p className="text-sm text-muted-foreground">
+          AcreOS assembles the state-specific purchase agreement from the accepted
+          amount and closing date on the deal, shows you exactly what would go
+          out, and only then — as a separate click — hands it to the signing
+          rail. Nothing is ever sent automatically.
+        </p>
+      </div>
+
+      {dealsLoading ? (
+        <ListSkeleton count={3} />
+      ) : dealsError ? (
+        <QueryErrorState
+          error={dealsError}
+          onRetry={onRetryDeals}
+          title="Couldn't load your accepted deals"
+          testId="contracts-deals-error"
+        />
+      ) : eligible.length === 0 ? (
+        <EmptyState
+          icon={FileSignature}
+          headline="No accepted offers yet"
+          subtitle="Once a deal is marked accepted — with the accepted amount and closing date on it — its purchase agreement can be assembled here."
+          cta={{ label: "Open the pipeline", href: "/deals" }}
+          actionIcon={null}
+        />
+      ) : (
+        <motion.ul
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+          className="m-0 grid list-none gap-4 p-0 md:grid-cols-2"
+          aria-label={`${eligible.length} accepted deal${eligible.length === 1 ? "" : "s"}`}
+        >
+          {eligible.map((deal) => (
+            <motion.li key={deal.id} variants={staggerItem}>
+              <Card data-testid={`card-contract-deal-${deal.id}`}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">{addressOf(deal)}</CardTitle>
+                  <CardDescription>
+                    Deal #{deal.id} · {deal.status.replace(/_/g, " ")}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <dl className="space-y-1 text-sm">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <dt className="text-muted-foreground">Accepted amount</dt>
+                      <dd className="font-mono tabular-nums">
+                        {deal.acceptedAmount ? usd(deal.acceptedAmount) : "Not recorded"}
+                      </dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <dt className="text-muted-foreground">Closing date</dt>
+                      <dd className="tabular-nums">
+                        {deal.closingDate ? formatDate(deal.closingDate) : "Not recorded"}
+                      </dd>
+                    </div>
+                  </dl>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      resetFlow();
+                      setReviewDealId(deal.id);
+                    }}
+                    data-testid={`button-prepare-contract-${deal.id}`}
+                  >
+                    <ScrollText className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Review purchase agreement
+                  </Button>
+                </CardContent>
+              </Card>
+            </motion.li>
+          ))}
+        </motion.ul>
+      )}
+
+      {/* The review step. Opening this dialog reads; it never writes or sends. */}
+      <Dialog
+        open={reviewDealId !== null}
+        onOpenChange={(open) => {
+          if (!open) resetFlow();
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {createdDocument
+                ? "Draft created — sending is a separate step"
+                : "Review before anything is created"}
+            </DialogTitle>
+            <DialogDescription>
+              {reviewDeal ? `Deal #${reviewDeal.id} · ${addressOf(reviewDeal)}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewQuery.isPending && reviewDealId !== null ? (
+            <div className="space-y-3" aria-busy="true">
+              <Skeleton className="h-6 w-2/3" />
+              <Skeleton className="h-40 w-full" />
+              <Skeleton className="h-5 w-1/2" />
+            </div>
+          ) : previewRefusal ? (
+            <ContractRefusalNotice refusal={previewRefusal} />
+          ) : previewQuery.isError ? (
+            <QueryErrorState
+              error={previewQuery.error as Error}
+              onRetry={() => previewQuery.refetch()}
+              testId="contract-preview-error"
+            />
+          ) : preview ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">
+                  {preview.stateName} ({preview.state}) template
+                </Badge>
+                <Badge variant="secondary">Nothing sent yet</Badge>
+              </div>
+
+              <section className="space-y-2">
+                <h4 className="text-sm font-medium">
+                  Exactly what will go out
+                </h4>
+                <div
+                  className="prose prose-sm dark:prose-invert max-w-none rounded-card border border-border p-4"
+                  data-testid="contract-preview-content"
+                  // Server-assembled body; escaped at assembly and sanitized
+                  // again here (repo pattern — see documents.tsx preview).
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(preview.content) }}
+                />
+                <p className="font-mono text-xs text-muted-foreground" data-testid="contract-hash">
+                  sha256 {preview.contentHash.slice(0, 16)}… — the draft is created
+                  from this exact text, and the signing rail re-checks it at
+                  dispatch.
+                </p>
+              </section>
+
+              <section className="space-y-1">
+                <h4 className="text-sm font-medium">How {preview.stateName} executes this</h4>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                  <li>Conveyance by {preview.stateRequirements.deedType}.</li>
+                  <li>
+                    {preview.stateRequirements.notaryRequired
+                      ? "Notarization required."
+                      : "No notarization required."}{" "}
+                    {preview.stateRequirements.witnessCount > 0
+                      ? `${preview.stateRequirements.witnessCount} witness${
+                          preview.stateRequirements.witnessCount === 1 ? "" : "es"
+                        } required.`
+                      : "No witnesses required."}
+                  </li>
+                  <li>Recorded with the {preview.stateRequirements.recordingOffice}.</li>
+                  <li>{preview.stateRequirements.transferTaxNotes}</li>
+                  {preview.stateRequirements.attorneyStateForClosing ? (
+                    <li>An attorney must conduct the closing in {preview.stateName}.</li>
+                  ) : null}
+                </ul>
+              </section>
+
+              <section className="space-y-1">
+                <h4 className="text-sm font-medium">Who signs</h4>
+                <ul className="m-0 list-none space-y-1 p-0 text-sm">
+                  {preview.signerRoles.map((s) => (
+                    <li key={`${s.role}-${s.name}`} className="text-muted-foreground">
+                      <span className="capitalize text-foreground">{s.role}</span>: {s.name}
+                      {s.email ? ` · ${s.email}` : " · no email on file yet"}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              {preview.advisories.length > 0 ? (
+                <section className="space-y-2">
+                  <h4 className="text-sm font-medium">Resolve before execution</h4>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                    {preview.advisories.map((a) => (
+                      <li key={a}>{a}</li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
+              <p className="text-xs text-muted-foreground">{preview.disclaimer}</p>
+
+              <div className="flex items-start gap-2 rounded-card border border-border p-3">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <p className="text-xs text-muted-foreground">
+                  Legal signing is a founder-only hard-stop
+                  {preview.hardStop ? ` (${preview.hardStop})` : ""}. AcreOS never
+                  signs, emails, or dispatches a contract on its own — every step
+                  below is a click you make.
+                </p>
+              </div>
+
+              {createRefusal ? <ContractRefusalNotice refusal={createRefusal} /> : null}
+
+              {!createdDocument ? (
+                <div className="space-y-3 border-t border-border pt-4">
+                  <div className="flex items-start gap-2">
+                    <Checkbox
+                      id="contract-confirm-review"
+                      checked={confirmedHash === preview.contentHash}
+                      onCheckedChange={(checked) =>
+                        setConfirmedHash(checked ? preview.contentHash : null)
+                      }
+                      data-testid="checkbox-confirm-review"
+                    />
+                    <Label htmlFor="contract-confirm-review" className="text-sm font-normal">
+                      I have read the document above and confirm this is what
+                      should go out.
+                    </Label>
+                  </div>
+                  <Button
+                    disabled={
+                      confirmedHash !== preview.contentHash ||
+                      createContract.isPending ||
+                      reviewDealId === null
+                    }
+                    onClick={() => {
+                      if (reviewDealId === null) return;
+                      createContract.mutate({
+                        dealId: reviewDealId,
+                        reviewedContentHash: preview.contentHash,
+                      });
+                    }}
+                    data-testid="button-create-contract"
+                  >
+                    {createContract.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <FileText className="mr-2 h-4 w-4" aria-hidden="true" />
+                    )}
+                    Create the draft (sends nothing)
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3 border-t border-border pt-4">
+                  <p className="text-sm">
+                    <span className="font-medium">{createdDocument.name}</span> is
+                    saved as a draft. It has not been sent.
+                  </p>
+
+                  {sendRefusal ? <ContractRefusalNotice refusal={sendRefusal} /> : null}
+
+                  <form
+                    className="space-y-3"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      requestSignature.mutate({
+                        documentId: createdDocument.id,
+                        signers: preview.signerRoles,
+                      });
+                    }}
+                  >
+                    {preview.signerRoles.map((s, i) => (
+                      <div key={`email-${i}-${s.role}`} className="space-y-1">
+                        <Label htmlFor={`signer-email-${i}`}>
+                          <span className="capitalize">{s.role}</span> email — {s.name}
+                        </Label>
+                        <Input
+                          id={`signer-email-${i}`}
+                          type="email"
+                          value={signerEmails[String(i)] ?? s.email ?? ""}
+                          onChange={(e) =>
+                            setSignerEmails((prev) => ({ ...prev, [String(i)]: e.target.value }))
+                          }
+                          placeholder="name@example.com"
+                          data-testid={`input-signer-email-${i}`}
+                        />
+                        {s.role === "witness" ? (
+                          <p className="text-xs text-muted-foreground">
+                            Witnesses usually sign in person — leave this blank if
+                            yours will.
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                    <Button
+                      type="submit"
+                      disabled={requestSignature.isPending || signingLinks.length > 0}
+                      data-testid="button-send-for-signature"
+                    >
+                      {requestSignature.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <FileSignature className="mr-2 h-4 w-4" aria-hidden="true" />
+                      )}
+                      Send for signature
+                    </Button>
+                  </form>
+
+                  {signingLinks.length > 0 ? (
+                    <div className="space-y-2 rounded-card border border-border p-3">
+                      <p className="text-sm font-medium">
+                        Signing links — copy each into your own email or text:
+                      </p>
+                      {signingLinks.map((link) => (
+                        <div key={link.signerId} className="flex items-center gap-2 text-sm">
+                          <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                            {link.name} ({link.role})
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            aria-label={`Copy signing link for ${link.name}`}
+                            onClick={() => {
+                              navigator.clipboard.writeText(link.url);
+                              toast({
+                                title: "Link copied.",
+                                description: `${link.name}'s signing link is on your clipboard.`,
+                              });
+                            }}
+                            data-testid={`button-copy-signing-link-${link.role}`}
+                          >
+                            <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={resetFlow}>
+              {Verbs.CANCEL}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
 
 export default function OffersPage() {
   useDocumentTitle("Offer letters");
@@ -101,7 +731,26 @@ export default function OffersPage() {
     queryKey: ['/api/properties'],
     queryFn: () => fetchJsonArray<Property>('/api/properties'),
   });
-  
+
+  // Accepted deals feed the contract chain (Contracts tab). Fetched only when
+  // that tab is open — the offer queue doesn't need it.
+  //
+  // Deliberately NOT fetchJsonArray: that helper swallows failures into `[]`,
+  // which on this surface would render "no accepted offers yet" — a false
+  // statement about the business. apiRequest throws, so a failure shows a
+  // QueryErrorState with a retry instead of an empty truth-claim.
+  const dealsQuery = useQuery<Deal[]>({
+    queryKey: ['/api/deals', 'contract-chain'],
+    queryFn: async () => {
+      const res = await apiRequest('GET', '/api/deals?pageSize=100');
+      const body = await res.json();
+      if (Array.isArray(body)) return body as Deal[];
+      if (Array.isArray(body?.data)) return body.data as Deal[];
+      return [];
+    },
+    enabled: activeTab === 'contracts',
+  });
+
   // Mutations
   const createBatchMutation = useMutation({
     mutationFn: async (data: { leadIds: number[]; offerPercent: number; expirationDays: number }) => {
@@ -360,6 +1009,10 @@ export default function OffersPage() {
                 <TabsTrigger value="calculator" data-testid="tab-calculator">
                   <Calculator className="w-4 h-4 mr-2" aria-hidden="true" />
                   Batch calculator
+                </TabsTrigger>
+                <TabsTrigger value="contracts" data-testid="tab-contracts">
+                  <FileSignature className="w-4 h-4 mr-2" aria-hidden="true" />
+                  Contracts
                 </TabsTrigger>
                 <TabsTrigger value="templates" data-testid="tab-templates">
                   <FileText className="w-4 h-4 mr-2" aria-hidden="true" />
@@ -813,6 +1466,16 @@ export default function OffersPage() {
               </div>
             </TabsContent>
             
+            <TabsContent value="contracts" className="space-y-4">
+              <ContractChainSection
+                deals={dealsQuery.data ?? []}
+                dealsLoading={dealsQuery.isLoading}
+                dealsError={(dealsQuery.error as Error | null) ?? null}
+                onRetryDeals={() => dealsQuery.refetch()}
+                properties={properties}
+              />
+            </TabsContent>
+
             <TabsContent value="templates" className="space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-medium">Offer letter templates</h3>

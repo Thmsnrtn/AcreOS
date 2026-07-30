@@ -7960,6 +7960,265 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "mail_qr_scan_events_org_scanned_idx" ON "mail_qr_scan_events" ("organization_id", "scanned_at")`,
   `ALTER TABLE "tracking_number_assignments" ADD COLUMN IF NOT EXISTS "mail_shipment_id" integer`,
   `CREATE INDEX IF NOT EXISTS "tracking_number_assignments_mail_shipment_idx" ON "tracking_number_assignments" ("mail_shipment_id")`,
+
+  // ── 0212 payoff quote ledger (Wave C "Money moves") ──
+  // A payoff statement is a representation the holder is bound by. Payoff
+  // quotes were computed in three places, with three different day-count
+  // behaviours, and persisted in none of them — so when a closer wires the
+  // quoted figure and the ledger disagrees, nothing recorded what was quoted,
+  // as of what date, or from which inputs. Wave C unified the arithmetic into
+  // one engine (notePaymentMath.computePayoffQuote); this table makes each
+  // quote provable after the fact. Deliberately spans BOTH note books
+  // (acquired_notes uuid / notes integer id) via note_system + note_ref, with
+  // no FK to either: the evidence of what was quoted must outlive the note
+  // row it describes. Mirrors migrations/0212_note_payoff_quotes.sql +
+  // shared/schema/notes-vertical.ts.
+  `CREATE TABLE IF NOT EXISTS "note_payoff_quotes" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+    "note_system" text NOT NULL,
+    "note_ref" text NOT NULL,
+    "note_number" text,
+    "payer_name" text,
+    "quoted_by_user_id" text,
+    "channel" text NOT NULL DEFAULT 'operator_api',
+    "quoted_at" timestamp with time zone NOT NULL DEFAULT now(),
+    "payoff_date" date NOT NULL,
+    "good_through_date" date NOT NULL,
+    "principal_balance_cents" bigint NOT NULL,
+    "annual_rate_bps_hundredths" integer NOT NULL,
+    "accrual_start_date" date NOT NULL,
+    "days_accrued" integer NOT NULL,
+    "day_count_convention" text NOT NULL,
+    "per_diem_interest_cents" bigint NOT NULL,
+    "accrued_interest_cents" bigint NOT NULL,
+    "unapplied_credit_cents" bigint NOT NULL DEFAULT 0,
+    "late_fees_outstanding_cents" bigint NOT NULL DEFAULT 0,
+    "payoff_fee_cents" bigint NOT NULL DEFAULT 0,
+    "total_payoff_cents" bigint NOT NULL,
+    "engine_version" text NOT NULL,
+    "engine_input_json" jsonb NOT NULL,
+    "notes" text,
+    "created_at" timestamp with time zone NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "note_payoff_quotes_note_quoted_idx" ON "note_payoff_quotes" ("note_system", "note_ref", "quoted_at")`,
+  `CREATE INDEX IF NOT EXISTS "note_payoff_quotes_org_quoted_idx" ON "note_payoff_quotes" ("organization_id", "quoted_at")`,
+
+  // ── 0213 borrower ACH autopay (Wave C "Money moves") ──
+  // The borrower portal's autopay Switch wrote ONE boolean
+  // (notes.auto_pay_enabled) and scheduled no debit at all; its only reader
+  // was cashFlowForecaster, which FORECAST money that was never collected
+  // while the portal told the borrower "Autopay is on — we'll collect this
+  // payment automatically". Two tables make it real: `ach_mandates` retains
+  // the NACHA §2.3 authorization (verbatim text + version, agreed_at, IP/UA,
+  // the dollar ceiling and frequency authorized, and the processor's
+  // corroborating mandate id — last4 only, never bank credentials), and
+  // `ach_debit_attempts` holds one row per (note, period, attempt) where the
+  // unique index IS the double-charge guard (the same key is replayed as the
+  // processor idempotency key, and the resulting PaymentIntent id becomes the
+  // unique payments.transaction_id). Mirrors migrations/0213_ach_autopay.sql
+  // + shared/schema/ach-autopay.ts.
+  `CREATE TABLE IF NOT EXISTS "ach_mandates" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+    "note_id" integer NOT NULL REFERENCES "notes" ("id") ON DELETE CASCADE,
+    "borrower_lead_id" integer REFERENCES "leads" ("id") ON DELETE SET NULL,
+    "rail" text NOT NULL DEFAULT 'stripe_us_bank_account',
+    "processor_account_id" text,
+    "processor_customer_id" text,
+    "processor_payment_method_id" text,
+    "processor_mandate_id" text,
+    "processor_setup_intent_id" text,
+    "setup_reference" text,
+    "bank_name" text,
+    "account_last4" text,
+    "account_type" text,
+    "authorization_text" text NOT NULL,
+    "authorization_text_version" text NOT NULL,
+    "authorization_method" text NOT NULL DEFAULT 'web',
+    "agreed_at" timestamp NOT NULL,
+    "agreed_ip_address" text,
+    "agreed_user_agent" text,
+    "agreed_by_email" text NOT NULL,
+    "debit_type" text NOT NULL DEFAULT 'recurring',
+    "max_amount_cents" integer NOT NULL,
+    "frequency" text NOT NULL DEFAULT 'monthly',
+    "schedule_description" text NOT NULL,
+    "status" text NOT NULL DEFAULT 'pending',
+    "confirmed_at" timestamp,
+    "revoked_at" timestamp,
+    "revoked_reason" text,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS "ach_mandates_note_status_idx" ON "ach_mandates" ("note_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "ach_mandates_org_note_status_idx" ON "ach_mandates" ("organization_id", "note_id", "status")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ach_mandates_setup_reference_uidx" ON "ach_mandates" ("setup_reference")`,
+  `CREATE TABLE IF NOT EXISTS "ach_debit_attempts" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations" ("id") ON DELETE CASCADE,
+    "note_id" integer NOT NULL REFERENCES "notes" ("id") ON DELETE CASCADE,
+    "mandate_id" integer NOT NULL REFERENCES "ach_mandates" ("id") ON DELETE RESTRICT,
+    "period_key" text NOT NULL,
+    "attempt_number" integer NOT NULL DEFAULT 1,
+    "idempotency_key" text NOT NULL,
+    "amount_cents" integer NOT NULL,
+    "due_date" timestamp NOT NULL,
+    "status" text NOT NULL DEFAULT 'created',
+    "processor_payment_intent_id" text,
+    "processor_charge_id" text,
+    "return_code" text,
+    "return_category" text,
+    "returned_at" timestamp,
+    "failure_reason" text,
+    "next_retry_at" timestamp,
+    "retry_of_attempt_id" integer,
+    "payment_id" integer REFERENCES "payments" ("id") ON DELETE SET NULL,
+    "reversal_payment_id" integer REFERENCES "payments" ("id") ON DELETE SET NULL,
+    "submitted_at" timestamp,
+    "settled_at" timestamp,
+    "created_at" timestamp NOT NULL DEFAULT now(),
+    "updated_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ach_debit_attempts_period_uidx" ON "ach_debit_attempts" ("note_id", "period_key", "attempt_number")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ach_debit_attempts_idem_uidx" ON "ach_debit_attempts" ("idempotency_key")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ach_debit_attempts_pi_uidx" ON "ach_debit_attempts" ("processor_payment_intent_id")`,
+  `CREATE INDEX IF NOT EXISTS "ach_debit_attempts_status_idx" ON "ach_debit_attempts" ("status")`,
+  `CREATE INDEX IF NOT EXISTS "ach_debit_attempts_retry_idx" ON "ach_debit_attempts" ("next_retry_at")`,
+  `CREATE INDEX IF NOT EXISTS "ach_debit_attempts_org_note_idx" ON "ach_debit_attempts" ("organization_id", "note_id")`,
+
+  // ── 0215 ach_mandates.authorization_challenge_id ──
+  // CodeQL HIGH (PR #259, "user-controlled bypass of security check"):
+  // POST /api/borrower/autopay/mandate gated the creation of a NACHA ACH debit
+  // authorization on `authorizationAccepted === true` plus an echo of the
+  // authorization text — both CLIENT-supplied, so a scripted client could
+  // assert consent no human gave. GET /api/borrower/autopay (the only endpoint
+  // that renders the text) now mints a 15-minute HMAC-signed challenge bound to
+  // (borrower session id, note id, authorization text version) with a random
+  // single-use id; the POST must redeem it and the id lands here. The UNIQUE
+  // index IS the single-use guard — a replay loses the INSERT rather than
+  // minting a second authorization, exactly as
+  // ach_debit_attempts_period_uidx is the double-charge guard. Nullable:
+  // mandates predating the gate have no challenge, and NULLs don't collide.
+  // No new table — the challenge is signed, not stored. Mirrors
+  // migrations/0215_ach_mandate_authorization_challenge.sql +
+  // shared/schema/ach-autopay.ts.
+  `ALTER TABLE "ach_mandates" ADD COLUMN IF NOT EXISTS "authorization_challenge_id" text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ach_mandates_authorization_challenge_uidx" ON "ach_mandates" ("authorization_challenge_id")`,
+
+  // ── 0216 tax-sale vertical gets an insert path (Wave D) ──
+  // The competitive benchmark's finding: a strong tax-lien workflow layer over
+  // an EMPTY data layer. `tax_sale_auctions` and `tax_sale_listings` had ZERO
+  // insert paths anywhere in the repo (importFromCounty and
+  // countyAssessorIngest.fetchTaxDelinquentList are stubs returning empty), so
+  // the flagship auction worksheet, courthouse mode, and the county
+  // upcoming-auction counts queried tables nothing could fill. The feedstock
+  // added here is manual entry + operator-supplied CSV lot lists; county
+  // scraping and a parcel data plane stay a separate founder-gated bet.
+  //
+  // session_budget_cents is the live "capital left" figure for an operator
+  // bidding at a courthouse. Founder ruling #15 ("be the rail, not the
+  // provider"): a NOTEBOOK number, not a balance — deposits and purchases move
+  // between the operator and the county on the operator's own rails and no
+  // customer money transits AcreOS.
+  //
+  // Both tables previously carried NO index and sat in the
+  // check-org-leading-index.mjs baseline. Giving a table its first insert path
+  // without its tenant-leading index is the exact defect this program keeps
+  // catching, so the indexes land in the same commit and both tables come OFF
+  // the allowlist. No new table — table-count.json stays at 753.
+  //
+  // The TD-4 worksheet columns (max_bid_cents, walk_away_above_cents,
+  // walk_away_condition, partner_split) already exist above; this commit fixes
+  // the drift by finally mirroring them into shared/schema.ts, which needs no
+  // DDL. Mirrors migrations/0216_tax_sale_manual_import.sql + shared/schema.ts.
+  `ALTER TABLE "tax_sale_auctions" ADD COLUMN IF NOT EXISTS "session_budget_cents" bigint`,
+  `CREATE INDEX IF NOT EXISTS "tax_sale_auctions_org_date_idx" ON "tax_sale_auctions" ("organization_id", "auction_date")`,
+  `CREATE INDEX IF NOT EXISTS "tax_sale_auctions_org_state_county_idx" ON "tax_sale_auctions" ("organization_id", "state", "county")`,
+  `CREATE INDEX IF NOT EXISTS "tax_sale_listings_org_auction_idx" ON "tax_sale_listings" ("organization_id", "auction_id")`,
+  `CREATE INDEX IF NOT EXISTS "tax_sale_listings_org_state_county_apn_idx" ON "tax_sale_listings" ("organization_id", "state", "county", "apn")`,
+  `CREATE INDEX IF NOT EXISTS "tax_sale_listings_org_status_idx" ON "tax_sale_listings" ("organization_id", "status")`,
+
+  // ── 0217 rent ledger: multi-charge allocation + deposit clock (Wave D) ──
+  // Wave D declared all of the below in shared/schema/rental.ts and shipped NO
+  // migration — the third time this program has caught a schema change with no
+  // DDL. The code reads and writes these, so the first SELECT would have 500'd
+  // on deploy while every local test passed.
+  //
+  // rent_payment_allocations is the money fix's audit trail. The payment route
+  // used to credit the SINGLE oldest open charge and clamp the excess with
+  // max(0, …), so a tenant two months behind who paid BOTH months had one
+  // month marked paid and the other still showing a full balance — while the
+  // ledger's own totals said the money arrived. Payments now spread across
+  // every open charge (oldest first, rent before late fees) and each
+  // (payment, charge) line is persisted, because in a dispute the question is
+  // never "what is the balance", it is "how did you get that balance". No
+  // aggregate can reconstruct a per-month rent/fee split after the fact.
+  // The UNIQUE (payment_id, rent_charge_id) index IS the double-apply guard:
+  // a retried allocation loses the INSERT instead of double-crediting.
+  //
+  // security_deposits.statutory_deadline shipped as a column with a comment
+  // and NO writer. Deposit mishandling is the most common landlord/tenant
+  // claim and the sanction is usually forfeiture of the right to withhold
+  // anything plus statutory damages, so a blank countdown reads as "no clock
+  // is running" — the worst possible lie for this column. It is now written at
+  // move-out; where the jurisdiction has no encoded rule the date stays NULL
+  // and statutory_deadline_unknown_reason carries the sentence the UI renders
+  // verbatim. AcreOS never defaults to 30 days.
+  //
+  // Money posture (founder ruling #15): every table here is a LEDGER. No
+  // processor, no collection, no tenant payment rail, no funds movement.
+  //
+  // ONE new table — scripts/ratchets/table-count.json 753 -> 754.
+  // Mirrors migrations/0217_wave_d_rent_ledger.sql + shared/schema/rental.ts.
+  `CREATE TABLE IF NOT EXISTS "rent_payment_allocations" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "payment_id" varchar NOT NULL,
+    "rent_charge_id" varchar NOT NULL,
+    "lease_id" varchar NOT NULL,
+    "sequence" integer NOT NULL,
+    "applied_to_rent_cents" bigint NOT NULL,
+    "applied_to_late_fee_cents" bigint NOT NULL,
+    "applied_cents" bigint NOT NULL,
+    "balance_before_cents" bigint NOT NULL,
+    "balance_after_cents" bigint NOT NULL,
+    "order_rule" text NOT NULL,
+    "created_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // Org-LEADING composites (L3 shard-readiness) mirroring the two real reads,
+  // plus the double-apply guard.
+  `CREATE INDEX IF NOT EXISTS "rent_payment_allocations_org_payment_idx" ON "rent_payment_allocations" ("organization_id", "payment_id", "sequence")`,
+  `CREATE INDEX IF NOT EXISTS "rent_payment_allocations_org_charge_idx" ON "rent_payment_allocations" ("organization_id", "rent_charge_id")`,
+  `CREATE INDEX IF NOT EXISTS "rent_payment_allocations_lease_idx" ON "rent_payment_allocations" ("lease_id")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "rent_payment_allocations_payment_charge_uk" ON "rent_payment_allocations" ("payment_id", "rent_charge_id")`,
+
+  `ALTER TABLE "rent_payments" ADD COLUMN IF NOT EXISTS "allocated_cents" bigint NOT NULL DEFAULT 0`,
+  `ALTER TABLE "rent_payments" ADD COLUMN IF NOT EXISTS "unapplied_cents" bigint NOT NULL DEFAULT 0`,
+  `ALTER TABLE "rent_payments" ADD COLUMN IF NOT EXISTS "allocation_order_rule" text`,
+
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "move_out_date" date`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "statutory_deadline_days" integer`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "statutory_deadline_citation" text`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "statutory_deadline_unknown_reason" text`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "statutory_deadline_set_at" timestamptz`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "disposition_letter_markdown" text`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "disposition_letter_version" text`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "disposition_letter_generated_at" timestamptz`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "disposition_letter_delivered_at" timestamptz`,
+  `ALTER TABLE "security_deposits" ADD COLUMN IF NOT EXISTS "disposition_letter_delivery_method" text`,
+  `CREATE INDEX IF NOT EXISTS "security_deposits_org_deadline_idx" ON "security_deposits" ("organization_id", "statutory_deadline")`,
+
+  // The lease ↔ e-sign join. 'pending_signature' existed as a status and the
+  // HMAC signing rail existed separately; nothing joined them, so a lease
+  // could sit in that status forever with no document, signer or consent
+  // trail. Legal signing stays a founder/operator-only hard stop — nothing
+  // here is ever written by an automation.
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "signing_document_id" integer`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "signature_packet_sent_at" timestamptz`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "signature_requested_by" text`,
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "executed_at" timestamptz`,
+  `CREATE INDEX IF NOT EXISTS "rental_leases_org_signing_doc_idx" ON "rental_leases" ("organization_id", "signing_document_id")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

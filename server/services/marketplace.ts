@@ -464,7 +464,11 @@ export class MarketplaceService {
     
     const platformFeePercent = 1.5;
     const platformFeeCents = Math.round(salePrice * (platformFeePercent / 100) * 100);
-    const sellerPayoutAmount = salePrice - (platformFeeCents / 100);
+
+    // No seller payout is computed or recorded here. Founder ruling 2026-07-29
+    // ("be the rail, not the provider"): the sale proceeds never reach AcreOS,
+    // so there is nothing for AcreOS to pay out. Seller and buyer settle
+    // directly; AcreOS charges only its own platform fee, below.
 
     // DEFECT-0021: Wrap transaction insert + listing update + deal room close
     // in a single DB transaction so all tables stay consistent.
@@ -477,8 +481,6 @@ export class MarketplaceService {
         salePrice: salePrice.toString(),
         platformFeePercent: platformFeePercent.toString(),
         platformFeeCents,
-        sellerPayoutAmount: sellerPayoutAmount.toString(),
-        sellerPayoutStatus: "pending",
         status: "pending",
         closingDate: new Date(),
       }).returning();
@@ -525,9 +527,19 @@ export class MarketplaceService {
           },
         });
 
-        await db.update(marketplaceTransactions)
-          .set({ stripePaymentIntentId: paymentIntent.id } as any)
-          .where(eq(marketplaceTransactions.id, transaction.id));
+        // `marketplace_transactions` has no stripe_payment_intent_id column.
+        // This used to be `.set({ stripePaymentIntentId: ... } as any)` — an
+        // `as any` over a column that does not exist, which Drizzle would have
+        // thrown on inside the swallowing catch below, so the id was NEVER
+        // persisted while the code read as if it were. The linkage lives on the
+        // Stripe side (metadata.transactionId) and in the log line; the frozen
+        // marketplace module does not get a new column for it.
+        logger.info('Marketplace platform-fee PaymentIntent created', {
+          transactionId: transaction.id,
+          listingId,
+          paymentIntentId: paymentIntent.id,
+          amountCents: platformFeeCents,
+        });
       }
     } catch (err) {
       logger.error('Marketplace Stripe payment creation failed (non-blocking)', err);

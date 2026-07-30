@@ -86,6 +86,86 @@ correctness risks across 2+ machines. Disposition:
 
 ## Executed deletions (log)
 
+- 2026-07-29 — **Platform money-custody purge** ("be the rail, not the
+  provider", founder ruling 2026-07-29). The ruling: AcreOS's payment
+  architecture applies ONLY to direct subscription payments TO the platform;
+  when a customer manages their own notes/rents/payments they are ROUTED to a
+  payment service so the liability stays out of AcreOS's hands. A custody audit
+  found four surfaces that were already DEAD or DORMANT, so removing them cost
+  nothing. All four are gone:
+  - `server/services/transactionFeeService.ts` (359 LOC) — a full
+    escrow-and-take-a-cut engine (`calculateFee` → `createSettlement` →
+    `holdInEscrow` → `releaseFromEscrow` → `processPayout`) with **ZERO call
+    sites**. Its `processPayout()` also stamped a fabricated
+    `tr_simulated_${Date.now()}` string into `stripe_transfer_ids` — a money
+    column — and returned it as `stripeTransferId`, which independently
+    violates the no-fabrication hard stop. Deleted with its
+    `server/services/billing/index.ts` re-export and its `companyAgents`
+    `ownedServices` entry.
+  - `server/routes-transaction-fees.ts` (195 LOC) + its `/api/transaction-fees`
+    mount and `routeManifest.ts` entry. Every handler was a stub: analytics
+    returned hardcoded zeros, list endpoints returned `[]`, and
+    `POST /fees/settlements` minted `id: Date.now()`. Includes the
+    **`POST /fees/payouts/trigger` placebo** — 202 `{ status: "processing",
+    message: "Payout triggered and processing" }` for an operation that did
+    nothing at all. It survived the earlier honesty wave.
+  - `client/src/pages/fee-dashboard.tsx` (695 LOC) — the founder console over
+    those stubs (settlements table, escrow-release action, trigger-payout
+    dialog, payout-schedule form, ledger tab), with its `App.tsx` lazy import
+    and `FounderProtectedRoute`, its `/fee-dashboard` entry in
+    `production-smoke.spec.ts`, and step 8 of `sim-founder-journey.spec.ts`
+    (retargeted at `/admin/ops`, the real founder cost surface). It was the UI
+    caller of `/fees/payouts/trigger`, so the placebo is removed rather than
+    stubbed honestly.
+  - **Actum platform-merchant routes** — `POST /api/actum/create-profile`,
+    `POST /api/actum/batch-payment-run`, `GET /api/actum/ach-return-codes` in
+    `routes-elite-features.ts`. A single platform `ACTUM_MERCHANT_ID` for all
+    orgs makes AcreOS the merchant of record for every customer's borrower
+    debits, and `create-profile` accepted **raw bank routing + account numbers**
+    in the request body — data AcreOS must never receive. Dormant (no
+    credentials, no merchant account, every path already refusing after Wave C)
+    and zero client callers.
+  - `server/services/actumProcessing.ts` **KEPT, trimmed to 178 LOC**: it still
+    supplies the NACHA R01–R29 return-code taxonomy that Wave C imports —
+    `achAutopay.ts` uses `classifyAchReturn`, `mapProcessorFailureToReturnCode`
+    and `returnRevokesAuthorization` to classify real Stripe `us_bank_account`
+    returns (verified import). The platform-merchant processing paths
+    (`isActumConfigured`, `getActumHeaders`, `createActumPaymentProfile`,
+    `chargeActumACH`, `runMonthlyActumPaymentBatch`, the endpoint constant and
+    the refusal strings) are deleted; the file now has no env vars and makes no
+    network calls. `tests/unit/actumProcessing.test.ts` was rewired to import
+    the REAL taxonomy — it previously re-declared its own 9-code copy and so
+    could not have caught drift — and gained completeness/consistency
+    assertions.
+  - **Tables dropped** (migration `0214_drop_platform_custody.sql`):
+    `transaction_fee_settlements`, `fee_payout_schedules`, `fee_audit_log` —
+    written only by `transactionFeeService`, read by nothing. Plus columns
+    `marketplace_transactions.seller_payout_status` / `seller_payout_amount` /
+    `seller_stripe_transfer_id`: status/amount were written by
+    `marketplace.completeTransaction()` and read **nowhere**;
+    `seller_stripe_transfer_id` was never written either. They encoded AcreOS
+    receiving the sale proceeds and paying the seller from its own balance.
+    Table-count ratchet 756 → 753.
+  - **KEPT deliberately**: `marketplace_transactions.platform_fee_percent` /
+    `platform_fee_cents`. That fee is a payment TO AcreOS, which the ruling
+    permits, and it is charged to the buyer org as AcreOS's own customer — it
+    never carries the sale proceeds. Also fixed in the same function: a
+    `.set({ stripePaymentIntentId: … } as any)` write against a column that
+    does not exist on `marketplace_transactions`, inside a swallowing
+    `catch` — so the id was never persisted while the code read as if it were.
+    Replaced with an honest structured log line (`as any` ratchet 1429 → 1428).
+  - **Governance (the gap that let this persist)**: the constitution registry
+    had **zero** money-custody entries — the ban on re-fronting platform SEND
+    rails had no payments analogue. Added
+    `hard-stop.no-platform-money-custody` (`shared/governance/constitution.ts`),
+    tagged **code-invariant**, backed by the `customerMoneyRouting.ts` runtime
+    chokepoint and the new `tests/unit/moneyCustodyHardStop.test.ts` ratchet
+    (platform-take Stripe params exist nowhere but the guard that forbids them;
+    no route names raw bank numbers; no simulated processor ids; the deleted
+    surfaces stay deleted). `constitution.test.ts` hard-stop count 4 → 5;
+    unenforced-hard-stop baseline unchanged at 0. Matching bullet added to
+    CLAUDE.md's DO-NOT-DO list.
+
 - 2026-07-29 — **Nothing-lies wave A (agent A7)** — four honesty deletions/blocks:
   - `server/routes-tax-optimization.ts` (105 LOC) deleted, with its
     `routes.ts` registration and `routeManifest.ts` entry. 10 of its 11

@@ -13,10 +13,21 @@
  *
  * This panel chains those existing endpoints as one visible flow:
  *   record assignment (fee + end buyer, state rule surfaced)
- *   → generate the contract from the system template (compliance gate
- *     handled: blocked renders the citation, warn asks for an ack)
+ *   → REVIEW the assembled assignment document (compliance gate handled:
+ *     blocked renders the citation, warn asks for an ack)
+ *   → create the draft, gated on an explicit confirmation of that exact text
  *   → send for signature (per-signer links to copy into your own email)
  *   → mark signed when the document completes.
+ *
+ * WAVE D2 UPDATE — the document now comes from the contract chain
+ * (GET /api/deals/:id/contract-preview → POST /api/deals/:id/contract,
+ * server/routes-contract-chain.ts) rather than from a blind template
+ * generation. That buys three things the old path did not have: the operator
+ * SEES the merged body before it exists, the draft carries the sha256 of what
+ * they reviewed (re-verified by the signing rail at dispatch), and a state
+ * with no reviewed template REFUSES by name instead of emitting a generic
+ * document. Legal signing remains a founder-only hard-stop: nothing here
+ * sends without a separate, explicit click.
  *
  * Rendered inside the Docs tab of a deal (a section behind an existing
  * door, per the five-door rule). Visible for wholesaler orgs — and for
@@ -24,17 +35,28 @@
  * never hidden by a persona toggle).
  */
 import { useState } from "react";
+import DOMPurify from "isomorphic-dompurify";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRightLeft, Copy, FileSignature, FileText, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Copy, FileSignature, FileText, Info, ScrollText, ShieldAlert } from "lucide-react";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { useOrganization } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Verbs } from "@/lib/labels";
 
 interface Assignment {
   id: number;
@@ -64,6 +86,50 @@ interface SigningLink {
   email: string;
   role: string;
   url: string;
+}
+
+/** The assembled document returned by the contract chain's review endpoint. */
+interface ContractPreview {
+  kind: string;
+  title: string;
+  name: string;
+  state: string;
+  stateName: string;
+  content: string;
+  contentHash: string;
+  stateRequirements: {
+    deedType: string;
+    notaryRequired: boolean;
+    witnessCount: number;
+    recordingOffice: string;
+    transferTaxNotes: string;
+    attorneyStateForClosing: boolean;
+  };
+  signerRoles: Array<{ role: string; name: string; email: string | null }>;
+  advisories: string[];
+  disclaimer: string;
+  assignmentId: number | null;
+  sent: boolean;
+  hardStop: string;
+}
+
+/** A named refusal from the chain (state not configured, fields missing, …). */
+interface ChainRefusal {
+  code?: string;
+  message?: string;
+  state?: string;
+  stateName?: string | null;
+  dealStatus?: string;
+  missing?: Array<{ field: string; label: string; fixAt: string }>;
+  recommendation?: string;
+  citation?: string | null;
+}
+
+function chainRefusalOf(error: unknown): ChainRefusal | null {
+  if (!(error instanceof ApiError) || error.status !== 422) return null;
+  const details = error.body?.details;
+  if (!details || typeof details !== "object") return null;
+  return details as ChainRefusal;
 }
 
 const STATUS_LABEL: Record<Assignment["status"], string> = {
@@ -119,6 +185,10 @@ export function AssignmentPanel({ dealId, propertyId }: { dealId: number; proper
   } | null>(null);
   const [signingLinks, setSigningLinks] = useState<SigningLink[]>([]);
   const [buyerEmail, setBuyerEmail] = useState("");
+  // Review-then-create: the dialog is the only path to a document, and the
+  // hash gate means "created" can only ever mean "a human read THIS text".
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [confirmedHash, setConfirmedHash] = useState<string | null>(null);
 
   // Create form state
   const [buyerName, setBuyerName] = useState("");
@@ -158,42 +228,71 @@ export function AssignmentPanel({ dealId, propertyId }: { dealId: number; proper
     },
   });
 
-  const generateDoc = useMutation({
-    mutationFn: async ({ ack }: { ack: boolean }) => {
-      if (!active) throw new Error("No assignment to generate for.");
-      // Find the Assignment Contract system template by type.
-      const tplRes = await apiRequest("GET", "/api/document-templates");
-      const templates: Array<{ id: number; type: string; name: string }> = await tplRes.json();
-      const template = templates.find((t) => t.type === "assignment_of_contract");
-      if (!template) throw new Error("Assignment Contract template not found.");
-      const res = await apiRequest("POST", "/api/generated-documents", {
-        templateId: template.id,
-        dealId,
-        propertyId: propertyId ?? undefined,
+  // ── STEP 1: review. Assembles and returns the exact body; writes nothing.
+  const previewQuery = useQuery<ContractPreview>({
+    queryKey: [
+      "/api/deals",
+      dealId,
+      "contract-preview",
+      "assignment_of_contract",
+      active?.id ?? null,
+    ],
+    queryFn: async () => {
+      const qs = active?.id ? `&assignmentId=${active.id}` : "";
+      const res = await apiRequest(
+        "GET",
+        `/api/deals/${dealId}/contract-preview?kind=assignment_of_contract${qs}`,
+      );
+      return res.json() as Promise<ContractPreview>;
+    },
+    enabled: reviewOpen,
+    retry: false,
+  });
+
+  // ── STEP 2: create the draft. Requires the operator's confirmation AND the
+  //    sha256 of the text they were shown. Persists a draft; sends nothing.
+  const createDoc = useMutation({
+    mutationFn: async ({ ack, reviewedContentHash }: { ack: boolean; reviewedContentHash: string }) => {
+      const res = await apiRequest("POST", `/api/deals/${dealId}/contract`, {
+        kind: "assignment_of_contract",
+        ...(active?.id ? { assignmentId: active.id } : {}),
+        confirmReviewed: true,
+        reviewedContentHash,
         ackComplianceWarning: ack,
       });
-      return res.json() as Promise<{ id: number }>;
+      return res.json() as Promise<{
+        document: { id: number; name: string };
+        sent: boolean;
+        nextStep: { note: string };
+      }>;
     },
-    onSuccess: async (doc) => {
+    onSuccess: (data) => {
+      // The chain sets generatedDocumentId + status "doc_generated" on the
+      // assignment row server-side, so re-read the row rather than patching.
+      queryClient.invalidateQueries({ queryKey: [`/api/deals/${dealId}/assignments`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/generated-documents/${data.document.id}`] });
       setComplianceIssue(null);
-      if (active) {
-        await patchAssignment.mutateAsync({ id: active.id, generatedDocumentId: doc.id, status: "doc_generated" });
-      }
-      queryClient.invalidateQueries({ queryKey: [`/api/generated-documents/${doc.id}`] });
-      toast({ title: "Assignment contract generated", description: "Fee and dates were auto-filled from this assignment." });
+      setReviewOpen(false);
+      setConfirmedHash(null);
+      toast({ title: "Assignment draft created", description: data.nextStep.note });
     },
     onError: (err: Error) => {
-      if (err instanceof ApiError && err.status === 409 && err.body) {
-        const body = err.body as unknown as { error: string; message: string; recommendation?: string; citation?: string };
+      const refusal = chainRefusalOf(err);
+      if (refusal?.code === "WHOLESALER_COMPLIANCE_BLOCKED" || refusal?.code === "WHOLESALER_COMPLIANCE_WARN") {
         setComplianceIssue({
-          kind: body.error === "wholesaler_compliance_blocked" ? "blocked" : "warn",
-          message: body.message,
-          recommendation: body.recommendation,
-          citation: body.citation ?? undefined,
+          kind: refusal.code === "WHOLESALER_COMPLIANCE_BLOCKED" ? "blocked" : "warn",
+          message: refusal.message ?? "This state restricts contract assignments.",
+          recommendation: refusal.recommendation,
+          citation: refusal.citation ?? undefined,
         });
         return;
       }
-      toast({ title: "Couldn't generate the contract", description: err.message, variant: "destructive" });
+      if (refusal) return; // rendered in the review dialog, named
+      toast({
+        title: "Couldn't create the assignment document",
+        description: `${err.message} — nothing was created and nothing was sent.`,
+        variant: "destructive",
+      });
     },
   });
 
@@ -238,6 +337,9 @@ export function AssignmentPanel({ dealId, propertyId }: { dealId: number; proper
     },
     enabled: !!active?.generatedDocumentId,
   });
+
+  /** A named refusal from the review step, or null when the draft assembled. */
+  const previewRefusal = chainRefusalOf(previewQuery.error);
 
   // Persona gate LAST (after hooks): wholesalers see the panel always;
   // other personas only when assignment data already exists on the deal.
@@ -327,55 +429,23 @@ export function AssignmentPanel({ dealId, propertyId }: { dealId: number; proper
               </div>
             )}
 
-            {complianceIssue && (
-              <div
-                role="alert"
-                className={`flex items-start gap-2 rounded-md border p-3 ${
-                  complianceIssue.kind === "blocked"
-                    ? "border-destructive/50 bg-destructive/10"
-                    : "border-acr-warn/50 bg-acr-warn/10"
-                }`}
-                data-testid="assignment-compliance-issue"
-              >
-                <AlertTriangle
-                  className={`mt-0.5 h-4 w-4 shrink-0 ${complianceIssue.kind === "blocked" ? "text-destructive" : "text-acr-warn"}`}
-                  aria-hidden="true"
-                />
-                <div className="min-w-0 flex-1 text-sm">
-                  <p className="font-medium">
-                    {complianceIssue.kind === "blocked"
-                      ? "Assignment contracts are blocked in this state"
-                      : "This state restricts assignments"}
-                  </p>
-                  <p className="text-muted-foreground">{complianceIssue.message}</p>
-                  {complianceIssue.citation && (
-                    <p className="text-xs text-muted-foreground">{complianceIssue.citation}</p>
-                  )}
-                  {complianceIssue.kind === "warn" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="mt-2"
-                      disabled={generateDoc.isPending}
-                      onClick={() => generateDoc.mutate({ ack: true })}
-                      data-testid="button-ack-compliance"
-                    >
-                      I understand — generate anyway
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-
             {active.status === "draft" && (
-              <Button
-                onClick={() => generateDoc.mutate({ ack: false })}
-                disabled={generateDoc.isPending}
-                data-testid="button-generate-assignment-doc"
-              >
-                <FileText className="mr-2 h-4 w-4" aria-hidden="true" />
-                {generateDoc.isPending ? "Generating…" : "Generate assignment contract"}
-              </Button>
+              <div className="space-y-1">
+                <Button
+                  onClick={() => {
+                    setConfirmedHash(null);
+                    setReviewOpen(true);
+                  }}
+                  data-testid="button-generate-assignment-doc"
+                >
+                  <ScrollText className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Review assignment document
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  You read the document first. Creating it is a second click, and
+                  sending it for signature is a third — nothing here is automatic.
+                </p>
+              </div>
             )}
 
             {active.status === "doc_generated" && (
@@ -462,6 +532,234 @@ export function AssignmentPanel({ dealId, propertyId }: { dealId: number; proper
             )}
           </div>
         )}
+
+        {/* The review step. Reading it writes nothing; the confirm below is the
+            only path to a document, and no path here sends anything. */}
+        <Dialog
+          open={reviewOpen}
+          onOpenChange={(open) => {
+            setReviewOpen(open);
+            if (!open) setConfirmedHash(null);
+          }}
+        >
+          <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Review before anything is created</DialogTitle>
+              <DialogDescription>
+                Assignment of contract for deal #{dealId}
+              </DialogDescription>
+            </DialogHeader>
+
+            {previewQuery.isPending ? (
+              <div className="space-y-3" aria-busy="true">
+                <Skeleton className="h-6 w-2/3" />
+                <Skeleton className="h-40 w-full" />
+                <Skeleton className="h-5 w-1/2" />
+              </div>
+            ) : previewRefusal ? (
+              <div
+                role="alert"
+                className="space-y-2 rounded-md border border-acr-warn/50 bg-acr-warn/10 p-3"
+                data-testid="assignment-chain-refusal"
+              >
+                <div className="flex items-start gap-2">
+                  <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-acr-warn" aria-hidden="true" />
+                  <div className="min-w-0 space-y-1 text-sm">
+                    <p className="font-medium">
+                      {previewRefusal.code === "STATE_NOT_CONFIGURED"
+                        ? `No reviewed assignment template for ${
+                            previewRefusal.stateName || previewRefusal.state || "this state"
+                          }`
+                        : "AcreOS will not generate this document"}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {previewRefusal.message ??
+                        "This deal is not contract-ready. Fix the named gap and review it again."}
+                    </p>
+                    {previewRefusal.missing && previewRefusal.missing.length > 0 && (
+                      <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                        {previewRefusal.missing.map((m) => (
+                          <li key={m.field}>
+                            <span className="font-medium text-foreground">{m.label}</span> — {m.fixAt}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : previewQuery.isError ? (
+              <p className="text-sm text-muted-foreground" role="alert">
+                {(previewQuery.error as Error).message} — nothing was created.
+              </p>
+            ) : previewQuery.data ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">
+                    {previewQuery.data.stateName} ({previewQuery.data.state}) template
+                  </Badge>
+                  <Badge variant="secondary">Nothing sent yet</Badge>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium">Exactly what will go out</h4>
+                  <div
+                    className="prose prose-sm dark:prose-invert max-w-none rounded-md border border-border p-4"
+                    data-testid="assignment-preview-content"
+                    dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(previewQuery.data.content),
+                    }}
+                  />
+                  <p className="font-mono text-xs text-muted-foreground">
+                    sha256 {previewQuery.data.contentHash.slice(0, 16)}… — the draft is
+                    created from this exact text, and the signing rail re-checks
+                    it at dispatch.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium">Who signs</h4>
+                  <ul className="m-0 list-none space-y-1 p-0 text-sm text-muted-foreground">
+                    {previewQuery.data.signerRoles.map((s) => (
+                      <li key={`${s.role}-${s.name}`}>
+                        <span className="capitalize text-foreground">{s.role}</span>: {s.name}
+                        {s.email ? ` · ${s.email}` : " · no email on file yet"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {previewQuery.data.advisories.length > 0 && (
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-medium">Resolve before execution</h4>
+                    <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                      {previewQuery.data.advisories.map((a) => (
+                        <li key={a}>{a}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground">{previewQuery.data.disclaimer}</p>
+
+                <div className="flex items-start gap-2 rounded-md border border-border p-3">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <p className="text-xs text-muted-foreground">
+                    Legal signing is a founder-only hard-stop
+                    {previewQuery.data.hardStop ? ` (${previewQuery.data.hardStop})` : ""}.
+                    Creating the draft sends nothing; the assignment fee is paid
+                    between you and the end buyer at closing — AcreOS never
+                    handles it.
+                  </p>
+                </div>
+
+                {/* State legality (wholesaler_state_rules). Blocked refuses
+                    outright; a warning needs an explicit acknowledgement ON TOP
+                    of the review confirmation — it never replaces it. */}
+                {complianceIssue && (
+                  <div
+                    role="alert"
+                    className={`flex items-start gap-2 rounded-md border p-3 ${
+                      complianceIssue.kind === "blocked"
+                        ? "border-destructive/50 bg-destructive/10"
+                        : "border-acr-warn/50 bg-acr-warn/10"
+                    }`}
+                    data-testid="assignment-compliance-issue"
+                  >
+                    <AlertTriangle
+                      className={`mt-0.5 h-4 w-4 shrink-0 ${complianceIssue.kind === "blocked" ? "text-destructive" : "text-acr-warn"}`}
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0 flex-1 text-sm">
+                      <p className="font-medium">
+                        {complianceIssue.kind === "blocked"
+                          ? "Assignment contracts are blocked in this state"
+                          : "This state restricts assignments"}
+                      </p>
+                      <p className="text-muted-foreground">{complianceIssue.message}</p>
+                      {complianceIssue.recommendation && (
+                        <p className="text-muted-foreground">{complianceIssue.recommendation}</p>
+                      )}
+                      {complianceIssue.citation && (
+                        <p className="text-xs text-muted-foreground">{complianceIssue.citation}</p>
+                      )}
+                      {complianceIssue.kind === "warn" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2"
+                          disabled={
+                            createDoc.isPending ||
+                            confirmedHash !== previewQuery.data.contentHash
+                          }
+                          onClick={() => {
+                            if (confirmedHash !== previewQuery.data.contentHash) return;
+                            createDoc.mutate({ ack: true, reviewedContentHash: confirmedHash });
+                          }}
+                          data-testid="button-ack-compliance"
+                        >
+                          I understand — create the draft anyway
+                        </Button>
+                      )}
+                      {complianceIssue.kind === "warn" &&
+                        confirmedHash !== previewQuery.data.contentHash && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Confirm the document below first — acknowledging a
+                            state warning does not skip the review.
+                          </p>
+                        )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-3 border-t border-border pt-4">
+                  <div className="flex items-start gap-2">
+                    <Checkbox
+                      id="assignment-confirm-review"
+                      checked={confirmedHash === previewQuery.data.contentHash}
+                      onCheckedChange={(checked) =>
+                        setConfirmedHash(checked ? previewQuery.data.contentHash : null)
+                      }
+                      data-testid="checkbox-assignment-confirm-review"
+                    />
+                    <Label htmlFor="assignment-confirm-review" className="text-sm font-normal">
+                      I have read the document above and confirm this is what
+                      should go out.
+                    </Label>
+                  </div>
+                  <Button
+                    disabled={
+                      confirmedHash !== previewQuery.data.contentHash || createDoc.isPending
+                    }
+                    onClick={() =>
+                      createDoc.mutate({
+                        ack: false,
+                        reviewedContentHash: previewQuery.data.contentHash,
+                      })
+                    }
+                    data-testid="button-create-assignment-doc"
+                  >
+                    <FileText className="mr-2 h-4 w-4" aria-hidden="true" />
+                    {createDoc.isPending ? "Creating…" : "Create the draft (sends nothing)"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setReviewOpen(false);
+                  setConfirmedHash(null);
+                }}
+              >
+                {Verbs.CANCEL}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

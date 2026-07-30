@@ -79,9 +79,14 @@ export interface BlindOfferInput {
 export interface CompAnalysis {
   allComps: CompData[];
   sourceBreakdown: Record<string, number>; // source → count
-  lowestSalePerAcre: number;
-  medianSalePerAcre: number;
-  highestSalePerAcre: number;
+  // NULL — never a placeholder — when there is no comp to read the figure
+  // from. These three numbers drive every offer tier and the dollar amount
+  // merged into a PRINTED letter, so an invented value here becomes a real
+  // offer in a stranger's mailbox. Until 2026-07-30 this shape returned
+  // 1000 / 2000 / 5000 for an empty comp set; see analyzeComps().
+  lowestSalePerAcre: number | null;
+  medianSalePerAcre: number | null;
+  highestSalePerAcre: number | null;
   avgDaysOnMarket: number | null;
   compCount: number;
   dataQuality: "excellent" | "good" | "limited" | "insufficient";
@@ -129,6 +134,9 @@ export interface CashFlipScenario {
 }
 
 export interface BlindOfferReport {
+  /** Discriminant. An offer report only ever exists with real comp data. */
+  status: "ok";
+
   // Input summary
   state: string;
   county: string;
@@ -184,11 +192,45 @@ export interface BlindOfferReport {
   warnings: string[];
 }
 
+/**
+ * The honest refusal. Mirrors the AVM's `insufficient_data` shape
+ * (`services/acreOSValuation.ts`): a status discriminant plus a `missing[]`
+ * array naming exactly what has to exist before an offer can be computed.
+ *
+ * There are NO offer fields on this shape, deliberately. A caller cannot read
+ * an offer amount off a refusal even by accident — no `offerTiers`, no
+ * `recommendedOfferTotal`, no `letterVariables`. The only numbers present are
+ * ones that were actually measured (comp count = 0, USDA values as returned).
+ *
+ * Nothing is billed for a refusal: this path performs no credit-pool debit and
+ * no paid provider lookup (USDA NASS is free), so there is no debit to refund.
+ */
+export interface BlindOfferRefusal {
+  status: "insufficient_data";
+  state: string;
+  county: string;
+  targetAcres: number;
+  generatedAt: string;
+  compAnalysis: CompAnalysis;
+  /** What must exist before an offer can be calculated honestly. */
+  missing: string[];
+  /** Market context that WAS measured (zeros mean "USDA returned nothing"). */
+  marketContext: BlindOfferReport["marketContext"];
+  warnings: string[];
+}
+
+export type BlindOfferOutcome = BlindOfferReport | BlindOfferRefusal;
+
+/** Narrowing helper for callers that only want the priced report. */
+export function isBlindOfferRefusal(o: BlindOfferOutcome): o is BlindOfferRefusal {
+  return o.status === "insufficient_data";
+}
+
 // ---------------------------------------------------------------------------
 // Core Calculator
 // ---------------------------------------------------------------------------
 
-export async function calculateBlindOffer(input: BlindOfferInput): Promise<BlindOfferReport> {
+export async function calculateBlindOffer(input: BlindOfferInput): Promise<BlindOfferOutcome> {
   const { state, county, targetAcres, comps = [], marketCondition, sellerProfile, ownerFinanceGoal } = input;
 
   // Enrich with USDA NASS data
@@ -207,8 +249,81 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
   // Determine market condition (auto or override)
   const effectiveMarketCondition = marketCondition || detectMarketCondition(trend);
 
-  // Core pricing
+  const marketContext = {
+    usdaLandValuePerAcre: nassData?.pasturePerAcre || 0,
+    usdaCagr5Year: trend?.cagr5Year || 0,
+    marketCondition: effectiveMarketCondition,
+    competitionLevel:
+      compAnalysis.compCount > 50 ? "high" : compAnalysis.compCount > 20 ? "medium" : "low",
+    ebayValidationNote: compAnalysis.isCountyValidated
+      ? `County validated: ${compAnalysis.compCount}+ comps confirm active market.`
+      : `County has limited comp data (${compAnalysis.compCount} comps found). Validate via eBay sold listings before running campaign.`,
+  };
+
+  // Warnings
+  const warnings = buildWarnings(compAnalysis, targetAcres, nassData, effectiveMarketCondition);
+
+  // ── The refusal gate ────────────────────────────────────────────────────
+  // Every offer figure below — and the dollar amount merged into a MAILED
+  // letter — is derived from `lowestSalePerAcre`. If there is no real comp to
+  // derive it from, there is no offer. We refuse, naming what's missing, and
+  // return a shape that carries no offer amount at all.
+  //
+  // Before 2026-07-30 this path substituted 1000 / 2000 / 5000 per acre, so a
+  // parcel with zero comps and no USDA coverage produced a confident,
+  // fully-fabricated purchase price on a printed letter.
   const lowestCompPerAcre = compAnalysis.lowestSalePerAcre;
+  const medianCompPerAcre = compAnalysis.medianSalePerAcre;
+  const missing: string[] = [];
+
+  if (compAnalysis.compCount === 0) {
+    missing.push(
+      `Comparable sales for ${county} County, ${state.toUpperCase()} — none were found. ` +
+        `Paste comps from the county assessor / LandWatch / eBay sold listings, or connect an ATTOM key to pull them automatically.`,
+    );
+    if (!nassData?.pasturePerAcre) {
+      missing.push(
+        "USDA NASS land values for this state (the free per-acre benchmark used when no direct comps exist). " +
+          "Set USDA_NASS_API_KEY, or the county has no NASS pastureland series.",
+      );
+    }
+  } else if (
+    lowestCompPerAcre === null ||
+    medianCompPerAcre === null ||
+    !Number.isFinite(lowestCompPerAcre) ||
+    lowestCompPerAcre <= 0
+  ) {
+    missing.push(
+      `At least one comparable sale with a positive price per acre for ${county} County, ` +
+        `${state.toUpperCase()} — the ${compAnalysis.compCount} comp(s) on file carry no usable price.`,
+    );
+  }
+
+  // A non-positive acreage would silently produce a $0 (or negative) mailed
+  // offer. Refuse rather than price it.
+  if (!Number.isFinite(targetAcres) || targetAcres <= 0) {
+    missing.push("A positive parcel acreage (targetAcres) — an offer cannot be priced without it.");
+  }
+
+  if (missing.length > 0 || lowestCompPerAcre === null || medianCompPerAcre === null) {
+    return {
+      status: "insufficient_data",
+      state: state.toUpperCase(),
+      county,
+      targetAcres,
+      generatedAt: new Date().toISOString(),
+      compAnalysis,
+      missing: missing.length > 0
+        ? missing
+        : [
+            `Comparable sales for ${county} County, ${state.toUpperCase()} with a usable price per acre.`,
+          ],
+      marketContext,
+      warnings,
+    };
+  }
+
+  // Core pricing — from here on every figure traces to a real comp.
   const basePerAcre = lowestCompPerAcre / 4;
   const baseTotal = basePerAcre * targetAcres;
 
@@ -225,10 +340,10 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
 
   // Exit scenarios
   const acquisition = recommendedOfferTotal;
-  const cashFlipScenario = buildCashFlipScenario(acquisition, compAnalysis.medianSalePerAcre, targetAcres);
+  const cashFlipScenario = buildCashFlipScenario(acquisition, medianCompPerAcre, targetAcres);
   const ownerFinanceScenario = buildOwnerFinanceScenario(
     acquisition,
-    compAnalysis.medianSalePerAcre,
+    medianCompPerAcre,
     targetAcres,
     input.ownerFinanceDefaults,
   );
@@ -244,21 +359,8 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
     sellerProfile
   );
 
-  // Market context
-  const marketContext = {
-    usdaLandValuePerAcre: nassData?.pasturePerAcre || 0,
-    usdaCagr5Year: trend?.cagr5Year || 0,
-    marketCondition: effectiveMarketCondition,
-    competitionLevel: compAnalysis.compCount > 50 ? "high" : compAnalysis.compCount > 20 ? "medium" : "low",
-    ebayValidationNote: compAnalysis.isCountyValidated
-      ? `County validated: ${compAnalysis.compCount}+ comps confirm active market.`
-      : `County has limited comp data (${compAnalysis.compCount} comps found). Validate via eBay sold listings before running campaign.`,
-  };
-
-  // Warnings
-  const warnings = buildWarnings(compAnalysis, targetAcres, nassData, effectiveMarketCondition);
-
   return {
+    status: "ok",
     state: state.toUpperCase(),
     county,
     targetAcres,
@@ -324,18 +426,34 @@ function buildCompDataset(
 // Comp Analysis
 // ---------------------------------------------------------------------------
 
-function analyzeComps(comps: CompData[]): CompAnalysis {
+/**
+ * Reduce a comp set to the statistics the offer formula reads.
+ *
+ * EXPORTED so the unit suite drives the real implementation. It used to be
+ * private, and `tests/unit/blindOfferCalculator.test.ts` carried an inline
+ * copy — which is how the fabricated empty-set branch survived a test file
+ * that asserted it.
+ *
+ * With zero comps the three price fields are NULL. They were 1000 / 2000 /
+ * 5000 — invented numbers that flowed straight through the offer tiers into
+ * `letterVariables.offerAmount`, i.e. a made-up purchase price on a mailed
+ * letter. There is no honest placeholder for "we don't know what land sells
+ * for here"; the only honest value is absence.
+ */
+export function analyzeComps(comps: CompData[]): CompAnalysis {
   if (comps.length === 0) {
     return {
       allComps: [],
       sourceBreakdown: {},
-      lowestSalePerAcre: 1000,
-      medianSalePerAcre: 2000,
-      highestSalePerAcre: 5000,
+      lowestSalePerAcre: null,
+      medianSalePerAcre: null,
+      highestSalePerAcre: null,
       avgDaysOnMarket: null,
       compCount: 0,
       dataQuality: "insufficient",
-      dataQualityNotes: ["No comparable sales found. Manual comp research required before sending offer."],
+      dataQualityNotes: [
+        "No comparable sales found — no offer can be calculated. Research comps (county assessor, LandWatch, eBay sold listings) before offering.",
+      ],
       isCountyValidated: false,
     };
   }
@@ -609,6 +727,17 @@ function buildLetterVariables(
   state: string,
   sellerProfile?: BlindOfferInput["sellerProfile"]
 ): BlindOfferReport["letterVariables"] {
+  // Last line of defense before a dollar amount is printed and mailed. The
+  // refusal gate in calculateBlindOffer should make this unreachable; if a
+  // future caller finds another way in, it must fail loudly rather than mail a
+  // $0 / NaN / negative offer.
+  if (!Number.isFinite(offerAmount) || offerAmount <= 0) {
+    throw new Error(
+      `Refusing to build letter variables for a non-positive offer amount (${offerAmount}) — ` +
+        "an offer letter must never carry a fabricated or empty price.",
+    );
+  }
+
   // Convert number to words (simplified)
   const offerWords = numberToWords(offerAmount);
 

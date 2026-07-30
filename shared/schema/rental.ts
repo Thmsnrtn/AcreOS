@@ -295,6 +295,25 @@ export const rentalLeases = pgTable(
     // without a confirmed lead_paint addendum (federal 24 CFR §35.92).
     leadPaintDisclosureAttachedAt: timestamp("lead_paint_disclosure_attached_at", { withTimezone: true }),
 
+    // ── E-sign wiring (Wave D) ────────────────────────────────────────────
+    // `pending_signature` existed as a lease status and the HMAC signing rail
+    // (generated_documents + signers[] + signing_consent_audit) existed
+    // separately; nothing joined them, so a lease could sit in
+    // 'pending_signature' forever with no document, no signer and no consent
+    // trail. These columns ARE the join.
+    //
+    // Legal signing is a founder/operator-only hard stop: nothing here is ever
+    // written by an automation. `signaturePacketSentAt` + `signatureRequestedBy`
+    // record WHO initiated and WHEN, and AcreOS never delivers the packet —
+    // the operator distributes the signing links on their own identity (no
+    // re-fronting platform send rails).
+    signingDocumentId: integer("signing_document_id"),  // soft FK → generated_documents.id
+    signaturePacketSentAt: timestamp("signature_packet_sent_at", { withTimezone: true }),
+    signatureRequestedBy: text("signature_requested_by"),  // user id of the operator who initiated
+    // Stamped only once every signer has signed AND an E-SIGN §101(c) consent
+    // audit row exists for each of them. Never inferred.
+    executedAt: timestamp("executed_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -302,6 +321,7 @@ export const rentalLeases = pgTable(
     index("rental_leases_org_status_idx").on(table.organizationId, table.status),
     index("rental_leases_property_idx").on(table.propertyId, table.status),
     index("rental_leases_parent_idx").on(table.parentLeaseId),
+    index("rental_leases_org_signing_doc_idx").on(table.organizationId, table.signingDocumentId),
   ],
 );
 
@@ -447,6 +467,18 @@ export const rentPayments = pgTable(
     isPartial: boolean("is_partial").notNull().default(false),
     acceptedDespitePartial: boolean("accepted_despite_partial"),
 
+    // ── Multi-charge allocation (Wave D) ──────────────────────────────────
+    // A payment used to credit exactly ONE charge (the oldest open one) and
+    // silently swallow any excess via max(0, …). It now spreads across every
+    // open charge; `rentChargeId` above keeps pointing at the FIRST (oldest)
+    // charge touched for backwards compatibility, and the authoritative
+    // breakdown lives in rent_payment_allocations.
+    allocatedCents: bigint("allocated_cents", { mode: "number" }).notNull().default(0),
+    // Money that outlived every open charge. Held as an explicit credit rather
+    // than absorbed into a balance or dropped.
+    unappliedCents: bigint("unapplied_cents", { mode: "number" }).notNull().default(0),
+    allocationOrderRule: text("allocation_order_rule"),  // see shared/rental/paymentAllocation.ts
+
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -459,6 +491,57 @@ export const rentPayments = pgTable(
 
 export type RentPayment = typeof rentPayments.$inferSelect;
 export type InsertRentPayment = typeof rentPayments.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// RENT PAYMENT ALLOCATIONS — one row per (payment, charge) line.
+// ----------------------------------------------------------------------------
+// Why this needs a table and not a rollup column: a rent balance is an
+// assertion a landlord makes to a tenant, and in a dispute the question is
+// never "what is the balance" but "how did you get that balance". A tenant who
+// paid $2,800 against three open months is entitled to know which month each
+// dollar cured and how much of it went to a late fee rather than to rent. That
+// is per-(payment, charge) data with a per-line rent/fee split; no aggregate on
+// rent_charges or rent_payments can reconstruct it after the fact.
+//
+// Rows are append-only history: they are written inside the payment
+// transaction and never mutated afterwards. The ORDER (oldest charge first,
+// rent before late fees) is stamped on every line so a ledger read can explain
+// itself even if the allocation rule is ever revised.
+export const rentPaymentAllocations = pgTable(
+  "rent_payment_allocations",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    paymentId: varchar("payment_id").notNull(),   // soft FK → rent_payments.id
+    rentChargeId: varchar("rent_charge_id").notNull(),  // soft FK → rent_charges.id
+    leaseId: varchar("lease_id").notNull(),
+
+    /** 1-based position in the application order — a readable ledger line. */
+    sequence: integer("sequence").notNull(),
+    appliedToRentCents: bigint("applied_to_rent_cents", { mode: "number" }).notNull(),
+    appliedToLateFeeCents: bigint("applied_to_late_fee_cents", { mode: "number" }).notNull(),
+    appliedCents: bigint("applied_cents", { mode: "number" }).notNull(),
+    balanceBeforeCents: bigint("balance_before_cents", { mode: "number" }).notNull(),
+    balanceAfterCents: bigint("balance_after_cents", { mode: "number" }).notNull(),
+
+    /** Identifier of the ordering rule that produced this line. */
+    orderRule: text("order_rule").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // Org-LEADING composite (L3 shard-readiness lint) + the dominant read:
+    // "every allocation line for this payment, in order".
+    index("rent_payment_allocations_org_payment_idx").on(table.organizationId, table.paymentId, table.sequence),
+    // "every payment that touched this charge" — the ledger's explain view.
+    index("rent_payment_allocations_org_charge_idx").on(table.organizationId, table.rentChargeId),
+    index("rent_payment_allocations_lease_idx").on(table.leaseId),
+    // A payment may touch a charge at most once per allocation run.
+    uniqueIndex("rent_payment_allocations_payment_charge_uk").on(table.paymentId, table.rentChargeId),
+  ],
+);
+
+export type RentPaymentAllocation = typeof rentPaymentAllocations.$inferSelect;
+export type InsertRentPaymentAllocation = typeof rentPaymentAllocations.$inferInsert;
 
 // State late-fee rules — Imelda §2.4: "in Texas, late fees are now capped
 // at 12% of monthly rent for properties with 4+ units, 10% for fewer,
@@ -635,13 +718,45 @@ export const securityDeposits = pgTable(
     refundCents: bigint("refund_cents", { mode: "number" }),
     refundedAt: date("refunded_at"),
 
+    // ── The statutory clock (Wave D) ──────────────────────────────────────
+    // This column shipped with a comment and no writer: no route ever set it,
+    // so the deadline that carries the largest single landlord-tenant exposure
+    // (forfeiture of the right to withhold anything, plus statutory damages)
+    // rendered as blank in every UI. It is now populated at move-out from
+    // shared/regulatory/depositReturnRules.ts.
     statutoryDeadline: date("statutory_deadline"),  // state-driven (Texas 30d)
+    /** The trigger date the clock was computed from — move-out, not lease end. */
+    moveOutDate: date("move_out_date"),
+    /** Days the rule allowed, retained so a stored deadline stays explainable. */
+    statutoryDeadlineDays: integer("statutory_deadline_days"),
+    statutoryDeadlineCitation: text("statutory_deadline_citation"),
+    /**
+     * Populated INSTEAD of statutoryDeadline when the jurisdiction has no
+     * encoded rule. Surfaced verbatim to the operator. AcreOS refuses to
+     * substitute a default: an invented deposit deadline is the one fabrication
+     * that would directly create the liability it claims to track.
+     */
+    statutoryDeadlineUnknownReason: text("statutory_deadline_unknown_reason"),
+    statutoryDeadlineSetAt: timestamp("statutory_deadline_set_at", { withTimezone: true }),
+
+    // ── Itemised disposition letter ───────────────────────────────────────
+    // Generated from the reconciled deductions; AcreOS has no send rail for it
+    // (BYO identity only), so delivery is manual and `deliveredAt` is stamped
+    // only when the operator records their own delivery. Never claimed as sent.
+    dispositionLetterMarkdown: text("disposition_letter_markdown"),
+    dispositionLetterVersion: text("disposition_letter_version"),
+    dispositionLetterGeneratedAt: timestamp("disposition_letter_generated_at", { withTimezone: true }),
+    dispositionLetterDeliveredAt: timestamp("disposition_letter_delivered_at", { withTimezone: true }),
+    dispositionLetterDeliveryMethod: text("disposition_letter_delivery_method"),  // operator-recorded: mail | hand | email
 
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex("security_deposits_lease_uk").on(table.leaseId),
+    // Org-LEADING composite (L3 shard-readiness) + the deposit-clock read:
+    // "every deposit in this org with a live deadline, soonest first".
+    index("security_deposits_org_deadline_idx").on(table.organizationId, table.statutoryDeadline),
   ],
 );
 

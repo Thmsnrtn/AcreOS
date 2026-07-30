@@ -1,51 +1,24 @@
 /**
- * T274 — Actum ACH Processing Tests
- * Tests ACH return code classification and retry logic.
+ * T274 — ACH return-code taxonomy tests.
+ *
+ * 2026-07-29: this file used to re-declare its own 9-code copy of
+ * ACH_RETURN_CODES and its own classifyAchReturn, so it asserted against a
+ * duplicate and could not have caught drift in the shipped table. It now
+ * imports the REAL taxonomy from server/services/actumProcessing.ts — which,
+ * after the "be the rail, not the provider" ruling deleted the platform-merchant
+ * Actum client, is the only thing that file contains, and is what the live
+ * Stripe us_bank_account autopay path classifies returns against.
  */
 
 import { describe, it, expect } from "vitest";
+import {
+  ACH_RETURN_CODES,
+  classifyAchReturn,
+  returnRevokesAuthorization,
+  type AchReturnCategory,
+} from "../../server/services/actumProcessing";
 
-// ─── Inline pure logic ────────────────────────────────────────────────────────
-
-type AchReturnCategory =
-  | "insufficient_funds"
-  | "account_closed"
-  | "invalid_account"
-  | "unauthorized"
-  | "administrative"
-  | "other";
-
-interface AchReturnCode {
-  code: string;
-  description: string;
-  category: AchReturnCategory;
-  retryable: boolean;
-  daysToRetry: number | null;
-  requiresNewBankInfo: boolean;
-}
-
-const ACH_RETURN_CODES: Record<string, AchReturnCode> = {
-  R01: { code: "R01", description: "Insufficient Funds", category: "insufficient_funds", retryable: true, daysToRetry: 5, requiresNewBankInfo: false },
-  R02: { code: "R02", description: "Account Closed", category: "account_closed", retryable: false, daysToRetry: null, requiresNewBankInfo: true },
-  R03: { code: "R03", description: "No Account / Unable to Locate Account", category: "invalid_account", retryable: false, daysToRetry: null, requiresNewBankInfo: true },
-  R04: { code: "R04", description: "Invalid Account Number", category: "invalid_account", retryable: false, daysToRetry: null, requiresNewBankInfo: true },
-  R05: { code: "R05", description: "Unauthorized Debit to Consumer Account", category: "unauthorized", retryable: false, daysToRetry: null, requiresNewBankInfo: false },
-  R07: { code: "R07", description: "Authorization Revoked by Customer", category: "unauthorized", retryable: false, daysToRetry: null, requiresNewBankInfo: false },
-  R08: { code: "R08", description: "Payment Stopped", category: "unauthorized", retryable: false, daysToRetry: null, requiresNewBankInfo: false },
-  R09: { code: "R09", description: "Uncollected Funds", category: "insufficient_funds", retryable: true, daysToRetry: 5, requiresNewBankInfo: false },
-  R13: { code: "R13", description: "Invalid ACH Routing Number", category: "invalid_account", retryable: false, daysToRetry: null, requiresNewBankInfo: true },
-};
-
-function classifyAchReturn(returnCode: string): AchReturnCode {
-  return ACH_RETURN_CODES[returnCode.toUpperCase()] || {
-    code: returnCode,
-    description: "Unknown Return Code",
-    category: "other",
-    retryable: false,
-    daysToRetry: null,
-    requiresNewBankInfo: false,
-  };
-}
+// ─── Thin wrappers over the real classifier ──────────────────────────────────
 
 function shouldRetryPayment(returnCode: string): boolean {
   return classifyAchReturn(returnCode).retryable;
@@ -181,5 +154,54 @@ describe("categorizeReturnCodes", () => {
     expect(result.insufficient_funds).toEqual(["R01", "R09"]);
     expect(result.account_closed).toEqual(["R02"]);
     expect(result.unauthorized).toEqual(["R05", "R07"]);
+  });
+});
+
+describe("the shipped taxonomy is complete and self-consistent", () => {
+  it("covers every consumer code R01–R29", () => {
+    for (let n = 1; n <= 29; n++) {
+      const code = `R${String(n).padStart(2, "0")}`;
+      expect(ACH_RETURN_CODES[code], `${code} missing from the table`).toBeDefined();
+      expect(ACH_RETURN_CODES[code].code).toBe(code);
+    }
+  });
+
+  it("gives every retryable code a retry delay, and every non-retryable none", () => {
+    for (const entry of Object.values(ACH_RETURN_CODES)) {
+      if (entry.retryable) {
+        expect(entry.daysToRetry, `${entry.code} retryable with no delay`).toBeGreaterThan(0);
+      } else {
+        expect(entry.daysToRetry, `${entry.code} non-retryable with a delay`).toBeNull();
+      }
+    }
+  });
+
+  it("never marks a code that demands new bank info as retryable", () => {
+    // Re-presenting against an account we already know is wrong or gone is
+    // both pointless and, for a revoked authorization, prohibited.
+    for (const entry of Object.values(ACH_RETURN_CODES)) {
+      if (entry.requiresNewBankInfo) {
+        expect(entry.retryable, `${entry.code} retryable despite needing new bank info`).toBe(false);
+      }
+    }
+  });
+
+  it("treats revocation codes as authorization-killing (R05/R07/R08/R10/R29)", () => {
+    for (const code of ["R05", "R07", "R08", "R10", "R29"]) {
+      expect(
+        returnRevokesAuthorization(classifyAchReturn(code)),
+        `${code} must revoke the mandate`,
+      ).toBe(true);
+    }
+  });
+
+  it("does NOT treat R11 as a revocation (a corrected re-presentment is allowed)", () => {
+    const r11 = classifyAchReturn("R11");
+    expect(r11.retryable).toBe(true);
+    expect(returnRevokesAuthorization(r11)).toBe(false);
+  });
+
+  it("does not revoke on a code it does not recognise", () => {
+    expect(returnRevokesAuthorization(classifyAchReturn("R99"))).toBe(false);
   });
 });

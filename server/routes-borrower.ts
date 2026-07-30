@@ -20,6 +20,35 @@ import {
   type BorrowerGrantResolver,
 } from "./services/borrower/statementAccess";
 import { emitPaymentEvent } from "./services/workflow-engine";
+import {
+  startAchMandateSetup,
+  confirmAchMandateSetup,
+  revokeAchMandatesForNote,
+  getAchMandateSummary,
+  resolveLenderConnectAccount,
+  mandateCeilingCents,
+  scheduleDescriptionForNote,
+  type AchSetupNote,
+  type AchSetupRefusal,
+  type AchMandateSummary,
+} from "./services/achMandateSetup";
+import {
+  AUTHORIZATION_TEXT_VERSION,
+  buildAuthorizationText,
+  scheduledDebitAmountCents,
+} from "./services/achAutopay";
+import {
+  mintAutopayAuthorizationChallenge,
+  claimAutopayAuthorizationChallenge,
+  AUTOPAY_CHALLENGE_TTL_SECONDS,
+} from "./services/borrower/autopayAuthorizationChallenge";
+import {
+  resolveOrgCardProcessor,
+  prepareCustomerMoneyCall,
+  customerMoneyReadOptions,
+  buildBorrowerCardCheckoutParams,
+} from "./services/customerMoneyRouting";
+import { isCategorySimulated } from "./utils/simulationMode";
 
 // ─────────────────────────────────────────────────────────────────────
 // Workflow payment events (Wave B — "wire the engine")
@@ -126,6 +155,122 @@ export function emitBorrowerPaymentReceived(p: PostedBorrowerPayment): void {
       { organizationId: p.organizationId, noteId: p.noteId, paymentId: p.paymentId },
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Borrower ACH autopay (Wave C — "money moves")
+// ─────────────────────────────────────────────────────────────────────
+// Before this, POST /api/borrower/autopay wrote ONE boolean and the portal
+// told the borrower "Autopay is on — we'll collect this payment
+// automatically." Nothing ever debited; the flag's only reader was the cash
+// flow forecaster, which used it to FORECAST money that was never collected.
+//
+// The toggle is now gated on a stored NACHA §2.3 authorization. It can only be
+// turned ON when an `active` ach_mandates row with a confirmed processor
+// instrument exists for the note (`getAchMandateSummary().armed`), and turning
+// it OFF revokes that authorization — NACHA requires stopping on request, and
+// leaving a live mandate behind an "off" switch is exactly the gap that
+// produces an unauthorized debit later.
+//
+// NO ROUTE HERE MOVES MONEY. The only debit path is the hourly
+// `ach_autopay_cycle` job (server/jobs/achAutopayRun.ts), whose
+// (note_id, period_key, attempt_number) unique claim is the double-charge
+// guard. A double-clicked toggle therefore cannot produce a debit at all, let
+// alone two — the toggle only records intent plus authorization.
+
+/** Terms the borrower is asked to authorize, derived from the note. */
+export interface AutopayAuthorizationTerms {
+  authorizationText: string;
+  authorizationTextVersion: string;
+  maxAmountCents: number;
+  scheduleDescription: string;
+  scheduledDebitCents: number;
+}
+
+/**
+ * Build the exact authorization the portal renders. Shared by the status GET
+ * (which shows it) and the setup POST (which cross-checks the text the client
+ * actually displayed against it), so the borrower can never agree to one
+ * disclosure and have a different one stored.
+ */
+export function buildAutopayAuthorizationTerms(
+  note: Pick<
+    AchSetupNote,
+    "id" | "monthlyPayment" | "serviceFee" | "taxEscrowEnabled" | "monthlyTaxEscrow" | "nextPaymentDate"
+  >,
+  lenderName: string,
+): AutopayAuthorizationTerms {
+  const scheduledDebitCents = scheduledDebitAmountCents(note);
+  const maxAmountCents = mandateCeilingCents(scheduledDebitCents);
+  const scheduleDescription = scheduleDescriptionForNote(note);
+  return {
+    authorizationText: buildAuthorizationText({
+      lenderName,
+      amountCents: maxAmountCents,
+      scheduleDescription,
+      noteReference: `Note #${note.id}`,
+    }),
+    authorizationTextVersion: AUTHORIZATION_TEXT_VERSION,
+    maxAmountCents,
+    scheduleDescription,
+    scheduledDebitCents,
+  };
+}
+
+export type AchAvailability =
+  | { available: true }
+  | { available: false; reason: AchSetupRefusal; message: string };
+
+/**
+ * Can this lender actually take an ACH debit today? Answered so the portal can
+ * DISABLE the toggle with a reason instead of offering something that will
+ * silently never collect. The simulation check comes first and needs no network
+ * call; the Connect check short-circuits on "not configured" without touching
+ * Stripe, so the common unconfigured case stays a single DB read.
+ */
+export async function resolveAchAvailability(organizationId: number): Promise<AchAvailability> {
+  if (isCategorySimulated("stripe")) {
+    return {
+      available: false,
+      reason: "simulated",
+      message:
+        "Bank (ACH) autopay is switched off on this environment. No bank details are collected and nothing is debited.",
+    };
+  }
+  const connect = await resolveLenderConnectAccount(organizationId);
+  if (!connect.ok) {
+    return { available: false, reason: connect.reason, message: connect.message };
+  }
+  return { available: true };
+}
+
+/**
+ * The single sentence the borrower sees about autopay. Truthful in every state:
+ * it never claims collection will happen unless a debit could actually be
+ * created. `armed` is the only state that promises anything.
+ */
+export function autopayStatusMessage(input: {
+  autopayEnabled: boolean;
+  mandateStatus: AchMandateSummary["status"];
+  armed: boolean;
+  availability: AchAvailability;
+}): string {
+  if (input.autopayEnabled && input.armed) {
+    return "Autopay is on — we'll debit your authorized bank account on each due date.";
+  }
+  if (input.armed) {
+    return "Your bank account is authorized. Turn autopay on to have each payment collected automatically.";
+  }
+  if (input.mandateStatus === "pending") {
+    return "Your bank is still verifying the account you added. Autopay stays off — and nothing is debited — until that finishes.";
+  }
+  if (input.mandateStatus === "revoked" || input.mandateStatus === "invalid") {
+    return "Your previous bank authorization is no longer usable. Autopay is off until you authorize a bank account again.";
+  }
+  if (!input.availability.available) {
+    return input.availability.message;
+  }
+  return "Autopay is off. Nothing is debited automatically until you authorize a bank account.";
 }
 
 // Borrower portal rate-limiters. Keyed by accessToken when present (the
@@ -363,10 +508,18 @@ export function registerBorrowerRoutes(app: Express): void {
         borrower = await storage.getLead(note.organizationId, note.borrowerId);
       }
       
+      // The portal is AcreOS-branded but AcreOS collects nothing here — the
+      // lender does, on the lender's own processor (founder ruling
+      // 2026-07-29). The borrower is entitled to know whose money this is
+      // before they hand over a card, so the lender's name ships with the
+      // loan data and is rendered next to the pay button.
+      const lenderOrg = await storage.getOrganization(note.organizationId);
+
       res.json({
         note: { ...note, property },
         payments: notePayments,
         borrower: borrower ? { firstName: borrower.firstName, lastName: borrower.lastName } : null,
+        lenderName: lenderOrg?.name || null,
         sessionToken, // Also return in response for clients that prefer header-based auth
       });
     } catch (err) {
@@ -553,10 +706,24 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid payment amount");
       }
       
+      // WHOSE ACCOUNT THIS LANDS IN — the lender's own, or nobody's.
+      // Founder ruling 2026-07-29 ("be the rail, not the provider"): a
+      // borrower's mortgage payment is CUSTOMER money. It moves on the org's
+      // own connected processor, with no AcreOS cut and without transiting
+      // AcreOS's balance. A lender who has not connected one is refused with
+      // a reason — there is no platform fallback, ever.
+      const routing = await resolveOrgCardProcessor(note.organizationId);
+      if (!routing.ok) {
+        logger.warn("Borrower card payment refused — lender has no usable card processor", {
+          metadata: { noteId: note.id, organizationId: note.organizationId, reason: routing.reason },
+        });
+        return Errors.badRequest(res, routing.borrowerMessage, { reason: routing.reason });
+      }
+
       // Get Stripe client
       const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
-      
+
       // Get borrower info for customer description
       let borrowerName = "Borrower";
       let borrowerEmail = session.email;
@@ -567,38 +734,34 @@ export function registerBorrowerRoutes(app: Express): void {
           borrowerEmail = borrower.email || session.email;
         }
       }
-      
-      // Create checkout session for one-time payment
+
+      const org = await storage.getOrganization(note.organizationId);
+
+      // Create checkout session for one-time payment — a DIRECT charge on the
+      // lender's account (`stripeAccount`), so the lender is merchant of
+      // record and the funds never touch AcreOS.
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const stripeSession = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: `Loan Payment - Note #${note.id}`,
-              description: `Payment for ${borrowerName}`,
-            },
-            unit_amount: Math.round(paymentAmount * 100),
-          },
-          quantity: 1,
-        }],
-        mode: 'payment',
-        success_url: `${baseUrl}/portal/${note.accessToken}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/portal/${note.accessToken}?payment=cancelled`,
-        customer_email: borrowerEmail,
-        metadata: {
-          noteId: note.id.toString(),
-          accessToken: note.accessToken || '',
-          paymentAmount: paymentAmount.toString(),
-          type: 'borrower_portal_payment',
-        },
-      });
-      
+      const { params, options } = prepareCustomerMoneyCall(
+        "borrower.card.checkout.session",
+        buildBorrowerCardCheckoutParams({
+          noteId: note.id,
+          organizationId: note.organizationId,
+          lenderName: org?.name || "your lender",
+          borrowerName,
+          borrowerEmail,
+          amountCents: Math.round(paymentAmount * 100),
+          baseUrl,
+          accessToken: note.accessToken || "",
+          source: "session",
+        }),
+        routing.processor,
+      );
+      const stripeSession = await stripe.checkout.sessions.create(params, options);
+
       // Store the checkout session ID on the note for webhook verification
       await storage.updateNote(note.id, { pendingCheckoutSessionId: stripeSession.id }, note.organizationId);
 
-      res.json({ url: stripeSession.url, sessionId: stripeSession.id });
+      res.json({ url: stripeSession.url, sessionId: stripeSession.id, collectedBy: org?.name || null });
     } catch (err) {
       logger.error("Session-based portal payment error", err);
       Errors.internal(res, err);
@@ -637,10 +800,21 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.badRequest(res, "Invalid payment amount");
       }
       
+      // Same custody rule as the session-based path above — the deprecated
+      // endpoint is not a loophole. Customer money moves on the lender's own
+      // connected processor or it does not move.
+      const routing = await resolveOrgCardProcessor(note.organizationId);
+      if (!routing.ok) {
+        logger.warn("Borrower card payment refused (legacy token path) — lender has no usable card processor", {
+          metadata: { noteId: note.id, organizationId: note.organizationId, reason: routing.reason },
+        });
+        return Errors.badRequest(res, routing.borrowerMessage, { reason: routing.reason });
+      }
+
       // Get Stripe client
-      const { getUncachableStripeClient, getStripePublishableKey } = await import("./stripeClient");
+      const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
-      
+
       // Get borrower info for customer description
       let borrowerName = "Borrower";
       let borrowerEmail = undefined;
@@ -651,38 +825,33 @@ export function registerBorrowerRoutes(app: Express): void {
           borrowerEmail = borrower.email || undefined;
         }
       }
-      
-      // Create checkout session for one-time payment
+
+      const org = await storage.getOrganization(note.organizationId);
+
+      // Create checkout session for one-time payment — direct charge on the
+      // lender's account.
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: `Loan Payment - Note #${note.id}`,
-              description: `Payment for ${borrowerName}`,
-            },
-            unit_amount: Math.round(paymentAmount * 100), // Convert to cents
-          },
-          quantity: 1,
-        }],
-        mode: 'payment',
-        success_url: `${baseUrl}/portal/${accessToken}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/portal/${accessToken}?payment=cancelled`,
-        customer_email: borrowerEmail,
-        metadata: {
-          noteId: note.id.toString(),
+      const { params, options } = prepareCustomerMoneyCall(
+        "borrower.card.checkout.session.legacy",
+        buildBorrowerCardCheckoutParams({
+          noteId: note.id,
+          organizationId: note.organizationId,
+          lenderName: org?.name || "your lender",
+          borrowerName,
+          borrowerEmail,
+          amountCents: Math.round(paymentAmount * 100),
+          baseUrl,
           accessToken,
-          paymentAmount: paymentAmount.toString(),
-          type: 'borrower_portal_payment',
-        },
-      });
-      
+          source: "legacy_token",
+        }),
+        routing.processor,
+      );
+      const session = await stripe.checkout.sessions.create(params, options);
+
       // Store the checkout session ID on the note for webhook verification
       await storage.updateNote(note.id, { pendingCheckoutSessionId: session.id }, note.organizationId);
 
-      res.json({ url: session.url, sessionId: session.id });
+      res.json({ url: session.url, sessionId: session.id, collectedBy: org?.name || null });
     } catch (err) {
       logger.error("Portal payment error", err);
       Errors.internal(res, err);
@@ -704,12 +873,27 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.notFound(res, "loan");
       }
       
-      // Verify Stripe session
+      // Verify Stripe session — the charge lives on the LENDER'S account, so
+      // the retrieve must be scoped there too. An unscoped retrieve looks in
+      // AcreOS's account, finds nothing, and would tell a borrower who really
+      // paid that they hadn't.
+      const routing = await resolveOrgCardProcessor(note.organizationId);
+      if (!routing.ok) {
+        logger.warn("Borrower payment verification refused (legacy token path) — no lender processor to read from", {
+          metadata: { noteId: note.id, organizationId: note.organizationId, reason: routing.reason },
+        });
+        return Errors.badRequest(res, routing.borrowerMessage, { reason: routing.reason });
+      }
+
       const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
-      
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
-      
+
+      const session = await stripe.checkout.sessions.retrieve(
+        sessionId,
+        undefined,
+        customerMoneyReadOptions(routing.processor, "borrower.card.checkout.retrieve.legacy"),
+      );
+
       if (session.payment_status !== 'paid') {
         return Errors.badRequest(res, "Payment not completed");
       }
@@ -845,9 +1029,23 @@ export function registerBorrowerRoutes(app: Express): void {
       if (noteResults.length === 0) return Errors.notFound(res, "loan");
       const note = noteResults[0];
 
+      // The charge is a direct charge on the lender's connected account, so
+      // read it back from that account — never from AcreOS's.
+      const routing = await resolveOrgCardProcessor(note.organizationId);
+      if (!routing.ok) {
+        logger.warn("Borrower payment verification refused — no lender processor to read from", {
+          metadata: { noteId: note.id, organizationId: note.organizationId, reason: routing.reason },
+        });
+        return Errors.badRequest(res, routing.borrowerMessage, { reason: routing.reason });
+      }
+
       const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
-      const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
+      const stripeSession = await stripe.checkout.sessions.retrieve(
+        sessionId,
+        undefined,
+        customerMoneyReadOptions(routing.processor, "borrower.card.checkout.retrieve"),
+      );
 
       if (stripeSession.payment_status !== "paid") {
         return Errors.badRequest(res, "Payment not completed");
@@ -1026,27 +1224,385 @@ export function registerBorrowerRoutes(app: Express): void {
     }
   });
 
+  // ============================================
+  // BORROWER ACH AUTOPAY (Session-authenticated)
+  // --------------------------------------------
+  // Auth is the SAME `validateBorrowerSession` cookie/header session every
+  // other money route on this surface uses (it re-asserts the note↔org pin), and
+  // the same `portalPaymentRateLimiter`. No new auth scheme on a money endpoint.
+  // ============================================
+
+  // Everything the portal needs to tell the borrower the truth about autopay:
+  // whether the flag is on, whether a debit could actually be created, the
+  // stored authorization's state, and — when there is none yet — the VERBATIM
+  // authorization text they would be agreeing to.
+  api.get("/api/borrower/autopay", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
+    try {
+      const session = requireBorrowerSession(req);
+      const [note] = await db.select().from(notes).where(eq(notes.id, session.noteId));
+      if (!note) return Errors.notFound(res, "loan");
+
+      const mandate = await getAchMandateSummary(note.id);
+      // Skip the availability probe when the mandate is already armed — the
+      // instrument is confirmed, so a Stripe round-trip would tell us nothing
+      // the borrower needs.
+      let availability: AchAvailability = mandate.armed
+        ? { available: true }
+        : await resolveAchAvailability(note.organizationId);
+
+      const org = await storage.getOrganization(note.organizationId);
+      const terms = buildAutopayAuthorizationTerms(note, org?.name || "your lender");
+
+      // Serving the authorization text is the ONLY place a challenge is minted.
+      // That is the whole mechanism: the mandate POST can only succeed if the
+      // server itself rendered this exact text version, to this session, for
+      // this note, within AUTOPAY_CHALLENGE_TTL_SECONDS. Minting is pure crypto
+      // — no row is written — so an abandoned read costs nothing.
+      const offeringAuthorization = availability.available && !mandate.armed;
+      const challenge = offeringAuthorization
+        ? mintAutopayAuthorizationChallenge({
+            sessionId: session.id,
+            noteId: note.id,
+            textVersion: terms.authorizationTextVersion,
+          })
+        : null;
+      if (offeringAuthorization && !challenge) {
+        // No signing material configured. Refuse to offer a setup flow we
+        // could only gate on the client's word — that is the exact CodeQL
+        // finding this challenge exists to close.
+        logger.error(
+          "Autopay authorization challenge cannot be signed — no signing material configured; not offering bank setup",
+          undefined,
+          { metadata: { noteId: note.id, organizationId: note.organizationId } },
+        );
+        availability = {
+          available: false,
+          reason: "authorization_challenge_unavailable",
+          message:
+            "Bank autopay setup is temporarily unavailable on this system. Autopay is off and nothing is debited automatically.",
+        };
+      }
+
+      res.json({
+        autopayEnabled: note.autoPayEnabled === true,
+        nextPaymentDate: note.nextPaymentDate,
+        mandate,
+        achAvailable: availability.available,
+        achUnavailableReason: availability.available ? null : availability.reason,
+        achUnavailableMessage: availability.available ? null : availability.message,
+        // Only offered when setup is actually possible — never render an
+        // authorization we could not act on, and never one we could not later
+        // prove we served (no challenge ⇒ no offer).
+        authorization:
+          availability.available && !mandate.armed && challenge
+            ? {
+                ...terms,
+                // The client must send this back on POST /autopay/mandate.
+                challengeToken: challenge.token,
+                challengeExpiresAt: challenge.expiresAt,
+                challengeTtlSeconds: AUTOPAY_CHALLENGE_TTL_SECONDS,
+              }
+            : null,
+        scheduledDebitCents: terms.scheduledDebitCents,
+        statusMessage: autopayStatusMessage({
+          autopayEnabled: note.autoPayEnabled === true,
+          mandateStatus: mandate.status,
+          armed: mandate.armed,
+          availability,
+        }),
+      });
+    } catch (err) {
+      logger.error("Autopay status read failed", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
+    }
+  });
+
+  // Phase 1 of mandate capture: record the borrower's agreement to the exact
+  // authorization text, then hand back the hosted-Checkout URL that collects
+  // the bank account. Records consent BEFORE the redirect (see
+  // services/achMandateSetup.ts) so an abandoned setup is visible, not lost.
+  //
+  // THREE INDEPENDENT LAYERS, DEFENCE IN DEPTH (CodeQL HIGH, PR #259 —
+  // "user-controlled bypass of security check"). This endpoint creates a NACHA
+  // ACH debit authorization, so the gate must not reduce to a client boolean.
+  //
+  // THE ORDER BELOW IS THE POINT, and it is deliberate: the SERVER-ISSUED value
+  // is verified FIRST, before any client-supplied field is consulted at all.
+  // The nearest guard standing in front of mandate creation is therefore a value
+  // this server minted, not anything the borrower's browser asserted.
+  //
+  //   1. `authorizationChallenge` (CHECKED FIRST) — a server-minted, single-use,
+  //      15-minute HMAC token bound to (session id, note id, authorization text
+  //      version), issued ONLY by GET /api/borrower/autopay, the sole endpoint
+  //      that renders the text. This is THE security boundary. Its id is stored
+  //      on the mandate under a unique index, so it is provable and unreplayable.
+  //   2. `authorizationAccepted === true` (checked after) — records the
+  //      AFFIRMATIVE ACT for the NACHA record. Deliberately demoted: evidence of
+  //      intent and defence in depth, never the security check. A client that
+  //      forges it still cannot get past layer 1.
+  //   3. `displayedAuthorizationText` echo — proves the client HAD the exact
+  //      text, byte for byte. Catches drift the version stamp can't see (the
+  //      lender renamed, the ceiling moved) because it compares the string.
+  //
+  // Every refusal below leaves autopay unchanged and creates NO mandate row.
+  api.post(
+    "/api/borrower/autopay/mandate",
+    validateBorrowerSession,
+    portalPaymentRateLimiter,
+    async (req, res) => {
+      try {
+        const session = requireBorrowerSession(req);
+        const body = req.body as {
+          authorizationAccepted?: unknown;
+          displayedAuthorizationText?: unknown;
+          authorizationChallenge?: unknown;
+        };
+
+        const [note] = await db.select().from(notes).where(eq(notes.id, session.noteId));
+        if (!note) return Errors.notFound(res, "loan");
+
+        // Already armed — do not mint a second authorization for the same note.
+        const existing = await getAchMandateSummary(note.id);
+        if (existing.armed) {
+          return Errors.badRequest(
+            res,
+            "This loan already has an authorized bank account. Turn autopay off first if you want to use a different account.",
+            { reason: "mandate_already_active", accountLast4: existing.accountLast4 },
+          );
+        }
+
+        const org = await storage.getOrganization(note.organizationId);
+        const lenderName = org?.name || "your lender";
+        const terms = buildAutopayAuthorizationTerms(note, lenderName);
+
+        // LAYER 1, AND IT COMES FIRST — the server-issued challenge. This is the
+        // security boundary, and it is verified BEFORE any client-supplied field
+        // is consulted, so the guard nearest the sensitive action is a value the
+        // server minted rather than one the browser asserted. Nothing below this
+        // line can be reached by a client that did not first receive this exact
+        // authorization version from GET /api/borrower/autopay, on this session,
+        // for this note, within the last 15 minutes, and has not already redeemed
+        // it. Missing, tampered, expired, replayed, wrong-session, wrong-note and
+        // stale-text-version all refuse here — before any processor call, before
+        // any mandate row exists, and before `authorizationAccepted` is even read.
+        const claim = await claimAutopayAuthorizationChallenge(body.authorizationChallenge, {
+          sessionId: session.id,
+          noteId: note.id,
+          textVersion: terms.authorizationTextVersion,
+        });
+        if (!claim.ok) {
+          // Never log the token itself — only the refusal reason.
+          logger.warn("Borrower ACH authorization challenge refused — no mandate created", {
+            metadata: {
+              noteId: note.id,
+              organizationId: note.organizationId,
+              reason: claim.reason,
+              expectedTextVersion: terms.authorizationTextVersion,
+            },
+          });
+          return Errors.badRequest(res, claim.message, { reason: claim.reason });
+        }
+
+        // LAYER 2 — the affirmative act. Only reachable once the server-issued
+        // challenge above has already been verified and found unredeemed, so this
+        // boolean cannot be the bypass: it records consent, it does not grant it.
+        // Kept because the NACHA record must show the borrower ticked the box.
+        if (body.authorizationAccepted !== true) {
+          return Errors.badRequest(
+            res,
+            "We can't set up bank autopay until you agree to the authorization shown above.",
+            { reason: "authorization_not_accepted" },
+          );
+        }
+
+        // LAYER 3 — cross-check: the borrower must have agreed to the text we are
+        // about to store, not an older revision cached in their tab. Refuse rather
+        // than storing consent to language they never saw.
+        if (
+          typeof body.displayedAuthorizationText === "string" &&
+          body.displayedAuthorizationText !== terms.authorizationText
+        ) {
+          logger.warn("Borrower ACH authorization text mismatch — refusing to store consent", {
+            metadata: { noteId: note.id, version: terms.authorizationTextVersion },
+          });
+          return Errors.badRequest(
+            res,
+            "Your payment terms changed while this page was open. Please reload and read the updated authorization before continuing.",
+            { reason: "authorization_text_stale" },
+          );
+        }
+
+        const setupNote: AchSetupNote = note;
+        const result = await startAchMandateSetup({
+          note: setupNote,
+          sessionEmail: session.email,
+          lenderName,
+          ipAddress: req.ip || req.socket.remoteAddress || null,
+          userAgent: req.headers["user-agent"] || null,
+          baseUrl: `${req.protocol}://${req.get("host")}`,
+          authorizationAccepted: true,
+          displayedAuthorizationText: terms.authorizationText,
+          // Writing this id onto the mandate IS the consumption of the
+          // challenge; its unique index is what makes single use true under
+          // concurrency rather than merely checked.
+          authorizationChallengeId: claim.challengeId,
+        });
+
+        if (!result.ok) {
+          logger.warn("Borrower ACH mandate setup refused", {
+            metadata: { noteId: note.id, reason: result.reason },
+          });
+          return Errors.badRequest(res, result.message, { reason: result.reason });
+        }
+
+        logger.info("Borrower ACH mandate setup started", {
+          metadata: {
+            noteId: note.id,
+            organizationId: note.organizationId,
+            mandateId: result.mandateId,
+            maxAmountCents: result.maxAmountCents,
+            // The challenge id, not the token. It is a stored column, so it is
+            // the handle that ties this log line to the mandate record.
+            authorizationChallengeId: claim.challengeId,
+          },
+        });
+
+        res.json({
+          success: true,
+          mandateId: result.mandateId,
+          setupUrl: result.setupUrl,
+          authorizationText: result.authorizationText,
+          maxAmountCents: result.maxAmountCents,
+        });
+      } catch (err) {
+        logger.error("Borrower ACH mandate setup failed", err instanceof Error ? err : undefined);
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  // Phase 2: the borrower is back from hosted Checkout. Promote the pending
+  // mandate to `active` and — only if it really activated — arm autopay.
+  // Idempotent: a replayed confirm (double-click, browser back) returns the
+  // already-active mandate without a second write and without a second debit
+  // (debits are created only by the job, one per note+period).
+  api.post(
+    "/api/borrower/autopay/mandate/confirm",
+    validateBorrowerSession,
+    portalPaymentRateLimiter,
+    async (req, res) => {
+      try {
+        const session = requireBorrowerSession(req);
+        const { setupReference } = req.body as { setupReference?: unknown };
+        if (typeof setupReference !== "string" || setupReference.length === 0) {
+          return Errors.badRequest(res, "A bank setup reference is required.");
+        }
+
+        const [note] = await db.select().from(notes).where(eq(notes.id, session.noteId));
+        if (!note) return Errors.notFound(res, "loan");
+
+        const confirmed = await confirmAchMandateSetup({ noteId: note.id, setupReference });
+        if (!confirmed.ok) {
+          logger.warn("Borrower ACH mandate confirm refused", {
+            metadata: { noteId: note.id, reason: confirmed.reason },
+          });
+          return Errors.badRequest(res, confirmed.message, { reason: confirmed.reason });
+        }
+
+        // Mandate present ⇒ scheduled debit. Turning the flag on here (rather
+        // than making the client do it in a second call) means a client that
+        // dies after Checkout cannot leave an authorized account with autopay
+        // silently off.
+        const summary = await getAchMandateSummary(note.id);
+        if (summary.armed && note.autoPayEnabled !== true) {
+          await storage.updateNote(note.id, { autoPayEnabled: true }, note.organizationId);
+        }
+
+        logger.info("Borrower ACH mandate confirmed", {
+          metadata: {
+            noteId: note.id,
+            mandateId: confirmed.mandate.id,
+            alreadyActive: confirmed.alreadyActive,
+            armed: summary.armed,
+          },
+        });
+
+        res.json({
+          success: true,
+          alreadyActive: confirmed.alreadyActive,
+          autopayEnabled: summary.armed || note.autoPayEnabled === true,
+          mandate: summary,
+        });
+      } catch (err) {
+        logger.error("Borrower ACH mandate confirm failed", err instanceof Error ? err : undefined);
+        Errors.internal(res, err);
+      }
+    },
+  );
+
   // Session-based autopay toggle — identity is proven by the session,
   // no need to repeat borrowerEmail on every request.
+  //
+  // ON  requires an armed mandate. Without one this refuses instead of writing
+  //     a boolean that promises a collection nothing will perform.
+  // OFF revokes every live mandate on the note (NACHA stop-on-request).
   api.post("/api/borrower/autopay", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
     try {
       const session = requireBorrowerSession(req);
-      const { enabled } = req.body;
+      const { enabled } = req.body as { enabled?: unknown };
+      const wantEnabled = enabled === true;
 
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
       if (noteResults.length === 0) return Errors.notFound(res, "loan");
       const note = noteResults[0];
 
-      await storage.updateNote(
-        note.id,
-        { autoPayEnabled: enabled === true },
-        note.organizationId,
-      );
+      const mandate = await getAchMandateSummary(note.id);
 
+      if (wantEnabled && !mandate.armed) {
+        const availability: AchAvailability = await resolveAchAvailability(note.organizationId);
+        logger.info("Autopay enable refused — no armed ACH authorization", {
+          metadata: { noteId: note.id, mandateStatus: mandate.status, achAvailable: availability.available },
+        });
+        return Errors.badRequest(
+          res,
+          mandate.status === "pending"
+            ? "Your bank is still verifying that account. Autopay can't be switched on — and nothing is debited — until verification finishes."
+            : availability.available
+              ? "Autopay needs an authorized bank account first. Add one and we'll collect each payment automatically."
+              : availability.message,
+          {
+            reason: "no_active_mandate",
+            mandateStatus: mandate.status,
+            achAvailable: availability.available,
+          },
+        );
+      }
+
+      await storage.updateNote(note.id, { autoPayEnabled: wantEnabled }, note.organizationId);
+
+      // Turning autopay off withdraws the authorization too. A live mandate
+      // behind an "off" switch is how an unauthorized debit happens later.
+      let revokedMandates = 0;
+      if (!wantEnabled) {
+        revokedMandates = await revokeAchMandatesForNote({
+          noteId: note.id,
+          reason: "Borrower turned autopay off in the borrower portal.",
+        });
+      }
+
+      const after = await getAchMandateSummary(note.id);
       res.json({
         success: true,
-        autopayEnabled: enabled === true,
+        autopayEnabled: wantEnabled,
         nextPaymentDate: note.nextPaymentDate,
+        mandate: after,
+        revokedMandates,
+        statusMessage: autopayStatusMessage({
+          autopayEnabled: wantEnabled,
+          mandateStatus: after.status,
+          armed: after.armed,
+          availability: { available: true },
+        }),
       });
     } catch (err) {
       logger.error("Autopay toggle error (session)", err);
@@ -1081,14 +1637,37 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.forbidden(res, "We couldn't verify your access to this loan — check the email address on your payment reminder.");
       }
       
+      // Same honesty gate as the session route: ON needs a stored, active
+      // authorization. This endpoint is sunset, but for as long as an env var
+      // can extend its window it must not be a back door to a flag that
+      // promises a collection nothing performs.
+      const wantEnabled = enabled === true;
+      const mandate = await getAchMandateSummary(note.id);
+      if (wantEnabled && !mandate.armed) {
+        return Errors.badRequest(
+          res,
+          "Autopay needs an authorized bank account first. Sign in to the borrower portal to authorize one.",
+          { reason: "no_active_mandate", mandateStatus: mandate.status },
+        );
+      }
+
       await storage.updateNote(note.id, {
-        autoPayEnabled: enabled === true,
+        autoPayEnabled: wantEnabled,
       }, note.organizationId);
-      
-      res.json({ 
-        success: true, 
-        autopayEnabled: enabled === true,
+
+      let revokedMandates = 0;
+      if (!wantEnabled) {
+        revokedMandates = await revokeAchMandatesForNote({
+          noteId: note.id,
+          reason: "Borrower turned autopay off (legacy token endpoint).",
+        });
+      }
+
+      res.json({
+        success: true,
+        autopayEnabled: wantEnabled,
         nextPaymentDate: note.nextPaymentDate,
+        revokedMandates,
       });
     } catch (err) {
       logger.error("Autopay toggle error", err);

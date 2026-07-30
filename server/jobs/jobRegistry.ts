@@ -110,6 +110,32 @@ export function backupConfigMissingReason(): string | null {
   return null;
 }
 
+/**
+ * Wave C ("Money moves") — shared config predicate for the borrower ACH
+ * autopay cycle. Lives here (the only dependency-free jobs module) so the
+ * roster entry, the job body, and unit tests evaluate ONE predicate instead
+ * of three drifting copies — same arrangement as backupConfigMissingReason
+ * above. Returns null when the cycle can actually move money.
+ * 🔑 FOUNDER: STRIPE_SECRET_KEY must be provisioned; SIMULATION_MODE /
+ * SIMULATION_MODE_STRIPE must be off.
+ */
+export function achAutopayDormantReason(): string | null {
+  const on = (v: string | undefined) => {
+    const t = (v || "").toLowerCase().trim();
+    return t === "true" || t === "1" || t === "yes";
+  };
+  if (on(process.env.SIMULATION_MODE_STRIPE)) {
+    return "SIMULATION_MODE_STRIPE is on — no ACH debit will be created.";
+  }
+  if (on(process.env.SIMULATION_MODE)) {
+    return "SIMULATION_MODE is on — no ACH debit will be created.";
+  }
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return "STRIPE_SECRET_KEY unset — 🔑 founder must provision the Stripe key before borrower ACH autopay can debit.";
+  }
+  return null;
+}
+
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
@@ -179,6 +205,23 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // counts-only outward senses. Non-critical: a dark scan delays perception
   // by a day; the deadman still surfaces the absence.
   { name: "note_payment_due_scan", intervalMs: DAY, critical: false, cron: "0 11 * * *" },
+  // Wave C "Money moves" — borrower ACH autopay cycle: hourly submit of due
+  // debits (one per note+period, guarded by a unique claim) + reconciliation
+  // of every in-flight debit into settlement or return. CRITICAL: this is the
+  // only path that collects a borrower payment the portal has already
+  // promised to collect automatically, and it is also the only path that
+  // discovers ACH RETURNS (no webhook is wired — see
+  // server/services/achAutopay.ts). A dark cycle means both uncollected money
+  // and unnoticed NSFs, so its absence pages P1.
+  {
+    name: "ach_autopay_cycle",
+    intervalMs: HOUR,
+    critical: true,
+    cron: "0 * * * *",
+    disabledWhen: () => achAutopayDormantReason() !== null,
+    disabledReason:
+      "Borrower ACH autopay is dormant: either SIMULATION_MODE / SIMULATION_MODE_STRIPE is on (no debit may be created) or STRIPE_SECRET_KEY is unset — 🔑 founder must provision the Stripe key. Per-lender dormancy (Connect onboarding incomplete / us_bank_account_ach_payments not active) is refused per note and counted in the cycle's refusalsByReason.",
+  },
   // Horizon A5 — doctrine corpus ingest: daily 03:00 UTC walk of the repo
   // doctrine dirs into the 'doctrine' embedding namespace (hash-skip on
   // unchanged). Non-critical: a dark ingest delays memory freshness by a

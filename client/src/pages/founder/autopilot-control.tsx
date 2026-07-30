@@ -28,6 +28,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { FounderAuthError } from "@/components/founder/FounderAuthError";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
+import { ReadinessLadderSection, READINESS_LADDER_KEY } from "@/components/founder/ReadinessLadderSection";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { staggerContainer, staggerItem } from "@/lib/animations";
@@ -223,6 +224,7 @@ export default function FounderAutopilotControlPage() {
     onSuccess: (d: { domainsQuarantined?: string[] }) => {
       void qc.invalidateQueries({ queryKey: CONTROL_KEY });
       void qc.invalidateQueries({ queryKey: ["/api/founder/autopilot/live"] });
+      void qc.invalidateQueries({ queryKey: READINESS_LADDER_KEY });
       setPanicConfirming(false);
       toast({ title: "Autopilot stopped", description: `Everything is off and ${d.domainsQuarantined?.length ?? "all"} domains are back to watching-only. Re-enable when you're ready.` });
     },
@@ -238,7 +240,12 @@ export default function FounderAutopilotControlPage() {
       if (!res.ok) throw new Error(`Couldn't update (${res.status})`);
       return res.json();
     },
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: CONTROL_KEY }); },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: CONTROL_KEY });
+      // The ladder's handover rungs are DERIVED from the trust ledger — a
+      // granted domain must not leave a stale "all parts are watching-only".
+      void qc.invalidateQueries({ queryKey: READINESS_LADDER_KEY });
+    },
     onError: (err) => toast({ title: "Couldn't update", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
   });
 
@@ -325,6 +332,17 @@ export default function FounderAutopilotControlPage() {
               <div className="mt-3">
                 <ExternalSafetyNetSection />
               </div>
+            </motion.section>
+
+            {/* The founder's OWN onboarding (founder ask 2026-07-30) — a
+                measured readiness ladder, NOT a checklist and NOT a new door.
+                It sits here because every rung's fix lives further down this
+                same page (Connections, Trust, Delegation, the break-glass
+                card), and it consumes itself: finished rungs collapse into a
+                one-line history and the surface converts into "what I now run
+                unattended + what I could take over next" as trust is granted. */}
+            <motion.section variants={staggerItem}>
+              <ReadinessLadderSection />
             </motion.section>
 
             {/* Live heartbeat — what it last did + whether it's healthy. */}
@@ -1396,6 +1414,7 @@ function WitnessGrantsSection() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: GRANTS_KEY });
+      void qc.invalidateQueries({ queryKey: READINESS_LADDER_KEY });
       setFormOpen(false);
       toast({ title: "Delegation issued", description: "The autopilot may now tap covered actions itself. Revoke any time." });
     },
@@ -1413,6 +1432,7 @@ function WitnessGrantsSection() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: GRANTS_KEY });
+      void qc.invalidateQueries({ queryKey: READINESS_LADDER_KEY });
       toast({ title: "Delegation revoked", description: "That grant is dead — those actions wait for your tap again." });
     },
     onError: (err) => toast({ title: "Couldn't revoke", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
@@ -1594,6 +1614,9 @@ function ConnectionsSection() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: CONNECTIONS_KEY });
       void qc.invalidateQueries({ queryKey: STEP_AWAY_KEY });
+      // Most setup rungs resolve THROUGH the connections hub — a pasted key
+      // must move the ladder immediately, not on the next page load.
+      void qc.invalidateQueries({ queryKey: READINESS_LADDER_KEY });
       setDrafts({});
       toast({ title: "Saved", description: "Stored encrypted. It's live now — no redeploy needed." });
     },
@@ -1610,6 +1633,7 @@ function ConnectionsSection() {
     },
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: CONNECTIONS_KEY });
+      void qc.invalidateQueries({ queryKey: READINESS_LADDER_KEY });
       toast({ title: r.ok ? "Verified" : "Not working yet", description: r.detail, variant: r.ok ? undefined : "destructive" });
     },
     onError: (err) => toast({ title: "Couldn't verify", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
@@ -1626,6 +1650,7 @@ function ConnectionsSection() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: CONNECTIONS_KEY });
       void qc.invalidateQueries({ queryKey: STEP_AWAY_KEY });
+      void qc.invalidateQueries({ queryKey: READINESS_LADDER_KEY });
       toast({ title: "Disconnected", description: "Values entered here are revoked. Server-side secrets (if set) govern again." });
     },
     onError: (err) => toast({ title: "Couldn't disconnect", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),

@@ -1,6 +1,10 @@
 import { db } from "../db";
 import { deals, properties, notes, payments, parcelSnapshots, marketMetrics } from "@shared/schema";
 import { eq, and, desc, gte } from "drizzle-orm";
+import {
+  calculateFlipAnalysis,
+  calculateRentalAnalysis,
+} from "./flipUnderwriting";
 
 export interface UnderwritingScenario {
   name: "base" | "bull" | "bear";
@@ -282,29 +286,39 @@ export class DealUnderwritingService {
 
   /**
    * ARV analysis for fix & flip properties.
-   * Uses 70% rule: MAO = ARV × 0.70 − estimated repair cost.
+   * Uses the n% rule (classic 70): MAO = ARV × n% − estimated repair cost.
+   *
+   * The implementation MOVED to server/services/flipUnderwriting.ts (a
+   * db-free module) when the flip MAO chain was wired to
+   * /api/flip-analyzer/* — it had zero routes and zero call sites until then.
+   * This method stays as a thin delegate so the service's public surface is
+   * unchanged; new call sites should import the function directly.
    */
-  calculateFlipAnalysis(afterRepairValue: number, estimatedRepairCost: number, purchasePrice: number): {
+  calculateFlipAnalysis(
+    afterRepairValue: number,
+    estimatedRepairCost: number,
+    purchasePrice: number,
+    rulePct: number = 70,
+    sellingCostPct: number = 7,
+  ): {
     mao: number;
     profitProjection: number;
     roi: number;
     isGoodDeal: boolean;
   } {
-    const mao = afterRepairValue * 0.70 - estimatedRepairCost;
-    const totalInvested = purchasePrice + estimatedRepairCost;
-    const profitProjection = afterRepairValue * 0.93 - totalInvested; // 7% selling costs
-    const roi = totalInvested > 0 ? (profitProjection / totalInvested) * 100 : 0;
-
-    return {
-      mao: Math.round(mao),
-      profitProjection: Math.round(profitProjection),
-      roi: Math.round(roi * 10) / 10,
-      isGoodDeal: purchasePrice <= mao && profitProjection > 0,
-    };
+    return calculateFlipAnalysis(
+      afterRepairValue,
+      estimatedRepairCost,
+      purchasePrice,
+      rulePct,
+      sellingCostPct,
+    );
   }
 
   /**
    * Cash-on-cash and cap rate analysis for buy & hold (rental) properties.
+   * Implementation moved to flipUnderwriting.ts — see the note above.
+   * Prefer `computeRentalReturns`, which labels the 40% expense assumption.
    */
   calculateRentalAnalysis(
     purchasePrice: number,
@@ -317,22 +331,7 @@ export class DealUnderwritingService {
     monthlyCashFlow: number;
     annualNOI: number;
   } {
-    const annualRent = monthlyRent * 12;
-    // Estimate 40% expenses if not provided (taxes, insurance, maintenance, vacancy)
-    const annualExpenses = monthlyExpenses > 0 ? monthlyExpenses * 12 : annualRent * 0.4;
-    const annualNOI = annualRent - annualExpenses;
-    const monthlyCashFlow = annualNOI / 12;
-    const capRate = purchasePrice > 0 ? (annualNOI / purchasePrice) * 100 : 0;
-    const cashOnCashReturn = capRate; // Simplified — no leverage
-    const grossRentMultiplier = monthlyRent > 0 ? purchasePrice / annualRent : 0;
-
-    return {
-      cashOnCashReturn: Math.round(cashOnCashReturn * 10) / 10,
-      capRate: Math.round(capRate * 10) / 10,
-      grossRentMultiplier: Math.round(grossRentMultiplier * 10) / 10,
-      monthlyCashFlow: Math.round(monthlyCashFlow),
-      annualNOI: Math.round(annualNOI),
-    };
+    return calculateRentalAnalysis(purchasePrice, monthlyRent, monthlyExpenses);
   }
 }
 

@@ -174,7 +174,6 @@ const BookkeepingPage = React.lazy(() => import("@/pages/bookkeeping"));
 const DepreciationCalculatorPage = React.lazy(() => import("@/pages/depreciation-calculator"));
 const ClosingCostsPage = React.lazy(() => import("@/pages/closing-costs"));
 const PropertyTaxPage = React.lazy(() => import("@/pages/property-tax"));
-const FeeDashboardPage = React.lazy(() => import("@/pages/fee-dashboard"));
 
 // AI / Intelligence
 const AVMPage = React.lazy(() => import("@/pages/avm"));
@@ -452,6 +451,11 @@ const LotPricingPage = React.lazy(() => import("@/pages/lot-pricing"));
 const CountyTimelinesPage = React.lazy(() => import("@/pages/county-timelines"));
 const CcrTemplatesPage = React.lazy(() => import("@/pages/ccr-templates"));
 const RehabsPage = React.lazy(() => import("@/pages/rehabs"));
+// Fix-and-flip: the comps → ARV → MAO → draft-offer chain
+// (server/routes-flip-analyzer.ts shipped mounted with no client surface).
+// A child surface behind the Deals door — reached from /rehabs and by deep
+// link. NOT a new top-level nav entry; the five doors are untouched.
+const FlipAnalyzerPage = React.lazy(() => import("@/pages/flip-analyzer"));
 const RehabDetailPage = React.lazy(() => import("@/pages/rehab-detail"));
 const ContractorsPage = React.lazy(() => import("@/pages/contractors"));
 const Contractor1099NecPage = React.lazy(() => import("@/pages/contractor-1099-nec"));
@@ -858,6 +862,14 @@ function Router() {
       </Route>
       <Route path="/rehabs/:id">
         {() => <ProtectedRoute component={RehabDetailPage} />}
+      </Route>
+      {/* Flip analyzer — MAO from a real ARV. `/flip-analyzer/:propertyId`
+          deep-links a subject; the bare path opens with a property picker. */}
+      <Route path="/flip-analyzer">
+        {() => <ProtectedRoute component={FlipAnalyzerPage} />}
+      </Route>
+      <Route path="/flip-analyzer/:propertyId">
+        {() => <ProtectedRoute component={FlipAnalyzerPage} />}
       </Route>
       <Route path="/contractors">
         {() => <ProtectedRoute component={ContractorsPage} />}
@@ -1594,9 +1606,11 @@ function Router() {
       <Route path="/property-tax">
         {() => <ProtectedRoute component={PropertyTaxPage} />}
       </Route>
-      <Route path="/fee-dashboard">
-        {() => <FounderProtectedRoute component={FeeDashboardPage} />}
-      </Route>
+      {/* /fee-dashboard deleted 2026-07-29 (founder ruling "be the rail, not the
+          provider"): a platform escrow/payout console — settlements, escrow
+          release, manual payout trigger — over stub endpoints that returned
+          zeros and fabricated ids. AcreOS never holds customer money, so the
+          surface has nothing honest to show. */}
 
       {/* AI / Intelligence — additional */}
       <Route path="/avm-bulk">

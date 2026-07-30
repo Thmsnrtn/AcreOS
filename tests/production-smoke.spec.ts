@@ -90,7 +90,8 @@ const ALL_ROUTES = [
   "/depreciation",
   "/closing-costs",
   "/property-tax",
-  "/fee-dashboard",
+  // "/fee-dashboard" removed 2026-07-29: platform escrow/payout console deleted
+  // (founder ruling "be the rail, not the provider").
   "/freedom-meter",
 
   // Campaigns & Comms

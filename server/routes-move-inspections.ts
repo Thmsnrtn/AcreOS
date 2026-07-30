@@ -33,6 +33,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { startDepositClock } from "./services/rental/depositClock";
 
 const checklistItemSchema = z.object({
   area: z.string(),
@@ -210,8 +211,43 @@ export function registerMoveInspectionRoutes(app: Express): void {
         updatedAt: new Date(),
       }).where(eq(moveInspections.id, insp.id));
 
-      logger.info("[BH-4] deposit reconciled", { orgId, userId, inspectionId: insp.id, totalDeductions, refundCents });
-      return res.json({ deposit: updatedDeposit, refundCents, totalDeductions });
+      // THE statutory clock trigger. `security_deposits.statutory_deadline` had
+      // no writer anywhere in the repo, so the deadline that carries the largest
+      // landlord/tenant exposure there is (forfeiture of the right to withhold
+      // ANYTHING, plus statutory damages) rendered blank — which reads to an
+      // operator as "no clock is running". Reconciling a move-out inspection is
+      // the moment we know both the move-out date AND the deduction posture
+      // (several states run a shorter window when nothing is withheld), so the
+      // clock is set here, from the inspection's own date.
+      //
+      // Awaited, not fire-and-forget: the response reports the deadline, and a
+      // deadline the caller is told about must actually be persisted. Where the
+      // jurisdiction has no encoded rule the deadline stays NULL and
+      // `unknownReason` carries the sentence to render — never a guessed 30 days.
+      const clock = await startDepositClock({
+        organizationId: orgId,
+        leaseId: insp.leaseId,
+        moveOutDate: String(insp.inspectionDate).slice(0, 10),
+        trigger: "reconciliation",
+        userId,
+      });
+
+      logger.info("[BH-4] deposit reconciled", {
+        orgId,
+        userId,
+        inspectionId: insp.id,
+        totalDeductions,
+        refundCents,
+        statutoryDeadline: clock.deadline?.deadlineDate ?? null,
+        deadlineKnown: clock.deadline?.known ?? null,
+      });
+      return res.json({
+        deposit: updatedDeposit,
+        refundCents,
+        totalDeductions,
+        statutoryDeadline: clock.deadline,
+        countdown: clock.countdown,
+      });
     } catch (err) {
       return Errors.internal(res, err);
     }

@@ -6,7 +6,6 @@
  * - E-Signing (send, status, webhook, cancel, remind)
  * - Automated Due Diligence Engine (run, get results)
  * - Meta Ads (Lead Ad webhook, campaign creation, stats)
- * - Actum Processing (profile creation, batch payment run)
  * - Listing Syndication (syndicate, update, take down)
  * - Bookkeeping (annual report, 1099s, P&L, QuickBooks)
  * - VA Management (tasks CRUD, SOPs, standup digest, metrics)
@@ -23,7 +22,6 @@ import { addMonths } from "./utils/dateUtils";
 import * as propertyTaxService from "./services/propertyTaxService";
 import { runAutoDueDiligence } from "./services/dueDiligenceEngine";
 import * as metaAdsService from "./services/metaAdsService";
-import * as actumProcessing from "./services/actumProcessing";
 import * as listingSyndication from "./services/listingSyndication";
 import * as bookkeeping from "./services/bookkeeping";
 import * as vaManagement from "./services/vaManagement";
@@ -344,35 +342,27 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   });
 
   // ============================================
-  // ACTUM PROCESSING (ACH)
-  // ============================================
-
-  app.post("/api/actum/create-profile", ...auth, async (req: Request, res: Response) => {
-    try {
-      const { firstName, lastName, email, routingNumber, accountNumber, accountType, bankName } = req.body;
-      const result = await actumProcessing.createActumPaymentProfile({
-        firstName, lastName, email, routingNumber, accountNumber, accountType, bankName
-      });
-      res.json(result);
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  app.post("/api/actum/batch-payment-run", ...auth, async (req: Request, res: Response) => {
-    try {
-      const org = req.organization;
-      const result = await actumProcessing.runMonthlyActumPaymentBatch(org.id);
-      res.json(result);
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  app.get("/api/actum/ach-return-codes", ...auth, (req: Request, res: Response) => {
-    res.json(actumProcessing.ACH_RETURN_CODES);
-  });
-
+  // ACTUM PROCESSING (ACH) — DELETED 2026-07-29
+  // --------------------------------------------
+  // Founder ruling "be the rail, not the provider". These three endpoints made
+  // AcreOS the merchant of record for every customer's borrower debits: one
+  // platform ACTUM_MERCHANT_ID for all orgs, so borrower money would have moved
+  // on AcreOS's own merchant account. Deleted:
+  //   POST /api/actum/create-profile      — accepted RAW bank routing +
+  //                                         account numbers in the request
+  //                                         body. AcreOS must never receive
+  //                                         them; the live rail collects bank
+  //                                         details directly into the lender's
+  //                                         own Stripe account and stores
+  //                                         last4 only (achMandateSetup.ts).
+  //   POST /api/actum/batch-payment-run   — called a runner that had already
+  //                                         been retired to a refusal.
+  //   GET  /api/actum/ach-return-codes    — read-only taxonomy dump, zero
+  //                                         callers; the taxonomy is consumed
+  //                                         server-side by achAutopay.ts.
+  // What survives in server/services/actumProcessing.ts is ONLY the NACHA
+  // R01–R29 return-code taxonomy, which is rail-agnostic and is what the live
+  // Stripe us_bank_account autopay path classifies returns against.
   // ============================================
   // LISTING SYNDICATION
   // ============================================

@@ -545,6 +545,23 @@ app.use("/mcp", mcpLimiter);
       logger.warn(`[settings] boot-seed failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
     }
   })();
+
+  // Tax-sale vertical (Wave D) — seed tax_jurisdiction_rules for all 51
+  // jurisdictions from the in-repo reference module. The table shipped with
+  // ~21 hand-written INSERTs in scripts/migrate.mjs and no write surface,
+  // while shared/regulatory/taxLienStateRules.ts (50 states + DC) had zero
+  // call sites. ON CONFLICT DO NOTHING, so a hand-curated or attorney-reviewed
+  // row always wins; every derived row carries attorney_reviewed_at = NULL and
+  // the seeder has no code path that can set a review stamp. Idempotent and
+  // non-fatal.
+  void (async () => {
+    try {
+      const { seedTaxJurisdictionRules } = await import("./services/taxJurisdictionRuleSeeder");
+      await seedTaxJurisdictionRules();
+    } catch (err) {
+      logger.warn(`[taxRules] boot-seed failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  })();
   
   // ── MCP HTTP endpoint (stateless StreamableHTTP transport) ───────────────
   // Accessible at POST /mcp — Claude Desktop or any MCP client can connect here.

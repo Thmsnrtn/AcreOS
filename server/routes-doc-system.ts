@@ -16,6 +16,25 @@ import {
   buildDisclosureMissingPayload,
 } from "./services/disclosureRegistry";
 import { idempotencyMiddleware } from "./middleware/idempotency";
+import {
+  parseSignerRequest,
+  SignerRequestError,
+  type ParsedSigner,
+} from "./services/esign/signerRequest";
+
+/**
+ * Answer a malformed signer list with a named 400. Lives at module scope, away
+ * from the signing-link minting, so the only branch over client-supplied data
+ * sits in a function that has nothing sensitive to guard. Anything that is not
+ * a SignerRequestError is genuinely unexpected and is rethrown to the route's
+ * own catch, which answers 500 and logs.
+ */
+function refuseSignerRequest(res: Parameters<typeof Errors.badRequest>[0], err: unknown) {
+  if (err instanceof SignerRequestError) {
+    return Errors.badRequest(res, err.refusal.message, err.refusal);
+  }
+  throw err;
+}
 
 /**
  * Document statuses where the content is considered legally frozen.
@@ -1166,12 +1185,6 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Document has already been sent or signed");
       }
 
-      const { signers } = req.body;
-
-      if (!signers || !Array.isArray(signers) || signers.length === 0) {
-        return Errors.badRequest(res, "At least one signer is required");
-      }
-
       // -----------------------------------------------------------------
       // Pre-dispatch state disclosure gate. Returns HTTP 422 with a
       // `DISCLOSURE_MISSING` payload the client UI uses to prompt the
@@ -1207,15 +1220,57 @@ export function registerDocSystemRoutes(app: Express): void {
         }
       }
 
-      // Format signers with IDs
-      const formattedSigners = signers.map((signer: any, index: number) => ({
-        id: `signer-${Date.now()}-${index}`,
+      // -----------------------------------------------------------------
+      // Wave D2 — reviewed-content seal (contract chain only).
+      //
+      // Contracts assembled by the accepted-offer → contract chain carry the
+      // sha256 of the exact body a human reviewed and confirmed
+      // (services/contracts/contractAssembly.ts). Re-verify it here, at the
+      // point of dispatch, so "what goes out is exactly what a person
+      // reviewed" is checkable rather than assumed. Documents without a seal
+      // (every pre-existing template flow) are untouched — verifyChainReviewSeal
+      // returns `sealed: false` and this block is a no-op.
+      // -----------------------------------------------------------------
+      {
+        const { verifyChainReviewSeal } = await import("./services/contracts/contractAssembly");
+        const verdict = verifyChainReviewSeal(document.variables, document.content);
+        if (verdict.sealed && !verdict.ok) {
+          logger.warn("Refused signature dispatch — reviewed-content seal broken", {
+            documentId: id,
+            organizationId: org.id,
+          });
+          return Errors.validationFailed(res, verdict.payload);
+        }
+      }
+
+      // -----------------------------------------------------------------
+      // ONLY NOW is a client-supplied field read (CodeQL HIGH, PR #259 —
+      // "user-controlled bypass of security check").
+      //
+      // Everything above this line is a SERVER-side gate: the session, the
+      // org-scoped document load, the draft-status check, the state-disclosure
+      // registry, and the reviewed-content seal. The body is parsed last, and
+      // its refusals live in services/esign/signerRequest.ts — a pure module
+      // that cannot reach the token minting below — so no condition over a
+      // caller-supplied value stands in front of a sensitive action.
+      // `signerRequestOrdering.test.ts` pins this order.
+      // -----------------------------------------------------------------
+      let parsedSigners: ParsedSigner[];
+      try {
+        parsedSigners = parseSignerRequest(req.body?.signers);
+      } catch (err) {
+        return refuseSignerRequest(res, err);
+      }
+
+      const issuedAt = Date.now();
+      const formattedSigners = parsedSigners.map((signer, index) => ({
+        id: `signer-${issuedAt}-${index}`,
         name: signer.name,
         email: signer.email,
-        role: signer.role || "signer",
+        role: signer.role,
         order: index + 1,
       }));
-      
+
       const updated = await storage.updateGeneratedDocument(id, {
         status: "pending_signature",
         esignProvider: "native",
@@ -1275,13 +1330,23 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.badRequest(res, "Document has already been sent or signed");
       }
 
-      const { signers } = req.body;
+      // Legacy path: no client caller remains (documents.tsx routes through
+      // RequestSignaturesDialog → /request-signature), and it mints no links.
+      // It still WRITES the list to a legal record, so it gets the same bounded
+      // parse — with the empty list it has always accepted left accepted.
+      let legacySigners: ParsedSigner[];
+      try {
+        legacySigners = parseSignerRequest(req.body?.signers, { allowEmpty: true });
+      } catch (err) {
+        return refuseSignerRequest(res, err);
+      }
+      const legacyIssuedAt = Date.now();
 
       const updated = await storage.updateGeneratedDocument(id, {
         status: "pending_signature",
         esignProvider: "native",
         esignStatus: "pending",
-        signers: signers || [],
+        signers: legacySigners.map((s, index) => ({ ...s, id: `signer-${legacyIssuedAt}-${index}`, order: index + 1 })),
         sentAt: new Date(),
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       });
