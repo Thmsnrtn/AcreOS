@@ -21,12 +21,21 @@
  *     state: "TX",
  *     monthlyOpExpenseEstimateCents?: number,
  *     vacancyRate?: number,
+ *     unitKind?: "unit" | "pad" | "suite",   // default for rows that omit it
  *     units: [
  *       { unit: "1A", tenantFirst: "Maria", tenantLast: "Lopez",
- *         email?, phone?, rentCents: 140000, leaseEnd: "2026-08-31" },
+ *         email?, phone?, rentCents: 140000, leaseEnd: "2026-08-31",
+ *         kind?: "unit" | "pad" | "suite" },
  *       ...
  *     ]
  *   }
+ *
+ * RE-IMPORT SEMANTICS — see the block comment above the tenancy guard in the
+ * import handler. The short version: units and tenancies are idempotent
+ * (re-uploading the same roll adds neither), PEOPLE are not de-duplicated
+ * because there is no natural key for a human, and every row that produces
+ * nothing is COUNTED and returned with a reason. The endpoint never reports a
+ * success whose numbers do not add up to the payload it was handed.
  */
 
 import type { Express, Response } from "express";
@@ -40,6 +49,7 @@ import {
   rentalUnits,
   rentCharges,
   properties,
+  RENTAL_UNIT_KINDS,
 } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
@@ -47,9 +57,16 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { normalizeUnitLabel } from "./routes-rentals";
 
 const unitSchema = z.object({
-  unit: z.string().min(1).max(64),
+  // `.trim()` is load-bearing, not tidiness. Migration 0219 backfilled
+  // `rental_units.label` as TRIM(unit_label); a raw " 3B" here is a DIFFERENT
+  // label from the backfilled "3B", so `rental_units_org_property_label_uk`
+  // waves it through and the building ends up with two 3Bs — both of which sit
+  // in the occupancy denominator. Every write site trims through
+  // `normalizeUnitLabel` (server/routes-rentals.ts).
+  unit: z.string().trim().min(1).max(64),
   tenantFirst: z.string().optional(),
   tenantLast: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
@@ -59,14 +76,32 @@ const unitSchema = z.object({
   leaseStart: z.string().optional(),
   leaseEnd: z.string().optional(),
   isVacant: z.boolean().default(false),
+  // unit | pad | suite. A mobile-home park's rentable slot is a PAD (the
+  // tenant owns the home and rents the ground); a strip centre's is a SUITE.
+  // Nothing is inferred from a blank — an omitted kind falls back to the
+  // roll-level `unitKind`, and that defaults to 'unit'. Guessing 'pad' from,
+  // say, the property's structure_type would put a fact in the record that
+  // nobody asserted.
+  kind: z.enum(RENTAL_UNIT_KINDS).optional(),
 });
 
 const rentRollSchema = z.object({
   state: z.string().length(2),
   monthlyOpExpenseEstimateCents: z.coerce.number().int().nonnegative().optional(),
   vacancyRate: z.coerce.number().min(0).max(1).optional(),  // 0.05 = 5%
+  /** Applies to every row that does not carry its own `kind`. */
+  unitKind: z.enum(RENTAL_UNIT_KINDS).default("unit"),
   units: z.array(unitSchema).min(1).max(200),
 });
+
+/** Why a payload row produced no tenancy. Returned to the caller, never swallowed. */
+type SkippedRowReason = "unit_unresolved" | "no_tenant_identity";
+
+interface SkippedRow {
+  unit: string;
+  reason: SkippedRowReason;
+  message: string;
+}
 
 interface NoiSnapshot {
   unitCount: number;
@@ -152,9 +187,15 @@ export function registerRentRollImportRoutes(app: Express): void {
         let existingUnits = 0;
         let createdTenants = 0;
         let createdLeases = 0;
+        let existingLeases = 0;
         let createdCharges = 0;
+        let vacantRows = 0;
+        const skippedRows: SkippedRow[] = [];
 
         for (const u of parsed.data.units) {
+          // ONE normalisation, shared with the lease/unit writers. See
+          // `normalizeUnitLabel` in server/routes-rentals.ts.
+          const label = normalizeUnitLabel(u.unit);
           // The importer no longer silently drops rows. It used to open this
           // loop with `if (u.isVacant) continue;`, so a vacant unit left NO
           // record anywhere — the seller hands over the building's complete
@@ -169,7 +210,10 @@ export function registerRentRollImportRoutes(app: Express): void {
           const insertedUnits = await tx.insert(rentalUnits).values({
             organizationId: orgId,
             propertyId: propId,
-            label: u.unit,
+            label,
+            // Set on CREATE only — a conflict below leaves the operator's own
+            // kind alone rather than resetting a park's pads to 'unit'.
+            kind: u.kind ?? parsed.data.unitKind,
             status: "active",
             // Asking rent, ONLY from vacant rows. On an occupied row
             // `rentCents` is what the sitting tenant pays — in-place rent is
@@ -196,13 +240,24 @@ export function registerRentRollImportRoutes(app: Express): void {
               .where(and(
                 eq(rentalUnits.organizationId, orgId),
                 eq(rentalUnits.propertyId, propId),
-                eq(rentalUnits.label, u.unit),
+                eq(rentalUnits.label, label),
               ));
             if (!existing) {
               // Only reachable if the conflict came from something other than
-              // the (org, property, label) index. Say so instead of guessing.
+              // the (org, property, label) index. This used to `continue` on a
+              // logger.warn alone: for an OCCUPIED row that dropped the tenant,
+              // the lease AND the charge, while every returned counter stayed
+              // silent — the API reported success over numbers that did not add
+              // up to the payload. Count it and hand it back with a reason.
               logger.warn("[BH-5] rent roll: unit insert conflicted but no matching unit found", {
-                orgId, propId, label: u.unit,
+                orgId, propId, label,
+              });
+              skippedRows.push({
+                unit: label,
+                reason: "unit_unresolved",
+                message:
+                  "The unit row could not be created or found, so no tenant, lease or rent charge was written for this line. " +
+                  "Nothing about it was imported — re-upload this row once the conflict is resolved.",
               });
               continue;
             }
@@ -210,8 +265,68 @@ export function registerRentRollImportRoutes(app: Express): void {
             existingUnits++;
           }
 
-          if (u.isVacant) continue;                       // unit persisted above; no tenancy to create
-          if (!u.tenantFirst && !u.tenantLast) continue;  // skip rows without tenant identity
+          if (u.isVacant) {
+            // Not a skip: the unit persisted above, which is the whole point of
+            // carrying vacant lines. There is simply no tenancy to write.
+            vacantRows++;
+            continue;
+          }
+
+          if (!u.tenantFirst && !u.tenantLast) {
+            // An occupied line with nobody on it. The unit is saved, but the
+            // tenancy is NOT — say so rather than let the caller assume their
+            // occupied row became a lease.
+            skippedRows.push({
+              unit: label,
+              reason: "no_tenant_identity",
+              message:
+                "Row is marked occupied but carries no tenant first or last name, so no tenant or lease was created. " +
+                "The unit itself was saved and will show as vacant until a lease is added.",
+            });
+            continue;
+          }
+
+          // ── RE-IMPORT: what is idempotent here, and what deliberately is not.
+          //
+          // The unit insert has always been conflict-guarded. Nothing below it
+          // was, so a second upload of the same roll created a second ACTIVE
+          // lease on every unit (two active tenancies on one unit — which the
+          // occupancy LATERAL then has to de-duplicate to stay under 100%) plus
+          // a duplicate tenant per row. The endpoint called itself idempotent
+          // while doing that.
+          //
+          // DECISION: guard the TENANCY, not the person.
+          //
+          //   * A unit that already carries an active lease is left completely
+          //     alone — no tenant, no lease, no charge — and counted as
+          //     `existingLeases`. A rent roll is a snapshot of who is sitting
+          //     in the building; re-uploading the same snapshot asserts the same
+          //     tenancy, not a second one. This is the case that was corrupting
+          //     data, and it is now a no-op.
+          //
+          //   * PEOPLE are still never de-duplicated, and that is deliberate.
+          //     There is no natural key for a human: matching on name would
+          //     merge two different Maria Lopezes into one tenant record, and
+          //     matching on email would miss the majority of rent rolls, which
+          //     carry no email at all. Merging the wrong two people is a far
+          //     worse failure than a duplicate row, so we refuse to guess. The
+          //     path that reaches an insert is now the genuinely new-tenancy
+          //     path: a unit with no active lease.
+          //
+          //   * A re-import onto a unit whose lease has ENDED therefore does
+          //     create a new tenant + lease. That is correct — a new tenancy in
+          //     the same unit is a new tenancy — and the summary reports it.
+          const [activeLease] = await tx.select({ id: rentalLeases.id })
+            .from(rentalLeases)
+            .where(and(
+              eq(rentalLeases.organizationId, orgId),
+              eq(rentalLeases.unitId, unitId),
+              eq(rentalLeases.status, "active"),
+            ));
+          if (activeLease) {
+            existingLeases++;
+            continue;
+          }
 
           const [tenant] = await tx.insert(tenants).values({
             organizationId: orgId,
@@ -231,7 +346,7 @@ export function registerRentRollImportRoutes(app: Express): void {
             unitId,
             // unitLabel stays alongside unitId — it is the denormalised display
             // copy 20+ readers still use. Writers set BOTH (shared/schema/rental.ts).
-            unitLabel: u.unit,
+            unitLabel: label,
             status: "active",
             liabilityModel: "joint_and_several",
             startDate,
@@ -269,7 +384,17 @@ export function registerRentRollImportRoutes(app: Express): void {
           createdCharges++;
         }
 
-        return { createdUnits, existingUnits, createdTenants, createdLeases, createdCharges };
+        return {
+          createdUnits,
+          existingUnits,
+          createdTenants,
+          createdLeases,
+          existingLeases,
+          createdCharges,
+          vacantRows,
+          skippedRowCount: skippedRows.length,
+          skippedRows,
+        };
       });
 
       const askingCents = prop.listPrice
@@ -279,8 +404,25 @@ export function registerRentRollImportRoutes(app: Express): void {
           : null;
       const noi = computeNoi(parsed.data, askingCents);
 
-      logger.info("[BH-5] rent roll imported", { orgId, userId, propId, ...summary });
-      return res.status(201).json({ ...summary, noi });
+      logger.info("[BH-5] rent roll imported", {
+        orgId, userId, propId,
+        rowsSubmitted: parsed.data.units.length,
+        createdUnits: summary.createdUnits,
+        existingUnits: summary.existingUnits,
+        createdTenants: summary.createdTenants,
+        createdLeases: summary.createdLeases,
+        existingLeases: summary.existingLeases,
+        createdCharges: summary.createdCharges,
+        vacantRows: summary.vacantRows,
+        skippedRowCount: summary.skippedRowCount,
+      });
+      // `rowsSubmitted` is returned so the caller can check the arithmetic
+      // itself: units created + already-present + skipped must equal it.
+      return res.status(201).json({
+        ...summary,
+        rowsSubmitted: parsed.data.units.length,
+        noi,
+      });
     } catch (err) {
       return Errors.internal(res, err);
     }

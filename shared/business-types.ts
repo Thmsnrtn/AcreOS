@@ -410,16 +410,32 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "multifamily",
     label: "Multifamily",
     shortDescription: "Small + mid apartment buildings.",
-    // 2026-07-29 (founder ruling #11, wave V3): stays roadmap — the honesty
-    // bar for beta is not met. What EXISTS today (V1 widened the landlord
-    // family): the full Rentals stack — the rental schema even models
-    // multifamily explicitly (per-unit liability, unitLabel, 4+ unit
-    // late-fee caps) — plus the landlord Today lede + cluster and the real
-    // landlord dashboard. What's MISSING for beta: a first-class
-    // unit/building inventory model (units exist only as a free-text
-    // unitLabel per lease), building-level rollups (occupancy / NOI per
-    // building), and T12/underwriting surfaces multifamily operators need
-    // at scale.
+    // 2026-07-31 (migration 0219 — units): STILL roadmap, but one of the
+    // three named gaps has genuinely closed, so the prose moves with it.
+    // Leaving a closed gap asserted here would make this registry the exact
+    // kind of lie the honesty gate exists to prevent.
+    //
+    // What EXISTS today (V1 widened the landlord family): the full Rentals
+    // stack — per-unit liability, 4+ unit late-fee caps — plus the landlord
+    // Today lede + cluster and the real landlord dashboard. AND, as of 0219,
+    // a first-class unit inventory: `rental_units` (shared/schema/rental.ts)
+    // is one row per rentable slot with its own kind (unit/pad/suite),
+    // bedrooms, bathrooms, square feet, asking rent and status
+    // (active/offline/retired), so a unit exists whether or not anyone has
+    // ever leased it. Occupancy is now computed over that table
+    // (`computeOccupancySnapshot`, GET /api/rent-roll/occupancy — a vacancy
+    // is finally visible, and an unmeasurable ratio says so instead of
+    // reporting 100%); the rent-roll importer writes vacant rows instead of
+    // dropping them; and the §92.019 unit count is EXACT where units are
+    // modelled instead of a floor (`unitCountForProperty`,
+    // server/routes-rent-ledger.ts). There is deliberately no separate
+    // buildings table — `properties` IS the building.
+    //
+    // What's still MISSING for beta — the two gaps that genuinely stand:
+    // building-level rollups (the occupancy snapshot is ORG-WIDE, with no
+    // per-building breakdown, and there is no NOI-per-building surface at
+    // all), and the T-12 / underwriting workspace multifamily operators need
+    // at scale. Two of three is not beta.
     maturity: "roadmap",
     // All four landlord templates genuinely apply — multifamily IS
     // long-term rental operations at unit scale (term leases that renew,
@@ -439,15 +455,26 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "mobile_home",
     label: "Mobile home / park",
     shortDescription: "Mobile home park operators + flippers.",
-    // 2026-07-29 (founder ruling #11, wave V3): stays roadmap — the honesty
-    // bar for beta is not met. What EXISTS today (V1 widened the landlord
-    // family): the Rentals stack works for lot leases (a lot lease is a
-    // term lease with monthly rent, renewals, deposits, and maintenance —
-    // the mechanics the stack models), plus the landlord Today lede +
-    // cluster and the real landlord dashboard. What's MISSING for beta:
-    // everything park-specific — no lot/pad inventory model, no
-    // home-as-chattel handling (titles, home-vs-lot rent split), no
-    // utilities pass-through billing.
+    // 2026-07-31 (migration 0219 — units): stays roadmap, and stays roadmap
+    // for the SAME park-specific reasons. What EXISTS today (V1 widened the
+    // landlord family): the Rentals stack works for lot leases (a lot lease
+    // is a term lease with monthly rent, renewals, deposits, and maintenance
+    // — the mechanics the stack models), plus the landlord Today lede +
+    // cluster and the real landlord dashboard.
+    //
+    // 0219's `rental_units` carries a `kind` discriminator whose values
+    // include 'pad' (shared/schema/rental.ts RENTAL_UNIT_KINDS), and POST
+    // /api/rentals/properties/:propertyId/units accepts it, so the MODEL can
+    // hold a pad. That is all it is: as of this writing nothing in the
+    // product ever writes 'pad' — the 0219 backfill and the rent-roll
+    // importer both take the 'unit' default, and there is no park surface, no
+    // pad-aware UI, and no import path that would produce one. A column that
+    // can hold a value is not an inventory an operator has. The gap stays
+    // OPEN and the persona voice must keep saying so.
+    //
+    // What's MISSING for beta: everything park-specific — no populated
+    // lot/pad inventory, no home-as-chattel handling (titles, home-vs-lot
+    // rent split), no utilities pass-through billing.
     maturity: "roadmap",
     // All four landlord templates genuinely apply to lot-lease operations
     // (lot leases renew, lot rent hits the ledger, park infrastructure

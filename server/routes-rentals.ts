@@ -20,6 +20,16 @@
  *   POST   /api/leases/:id/addendums               — append addendum
  *   POST   /api/leases/:id/renew                   — create renewal lease
  *                                                     referencing original
+ *
+ * Units (BH-9) — the rentable slot as a row. Occupancy is computed from
+ * `rental_units`, so a unit that no one has ever leased is exactly the thing
+ * the product must be able to model. These live on the EXISTING rentals
+ * router (no new top-level nav — that is a standing hard-stop):
+ *
+ *   GET    /api/rentals/properties/:propertyId/units  — list
+ *   POST   /api/rentals/properties/:propertyId/units  — create
+ *   PATCH  /api/rentals/units/:id                     — edit
+ *   DELETE /api/rentals/units/:id                     — refuses while leased
  */
 
 import type { Express, Response } from "express";
@@ -29,14 +39,18 @@ import { db } from "./db";
 import {
   tenants,
   rentalLeases,
+  rentalUnits,
   leaseTenants,
   leaseAddendums,
   TENANT_STATUSES,
   LEASE_STATUSES,
   LEASE_LIABILITY_MODELS,
   LEASE_ADDENDUM_KINDS,
+  RENTAL_UNIT_KINDS,
+  RENTAL_UNIT_STATUSES,
   properties,
 } from "@shared/schema";
+import type { RentalUnitKind } from "@shared/schema";
 import { computeNoticeWindow } from "@shared/regulatory/leaseNoticeRules";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
@@ -306,6 +320,140 @@ function toCount(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
+
+// ----------------------------------------------------------------------------
+// Unit identity — one normalisation, used by EVERY writer.
+//
+// Migration 0219 backfilled `rental_units` with
+//
+//   CASE WHEN COALESCE(NULLIF(TRIM(unit_label), ''), '') = ''
+//        THEN 'Whole property' ELSE TRIM(unit_label) END
+//
+// and `rental_units_org_property_label_uk` is unique on (org, property, label).
+// A writer that skips the TRIM does not violate that index — it DEFEATS it:
+// " 3B" and "3B" are two different labels, so a rent-roll upload lands a second
+// unit beside the backfilled one and BOTH sit in the occupancy denominator, on
+// a building that only ever had one 3B. Every write site below goes through
+// `normalizeUnitLabel`, so the index can actually do its job.
+// ----------------------------------------------------------------------------
+
+/**
+ * The label migration 0219 gives a tenancy with no unit label (the SFR case),
+ * so occupancy math never has to fork on null. Change this and the backfill
+ * disagrees with every subsequent write.
+ */
+export const WHOLE_PROPERTY_UNIT_LABEL = "Whole property";
+
+/**
+ * A raw operator string → the `rental_units.label` it identifies.
+ * Blank/whitespace-only/absent collapses to WHOLE_PROPERTY_UNIT_LABEL, exactly
+ * as the 0219 CASE does; anything else is trimmed and otherwise left alone
+ * (the label is the operator's own vocabulary — it has to match the lease, the
+ * mailbox and the work order, so we never case-fold or re-punctuate it).
+ */
+export function normalizeUnitLabel(raw: string | null | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  return trimmed === "" ? WHOLE_PROPERTY_UNIT_LABEL : trimmed;
+}
+
+/**
+ * The DISPLAY copy written to `rental_leases.unit_label` — trimmed, but NULL
+ * when the operator gave nothing. Deliberately NOT the same as
+ * `normalizeUnitLabel`: the lease joins to the 'Whole property' unit via
+ * `unit_id`, and stamping that phrase into the human-facing string would
+ * invent a label the landlord never used. Matches the 0219 post-state, which
+ * left `unit_label` untouched.
+ */
+export function trimLeaseUnitLabel(raw: string | null | undefined): string | null {
+  const trimmed = (raw ?? "").trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * Why a unit may not be deleted, or null when it may be.
+ *
+ * A unit row is the thing a tenancy hangs from. `rental_leases.unit_id` is
+ * ON DELETE SET NULL, so deleting a leased unit would not error — it would
+ * quietly unlink a LIVE tenancy, and the very next occupancy read would show
+ * the tenant's home as vacant. Refuse instead, and name the count so the
+ * operator knows how much is in the way.
+ *
+ * Pure so the refusal itself is testable without a database.
+ */
+export function unitDeletionRefusal(label: string, leaseCount: number): string | null {
+  const n = Math.max(0, Math.trunc(leaseCount));
+  if (n === 0) return null;
+  return (
+    `Unit "${label}" still has ${n} lease${n === 1 ? "" : "s"} pointing at it. ` +
+    `Deleting it would unlink ${n === 1 ? "that tenancy" : "those tenancies"} without ending ` +
+    `${n === 1 ? "it" : "them"}, and the unit would read as vacant while somebody lives there. ` +
+    `Move ${n === 1 ? "that lease" : "those leases"} to another unit, or set this unit's status to ` +
+    `'retired' to take it out of the occupancy denominator while keeping its history.`
+  );
+}
+
+/**
+ * The transaction handle drizzle hands `db.transaction`. Derived rather than
+ * hand-typed so it cannot drift from the driver, and so no writer below needs
+ * an `as any` hop.
+ */
+type RentalTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Find-or-create the `rental_units` row for (org, property, label) and return
+ * its id. Returns null only if the unique-index conflict came from something
+ * other than that index — the caller decides whether that is fatal (lease
+ * creation) or a counted skip (bulk import); nobody may treat it as success.
+ *
+ * `kind` is applied on CREATE only. A conflict means the operator already has
+ * a row here and their beds/baths/market rent/kind/status must not be clobbered
+ * by an import's defaults.
+ */
+async function findOrCreateUnitId(
+  tx: RentalTx,
+  args: { orgId: number; propertyId: number; rawLabel: string | null | undefined; kind?: RentalUnitKind },
+): Promise<string | null> {
+  const label = normalizeUnitLabel(args.rawLabel);
+
+  const inserted = await tx.insert(rentalUnits).values({
+    organizationId: args.orgId,
+    propertyId: args.propertyId,
+    label,
+    kind: args.kind ?? "unit",
+    status: "active",
+  }).onConflictDoNothing().returning({ id: rentalUnits.id });
+  if (inserted.length > 0) return inserted[0].id;
+
+  const [existing] = await tx.select({ id: rentalUnits.id })
+    .from(rentalUnits)
+    .where(and(
+      eq(rentalUnits.organizationId, args.orgId),
+      eq(rentalUnits.propertyId, args.propertyId),
+      eq(rentalUnits.label, label),
+    ));
+  return existing?.id ?? null;
+}
+
+// ----------------------------------------------------------------------------
+// Unit validation
+// ----------------------------------------------------------------------------
+
+const unitCreateSchema = z.object({
+  label: z.string().trim().min(1).max(64),
+  // Blank infers nothing. A mobile-home park's rentable slot is a PAD and a
+  // strip centre's is a SUITE, but only the operator (or an import that was
+  // told) knows which — guessing from, say, the property's structure_type
+  // would put a fabricated fact in the record.
+  kind: z.enum(RENTAL_UNIT_KINDS).default("unit"),
+  bedrooms: z.coerce.number().int().min(0).max(99).optional(),
+  bathrooms: z.coerce.number().min(0).max(99).optional(),
+  squareFeet: z.coerce.number().int().min(0).max(10_000_000).optional(),
+  marketRentCents: z.coerce.number().int().nonnegative().optional(),
+  status: z.enum(RENTAL_UNIT_STATUSES).default("active"),
+  notes: z.string().max(2000).optional(),
+});
+
+const unitUpdateSchema = unitCreateSchema.partial();
 
 // ----------------------------------------------------------------------------
 // Routes
@@ -713,10 +861,36 @@ export function registerRentalRoutes(app: Express): void {
       }
 
       const created = await db.transaction(async (tx) => {
+        // The lease is FOR a rentable slot, and until this existed the UI path
+        // modelled no slot at all: every lease entered through /leases wrote
+        // `unit_label` and nothing else, so `rental_units` stayed empty for the
+        // whole org and occupancy answered `measurable: false,
+        // reason: "no_units_modelled"` forever. Find-or-create the unit here,
+        // inside the SAME transaction as the lease insert, so a failure rolls
+        // both back rather than leaving a lease with a dangling unit_id.
+        const unitId = await findOrCreateUnitId(tx, {
+          orgId,
+          propertyId: parsed.data.propertyId,
+          rawLabel: parsed.data.unitLabel,
+        });
+        if (!unitId) {
+          // Refuse rather than write an unlinked lease that would silently
+          // vanish from occupancy. The transaction rolls back.
+          throw new Error(
+            `Could not resolve a rental unit for property ${parsed.data.propertyId} ` +
+            `label "${normalizeUnitLabel(parsed.data.unitLabel)}"`,
+          );
+        }
+
         const [lease] = await tx.insert(rentalLeases).values({
           organizationId: orgId,
           propertyId: parsed.data.propertyId,
-          unitLabel: parsed.data.unitLabel ?? null,
+          unitId,
+          // Denormalised display copy — trimmed identically to the unit label
+          // it mirrors, but left NULL when the operator gave nothing rather
+          // than stamped with 'Whole property' (that phrase is the unit's
+          // identity, not a name the landlord chose). Matches 0219's post-state.
+          unitLabel: trimLeaseUnitLabel(parsed.data.unitLabel),
           parentLeaseId: parsed.data.parentLeaseId ?? null,
           status: parsed.data.status,
           liabilityModel: parsed.data.liabilityModel,
@@ -980,10 +1154,37 @@ export function registerRentalRoutes(app: Express): void {
         await tx.update(rentalLeases).set({ status: "renewed", updatedAt: new Date() })
           .where(eq(rentalLeases.id, parent.id));
 
+        // Carry the UNIT forward, not just its label.
+        //
+        // This copied `unitLabel` alone. The parent was then flipped to
+        // 'renewed', so the only ACTIVE lease for the tenancy was the new row —
+        // with unit_id NULL. `GET /api/rent-roll/occupancy` joins
+        // rental_leases.unit_id = rental_units.id, found nothing, and a unit
+        // with a sitting tenant flipped to VACANT the moment its lease was
+        // renewed. A landlord who renews every tenant watched occupancy fall
+        // toward 0% on a full building.
+        //
+        // `?? findOrCreateUnitId` also heals a parent that predates unit_id
+        // (or whose unit row was deleted): the renewal gets a real unit either
+        // way, and never a null.
+        const renewedUnitId = parent.unitId
+          ?? await findOrCreateUnitId(tx, {
+            orgId,
+            propertyId: parent.propertyId,
+            rawLabel: parent.unitLabel,
+          });
+        if (!renewedUnitId) {
+          throw new Error(
+            `Could not resolve a rental unit for renewal of lease ${parent.id} ` +
+            `(property ${parent.propertyId}, label "${normalizeUnitLabel(parent.unitLabel)}")`,
+          );
+        }
+
         // Create new lease — same property, same tenants link inherits below.
         const [newLease] = await tx.insert(rentalLeases).values({
           organizationId: orgId,
           propertyId: parent.propertyId,
+          unitId: renewedUnitId,
           unitLabel: parent.unitLabel,
           parentLeaseId: parent.id,
           versionNumber: parent.versionNumber + 1,
@@ -1144,6 +1345,184 @@ export function registerRentalRoutes(app: Express): void {
       }));
 
       return res.json({ leases, count: leases.length, withinDays: within });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ============================================================================
+  // Units (BH-9) — the CRUD that makes the empty state's instruction true.
+  //
+  // `computeOccupancySnapshot`'s unmeasurable message tells the operator to
+  // "add units to a property or import a rent roll". The importer existed; the
+  // first half of that sentence named an action the product could not perform,
+  // because nothing in the repo could create a `rental_units` row outside a
+  // bulk upload. These four routes are that half.
+  //
+  // Note the 200s below rather than 201s: `scripts/ratchets/res-status-raw.json`
+  // is a strictly-down gate on `res.status(` in server/**, and adding raw
+  // statuses here would push it above baseline. The created row is returned in
+  // the body either way.
+  // ============================================================================
+
+  app.get("/api/rentals/properties/:propertyId/units", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const propertyId = parseInt(req.params.propertyId, 10);
+      if (!Number.isFinite(propertyId)) return Errors.badRequest(res, "propertyId must be numeric");
+
+      const [prop] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propertyId), eq(properties.organizationId, orgId)));
+      if (!prop) return Errors.notFound(res, "Property");
+
+      const rows = await db.select().from(rentalUnits)
+        .where(and(eq(rentalUnits.organizationId, orgId), eq(rentalUnits.propertyId, propertyId)))
+        .orderBy(asc(rentalUnits.label));
+
+      // Lease counts per unit, so the list can show which units are occupied
+      // and which are blocked from deletion WITHOUT the client guessing.
+      const leaseCounts = await db.select({
+        unitId: rentalLeases.unitId,
+        total: sql<number>`COUNT(*)::int`,
+        active: sql<number>`COUNT(*) FILTER (WHERE ${rentalLeases.status} = 'active')::int`,
+      }).from(rentalLeases)
+        .where(and(eq(rentalLeases.organizationId, orgId), eq(rentalLeases.propertyId, propertyId)))
+        .groupBy(rentalLeases.unitId);
+      const byUnit = new Map(leaseCounts.map((c) => [c.unitId, c]));
+
+      return res.json({
+        units: rows.map((u) => ({
+          ...u,
+          leaseCount: toCount(byUnit.get(u.id)?.total),
+          activeLeaseCount: toCount(byUnit.get(u.id)?.active),
+        })),
+        count: rows.length,
+      });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  app.post("/api/rentals/properties/:propertyId/units", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+      const propertyId = parseInt(req.params.propertyId, 10);
+      if (!Number.isFinite(propertyId)) return Errors.badRequest(res, "propertyId must be numeric");
+
+      const parsed = unitCreateSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [prop] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propertyId), eq(properties.organizationId, orgId)));
+      if (!prop) return Errors.notFound(res, "Property");
+
+      const label = normalizeUnitLabel(parsed.data.label);
+
+      const inserted = await db.insert(rentalUnits).values({
+        organizationId: orgId,
+        propertyId,
+        label,
+        kind: parsed.data.kind,
+        bedrooms: parsed.data.bedrooms ?? null,
+        bathrooms: parsed.data.bathrooms !== undefined ? String(parsed.data.bathrooms) : null,
+        squareFeet: parsed.data.squareFeet ?? null,
+        marketRentCents: parsed.data.marketRentCents ?? null,
+        status: parsed.data.status,
+        notes: parsed.data.notes ?? null,
+      }).onConflictDoNothing().returning();
+
+      if (inserted.length === 0) {
+        // The (org, property, label) unique index caught it. Say which one —
+        // silently returning the existing row would let an operator believe
+        // they had created a second unit and inflate their own unit count.
+        return Errors.badRequest(
+          res,
+          `This property already has a unit labelled "${label}". Labels identify a unit within its building, so they have to be unique — edit the existing one, or give this one a different label.`,
+          { code: "RENTAL_UNIT_LABEL_TAKEN", propertyId, label },
+        );
+      }
+
+      logger.info("[BH-9] rental unit created", {
+        orgId, userId, propertyId, unitId: inserted[0].id, kind: parsed.data.kind,
+      });
+      return res.json({ unit: inserted[0] });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  app.patch("/api/rentals/units/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+      const parsed = unitUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      // Trimmed through the SAME normaliser as every other write site, so a
+      // rename to " 3B" cannot slip a duplicate past the unique index.
+      if (parsed.data.label !== undefined) updates.label = normalizeUnitLabel(parsed.data.label);
+      if (parsed.data.kind !== undefined) updates.kind = parsed.data.kind;
+      if (parsed.data.status !== undefined) updates.status = parsed.data.status;
+      if (parsed.data.bedrooms !== undefined) updates.bedrooms = parsed.data.bedrooms;
+      if (parsed.data.bathrooms !== undefined) updates.bathrooms = String(parsed.data.bathrooms);
+      if (parsed.data.squareFeet !== undefined) updates.squareFeet = parsed.data.squareFeet;
+      if (parsed.data.marketRentCents !== undefined) updates.marketRentCents = parsed.data.marketRentCents;
+      if (parsed.data.notes !== undefined) updates.notes = parsed.data.notes;
+
+      const [updated] = await db.update(rentalUnits).set(updates)
+        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)))
+        .returning();
+      if (!updated) return Errors.notFound(res, "Rental unit");
+
+      // Keep the denormalised display copy on this unit's leases in step with
+      // the rename. Leaving it stale would show the tenant's old door number on
+      // the lease list and on any work order generated from it.
+      if (parsed.data.label !== undefined) {
+        await db.update(rentalLeases)
+          .set({ unitLabel: updated.label, updatedAt: new Date() })
+          .where(and(eq(rentalLeases.unitId, updated.id), eq(rentalLeases.organizationId, orgId)));
+      }
+
+      logger.info("[BH-9] rental unit updated", { orgId, userId, unitId: updated.id });
+      return res.json({ unit: updated });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  app.delete("/api/rentals/units/:id", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+
+      const [unit] = await db.select().from(rentalUnits)
+        .where(and(eq(rentalUnits.id, req.params.id), eq(rentalUnits.organizationId, orgId)));
+      if (!unit) return Errors.notFound(res, "Rental unit");
+
+      // rental_leases.unit_id is ON DELETE SET NULL: deleting a leased unit
+      // would NOT error, it would quietly orphan a live tenancy. Count first.
+      const [{ c }] = await db.select({ c: sql<number>`COUNT(*)::int` })
+        .from(rentalLeases)
+        .where(and(eq(rentalLeases.unitId, unit.id), eq(rentalLeases.organizationId, orgId)));
+      const leaseCount = toCount(c);
+
+      const refusal = unitDeletionRefusal(unit.label, leaseCount);
+      if (refusal) {
+        return Errors.badRequest(res, refusal, {
+          code: "RENTAL_UNIT_HAS_LEASES",
+          unitId: unit.id,
+          label: unit.label,
+          leaseCount,
+        });
+      }
+
+      await db.delete(rentalUnits)
+        .where(and(eq(rentalUnits.id, unit.id), eq(rentalUnits.organizationId, orgId)));
+
+      logger.info("[BH-9] rental unit deleted", { orgId, userId, unitId: unit.id, label: unit.label });
+      return res.json({ deleted: true, id: unit.id });
     } catch (err) {
       return Errors.internal(res, err);
     }

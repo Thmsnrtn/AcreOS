@@ -67,14 +67,36 @@
 --
 -- Three steps:
 --   (a) one `rental_units` row per distinct
---       (organization_id, property_id, COALESCE(unit_label, '')) appearing on
---       any lease;
---   (b) an SFR lease (NULL or empty unit_label) gets the label
---       'Whole property'. Giving the whole-property tenancy a real unit row
---       means occupancy math is UNIFORM across SFR and multi-unit instead of
---       forking on null — which is the shape that produced defect (1);
+--       (organization_id, property_id, TRIM(unit_label)) appearing on any
+--       lease with a non-blank label;
+--   (b) an SFR lease (NULL or empty unit_label) gets a whole-property label —
+--       normally the literal 'Whole property'. Giving the whole-property
+--       tenancy a real unit row means occupancy math is UNIFORM across SFR
+--       and multi-unit instead of forking on null — which is the shape that
+--       produced defect (1). Every blank-label lease at one property shares
+--       that one row, which is intended: a '' label and a NULL label are the
+--       same tenancy shape, not two rentable slots;
 --   (c) `rental_leases.unit_id` is then set by matching back on
 --       (organization_id, property_id, label).
+--
+-- ── (b) AND THE COLLISION: 'Whole property' is a string a human can type ────
+-- 'Whole property' is not a reserved token — an operator really can have typed
+-- it into `unit_label`. If a property has BOTH a blank-label lease and a lease
+-- genuinely labelled 'Whole property', naively folding the blank one onto that
+-- literal merges two distinct tenancies into one unit row and UNDERSTATES the
+-- unit count — the same class of quiet undercount this migration exists to
+-- kill, and it would ride straight into the §92.019 4+-unit late-fee branch.
+--
+-- DECISION: keep the human-readable literal, DETECT the collision, and
+-- disambiguate. Step (b) picks the FIRST candidate label not already typed by
+-- the operator at that property: 'Whole property', then 'Whole property (2)',
+-- '(3)' … '(99)', then — only if an operator has somehow typed all 100 — a
+-- uuid-suffixed label that cannot collide. The alternative (a sentinel no
+-- human would type, e.g. a control character or a uuid) was rejected because
+-- `label` is not an internal key: it is the operator's own vocabulary, shown
+-- on the rent roll, the ledger row and the work order, and a slot the landlord
+-- cannot read is its own defect. Disambiguation is per (organization_id,
+-- property_id), so the common case is untouched and reads 'Whole property'.
 --
 -- What it deliberately does NOT do: invent units that have never been leased.
 -- Those are exactly the vacancies the product could not see, and this
@@ -82,9 +104,73 @@
 -- importer can add them. The backfill makes the table TRUE about what we
 -- already knew; it does not pretend to know more.
 --
--- Idempotent throughout: the insert is guarded by ON CONFLICT DO NOTHING
--- against `rental_units_org_property_label_uk`, and the UPDATE only touches
--- leases whose `unit_id` is still NULL. Re-running changes nothing.
+-- ── WHY THE BACKFILL IS A ONE-SHOT AND NOT "IDEMPOTENT" ────────────────────
+-- This is the part nobody should simplify back. `scripts/migrate.mjs` — the
+-- migrator that ACTUALLY runs on deploy, as the Fly release_command — is not
+-- tracked: it has no applied-migrations table and executes every statement in
+-- its array on EVERY deploy. So "idempotent" here does not mean "runs once",
+-- it means "runs again next Tuesday, and the Tuesday after that".
+--
+-- The earlier version of this backfill was guarded only by ON CONFLICT DO
+-- NOTHING on (org, property, label) plus `WHERE unit_id IS NULL`. Under
+-- re-run-every-deploy that is not a guard, and two ordinary operator actions
+-- break it:
+--
+--   FAILURE 1 — PHANTOM DUPLICATE UNIT. An operator renames a unit's label
+--   from '3B' to 'Unit 3B' (a rename is a normal correction). The lease still
+--   carries `unit_label = '3B'`, because `unit_label` is now a denormalised
+--   display copy. On the next deploy the INSERT derives '3B' from the lease,
+--   finds NO conflicting row (the real row now says 'Unit 3B'), and creates a
+--   SECOND unit at that property. Both sit in `rental_units` forever, and
+--   every occupancy denominator — and the §92.019 unit count — is inflated by
+--   one, permanently, with no error anywhere.
+--
+--   FAILURE 2 — RESURRECTED DELETED UNIT. An operator DELETES a unit. Its
+--   leases go to `unit_id = NULL` by the ON DELETE SET NULL below — which is
+--   exactly the state the UPDATE looks for. On the next deploy the INSERT
+--   re-creates the unit from the lease's surviving `unit_label` and the UPDATE
+--   re-links the leases to it. The operator's deletion is silently undone by a
+--   deploy they had nothing to do with.
+--
+-- The route layer narrows both — PATCH /api/rentals/units/:id now syncs
+-- `rental_leases.unit_label` on a rename, and DELETE refuses while the unit
+-- still has leases attached (server/routes-rentals.ts). Neither closes the
+-- hole, and a migrator must not lean on either: a label corrected by any path
+-- that does not sync (a direct SQL fix, a restore, a future writer) reproduces
+-- FAILURE 1 exactly, and a lease already unlinked from its unit still carries
+-- its old `unit_label`, so deleting that now-lease-free unit passes the
+-- refusal check and reproduces FAILURE 2 exactly. This file runs against the
+-- DATABASE, not the API, and it does not get to assume route code it does not
+-- own.
+--
+-- Neither is fixable by tightening ON CONFLICT: in both cases the conflicting
+-- row genuinely is not there. The backfill has to run ONCE, so it is wrapped
+-- in a DO block with two guards, and both are checked and set inside that one
+-- statement (one implicit transaction — it cannot half-apply):
+--
+--   GUARD 1 (the marker) — a token in the `rental_units` table comment,
+--   '[0219-backfill:done]'. Present ⇒ return immediately. It is written by
+--   this block itself, in the same transaction as the rows, so the marker and
+--   the data land together or neither does. A table comment is used rather
+--   than a marker table because this change is allowed exactly ONE new table
+--   (scripts/ratchets/table-count.json) and a bookkeeping table is not the one
+--   worth spending it on.
+--
+--   GUARD 2 (virgin table) — the block refuses to run if `rental_units` holds
+--   ANY row, and stamps the marker on its way out. This covers a database
+--   where the table was populated by the app or the rent-roll importer before
+--   this block first ran, and it means neither failure above is reachable:
+--   both require an existing unit row, and an existing unit row closes the
+--   guard.
+--
+-- The UPDATE is inside the same one-shot block deliberately. Left outside it
+-- would re-link on every deploy any lease an operator had deliberately
+-- unlinked from its unit — a third quiet resurrection.
+--
+-- The ON CONFLICT DO NOTHING on the INSERT stays, but it is now a redundant
+-- assertion (the table is provably empty when the INSERT runs), NOT the guard.
+-- Do not delete the DO block and keep the ON CONFLICT: that is precisely the
+-- shape this comment exists to stop coming back.
 --
 -- `rental_leases.unit_label` STAYS. It is read in 20+ places including raw SQL
 -- in two route files, so dropping it in the same change that adds `unit_id`
@@ -119,9 +205,12 @@ CREATE TABLE IF NOT EXISTS "rental_units" (
 
 -- ── 2. Indexes ──────────────────────────────────────────────────────────────
 -- A label identifies a unit within its building. This unique index IS the
--- idempotency guard for both the rent-roll importer and step 4 below: a re-run
--- loses the INSERT instead of creating a duplicate "3B" that would then be
--- double-counted in every occupancy denominator.
+-- idempotency guard for the rent-roll importer and the find-or-create path in
+-- server/routes-rentals.ts: a re-import loses the INSERT instead of creating a
+-- duplicate "3B" that would then be double-counted in every occupancy
+-- denominator. It is NOT what makes step 4's backfill safe — a renamed or
+-- deleted unit produces no conflict at all, which is why step 4 is a one-shot
+-- DO block. See the "WHY THE BACKFILL IS A ONE-SHOT" note above.
 CREATE UNIQUE INDEX IF NOT EXISTS "rental_units_org_property_label_uk"
   ON "rental_units" ("organization_id", "property_id", "label");
 
@@ -139,30 +228,121 @@ CREATE INDEX IF NOT EXISTS "rental_units_org_property_idx"
 ALTER TABLE "rental_leases"
   ADD COLUMN IF NOT EXISTS "unit_id" varchar REFERENCES "rental_units"("id") ON DELETE SET NULL;
 
--- ── 4. Backfill (a)+(b): a unit row per distinct label already on a lease ────
-INSERT INTO "rental_units" ("organization_id", "property_id", "label")
-SELECT DISTINCT
-  l."organization_id",
-  l."property_id",
-  CASE
-    WHEN COALESCE(NULLIF(TRIM(l."unit_label"), ''), '') = '' THEN 'Whole property'
-    ELSE TRIM(l."unit_label")
-  END AS label
-FROM "rental_leases" l
-WHERE l."organization_id" IS NOT NULL
-  AND l."property_id" IS NOT NULL
-ON CONFLICT ("organization_id", "property_id", "label") DO NOTHING;
+-- ── 4. Backfill (a)+(b)+(c), ONE SHOT ───────────────────────────────────────
+-- Read the "WHY THE BACKFILL IS A ONE-SHOT" block at the top before touching
+-- this. Short version: migrate.mjs re-runs every statement on every deploy, so
+-- ON CONFLICT DO NOTHING is not a guard — a renamed unit produces a phantom
+-- duplicate that inflates every occupancy denominator forever, and a deleted
+-- unit gets resurrected and re-linked. Both need the block to run only once.
+DO $backfill_0219$
+DECLARE
+  -- Substring searched for in the table comment. No LIKE metacharacters.
+  v_marker    CONSTANT text := '[0219-backfill:done]';
+  v_comment   CONSTANT text :=
+    'Rentable slots: one row per unit / pad / suite at a property. '
+    || 'A unit exists whether or not anyone has leased it — that is the point '
+    || 'of the table (see migrations/0219_rental_units.sql). '
+    || 'The token below records that the 0219 lease-label backfill has already '
+    || 'run; it MUST survive, or a redeploy will re-run a one-shot backfill. '
+    || v_marker;
+  v_units     integer := 0;
+  v_leases    integer := 0;
+BEGIN
+  -- GUARD 1: the marker this block writes for itself.
+  IF COALESCE(obj_description('public.rental_units'::regclass, 'pg_class'), '')
+       LIKE '%' || v_marker || '%' THEN
+    RAISE NOTICE '0219 backfill: marker present — already applied, skipping';
+    RETURN;
+  END IF;
 
--- ── 5. Backfill (c): point each lease at its unit ───────────────────────────
--- Only rows still NULL, so a re-run is a no-op and any unit_id an operator has
--- since corrected by hand is never overwritten.
-UPDATE "rental_leases" l
-SET "unit_id" = u."id"
-FROM "rental_units" u
-WHERE l."unit_id" IS NULL
-  AND u."organization_id" = l."organization_id"
-  AND u."property_id" = l."property_id"
-  AND u."label" = CASE
-    WHEN COALESCE(NULLIF(TRIM(l."unit_label"), ''), '') = '' THEN 'Whole property'
-    ELSE TRIM(l."unit_label")
-  END;
+  -- GUARD 2: only a virgin table can be backfilled. Any existing row means a
+  -- human or the importer owns this data now; stamp the marker and stand down.
+  IF EXISTS (SELECT 1 FROM "rental_units") THEN
+    EXECUTE format('COMMENT ON TABLE public."rental_units" IS %L', v_comment);
+    RAISE NOTICE '0219 backfill: rental_units is non-empty — NOT backfilling; marker set';
+    RETURN;
+  END IF;
+
+  -- (b) The whole-property label per (org, property), collision-aware.
+  -- `candidates` is tried in order and the first one the operator has NOT
+  -- already typed at that property wins, so a genuine 'Whole property' lease
+  -- never absorbs the blank-label tenancy.
+  DROP TABLE IF EXISTS pg_temp."_0219_whole_label";
+  CREATE TEMP TABLE "_0219_whole_label" ON COMMIT DROP AS
+  WITH typed AS (
+    SELECT DISTINCT
+      l."organization_id" AS org,
+      l."property_id"     AS prop,
+      TRIM(l."unit_label") AS label
+    FROM "rental_leases" l
+    WHERE l."organization_id" IS NOT NULL
+      AND l."property_id" IS NOT NULL
+      AND NULLIF(TRIM(l."unit_label"), '') IS NOT NULL
+  ),
+  blank AS (
+    SELECT DISTINCT
+      l."organization_id" AS org,
+      l."property_id"     AS prop
+    FROM "rental_leases" l
+    WHERE l."organization_id" IS NOT NULL
+      AND l."property_id" IS NOT NULL
+      AND NULLIF(TRIM(l."unit_label"), '') IS NULL
+  ),
+  candidates AS (
+    SELECT 'Whole property' AS label, 0 AS ord
+    UNION ALL
+    SELECT 'Whole property (' || s.n || ')', s.n FROM generate_series(2, 99) AS s(n)
+  )
+  SELECT
+    b.org,
+    b.prop,
+    COALESCE(
+      (SELECT c.label
+         FROM candidates c
+        WHERE NOT EXISTS (
+                SELECT 1 FROM typed t
+                 WHERE t.org = b.org AND t.prop = b.prop AND t.label = c.label)
+        ORDER BY c.ord
+        LIMIT 1),
+      -- 100 typed collisions at one property is not a real world we plan for,
+      -- but a NOT NULL column may never receive a NULL. Cannot collide.
+      'Whole property (' || gen_random_uuid()::text || ')'
+    ) AS label
+  FROM blank b;
+
+  -- (a) + (b): one row per distinct label already on a lease. ON CONFLICT is a
+  -- redundant assertion here, not the guard — guard 2 proved the table empty.
+  INSERT INTO "rental_units" ("organization_id", "property_id", "label")
+  SELECT src.org, src.prop, src.label
+  FROM (
+    SELECT DISTINCT
+      l."organization_id" AS org, l."property_id" AS prop, TRIM(l."unit_label") AS label
+    FROM "rental_leases" l
+    WHERE l."organization_id" IS NOT NULL
+      AND l."property_id" IS NOT NULL
+      AND NULLIF(TRIM(l."unit_label"), '') IS NOT NULL
+    UNION
+    SELECT w.org, w.prop, w.label FROM "_0219_whole_label" w
+  ) src
+  ON CONFLICT ("organization_id", "property_id", "label") DO NOTHING;
+  GET DIAGNOSTICS v_units = ROW_COUNT;
+
+  -- (c) Point each lease at its unit, using the SAME derived label as (b).
+  UPDATE "rental_leases" l
+  SET "unit_id" = u."id"
+  FROM "rental_units" u
+  WHERE l."unit_id" IS NULL
+    AND u."organization_id" = l."organization_id"
+    AND u."property_id"     = l."property_id"
+    AND u."label" = COALESCE(
+          NULLIF(TRIM(l."unit_label"), ''),
+          (SELECT w.label FROM "_0219_whole_label" w
+            WHERE w.org = l."organization_id" AND w.prop = l."property_id")
+        );
+  GET DIAGNOSTICS v_leases = ROW_COUNT;
+
+  -- Same transaction as the rows above: marker and data land together.
+  EXECUTE format('COMMENT ON TABLE public."rental_units" IS %L', v_comment);
+  RAISE NOTICE '0219 backfill: created % unit row(s), linked % lease(s)', v_units, v_leases;
+END
+$backfill_0219$;

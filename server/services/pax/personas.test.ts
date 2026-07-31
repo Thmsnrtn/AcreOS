@@ -293,7 +293,8 @@ describe("multi_family — deepened to production (wave V4 of ruling #11)", () =
     //   - per-unit vs joint-and-several + acknowledgment gate →
     //     lease_tenants.holdsJointAndSeveral (rental.ts)
     //   - 4+ unit late-fee caps → late_fee_rules.capPctLargeProperty
-    //   - unit labels on leases → rental_leases.unitLabel
+    //   - units as first-class records (beds/baths/sqft, asking rent,
+    //     active|offline|retired) → rental_units (migration 0219)
     const haystack = JSON.stringify(p);
     expect(haystack).toContain("rent roll");
     expect(haystack).toMatch(/unit turn|make-ready/i);
@@ -303,13 +304,34 @@ describe("multi_family — deepened to production (wave V4 of ruling #11)", () =
     expect(haystack).toContain("NOI");
   });
 
-  it("does NOT promise the platform's known gaps — unit inventory, building rollups, T-12 surfaces", () => {
-    // business-types.ts multifamily entry: units exist only as a free-text
-    // unitLabel per lease; no building-level rollups; no T-12/underwriting
-    // surfaces. The voice must state the gap, not promise the feature.
+  it("states the unit inventory as REAL — migration 0219 closed that gap", () => {
+    // This assertion used to pin the opposite claim (/units are labels on
+    // leases/). Migration 0219 made units first-class rows in `rental_units`
+    // with their own beds/baths/sqft, asking rent and status, and occupancy is
+    // computed over that table (computeOccupancySnapshot,
+    // GET /api/rent-roll/occupancy). Per the wave rule, the assertion is
+    // REWRITTEN to the new truth rather than deleted, so the invariant — the
+    // voice describes the unit model the platform actually has — survives.
+    // The appendix is hard-wrapped prose, so phrases straddle newlines —
+    // match against a whitespace-flattened copy, never the raw string.
+    const flat = p.systemPromptAppendix.replace(/\s+/g, " ");
+    expect(flat).toMatch(/units are first-class records/i);
+    expect(flat).toMatch(/asking rent/i);
+    expect(flat).toMatch(/a vacancy is visible/i);
+    // …and the stale claim must not come back.
+    expect(flat).not.toMatch(/units are labels on leases/i);
+  });
+
+  it("does NOT promise the platform's REMAINING gaps — building rollups, T-12 surfaces", () => {
+    // business-types.ts multifamily entry, post-0219: the occupancy snapshot
+    // is ORG-WIDE with no per-building breakdown, there is no NOI-per-building
+    // surface, and there is no T-12/underwriting workspace. Both gaps genuinely
+    // stand — the voice must state them, not promise the feature.
+    const flat = p.systemPromptAppendix.replace(/\s+/g, " ");
     expect(p.systemPromptAppendix).toContain("no building-level");
+    expect(flat).toMatch(/no building-level NOI roll-up/i);
+    expect(flat).toMatch(/no T-12 underwriting workspace/i);
     expect(p.systemPromptAppendix).toContain("never imply those exist");
-    expect(p.systemPromptAppendix).toMatch(/units are labels on leases/i);
   });
 });
 
@@ -350,9 +372,22 @@ describe("mobile_homes — deepened to production (wave V4 of ruling #11)", () =
     // business-types.ts mobile_home entry: no lot/pad inventory model, no
     // home-as-chattel handling, no utilities pass-through billing. The
     // voice must state the gap, not promise the feature.
+    //
+    // Migration 0219 did NOT close this one, deliberately: `rental_units.kind`
+    // enumerates 'pad' and the unit-create route accepts it, but nothing in
+    // the product ever WRITES 'pad' (the 0219 backfill and the rent-roll
+    // importer both take the 'unit' default; there is no park surface). A
+    // column that can hold a value is not an inventory the operator has, so
+    // all three gap statements stand exactly as before.
     expect(p.systemPromptAppendix).toContain("no lot/pad inventory model");
     expect(p.systemPromptAppendix).toContain("no chattel-title tracking");
     expect(p.systemPromptAppendix).toMatch(/no utilities pass-through/i);
+    // The nuance is stated without softening the gap: the model can hold a
+    // pad, the product does not create one. Flattened — the appendix is
+    // hard-wrapped prose and these phrases straddle newlines.
+    const flat = p.systemPromptAppendix.replace(/\s+/g, " ");
+    expect(flat).toMatch(/nothing in AcreOS creates one today/i);
+    expect(flat).toMatch(/treat the pad inventory as absent/i);
   });
 });
 

@@ -167,12 +167,17 @@ describe("the importer no longer throws the vacancies away", () => {
   const importer = read("server/routes-rent-roll-import.ts");
 
   it("persists the unit BEFORE the vacant row is skipped — the order is the fix", () => {
-    // `if (u.isVacant) continue;` still exists and should: a vacant unit has
+    // The `if (u.isVacant)` branch still exists and should: a vacant unit has
     // no tenancy, so no lease, tenant or charge may be invented for it. What
     // changed is WHERE it sits. It used to be the first statement of the
     // per-row loop, so an unoccupied unit left no record at all — while the
     // payload had just told us it exists. That one line is what made the
     // occupancy denominator above uncomputable.
+    //
+    // The branch has since grown a body (it counts the vacant row so the
+    // import summary adds up — FINDING 16), so this matches the CONDITION
+    // rather than the old one-line `) continue;` form. The invariant being
+    // pinned is unchanged: unit write first, vacancy short-circuit second.
     // Compare CODE positions, not prose — the file's own comment quotes the
     // old line verbatim to explain the fix, so a naive text search finds the
     // explanation rather than the statement.
@@ -184,13 +189,22 @@ describe("the importer no longer throws the vacancies away", () => {
       codeLines.find(({ line }) => pred(line))?.i ?? -1;
 
     const unitInsert = lineOf((l) => l.includes("insert(rentalUnits)"));
-    const vacantSkip = lineOf((l) => /if\s*\(\s*u\.isVacant\s*\)\s*continue/.test(l));
+    const vacantSkip = lineOf((l) => /if\s*\(\s*u\.isVacant\s*\)/.test(l));
     expect(unitInsert, "the importer must insert rental_units").toBeGreaterThan(-1);
     expect(vacantSkip, "a vacant row must still create no tenancy").toBeGreaterThan(-1);
     expect(
       unitInsert,
       "the unit must be written before the vacant row is skipped, or the vacancy is lost again",
     ).toBeLessThan(vacantSkip);
+
+    // …and the branch must still END the row: `continue` before any tenant,
+    // lease or charge write. A body that fell through would invent a tenancy
+    // for an empty unit, which is worse than the bug being fixed.
+    const vacantBody = codeLines.filter(({ i }) => i > vacantSkip && i <= vacantSkip + 6);
+    expect(
+      vacantBody.some(({ line }) => /\bcontinue;/.test(line)),
+      "the vacant branch must continue before any tenancy write",
+    ).toBe(true);
   });
 
   it("creates a unit row for every row in the payload", () => {

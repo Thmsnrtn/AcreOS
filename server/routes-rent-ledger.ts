@@ -306,6 +306,13 @@ export type UnitCountBasis = "modelled_units" | "lease_derived_floor";
 export interface PropertyUnitCount {
   count: number;
   basis: UnitCountBasis;
+  /**
+   * What the count WOULD have been from lease history alone. Populated only
+   * for `modelled_units`, where it is the reference point for disclosing that
+   * an exact count moved the fee. Absent for `lease_derived_floor`, where it
+   * would simply repeat `count`.
+   */
+  leaseDerivedFloor?: number;
 }
 
 /**
@@ -386,7 +393,13 @@ async function unitCountForProperty(orgId: number, propertyId: number): Promise<
 
   const modelledCount = unitRows.filter((u) => STATUTORY_UNIT_STATUSES.includes(u.status)).length;
   if (modelledCount > 0) {
-    return { count: modelledCount, basis: "modelled_units" };
+    // The floor is read even when an exact count is available. It costs one
+    // indexed query and it is the only way the proposal can tell an operator
+    // WHY a fee moved when their inventory landed — without it the disclosure
+    // in `proposeLateFeeForUnitCount` is unreachable, which is this repo's
+    // most common defect (built, then never wired to the thing that needs it).
+    const leaseDerivedFloor = await leaseDerivedUnitCountFloor(orgId, propertyId);
+    return { count: modelledCount, basis: "modelled_units", leaseDerivedFloor };
   }
 
   // Either nothing is modelled here, or every row is `retired`. A property with
@@ -422,6 +435,14 @@ export function proposeLateFeeForUnitCount(args: {
   daysLate: number;
   units: PropertyUnitCount;
   state: string;
+  /**
+   * What the lease-derived floor for this same property would be. Supplied by
+   * the route so an exact count can be compared against what AcreOS would have
+   * proposed while still ignorant — the disclosure in the ≥ 4 branch depends on
+   * it. Omit and the comparison degrades to "no movement to report", which is
+   * the safe reading for a caller that cannot compute the floor.
+   */
+  leaseDerivedFloor?: number;
 }): UnitAwareLateFeeProposal {
   const { rule, monthlyRentCents, daysLate, units, state } = args;
 
@@ -446,10 +467,59 @@ export function proposeLateFeeForUnitCount(args: {
 
   if (units.basis === "lease_derived_floor") return stamp(floorPath);
 
+  // What AcreOS WOULD have proposed for this same property before its units
+  // were modelled — the lease-derived floor is still derivable, and comparing
+  // against it is the only way to know whether an exact count moved the money.
+  const floorCount = args.leaseDerivedFloor ?? units.count;
+  const largeBranchFromFloor = {
+    unitCount: floorCount,
+    proposedFeeCents: proposeLateFee({
+      rule, monthlyRentCents, daysLate, knownUnitCountFloor: floorCount, state,
+    }).proposedFeeCents,
+  };
+
   // ── The count is EXACT from here down. ───────────────────────────────────
-  // ≥ 4 units: `proposeLateFee` already treats a count of 4+ as certainty, so
-  // it returns the large-property branch alone — no hedge, no second opinion.
-  if (units.count >= 4) return stamp(floorPath);
+  //
+  // WHAT KNOWING THE COUNT CAN AND CANNOT CHANGE (corrected 2026-07-31)
+  //
+  // An earlier version of this comment claimed that modelling a property's
+  // units "never raises a tenant's fee". That is FALSE, and an audit caught
+  // it. Measured against the seeded TX rule, $2,000/mo, 60 days late, on a
+  // real 6-plex with only 2 tenancies ever recorded:
+  //
+  //     lease_derived_floor, count 2 → conservative_unknown → $200.00
+  //     modelled_units,      count 6 → large_4_plus         → $240.00
+  //
+  // Same building, same tenant, $40 more — because the landlord imported a
+  // rent roll. The old rail below only ever compared the two readings of the
+  // SAME number, which for count ≥ 4 is the same object, so it could not
+  // catch this.
+  //
+  // The behaviour is nevertheless RIGHT, and suppressing it would be worse.
+  // §92.019's higher percentage IS the applicable law for a 6-plex; $200 was
+  // AcreOS hedging under uncertainty, not a benefit the tenant was owed. The
+  // count already moves on its own as tenancies accumulate — a floor going
+  // 3 → 4 flips the branch today, with no units table involved — so pinning
+  // fees to whatever AcreOS happened to know first would be arbitrary, not
+  // protective. And nothing is charged either way: this is a proposal an
+  // operator confirms.
+  //
+  // What we owe the operator is that the movement is never silent. When an
+  // exact count selects a HIGHER branch than the floor would have, the
+  // proposal says so, naming both figures, so a tenant asking "why is this
+  // more than last time?" has an answer that is on the record.
+  if (units.count >= 4) {
+    if (floorPath.proposedFeeCents !== largeBranchFromFloor.proposedFeeCents) {
+      return stamp(
+        floorPath,
+        ` This property's ${units.count} units are on record, so the 4-plus statutory branch ` +
+          `applies exactly. Before the units were modelled AcreOS could only prove ` +
+          `${largeBranchFromFloor.unitCount} of them and hedged to the lower branch — this ` +
+          `proposal is higher for that reason, not because anything about the tenancy changed.`,
+      );
+    }
+    return stamp(floorPath);
+  }
 
   // < 4 units: the large-property percentage is simply not the applicable law
   // for this building, so it is collapsed onto the small-property one before
@@ -472,14 +542,16 @@ export function proposeLateFeeForUnitCount(args: {
     state,
   });
 
-  // NON-REGRESSION RAIL — direction of error is the whole point of this
-  // function. Changing the BASIS of a unit count must never raise the fee a
-  // tenant is charged for the same count. Every rule seeded today caps small
-  // properties at or below the large-property percentage (TX §92.019 as seeded:
-  // 10% under 4 units, 12% at 4+), so this is an equality in practice and the
-  // rail costs nothing. It exists for the rule that inverts it: a landlord
-  // finishing their data entry is not a fact about the tenant, and no change to
-  // AcreOS's own record-keeping may be the reason a charge goes up.
+  // SAME-COUNT RAIL. Narrower than the claim it replaces, and true: for ONE
+  // count, reading it as exact must never propose more than reading it as a
+  // floor. Every rule seeded today caps small properties at or below the
+  // large-property percentage (TX §92.019: 10% under 4, 12% at 4+), so this is
+  // an equality in practice. It exists for the rule that inverts it, where
+  // resolving an ambiguity in the platform's own favour would be indefensible.
+  //
+  // This does NOT promise that a bigger, better-known count cannot select a
+  // higher branch — see the block above for why that is correct rather than a
+  // gap, and how it is disclosed.
   if (exact.proposedFeeCents > floorPath.proposedFeeCents) {
     return stamp(
       floorPath,
@@ -516,6 +588,7 @@ async function proposalForCharge(args: {
     daysLate,
     units,
     state: args.lease.state,
+    leaseDerivedFloor: units.leaseDerivedFloor,
   });
   return { proposal, rule, daysLate };
 }
@@ -882,6 +955,7 @@ export function registerRentLedgerRoutes(app: Express): void {
           // fallback is a floor of 1, the most conservative possible reading.
           units: unitsByProperty.get(lease.propertyId)
             ?? { count: 1, basis: "lease_derived_floor" as const },
+          leaseDerivedFloor: unitsByProperty.get(lease.propertyId)?.leaseDerivedFloor,
           state: lease.state,
         });
         proposals.push({

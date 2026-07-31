@@ -3,6 +3,18 @@
  *
  * Renewal-as-addendum lineage tracked via parent_lease_id; status flips
  * to 'renewed' when superseded.
+ *
+ * UNIT LABEL (BH-9). The free-text field is unchanged in shape, but it is no
+ * longer inert: POST /api/leases now find-or-creates the `rental_units` row for
+ * (org, property, label) and links the lease to it, so a lease entered here
+ * finally reaches the occupancy denominator. Two consequences for this form:
+ *
+ *   1. The label is the unit's IDENTITY, so " 3B" and "3B" would be two
+ *      different units on one building. The server trims, and the datalist
+ *      below offers the property's existing labels so the operator picks the
+ *      one that already exists instead of typing a near-miss.
+ *   2. Leaving it blank is a real answer — the whole property is the rentable
+ *      slot (the SFR case), matching migration 0219's 'Whole property' unit.
  */
 
 import { useState } from "react";
@@ -36,6 +48,14 @@ interface Lease {
   isSection8: boolean;
   state: string;
   versionNumber: number;
+}
+
+interface RentalUnit {
+  id: string;
+  label: string;
+  kind: string;
+  status: string;
+  activeLeaseCount: number;
 }
 
 const STATUSES = ["draft", "pending_signature", "active", "ended", "terminated", "renewed"] as const;
@@ -80,6 +100,21 @@ export default function LeasesPage() {
     },
   });
 
+  // Existing units at the chosen property, offered as suggestions on the unit
+  // label field. Suggestion-only: a label the operator types that isn't here
+  // still creates a new unit server-side, which is exactly how a landlord adds
+  // the first unit of a building from this form.
+  const propertyIdNum = Number.parseInt(propertyId, 10);
+  const units = useQuery<{ units: RentalUnit[] }>({
+    queryKey: ["/api/rentals/properties", propertyIdNum, "units"],
+    enabled: showCreate && Number.isFinite(propertyIdNum) && propertyIdNum > 0,
+    queryFn: async () => {
+      const res = await fetch(`/api/rentals/properties/${propertyIdNum}/units`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      return res.json();
+    },
+  });
+
   const create = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/leases", {
@@ -96,12 +131,22 @@ export default function LeasesPage() {
           tenantPortionCents: isSection8 && tenantPortion ? Math.round(parseFloat(tenantPortion) * 100) : undefined,
         }),
       });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      if (!res.ok) {
+        // Surface the server's own message. The lease POST can refuse for
+        // reasons the operator has to read — the federal lead-paint gate, or a
+        // unit that could not be resolved — and "Failed (400)" hides all of it.
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || body?.error || `Failed (${res.status})`);
+      }
       return res.json();
     },
     onSuccess: () => {
       toast({ title: "Lease created" });
       queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
+      // A lease creates its unit when the label is new, so the suggestion list
+      // and every occupancy read are now stale.
+      queryClient.invalidateQueries({ queryKey: ["/api/rentals/properties"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rent-roll/occupancy"] });
       setShowCreate(false);
     },
     onError: (error) => {
@@ -137,7 +182,29 @@ export default function LeasesPage() {
           </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div><Label className="text-xs">Property ID *</Label><Input value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="h-9" /></div>
-            <div><Label className="text-xs">Unit label</Label><Input value={unitLabel} onChange={(e) => setUnitLabel(e.target.value)} className="h-9" placeholder="3B" /></div>
+            <div>
+              <Label className="text-xs" htmlFor="lease-unit-label">Unit label</Label>
+              <Input
+                id="lease-unit-label"
+                value={unitLabel}
+                onChange={(e) => setUnitLabel(e.target.value)}
+                className="h-9"
+                placeholder="3B"
+                list="lease-unit-label-options"
+                autoComplete="off"
+                aria-describedby="lease-unit-label-help"
+              />
+              <datalist id="lease-unit-label-options">
+                {(units.data?.units ?? []).map((u) => (
+                  <option key={u.id} value={u.label} />
+                ))}
+              </datalist>
+              <p id="lease-unit-label-help" className="text-micro text-muted-foreground mt-1">
+                {units.data && units.data.units.length > 0
+                  ? `Matches one of ${units.data.units.length} unit(s) already on this property, or creates a new one. Leave blank for a whole-property tenancy.`
+                  : "Creates the unit if it doesn't exist yet. Leave blank for a whole-property tenancy."}
+              </p>
+            </div>
             <div><Label className="text-xs">State *</Label>
               <Select value={state} onValueChange={setState}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
