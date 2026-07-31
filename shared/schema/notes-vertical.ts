@@ -84,6 +84,63 @@ export const acquiredNotes = pgTable(
     // acquired it from the previous holder.
     acquisitionDate: date("acquisition_date").notNull(),
     acquisitionPriceCents: bigint("acquisition_price_cents", { mode: "number" }).notNull(),
+    // ── Aging: when money is actually due ────────────────────────────────
+    // Before these columns the book knew `paymentDueDay` (a number 1-31) and
+    // `maturityDate` and NOTHING about which period is outstanding. Every
+    // consequence of that is a real defect, not a missing nicety: the
+    // Reg-Z §1026.41 periodic statement printed "the 1st of next month" for
+    // every borrower on the book regardless of how many periods they were
+    // behind; nothing could answer "what is due this week"; delinquency was
+    // a status someone typed rather than something derived; and the
+    // loss-mit case file's `daysPastDueAtOpen` had no source to read from.
+    //
+    // The anchor for the schedule. Acquired notes are imported mid-life —
+    // origination is routinely years before we bought the paper, and the
+    // note may have been modified or re-amortized since. Deriving the
+    // schedule from `originationDate` alone puts the first period in the
+    // past and every subsequent period off by the modification. Nullable
+    // because most imports genuinely do not carry it; the schedule service
+    // falls back to origination and says so rather than guessing a date.
+    firstPaymentDate: date("first_payment_date"),
+    // Server-side truth for "when is the next payment due". This used to be
+    // recomputed in the browser from paymentDueDay on each render, so the
+    // date on the statement, the date in the reminder email and the date on
+    // the detail page could all disagree — and none of them survived a
+    // page reload. Written by the aging job from real facts (payments
+    // posted, paid-through, maturity cap, month-end clamp), never by a UI.
+    nextPaymentDate: date("next_payment_date"),
+    // The last period FULLY satisfied. Distinct from "date of last payment":
+    // a borrower who sends half a payment has paid recently and is still a
+    // period behind. Without this, a partial payment silently resets the
+    // clock and a note that is three periods down reads as current.
+    paidThroughDate: date("paid_through_date"),
+    // Contractual grace before a payment is late. Aging without it calls a
+    // borrower delinquent on the day after the due date, which is wrong on
+    // the face of nearly every note instrument and turns a normal payer
+    // into a dunning target. Default 10 matches the seller-finance book
+    // (`notes.gracePeriodDays`, shared/schema.ts:1404) so the two books do
+    // not disagree about the same borrower's standing.
+    gracePeriodDays: integer("grace_period_days").notNull().default(10),
+    // CONFIG ONLY — the late-fee amount the note instrument states. NO code
+    // path in this build assesses, accrues, invoices or collects it: founder
+    // ruling #15 keeps AcreOS out of customer money movement, so lateness is
+    // surfaced to the operator as an advisory and any fee is charged by the
+    // operator on their own rails. It is stored because a payoff quote or a
+    // periodic statement that omits the borrower's stated fee terms is an
+    // incomplete disclosure. 0 = the note carries no late fee.
+    lateFeeCents: bigint("late_fee_cents", { mode: "number" }).notNull().default(0),
+    // Derived aging depth, recomputed daily. Stored rather than computed per
+    // read so "everything 60+ days down" is one indexed org query instead of
+    // a full-book scan re-deriving dates per row — and so the number on the
+    // loss-mit case, the dunning ladder and the Letter are the same number.
+    daysDelinquent: integer("days_delinquent").notNull().default(0),
+    // Bucket over daysDelinquent. Deliberately the SAME vocabulary as
+    // `notes.delinquencyStatus` (shared/schema.ts:1469) — current /
+    // early_delinquent / delinquent / seriously_delinquent /
+    // default_candidate — because an org holding both originated and
+    // acquired paper reads one delinquency list, and two spellings of "60
+    // days down" would split that list into two half-truths.
+    delinquencyStatus: text("delinquency_status").notNull().default("current"),
     // Status lifecycle. The note diligence + servicer-feedback loops update
     // this; for the foundation PR we expose the field but don't auto-flip it.
     status: text("status").notNull().default("performing"), // performing | late | default | paid_off | sold
@@ -189,6 +246,10 @@ export const acquiredNotes = pgTable(
     ),
     // Annual / monthly acquisition reporting.
     index("acquired_notes_org_acquisition_idx").on(table.organizationId, table.acquisitionDate),
+    // "What is due / what is late" — the daily aging job's read, and the
+    // upcoming-payments list behind it. Org-LEADING (L3 shard-readiness,
+    // scripts/check-org-leading-index.mjs).
+    index("acquired_notes_org_next_payment_idx").on(table.organizationId, table.nextPaymentDate),
     // Reverse lookup from a property — "what notes are secured by this parcel?"
     index("acquired_notes_property_idx").on(table.propertyId),
     // Org-scoped uniqueness on note number — multiple orgs can use the same

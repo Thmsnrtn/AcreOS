@@ -222,6 +222,14 @@ export const JOB_ROSTER: JobRosterEntry[] = [
     disabledReason:
       "Borrower ACH autopay is dormant: either SIMULATION_MODE / SIMULATION_MODE_STRIPE is on (no debit may be created) or STRIPE_SECRET_KEY is unset — 🔑 founder must provision the Stripe key. Per-lender dormancy (Connect onboarding incomplete / us_bank_account_ach_payments not active) is refused per note and counted in the cycle's refusalsByReason.",
   },
+  // Structural build B — acquired-note aging: the daily sweep that recomputes
+  // next-due, days-delinquent and the performing/late/default band for the
+  // acquired book, and is the only caller of the RESPA §1024.39 day-36
+  // early-intervention flag. Non-critical: delinquency moves in days, so one
+  // dark run costs a day of freshness rather than money — but the deadman must
+  // still see it, because if this stops the whole book silently freezes at
+  // whatever standing it last had, which reads as "everyone is current".
+  { name: "acquired_note_aging", intervalMs: DAY, critical: false },
   // Horizon A5 — doctrine corpus ingest: daily 03:00 UTC walk of the repo
   // doctrine dirs into the 'doctrine' embedding namespace (hash-skip on
   // unchanged). Non-critical: a dark ingest delays memory freshness by a

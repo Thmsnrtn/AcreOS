@@ -36,6 +36,10 @@ const SCANNED_FILES = [
   // process/start-job pair in its module — runScheduledJobs.ts is under a
   // strictly-DOWN line-count ratchet, so a money job must not grow it.
   "../../server/jobs/achAutopayRun.ts",
+  // Structural build B (2026-07-30): acquired_note_aging owns its own
+  // process/start pair for the same reason — runScheduledJobs.ts is under a
+  // strictly-DOWN line-count ratchet, so a new sweep must not grow it.
+  "../../server/jobs/acquiredNoteAging.ts",
   "../../server/jobs/atlasPendingConfirmationNudger.ts",
   "../../server/jobs/autonomousTaskProcessor.ts",
   "../../server/services/founderDigest.ts",

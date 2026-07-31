@@ -42,6 +42,18 @@ function qualifyingAcquired(overrides: Partial<AcquiredNote> = {}): AcquiredNote
     maturityDate: "2050-01-01",
     acquisitionDate: "2024-06-01",
     acquisitionPriceCents: 8_500_000,
+    // §1026.36(c)(1) prompt-crediting turns on WHEN a payment arrives versus
+    // its due date — both of which this file passes explicitly into
+    // `decidePaymentApplication`. The stored aging columns play no part, so
+    // the fixture stays neutral: a performing, current note whose schedule
+    // dates the import didn't carry, and schema defaults for the rest.
+    firstPaymentDate: null,
+    nextPaymentDate: null,
+    paidThroughDate: null,
+    gracePeriodDays: 10,
+    lateFeeCents: 0,
+    daysDelinquent: 0,
+    delinquencyStatus: "current",
     status: "performing",
     payerName: "Jane Borrower",
     payerAddress: null,
@@ -69,7 +81,7 @@ function qualifyingAcquired(overrides: Partial<AcquiredNote> = {}): AcquiredNote
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
-  } as AcquiredNote;
+  };
 }
 
 describe("§1026.36(c)(1) piggyback on acquired-note payments", () => {

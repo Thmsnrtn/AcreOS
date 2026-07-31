@@ -20,7 +20,52 @@ import {
   EARLY_INTERVENTION_TRIGGER_DAY,
 } from "./earlyIntervention";
 import { qualifiesForRegZStatementSync } from "../periodicStatements/predicate";
+import { computeNoteDelinquency } from "../notes/acquiredNoteSchedule";
 import type { AcquiredNote } from "@shared/schema/notes-vertical";
+
+const GRACE_DAYS = 10;
+/** The first period the borrower missed — the one the delinquency runs from. */
+const MISSED_DUE_DATE = "2026-05-01";
+/** Last period fully satisfied: the cycle before the missed one. */
+const PAID_THROUGH = "2026-04-01";
+
+/**
+ * Evaluation instants chosen so the note's STORED aging equals the day the
+ * test hands to `shouldFireEarlyIntervention`. Without this the fixture would
+ * quietly say "current" while the assertion says "36 days delinquent".
+ *
+ * Both instants moved 10 days earlier on 2026-07-30, when
+ * `computeNoteDelinquency` was corrected to count from the DUE DATE rather
+ * than from due-plus-grace. That correction is the point of the change, not a
+ * detail: §1024.39's duty attaches at 36 days DELINQUENT, and delinquency
+ * starts the day the payment was due. Counting after a 10-day grace delayed
+ * this federal obligation by ten days for every borrower on the book.
+ *
+ * So the offsets are now MISSED_DUE_DATE + the day count, with no grace term:
+ * 2026-05-01 + 36 = 2026-06-06, and + 60 = 2026-06-30.
+ */
+const AS_OF_TRIGGER_DAY = new Date(Date.UTC(2026, 5, 6));
+const AS_OF_DAY_60 = new Date(Date.UTC(2026, 5, 30));
+
+/**
+ * The stored schedule + aging columns for a note observed at `asOf`. The two
+ * derived columns come from the same pure function the nightly aging job
+ * uses, so the fixture can only ever hold a combination the real system
+ * could produce.
+ */
+function agingAsOf(asOf: Date) {
+  return {
+    firstPaymentDate: "2020-02-01",
+    nextPaymentDate: MISSED_DUE_DATE,
+    paidThroughDate: PAID_THROUGH,
+    gracePeriodDays: GRACE_DAYS,
+    ...computeNoteDelinquency({
+      nextPaymentDate: MISSED_DUE_DATE,
+      gracePeriodDays: GRACE_DAYS,
+      asOf,
+    }),
+  };
+}
 
 function acquiredNote(overrides: Partial<AcquiredNote> = {}): AcquiredNote {
   return {
@@ -40,6 +85,11 @@ function acquiredNote(overrides: Partial<AcquiredNote> = {}): AcquiredNote {
     maturityDate: "2050-01-01",
     acquisitionDate: "2024-06-01",
     acquisitionPriceCents: 8_500_000,
+    // Default shape: the day-36 note the §1024.39 tests are about.
+    ...agingAsOf(AS_OF_TRIGGER_DAY),
+    // §1024.39 outreach is unrelated to fee terms, and this note's
+    // instrument carries none. 0 = no late fee (schema default).
+    lateFeeCents: 0,
     status: "late",
     payerName: "Jane Borrower",
     payerAddress: null,
@@ -67,7 +117,7 @@ function acquiredNote(overrides: Partial<AcquiredNote> = {}): AcquiredNote {
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
-  } as AcquiredNote;
+  };
 }
 
 describe("§1024.39 early-intervention — pure decision gate", () => {
@@ -109,18 +159,28 @@ describe("§1024.39 early-intervention — predicate-gate composition", () => {
     const note = acquiredNote();
     const predicate = qualifiesForRegZStatementSync({ kind: "acquired_note", row: note });
     expect(predicate.qualifies).toBe(true);
+    // The row's own stored aging must be the day we then ask about — one note,
+    // one delinquency depth.
+    expect(note.daysDelinquent).toBe(EARLY_INTERVENTION_TRIGGER_DAY);
+    expect(note.delinquencyStatus).toBe("default_candidate");
     // Combined: predicate.qualifies && shouldFireEarlyIntervention(36) → fire.
-    const trigger = shouldFireEarlyIntervention(36);
+    const trigger = shouldFireEarlyIntervention(note.daysDelinquent);
     expect(predicate.qualifies && trigger.shouldFire).toBe(true);
   });
 
   it("passive_holder acquired note → predicate gates, NO §1024.39 attaches even at day 60", () => {
-    const note = acquiredNote({ servicingArrangement: "passive_holder" });
+    // Aged forward to day 60 on the row itself — the "deep delinquency" this
+    // case is about is stored on the note, not only asserted about it.
+    const note = acquiredNote({
+      servicingArrangement: "passive_holder",
+      ...agingAsOf(AS_OF_DAY_60),
+    });
     const predicate = qualifiesForRegZStatementSync({ kind: "acquired_note", row: note });
     expect(predicate.qualifies).toBe(false);
     expect(predicate.citation).toContain("§1024.2(b)");
+    expect(note.daysDelinquent).toBe(60);
     // Even at deep delinquency, the duty doesn't attach to a passive holder.
-    const trigger = shouldFireEarlyIntervention(60);
+    const trigger = shouldFireEarlyIntervention(note.daysDelinquent);
     expect(trigger.shouldFire).toBe(true); // pure function says yes
     expect(predicate.qualifies && trigger.shouldFire).toBe(false); // composed: no
   });

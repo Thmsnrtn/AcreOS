@@ -38,6 +38,18 @@ function acquiredNote(overrides: Partial<AcquiredNote> = {}): AcquiredNote {
     maturityDate: "2050-01-01",
     acquisitionDate: "2024-06-01",
     acquisitionPriceCents: 8_500_000,
+    // The §1026.41 predicate is a SCOPE test (consumer purpose, dwelling,
+    // who services it) — it never reads the schedule or the aging columns.
+    // So this fixture stays deliberately neutral and self-consistent: no
+    // derived schedule dates, schema defaults for the rest. A performing
+    // note that is current and carries no stated fee.
+    firstPaymentDate: null,
+    nextPaymentDate: null,
+    paidThroughDate: null,
+    gracePeriodDays: 10,
+    lateFeeCents: 0,
+    daysDelinquent: 0,
+    delinquencyStatus: "current",
     status: "performing",
     payerName: "Jane Borrower",
     payerAddress: null,
@@ -65,7 +77,7 @@ function acquiredNote(overrides: Partial<AcquiredNote> = {}): AcquiredNote {
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
-  } as AcquiredNote;
+  };
 }
 
 describe("qualifiesForRegZStatementSync — Beatrice 2026-06-02 ruling", () => {
@@ -92,7 +104,17 @@ describe("qualifiesForRegZStatementSync — Beatrice 2026-06-02 ruling", () => {
     it("acquired note: workout / pre-charge-off still qualifies when self_serviced (Beatrice case 6)", () => {
       const result = qualifiesForRegZStatementSync({
         kind: "acquired_note",
-        row: acquiredNote({ status: "default", servicingArrangement: "self_serviced" }),
+        row: acquiredNote({
+          status: "default",
+          servicingArrangement: "self_serviced",
+          // A note in `default` cannot also be stored as current — the aging
+          // columns have to describe the same loan the status describes.
+          // Deep delinquency (past the 30-day band) is what puts it here.
+          nextPaymentDate: "2026-01-01",
+          paidThroughDate: "2025-12-01",
+          daysDelinquent: 90,
+          delinquencyStatus: "default_candidate",
+        }),
       });
       expect(result.qualifies).toBe(true);
     });
