@@ -376,26 +376,43 @@ describe("mobile_homes — deepened to production (wave V4 of ruling #11)", () =
     expect(haystack).toMatch(/receipt/i);
   });
 
-  it("does NOT promise the platform's known gaps — pad inventory, chattel titles, submetering", () => {
-    // business-types.ts mobile_home entry: no lot/pad inventory model, no
-    // home-as-chattel handling, no utilities pass-through billing. The
-    // voice must state the gap, not promise the feature.
-    //
-    // Migration 0219 did NOT close this one, deliberately: `rental_units.kind`
-    // enumerates 'pad' and the unit-create route accepts it, but nothing in
-    // the product ever WRITES 'pad' (the 0219 backfill and the rent-roll
-    // importer both take the 'unit' default; there is no park surface). A
-    // column that can hold a value is not an inventory the operator has, so
-    // all three gap statements stand exactly as before.
-    expect(p.systemPromptAppendix).toContain("no lot/pad inventory model");
+  it("states pad inventory as REAL, and still does NOT promise chattel titles or submetering", () => {
+    // business-types.ts mobile_home entry, post-pad-inventory: TWO of the three
+    // park-specific gaps stand — no home-as-chattel handling, no utilities
+    // pass-through billing. Those two assertions are UNCHANGED below and must
+    // stay: the voice states the gap, it does not promise the feature.
     expect(p.systemPromptAppendix).toContain("no chattel-title tracking");
     expect(p.systemPromptAppendix).toMatch(/no utilities pass-through/i);
-    // The nuance is stated without softening the gap: the model can hold a
-    // pad, the product does not create one. Flattened — the appendix is
-    // hard-wrapped prose and these phrases straddle newlines.
+
+    // The THIRD gap closed, so this assertion is REWRITTEN to the new truth
+    // rather than deleted (wave rule: when a wave makes a stubbed thing real,
+    // rewrite the assertion that pinned the stub so the invariant survives).
+    // It used to pin /no lot\/pad inventory model/ plus "nothing in AcreOS
+    // creates one today" and "treat the pad inventory as absent" — accurate
+    // then, because `rental_units.kind` enumerated 'pad' and NO write site in
+    // the product ever set it. Three now do: the units surface (Units tab of
+    // /leases), its bulk-create route, and the lease form's slot-kind picker
+    // feeding findOrCreateUnitId (plus the rent-roll importer's `unitKind`,
+    // which finally has a driver). The invariant is unchanged — the voice
+    // describes the pad model the platform actually has.
+    //
+    // Flattened — the appendix is hard-wrapped prose and these phrases
+    // straddle newlines.
     const flat = p.systemPromptAppendix.replace(/\s+/g, " ");
-    expect(flat).toMatch(/nothing in AcreOS creates one today/i);
-    expect(flat).toMatch(/treat the pad inventory as absent/i);
+    expect(flat).toMatch(/AcreOS models pad inventory/i);
+    expect(flat).toMatch(/create, edit and retire/i);
+    expect(flat).toMatch(/in bulk/i);
+    // Occupancy over pads is the whole point of modelling them: a pad nobody
+    // has ever leased is exactly the vacancy a lease-derived count cannot see.
+    expect(flat).toMatch(/occupancy is computed over those pads/i);
+    // …and the retired claims must not come back.
+    expect(flat).not.toMatch(/no lot\/pad inventory model/i);
+    expect(flat).not.toMatch(/nothing in AcreOS creates one today/i);
+    expect(flat).not.toMatch(/treat the pad inventory as absent/i);
+    // The enumeration that used to read "never imply the platform models pads,
+    // home titles, or submetering" drops PADS and keeps the other two.
+    expect(flat).toMatch(/never imply the platform models home titles or submetering/i);
+    expect(flat).not.toMatch(/never imply the platform models pads/i);
   });
 });
 

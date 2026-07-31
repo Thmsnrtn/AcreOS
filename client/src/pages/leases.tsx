@@ -15,11 +15,22 @@
  *      one that already exists instead of typing a near-miss.
  *   2. Leaving it blank is a real answer — the whole property is the rentable
  *      slot (the SFR case), matching migration 0219's 'Whole property' unit.
+ *   3. The KIND of slot is now an explicit choice on the form. Every unit born
+ *      from a lease used to be a 'unit' — including a mobile-home park's ground
+ *      leases, which are PADS. The discriminator existed in the schema and no
+ *      write site in the product ever set it to anything else.
+ *
+ * UNITS TAB. This page now has two tabs: Leases and Units. The units surface
+ * (client/src/components/rentals/units-panel.tsx) is a TAB here rather than a
+ * route of its own because "no new top-level nav entries EVER" is a standing
+ * founder hard-stop and the customer nav is exactly five doors — a new surface
+ * hangs off an existing one. `/leases` is the right host: it is the page that
+ * already speaks in unit labels and already reads the units endpoint.
  */
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { FileText, PlusCircle } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
@@ -32,10 +43,14 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { UnitsPanel } from "@/components/rentals/units-panel";
+import { UNIT_KIND_OPTIONS, unitVocabulary } from "@shared/rental/unitInventory";
+import type { RentalUnitKind } from "@shared/schema";
 
 interface Lease {
   id: string;
@@ -79,6 +94,11 @@ function statusTone(s: string): "default" | "secondary" | "outline" | "destructi
 export default function LeasesPage() {
   useDocumentTitle("Leases — AcreOS");
   const { toast } = useToast();
+  // `?tab=units` deep-links the inventory surface — the occupancy refusal
+  // ("no units modelled") points an operator straight here.
+  const search = useSearch();
+  const initialTab = new URLSearchParams(search).get("tab") === "units" ? "units" : "leases";
+  const [tab, setTab] = useState<string>(initialTab);
   const [showCreate, setShowCreate] = useState(false);
   const [propertyId, setPropertyId] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -87,6 +107,9 @@ export default function LeasesPage() {
   const [securityDeposit, setSecurityDeposit] = useState("");
   const [state, setState] = useState("TX");
   const [unitLabel, setUnitLabel] = useState("");
+  // unit | pad | suite for the slot this lease find-or-creates. Applied on
+  // CREATE only server-side, so leasing an existing pad never resets it.
+  const [unitKind, setUnitKind] = useState<RentalUnitKind>("unit");
   const [isSection8, setIsSection8] = useState(false);
   const [hapPortion, setHapPortion] = useState("");
   const [tenantPortion, setTenantPortion] = useState("");
@@ -123,6 +146,7 @@ export default function LeasesPage() {
           propertyId: parseInt(propertyId, 10),
           startDate, endDate: endDate || undefined,
           unitLabel: unitLabel || undefined,
+          unitKind,
           monthlyRentCents: Math.round(parseFloat(rent) * 100),
           securityDepositCents: Math.round(parseFloat(securityDeposit || "0") * 100),
           state, status: "draft",
@@ -168,12 +192,27 @@ export default function LeasesPage() {
             One row per lease. Renewals reference the original via parent_lease_id; the original status flips to 'renewed' so versions stay intact.
           </p>
         </div>
-        <Button onClick={() => setShowCreate((v) => !v)}>
-          <PlusCircle className="w-4 h-4 mr-1" aria-hidden="true" />
-          {showCreate ? "Cancel" : "New lease"}
-        </Button>
+        {tab === "leases" && (
+          <Button onClick={() => setShowCreate((v) => !v)}>
+            <PlusCircle className="w-4 h-4 mr-1" aria-hidden="true" />
+            {showCreate ? "Cancel" : "New lease"}
+          </Button>
+        )}
       </div>
 
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="leases" data-testid="tab-leases">Leases</TabsTrigger>
+          {/* The rentable-slot inventory. A tab, never a nav entry — the five
+              customer doors are fixed and new surfaces hang off existing ones. */}
+          <TabsTrigger value="units" data-testid="tab-units">Units</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="units" className="mt-0">
+          <UnitsPanel />
+        </TabsContent>
+
+        <TabsContent value="leases" className="mt-0">
       {showCreate && (
         <Card className="mb-6">
           <CardHeader>
@@ -203,6 +242,28 @@ export default function LeasesPage() {
                 {units.data && units.data.units.length > 0
                   ? `Matches one of ${units.data.units.length} unit(s) already on this property, or creates a new one. Leave blank for a whole-property tenancy.`
                   : "Creates the unit if it doesn't exist yet. Leave blank for a whole-property tenancy."}
+              </p>
+            </div>
+            <div>
+              {/* What KIND of slot this lease is for. Applied only when the
+                  label is new — leasing an existing pad never resets it to a
+                  'unit'. Nothing infers it: neither the property's structure
+                  type nor a label reading "Lot 14" establishes what the slot IS,
+                  and a guess here would put an unasserted fact in the record. */}
+              <Label className="text-xs" htmlFor="lease-unit-kind">Slot kind</Label>
+              <Select value={unitKind} onValueChange={(v) => setUnitKind(v as RentalUnitKind)}>
+                <SelectTrigger id="lease-unit-kind" className="h-9" aria-describedby="lease-unit-kind-help">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {UNIT_KIND_OPTIONS.map((k) => (
+                    <SelectItem key={k.kind} value={k.kind}>{k.titleSingular}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p id="lease-unit-kind-help" className="text-micro text-muted-foreground mt-1">
+                {unitVocabulary(unitKind).description}. Only used when this label
+                is new here — an existing {unitVocabulary(unitKind).singular} keeps its own kind.
               </p>
             </div>
             <div><Label className="text-xs">State *</Label>
@@ -281,6 +342,8 @@ export default function LeasesPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
     </PageShell>
   );
 }

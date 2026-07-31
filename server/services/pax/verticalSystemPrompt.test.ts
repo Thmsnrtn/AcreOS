@@ -54,11 +54,20 @@ describe("buildVerticalPromptAppendix", () => {
     expect(out).toContain("Mobile Home");
     // Deepened in wave V4 of ruling #11: no TODO markers remain, and the
     // generic scaffold-honesty flag is replaced by the appendix's own
-    // specific capability honesty (no pad inventory / chattel titles /
-    // submetering promised).
+    // specific capability honesty.
     expect(out).not.toMatch(/\[TODO/);
     expect(out).not.toContain("Depth posture");
-    expect(out).toContain("no lot/pad inventory model");
+    // REWRITTEN, not deleted (2026-07-31, pad inventory). This line pinned
+    // "no lot/pad inventory model" — true while nothing in the product ever
+    // wrote `rental_units.kind = 'pad'`. The units surface, its bulk-create
+    // route and the lease form's slot-kind picker now do, so the SAME
+    // invariant (the rendered prompt carries the appendix's capability
+    // honesty, in the operator's own words) is pinned to the new truth. The
+    // two gaps that remain open are pinned right after it.
+    expect(out).toContain("AcreOS models pad inventory");
+    expect(out).not.toContain("no lot/pad inventory model");
+    expect(out).toContain("no chattel-title tracking");
+    expect(out).toMatch(/no utilities pass-through/i);
   });
 
   it("defaults experienceLevel to intermediate when null", () => {

@@ -470,26 +470,31 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "mobile_home",
     label: "Mobile home / park",
     shortDescription: "Mobile home park operators + flippers.",
-    // 2026-07-31 (migration 0219 — units): stays roadmap, and stays roadmap
-    // for the SAME park-specific reasons. What EXISTS today (V1 widened the
-    // landlord family): the Rentals stack works for lot leases (a lot lease
-    // is a term lease with monthly rent, renewals, deposits, and maintenance
-    // — the mechanics the stack models), plus the landlord Today lede +
-    // cluster and the real landlord dashboard.
+    // 2026-07-31 (pad inventory): stays roadmap — but for TWO reasons now,
+    // not three. What EXISTS today (V1 widened the landlord family): the
+    // Rentals stack works for lot leases (a lot lease is a term lease with
+    // monthly rent, renewals, deposits, and maintenance — the mechanics the
+    // stack models), plus the landlord Today lede + cluster and the real
+    // landlord dashboard.
     //
-    // 0219's `rental_units` carries a `kind` discriminator whose values
-    // include 'pad' (shared/schema/rental.ts RENTAL_UNIT_KINDS), and POST
-    // /api/rentals/properties/:propertyId/units accepts it, so the MODEL can
-    // hold a pad. That is all it is: as of this writing nothing in the
-    // product ever writes 'pad' — the 0219 backfill and the rent-roll
-    // importer both take the 'unit' default, and there is no park surface, no
-    // pad-aware UI, and no import path that would produce one. A column that
-    // can hold a value is not an inventory an operator has. The gap stays
-    // OPEN and the persona voice must keep saying so.
+    // PAD INVENTORY — CLOSED. This entry used to record that `rental_units.kind`
+    // enumerated 'pad' and the route accepted it, while no write path in the
+    // product ever set it — a column that could hold a value was not an
+    // inventory anybody had. Three write paths now set it, and each is
+    // driven by a real operator action:
+    //   - the units surface (Units tab of /leases → UnitsPanel): create, edit,
+    //     retire a pad, with the vocabulary — pads/lots, not "units";
+    //   - bulk create (POST /api/rentals/properties/:id/units/bulk): "Lot 1"–
+    //     "Lot 60" in one action, idempotent against the (org, property, label)
+    //     unique index and reporting created-vs-already-there separately;
+    //   - the lease form's slot-kind picker and the rent-roll importer's
+    //     `unitKind`, which now has a driver instead of being an unwired field.
+    // A park's pads are therefore an inventory an operator has, and occupancy
+    // over them is computable.
     //
-    // What's MISSING for beta: everything park-specific — no populated
-    // lot/pad inventory, no home-as-chattel handling (titles, home-vs-lot
-    // rent split), no utilities pass-through billing.
+    // What's STILL MISSING for beta — and the reason this stays roadmap: no
+    // home-as-chattel handling (titles, home-vs-lot rent split), no utilities
+    // pass-through billing. The persona voice must keep saying both.
     maturity: "roadmap",
     // All four landlord templates genuinely apply to lot-lease operations
     // (lot leases renew, lot rent hits the ledger, park infrastructure
