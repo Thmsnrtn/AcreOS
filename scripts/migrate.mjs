@@ -8277,6 +8277,97 @@ const STATEMENTS = [
   `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "consecutive_on_time_payments" integer NOT NULL DEFAULT 0`,
   `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "reperforming_threshold_met" boolean NOT NULL DEFAULT false`,
   `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "compliance_posture_json" jsonb`,
+
+  // ── 0219 rental units: the rentable slot becomes a row ──────────────────
+  // The buy-and-hold vertical modelled a unit as `rental_leases.unit_label` —
+  // free text on a LEASE — so a unit only existed once somebody had leased it.
+  // Three verified defects follow: GET /api/rent-roll/occupancy counts only
+  // (property_id, unit_label) pairs that have EVER held a lease, so a unit
+  // nobody has rented adds 0 to BOTH sides and a half-empty building reads
+  // 100% occupied; the rent-roll importer does `if (u.isVacant) continue;`,
+  // discarding exactly the rows a landlord most needs because there was
+  // nowhere to put them; and `knownUnitCountFloor` could only produce a FLOOR
+  // on the unit count, so the Tex. Prop. Code §92.019 4+-unit late-fee cap was
+  // computed both ways and the lower charged, deliberately under-charging
+  // rather than risk an unlawful fee.
+  //
+  // ONE table, deliberately: there is NO `rental_buildings`. `properties`
+  // already IS the building (one row per parcel, with square_feet and a
+  // structure_type enumerating sfr/duplex/…/mixed_use). A second table would
+  // restate it and drift, against the north star of a SMALLER schema. `kind`
+  // (unit | pad | suite) is the discriminator that keeps a mobile-home park's
+  // ground-lease PAD and a strip centre's SUITE in the same table; `status`
+  // (active | offline | retired) keeps "units I own" separable from "units I
+  // could have leased", which is where occupancy numbers start lying.
+  //
+  // Money posture (founder ruling #15): market_rent_cents is a QUOTE, not a
+  // balance. Nothing here moves, holds, collects or charges money.
+  //
+  // ONE new table — scripts/ratchets/table-count.json 754 -> 755.
+  // Mirrors migrations/0219_rental_units.sql + shared/schema/rental.ts.
+  `CREATE TABLE IF NOT EXISTS "rental_units" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+    "label" text NOT NULL,
+    "kind" text NOT NULL DEFAULT 'unit',
+    "bedrooms" integer,
+    "bathrooms" numeric(3,1),
+    "square_feet" integer,
+    "market_rent_cents" bigint,
+    "status" text NOT NULL DEFAULT 'active',
+    "notes" text,
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    "updated_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // The unique index IS the idempotency guard — for the rent-roll importer and
+  // for the backfill below. A re-run loses the INSERT instead of creating a
+  // duplicate "3B" that would be double-counted in every occupancy denominator.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "rental_units_org_property_label_uk" ON "rental_units" ("organization_id", "property_id", "label")`,
+  // Org-LEADING (L3 shard-readiness) + the dominant read: "every unit at this
+  // property" — the rent roll, the occupancy math, the §92.019 unit count.
+  `CREATE INDEX IF NOT EXISTS "rental_units_org_property_idx" ON "rental_units" ("organization_id", "property_id")`,
+  // ON DELETE SET NULL, not CASCADE: a lease can outlive its unit row (units
+  // combined, buildings re-platted) and losing the LEASE would be far worse
+  // than losing the link. `unit_label` STAYS as a denormalised display copy —
+  // it is read in 20+ places including raw SQL in two route files, and
+  // dropping it in the same change that adds `unit_id` would break pages
+  // nobody thought to test.
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "unit_id" varchar REFERENCES "rental_units"("id") ON DELETE SET NULL`,
+  // BACKFILL — and unlike 0218 this one is safe to write, for a stated reason:
+  // 0218 shipped none because inferring "which period was satisfied" from a
+  // payment date would have INVENTED A FACT. This only COPIES A LABEL ALREADY
+  // ON THE ROW. `unit_label` is the operator's own string, already stored and
+  // already displayed; moving it to a row it can be keyed by adds no claim.
+  // An SFR lease (null/empty label) becomes 'Whole property' so occupancy math
+  // is uniform across SFR and multi-unit rather than forking on null — the
+  // fork is what produced the 100%-occupied bug. It deliberately does NOT
+  // invent units that have never been leased: those are the vacancies the
+  // product could not see, and only the operator or the importer can add them.
+  `INSERT INTO "rental_units" ("organization_id", "property_id", "label")
+   SELECT DISTINCT
+     l."organization_id",
+     l."property_id",
+     CASE
+       WHEN COALESCE(NULLIF(TRIM(l."unit_label"), ''), '') = '' THEN 'Whole property'
+       ELSE TRIM(l."unit_label")
+     END AS label
+   FROM "rental_leases" l
+   WHERE l."organization_id" IS NOT NULL
+     AND l."property_id" IS NOT NULL
+   ON CONFLICT ("organization_id", "property_id", "label") DO NOTHING`,
+  // Only rows still NULL, so a re-run is a no-op and a unit_id an operator has
+  // since corrected by hand is never overwritten.
+  `UPDATE "rental_leases" l
+   SET "unit_id" = u."id"
+   FROM "rental_units" u
+   WHERE l."unit_id" IS NULL
+     AND u."organization_id" = l."organization_id"
+     AND u."property_id" = l."property_id"
+     AND u."label" = CASE
+       WHEN COALESCE(NULLIF(TRIM(l."unit_label"), ''), '') = '' THEN 'Whole property'
+       ELSE TRIM(l."unit_label")
+     END`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

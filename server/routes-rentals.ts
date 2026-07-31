@@ -153,6 +153,161 @@ function leadPaintBlocked(res: Response, detail: Record<string, unknown>) {
 }
 
 // ----------------------------------------------------------------------------
+// Occupancy — the arithmetic, kept pure and separately testable.
+//
+// The version this replaces derived BOTH sides of the ratio from
+// `rental_leases`:
+//
+//   totalUnits  = COUNT(DISTINCT (property_id, unit_label)) FROM rental_leases
+//   activeUnits = the same, restricted to status = 'active'
+//
+// A unit that has never been leased has no lease row, so it appeared in
+// NEITHER count. A landlord who buys a half-empty 10-plex, enters it and
+// imports the six sitting tenants saw 6/6 = 100% occupancy — the number was
+// structurally incapable of reporting a vacancy, which is the one thing an
+// occupancy figure exists to report. `propertyCount` was fetched and then
+// never used in the percentage at all.
+//
+// Now the denominator is the units the operator OWNS AND COULD LEASE, read
+// from `rental_units`.
+// ----------------------------------------------------------------------------
+
+/** Raw per-status counts, straight off one aggregate query over rental_units. */
+export interface OccupancyUnitFacts {
+  /** Units with status = 'active' — the rentable stock. */
+  rentableUnits: number;
+  /** Active units carrying at least one currently-active lease. */
+  occupiedUnits: number;
+  /** status = 'offline' — owned, but could not have been leased. */
+  offlineUnits: number;
+  /** status = 'retired' — no longer part of the property. */
+  retiredUnits: number;
+  /** How many of the vacant active units carry a marketRentCents. */
+  vacantUnitsWithMarketRent: number;
+  /** Sum of marketRentCents over exactly those units. */
+  vacantMarketRentMonthlyCents: number;
+  propertyCount: number;
+}
+
+/** Why occupancy is not computable, when it isn't. */
+export type OccupancyUnmeasurableReason = "no_units_modelled" | "no_rentable_units";
+
+interface OccupancyCommon {
+  offlineUnits: number;
+  retiredUnits: number;
+  propertyCount: number;
+}
+
+export type OccupancySnapshot =
+  | (OccupancyCommon & {
+      measurable: true;
+      rentableUnits: number;
+      occupiedUnits: number;
+      vacantUnits: number;
+      occupancyPct: number;
+      /**
+       * Monthly asking rent going uncollected across the vacant units that
+       * carry one. OMITTED (not zero) when no vacant unit has a market rent —
+       * a missing asking rent is unknown, not free.
+       */
+      vacantMarketRentMonthlyCents?: number;
+      /** Vacant units excluded from that sum because they carry no asking rent. */
+      vacantUnitsMissingMarketRent: number;
+    })
+  | (OccupancyCommon & {
+      measurable: false;
+      reason: OccupancyUnmeasurableReason;
+      message: string;
+      occupancyPct: null;
+      rentableUnits: number;
+      occupiedUnits: null;
+      vacantUnits: null;
+    });
+
+/**
+ * Occupancy over modelled units.
+ *
+ *   denominator = active (rentable) units
+ *   numerator   = active units with a currently-active lease
+ *   vacant      = the difference, reported explicitly rather than derived
+ *
+ * `offline` and `retired` units are excluded from BOTH sides and surfaced
+ * separately. Folding them into the denominator would make a renovation look
+ * like a leasing failure; folding them into the numerator would excuse a
+ * genuinely empty unit. An operator with three units down for renovation needs
+ * to see that as its own number.
+ *
+ * With no rentable units there is no ratio. We return an explicit unmeasurable
+ * state with a reason — never 0% (which reads as "everything is empty") and
+ * never 100% (which is what the old query actually produced). A percentage
+ * computed from nothing is a fabricated number.
+ */
+export function computeOccupancySnapshot(facts: OccupancyUnitFacts): OccupancySnapshot {
+  const rentableUnits = Math.max(0, Math.trunc(facts.rentableUnits));
+  const offlineUnits = Math.max(0, Math.trunc(facts.offlineUnits));
+  const retiredUnits = Math.max(0, Math.trunc(facts.retiredUnits));
+  const propertyCount = Math.max(0, Math.trunc(facts.propertyCount));
+  const common: OccupancyCommon = { offlineUnits, retiredUnits, propertyCount };
+
+  if (rentableUnits === 0) {
+    const modelledAny = offlineUnits > 0 || retiredUnits > 0;
+    const reason: OccupancyUnmeasurableReason = modelledAny ? "no_rentable_units" : "no_units_modelled";
+    return {
+      ...common,
+      measurable: false,
+      reason,
+      message: modelledAny
+        ? `All ${offlineUnits + retiredUnits} modelled unit(s) are offline or retired — there is no rentable stock to compute occupancy over.`
+        : "No rental units have been modelled yet. Occupancy cannot be derived from leases alone, because a unit that has never been leased leaves no trace there — add units to a property or import a rent roll.",
+      occupancyPct: null,
+      rentableUnits: 0,
+      occupiedUnits: null,
+      vacantUnits: null,
+    };
+  }
+
+  // Clamp rather than trust: a unit cannot be more-than-occupied, and letting
+  // a bad count through would print an occupancy above 100%.
+  const occupiedUnits = Math.min(rentableUnits, Math.max(0, Math.trunc(facts.occupiedUnits)));
+  const vacantUnits = rentableUnits - occupiedUnits;
+
+  const vacantWithRent = Math.min(vacantUnits, Math.max(0, Math.trunc(facts.vacantUnitsWithMarketRent)));
+  const vacantMarketRent = Math.max(0, Math.trunc(facts.vacantMarketRentMonthlyCents));
+
+  return {
+    ...common,
+    measurable: true,
+    rentableUnits,
+    occupiedUnits,
+    vacantUnits,
+    occupancyPct: Math.round((occupiedUnits / rentableUnits) * 100),
+    // Key absent — not zero — when nothing vacant carries an asking rent.
+    ...(vacantWithRent > 0 ? { vacantMarketRentMonthlyCents: vacantMarketRent } : {}),
+    vacantUnitsMissingMarketRent: vacantUnits - vacantWithRent,
+  };
+}
+
+/**
+ * drizzle's `execute()` returns a driver-dependent envelope (node-postgres
+ * wraps rows in `{ rows }`; other drivers hand back the array). Narrow it once
+ * here so no route body needs an untyped hop — an untyped hop is exactly where
+ * a miscounted unit would hide.
+ */
+function readFirstRow(result: unknown): Record<string, unknown> | undefined {
+  const rows = Array.isArray(result)
+    ? result
+    : (result as { rows?: unknown[] } | null)?.rows;
+  const first = Array.isArray(rows) ? rows[0] : undefined;
+  return first && typeof first === "object" ? (first as Record<string, unknown>) : undefined;
+}
+
+/** SQL COUNT/SUM comes back as number or string depending on width. */
+function toCount(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// ----------------------------------------------------------------------------
 // Routes
 // ----------------------------------------------------------------------------
 
@@ -994,39 +1149,66 @@ export function registerRentalRoutes(app: Express): void {
     }
   });
 
-  // Occupancy snapshot — distinct property+unit pairs with an active lease
-  // over distinct property+unit pairs ever on record. SFR-only orgs see
-  // "active leases / property count"; multi-unit counts unit_label slots.
+  // Occupancy snapshot — see `computeOccupancySnapshot` for the arithmetic and
+  // for why the old lease-derived version could not see a vacancy at all.
   app.get("/api/rent-roll/occupancy", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
 
-      const totalRow = await db.execute(sql`
-        SELECT COUNT(DISTINCT (property_id, COALESCE(unit_label, '')))::int AS total
-        FROM rental_leases
-        WHERE organization_id = ${orgId}
+      // One pass over rental_units. The LATERAL probe is a semi-join: a unit
+      // with two overlapping active leases (a renewal signed before the old
+      // one is closed out) must count ONCE, or occupancy exceeds 100%.
+      //
+      // Every FILTER clause below is over `rental_units`, not `rental_leases`.
+      // That is the whole fix: a unit that has never been leased has no row in
+      // rental_leases, so the old query could not see it on either side of the
+      // ratio and a half-empty building read as 100% occupied.
+      const unitsRow = await db.execute(sql`
+        SELECT
+          COUNT(*) FILTER (WHERE u.status = 'active')::int AS rentable_units,
+          COUNT(*) FILTER (WHERE u.status = 'active' AND l.leased IS NOT NULL)::int AS occupied_units,
+          COUNT(*) FILTER (WHERE u.status = 'offline')::int AS offline_units,
+          COUNT(*) FILTER (WHERE u.status = 'retired')::int AS retired_units,
+          COUNT(*) FILTER (
+            WHERE u.status = 'active' AND l.leased IS NULL AND u.market_rent_cents IS NOT NULL
+          )::int AS vacant_units_with_market_rent,
+          COALESCE(SUM(u.market_rent_cents) FILTER (
+            WHERE u.status = 'active' AND l.leased IS NULL AND u.market_rent_cents IS NOT NULL
+          ), 0)::bigint AS vacant_market_rent_cents
+        FROM rental_units u
+        LEFT JOIN LATERAL (
+          SELECT 1 AS leased
+          FROM rental_leases rl
+          WHERE rl.unit_id = u.id
+            AND rl.organization_id = ${orgId}
+            AND rl.status = 'active'
+          LIMIT 1
+        ) l ON TRUE
+        WHERE u.organization_id = ${orgId}
       `);
-      const activeRow = await db.execute(sql`
-        SELECT COUNT(DISTINCT (property_id, COALESCE(unit_label, '')))::int AS active
-        FROM rental_leases
-        WHERE organization_id = ${orgId}
-          AND status = 'active'
-      `);
+
       const propsRow = await db.execute(sql`
         SELECT COUNT(*)::int AS c FROM properties
         WHERE organization_id = ${orgId}
       `);
 
-      const totalUnits = Number(((totalRow as any).rows?.[0]?.total) ?? 0);
-      const activeUnits = Number(((activeRow as any).rows?.[0]?.active) ?? 0);
-      const propertyCount = Number(((propsRow as any).rows?.[0]?.c) ?? 0);
+      // drizzle's execute() result shape is driver-dependent; read defensively
+      // and coerce at this boundary rather than letting an untyped hop carry a
+      // count into the arithmetic (same standard as `knownUnitCountFloor`).
+      const row = readFirstRow(unitsRow);
+      const propRow = readFirstRow(propsRow);
 
-      return res.json({
-        activeUnits,
-        totalUnits,
-        propertyCount,
-        occupancyPct: totalUnits > 0 ? Math.round((activeUnits / totalUnits) * 100) : null,
+      const snapshot = computeOccupancySnapshot({
+        rentableUnits: toCount(row?.rentable_units),
+        occupiedUnits: toCount(row?.occupied_units),
+        offlineUnits: toCount(row?.offline_units),
+        retiredUnits: toCount(row?.retired_units),
+        vacantUnitsWithMarketRent: toCount(row?.vacant_units_with_market_rent),
+        vacantMarketRentMonthlyCents: toCount(row?.vacant_market_rent_cents),
+        propertyCount: toCount(propRow?.c),
       });
+
+      return res.json(snapshot);
     } catch (err) {
       return Errors.internal(res, err);
     }

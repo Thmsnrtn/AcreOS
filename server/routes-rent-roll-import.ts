@@ -8,7 +8,13 @@
  * landlord-buyer says 'oh, this thing gets it.'"
  *
  *   POST /api/parcels/:id/rent-roll/preview   — preview NOI without writing
- *   POST /api/parcels/:id/rent-roll/import    — create tenants+leases+charges
+ *   POST /api/parcels/:id/rent-roll/import    — create units+tenants+leases+charges
+ *
+ * The importer persists EVERY row it is given, vacant or not. A rent roll's
+ * vacant lines are the building's empty units, and they are precisely the rows
+ * /api/rent-roll/occupancy needs in order to report a vacancy at all; dropping
+ * them (as this file did until units existed) meant a half-empty building
+ * imported as 100% occupied.
  *
  * Input shape (CSV-parsed client-side, posted as JSON):
  *   {
@@ -31,6 +37,7 @@ import {
   tenants,
   rentalLeases,
   leaseTenants,
+  rentalUnits,
   rentCharges,
   properties,
 } from "@shared/schema";
@@ -141,12 +148,69 @@ export function registerRentRollImportRoutes(app: Express): void {
       if (!prop) return Errors.notFound(res, "Parcel");
 
       const summary = await db.transaction(async (tx) => {
+        let createdUnits = 0;
+        let existingUnits = 0;
         let createdTenants = 0;
         let createdLeases = 0;
         let createdCharges = 0;
 
         for (const u of parsed.data.units) {
-          if (u.isVacant) continue;
+          // The importer no longer silently drops rows. It used to open this
+          // loop with `if (u.isVacant) continue;`, so a vacant unit left NO
+          // record anywhere — the seller hands over the building's complete
+          // unit list and we threw away exactly the rows that make occupancy
+          // real. Every row now becomes a `rental_units` row; only the
+          // lease/tenant/charge writes below are conditional on occupancy.
+          //
+          // status is 'active' for every imported row: vacant means "rentable
+          // and empty", NOT 'offline'. Only an operator can tell us a unit is
+          // out of service, and inferring it from a blank tenant name would
+          // quietly erase the vacancy from the denominator again.
+          const insertedUnits = await tx.insert(rentalUnits).values({
+            organizationId: orgId,
+            propertyId: propId,
+            label: u.unit,
+            status: "active",
+            // Asking rent, ONLY from vacant rows. On an occupied row
+            // `rentCents` is what the sitting tenant pays — in-place rent is
+            // not market rent, and copying it here would invent an asking
+            // price nobody quoted (and corrupt loss-to-lease). Occupied units
+            // keep a null market rent until an operator sets one.
+            marketRentCents: u.isVacant && u.rentCents > 0 ? u.rentCents : null,
+            notes: "Imported from seller's rent roll at acquisition.",
+            // Idempotent on re-import: the (org, property, label) unique index
+            // absorbs the second run, so a re-upload neither duplicates a unit
+            // nor clobbers operator edits to beds/baths/market rent/status.
+            // Same pattern as the rentCharges insert below.
+          }).onConflictDoNothing().returning({ id: rentalUnits.id });
+
+          let unitId: string;
+          if (insertedUnits.length > 0) {
+            unitId = insertedUnits[0].id;
+            createdUnits++;
+          } else {
+            // Conflict — the unit already exists. Read its id so the lease
+            // still joins to the operator's row rather than orphaning.
+            const [existing] = await tx.select({ id: rentalUnits.id })
+              .from(rentalUnits)
+              .where(and(
+                eq(rentalUnits.organizationId, orgId),
+                eq(rentalUnits.propertyId, propId),
+                eq(rentalUnits.label, u.unit),
+              ));
+            if (!existing) {
+              // Only reachable if the conflict came from something other than
+              // the (org, property, label) index. Say so instead of guessing.
+              logger.warn("[BH-5] rent roll: unit insert conflicted but no matching unit found", {
+                orgId, propId, label: u.unit,
+              });
+              continue;
+            }
+            unitId = existing.id;
+            existingUnits++;
+          }
+
+          if (u.isVacant) continue;                       // unit persisted above; no tenancy to create
           if (!u.tenantFirst && !u.tenantLast) continue;  // skip rows without tenant identity
 
           const [tenant] = await tx.insert(tenants).values({
@@ -164,6 +228,9 @@ export function registerRentRollImportRoutes(app: Express): void {
           const [lease] = await tx.insert(rentalLeases).values({
             organizationId: orgId,
             propertyId: propId,
+            unitId,
+            // unitLabel stays alongside unitId — it is the denormalised display
+            // copy 20+ readers still use. Writers set BOTH (shared/schema/rental.ts).
             unitLabel: u.unit,
             status: "active",
             liabilityModel: "joint_and_several",
@@ -202,7 +269,7 @@ export function registerRentRollImportRoutes(app: Express): void {
           createdCharges++;
         }
 
-        return { createdTenants, createdLeases, createdCharges };
+        return { createdUnits, existingUnits, createdTenants, createdLeases, createdCharges };
       });
 
       const askingCents = prop.listPrice

@@ -44,6 +44,7 @@ import { and, eq, asc, desc, sql, gt } from "drizzle-orm";
 import { db } from "./db";
 import {
   rentalLeases,
+  rentalUnits,
   rentCharges,
   rentPayments,
   rentPaymentAllocations,
@@ -54,11 +55,12 @@ import {
   properties,
   organizations,
 } from "@shared/schema";
-import type { LateFeeRule } from "@shared/schema";
+import type { LateFeeRule, RentalUnitStatus } from "@shared/schema";
 import {
   parseLateFeeRuleRow,
   proposeLateFee,
   type LateFeeProposal,
+  type LateFeeRuleData,
 } from "@shared/rental/lateFeeProposal";
 import {
   recordRentPayment,
@@ -287,17 +289,60 @@ export function emitRentPaymentReceived(p: PostedRentPayment): void {
 // floored, cap-respecting proposer, used by both sides.
 
 /**
- * A FLOOR on the property's unit count, derived from real data only.
+ * How the unit count behind a statutory cap was arrived at. The cap is a legal
+ * figure, so the operator is owed the provenance of the number it keyed off —
+ * "counted from your inventory" and "the least it could possibly be" are not
+ * the same claim and must not render identically.
  *
- * Statutory caps key off unit count (Tex. Prop. Code §92.019 sets a different
- * percentage at 4+ units), so this figure must never ride on a heuristic that
- * could overcharge a tenant. `properties` has no unit_count column, so the only
- * ground truth we hold is the number of DISTINCT units this org has ever put on
- * a lease at the property — a floor on the true count. `proposeLateFee` treats
- * a floor under 4 as "unknowable" and computes BOTH branches, charging the
- * lower.
+ *  - `modelled_units`      — counted from `rental_units`. EXACT, so the statute
+ *                            is applied as written, one branch, no hedge.
+ *  - `lease_derived_floor` — no units are modelled at this property, so the
+ *                            only ground truth is the number of DISTINCT units
+ *                            this org has ever put on a lease there. A FLOOR,
+ *                            never a count, and treated as such.
  */
-async function knownUnitCountFloor(orgId: number, propertyId: number): Promise<number> {
+export type UnitCountBasis = "modelled_units" | "lease_derived_floor";
+
+export interface PropertyUnitCount {
+  count: number;
+  basis: UnitCountBasis;
+}
+
+/**
+ * Which unit statuses count toward the STATUTORY unit count.
+ *
+ * `active` + `offline`, never `retired`. This is a legal judgement, not an
+ * implementation detail. Tex. Prop. Code §92.019 keys its cap off how many
+ * dwelling units the STRUCTURE contains, not off how many the landlord happens
+ * to be able to rent this month: a unit gutted by a fire or held empty
+ * mid-renovation is still a unit in the building, and the cap that applies to
+ * the tenant next door must not move because a contractor is behind schedule.
+ * `retired` is the opposite case — the slot no longer exists as a unit
+ * (combined into its neighbour, demolished), so counting it would overstate the
+ * structure and, in states where the larger-property percentage is the higher
+ * one, overcharge.
+ *
+ * Deliberately a DIFFERENT denominator from the occupancy one, which excludes
+ * `offline` (see `rentalUnits.status` in shared/schema/rental.ts). Two
+ * questions, two denominators, on purpose — folding them together is how one of
+ * the two numbers starts lying.
+ */
+export const STATUTORY_UNIT_STATUSES: readonly RentalUnitStatus[] = ["active", "offline"];
+
+/**
+ * A FLOOR on the property's unit count, derived from lease data only.
+ *
+ * The fallback for a property whose units are not modelled. `properties` has no
+ * unit_count column, so the only ground truth left is the number of DISTINCT
+ * units this org has ever put on a lease at the property — a floor on the true
+ * count. `proposeLateFee` treats a floor under 4 as "unknowable" and computes
+ * BOTH branches, charging the lower.
+ *
+ * Behaviour here is deliberately UNCHANGED by the units table. Charging a
+ * tenant more because a landlord has not finished entering their inventory
+ * would be the platform billing someone for its own missing data.
+ */
+async function leaseDerivedUnitCountFloor(orgId: number, propertyId: number): Promise<number> {
   const unitCountRow = await db.execute(sql`
     SELECT COUNT(DISTINCT COALESCE(unit_label, ''))::int AS c
     FROM rental_leases
@@ -312,6 +357,138 @@ async function knownUnitCountFloor(orgId: number, propertyId: number): Promise<n
     ? (unitCountRow as unknown as Array<{ c?: number }>)
     : ((unitCountRow as unknown as { rows?: Array<{ c?: number }> }).rows ?? []);
   return Math.max(1, Number(rows[0]?.c ?? 0) || 0);
+}
+
+/**
+ * The property's unit count for statutory purposes, WITH the provenance of the
+ * figure.
+ *
+ * A real `rental_units` table now exists, so for any property whose units are
+ * modelled the count is EXACT rather than a floor, and the statute can be
+ * applied as written instead of hedged. Properties that have not been modelled
+ * fall back to the lease-derived floor, byte-for-byte as before.
+ */
+async function unitCountForProperty(orgId: number, propertyId: number): Promise<PropertyUnitCount> {
+  // Statuses come back rather than a `COUNT(*) FILTER (…)` so the status rule
+  // above stays in TypeScript, next to the reasoning that justifies it, instead
+  // of inside a SQL string — and so the read is fully typed end to end. This
+  // figure picks a statutory late-fee cap, and an untyped hop is exactly where a
+  // mispriced charge hides. Org-scoped, covered by
+  // rental_units_org_property_idx, and memoised per property by the org-wide
+  // proposals route.
+  const unitRows = await db
+    .select({ status: rentalUnits.status })
+    .from(rentalUnits)
+    .where(and(
+      eq(rentalUnits.organizationId, orgId),
+      eq(rentalUnits.propertyId, propertyId),
+    ));
+
+  const modelledCount = unitRows.filter((u) => STATUTORY_UNIT_STATUSES.includes(u.status)).length;
+  if (modelledCount > 0) {
+    return { count: modelledCount, basis: "modelled_units" };
+  }
+
+  // Either nothing is modelled here, or every row is `retired`. A property with
+  // no live units says nothing usable about the structure a sitting tenant is
+  // living in, so fall back rather than assert a count of zero — an empty
+  // inventory is missing data, and missing data is never a fact about a tenant.
+  return {
+    count: await leaseDerivedUnitCountFloor(orgId, propertyId),
+    basis: "lease_derived_floor",
+  };
+}
+
+/** A proposal that carries the unit figure — and its provenance — it keyed off. */
+export interface UnitAwareLateFeeProposal extends LateFeeProposal {
+  unitCount: number;
+  unitCountBasis: UnitCountBasis;
+}
+
+/**
+ * The whole unit-count decision, as a PURE function: count + basis + the state
+ * rule in, capped proposal out. No DB, no clock — so the branch a tenant is
+ * charged under is directly testable (tests/unit/rentalUnitCountForCap.test.ts).
+ *
+ * `modelled_units`      → the statutory branch the count actually selects,
+ *                         exactly, with no both-branches hedge.
+ * `lease_derived_floor` → today's behaviour, untouched: under 4 the true count
+ *                         is unknowable, so both branches are computed and the
+ *                         LOWER fee wins.
+ */
+export function proposeLateFeeForUnitCount(args: {
+  rule: LateFeeRuleData | null;
+  monthlyRentCents: number;
+  daysLate: number;
+  units: PropertyUnitCount;
+  state: string;
+}): UnitAwareLateFeeProposal {
+  const { rule, monthlyRentCents, daysLate, units, state } = args;
+
+  const stamp = (p: LateFeeProposal, note = ""): UnitAwareLateFeeProposal => ({
+    ...p,
+    explanation: note ? `${p.explanation}${note}` : p.explanation,
+    unitCount: units.count,
+    unitCountBasis: units.basis,
+  });
+
+  // What AcreOS proposes when this same figure is read as a FLOOR — i.e. exactly
+  // what shipped before the units table existed. Kept as the reference point
+  // for the non-regression rail below, and returned verbatim when the count is
+  // in fact only a floor.
+  const floorPath = proposeLateFee({
+    rule,
+    monthlyRentCents,
+    daysLate,
+    knownUnitCountFloor: units.count,
+    state,
+  });
+
+  if (units.basis === "lease_derived_floor") return stamp(floorPath);
+
+  // ── The count is EXACT from here down. ───────────────────────────────────
+  // ≥ 4 units: `proposeLateFee` already treats a count of 4+ as certainty, so
+  // it returns the large-property branch alone — no hedge, no second opinion.
+  if (units.count >= 4) return stamp(floorPath);
+
+  // < 4 units: the large-property percentage is simply not the applicable law
+  // for this building, so it is collapsed onto the small-property one before
+  // the proposer runs. Both branches then agree, and the proposer returns the
+  // under-4 branch exactly — labelled `small_under_4` rather than
+  // `conservative_unknown`, because it is no longer a guess.
+  //
+  // Deliberately NOT a second copy of the cap arithmetic: this file already
+  // carried two implementations of one statute once (see the block comment
+  // above) and will not again. This selects a branch; the shared, floored,
+  // cap-respecting proposer still does all the money math.
+  const smallPropertyRule: LateFeeRuleData | null = rule
+    ? { ...rule, capPctLargeProperty: rule.capPctSmallProperty }
+    : null;
+  const exact = proposeLateFee({
+    rule: smallPropertyRule,
+    monthlyRentCents,
+    daysLate,
+    knownUnitCountFloor: units.count,
+    state,
+  });
+
+  // NON-REGRESSION RAIL — direction of error is the whole point of this
+  // function. Changing the BASIS of a unit count must never raise the fee a
+  // tenant is charged for the same count. Every rule seeded today caps small
+  // properties at or below the large-property percentage (TX §92.019 as seeded:
+  // 10% under 4 units, 12% at 4+), so this is an equality in practice and the
+  // rail costs nothing. It exists for the rule that inverts it: a landlord
+  // finishing their data entry is not a fact about the tenant, and no change to
+  // AcreOS's own record-keeping may be the reason a charge goes up.
+  if (exact.proposedFeeCents > floorPath.proposedFeeCents) {
+    return stamp(
+      floorPath,
+      " This property's units are on record and the under-4 statutory branch applies, but that " +
+        "branch proposes MORE than the figure AcreOS proposes when the unit count is unknown — the " +
+        "lower figure was kept. Modelling a property's units never raises a tenant's fee.",
+    );
+  }
+  return stamp(exact);
 }
 
 /** The seeded rule for a state, or null when the jurisdiction is not encoded. */
@@ -329,15 +506,15 @@ async function proposalForCharge(args: {
   charge: Pick<typeof rentCharges.$inferSelect, "id" | "dueDate">;
   lease: Pick<typeof rentalLeases.$inferSelect, "id" | "propertyId" | "monthlyRentCents" | "state">;
   asOf: Date;
-}): Promise<{ proposal: LateFeeProposal; rule: LateFeeRule | null; daysLate: number }> {
+}): Promise<{ proposal: UnitAwareLateFeeProposal; rule: LateFeeRule | null; daysLate: number }> {
   const rule = await lateFeeRuleForState(args.lease.state);
-  const floor = await knownUnitCountFloor(args.organizationId, args.lease.propertyId);
+  const units = await unitCountForProperty(args.organizationId, args.lease.propertyId);
   const daysLate = daysOverdue(String(args.charge.dueDate), args.asOf) ?? 0;
-  const proposal = proposeLateFee({
+  const proposal = proposeLateFeeForUnitCount({
     rule: rule ? parseLateFeeRuleRow(rule) : null,
     monthlyRentCents: args.lease.monthlyRentCents,
     daysLate,
-    knownUnitCountFloor: floor,
+    units,
     state: args.lease.state,
   });
   return { proposal, rule, daysLate };
@@ -683,7 +860,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       // One rule read per state and one unit-count read per property, reused
       // across charges — an org with 200 open charges must not issue 400 queries.
       const rulesByState = new Map<string, LateFeeRule | null>();
-      const floorByProperty = new Map<number, number>();
+      const unitsByProperty = new Map<number, PropertyUnitCount>();
       const proposals: Array<Record<string, unknown>> = [];
 
       for (const { charge, lease } of rows) {
@@ -691,16 +868,20 @@ export function registerRentLedgerRoutes(app: Express): void {
         if (!rulesByState.has(stateKey)) {
           rulesByState.set(stateKey, await lateFeeRuleForState(stateKey));
         }
-        if (!floorByProperty.has(lease.propertyId)) {
-          floorByProperty.set(lease.propertyId, await knownUnitCountFloor(orgId, lease.propertyId));
+        if (!unitsByProperty.has(lease.propertyId)) {
+          unitsByProperty.set(lease.propertyId, await unitCountForProperty(orgId, lease.propertyId));
         }
         const rule = rulesByState.get(stateKey) ?? null;
         const daysLate = daysOverdue(String(charge.dueDate), asOf) ?? 0;
-        const proposal = proposeLateFee({
+        const proposal = proposeLateFeeForUnitCount({
           rule: rule ? parseLateFeeRuleRow(rule) : null,
           monthlyRentCents: lease.monthlyRentCents,
           daysLate,
-          knownUnitCountFloor: floorByProperty.get(lease.propertyId) ?? 1,
+          // A property with no leases and no units cannot reach this loop (the
+          // row came off a lease), so the memo is always populated here; the
+          // fallback is a floor of 1, the most conservative possible reading.
+          units: unitsByProperty.get(lease.propertyId)
+            ?? { count: 1, basis: "lease_derived_floor" as const },
           state: lease.state,
         });
         proposals.push({
@@ -809,12 +990,16 @@ export function registerRentLedgerRoutes(app: Express): void {
         });
       }
       if (proposal.unitBranch === "conservative_unknown") {
+        // Now actionable rather than merely regrettable: the operator can model
+        // this property's units and get the statute applied as written.
         logger.warn("[BH-3] unit count unknowable — tenant-conservative late-fee branch applied", {
           orgId,
           userId,
           leaseId: lease.id,
           propertyId: lease.propertyId,
           chargedFeeCents: proposal.proposedFeeCents,
+          unitCount: proposal.unitCount,
+          unitCountBasis: proposal.unitCountBasis,
         });
       }
 
