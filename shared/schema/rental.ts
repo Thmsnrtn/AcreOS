@@ -226,6 +226,143 @@ export type Tenant = typeof tenants.$inferSelect;
 export type InsertTenant = typeof tenants.$inferInsert;
 
 // ----------------------------------------------------------------------------
+// RENTAL UNITS — the rentable slot itself, which this vertical did not have.
+// ----------------------------------------------------------------------------
+// Until this table, a "unit" was `rental_leases.unit_label` — a free-text
+// string on a LEASE. That means a unit only exists once somebody has leased
+// it, and three real defects follow directly from that:
+//
+//   1. VACANCY IS INVISIBLE. GET /api/rent-roll/occupancy divides distinct
+//      (property_id, unit_label) pairs with an ACTIVE lease by distinct pairs
+//      that have EVER had a lease. A unit nobody has ever rented contributes
+//      0 to the numerator AND 0 to the denominator, so a half-empty building
+//      reports 100% occupied. The number a landlord checks first was
+//      structurally incapable of showing the problem it exists to show.
+//   2. THE RENT-ROLL IMPORTER THREW VACANCIES AWAY. It received the
+//      building's full unit list and did `if (u.isVacant) continue;` —
+//      discarding exactly the rows a landlord most needs, because there was
+//      nowhere to put a unit that has no lease.
+//   3. A STATUTORY LATE-FEE CAP RODE ON A GUESS. Tex. Prop. Code §92.019 caps
+//      late fees at a different percentage for properties with 4+ units, and
+//      `knownUnitCountFloor` could only count DISTINCT units ever put on a
+//      lease — a floor on the true count, never the count. proposeLateFee
+//      therefore computed both branches and charged the lower, deliberately
+//      under-charging rather than risk an unlawful fee.
+//
+// ── ONE table, deliberately. There is no `rental_buildings`. ────────────────
+// `properties` already IS the building: one row per parcel, with
+// `squareFeet` and a `structureType` whose own comment enumerates sfr /
+// duplex / triplex / fourplex / condo / townhouse / commercial / mixed_use /
+// vacant_land. A second "building" table would restate that and immediately
+// start drifting from it, against this repo's stated north star of a SMALLER
+// schema. Do not add one: a unit belongs to a property, and a property is the
+// building.
+//
+// `kind` is the discriminator that keeps this to one table. A mobile-home
+// park's rentable slot is a PAD (the tenant owns the home and rents the
+// ground); a commercial centre's is a SUITE. Three tables for three words
+// would drift; one column does not.
+// ----------------------------------------------------------------------------
+
+export const RENTAL_UNIT_KINDS = [
+  "unit",   // apartment / side of a duplex / the whole SFR
+  "pad",    // mobile-home park: tenant owns the home, rents the ground
+  "suite",  // commercial / mixed-use tenancy
+] as const;
+export type RentalUnitKind = typeof RENTAL_UNIT_KINDS[number];
+
+export const RENTAL_UNIT_STATUSES = [
+  "active",   // rentable today — belongs in both occupancy denominators
+  "offline",  // exists but cannot be rented right now (fire, mid-renovation)
+  "retired",  // no longer a rentable slot (combined into another, demolished)
+] as const;
+export type RentalUnitStatus = typeof RENTAL_UNIT_STATUSES[number];
+
+export const rentalUnits = pgTable(
+  "rental_units",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+    /**
+     * The building. `properties` is the parcel/structure row and there is no
+     * second building table by design (see the block comment above) — delete
+     * the property and its units go with it, because a unit has no meaning
+     * apart from the thing it is a unit of.
+     */
+    propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
+
+    /**
+     * What the landlord calls it — "3B", "Lot 14", "Suite 200". This is the
+     * operator's own vocabulary and never normalised: it has to match the
+     * lease, the mailbox and the work order, or a maintenance ticket gets
+     * dispatched to the wrong door. Unique per (org, property) — two "3B"s in
+     * one building is an import error, not a fact.
+     */
+    label: text("label").notNull(),
+
+    /**
+     * unit | pad | suite. Without it a mobile-home park's ground-lease pads
+     * and a strip centre's suites would each want their own table, and the
+     * three would drift apart on the columns they share (rent, status,
+     * occupancy). See RENTAL_UNIT_KINDS.
+     */
+    kind: text("kind").$type<RentalUnitKind>().notNull().default("unit"),
+
+    /**
+     * Physical facts about the slot, NOT the building. `properties.squareFeet`
+     * is the structure; a 4-plex's units are not each that size, and quoting
+     * the building's number on a unit listing is a misrepresentation to an
+     * applicant. Nullable — an operator who has not measured a unit gets a
+     * blank, never an inferred number.
+     */
+    bedrooms: integer("bedrooms"),
+    bathrooms: numeric("bathrooms", { precision: 3, scale: 1 }),  // 1.5, 2.5 — half-baths are real
+    squareFeet: integer("square_feet"),
+
+    /**
+     * Asking rent for this slot, independent of whatever the sitting tenant
+     * actually pays. This is what makes loss-to-lease (asking minus in-place)
+     * and the dollar cost of a vacant day COMPUTABLE — the number a
+     * multifamily operator actually manages to. With rent living only on
+     * leases, an empty unit has no rent at all, so the cost of it sitting
+     * empty is literally unrepresentable. Nullable: refuse-not-fabricate
+     * applies here too — an unset asking rent renders as unset.
+     */
+    marketRentCents: bigint("market_rent_cents", { mode: "number" }),
+
+    /**
+     * active | offline | retired. `offline` is the load-bearing one: a unit
+     * gutted by a fire still belongs in the denominator of "units I own" and
+     * must NOT be in the denominator of "units I could have leased". Folding
+     * those two denominators together is precisely how an occupancy number
+     * starts lying — either the operator's vacancy looks like a leasing
+     * failure when it is a construction schedule, or a genuinely empty unit
+     * gets quietly excused as offline. Keep them separable.
+     */
+    status: text("status").$type<RentalUnitStatus>().notNull().default("active"),
+
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    // A label identifies a unit within its building. The unique index IS the
+    // idempotency guard for the rent-roll importer and for the 0219 backfill:
+    // a re-run loses the INSERT instead of creating a duplicate "3B" that
+    // would then be double-counted in every occupancy denominator.
+    uniqueIndex("rental_units_org_property_label_uk").on(table.organizationId, table.propertyId, table.label),
+    // Org-LEADING composite (L3 shard-readiness,
+    // scripts/check-org-leading-index.mjs) + the dominant read: "every unit at
+    // this property", which is the rent roll, the occupancy math and the
+    // §92.019 unit count.
+    index("rental_units_org_property_idx").on(table.organizationId, table.propertyId),
+  ],
+);
+
+export type RentalUnit = typeof rentalUnits.$inferSelect;
+export type InsertRentalUnit = typeof rentalUnits.$inferInsert;
+
+// ----------------------------------------------------------------------------
 // LEASES — Imelda §2.7: "the renewal isn't a new lease in Texas, it's an
 // addendum to the original. The signing system needs to model 'lease +
 // amendments over time' and let me see version 1, 2, 3 of a tenancy
@@ -260,7 +397,26 @@ export const rentalLeases = pgTable(
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
     propertyId: integer("property_id").references(() => properties.id, { onDelete: "cascade" }).notNull(),
 
-    // For multi-unit: which unit on the property. Null for SFR.
+    /**
+     * The rentable slot this lease is FOR. Nullable because a lease can
+     * outlive its unit row (a unit combined into another, a building
+     * re-platted) and losing the lease would be worse than losing the link —
+     * hence ON DELETE SET NULL rather than CASCADE. Backfilled by migration
+     * 0219 for every existing lease, including SFR leases, which are matched
+     * to a single 'Whole property' unit so occupancy math never has to fork
+     * on null.
+     */
+    unitId: varchar("unit_id").references(() => rentalUnits.id, { onDelete: "set null" }),
+
+    /**
+     * DENORMALISED DISPLAY COPY of rentalUnits.label — the pre-units shape,
+     * deliberately retained. It is read in 20+ places including raw SQL in two
+     * route files, so dropping it in the same change that adds `unitId` would
+     * break pages nobody thought to test. Writers should set BOTH; `unitId` is
+     * the join key, this is the string a human sees. Removing it is a later,
+     * separate slice once every reader has moved to the join.
+     * (Null/empty on legacy SFR leases — see the 0219 backfill.)
+     */
     unitLabel: text("unit_label"),
 
     // Lease lineage — renewals reference the parent lease.

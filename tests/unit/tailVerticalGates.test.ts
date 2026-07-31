@@ -214,6 +214,15 @@ describe("/today clusters do not leak to other businessTypes", () => {
 
 describe("registry truth (shared/business-types.ts) — the five tail entries", () => {
   it("all five stay roadmap — the honest gap statement, not activation on hope", () => {
+    // Still true after migration 0219, but multifamily's REASON shrank and the
+    // registry comment moved with it: 0219 gave the platform a real
+    // `rental_units` inventory (per-unit beds/baths/sqft, asking rent, status)
+    // and occupancy is now computed over it, so "no first-class unit model" is
+    // no longer one of the three gaps. Two genuinely stand — building-level
+    // occupancy/NOI roll-ups (the occupancy snapshot is org-wide) and the
+    // T-12/underwriting workspace — so `maturity` does not move.
+    // mobile_home is unchanged: `rental_units.kind` enumerates 'pad' but
+    // nothing in the product writes one, so all three park-specific gaps hold.
     for (const bt of TAIL_VERTICALS) {
       expect(getBusinessType(bt)?.maturity, bt).toBe("roadmap");
     }

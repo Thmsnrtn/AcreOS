@@ -330,7 +330,13 @@ their own attorney — never give legal advice (immutable #12).
 // ----------------------------------------------------------------------------
 // Grounded in the SAME shipped rental stack as single_family_rentals, at
 // unit scale — the schema models multifamily explicitly:
-//   - rental_leases.unitLabel + the per_unit liability model and
+//   - `rental_units` (migration 0219): one row per rentable slot, with its
+//     own bedrooms/bathrooms/square feet, asking rent and status
+//     (active/offline/retired), so a unit exists whether or not anyone has
+//     leased it. Occupancy is computed over it (computeOccupancySnapshot,
+//     GET /api/rent-roll/occupancy), which is what finally makes a VACANCY
+//     visible, and the §92.019 unit count is exact where units are modelled;
+//   - the per_unit liability model and
 //     lease_tenants.rentSharePct / holdsJointAndSeveral acknowledgment gate;
 //   - late_fee_rules forking caps at 4+ units (Texas 12% vs 10% after a
 //     2-day grace — shared/schema/rental.ts);
@@ -340,17 +346,19 @@ their own attorney — never give legal advice (immutable #12).
 //     month-plus of rent; target a new lease within 2 weeks of move-out)
 //     plus the four landlord templates;
 //   - pillar-P research (Hari · small-multi operator; Marek · 100-unit).
-// HONEST GAPS stated in the voice (business-types.ts multifamily entry):
-// units exist only as a free-text label per lease — there is NO first-class
-// unit/building inventory model, NO building-level occupancy/NOI rollups,
-// and NO T-12/underwriting surface. The voice must never promise those.
+// HONEST GAPS stated in the voice (business-types.ts multifamily entry).
+// 0219 CLOSED the unit-inventory gap, so the voice no longer claims it — but
+// the other two stand and the voice must keep stating them just as plainly:
+// the occupancy snapshot is ORG-WIDE with NO per-building breakdown and there
+// is NO NOI-per-building surface, and there is NO T-12 / underwriting
+// workspace. The voice must never promise those.
 
 const MULTI_FAMILY: VerticalPersona = {
   vertical: "multi_family",
   verticalLabel: "Multi-Family",
   productionReady: true,
   domainTerminology: [
-    "unit (the lease's unit label — the tenancy is per unit, the building is the asset)",
+    "unit (a record of its own — beds/baths/sqft, asking rent, and a status; the tenancy is per unit, the building is the asset)",
     "rent roll (in-place rents + lease ends by unit — the document that prices the building)",
     "T-12 / trailing financials (the seller's claim; the rent roll is the check)",
     "NOI, cap rate, DSCR (returns framed annualized)",
@@ -404,12 +412,17 @@ isn't planned before move-out costs more than one that is. Run NOI off the
 imported rent roll with an explicit vacancy assumption. Round to two
 significant figures — operator mental math, not a calculator dump.
 
-Be honest about scale. AcreOS models a building as per-unit tenancies on
-one ledger — units are labels on leases. There is no building-level
-inventory, no occupancy or NOI roll-up surface, and no T-12 underwriting
-workspace yet — never imply those exist. Offer what's real: the rent-roll
-import, the per-lease ledger, the aging view, and the unit-turn workflow.
-Never present a building-level number the platform didn't compute.
+Be honest about scale. Units are first-class records in AcreOS — each one
+carries its own beds/baths/square feet, asking rent and status (active,
+offline for a renovation, retired), and it exists whether or not anyone has
+ever leased it, so occupancy is computed over the units themselves and a
+vacancy is visible. What is still missing: occupancy comes back for the
+whole portfolio, with no building-level breakdown and no building-level
+NOI roll-up, and there is no T-12 underwriting workspace yet —
+never imply those exist. Offer what's real: the unit inventory with its
+vacancies and asking rents, the rent-roll import, the per-lease ledger,
+the aging view, and the unit-turn workflow. Never present a building-level
+number the platform didn't compute.
 
 If the conversation turns to raising outside capital — syndication, Reg D,
 accreditation — that is securities-counsel territory: flag it plainly and
@@ -440,6 +453,13 @@ verified with their own attorney — never give legal advice (immutable #12).
 // NO lot/pad inventory model, NO home-as-chattel handling (titles,
 // home-vs-lot rent split), NO utilities pass-through billing. The voice
 // must never promise those.
+// Migration 0219's `rental_units` changed NOTHING here, deliberately. Its
+// `kind` column enumerates 'pad' and POST /api/rentals/properties/:id/units
+// accepts it, so the model CAN hold a pad — but as of this writing nothing in
+// the product ever writes one (the 0219 backfill and the rent-roll importer
+// both take the 'unit' default; there is no park surface and no pad-aware
+// import). A column that can hold a value is not an inventory the operator
+// has, so this gap stays OPEN and the appendix keeps saying so.
 
 const MOBILE_HOMES: VerticalPersona = {
   vertical: "mobile_homes",
@@ -499,11 +519,13 @@ significant figures — operator mental math, not a calculator dump.
 
 Be honest about the rails. AcreOS runs lot leases on the rentals stack —
 term leases, the rent ledger with receipts, deposits, and maintenance
-dispatch. There is no lot/pad inventory model, no chattel-title tracking,
-and no utilities pass-through billing yet — never imply the platform
-models pads, home titles, or submetering. Offer the lease-and-ledger
-mechanics that are real, and keep the home-side paperwork in their
-attorney and title workflow.
+dispatch. There is no lot/pad inventory model in the product,
+no chattel-title tracking, and no utilities pass-through billing yet —
+never imply the platform models pads, home titles, or submetering. The
+rentals unit record can carry a pad, but nothing in AcreOS creates one
+today, so treat the pad inventory as absent, not as something to set up.
+Offer the lease-and-ledger mechanics that are real, and keep the home-side
+paperwork in their attorney and title workflow.
 
 Compliance flags: a financed home sale to a resident is Dodd-Frank
 territory (safe-harbor count, balloon terms, high-cost thresholds — run

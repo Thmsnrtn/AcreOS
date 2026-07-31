@@ -8277,6 +8277,226 @@ const STATEMENTS = [
   `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "consecutive_on_time_payments" integer NOT NULL DEFAULT 0`,
   `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "reperforming_threshold_met" boolean NOT NULL DEFAULT false`,
   `ALTER TABLE "acquired_notes" ADD COLUMN IF NOT EXISTS "compliance_posture_json" jsonb`,
+
+  // ── 0219 rental units: the rentable slot becomes a row ──────────────────
+  // The buy-and-hold vertical modelled a unit as `rental_leases.unit_label` —
+  // free text on a LEASE — so a unit only existed once somebody had leased it.
+  // Three verified defects follow: GET /api/rent-roll/occupancy counts only
+  // (property_id, unit_label) pairs that have EVER held a lease, so a unit
+  // nobody has rented adds 0 to BOTH sides and a half-empty building reads
+  // 100% occupied; the rent-roll importer does `if (u.isVacant) continue;`,
+  // discarding exactly the rows a landlord most needs because there was
+  // nowhere to put them; and `knownUnitCountFloor` could only produce a FLOOR
+  // on the unit count, so the Tex. Prop. Code §92.019 4+-unit late-fee cap was
+  // computed both ways and the lower charged, deliberately under-charging
+  // rather than risk an unlawful fee.
+  //
+  // ONE table, deliberately: there is NO `rental_buildings`. `properties`
+  // already IS the building (one row per parcel, with square_feet and a
+  // structure_type enumerating sfr/duplex/…/mixed_use). A second table would
+  // restate it and drift, against the north star of a SMALLER schema. `kind`
+  // (unit | pad | suite) is the discriminator that keeps a mobile-home park's
+  // ground-lease PAD and a strip centre's SUITE in the same table; `status`
+  // (active | offline | retired) keeps "units I own" separable from "units I
+  // could have leased", which is where occupancy numbers start lying.
+  //
+  // Money posture (founder ruling #15): market_rent_cents is a QUOTE, not a
+  // balance. Nothing here moves, holds, collects or charges money.
+  //
+  // ONE new table — scripts/ratchets/table-count.json 754 -> 755.
+  // Mirrors migrations/0219_rental_units.sql + shared/schema/rental.ts.
+  `CREATE TABLE IF NOT EXISTS "rental_units" (
+    "id" varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "property_id" integer NOT NULL REFERENCES "properties"("id") ON DELETE CASCADE,
+    "label" text NOT NULL,
+    "kind" text NOT NULL DEFAULT 'unit',
+    "bedrooms" integer,
+    "bathrooms" numeric(3,1),
+    "square_feet" integer,
+    "market_rent_cents" bigint,
+    "status" text NOT NULL DEFAULT 'active',
+    "notes" text,
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    "updated_at" timestamptz NOT NULL DEFAULT now()
+  )`,
+  // The unique index IS the idempotency guard for the rent-roll importer and
+  // the find-or-create path in routes-rentals.ts: a re-import loses the INSERT
+  // instead of creating a duplicate "3B" that would be double-counted in every
+  // occupancy denominator. It is NOT what makes the backfill below safe — see
+  // the one-shot note there.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "rental_units_org_property_label_uk" ON "rental_units" ("organization_id", "property_id", "label")`,
+  // Org-LEADING (L3 shard-readiness) + the dominant read: "every unit at this
+  // property" — the rent roll, the occupancy math, the §92.019 unit count.
+  `CREATE INDEX IF NOT EXISTS "rental_units_org_property_idx" ON "rental_units" ("organization_id", "property_id")`,
+  // ON DELETE SET NULL, not CASCADE: a lease can outlive its unit row (units
+  // combined, buildings re-platted) and losing the LEASE would be far worse
+  // than losing the link. `unit_label` STAYS as a denormalised display copy —
+  // it is read in 20+ places including raw SQL in two route files, and
+  // dropping it in the same change that adds `unit_id` would break pages
+  // nobody thought to test.
+  `ALTER TABLE "rental_leases" ADD COLUMN IF NOT EXISTS "unit_id" varchar REFERENCES "rental_units"("id") ON DELETE SET NULL`,
+  // BACKFILL — and unlike 0218 this one is safe to write, for a stated reason:
+  // 0218 shipped none because inferring "which period was satisfied" from a
+  // payment date would have INVENTED A FACT. This only COPIES A LABEL ALREADY
+  // ON THE ROW. `unit_label` is the operator's own string, already stored and
+  // already displayed; moving it to a row it can be keyed by adds no claim.
+  // An SFR lease (null/empty label) becomes 'Whole property' so occupancy math
+  // is uniform across SFR and multi-unit rather than forking on null — the
+  // fork is what produced the 100%-occupied bug. It deliberately does NOT
+  // invent units that have never been leased: those are the vacancies the
+  // product could not see, and only the operator or the importer can add them.
+  //
+  // ── IT RUNS ONCE. THIS FILE IS WHY. ───────────────────────────────────────
+  // THIS script is not a tracked migrator: there is no applied-migrations
+  // table, and every statement in STATEMENTS executes on EVERY deploy. So
+  // "idempotent" does not mean "runs once" — it means "runs again next
+  // Tuesday". The earlier version of this backfill was guarded only by
+  // ON CONFLICT DO NOTHING on (org, property, label) plus `unit_id IS NULL`,
+  // and two ordinary operator actions defeat both:
+  //
+  //   FAILURE 1 — PHANTOM DUPLICATE UNIT. An operator renames a unit's label
+  //   '3B' -> 'Unit 3B'. The lease still says '3B' (unit_label is now a
+  //   denormalised display copy). Next deploy, the INSERT derives '3B', finds
+  //   NO conflicting row, and creates a SECOND unit at that property. It stays
+  //   forever and inflates every occupancy denominator — and the §92.019 unit
+  //   count — by one, silently.
+  //
+  //   FAILURE 2 — RESURRECTED DELETED UNIT. An operator DELETES a unit; its
+  //   leases go to unit_id = NULL via ON DELETE SET NULL, which is exactly the
+  //   state the UPDATE hunts for. Next deploy re-creates the unit from the
+  //   lease's surviving unit_label and re-links the leases. A deploy the
+  //   operator had nothing to do with undoes their deletion.
+  //
+  // The route layer narrows both — PATCH /api/rentals/units/:id syncs
+  // rental_leases.unit_label on a rename, and DELETE refuses while the unit
+  // still has leases attached — but neither closes the hole, and a migrator
+  // must not lean on either. A label corrected by any path that does not sync
+  // (direct SQL, a restore, a future writer) reproduces FAILURE 1; a lease
+  // already unlinked from its unit still carries its old unit_label, so
+  // deleting that now-lease-free unit passes the refusal check and reproduces
+  // FAILURE 2. This file runs against the DATABASE, not the API.
+  //
+  // Neither is fixable by tightening ON CONFLICT — in both cases the
+  // conflicting row genuinely is not there. Hence ONE statement, a DO block,
+  // two guards, checked AND set inside the same implicit transaction so it can
+  // never half-apply:
+  //   GUARD 1 — a '[0219-backfill:done]' token in the rental_units table
+  //     COMMENT, written by this block itself alongside the rows. Present =>
+  //     return. (A table comment rather than a bookkeeping table because this
+  //     change gets exactly ONE new table per scripts/ratchets/table-count.json
+  //     and this is not what to spend it on.)
+  //   GUARD 2 — refuse if rental_units holds ANY row, stamping the marker on
+  //     the way out. Both failures above require an existing unit row, and an
+  //     existing unit row closes this guard.
+  // The UPDATE lives INSIDE the block on purpose: outside it, every deploy
+  // would re-link any lease an operator had deliberately unlinked.
+  // The ON CONFLICT DO NOTHING remains as a redundant assertion, NOT the
+  // guard. Do not delete the DO block and keep the ON CONFLICT.
+  //
+  // 'Whole property' COLLISION: that literal is a string a human can type. A
+  // property holding BOTH a blank-label lease and a lease genuinely labelled
+  // 'Whole property' would fold two tenancies into one unit row and UNDERSTATE
+  // the unit count. Decision: keep the human-readable literal (label is the
+  // operator's own vocabulary, shown on the rent roll and the work order — a
+  // uuid sentinel would be unreadable), DETECT the collision, and take the
+  // first free candidate: 'Whole property', 'Whole property (2)' … '(99)',
+  // then a uuid-suffixed label that cannot collide. Per (org, property), so
+  // the ordinary case still reads 'Whole property'. Merging a NULL-label lease
+  // with a ''-label lease at the same property stays intended — same tenancy
+  // shape, not two slots. Mirrors migrations/0219_rental_units.sql.
+  `DO $backfill_0219$
+   DECLARE
+     v_marker  CONSTANT text := '[0219-backfill:done]';
+     v_comment CONSTANT text :=
+       'Rentable slots: one row per unit / pad / suite at a property. '
+       || 'A unit exists whether or not anyone has leased it — that is the point '
+       || 'of the table (see migrations/0219_rental_units.sql). '
+       || 'The token below records that the 0219 lease-label backfill has already '
+       || 'run; it MUST survive, or a redeploy will re-run a one-shot backfill. '
+       || v_marker;
+     v_units  integer := 0;
+     v_leases integer := 0;
+   BEGIN
+     IF COALESCE(obj_description('public.rental_units'::regclass, 'pg_class'), '')
+          LIKE '%' || v_marker || '%' THEN
+       RAISE NOTICE '0219 backfill: marker present — already applied, skipping';
+       RETURN;
+     END IF;
+
+     IF EXISTS (SELECT 1 FROM "rental_units") THEN
+       EXECUTE format('COMMENT ON TABLE public."rental_units" IS %L', v_comment);
+       RAISE NOTICE '0219 backfill: rental_units is non-empty — NOT backfilling; marker set';
+       RETURN;
+     END IF;
+
+     DROP TABLE IF EXISTS pg_temp."_0219_whole_label";
+     CREATE TEMP TABLE "_0219_whole_label" ON COMMIT DROP AS
+     WITH typed AS (
+       SELECT DISTINCT
+         l."organization_id" AS org, l."property_id" AS prop, TRIM(l."unit_label") AS label
+       FROM "rental_leases" l
+       WHERE l."organization_id" IS NOT NULL
+         AND l."property_id" IS NOT NULL
+         AND NULLIF(TRIM(l."unit_label"), '') IS NOT NULL
+     ),
+     blank AS (
+       SELECT DISTINCT l."organization_id" AS org, l."property_id" AS prop
+       FROM "rental_leases" l
+       WHERE l."organization_id" IS NOT NULL
+         AND l."property_id" IS NOT NULL
+         AND NULLIF(TRIM(l."unit_label"), '') IS NULL
+     ),
+     candidates AS (
+       SELECT 'Whole property' AS label, 0 AS ord
+       UNION ALL
+       SELECT 'Whole property (' || s.n || ')', s.n FROM generate_series(2, 99) AS s(n)
+     )
+     SELECT
+       b.org,
+       b.prop,
+       COALESCE(
+         (SELECT c.label FROM candidates c
+           WHERE NOT EXISTS (
+                   SELECT 1 FROM typed t
+                    WHERE t.org = b.org AND t.prop = b.prop AND t.label = c.label)
+           ORDER BY c.ord LIMIT 1),
+         'Whole property (' || gen_random_uuid()::text || ')'
+       ) AS label
+     FROM blank b;
+
+     INSERT INTO "rental_units" ("organization_id", "property_id", "label")
+     SELECT src.org, src.prop, src.label
+     FROM (
+       SELECT DISTINCT
+         l."organization_id" AS org, l."property_id" AS prop, TRIM(l."unit_label") AS label
+       FROM "rental_leases" l
+       WHERE l."organization_id" IS NOT NULL
+         AND l."property_id" IS NOT NULL
+         AND NULLIF(TRIM(l."unit_label"), '') IS NOT NULL
+       UNION
+       SELECT w.org, w.prop, w.label FROM "_0219_whole_label" w
+     ) src
+     ON CONFLICT ("organization_id", "property_id", "label") DO NOTHING;
+     GET DIAGNOSTICS v_units = ROW_COUNT;
+
+     UPDATE "rental_leases" l
+     SET "unit_id" = u."id"
+     FROM "rental_units" u
+     WHERE l."unit_id" IS NULL
+       AND u."organization_id" = l."organization_id"
+       AND u."property_id"     = l."property_id"
+       AND u."label" = COALESCE(
+             NULLIF(TRIM(l."unit_label"), ''),
+             (SELECT w.label FROM "_0219_whole_label" w
+               WHERE w.org = l."organization_id" AND w.prop = l."property_id")
+           );
+     GET DIAGNOSTICS v_leases = ROW_COUNT;
+
+     EXECUTE format('COMMENT ON TABLE public."rental_units" IS %L', v_comment);
+     RAISE NOTICE '0219 backfill: created % unit row(s), linked % lease(s)', v_units, v_leases;
+   END
+   $backfill_0219$`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
