@@ -12,9 +12,21 @@
  * of a number it does not trust.
  *
  * With modelled units the count is exact and the statute can be applied as
- * written. The risk that introduces is the one this file exists to bound:
- * **a landlord finishing their data entry is not a fact about the tenant**, and
- * no change in AcreOS's own record-keeping may be the reason a charge goes up.
+ * written. What this file bounds is the consequence — and the bound is
+ * narrower than the one first written here, which an audit falsified.
+ *
+ * TRUE:  for ONE count, reading it as exact never proposes more than reading
+ *        it as a floor. Resolving an ambiguity in the platform's favour is
+ *        never acceptable.
+ * FALSE: "modelling units never raises a tenant's fee." It can, and does — a
+ *        6-plex whose floor was 2 moves from the under-4 branch to the 4-plus
+ *        one, $200.00 → $240.00. That is CORRECT: §92.019's higher percentage
+ *        is the applicable law for a 6-plex, and $200 was AcreOS hedging under
+ *        uncertainty rather than something the tenant was owed. The count
+ *        already moves on its own as tenancies accumulate.
+ *
+ * So the obligation is disclosure, not suppression: when a better-known count
+ * selects a higher branch, the proposal must say so and name both figures.
  *
  * `proposeLateFeeForUnitCount` is pure, so every branch a real tenant could be
  * charged under is a test rather than a database fixture.
