@@ -431,11 +431,26 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // server/routes-rent-ledger.ts). There is deliberately no separate
     // buildings table — `properties` IS the building.
     //
-    // What's still MISSING for beta — the two gaps that genuinely stand:
-    // building-level rollups (the occupancy snapshot is ORG-WIDE, with no
-    // per-building breakdown, and there is no NOI-per-building surface at
-    // all), and the T-12 / underwriting workspace multifamily operators need
-    // at scale. Two of three is not beta.
+    // What's still MISSING for beta — the two gaps that genuinely stand,
+    // stated precisely, because the first draft of this paragraph overstated
+    // one of them and an audit caught it:
+    //
+    //   * Building-level rollups. A per-building NOI surface DOES exist
+    //     (GET /api/properties/:id/analytics and /api/portfolio/analytics,
+    //     server/routes-investor-analytics.ts) — saying otherwise was wrong.
+    //     What is missing is that its OPERATING EXPENSE is a 40%-of-collected
+    //     rule of thumb, overridable only by a query param and never stored,
+    //     because the platform holds no property-expense records at all
+    //     (maintenance invoices are the only expense-shaped number anywhere).
+    //     A cap rate computed off an assumed expense ratio is an assumption
+    //     wearing a number's clothes. The occupancy snapshot is also ORG-WIDE
+    //     with no per-building breakdown.
+    //   * The T-12 / underwriting workspace multifamily operators need at
+    //     scale. Nothing in the repo renders a monthly income/expense grid,
+    //     and it cannot be built honestly until the expense axis above exists
+    //     — a T-12 without expenses is just a rent report.
+    //
+    // Two of three is not beta.
     maturity: "roadmap",
     // All four landlord templates genuinely apply — multifamily IS
     // long-term rental operations at unit scale (term leases that renew,

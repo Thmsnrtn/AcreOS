@@ -329,7 +329,15 @@ describe("multi_family — deepened to production (wave V4 of ruling #11)", () =
     // stand — the voice must state them, not promise the feature.
     const flat = p.systemPromptAppendix.replace(/\s+/g, " ");
     expect(p.systemPromptAppendix).toContain("no building-level");
-    expect(flat).toMatch(/no building-level NOI roll-up/i);
+    // CORRECTED 2026-07-31. This used to assert the voice said there is "no
+    // building-level NOI roll-up". There IS one — GET /api/properties/:id/
+    // analytics — and the assertion was pinning our own overstatement. The
+    // real gap is narrower and worse: that NOI rests on an ASSUMED 40%
+    // expense ratio, because AcreOS holds no property-expense records. The
+    // voice must name the assumption rather than deny the surface, so a
+    // customer is never handed a cap rate whose expenses nobody measured.
+    expect(flat).toMatch(/assumed 40% expense ratio/i);
+    expect(flat).toMatch(/never quote that NOI as though the expenses behind it were measured/i);
     expect(flat).toMatch(/no T-12 underwriting workspace/i);
     expect(p.systemPromptAppendix).toContain("never imply those exist");
   });
