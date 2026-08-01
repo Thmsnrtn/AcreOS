@@ -129,7 +129,9 @@ County opportunity score explicitly notes it **lacks live market data** (sales v
 | `regrid_parcels_v1` | Regrid `/api/v2/parcels` | `*/30 * * * *` | **false (seeded disabled)** | Real handler; no-ops without `REGRID_API_KEY` | `migrations/0070_etl_orchestrator.sql:79`, `etlHandlers.ts:146-280` |
 | `fema_flood_zones_v1` | FEMA NFHL MapServer/28 | `0 */6 * * *` | **false (seeded disabled)** | Real handler | `migrations/0070_...sql:80`, `etlHandlers.ts:364-428` |
 | County assessor ingest | ATTOM saleshistory + tax-delinquent list | Nightly 11 PM UTC | Registered | ATTOM real (`fetchAttomComparables`); **tax-delinquent list is a STUB** (returns `[]`, "queued for browser scrape") | `jobs/countyAssessorIngest.ts:141-207, 241-253, 698-708` |
-| Others | `dataIngestJob`, `dataSourceProbe`, `satelliteImageUpdate`, `valuationModelRetrain` | via `scheduler.ts` self-rescheduling | — | probe/health-oriented | `server/jobs/` |
+| Others | `dataSourceProbe` | — | — | probe/health-oriented | `server/jobs/` |
+
+> 2026-08-01 correction: this row previously listed `dataIngestJob`, `satelliteImageUpdate`, and `valuationModelRetrain` as running "via `scheduler.ts` self-rescheduling" — refuted on verification: none of the three was registered with `scheduler.ts` (or any scheduler); all three were module orphans and were deleted 2026-08-01 (see the deletion ledger).
 
 Orchestrator: `etlOrchestrator.ts` (watermark, DLQ, cron via `etl_jobs.schedule`, advisory-lock). ETL handlers registered by `registerReferenceEtlHandlers()`.
 
@@ -151,7 +153,7 @@ Orchestrator: `etlOrchestrator.ts` (watermark, DLQ, cron via `etl_jobs.schedule`
 # GAPS (surfaces want it; platform lacks it today)
 
 1. **Slope / terrain analytics** — DD elevation check is single-point only and literally returns `slope: "unknown"` (`dueDiligenceEngine.ts:562`). No DEM-derived slope/aspect despite the map having a `slopeGradient` toggle and Mapbox terrain-DEM available. High-value for land buyers.
-2. **Aerial / imagery quality** — imagery is just Mapbox/Stadia satellite basemap tiles. No NAIP high-res aerial, no imagery-date/quality metadata, no change detection. `satelliteImageUpdate` job exists but no true imagery-ingest source is wired.
+2. **Aerial / imagery quality** — imagery is just Mapbox/Stadia satellite basemap tiles. No NAIP high-res aerial, no imagery-date/quality metadata, no change detection. (The `satelliteImageUpdate` job that gestured at this was deleted 2026-08-01 — it was an orphan with no imagery-ingest source ever wired.)
 3. **Superfund contamination** — `checkSuperfund` is a hardcoded stub returning zeros (`:439-448`); only RCRA facilities are real. EPA ECHO / ATTAINS plume data referenced in copy but not called.
 4. **Live market / comps context** — county opportunity score self-declares missing sales velocity, days-on-market, active listings on the free tier (`parcelIntelligenceFusion.ts:284`). Comps depend on paid Regrid/ATTOM; no free MLS-adjacent signal.
 5. **Statewide/national parcels** — parcel coverage is county-by-county (`county_gis_endpoints`, operator/scan-contributed) or paid Regrid. No bulk statewide open parcel layer; free tier has patchy coverage and a "free-miss-by-county" telemetry signal explicitly built to flag the gaps (`provider-registry.ts:350-355`).

@@ -23,6 +23,7 @@ import { db } from "../db";
 import { fcraAttestations, tenantScreenings } from "@shared/schema";
 import { and, eq, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { Errors } from "../utils/errors";
 
 export const CURRENT_FCRA_ATTESTATION_VERSION = "2026-05-08-v1";
 const ATTESTATION_TTL_DAYS = 365;
@@ -302,4 +303,38 @@ export async function assertScreeningPermitted(opts: {
       `Existing attestations expire after 1 hour.`,
     );
   }
+}
+
+/**
+ * Map an FCRA gate refusal onto the HTTP response, ONCE.
+ *
+ * Exists because this mapping was duplicated: routes-leads.ts carried it, and
+ * when routes-skip-tracing.ts gained the gate (2026-08-01 — closing the
+ * unguarded sibling an audit found), the mapping was copied along with it,
+ * adding a second raw `res.status()` call site. Two copies of a refusal shape
+ * drift the way two copies of anything drift, and the `res-status-raw` ratchet
+ * flagged the duplicate the same day it appeared. Both routes now call this.
+ *
+ * The `error: "FCRA_ATTESTATION_REQUIRED"` top-level code is a wire contract
+ * the client and the gate tests pin — `Errors.forbidden` hardcodes "FORBIDDEN"
+ * and cannot carry it, which is why this helper exists instead of a call into
+ * `Errors.*`. One raw status write, in one place, with the reason on record.
+ *
+ * Returns true when the error was an FCRA refusal and the response has been
+ * written; false when the caller must keep handling (rethrow).
+ */
+export function respondFcraRefusal(res: import("express").Response, err: unknown): boolean {
+  if (err instanceof SkipTracePurposeRequiredError) {
+    Errors.badRequest(res, err.message, { code: err.code });
+    return true;
+  }
+  if (err instanceof FcraAttestationStaleError) {
+    res.status(403).json({
+      error: "FCRA_ATTESTATION_REQUIRED",
+      message: err.message,
+      statusCode: 403,
+    });
+    return true;
+  }
+  return false;
 }

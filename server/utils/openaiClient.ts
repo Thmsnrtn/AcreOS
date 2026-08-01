@@ -18,7 +18,7 @@ let warnedNoKey = false;
  *
  * Whisper (audio transcription) is a separate concern — OpenRouter does
  * not proxy /v1/audio/transcriptions, so the few callers that need it
- * (server/routes-field-scout.ts, server/jobs/realtimeTranscription.ts)
+ * (server/routes-field-scout.ts)
  * read process.env.OPENAI_API_KEY directly and hit OpenAI's API. Do not
  * route those through this helper.
  */

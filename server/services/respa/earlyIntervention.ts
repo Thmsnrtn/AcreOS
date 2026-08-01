@@ -6,11 +6,18 @@
  *    live contact with a delinquent borrower not later than the 36th day
  *    of a borrower's delinquency..."
  *
- * SCAFFOLDING ONLY — this commit:
- *   - Fires the event at day 36 (idempotent — one event per cycle).
- *   - Persists an audit row in respa_outreach_events with the §-citation.
- *   - Does NOT send any borrower-facing email. The actual outreach
- *     language is Beatrice's domain — she rules on it before any wire-up.
+ * FLAGGING ONLY — READ THIS BEFORE TRUSTING respa_outreach_events:
+ *   - This module fires a FLAG at day 36 (idempotent — one event per cycle)
+ *     and persists an audit row in respa_outreach_events with the §-citation.
+ *   - A row in respa_outreach_events means "outreach became DUE and was
+ *     flagged" — it is NOT evidence that any contact was attempted or made.
+ *     NO message of any kind has been sent to a borrower by this platform.
+ *     The §1024.39 duty is to make (or attempt) live contact; logging that
+ *     the duty attached does not discharge it. THE OPERATOR MUST MAKE THE
+ *     CONTACT.
+ *   - Sending is deliberately NOT wired. Contacting borrowers automatically
+ *     is a founder decision (and the outreach language is Beatrice's domain);
+ *     see the comment at the would-be send site inside flagEarlyIntervention.
  *
  * Predicate gating: the same §1026.41 predicate (Beatrice's 4-gate tree)
  * gates §1024.39 attachment. A passive holder doesn't owe early-intervention
@@ -45,6 +52,11 @@ export interface FlagEarlyInterventionInput {
 }
 
 export interface FlagEarlyInterventionResult {
+  /**
+   * True when the FLAG row was persisted this call. "Fired" means "flagged
+   * for outreach" — NO message has been sent to the borrower; the operator
+   * must make the §1024.39 contact.
+   */
   fired: boolean;
   alreadyFired: boolean;
   /** Reason a future Beatrice audit reads at a glance. */
@@ -56,10 +68,13 @@ export interface FlagEarlyInterventionResult {
 }
 
 /**
- * Evaluate whether RESPA §1024.39 early-intervention fires for this loan
+ * Evaluate whether RESPA §1024.39 early-intervention FLAGS for this loan
  * on this evaluation. Idempotent: re-running on day 37 / 38 for the same
  * cycle is a no-op (the UNIQUE index on org+loan+loanType+eventType+cycle
  * blocks duplicate writes).
+ *
+ * FLAG, NOT CONTACT: persisting the event sends NOTHING to the borrower.
+ * The operator must make the §1024.39 contact — see the module header.
  *
  * Beatrice predicate gates whether AcreOS owes the duty at all — passive
  * holder / sub-serviced / business-purpose / non-dwelling shapes return
@@ -136,9 +151,10 @@ export async function flagEarlyIntervention(
     }
   }
 
-  // Persist the event. ON CONFLICT DO NOTHING on the UNIQUE composite
+  // Persist the FLAG. ON CONFLICT DO NOTHING on the UNIQUE composite
   // (org + loan + loan_type + event_type + cycle_anchor) — re-running on
-  // day 37 / 38 is a no-op (idempotency).
+  // day 37 / 38 is a no-op (idempotency). This row records that the duty
+  // ATTACHED, not that it was discharged — no borrower contact happens here.
   const inserted = await db
     .insert(respaOutreachEvents)
     .values({
@@ -165,24 +181,34 @@ export async function flagEarlyIntervention(
 
   if (inserted.length === 0) {
     logger.info(
-      `[respa.earlyIntervention] already fired this cycle: org=${organizationId} loan=${loanId} type=${loanType} days=${daysDelinquent}`,
+      `[respa.earlyIntervention] already flagged this cycle (flag only — NO borrower message has been sent): org=${organizationId} loan=${loanId} type=${loanType} days=${daysDelinquent}`,
     );
     return {
       fired: false,
       alreadyFired: true,
-      reason: `§1024.39 event already fired for this cycle (idempotent re-run)`,
+      reason: `§1024.39 outreach already flagged for this cycle (idempotent re-run) — flag only; NO message has been sent to the borrower`,
       citation: "12 C.F.R. §1024.39(a)",
     };
   }
 
+  // ── Where the send WOULD go — deliberately absent ──────────────────────
+  // If the platform ever contacts borrowers itself, the send happens HERE,
+  // after the flag row commits. It is NOT wired on purpose: contacting
+  // borrowers automatically is a FOUNDER DECISION (hard-stop territory —
+  // borrower-facing communication under a federal duty), and the outreach
+  // language itself is Beatrice's domain. Until the founder rules, the flag
+  // is the END of the platform's action: the operator must make the
+  // §1024.39 live-contact attempt themselves. Do not add a send here in a
+  // wave without that ruling.
+
   logger.info(
-    `[respa.earlyIntervention] fired: org=${organizationId} loan=${loanId} type=${loanType} days=${daysDelinquent} eventId=${inserted[0].id}`,
+    `[respa.earlyIntervention] flagged for outreach — NO message has been sent to the borrower; the operator must make the §1024.39 contact: org=${organizationId} loan=${loanId} type=${loanType} days=${daysDelinquent} eventId=${inserted[0].id}`,
   );
 
   return {
     fired: true,
     alreadyFired: false,
-    reason: `delinquency=${daysDelinquent}d met §1024.39 trigger of ${EARLY_INTERVENTION_TRIGGER_DAY}d — outreach event logged`,
+    reason: `delinquency=${daysDelinquent}d met §1024.39 trigger of ${EARLY_INTERVENTION_TRIGGER_DAY}d — flagged for outreach; NO message has been sent to the borrower, the operator must make the contact`,
     citation: "12 C.F.R. §1024.39(a)",
     eventId: inserted[0].id,
   };
@@ -192,6 +218,8 @@ export async function flagEarlyIntervention(
  * Pure-function decision gate (no I/O). Used by tests + by callers that
  * want to know "would this trigger today?" without writing to the audit
  * trail. The async `flagEarlyIntervention` is the canonical entry point.
+ * "Fire" here means FLAG for outreach — nothing is ever sent to a borrower
+ * by this module (see the module header).
  */
 export function shouldFireEarlyIntervention(daysDelinquent: number): {
   shouldFire: boolean;

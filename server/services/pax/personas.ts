@@ -236,10 +236,17 @@ attorney — never give legal advice (immutable #12).
 //     delivery deadline + one-per-cycle idempotency), payment_applications
 //     (§1026.36(c)(1) prompt crediting), suspense_balances, late_fee_
 //     assessments (§1026.36(c)(2) non-pyramiding), statement-skip +
-//     §1024.39 outreach audit ledgers.
+//     §1024.39 outreach-due FLAG ledgers (rows mean outreach became due and
+//     was flagged — the platform never contacts a borrower; the operator
+//     makes the §1024.39 contact).
 //   - Services: periodicStatements (Beatrice 4-gate servicer-scope
-//     predicate), respa/earlyIntervention (§1024.39 day-36 clock),
-//     respaEscrowAnalysis (§1024.17 annual analysis), lateFees,
+//     predicate), respa/earlyIntervention (§1024.39 day-36 clock — flags
+//     only, sends nothing), respaEscrowAnalysis (§1024.17 annual ANALYSIS,
+//     served org-scoped at GET /api/notes/:id/escrow-analysis for the
+//     originated seller-finance book only — acquired_notes lacks the
+//     monthly-deposit/disbursement inputs; the §1024.17(i) annual STATEMENT
+//     builder in the same module is deliberately unwired pending real escrow
+//     history records), lateFees,
 //     notePaymentMath (integer-cents splits + per-diem payoff),
 //     noteAssignmentPdf, doddFrankChecker, form1099Batch (1099-INT + 1096 +
 //     IRS FIRE, unioning originated + acquired books).

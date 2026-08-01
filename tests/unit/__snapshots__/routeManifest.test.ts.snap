@@ -3,7 +3,6 @@
 exports[`route manifest > snapshot: sorted KNOWN_NON_MOUNTED allowlist 1`] = `
 [
   "routes-api-keys.ts",
-  "routes-sso.ts",
 ]
 `;
 

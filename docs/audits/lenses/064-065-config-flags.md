@@ -259,7 +259,7 @@ Throughout server code, `process.env.APP_URL` falls back to different defaults:
 | Fallback | Files |
 |----------|-------|
 | `"http://localhost:5000"` | `oauth.ts`, `stripeConnect.ts` |
-| `"https://app.acreos.io"` | `webhookHandlers.ts`, `growthAdService.ts`, `alertPolicy.ts`, `dunning.ts`, `dailyBriefing.ts`, ~8 more |
+| `"https://app.acreos.io"` | `webhookHandlers.ts`, `growthAdService.ts`, `alertPolicy.ts`, `dunning.ts`, ~8 more (`dailyBriefing.ts` was also listed here — deleted 2026-08-01) |
 | `"https://app.acreos.io"` | `listingSyndication.ts` |
 
 The `.io` vs `.com` inconsistency means links in syndicated listings point to the wrong domain. The localhost fallback in production could leak internal URLs in OAuth callbacks.

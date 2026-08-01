@@ -9,7 +9,6 @@
 - Automated monitoring: model MAE (Mean Absolute Error) increases >15% from baseline
 - Users report valuations "seem off" or "way too high/low" for a given county
 - A/B comparison of model predictions vs. recent actual sale prices shows bias
-- `valuationModelRetrain` job logs anomalies
 
 ---
 
@@ -58,15 +57,18 @@ curl -X POST /api/jobs/county-assessor-ingest \
 fly logs -a acreos | grep "county-assessor" | tail -20
 ```
 
-### 2. Retrain the GBM model
-```bash
-# The valuation model retraining job
-curl -X POST /api/jobs/valuation-model-retrain \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
+### 2. Retrain the model (manual)
 
-# Or run directly from server console
+There is no scheduled retrain job. The `valuationModelRetrain.ts` background job
+was deleted 2026-08-01 (module orphan — never registered with any scheduler; the
+`retrain()` invocation this runbook previously showed was an export that never
+existed). Retraining is a manual run of the ML pipeline in `server/ml`:
+
+```bash
 fly ssh console -a acreos
-cd /app && node -e "require('./dist/jobs/valuationModelRetrain').retrain()"
+cd /app/server/ml && python valuation_model.py train
+# The final stdout line is a JSON result: version, mae, rmse, mape, r2,
+# trainSamples, valSamples, testSamples, modelPath. Record it.
 ```
 
 ### 3. Evaluate the new model
@@ -78,9 +80,9 @@ cd /app && node -e "require('./dist/jobs/valuationModelRetrain').retrain()"
 
 ### 4. Promote new model (if evaluation passes)
 ```bash
-# Model promotion is gated by evaluation score
-# If MAE improves, new model is automatically promoted
-# If MAE gets worse, current model is kept
+# Model promotion is gated by evaluation score (manual since the retrain
+# job's deletion): promote only if test-set MAE improves >2% vs. current
+# production model (see server/ml/README.md); otherwise keep current model
 
 # Manual promotion (if needed):
 curl -X POST /api/jobs/valuation-model-promote \

@@ -8497,6 +8497,68 @@ const STATEMENTS = [
      RAISE NOTICE '0219 backfill: created % unit row(s), linked % lease(s)', v_units, v_leases;
    END
    $backfill_0219$`,
+
+  // ── 0099's CHECK constraints — the ATR hard gate, missing from THIS file ──
+  //
+  // Found by an independent audit on 2026-08-01. This file mirrored 0099's
+  // COLUMN (atr_exemption_code, above) but never its two CHECK constraints —
+  // and this file, not the drizzle journal, is what production actually runs
+  // as the Fly release_command. So the deployed database has been missing the
+  // Reg-Z §1026.43 hard gate the whole time.
+  //
+  // That gate is not decoration. tests/unit/abilityToRepayGate.test.ts proves
+  // three payment-side code paths flip a note's status to 'active' via direct
+  // updates that bypass the application-layer gate entirely
+  // (storage/noteRepo.ts createPayment, routes-borrower.ts's Stripe
+  // transaction, achAutopay.ts's settle path). The DB CHECK below is the ONLY
+  // thing standing between those paths and activating a consumer note with no
+  // ability-to-repay determination — an origination the borrower can wield as
+  // a foreclosure defense for the life of the loan, evidenced by the lender's
+  // own database.
+  //
+  // Idempotent WITHOUT drop-and-re-add: this file re-runs every statement on
+  // every deploy, and a DROP/ADD pair would leave the gate absent for the
+  // window between the two statements on every deploy. The DO blocks add each
+  // constraint only when it is missing and never drop anything.
+  //
+  // Order matters: the grandfather UPDATE must run before the gate constraint
+  // is first added, or pre-gate active rows would make the ADD fail. It is
+  // idempotent by its WHERE clause. Mirrors migrations/0099.
+  `UPDATE "notes"
+   SET    atr_exemption_code = 'legacy'
+   WHERE  status = 'active'
+     AND  (atr_determination_completed IS NULL OR atr_determination_completed = false)
+     AND  atr_exemption_code IS NULL`,
+  `DO $atr_gate$
+   BEGIN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+       WHERE conname = 'notes_atr_exemption_code_check'
+         AND conrelid = 'public.notes'::regclass
+     ) THEN
+       ALTER TABLE "notes"
+         ADD CONSTRAINT "notes_atr_exemption_code_check"
+         CHECK (
+           atr_exemption_code IS NULL
+           OR atr_exemption_code IN ('raw_land', 'business_purpose', 'commercial_borrower', 'legacy')
+         );
+     END IF;
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+       WHERE conname = 'notes_atr_origination_gate'
+         AND conrelid = 'public.notes'::regclass
+     ) THEN
+       ALTER TABLE "notes"
+         ADD CONSTRAINT "notes_atr_origination_gate"
+         CHECK (
+           status <> 'active'
+           OR atr_determination_completed = true
+           OR atr_exemption_code IS NOT NULL
+         );
+     END IF;
+   END
+   $atr_gate$`,
+  `CREATE INDEX IF NOT EXISTS "notes_atr_exemption_idx" ON "notes" ("organization_id", "atr_exemption_code") WHERE atr_exemption_code IS NOT NULL`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

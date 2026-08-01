@@ -37,7 +37,6 @@
  *   - countyAssessorIngest.ts — scores new delinquent records
  *   - acquisitionRadar.ts — enhances opportunity scoring
  *   - agentOrchestrator.ts — prioritizes outreach queue
- *   - dailyBriefing.ts — surfaces top opportunities each morning
  */
 
 import { db } from "../db";

@@ -375,9 +375,12 @@ export class ModelTrainingService {
         // representation of "we did not actually evaluate a model" is NO metric
         // value (null) plus an explicit insufficient_data marker — never a
         // random number. (Real metrics come from the actual training script in
-        // jobs/valuationModelRetrain.ts, which parses mae/rmse/mape/r2 from a
-        // genuine training run; if/when this stub is wired to that pipeline, set
-        // job.metrics from its output and write real trainingMetrics rows.)
+        // server/ml/valuation_model.py, whose final stdout line is a JSON
+        // object with mae/rmse/mape/r2 from a genuine training run; the
+        // jobs/valuationModelRetrain.ts caller that parsed it was deleted
+        // 2026-08-01 as a module orphan, so training runs are manual. If/when
+        // this stub is wired to that pipeline, set job.metrics from its output
+        // and write real trainingMetrics rows.)
         job.metrics = undefined; // no measured metrics — honest-null
 
         await db.update(modelVersions)
@@ -389,7 +392,7 @@ export class ModelTrainingService {
             primaryMetric: null,
             primaryMetricValue: null, // nullable column — honest "not measured"
             trainingSamples: config.trainingSamples || null,
-            notes: "insufficient_data: simulated run produced no measured eval metrics (mae/rmse/mape/r2). No metrics persisted. Wire to the real training pipeline (valuationModelRetrain) to populate.",
+            notes: "insufficient_data: simulated run produced no measured eval metrics (mae/rmse/mape/r2). No metrics persisted. Wire to the real training pipeline (manual server/ml/valuation_model.py run) to populate.",
           })
           .where(eq(modelVersions.id, modelVersionId));
 
