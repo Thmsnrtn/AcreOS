@@ -1,0 +1,9 @@
+{
+  "name": "reachability",
+  "mode": "external",
+  "evaluator": "scripts/lint-reachability.mjs",
+  "description": "seeding",
+  "direction": "down",
+  "baselines": {},
+  "allowlist": []
+}
