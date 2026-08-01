@@ -52,7 +52,6 @@ import {
   mailShipments,
   mailShipmentPieces,
   messages,
-  voiceCalls,
   aiCallLog,
   BYOK_CHANNELS,
 } from "@shared/schema";
@@ -683,44 +682,9 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
               contentPreview: m.content ? m.content.slice(0, 140) : null,
             };
           }
-          // Some carriers also surface as voice_calls.
-          if (!origin) {
-            const [v] = await db
-              .select()
-              .from(voiceCalls)
-              .where(eq(voiceCalls.callSid, strippedId))
-              .limit(1);
-            if (v) {
-              origin = {
-                kind: "voice",
-                source_table: "voice_calls",
-                direction: v.direction,
-                fromNumber: v.fromNumber,
-                toNumber: v.toNumber,
-                durationSeconds: v.durationSeconds,
-                callStatus: v.callStatus,
-                callSid: v.callSid,
-              };
-            }
-          }
-        } else if (sourceTable === "voice_calls") {
-          const [v] = await db
-            .select()
-            .from(voiceCalls)
-            .where(eq(voiceCalls.callSid, strippedId))
-            .limit(1);
-          if (v) {
-            origin = {
-              kind: "voice",
-              source_table: "voice_calls",
-              direction: v.direction,
-              fromNumber: v.fromNumber,
-              toNumber: v.toNumber,
-              durationSeconds: v.durationSeconds,
-              callStatus: v.callStatus,
-              callSid: v.callSid,
-            };
-          }
+          // voice_calls fallback removed 2026-08-01: the table was dropped
+          // with the Voice / AI voice kill (founder-authorized), so a callSid
+          // could never match again.
         } else if (sourceTable === "mail_shipments") {
           // The provider piece id lives on mail_shipment_pieces; the
           // shipment id is sometimes encoded into externalEventId.

@@ -22,7 +22,7 @@ import negotiationRouter from "./routes-negotiation";
 import cashFlowRouter from "./routes-cash-flow";
 // Deal Hunter retired 2026-06-08 — sourcing role lives in /deals/discover (dealFeedEngine).
 // Academy retired 2026-06-08 — education + AI tutor module removed.
-import visionAIRouter from "./routes-vision-ai";
+// Satellite/Vision AI deleted 2026-08-01 (deletion-ledger row: Satellite / Vision AI, founder-authorized drop).
 import capitalMarketsRouter from "./routes-capital-markets";
 import documentIntelligenceRouter from "./routes-document-intelligence";
 import marketIntelligenceRouter from "./routes-market-intelligence";
@@ -38,7 +38,7 @@ import paxInsightsRouter from "./routes-pax-insights";
 import todayRouter from "./routes-today";
 import parcelAlertsRouter from "./routes-parcel-alerts";
 import parcelBiographyRouter from "./routes-parcel-biography";
-import voiceRouter from "./routes-voice";
+// Voice AI deleted 2026-08-01 (deletion-ledger row: Voice / AI voice, founder-authorized drop).
 import betaRouter from "./routes-beta";
 import regulatoryRouter from "./routes-regulatory";
 import notificationsRouter from "./routes-notifications";
@@ -58,7 +58,6 @@ import priceOptimizerRouter from "./routes-price-optimizer";
 
 // Phase 5-6 new routes
 import investorVerificationRouter from "./routes-investor-verification";
-import callRoutingRouter from "./routes-call-routing";
 import buyerNetworkRouter from "./routes-buyer-network";
 import dealRoomsRouter from "./routes-deal-rooms";
 import dataApiRouter from "./routes-data-api";
@@ -106,7 +105,6 @@ import abTestsRouter from "./routes-ab-tests";
 import doddFrankRouter from "./routes-dodd-frank";
 import fieldScoutRouter from "./routes-field-scout";
 import dealFeedRouter from "./routes-deal-feed";
-import visionScanRouter from "./routes-vision-scan";
 import commentsRouter from "./routes-comments";
 
 // Phase 1: Communication features
@@ -1333,7 +1331,7 @@ export async function registerRoutes(
   app.use('/api/cash-flow', isAuthenticated, getOrCreateOrg, cashFlowRouter);
   // /api/deal-hunter retired 2026-06-08 — superseded by /api/deal-feed (dealFeedEngine).
   // /api/academy retired 2026-06-08 — Academy module removed.
-  app.use('/api/vision-ai', isAuthenticated, getOrCreateOrg, featureGate("feature_vision_ai"), visionAIRouter);
+  // /api/vision-ai deleted 2026-08-01 (deletion-ledger row: Satellite / Vision AI).
   app.use('/api/capital-markets', isAuthenticated, getOrCreateOrg, featureGate("feature_capital_markets"), capitalMarketsRouter);
   app.use('/api/document-intelligence', isAuthenticated, getOrCreateOrg, documentIntelligenceRouter);
   app.use('/api/market-intelligence', isAuthenticated, marketIntelligenceRouter);
@@ -1386,12 +1384,12 @@ export async function registerRoutes(
   // tools/call against the safe, org-scoped intent subset.
   app.post('/api/mcp', mcpStreamableHttpHandler);
 
-  // Voice pipeline: webhook callbacks (no auth, signature-verified) + authenticated API routes
-  // Mount only webhook paths at root — NOT the entire router, which would expose
-  // unauthenticated /analytics, /calls, etc. at the root path.
-  app.post('/webhook/twilio/recording-complete', voiceRouter);
-  app.post('/webhook/disclosure', voiceRouter);
-  app.use('/api/voice', isAuthenticated, getOrCreateOrg, featureGate("feature_voice_ai"), voiceRouter);
+  // Voice pipeline deleted 2026-08-01 (deletion-ledger row: Voice / AI voice).
+  // The two formerly-ungated Twilio webhooks are stubbed to 410 Gone per the
+  // ledger's execution rule, so a still-configured Twilio account gets a clean
+  // permanent-failure signal instead of a 404 that looks like a routing bug.
+  app.post('/webhook/twilio/recording-complete', (_req, res) => Errors.gone(res, "Voice pipeline removed"));
+  app.post('/webhook/disclosure', (_req, res) => Errors.gone(res, "Voice pipeline removed"));
 
   // Beta program: /api/beta/waitlist is public, /api/beta/admin/* requires founder auth
   app.use('/api/beta', betaRouter);
@@ -1416,7 +1414,7 @@ export async function registerRoutes(
   app.use('/api/due-diligence', isAuthenticated, getOrCreateOrg, dueDiligenceRouter);
   app.use('/api/deal-patterns', isAuthenticated, getOrCreateOrg, dealPatternsRouter);
   app.use('/api/deal-feed', dealFeedRouter);
-  app.use('/api/properties', visionScanRouter);
+  // vision-scan sub-routes on /api/properties deleted 2026-08-01 (Satellite / Vision AI kill).
   app.use('/api/comments', commentsRouter);
   app.use('/api/price-optimizer', isAuthenticated, getOrCreateOrg, priceOptimizerRouter);
   app.use('/api/portfolio-health', isAuthenticated, getOrCreateOrg, portfolioHealthRouter);
@@ -2151,7 +2149,8 @@ export async function registerRoutes(
   // the provider"): a platform escrow / take-a-cut / manual-payout console over
   // AcreOS's own balance. Every handler was a stub, and POST /fees/payouts/trigger
   // returned 202 "processing" while doing nothing. Custody is not AcreOS's to hold.
-  app.use('/api/call-routing', isAuthenticated, getOrCreateOrg, callRoutingRouter);
+  // /api/call-routing deleted 2026-08-01 (Voice / AI voice kill): every handler
+  // returned a hardcoded stub config presented as real — honesty gate applies.
   app.use('/api/buyer-network', isAuthenticated, getOrCreateOrg, buyerNetworkRouter);
   // routes-tax-optimization deleted 2026-07-29 (Nothing-lies wave A): 10 of 11
   // endpoints returned 501 and no client consumed the mount. The real tax

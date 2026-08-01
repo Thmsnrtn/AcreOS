@@ -69,7 +69,7 @@ import {
   unscopedForPlatformOps,
   listOrgScopedTableNames,
 } from "../../server/utils/orgScopedDb";
-import { supportCases, sessions } from "@shared/schema";
+import { supportCases, jobLocks } from "@shared/schema";
 import { storage } from "../../server/storage";
 
 const dialect = new PgDialect();
@@ -105,7 +105,11 @@ describe("OrgScopedDb.findById — org predicate by construction", () => {
   });
 
   it("refuses tables without an organizationId column (runtime backstop for `as any`)", () => {
-    expect(() => forOrg(ORG_A).scope(sessions as any)).toThrow(/no organizationId column/);
+    // jobLocks is a deliberately org-less infra table (allowlisted with a
+    // written rationale in the reachability ratchet, so it cannot be deleted
+    // out from under this fixture). It replaced `sessions`, which was dropped
+    // 2026-08-01 — the fixture only ever needed SOME table with no org column.
+    expect(() => forOrg(ORG_A).scope(jobLocks as any)).toThrow(/no organizationId column/);
   });
 });
 

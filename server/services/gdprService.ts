@@ -26,7 +26,6 @@ import {
   aiConversations,
   teamMessages,
   supportTickets,
-  sessions,
   notes,
   deals,
   properties,
@@ -185,9 +184,11 @@ export async function anonymizeUser(userId: string): Promise<DeletionReport> {
     ? await db.delete(tasks).where(inArray(tasks.assignedTo, teamMemberIds)).returning({ id: tasks.id })
     : [];
 
-  // 5. Delete sessions
-  // TODO(tsc): sessions.userId is an integer, but users.id is a UUID string;
-  // these key spaces are incompatible, so sessions can't be matched here.
+  // 5. Sessions: the `sessions` table was dropped 2026-08-01 (founder ruling —
+  // Clerk JWT auth, no session store, zero rows ever written; even here it was
+  // imported but never queried because its integer userId could not match the
+  // UUID users.id). Auth-session revocation is Clerk's job, not a table purge.
+  // The count stays in the erasure report shape, truthfully zero.
   const deletedSessions: { id: number }[] = [];
 
   // 5a. Task #48: Delete AI conversation history and org-scoped agent memory

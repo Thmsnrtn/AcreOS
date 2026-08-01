@@ -14496,16 +14496,10 @@ export const territories = pgTable("territories", {
 });
 export type Territory = typeof territories.$inferSelect;
 
-// ============================================
-// SESSIONS
-// ============================================
-
-export const sessions = pgTable("sessions", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-export type Session = typeof sessions.$inferSelect;
+// `sessions` table dropped 2026-08-01 by explicit founder ruling: auth is
+// Clerk JWT, no session-store package exists in the dependency tree
+// (requireClerkMFA.ts documents express-session is deliberately NOT
+// installed), and the table never had a reader or writer.
 
 // ============================================
 // NOTES RECEIVABLE

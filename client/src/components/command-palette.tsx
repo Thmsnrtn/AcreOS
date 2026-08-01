@@ -103,7 +103,6 @@ import {
   Brain,
   Activity,
   Search,
-  Eye,
   Globe,
   ShieldCheck,
   Gavel,
@@ -224,7 +223,6 @@ function navItemToPage(item: MasterNavItem) {
 // 7-item customer sidebar.
 const PALETTE_EXTRAS: Array<{ name: string; icon: typeof Users; path: string }> = [
   { name: "Valuation Model (AVM)", icon: TrendingUp, path: "/avm" },
-  { name: "Vision AI", icon: Eye, path: "/vision-ai" },
   { name: "Capital Markets", icon: DollarSign, path: "/capital-markets" },
   { name: "Market Intelligence", icon: Globe, path: "/market-intelligence" },
   { name: "Compliance AI", icon: ShieldCheck, path: "/compliance" },

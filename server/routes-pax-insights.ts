@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, storage } from "./storage";
 import { eq, and, desc, lt, gte, lte, gt, sql } from "drizzle-orm";
-import { paxObservations, paxNudges, leads, deals, leadActivities, properties, voiceCalls } from "@shared/schema";
+import { paxObservations, paxNudges, leads, deals, leadActivities, properties } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
@@ -208,34 +208,11 @@ router.get("/insights", async (req, res) => {
       leadName: propertyMap[d.propertyId] ?? `Deal #${d.id}`,
     }));
 
-    // ── 4a. Voice pipeline motivated callers: calls in past 7 days with motivationScore > 0.7 ──
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-    const motivatedVoiceCalls = await db
-      .select()
-      .from(voiceCalls)
-      .where(
-        and(
-          eq(voiceCalls.organizationId, org.id),
-          gt(voiceCalls.motivationScore, "0.7"),
-          gte(voiceCalls.createdAt, sevenDaysAgo)
-        )
-      )
-      .orderBy(desc(voiceCalls.createdAt))
-      .limit(10);
-
-    const motivatedVoiceCallsSummary = motivatedVoiceCalls.map((c) => ({
-      id: c.id,
-      callSid: c.callSid,
-      leadId: c.leadId,
-      contactId: c.contactId,
-      motivationScore: c.motivationScore,
-      sentimentScore: c.sentimentScore,
-      direction: c.direction,
-      durationSeconds: c.durationSeconds,
-      recordingUrl: c.recordingUrl,
-      createdAt: c.createdAt,
-    }));
+    // ── 4a. (removed 2026-08-01) Voice-pipeline motivated callers rode on the
+    // voice_calls table, dropped with the Voice / AI voice kill. With every
+    // writer deleted the query could only ever return empty — surfacing a
+    // permanently-empty "motivated voice callers" panel would be a lying
+    // surface, so the field was removed rather than stubbed. ──
 
     // ── 4b. Motivated callers: leads with urgency tags or keywords in notes ──
     const urgencyKeywords = ["motivated", "quick", "urgent", "sell fast", "inherited", "divorce", "foreclosure"];
@@ -282,10 +259,6 @@ router.get("/insights", async (req, res) => {
       staleLeads,
       expiringOffers,
       motivatedCallers: motivatedLeads,
-      motivatedVoiceCallers: {
-        count: motivatedVoiceCallsSummary.length,
-        calls: motivatedVoiceCallsSummary,
-      },
       generatedAt: now.toISOString(),
     });
   } catch (error: any) {

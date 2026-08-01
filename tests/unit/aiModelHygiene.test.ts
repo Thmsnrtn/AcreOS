@@ -11,8 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 //   2. MODEL-BACKED CONFIDENCE — paxObserver.recordModelObservation stamps a
 //      model's real self-reported confidence (0.91 → 91) into the observation,
 //      and keeps honest-null (no row) when the model didn't report one.
-//   3. modelTraining — the simulated run writes real-or-null metrics, NEVER a
-//      Math.random() value, into the persisted model version.
+//   3. (retired 2026-08-01) modelTraining's real-or-null metrics pin — the
+//      module and its tables were deleted; see the dated note at the bottom.
 // ============================================================================
 
 import { MODELS, KNOWN_MODELS, isKnownModel, priceFor } from "../../server/services/models";
@@ -162,48 +162,11 @@ describe("paxObserver.recordModelObservation — real model confidence lands", (
   });
 });
 
-// ── modelTraining writes real-or-null, never random ──────────────────────────
-describe("modelTraining — simulated run persists no fabricated metrics", () => {
-  it("writes null primaryMetricValue + insufficient_data marker, no metric rows", async () => {
-    vi.resetModules();
-    const updateSet = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
-    const trainingMetricsInsert = vi.fn();
-
-    // Capture every db.update(...).set(...) and db.insert(...).values(...).
-    vi.doMock("../../server/db", () => ({
-      db: {
-        insert: () => ({
-          values: (v: any) => {
-            trainingMetricsInsert(v);
-            return { returning: () => [{ id: 99 }] };
-          },
-        }),
-        update: () => ({ set: updateSet }),
-        select: () => ({ from: () => ({ where: () => ({ orderBy: () => ({ limit: () => [] }) }) }) }),
-      },
-    }));
-
-    const { modelTrainingService } = await import("../../server/services/modelTraining");
-
-    vi.useFakeTimers();
-    await modelTrainingService.triggerTrainingJob("valuation", { trainingSamples: 1000 });
-    // Drive the 10s simulated progress timer to completion.
-    await vi.advanceTimersByTimeAsync(11_000);
-    vi.useRealTimers();
-
-    // The model-version update must carry null metric + insufficient_data note,
-    // and must NEVER have a numeric primaryMetricValue from Math.random().
-    const versionUpdate = updateSet.mock.calls
-      .map((c) => c[0])
-      .find((u: any) => u && "primaryMetricValue" in u);
-    expect(versionUpdate).toBeDefined();
-    expect(versionUpdate.primaryMetricValue).toBeNull();
-    expect(String(versionUpdate.notes)).toContain("insufficient_data");
-
-    // No trainingMetrics rows (metricName: mae/rmse/...) were inserted.
-    const metricInserts = trainingMetricsInsert.mock.calls
-      .map((c) => c[0])
-      .filter((v: any) => v && typeof v.metricName === "string");
-    expect(metricInserts).toHaveLength(0);
-  });
-});
+// ── modelTraining block removed 2026-08-01 ───────────────────────────────────
+// The describe that lived here pinned modelTraining's simulated run to
+// real-or-null metrics (never Math.random()). modelTraining.ts was deleted by
+// founder-authorized ruling — it was unreached (its only importer was the dead
+// services/ai barrel, itself imported by nothing) and its tables
+// model_versions / training_metrics were dropped. The no-fabrication invariant
+// it enforced did not lapse: the module that could have fabricated no longer
+// exists, and the repo-wide `lint:no-fabrication` gate still covers live code.

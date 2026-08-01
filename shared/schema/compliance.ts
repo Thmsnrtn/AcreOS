@@ -27,7 +27,6 @@ import {
   organizations,
   properties,
   investorProfiles,
-  voiceCalls,
   whitelabelTenants,
 } from "../schema";
 
@@ -293,121 +292,11 @@ export const insertTaxForecastScenarioSchema = createInsertSchema(taxForecastSce
 export type InsertTaxForecastScenario = z.infer<typeof insertTaxForecastScenarioSchema>;
 export type TaxForecastScenario = typeof taxForecastScenarios.$inferSelect;
 
-// ============================================
-// VOICE & RECORDING
-// ============================================
-
-// Call recording storage metadata
-export const voiceCallRecordings = pgTable("voice_call_recordings", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  voiceCallId: integer("voice_call_id").references(() => voiceCalls.id).notNull(),
-  audioFileUrl: text("audio_file_url"),
-  audioFileBucket: text("audio_file_bucket"),
-  audioFileKey: text("audio_file_key"),
-  durationSeconds: integer("duration_seconds"),
-  fileSizeBytes: integer("file_size_bytes"),
-  mimeType: text("mime_type"),
-  encryptionKeyId: text("encryption_key_id"),
-  tcpaConsentObtained: boolean("tcpa_consent_obtained").default(false),
-  disclosurePlayedAt: timestamp("disclosure_played_at"),
-  recordingStartedAt: timestamp("recording_started_at"),
-  transcriptionStatus: text("transcription_status").notNull().default("pending"), // pending | processing | completed | failed
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("voice_call_recordings_org_idx").on(table.organizationId),
-  index("voice_call_recordings_call_idx").on(table.voiceCallId),
-  index("voice_call_recordings_status_idx").on(table.transcriptionStatus),
-]);
-
-export const insertVoiceCallRecordingSchema = createInsertSchema(voiceCallRecordings).omit({ id: true, createdAt: true });
-export type InsertVoiceCallRecording = z.infer<typeof insertVoiceCallRecordingSchema>;
-export type VoiceCallRecording = typeof voiceCallRecordings.$inferSelect;
-
-// ============================================
-// SATELLITE ANALYSIS
-// ============================================
-
-// Satellite change detection results
-export const satelliteAnalysis = pgTable("satellite_analysis", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  propertyId: integer("property_id").references(() => properties.id).notNull(),
-  baselineSnapshotId: integer("baseline_snapshot_id"),
-  comparisonSnapshotId: integer("comparison_snapshot_id"),
-  analysisDate: timestamp("analysis_date").notNull(),
-  changeScore: numeric("change_score"), // 0–100
-  vegetationChangePct: numeric("vegetation_change_pct"),
-  structureChangePct: numeric("structure_change_pct"),
-  boundaryChangePct: numeric("boundary_change_pct"),
-  detectedChanges: jsonb("detected_changes").$type<Array<Record<string, any>>>(),
-  diffImageUrl: text("diff_image_url"),
-  ndviBaseline: numeric("ndvi_baseline"),
-  ndviCurrent: numeric("ndvi_current"),
-  analysisMetadata: jsonb("analysis_metadata").$type<Record<string, any>>(),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("satellite_analysis_org_idx").on(table.organizationId),
-  index("satellite_analysis_property_idx").on(table.propertyId),
-  index("satellite_analysis_date_idx").on(table.analysisDate),
-]);
-
-export const insertSatelliteAnalysisSchema = createInsertSchema(satelliteAnalysis).omit({ id: true, createdAt: true });
-export type InsertSatelliteAnalysis = z.infer<typeof insertSatelliteAnalysisSchema>;
-export type SatelliteAnalysis = typeof satelliteAnalysis.$inferSelect;
-
-// ============================================
-// ML MODEL REGISTRY
-// ============================================
-
-// ML model version registry
-export const modelVersions = pgTable("model_versions", {
-  id: serial("id").primaryKey(),
-  modelType: text("model_type").notNull(), // valuation | credit_score | demand_prediction
-  version: text("version").notNull(),
-  gitHash: text("git_hash"),
-  trainedAt: timestamp("trained_at"),
-  deployedAt: timestamp("deployed_at"),
-  retiredAt: timestamp("retired_at"),
-  status: text("status").notNull().default("training"), // training | staging | production | retired
-  trainingSamples: integer("training_samples"),
-  validationSamples: integer("validation_samples"),
-  primaryMetric: text("primary_metric"),
-  primaryMetricValue: numeric("primary_metric_value"),
-  isActive: boolean("is_active").default(false),
-  notes: text("notes"),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("model_versions_type_idx").on(table.modelType),
-  index("model_versions_status_idx").on(table.status),
-  index("model_versions_active_idx").on(table.isActive),
-]);
-
-export const insertModelVersionSchema = createInsertSchema(modelVersions).omit({ id: true, createdAt: true });
-export type InsertModelVersion = z.infer<typeof insertModelVersionSchema>;
-export type ModelVersion = typeof modelVersions.$inferSelect;
-
-// ML training run metrics
-export const trainingMetrics = pgTable("training_metrics", {
-  id: serial("id").primaryKey(),
-  modelVersionId: integer("model_version_id").references(() => modelVersions.id).notNull(),
-  metricName: text("metric_name").notNull(), // mae | rmse | mape | r2 | accuracy
-  metricValue: numeric("metric_value").notNull(),
-  splitType: text("split_type").notNull(), // train | validation | test
-  state: text("state"),
-  propertyType: text("property_type"),
-  sampleCount: integer("sample_count"),
-  computedAt: timestamp("computed_at").defaultNow(),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("training_metrics_model_version_idx").on(table.modelVersionId),
-  index("training_metrics_metric_name_idx").on(table.metricName),
-  index("training_metrics_split_type_idx").on(table.splitType),
-]);
-
-export const insertTrainingMetricSchema = createInsertSchema(trainingMetrics).omit({ id: true, createdAt: true });
-export type InsertTrainingMetric = z.infer<typeof insertTrainingMetricSchema>;
-export type TrainingMetric = typeof trainingMetrics.$inferSelect;
+// voice_call_recordings, satellite_analysis, model_versions and
+// training_metrics dropped 2026-08-01 by explicit founder ruling
+// (deletion-ledger rows: Voice / AI voice, Satellite / Vision AI; ML registry
+// services modelServing/modelTraining/dataQuality were unreached dead code —
+// their only "importer" was a barrel file nothing imported).
 
 // ============================================
 // REGULATORY COMPLIANCE
