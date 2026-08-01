@@ -2,8 +2,20 @@
   "name": "reachability",
   "mode": "external",
   "evaluator": "scripts/lint-reachability.mjs",
-  "description": "seeding",
   "direction": "down",
-  "baselines": {},
-  "allowlist": []
+  "description": "REACHABILITY ratchet. `tsc`, the test suite and every existing lint gate check TYPES and BEHAVIOUR; nothing checked whether a thing is REACHED. CLAUDE.md names 'built but unwired' as this repo's single most common defect, and every instance (services/lateFees, services/respa/earlyIntervention, calculateFlipAnalysis, taxSaleAuctions/taxSaleListings, achMandateSetup/achAutopayRun, rental_units.kind='pad', routes-contract-chain.ts, the rent-roll importer's unitKind arg) shipped GREEN and was found hours later by a manual audit. This converts that recurring audit into CI. Four counts, each strictly down-only: exports in server/services|jobs with no production call site; pgTables with no writer; pgTables with no reader; routes-*.ts never mounted. THE CHEAPEST WAY TO SATISFY THIS GATE IS DELETION — the north star is a smaller codebase, and every reduction must be locked in by the commit that earned it (a stale-high baseline FAILS, same as `as-any`).",
+  "baselines": {
+    "unreachedExports": 754,
+    "tablesNoWriter": 44,
+    "tablesNoReader": 57,
+    "unregisteredRoutes": 2
+  },
+  "allowlist": [
+    {
+      "kind": "table-reader",
+      "id": "job_locks",
+      "reason": "Read by compare-and-swap, not by SELECT. server/jobs/scheduler.ts acquires the single-flight lease with `UPDATE job_locks SET ... WHERE jobName = ? AND (expiresAt < now OR lockedBy = me) RETURNING id` — the WHERE clause IS the read and the RETURNING row is the answer. A separate SELECT-then-UPDATE would reintroduce exactly the race the lock exists to prevent, so this table can never grow a reader the linter's `.from(`/`db.query.` patterns can see. Structural blind spot, not dead weight."
+    }
+  ],
+  "lastBumpNote": "SEEDED 2026-08-01 at the measured state of the tree: unreachedExports=754, tablesNoWriter=44, tablesNoReader=57 (58 measured, minus the job_locks compare-and-swap allowlist), unregisteredRoutes=2. The two unmounted routers are routes-api-keys.ts and routes-sso.ts, which server/routeManifest.ts already carries in KNOWN_NON_MOUNTED — this gate is now the thing that stops a third from joining them. 308 of the 754 unreached exports are MODULE ORPHANS (nothing imports the file at all: services/landlordCompliance.ts, services/respaEscrowAnalysis.ts, services/promptInjectionSanitizer.ts, services/paymentApplication/index.ts, services/usuryCeiling.ts, the six unregistered BullMQ jobs, the nine scp*.ts modules, ...); the remainder are mostly internals exported past their module boundary so a test can reach them, which the gate correctly counts as unreached-in-production. Raising ANY of these four numbers requires Iris-CTO sign-off; lowering one is expected and must happen in the same commit as the deletion or wiring that earned it."
 }

@@ -1,6 +1,24 @@
 /**
- * T263 — Usury Ceiling Service Tests
- * Tests state usury law compliance checks for seller-financed land deals.
+ * T263 — Usury Ceiling: tests of a REIMPLEMENTATION, not of the service.
+ *
+ * ⚠️ READ THIS BEFORE TRUSTING THE FILENAME. This file does NOT import
+ * `server/services/usuryCeiling.ts`. It declares its own `StateLimits` and
+ * `UsuryCeilingCheckResult` below under "Inline pure logic" and asserts against
+ * that copy. Every assertion here can pass while the shipped service is broken,
+ * deleted, or says the opposite.
+ *
+ * Found 2026-07-31 while building the statute register. Left in place rather
+ * than deleted because the inline logic is a readable specification of what the
+ * ceiling rules are supposed to do — but the docstring said "Tests state usury
+ * law compliance checks", and that sentence was providing false assurance about
+ * a service that decides whether a seller-financed note is usurious.
+ *
+ * There are also THREE overlapping usury tables in this repo — `usury.ts`,
+ * `usuryCeiling.ts`, and `rmloAdvisor.ts` — so two product surfaces can give
+ * different answers about the same rate. Tracked as `usury.state-ceilings` in
+ * shared/governance/statuteRegister.ts.
+ *
+ * To make this file earn its name: import the service and assert against it.
  */
 
 import { describe, it, expect } from "vitest";

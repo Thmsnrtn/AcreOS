@@ -207,13 +207,33 @@ export function computeRedemptionDeadline(input: ComputeDeadlineInput): string |
     deadline.setUTCMonth(deadline.getUTCMonth() + months);
   }
 
-  // SCRA tolling — federal Servicemembers Civil Relief Act extends
-  // redemption while the borrower is on active duty, plus 9 months
-  // post-discharge (50 U.S.C. §3936). We don't yet model the tolling
-  // window; for now a flag tells the UI that the deadline shown is a
-  // floor, not a ceiling, when scraTollingApplied is true.
-  // (Full SCRA tolling lands when we wire active-duty status into the
-  // certificate row.)
+  // ── SCRA TOLLING IS NOT IMPLEMENTED. Read this before trusting the date. ──
+  //
+  // The Servicemembers Civil Relief Act tolls redemption while the borrower is
+  // on active duty, plus 9 months post-discharge (50 U.S.C. §3936), and §3953
+  // bars a non-judicial sale of protected property without a court order.
+  //
+  // This function models NONE of that. `input.scraTolling` is accepted and
+  // discarded on the next line.
+  //
+  // The comment that stood here until 2026-07-31 said "a flag tells the UI that
+  // the deadline shown is a floor, not a ceiling, when scraTollingApplied is
+  // true." **No such flag was ever produced** — this function returns a bare
+  // ISO date string and always has. The mitigation was described, not written,
+  // and the description was doing the reassuring. That is the same failure that
+  // put "the 1st of next month" on every Reg-Z periodic statement: a comment
+  // promising an override nobody implemented.
+  //
+  // So, stated plainly: for a borrower on active duty this date is WRONG in the
+  // direction that costs them their property. Federal law says the clock has
+  // not run; this returns a date as though it had, with nothing distinguishing
+  // "computed" from "legally binding". `scra_checked_at` / `scra_active_duty`
+  // already exist on the schema and nothing here reads them.
+  //
+  // Tracked as `scra.tolling-and-rate-cap` in shared/governance/statuteRegister.ts
+  // (UNREVIEWED). Implementing it is a founder decision, not a refactor: it
+  // changes a date that decides whether someone loses a home, and it carries
+  // criminal exposure and mandatory attorney's fees when it is wrong.
   void input.scraTolling;
 
   return deadline.toISOString().slice(0, 10);

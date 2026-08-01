@@ -14,6 +14,13 @@
 //     "direction":     "down"
 //   }
 //
+// A config may instead declare `"mode": "external"` + `"evaluator": "<path>"`.
+// Those are baselines this regex factory CANNOT compute (e.g. reachability,
+// which needs a cross-file symbol index). They live here so every ratchet
+// baseline in the repo is in one directory, but their own script owns the gate
+// and is wired into `npm run check` separately. This factory prints DELEGATED
+// and skips them.
+//
 // Semantics (bidirectional, same discipline as check-no-fabrication.mjs):
 //   count >  baseline → FAIL  (new offender introduced — fix it, don't bump)
 //   count <  baseline → FAIL  (improvement landed but the baseline is now
@@ -187,6 +194,22 @@ function loadConfigs() {
     } catch (err) {
       console.error(`[ratchet] ${entry} is not valid JSON: ${err.message}`);
       process.exit(1);
+    }
+    // mode "external": the count is not a regex tally over globs, so this
+    // factory cannot evaluate it. The config still lives here (one place to
+    // look for every ratchet baseline in the repo) but its OWN evaluator owns
+    // the gate — it is wired into `npm run check` separately.
+    if (cfg.mode === "external") {
+      if (!cfg.evaluator) {
+        console.error(
+          `[ratchet] ${entry}: mode "external" requires an "evaluator" path`,
+        );
+        process.exit(1);
+      }
+      console.log(
+        `[ratchet] ${cfg.name ?? entry}: DELEGATED — evaluated by ${cfg.evaluator}`,
+      );
+      continue;
     }
     // "pattern" is required for the default (regex-match) mode but irrelevant
     // for mode "lineCount", which counts the file's newlines instead.

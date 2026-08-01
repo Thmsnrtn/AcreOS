@@ -78,6 +78,13 @@
 //     says so rather than asserting the symbol is dead.
 //   • Name collisions. A short/common export name that happens to appear as an
 //     unrelated identifier anywhere counts as reached. Safe direction: a miss.
+//   • Prose and registries resurrect corpses. Because string literals count,
+//     a doc-comment or an inventory file (shared/governance/statuteRegister.ts,
+//     server/routeManifest.ts's KNOWN_NON_MOUNTED) that NAMES a dead symbol
+//     makes it look alive. Two known consequences are handled explicitly: this
+//     script exempts ITSELF (its header names the corpses it hunts) and the
+//     route family reads only ROUTE_MANIFEST, never KNOWN_NON_MOUNTED's prose.
+//     Elsewhere the effect stands, and it is again a miss, not an accusation.
 //   • Barrel re-exports do NOT count as a use — `export { x } from "./y"` and
 //     `export * from "./y"` are stripped before tokenizing, so a symbol that is
 //     only forwarded through an index.ts is still UNREACHED. (A barrel that
@@ -171,11 +178,32 @@ function isTestFile(relPath) {
  */
 const PRODUCTION_ROOTS = ["server", "client/src", "shared", "scripts", "script"];
 
+/**
+ * This file DOCUMENTS the dead symbols it exists to find (lateFees,
+ * calculateFlipAnalysis, achAutopayRun …) in its own header. Token-wise that
+ * reads as a use, so the linter would resurrect exactly the corpses it names.
+ * Exempt itself — same shape as lint-prefetch-authority.mjs exempting the one
+ * file allowed to call the API it bans.
+ */
+const SELF = "scripts/lint-reachability.mjs";
+
 const productionFiles = [];
 for (const r of PRODUCTION_ROOTS) {
   for (const abs of walk(join(ROOT, r))) {
     const p = rel(abs);
+    if (p === SELF) continue;
     if (!isTestFile(p)) productionFiles.push(p);
+  }
+}
+// Root-level build/runtime config (vite, drizzle, tailwind, capacitor …) can be
+// the only importer of a module. playwright.*/vitest.* are TEST harness config
+// and are deliberately excluded — a reference from them is not production use.
+if (existsSync(ROOT)) {
+  for (const entry of readdirSync(ROOT)) {
+    if (!/\.(ts|mts|cts|js|mjs)$/.test(entry)) continue;
+    if (/^(playwright|vitest)\b/.test(entry)) continue;
+    if (isTestFile(entry)) continue;
+    if (lstatSync(join(ROOT, entry)).isFile()) productionFiles.push(entry);
   }
 }
 
@@ -317,6 +345,51 @@ const dynamicUnresolvedTails = new Set();
 const usage = new Map();
 const IDENT_RE = /[A-Za-z_$][\w$]*/g;
 
+/** Every module specifier imported anywhere in production, however imported. */
+const STATIC_IMPORT_RE = /(?:\bfrom\s*|\bimport\s*)["'`]([^"'`\n]+)["'`]/g;
+const importedModules = new Set();
+const importedTails = new Set();
+/** `@shared/x` → `shared/x`, `@/x` → `client/src/x` (see tsconfig paths). */
+const ALIASES = [
+  ["@shared/", "shared/"],
+  ["@assets/", "attached_assets/"],
+  ["@/", "client/src/"],
+];
+function recordImport(importerRel, spec) {
+  let base = null;
+  if (spec.startsWith(".")) {
+    base = resolve("/", dirname(importerRel), spec).slice(1).split("\\").join("/");
+  } else {
+    for (const [prefix, replacement] of ALIASES) {
+      if (spec.startsWith(prefix)) {
+        base = replacement + spec.slice(prefix.length);
+        break;
+      }
+    }
+  }
+  if (base === null) {
+    // A package name, or an alias this linter doesn't know — fall back to the
+    // basename so an unrecognised path shape can never manufacture an orphan.
+    const tail = spec.replace(/\.(ts|tsx|mts|cts|js|mjs)$/, "").split("/").pop();
+    if (tail) importedTails.add(tail);
+    return;
+  }
+  const stem = base.replace(/\.(ts|tsx|mts|cts|js|mjs)$/, "");
+  for (const form of [
+    stem,
+    `${stem}.ts`,
+    `${stem}.tsx`,
+    `${stem}.mts`,
+    `${stem}.cts`,
+    `${stem}.js`,
+    `${stem}.mjs`,
+    `${stem}/index.ts`,
+    `${stem}/index.tsx`,
+  ]) {
+    importedModules.add(form);
+  }
+}
+
 for (const p of productionFiles) {
   const raw = read(p);
 
@@ -350,6 +423,10 @@ for (const p of productionFiles) {
       if (tail) dynamicUnresolvedTails.add(tail);
     }
   }
+
+  STATIC_IMPORT_RE.lastIndex = 0;
+  let sm;
+  while ((sm = STATIC_IMPORT_RE.exec(raw)) !== null) recordImport(p, sm[1]);
 
   if (candidateNames.size === 0) continue;
   const text = raw.replace(REEXPORT_RE, "");
@@ -387,7 +464,23 @@ for (const [id, c] of candidates) {
     continue;
   }
   if (allowlisted("export", id)) continue;
-  unreachedExports.push({ ...c, id });
+  unreachedExports.push({ ...c, id, moduleOrphan: isModuleOrphan(c.file) });
+}
+
+/**
+ * True when NOTHING in production imports this module at all — the strongest
+ * class of finding (a whole file nobody loads), versus a single over-exported
+ * internal helper inside a module that IS loaded.
+ */
+function isModuleOrphan(relPath) {
+  if (importedModules.has(relPath)) return false;
+  const noExt = relPath.replace(/\.(ts|tsx|mts|cts|js|mjs)$/, "");
+  if (importedModules.has(noExt)) return false;
+  if (isDynamicallyImported(relPath)) return false;
+  const base = noExt.endsWith("/index")
+    ? noExt.slice(0, -"/index".length).split("/").pop()
+    : noExt.split("/").pop();
+  return !importedTails.has(base);
 }
 
 // ============================================================================
@@ -534,7 +627,11 @@ const FAMILIES = [
     findings: unreachedExports,
     describe: (f) =>
       `${f.file}:${f.line}  ${f.kind} ${f.symbol} — no production consumer` +
-      (usage.get(f.symbol)?.size ? " (only its own module/tests reference it)" : ""),
+      (f.moduleOrphan
+        ? " [MODULE ORPHAN — nothing imports this file at all]"
+        : usage.get(f.symbol)?.size
+          ? " (only its own module/tests reference it)"
+          : ""),
     remedy:
       "DELETE it (cheapest, and the north star is a smaller codebase), or WIRE it\n" +
       "  to a route/job/service that actually calls it, or ALLOWLIST it in\n" +
