@@ -26,10 +26,11 @@
  * the product must be able to model. These live on the EXISTING rentals
  * router (no new top-level nav — that is a standing hard-stop):
  *
- *   GET    /api/rentals/properties/:propertyId/units  — list
- *   POST   /api/rentals/properties/:propertyId/units  — create
- *   PATCH  /api/rentals/units/:id                     — edit
- *   DELETE /api/rentals/units/:id                     — refuses while leased
+ *   GET    /api/rentals/properties/:propertyId/units       — list
+ *   POST   /api/rentals/properties/:propertyId/units       — create
+ *   POST   /api/rentals/properties/:propertyId/units/bulk  — create a range/paste
+ *   PATCH  /api/rentals/units/:id                          — edit
+ *   DELETE /api/rentals/units/:id                          — refuses while leased
  */
 
 import type { Express, Response } from "express";
@@ -52,6 +53,12 @@ import {
 } from "@shared/schema";
 import type { RentalUnitKind } from "@shared/schema";
 import { computeNoticeWindow } from "@shared/regulatory/leaseNoticeRules";
+import {
+  expandUnitLabels,
+  buildBulkCreateReport,
+  UNIT_BULK_MAX_LABELS,
+  UNIT_LABEL_MAX_LENGTH,
+} from "@shared/rental/unitInventory";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -87,6 +94,19 @@ const tenantUpdateSchema = tenantSchema.partial();
 const leaseSchema = z.object({
   propertyId: z.coerce.number().int().positive(),
   unitLabel: z.string().optional(),
+  /**
+   * unit | pad | suite for the slot this lease find-or-creates. Applied on
+   * CREATE only (see `findOrCreateUnitId`), so leasing an existing pad never
+   * resets it to 'unit'.
+   *
+   * Optional, and NOT inferred when omitted: the lease form is the first place
+   * a mobile-home park operator's very first lot lease is entered, and until
+   * this existed that lot was silently born a 'unit'. Nothing else on the lease
+   * — not the property's structure_type, not the label reading "Lot 14" —
+   * establishes what the slot IS, so a blank stays 'unit' rather than being
+   * guessed at.
+   */
+  unitKind: z.enum(RENTAL_UNIT_KINDS).optional(),
   parentLeaseId: z.string().uuid().optional(),
   status: z.enum(LEASE_STATUSES).default("draft"),
   liabilityModel: z.enum(LEASE_LIABILITY_MODELS).default("joint_and_several"),
@@ -439,7 +459,7 @@ async function findOrCreateUnitId(
 // ----------------------------------------------------------------------------
 
 const unitCreateSchema = z.object({
-  label: z.string().trim().min(1).max(64),
+  label: z.string().trim().min(1).max(UNIT_LABEL_MAX_LENGTH),
   // Blank infers nothing. A mobile-home park's rentable slot is a PAD and a
   // strip centre's is a SUITE, but only the operator (or an import that was
   // told) knows which — guessing from, say, the property's structure_type
@@ -454,6 +474,39 @@ const unitCreateSchema = z.object({
 });
 
 const unitUpdateSchema = unitCreateSchema.partial();
+
+/**
+ * Bulk create. The label list is NOT sent by the client as an array — it sends
+ * the SPEC (a range, or a paste), and the server expands it with the same pure
+ * `expandUnitLabels` the client previewed with. That way the operator's
+ * "Lot 1–Lot 60" is the thing under test, and a client that expanded it
+ * differently cannot smuggle a different list past the preview they approved.
+ *
+ * The physical/rent fields are deliberately absent: 60 pads do not share a
+ * bedroom count, and stamping one onto all of them would be fabrication at
+ * scale. Bulk create makes the SLOTS exist; the operator fills in the facts
+ * they actually know, per unit, afterwards.
+ */
+const unitBulkCreateSchema = z.object({
+  spec: z.discriminatedUnion("mode", [
+    z.object({
+      mode: z.literal("range"),
+      prefix: z.string().max(UNIT_LABEL_MAX_LENGTH).optional(),
+      suffix: z.string().max(UNIT_LABEL_MAX_LENGTH).optional(),
+      start: z.coerce.number().int().min(0).max(1_000_000),
+      end: z.coerce.number().int().min(0).max(1_000_000),
+      padTo: z.coerce.number().int().min(0).max(8).optional(),
+    }),
+    z.object({
+      mode: z.literal("list"),
+      // 64 chars + a separator, times the ceiling, with room for messy paste.
+      text: z.string().min(1).max(UNIT_BULK_MAX_LABELS * (UNIT_LABEL_MAX_LENGTH + 2)),
+    }),
+  ]),
+  kind: z.enum(RENTAL_UNIT_KINDS).default("unit"),
+  status: z.enum(RENTAL_UNIT_STATUSES).default("active"),
+  notes: z.string().max(2000).optional(),
+});
 
 // ----------------------------------------------------------------------------
 // Routes
@@ -868,10 +921,16 @@ export function registerRentalRoutes(app: Express): void {
         // reason: "no_units_modelled"` forever. Find-or-create the unit here,
         // inside the SAME transaction as the lease insert, so a failure rolls
         // both back rather than leaving a lease with a dangling unit_id.
+        //
+        // `kind` rides along because THIS caller knows it: the operator picked
+        // it on the form. Before that, every unit born from a lease was a
+        // 'unit', including a park's ground leases — the discriminator existed
+        // and no write site ever set it to anything else.
         const unitId = await findOrCreateUnitId(tx, {
           orgId,
           propertyId: parsed.data.propertyId,
           rawLabel: parsed.data.unitLabel,
+          kind: parsed.data.unitKind,
         });
         if (!unitId) {
           // Refuse rather than write an unlinked lease that would silently
@@ -1167,6 +1226,15 @@ export function registerRentalRoutes(app: Express): void {
         // `?? findOrCreateUnitId` also heals a parent that predates unit_id
         // (or whose unit row was deleted): the renewal gets a real unit either
         // way, and never a null.
+        //
+        // No `kind` is passed, and that is the correct answer rather than an
+        // omission. This branch runs ONLY when the parent has no unit_id, i.e.
+        // there is no existing row whose kind could be carried forward, and the
+        // renewal payload carries no slot facts of its own. A park's pad
+        // reaches this path already labelled and already a pad — find-or-create
+        // resolves it by label and leaves the kind alone. Inventing a kind here
+        // from the property or the label text would assert something nobody
+        // told us; the units surface is where an operator corrects it.
         const renewedUnitId = parent.unitId
           ?? await findOrCreateUnitId(tx, {
             orgId,
@@ -1447,6 +1515,83 @@ export function registerRentalRoutes(app: Express): void {
         orgId, userId, propertyId, unitId: inserted[0].id, kind: parsed.data.kind,
       });
       return res.json({ unit: inserted[0] });
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  // ── Bulk create ───────────────────────────────────────────────────────────
+  // A park operator with 60 pads will not create them one at a time, and a
+  // 24-unit building is no better. One-at-a-time creation is not "slower" here,
+  // it is the reason the inventory never gets entered at all — and an
+  // un-entered inventory is exactly the state that makes occupancy
+  // unmeasurable.
+  //
+  // IDEMPOTENT BY CONSTRUCTION, and loudly so. `rental_units_org_property_label_uk`
+  // absorbs a re-run, so the second paste of the same roll writes nothing. What
+  // it must NOT do is report that as either a failure or a fresh import: the
+  // response splits every attempted label into `created` and `existed`, and the
+  // two are disjoint and exhaustive (`buildBulkCreateReport`, asserted in
+  // tests/unit/padInventory.test.ts). An operator who re-pastes a 60-lot roll
+  // after adding six pads sees 6 created / 54 already there, and never comes to
+  // believe they own 120 pads.
+  app.post("/api/rentals/properties/:propertyId/units/bulk", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const orgId = getOrganizationId(req);
+      const userId = getUserId(req);
+      const propertyId = parseInt(req.params.propertyId, 10);
+      if (!Number.isFinite(propertyId)) return Errors.badRequest(res, "propertyId must be numeric");
+
+      const parsed = unitBulkCreateSchema.safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+
+      const [prop] = await db.select({ id: properties.id }).from(properties)
+        .where(and(eq(properties.id, propertyId), eq(properties.organizationId, orgId)));
+      if (!prop) return Errors.notFound(res, "Property");
+
+      // The SPEC is expanded server-side by the same pure function the client
+      // previewed with, so what the operator approved is what gets attempted.
+      const expansion = expandUnitLabels(parsed.data.spec);
+      if (!expansion.ok) {
+        return Errors.badRequest(res, expansion.error, {
+          code: "RENTAL_UNIT_BULK_SPEC_INVALID",
+          propertyId,
+        });
+      }
+      const attempted = expansion.expansion.labels.map((l) => normalizeUnitLabel(l));
+
+      const inserted = await db.insert(rentalUnits).values(
+        attempted.map((label) => ({
+          organizationId: orgId,
+          propertyId,
+          label,
+          kind: parsed.data.kind,
+          status: parsed.data.status,
+          notes: parsed.data.notes ?? null,
+        })),
+      ).onConflictDoNothing().returning({ id: rentalUnits.id, label: rentalUnits.label });
+
+      const report = buildBulkCreateReport(
+        attempted,
+        inserted.map((r) => r.label),
+        expansion.expansion.duplicateLabels,
+      );
+
+      logger.info("[BH-9] rental units bulk created", {
+        orgId,
+        userId,
+        propertyId,
+        kind: parsed.data.kind,
+        attempted: report.attemptedCount,
+        created: report.createdCount,
+        existed: report.existedCount,
+      });
+
+      return res.json({
+        propertyId,
+        kind: parsed.data.kind,
+        ...report,
+      });
     } catch (err) {
       return Errors.internal(res, err);
     }

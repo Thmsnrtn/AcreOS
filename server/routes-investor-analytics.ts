@@ -29,6 +29,7 @@ import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { properties, rentalLeases, rentCharges, rentPayments } from "@shared/schema";
+import { rentalUnits } from "@shared/schema/rental";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -50,6 +51,15 @@ interface PropertyAnalytics {
   capRatePct: number | null;
   dscr: number | null;
   averageTenureMonths: number | null;
+  /**
+   * Whether the expense figure behind NOI/cap-rate/DSCR was supplied by the
+   * operator or ASSUMED at 40% of collections. Every number downstream of an
+   * assumed ratio is an estimate, and a screen that does not say so is
+   * presenting an assumption as a measurement.
+   */
+  opExBasis: "operator_supplied" | "assumed_ratio";
+  /** Whether unit counts came from modelled units or the pre-0219 lease proxy. */
+  unitCountBasis: "modelled_units" | "lease_derived";
 }
 
 async function snapshotForProperty(orgId: number, propId: number, opExBps?: number, debtMonthlyCents?: number): Promise<PropertyAnalytics> {
@@ -63,14 +73,63 @@ async function snapshotForProperty(orgId: number, propId: number, opExBps?: numb
   const active = leases.filter((l) => l.status === "active");
   const past = leases.filter((l) => l.status === "ended" || l.status === "terminated" || l.status === "renewed");
 
-  const monthlyRentCollected = active.reduce((s, l) => s + l.monthlyRentCents, 0);
-  const monthlyRentPotential = monthlyRentCollected;  // operator can override later w/ explicit market rent
-  const occupiedUnits = active.length;
-  const vacantUnits = 0;  // we don't track unit count on a property yet — assume occupied = occupied
-  const unitCount = leases.length > 0 ? Math.max(active.length, 1) : 1;
+  // ── Unit counts, from the units table (migration 0219) ───────────────────
+  //
+  // This block used to read:
+  //
+  //     const vacantUnits = 0;  // we don't track unit count on a property yet
+  //     const unitCount = leases.length > 0 ? Math.max(active.length, 1) : 1;
+  //
+  // Both were true when written and are not any more. The consequences were
+  // real: vacancy on this surface was hardcoded to ZERO, so a half-empty
+  // building reported 0% vacancy and a cap rate computed as though every unit
+  // were let; and the denominator came from lease COUNT, so a unit that had
+  // never been leased could not appear in it. That is the same defect the
+  // occupancy endpoint had, in a second place, and it survived the fix
+  // because nothing pointed at it.
+  const unitRows = await db
+    .select({ status: rentalUnits.status, marketRentCents: rentalUnits.marketRentCents })
+    .from(rentalUnits)
+    .where(and(eq(rentalUnits.organizationId, orgId), eq(rentalUnits.propertyId, propId)));
 
-  // Op-ex: 40% rule of thumb if not specified.
+  // `active` = rentable stock, the same denominator the occupancy snapshot
+  // uses. Deliberately NOT the statutory one, which also counts `offline` —
+  // two questions, two denominators (see STATUTORY_UNIT_STATUSES).
+  const rentableUnits = unitRows.filter((u) => u.status === "active").length;
+  const modelled = unitRows.length > 0;
+
+  const monthlyRentCollected = active.reduce((s, l) => s + l.monthlyRentCents, 0);
+  const occupiedUnits = active.length;
+  // Fall back to the old lease-derived reading ONLY where units are not
+  // modelled, so a pre-0219 org sees exactly what it saw before rather than a
+  // zero that would read as "no property".
+  const unitCount = modelled ? rentableUnits : (leases.length > 0 ? Math.max(active.length, 1) : 1);
+  const vacantUnits = modelled ? Math.max(0, rentableUnits - occupiedUnits) : 0;
+
+  // Potential rent = in-place rent plus the ASKING rent of the vacant units
+  // that carry one. That difference is the monthly cost of the vacancy, and
+  // it was previously unrepresentable: with potential pinned equal to
+  // collected, an empty unit cost the operator nothing on this screen.
+  // Vacant units with no asking rent on file contribute nothing rather than a
+  // guess, so this is a floor on the potential, never an inflated one.
+  const vacantAskingCents = modelled
+    ? unitRows
+        .filter((u) => u.status === "active" && typeof u.marketRentCents === "number")
+        .map((u) => u.marketRentCents as number)
+        .sort((a, b) => b - a)
+        .slice(0, vacantUnits)
+        .reduce((s, c) => s + c, 0)
+    : 0;
+  const monthlyRentPotential = monthlyRentCollected + vacantAskingCents;
+
+  // Op-ex: 40% rule of thumb if not specified. This is an ASSUMPTION, not a
+  // measurement — AcreOS holds no property-expense records, so every number
+  // downstream of it (NOI, cap rate, DSCR) inherits that. The response says
+  // so via `opExBasis`; a cap rate whose expenses nobody measured must not be
+  // presented as though they were.
   const opExBpsApplied = opExBps ?? 4000;  // 40.00%
+  const opExBasis: "operator_supplied" | "assumed_ratio" =
+    opExBps === undefined ? "assumed_ratio" : "operator_supplied";
   const opExMonthly = Math.round((monthlyRentCollected * opExBpsApplied) / 10000);
 
   const noiMonthly = monthlyRentCollected - opExMonthly;
@@ -131,6 +190,8 @@ async function snapshotForProperty(orgId: number, propId: number, opExBps?: numb
     capRatePct: capRate !== null ? Math.round(capRate * 10000) / 100 : null,
     dscr: dscr !== null ? Math.round(dscr * 100) / 100 : null,
     averageTenureMonths,
+    opExBasis,
+    unitCountBasis: modelled ? "modelled_units" : "lease_derived",
   };
 }
 
