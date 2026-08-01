@@ -4213,15 +4213,13 @@ export const SUBSCRIPTION_TIERS = {
       "market_intelligence", "deal_patterns", "acquisition_radar",
       "portfolio_optimizer", "portfolio_sentinel", "capital_markets",
       "va_management", "cohort_analysis", "territory_manager",
-      "vision_ai", "voice_ai", "exchange_1031", "tax_optimization"
+      "exchange_1031", "tax_optimization"
     ],
     unlocks: [
       "Unlimited leads, properties & notes",
       "Portfolio Optimizer & Sentinel (AI-managed portfolio)",
       "Capital markets access",
       "VA management system",
-      "Voice AI for calls",
-      "Vision AI for parcel analysis",
       "1031 Exchange tracker",
       "Tax optimization engine",
       "Full API access & webhooks",
@@ -4255,7 +4253,7 @@ export const SUBSCRIPTION_TIERS = {
       "market_intelligence", "deal_patterns", "acquisition_radar",
       "portfolio_optimizer", "portfolio_sentinel", "capital_markets",
       "va_management", "cohort_analysis", "territory_manager",
-      "vision_ai", "voice_ai", "exchange_1031", "tax_optimization",
+      "exchange_1031", "tax_optimization",
       "reseller_dashboard", "multi_org_management", "sso", "audit_logs_export"
     ],
     unlocks: [

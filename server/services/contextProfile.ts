@@ -137,7 +137,7 @@ const INVESTOR_CONFIGS: Record<InvestorType, {
     ],
     quickActions: [
       { label: 'Run Valuation', path: '/avm', icon: 'trending-up' },
-      { label: 'Analyze Vision AI', path: '/vision-ai', icon: 'eye' },
+      // '/vision-ai' quick action removed 2026-08-01 — subsystem deleted.
       { label: 'List on Marketplace', path: '/marketplace', icon: 'store' },
     ],
   },
@@ -181,7 +181,7 @@ const INVESTOR_CONFIGS: Record<InvestorType, {
       { id: 'regulatory_alerts', title: 'Regulatory Alerts', priority: 4 },
     ],
     quickActions: [
-      { label: 'Analyze Property', path: '/vision-ai', icon: 'eye' },
+      // '/vision-ai' quick action removed 2026-08-01 — subsystem deleted.
       { label: 'Compliance Check', path: '/compliance', icon: 'shield-check' },
       { label: 'Tax Research', path: '/tax-researcher', icon: 'gavel' },
     ],

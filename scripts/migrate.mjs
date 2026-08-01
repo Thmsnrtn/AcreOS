@@ -7331,13 +7331,11 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "negotiation_outcomes_org_idx"
      ON "negotiation_outcomes" ("organization_id", "created_at")`,
 
-  // 0164 — persist call outcome + intent on the call row (previously the
-  // /outcome endpoint could only write to agent_events, and /summary returned
-  // null outcome/intent). Additive + idempotent.
-  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "outcome" text`,
-  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "outcome_notes" text`,
-  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "intent" text`,
-  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "updated_at" timestamp`,
+  // 0164 (removed 2026-08-01): four ALTER TABLE "voice_calls" ADD COLUMN
+  // statements lived here. voice_calls is dropped at the end of this file by
+  // founder ruling; leaving the ALTERs would make every post-drop deploy log a
+  // spurious "SKIPPED (dependency missing)" plus advice to apply a migration
+  // that must never be applied again.
 
   // 0165 — ensure organizations.last_active_at exists. The column was in the
   // Drizzle schema + read by founder-intelligence, but never in migrate.mjs (so

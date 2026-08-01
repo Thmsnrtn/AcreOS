@@ -60,7 +60,6 @@ const ALL_ROUTES = [
   "/market-intelligence",
   "/market-watchlist",
   "/market-data",
-  "/vision-ai",
   "/deal-hunter",
   "/deal-patterns",
   "/deal-feed",

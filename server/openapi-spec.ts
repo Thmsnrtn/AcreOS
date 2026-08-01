@@ -10,7 +10,7 @@ export function generateOpenAPISpec(): Record<string, any> {
       title: 'AcreOS API',
       version: '1.0.0',
       description:
-        'AcreOS platform API — real estate CRM, AVM, voice AI, portfolio optimizer, and data licensing.',
+        'AcreOS platform API — real estate CRM, AVM, portfolio optimizer, and data licensing.',
       contact: { name: 'AcreOS Support', email: 'support@acreos.io' },
     },
     servers: [
@@ -502,7 +502,6 @@ export function generateOpenAPISpec(): Record<string, any> {
       { name: 'Properties', description: 'Property tracking and due diligence' },
       { name: 'Deals', description: 'Offer and deal pipeline management' },
       { name: 'AVM', description: 'Automated Valuation Model — AI-powered property valuations' },
-      { name: 'Voice AI', description: 'Twilio-powered voice calls with AI transcription and analysis' },
       { name: 'Marketplace', description: 'Land marketplace listings for buyers and sellers' },
       { name: 'Portfolio', description: 'Portfolio optimization, Monte Carlo simulation, and AI recommendations' },
       { name: 'Land Credit', description: 'Proprietary 300-850 land credit scoring (FICO for land)' },
