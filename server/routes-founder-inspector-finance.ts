@@ -24,7 +24,6 @@
  *
  * Provider → source-table mapping (used by /cost-event/:id provenance):
  *   twilio        → messages.externalId (Twilio MessageSid prefix-stripped)
- *                   or voice_calls.callSid
  *   telnyx        → messages.externalId
  *   lob | postgrid → mail_shipments.id (provider piece id lives on pieces)
  *   sendgrid | ses → lead_emails.externalId
@@ -32,7 +31,7 @@
  *   anthropic     → ai_call_log.id
  *   stripe        → financial_ledger.invoiceId (Stripe invoice id stored
  *                   as the externalEventId prefix `stripe:in_...`)
- *   elevenlabs    → voice_calls.callSid (best-effort)
+ *   elevenlabs    → ledger-only since 2026-08-01 (voice_calls dropped)
  *   sentry | fly  → no per-event source; surfaces "platform infra" only.
  *
  * Founder-gated end-to-end via isAuthenticated + getOrCreateOrg + requireFounder.
@@ -52,7 +51,6 @@ import {
   mailShipments,
   mailShipmentPieces,
   messages,
-  voiceCalls,
   aiCallLog,
   BYOK_CHANNELS,
 } from "@shared/schema";
@@ -71,7 +69,7 @@ import { getUserId } from "./types/request";
 // cost-event provenance lookup). Provider names are lowercase strings matching
 // financial_ledger.provider.
 // ────────────────────────────────────────────────────────────────────────────
-const PROVIDER_SOURCES: Record<string, "messages" | "voice_calls" | "mail_shipments" | "ai_call_log" | "stripe" | "infra"> = {
+const PROVIDER_SOURCES: Record<string, "messages" | "mail_shipments" | "ai_call_log" | "stripe" | "infra"> = {
   twilio: "messages",
   telnyx: "messages",
   bandwidth: "messages",
@@ -82,7 +80,9 @@ const PROVIDER_SOURCES: Record<string, "messages" | "voice_calls" | "mail_shipme
   openrouter: "ai_call_log",
   anthropic: "ai_call_log",
   openai: "ai_call_log",
-  elevenlabs: "voice_calls",
+  // elevenlabs mapped to "voice_calls" until 2026-08-01; that table was
+  // dropped with the Voice / AI voice kill, so elevenlabs cost events now have
+  // ledger-only provenance (origin: null), stated rather than implied.
   stripe: "stripe",
   sentry: "infra",
   fly: "infra",
@@ -683,44 +683,9 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
               contentPreview: m.content ? m.content.slice(0, 140) : null,
             };
           }
-          // Some carriers also surface as voice_calls.
-          if (!origin) {
-            const [v] = await db
-              .select()
-              .from(voiceCalls)
-              .where(eq(voiceCalls.callSid, strippedId))
-              .limit(1);
-            if (v) {
-              origin = {
-                kind: "voice",
-                source_table: "voice_calls",
-                direction: v.direction,
-                fromNumber: v.fromNumber,
-                toNumber: v.toNumber,
-                durationSeconds: v.durationSeconds,
-                callStatus: v.callStatus,
-                callSid: v.callSid,
-              };
-            }
-          }
-        } else if (sourceTable === "voice_calls") {
-          const [v] = await db
-            .select()
-            .from(voiceCalls)
-            .where(eq(voiceCalls.callSid, strippedId))
-            .limit(1);
-          if (v) {
-            origin = {
-              kind: "voice",
-              source_table: "voice_calls",
-              direction: v.direction,
-              fromNumber: v.fromNumber,
-              toNumber: v.toNumber,
-              durationSeconds: v.durationSeconds,
-              callStatus: v.callStatus,
-              callSid: v.callSid,
-            };
-          }
+          // voice_calls fallback removed 2026-08-01: the table was dropped
+          // with the Voice / AI voice kill (founder-authorized), so a callSid
+          // could never match again.
         } else if (sourceTable === "mail_shipments") {
           // The provider piece id lives on mail_shipment_pieces; the
           // shipment id is sometimes encoded into externalEventId.

@@ -10,7 +10,7 @@ export function generateOpenAPISpec(): Record<string, any> {
       title: 'AcreOS API',
       version: '1.0.0',
       description:
-        'AcreOS platform API — real estate CRM, AVM, voice AI, portfolio optimizer, and data licensing.',
+        'AcreOS platform API — real estate CRM, AVM, portfolio optimizer, and data licensing.',
       contact: { name: 'AcreOS Support', email: 'support@acreos.io' },
     },
     servers: [
@@ -80,22 +80,6 @@ export function generateOpenAPISpec(): Record<string, any> {
             purchasePrice: { type: 'number' },
             closingDate: { type: 'string', format: 'date' },
             notes: { type: 'string' },
-            createdAt: { type: 'string', format: 'date-time' },
-          },
-        },
-        VoiceCall: {
-          type: 'object',
-          properties: {
-            id: { type: 'integer' },
-            organizationId: { type: 'integer' },
-            phoneNumber: { type: 'string' },
-            direction: { type: 'string', enum: ['inbound', 'outbound'] },
-            status: { type: 'string', enum: ['initiated', 'active', 'completed', 'failed'] },
-            duration: { type: 'integer', description: 'Duration in seconds' },
-            sentiment: { type: 'string', enum: ['positive', 'neutral', 'negative'] },
-            intent: { type: 'string' },
-            outcome: { type: 'string', enum: ['interested', 'not-interested', 'callback', 'voicemail'] },
-            summary: { type: 'string' },
             createdAt: { type: 'string', format: 'date-time' },
           },
         },
@@ -365,79 +349,7 @@ export function generateOpenAPISpec(): Record<string, any> {
       },
 
       // ── VOICE ─────────────────────────────────────────────────────────────────
-      '/voice/calls': {
-        get: {
-          summary: 'List voice calls',
-          operationId: 'listCalls',
-          tags: ['Voice AI'],
-          parameters: [
-            { name: 'leadId', in: 'query', schema: { type: 'integer' } },
-            { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } },
-          ],
-          responses: { '200': { description: 'List of calls', content: { 'application/json': { schema: { type: 'object', properties: { calls: { type: 'array', items: { '$ref': '#/components/schemas/VoiceCall' } } } } } } } },
-        },
-        post: {
-          summary: 'Initiate an outbound call',
-          operationId: 'initiateCall',
-          tags: ['Voice AI'],
-          requestBody: {
-            required: true,
-            content: { 'application/json': { schema: { type: 'object', required: ['phoneNumber'], properties: { phoneNumber: { type: 'string' }, direction: { type: 'string', enum: ['outbound', 'inbound'] }, leadId: { type: 'integer' }, propertyId: { type: 'integer' } } } } },
-          },
-          responses: { '201': { description: 'Call initiated', content: { 'application/json': { schema: { type: 'object', properties: { callId: { type: 'string' }, success: { type: 'boolean' } } } } } } },
-        },
-      },
-      '/voice/calls/{id}/summary': {
-        get: {
-          summary: 'Get post-call AI summary',
-          operationId: 'getCallSummary',
-          tags: ['Voice AI'],
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-          responses: { '200': { description: 'Call summary with action items and sentiment' } },
-        },
-      },
-      '/voice/calls/{id}/outcome': {
-        post: {
-          summary: 'Tag call outcome',
-          operationId: 'tagCallOutcome',
-          tags: ['Voice AI'],
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-          requestBody: {
-            required: true,
-            content: { 'application/json': { schema: { type: 'object', required: ['type'], properties: { type: { type: 'string', enum: ['interested', 'not-interested', 'callback', 'voicemail'] }, notes: { type: 'string' } } } } },
-          },
-          responses: { '200': { description: 'Outcome tagged' } },
-        },
-      },
-      '/voice/calls/{id}/speakers': {
-        get: {
-          summary: 'Get speaker diarization info',
-          operationId: 'getCallSpeakers',
-          tags: ['Voice AI'],
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-          responses: { '200': { description: 'Speaker stats' } },
-        },
-      },
-      '/voice/transcripts/search': {
-        get: {
-          summary: 'Search call transcripts',
-          operationId: 'searchTranscripts',
-          tags: ['Voice AI'],
-          parameters: [
-            { name: 'q', in: 'query', required: true, schema: { type: 'string' } },
-            { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
-          ],
-          responses: { '200': { description: 'Search results with context snippets' } },
-        },
-      },
-      '/voice/analytics': {
-        get: {
-          summary: 'Get call analytics summary',
-          operationId: 'getCallAnalytics',
-          tags: ['Voice AI'],
-          responses: { '200': { description: 'Analytics data' } },
-        },
-      },
+      // Voice AI endpoints removed 2026-08-01 (deletion-ledger row: Voice / AI voice).
 
       // ── MARKETPLACE ───────────────────────────────────────────────────────────
       '/marketplace/listings': {
@@ -590,7 +502,6 @@ export function generateOpenAPISpec(): Record<string, any> {
       { name: 'Properties', description: 'Property tracking and due diligence' },
       { name: 'Deals', description: 'Offer and deal pipeline management' },
       { name: 'AVM', description: 'Automated Valuation Model — AI-powered property valuations' },
-      { name: 'Voice AI', description: 'Twilio-powered voice calls with AI transcription and analysis' },
       { name: 'Marketplace', description: 'Land marketplace listings for buyers and sellers' },
       { name: 'Portfolio', description: 'Portfolio optimization, Monte Carlo simulation, and AI recommendations' },
       { name: 'Land Credit', description: 'Proprietary 300-850 land credit scoring (FICO for land)' },

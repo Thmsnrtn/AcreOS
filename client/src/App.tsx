@@ -182,7 +182,6 @@ const AvmBulkPage = React.lazy(() => import("@/pages/avm-bulk"));
 const NegotiationCopilotPage = React.lazy(() => import("@/pages/negotiation-copilot"));
 // DealHunterPage archived 2026-06-01 — route is Redirect to /deals/discover.
 // AgentCommandCenterPage archived 2026-06-01 — route is Redirect to /ai#agents.
-const VisionAIPage = React.lazy(() => import("@/pages/vision-ai"));
 const LandCreditPage = React.lazy(() => import("@/pages/land-credit"));
 const MarketIntelligencePage = React.lazy(() => import("@/pages/market-intelligence"));
 const MarketWatchlistPage = React.lazy(() => import("@/pages/market-watchlist"));
@@ -1444,9 +1443,7 @@ function Router() {
         {/* 2026-05-11 audit — consolidated into /deals/discover. */}
         {() => <Redirect to="/deals/discover" />}
       </Route>
-      <Route path="/vision-ai">
-        {() => <FlaggedRoute route="/vision-ai" component={VisionAIPage} />}
-      </Route>
+      {/* /vision-ai deleted 2026-08-01 (Satellite / Vision AI kill) — renders NotFound. */}
       <Route path="/capital-markets">
         {() => <FlaggedRoute route="/capital-markets" component={CapitalMarketsPage} />}
       </Route>

@@ -7331,13 +7331,11 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "negotiation_outcomes_org_idx"
      ON "negotiation_outcomes" ("organization_id", "created_at")`,
 
-  // 0164 — persist call outcome + intent on the call row (previously the
-  // /outcome endpoint could only write to agent_events, and /summary returned
-  // null outcome/intent). Additive + idempotent.
-  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "outcome" text`,
-  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "outcome_notes" text`,
-  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "intent" text`,
-  `ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "updated_at" timestamp`,
+  // 0164 (removed 2026-08-01): four ALTER TABLE "voice_calls" ADD COLUMN
+  // statements lived here. voice_calls is dropped at the end of this file by
+  // founder ruling; leaving the ALTERs would make every post-drop deploy log a
+  // spurious "SKIPPED (dependency missing)" plus advice to apply a migration
+  // that must never be applied again.
 
   // 0165 — ensure organizations.last_active_at exists. The column was in the
   // Drizzle schema + read by founder-intelligence, but never in migrate.mjs (so
@@ -8559,6 +8557,33 @@ const STATEMENTS = [
    END
    $atr_gate$`,
   `CREATE INDEX IF NOT EXISTS "notes_atr_exemption_idx" ON "notes" ("organization_id", "atr_exemption_code") WHERE atr_exemption_code IS NOT NULL`,
+
+  // ── 2026-08-01: founder-authorized dead-table drops (explicit picker ruling) ──
+  // DROP TABLE IF EXISTS is idempotent, so re-running every deploy is safe.
+  // Order matters for the two FK chains: training_metrics references
+  // model_versions, and voice_call_recordings references voice_calls —
+  // children drop first, so no CASCADE is needed (CASCADE could silently take
+  // dependent objects this ruling never named).
+  // sessions: Clerk JWT auth; no session-store package exists; never read or
+  //   written by any code in the repo's history of this audit.
+  // satellite_snapshots / satellite_analysis: Satellite / Vision AI kill
+  //   (deletion-ledger row) — routers, services and client page deleted with it.
+  // voice_calls / voice_call_recordings: Voice / AI voice kill (deletion-ledger
+  //   row) — every writer (voiceAI.ts, routes-voice.ts) deleted in the same
+  //   commit; the two former read sites had their voice branches removed.
+  //   NOTE: call_transcripts deliberately NOT dropped — it has a live second
+  //   pipeline (voiceCallAI.ts via routes-misc + routes-ai-operations).
+  // model_versions / training_metrics: ML registry services were unreached
+  //   dead code (only "importer" was a barrel file nothing imported).
+  // compliance_alerts / regulatory_changes deliberately NOT dropped — live
+  //   writer+reader via mounted /api/compliance (complianceAI.ts).
+  `DROP TABLE IF EXISTS "training_metrics"`,
+  `DROP TABLE IF EXISTS "model_versions"`,
+  `DROP TABLE IF EXISTS "voice_call_recordings"`,
+  `DROP TABLE IF EXISTS "voice_calls"`,
+  `DROP TABLE IF EXISTS "satellite_analysis"`,
+  `DROP TABLE IF EXISTS "satellite_snapshots"`,
+  `DROP TABLE IF EXISTS "sessions"`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

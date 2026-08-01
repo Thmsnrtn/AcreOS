@@ -119,7 +119,6 @@ const CUSTOMER_ROUTES = [
   "/forecasting",
   "/avm",
   "/marketplace",
-  "/vision-ai",
   "/negotiation",
   "/capital-markets",
   "/market-intelligence",

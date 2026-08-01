@@ -688,8 +688,9 @@ export type InsertOfferApproval = typeof offerApprovals.$inferInsert;
 // PROPERTY VISION SNAPSHOTS — Ingrid §1 Vision-AI scheduled re-imaging
 // =================================================================
 // Periodic aerial/satellite imagery capture per property with vision-AI
-// change detection. Distinct from satelliteSnapshots (raw imagery feed):
-// these rows represent scheduled vision-AI runs that compare against the
+// change detection. (The old satellite_snapshots raw-imagery table this was
+// once distinguished from was dropped 2026-08-01 with the Vision AI kill.)
+// These rows represent scheduled vision-AI runs that compare against the
 // prior snapshot for the same property and raise system_alerts when the
 // changeDetectionScore exceeds the configured threshold.
 //

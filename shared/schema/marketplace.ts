@@ -712,62 +712,14 @@ export type CapitalRaise = typeof capitalRaises.$inferSelect;
 // PHASE 4: VOICE & VISUAL AI
 // ===========================
 
-// Voice Calls - AI voice agent call logs
-export const voiceCalls = pgTable("voice_calls", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  
-  // Call details
-  callSid: text("call_sid").unique(),
-  direction: text("direction").notNull(), // inbound, outbound
-  fromNumber: text("from_number"),
-  toNumber: text("to_number"),
-  
-  // Contact
-  contactId: integer("contact_id"),
-  leadId: integer("lead_id"),
-  propertyId: integer("property_id"),
-  
-  // Call metrics
-  durationSeconds: integer("duration_seconds"),
-  callStatus: text("call_status"), // ringing, in-progress, completed, failed
-  
-  // AI agent
-  agentType: text("agent_type").notNull(), // pax, pax, custom
-  agentObjective: text("agent_objective"), // qualify_lead, schedule_showing, answer_questions
-  
-  // Results
-  wasAnswered: boolean("was_answered"),
-  sentimentScore: numeric("sentiment_score"), // -1 to 1
-  motivationScore: numeric("motivation_score"), // 0 to 1 — seller motivation confidence
-  objectiveAchieved: boolean("objective_achieved"),
-
-  // Outcome tagging (also mirrored to agent_events for the activity feed).
-  outcome: text("outcome"), // e.g. interested, not_interested, callback, wrong_number, voicemail
-  outcomeNotes: text("outcome_notes"),
-  intent: text("intent"), // detected caller intent, surfaced in the post-call summary
-  updatedAt: timestamp("updated_at"),
-
-  // Follow-up
-  actionItems: jsonb("action_items").$type<string[]>(),
-  scheduledAppointment: timestamp("scheduled_appointment"),
-  
-  recordingUrl: text("recording_url"),
-  transcriptId: integer("transcript_id"),
-  
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("voice_calls_org_idx").on(table.organizationId),
-  index("voice_calls_contact_idx").on(table.contactId),
-  index("voice_calls_date_idx").on(table.createdAt),
-]);
-
-export const insertVoiceCallSchema = createInsertSchema(voiceCalls).omit({ id: true, createdAt: true });
-export type InsertVoiceCall = z.infer<typeof insertVoiceCallSchema>;
-export type VoiceCall = typeof voiceCalls.$inferSelect;
-
-// Call Transcripts - Full conversation transcription (DUPLICATE - ALREADY EXISTS ABOVE)
-// Using existing callTranscripts table definition from earlier in file
+// voice_calls dropped 2026-08-01 (deletion-ledger row: Voice / AI voice,
+// founder-authorized). Its only writers (voiceAI.ts, routes-voice.ts) died in
+// the same kill; the two former read sites (routes-pax-insights,
+// routes-founder-inspector-finance) had their voice branches removed rather
+// than left querying a table nothing could ever write to again.
+// NOTE: callTranscripts (shared/schema.ts) deliberately SURVIVES — it has a
+// live second pipeline (voiceCallAI.ts via routes-misc + routes-ai-operations)
+// the ledger's voice row never adjudicated.
 
 // Property Photos - Visual assets for properties
 export const propertyPhotos = pgTable("property_photos", {
@@ -852,38 +804,10 @@ export const insertPhotoAnalysisSchema = createInsertSchema(photoAnalysis).omit(
 export type InsertPhotoAnalysis = z.infer<typeof insertPhotoAnalysisSchema>;
 export type PhotoAnalysis = typeof photoAnalysis.$inferSelect;
 
-// Satellite Snapshots - Regular satellite imagery monitoring
-export const satelliteSnapshots = pgTable("satellite_snapshots", {
-  id: serial("id").primaryKey(),
-  
-  propertyId: integer("property_id").references(() => properties.id).notNull(),
-  
-  // Imagery
-  imageUrl: text("image_url").notNull(),
-  provider: text("provider"), // google, mapbox, sentinel
-  resolution: numeric("resolution"), // meters per pixel
-  
-  // Timing
-  captureDate: timestamp("capture_date").notNull(),
-  cloudCoverage: numeric("cloud_coverage"), // %
-  
-  // Analysis
-  changeDetected: boolean("change_detected").default(false),
-  changeType: text("change_type"), // vegetation, construction, clearing
-  changeSeverity: text("change_severity"), // minor, moderate, major
-  
-  // Comparison
-  comparedToSnapshotId: integer("compared_to_snapshot_id"),
-  
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("satellite_snapshots_property_idx").on(table.propertyId),
-  index("satellite_snapshots_date_idx").on(table.captureDate),
-]);
-
-export const insertSatelliteSnapshotSchema = createInsertSchema(satelliteSnapshots).omit({ id: true, createdAt: true });
-export type InsertSatelliteSnapshot = z.infer<typeof insertSatelliteSnapshotSchema>;
-export type SatelliteSnapshot = typeof satelliteSnapshots.$inferSelect;
+// satellite_snapshots dropped 2026-08-01 (deletion-ledger row: Satellite /
+// Vision AI, founder-authorized) together with the whole vision subsystem
+// (routes-vision-ai, routes-vision-scan, visionAI, computerVision,
+// pages/vision-ai.tsx) and satellite_analysis in compliance.ts.
 
 // ===========================
 // PHASE 5: ACREOS ACADEMY

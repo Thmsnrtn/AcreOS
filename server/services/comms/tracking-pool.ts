@@ -17,8 +17,8 @@
  *      threshold (effectively idle).
  *   3. Rent a new number from the cheapest enabled carrier.
  *
- * Inbound attribution is done by `attributeInbound(...)`, called from
- * webhook handlers in routes-voice.ts / routes-misc.ts. Given the
+ * Inbound attribution is done by `attributeInbound(...)`, called from the
+ * inbound-SMS path in smsService.ts. Given the
  * destination number and a timestamp, it returns the active (org,
  * campaign) assignment so the inbound message can be filed correctly.
  */

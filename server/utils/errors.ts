@@ -153,6 +153,16 @@ export const Errors = {
     sendError(res, 403, "FORBIDDEN", finalMessage, undefined, buildDocsUrl(opts) ?? "/help/article/permissions");
   },
 
+  /**
+   * 410 — the resource existed once and was deliberately removed. Used by
+   * stubs left behind when a subsystem is deleted (deletion-ledger execution
+   * rule: ungated webhooks get a permanent-failure signal, not a 404 that
+   * reads as a routing bug to the external caller).
+   */
+  gone(res: Response, message: string, opts?: ErrorOptions): void {
+    sendError(res, 410, "GONE", message, undefined, buildDocsUrl(opts));
+  },
+
   limitExceeded(res: Response, details: unknown, opts?: ErrorOptions): void {
     sendError(
       res,

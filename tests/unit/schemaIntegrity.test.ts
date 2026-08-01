@@ -78,7 +78,7 @@ const MULTI_TENANT_TABLES: TableForeignKeySpec[] = [
   { tableName: "notes", requiresOrganizationId: true },
   { tableName: "campaigns", requiresOrganizationId: true },
   { tableName: "activities", requiresOrganizationId: true },
-  { tableName: "voice_calls", requiresOrganizationId: true },
+  // voice_calls removed 2026-08-01 — table dropped with the Voice / AI voice kill.
   { tableName: "payments", requiresOrganizationId: true },
   { tableName: "portfolio_properties", requiresOrganizationId: true },
 ];
@@ -98,8 +98,9 @@ describe("Schema Integrity: Multi-tenant FK structure (Task #49)", () => {
     expect(deals?.requiresLeadId).toBe(true);
   });
 
-  it("9 core tables are tracked for multi-tenant isolation", () => {
-    expect(MULTI_TENANT_TABLES.length).toBeGreaterThanOrEqual(9);
+  it("8 core tables are tracked for multi-tenant isolation", () => {
+    // 9 → 8 on 2026-08-01: voice_calls dropped by founder ruling.
+    expect(MULTI_TENANT_TABLES.length).toBeGreaterThanOrEqual(8);
   });
 });
 
