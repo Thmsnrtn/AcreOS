@@ -45,7 +45,7 @@ Translation: if FEMA's GIS endpoint goes down or a county portal rate-limits us 
 - **First step:** Plumb the registry's `cached` + `fetchedAt` (already on `LookupResult`) through to the API responses the map consumes, and render an "as of <date>, refreshing…" badge per data layer using the existing `EmptyState`/`QueryErrorState` patterns from CLAUDE.md. When the circuit breaker is open for a source, the layer renders last-good-cached + a non-alarming degraded indicator. Never a hard error on a *secondary* data layer.
 
 ### 4. Free-source rate-limit budgeting + backoff (don't get ourselves banned)
-- **Why it matters to first customers:** free county/federal GIS endpoints have unpublished rate limits and *will* IP-ban or 429 an over-eager client. With Fly egress NAT, one aggressive backfill can poison the source for *every* customer. The circuit breaker (3 failures / 5 min) reacts to failure; it does not *prevent* us from hammering a source. We need a token-bucket per host plus jittered backoff, especially on the ETL/ingest jobs (`countyAssessorIngest.ts`, `dataIngestJob.ts`, `etlHandlers.ts`).
+- **Why it matters to first customers:** free county/federal GIS endpoints have unpublished rate limits and *will* IP-ban or 429 an over-eager client. With Fly egress NAT, one aggressive backfill can poison the source for *every* customer. The circuit breaker (3 failures / 5 min) reacts to failure; it does not *prevent* us from hammering a source. We need a token-bucket per host plus jittered backoff, especially on the ETL/ingest jobs (`countyAssessorIngest.ts`, `etlHandlers.ts` — `dataIngestJob.ts` was deleted 2026-08-01 as an unscheduled module orphan).
 - **Goal:** rock-solid + data.
 - **Effort:** M.
 - **Phase:** 1.

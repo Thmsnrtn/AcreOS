@@ -5,12 +5,12 @@ XGBoost-based model for estimating the market value of raw land parcels.
 Supports training with Optuna hyperparameter tuning, SHAP explanations,
 k-fold cross-validation, and standard evaluation metrics.
 
-CLI usage (called by valuationModelRetrain.ts):
+CLI usage (manual — the valuationModelRetrain.ts caller was deleted 2026-08-01):
     python valuation_model.py train [--samples N]
     python valuation_model.py evaluate --model-path PATH
     python valuation_model.py predict --model-path PATH --input JSON
 
-The final stdout line of a 'train' run is a JSON object parsed by the TS job.
+The final stdout line of a 'train' run is a machine-readable JSON result.
 """
 
 import xgboost as xgb
@@ -356,7 +356,8 @@ def cmd_train(args: argparse.Namespace) -> None:
     model_path = str(ARTIFACTS_DIR / f"valuation_{version}.pkl")
     model.save(model_path)
 
-    # Emit JSON result (parsed by valuationModelRetrain.ts)
+    # Emit JSON result (machine-readable final stdout line; the former
+    # valuationModelRetrain.ts parser was deleted 2026-08-01)
     result = {
         "version": version,
         "mae": test_metrics["mae"],

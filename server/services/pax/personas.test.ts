@@ -181,8 +181,11 @@ describe("notes — deepened to production (wave V4 of ruling #11)", () => {
     //     diligenceChecklist (shared/schema/notes-vertical.ts)
     //   - §1026.41 statements + servicer-vs-holder → reg-z.ts +
     //     periodicStatements predicate (Beatrice 4-gate tree)
-    //   - §1024.39 day-36 / day-45 clocks → respa/earlyIntervention
-    //   - §1024.17 escrow analysis + cushion → respaEscrowAnalysis
+    //   - §1024.39 day-36 / day-45 clocks → respa/earlyIntervention (FLAGS
+    //     outreach as due; never contacts a borrower — operator makes contact)
+    //   - §1024.17 escrow analysis + cushion → respaEscrowAnalysis (analysis
+    //     wired at GET /api/notes/:id/escrow-analysis, originated book only;
+    //     the §1024.17(i) statement builder is deliberately unwired)
     //   - §1026.36(c) suspense + late-fee non-pyramiding → lateFees +
     //     suspense_balances
     //   - allonge / assignment → noteAssignmentPdf + note_assignments

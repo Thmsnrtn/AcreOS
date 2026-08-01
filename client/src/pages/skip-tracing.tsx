@@ -7,11 +7,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { Search, User, Phone, Mail, MapPin, Loader2, CheckCircle2, AlertCircle, AlertTriangle } from "lucide-react";
+import { Search, User, Phone, Mail, MapPin, Loader2, CheckCircle2, AlertCircle, AlertTriangle, ShieldCheck } from "lucide-react";
 
 /**
  * Contracts mirror server/routes-skip-tracing.ts exactly — the page renders
@@ -62,13 +70,36 @@ interface BatchTraceResponse {
 
 const pct = (confidence: number) => `${Math.round(confidence * 100)}%`;
 
+/**
+ * FCRA §1681b permissible purposes accepted by the server's skip-trace gate
+ * (SKIP_TRACE_PURPOSES in server/services/fcraAttestation.ts). Both POST
+ * endpoints REQUIRE purposeOfUse + a ≥10-char justification — traces without
+ * them are refused, so the buttons stay disabled until both are provided.
+ */
+const SKIP_TRACE_PURPOSES = [
+  { value: "collection", label: "Collection of a debt owed by this person" },
+  { value: "legitimate_business_need", label: "Legitimate business need — transaction initiated by this person" },
+  { value: "written_consent", label: "Written consent from this person" },
+  { value: "account_review", label: "Review of an existing account" },
+] as const;
+
+const MIN_JUSTIFICATION_CHARS = 10;
+
 export default function SkipTracingPage() {
   useDocumentTitle("Skip tracing");
   const { toast } = useToast();
   const qc = useQueryClient();
   const [leadId, setLeadId] = useState("");
+  const [purposeOfUse, setPurposeOfUse] = useState("");
+  const [justification, setJustification] = useState("");
   const [results, setResults] = useState<SkipTraceResponse[]>([]);
   const leadIdInputId = useId();
+  const purposeSelectId = useId();
+  const justificationInputId = useId();
+
+  const purposeReady =
+    purposeOfUse !== "" && justification.trim().length >= MIN_JUSTIFICATION_CHARS;
+  const fcraBody = { purposeOfUse, justification: justification.trim() };
 
   const statsQuery = useQuery<SkipTraceStats>({
     queryKey: ["/api/skip-tracing/stats"],
@@ -81,7 +112,7 @@ export default function SkipTracingPage() {
   // reads as "no invalidation" to the gate. Four duplicated lines are worth
   // keeping that check honest — stats and the lead list BOTH move on a trace.
   const traceMutation = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/skip-tracing/trace/${leadId}`),
+    mutationFn: () => apiRequest("POST", `/api/skip-tracing/trace/${leadId}`, fcraBody),
     onSuccess: async (res) => {
       const data: SkipTraceResponse = await res.json();
       setResults(prev => [data, ...prev]);
@@ -97,16 +128,19 @@ export default function SkipTracingPage() {
       qc.invalidateQueries({ queryKey: ["/api/skip-tracing/stats"] });
       qc.invalidateQueries({ queryKey: ["/api/leads"] });
     },
-    onError: () =>
+    onError: (err: Error) =>
+      // Surface the server's refusal honestly — an FCRA gate refusal names
+      // the missing piece (purpose / justification / annual attestation and
+      // its remedy) and must not be flattened into a generic retry message.
       toast({
         title: "Couldn't run skip trace",
-        description: "The lead's contact info is unchanged. Try again in a moment.",
+        description: err.message || "The lead's contact info is unchanged. Try again in a moment.",
         variant: "destructive",
       }),
   });
 
   const batchTraceMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/skip-tracing/batch"),
+    mutationFn: () => apiRequest("POST", "/api/skip-tracing/batch", fcraBody),
     onSuccess: async (res) => {
       const data: BatchTraceResponse = await res.json();
       toast({
@@ -119,10 +153,10 @@ export default function SkipTracingPage() {
       qc.invalidateQueries({ queryKey: ["/api/skip-tracing/stats"] });
       qc.invalidateQueries({ queryKey: ["/api/leads"] });
     },
-    onError: () =>
+    onError: (err: Error) =>
       toast({
         title: "Couldn't run batch trace",
-        description: "No leads were traced. Try again shortly.",
+        description: err.message || "No leads were traced. Try again shortly.",
         variant: "destructive",
       }),
   });
@@ -209,10 +243,50 @@ export default function SkipTracingPage() {
           <CardTitle className="text-base">Trace a lead</CardTitle>
           <CardDescription>Search for contact info by lead ID, or trace every lead that hasn't been traced yet.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <div className="rounded-md border p-3 space-y-3" data-testid="skip-tracing-fcra-purpose">
+            <div className="flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" aria-hidden="true" />
+              <p className="text-xs text-muted-foreground">
+                Federal law (FCRA §1681b) permits these lookups only for a permissible
+                purpose. Your purpose and justification are recorded on every trace,
+                and a current annual FCRA attestation is required.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor={purposeSelectId}>Permissible purpose</Label>
+                <Select value={purposeOfUse} onValueChange={setPurposeOfUse}>
+                  <SelectTrigger id={purposeSelectId} data-testid="select-skip-trace-purpose">
+                    <SelectValue placeholder="Select a purpose…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SKIP_TRACE_PURPOSES.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={justificationInputId}>Justification</Label>
+                <Textarea
+                  id={justificationInputId}
+                  rows={2}
+                  placeholder="Why this lookup is permissible (e.g. collecting on delinquent note #123)"
+                  value={justification}
+                  onChange={(e) => setJustification(e.target.value)}
+                  data-testid="input-skip-trace-justification"
+                />
+                <p className="text-xs text-muted-foreground">
+                  At least {MIN_JUSTIFICATION_CHARS} characters — kept as the audit trail for this trace.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <form
             className="flex flex-wrap gap-2"
-            onSubmit={(e) => { e.preventDefault(); if (leadId && !traceMutation.isPending) traceMutation.mutate(); }}
+            onSubmit={(e) => { e.preventDefault(); if (leadId && purposeReady && !traceMutation.isPending) traceMutation.mutate(); }}
           >
             <div className="w-32">
               <Label htmlFor={leadIdInputId} className="sr-only">Lead ID</Label>
@@ -228,7 +302,7 @@ export default function SkipTracingPage() {
             </div>
             <Button
               type="submit"
-              disabled={!leadId || traceMutation.isPending}
+              disabled={!leadId || !purposeReady || traceMutation.isPending}
               className="min-h-11"
             >
               {traceMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" aria-hidden="true" />}
@@ -238,7 +312,7 @@ export default function SkipTracingPage() {
               type="button"
               variant="outline"
               onClick={() => batchTraceMutation.mutate()}
-              disabled={batchTraceMutation.isPending || !stats || stats.untracedCount === 0}
+              disabled={!purposeReady || batchTraceMutation.isPending || !stats || stats.untracedCount === 0}
               className="min-h-11"
             >
               {batchTraceMutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />}
@@ -248,6 +322,12 @@ export default function SkipTracingPage() {
                   : `Batch trace ${Math.min(stats.untracedCount, 50)} of ${stats.untracedCount} untraced`
                 : "Batch trace untraced"}
             </Button>
+            {!purposeReady && (
+              <p className="basis-full text-xs text-muted-foreground">
+                Select a permissible purpose and enter a justification of at least{" "}
+                {MIN_JUSTIFICATION_CHARS} characters to enable tracing.
+              </p>
+            )}
           </form>
         </CardContent>
       </Card>

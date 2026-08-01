@@ -50,8 +50,8 @@ Solene wires the code; Tom sets the secret on Fly (Solene never handles secret v
 
 - **9 gated feature modules** (OFF by default): Marketplace, Academy, Vision AI, Capital Markets, Deal Hunter, Acquisition Radar, Land Credit, Negotiation Copilot, Tax Researcher. → Solene should **audit each for production-readiness first**, then Tom picks which to activate.
 - **Paid-data (Regrid) greenlight** — leave dry-run/mock or go live (needs key + spend approval).
-- **Flood / wetland / soil columns** — add to `properties` + populate from federal APIs, or defer. (`dataIngestJob.ts:187`)
-- **Satellite boundary-change detection** — implement polygon-delta or drop it from the change score. (`satelliteImageUpdate.ts:95`)
+- **Flood / wetland / soil columns** — add to `properties` + populate from federal APIs, or defer. (Pointer was `dataIngestJob.ts:187`; that job was deleted 2026-08-01 as a module orphan — the decision itself is still open.)
+- ~~**Satellite boundary-change detection** — implement polygon-delta or drop it from the change score. (`satelliteImageUpdate.ts:95`)~~ Mooted 2026-08-01: `satelliteImageUpdate.ts` deleted (module orphan; standing Satellite/Vision-AI KILL in the deletion ledger) — no change score remains to fix.
 - **Trial spending cap / auto-top-up defaults** — confirm the dollar values when moved to settings.
 
 ---

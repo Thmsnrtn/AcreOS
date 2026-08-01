@@ -40,7 +40,9 @@ python valuation_model.py predict --model-path ./artifacts/valuation_v1.pkl --in
 
 The training script emits a JSON object on the final stdout line with keys:
 `version`, `mae`, `rmse`, `mape`, `r2`, `trainSamples`, `valSamples`, `testSamples`, `modelPath`.
-This output is parsed by the `valuationModelRetrain.ts` background job.
+This final line is the machine-readable training result. (The `valuationModelRetrain.ts`
+background job that used to parse it was deleted 2026-08-01 as a module orphan —
+training runs are manual via this CLI.)
 
 ## Model Architecture
 
@@ -62,5 +64,6 @@ This output is parsed by the `valuationModelRetrain.ts` background job.
 ## Model Registry
 
 Trained model artifacts are versioned and tracked in the `model_versions` database table.
-The `valuationModelRetrain.ts` job automatically promotes a new model to production when
-its test-set MAE improves by more than 2% relative to the current production model.
+Promotion rule: a new model goes to production only when its test-set MAE improves by
+more than 2% relative to the current production model. (The `valuationModelRetrain.ts`
+job that automated this was deleted 2026-08-01 — apply the rule manually when promoting.)

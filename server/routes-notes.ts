@@ -18,6 +18,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db, withTransaction } from "./db";
 import {
   ACQUIRED_BOOK_ID,
+  SELLER_FINANCE_BOOK_ID,
   acquiredNotes,
   notePayments,
   notePayoffQuotes,
@@ -32,6 +33,9 @@ import {
   notes as sellerFinanceNotes,
 } from "@shared/schema";
 import { renderAssignmentPdf } from "./services/noteAssignmentPdf";
+// §1024.17 annual escrow ANALYSIS (projection + surplus/shortage/deficiency).
+// Serves the seller-finance `notes` book only — the schema the analyzer reads.
+import { analyzeEscrowAccount } from "./services/respaEscrowAnalysis";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { storage, calculateMonthlyPayment } from "./storage";
@@ -2973,6 +2977,99 @@ export function registerNoteRoutes(app: Express): void {
         });
       } catch (err) {
         logger.error("notes.amortization failed", err instanceof Error ? err : undefined);
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── RESPA §1024.17 annual escrow ANALYSIS ────────────────────────────────
+  //
+  // GET /api/notes/:id/escrow-analysis?computationYearStart=YYYY-MM-DD
+  //
+  // Read-only. Serves `analyzeEscrowAccount` (services/respaEscrowAnalysis)
+  // for the SELLER-FINANCE (originated) `notes` book — numeric ids — because
+  // that is the schema the analyzer reads (notes.taxEscrowEnabled /
+  // monthlyTaxEscrow / taxEscrowBalance + tax_escrow_payments). The acquired
+  // book is deliberately NOT served: acquired_notes has no monthly
+  // escrow-deposit amount and only a single next-disbursement date, so the
+  // 12-month trial-balance inputs do not exist for it and inferring them
+  // would fabricate a compliance artifact.
+  //
+  // This endpoint returns the ANALYSIS ONLY — the §1024.17(f) projection and
+  // surplus/shortage/deficiency determination. It does NOT produce or deliver
+  // the §1024.17(i) annual escrow account STATEMENT (buildAnnualEscrowStatement
+  // stays unwired: the required actual-history inputs are not in the schema),
+  // and nothing here discharges the delivery duty — the operator does that.
+  app.get(
+    "/api/notes/:id/escrow-analysis",
+    isAuthenticated,
+    getOrCreateOrg,
+    ownerOrAdmin,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const noteId = Number(req.params.id);
+        if (!Number.isInteger(noteId) || noteId <= 0) {
+          return Errors.badRequest(
+            res,
+            "Escrow analysis runs on the seller-finance (originated) notes book, which uses numeric ids. " +
+              "Acquired notes are not supported: they do not carry the monthly escrow-deposit and " +
+              "12-month disbursement records a §1024.17 analysis requires.",
+          );
+        }
+
+        let computationYearStart = new Date();
+        const rawStart = req.query.computationYearStart;
+        if (typeof rawStart === "string" && rawStart.length > 0) {
+          const parsedStart = new Date(`${rawStart}T00:00:00.000Z`);
+          if (Number.isNaN(parsedStart.getTime())) {
+            return Errors.badRequest(res, "computationYearStart must be an ISO date (YYYY-MM-DD)");
+          }
+          computationYearStart = parsedStart;
+        }
+
+        // Org-scoped pre-check so 404 (not yours / doesn't exist) and 400
+        // (escrow not enabled) are distinguishable before the analyzer runs.
+        const [note] = await db
+          .select({
+            id: sellerFinanceNotes.id,
+            taxEscrowEnabled: sellerFinanceNotes.taxEscrowEnabled,
+          })
+          .from(sellerFinanceNotes)
+          .where(
+            and(
+              eq(sellerFinanceNotes.id, noteId),
+              eq(sellerFinanceNotes.organizationId, orgId),
+            ),
+          )
+          .limit(1);
+        if (!note) {
+          return Errors.notFound(res, "Note");
+        }
+        if (!note.taxEscrowEnabled) {
+          return Errors.badRequest(
+            res,
+            `Note ${noteId} does not have tax escrow enabled — a §1024.17 escrow analysis is not applicable.`,
+          );
+        }
+
+        const analysis = await analyzeEscrowAccount({
+          noteId,
+          organizationId: orgId,
+          computationYearStart,
+        });
+
+        return res.json({
+          book: SELLER_FINANCE_BOOK_ID,
+          moneyUnit: "integer_cents",
+          analysis,
+          // HONESTY: the analysis is a projection/determination, not the
+          // regulated disclosure. No annual escrow statement has been
+          // produced or delivered by this endpoint.
+          annualStatementProduced: false,
+        });
+      } catch (err) {
+        logger.error("notes.escrowAnalysis failed", err instanceof Error ? err : undefined);
         return Errors.internal(res, err);
       }
     },

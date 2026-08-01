@@ -93,7 +93,7 @@ There are **44 `trackInterval()` calls** in `server/index.ts`, covering these di
 | `autonomousDealMachine.ts` | `0 1 * * *` (1 AM UTC) |
 | `dataIngestJob.ts` | `0 22 * * *` (10 PM UTC) |
 | `courseCompletionCheck.ts` | `0 6 * * *` (6 AM UTC) |
-| `dailyBriefing.ts` | `0 7 * * *` (7 AM UTC) |
+| `dailyBriefing.ts` | `0 7 * * *` (7 AM UTC) *(deleted 2026-08-01 — module orphan; distinct from the LIVE founder briefing, `services/founderBriefing.ts` `sendDailyBriefing`, fired by `runScheduledJobs.ts`)* |
 | `regulatoryComplianceCheck.ts` | `0 4 * * *` (4 AM UTC) |
 | `satelliteImageUpdate.ts` | `0 2 * * *` (2 AM UTC) |
 | `dealHunterScrape.ts` | `0 */2 * * *` (every 2h) |

@@ -337,8 +337,4 @@ export const KNOWN_NON_MOUNTED: Record<string, string> = {
   // server/. Orphaned API-key management surface — mount or delete.
   "routes-api-keys.ts":
     "Orphan: exports registerApiKeyRoutes but no caller in server/ — mount or delete.",
-  // Default-exports ssoRouter; never imported (no `from \"./routes-sso\"`)
-  // anywhere in server/. Orphaned SSO router — mount or delete.
-  "routes-sso.ts":
-    "Orphan: default-exports ssoRouter but no importer in server/ — mount or delete.",
 };

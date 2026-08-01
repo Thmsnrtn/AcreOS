@@ -7,21 +7,19 @@
  *
  *  1. Skip-trace result mapping never mints verified:true and never invents
  *     contacts/relatives.
- *  2. Satellite imagery is unavailable (null) with no provider configured,
- *     so the job writes no snapshot / change score.
- *  3. Pipeline analytics (velocity / conversion) return honest-empty per-stage
+ *  2. Pipeline analytics (velocity / conversion) return honest-empty per-stage
  *     shapes with no random values.
+ *
+ * (A former section pinned satellite-imagery honesty in
+ * server/jobs/satelliteImageUpdate.ts; that module was deleted 2026-08-01 —
+ * see the note at the old section site below.)
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   mapSkipTraceResults,
 } from "../../server/routes-leads";
 import type { SkipTraceResult } from "../../server/services/skipTracingService";
-import {
-  isImageryProviderConfigured,
-  fetchSatelliteImagery,
-} from "../../server/jobs/satelliteImageUpdate";
 
 // ── 1. Skip-trace mapping ─────────────────────────────────────────────────
 
@@ -98,46 +96,17 @@ describe("mapSkipTraceResults (skip-trace PII honesty)", () => {
   });
 });
 
-// ── 2. Satellite imagery honesty ──────────────────────────────────────────
-
-describe("satellite imagery (no fabricated NDVI / change score)", () => {
-  const KEYS = [
-    "SATELLITE_IMAGERY_API_KEY",
-    "SENTINEL_HUB_API_KEY",
-    "PLANET_API_KEY",
-    "NEARMAP_API_KEY",
-  ];
-  let saved: Record<string, string | undefined>;
-
-  beforeEach(() => {
-    saved = {};
-    for (const k of KEYS) {
-      saved[k] = process.env[k];
-      delete process.env[k];
-    }
-  });
-
-  afterEach(() => {
-    for (const k of KEYS) {
-      if (saved[k] === undefined) delete process.env[k];
-      else process.env[k] = saved[k];
-    }
-  });
-
-  it("reports no provider configured when no imagery key is set", () => {
-    expect(isImageryProviderConfigured()).toBe(false);
-  });
-
-  it("returns null imagery (unavailable) rather than fabricating NDVI/cloud/date", async () => {
-    const imagery = await fetchSatelliteImagery(1, 39.5, -98.35);
-    expect(imagery).toBeNull();
-  });
-
-  it("recognizes a configured provider key", () => {
-    process.env.SENTINEL_HUB_API_KEY = "test-key";
-    expect(isImageryProviderConfigured()).toBe(true);
-  });
-});
+// ── 2. Satellite imagery honesty — REMOVED 2026-08-01 ─────────────────────
+//
+// The describe block that lived here pinned isImageryProviderConfigured /
+// fetchSatelliteImagery honesty (null imagery, no fabricated NDVI/cloud/date)
+// in server/jobs/satelliteImageUpdate.ts. That job was a verified module
+// orphan (zero importers, never scheduled) and a standing deletion-ledger
+// KILL (Satellite / Vision AI); the file was deleted 2026-08-01. The block
+// pinned fabrication-honesty over now-deleted code, so it is removed rather
+// than rewritten — there is no surviving satellite-imagery code path for the
+// invariant to guard. If satellite imagery is ever rebuilt, re-pin the
+// no-fabrication invariant here first.
 
 // ── 3. Pipeline analytics honest-empty (no random) ─────────────────────────
 //

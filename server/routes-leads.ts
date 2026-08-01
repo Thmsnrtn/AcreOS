@@ -1765,7 +1765,7 @@ export function registerLeadRoutes(app: Express): void {
       // Operator must claim purpose + justification at query time AND have
       // a current annual FCRA attestation. Persist both for class-action
       // defense audit trail.
-      const { assertSkipTracePermitted, FcraAttestationStaleError, SkipTracePurposeRequiredError } =
+      const { assertSkipTracePermitted, respondFcraRefusal } =
         await import("./services/fcraAttestation");
       let attestationVersion: string;
       try {
@@ -1777,16 +1777,8 @@ export function registerLeadRoutes(app: Express): void {
         });
         attestationVersion = result.attestationVersion;
       } catch (err) {
-        if (err instanceof SkipTracePurposeRequiredError) {
-          return Errors.badRequest(res, err.message, { code: err.code });
-        }
-        if (err instanceof FcraAttestationStaleError) {
-          return res.status(403).json({
-            error: "FCRA_ATTESTATION_REQUIRED",
-            message: err.message,
-            statusCode: 403,
-          });
-        }
+        // Shared mapping with routes-skip-tracing.ts — see respondFcraRefusal.
+        if (respondFcraRefusal(res, err)) return;
         throw err;
       }
 

@@ -86,6 +86,81 @@ correctness risks across 2+ machines. Disposition:
 
 ## Executed deletions (log)
 
+- 2026-08-01 — **Six dead `server/jobs/*` files deleted** (dead-job wave; code
+  deletions only, no git operations in-session). An adversarial verification
+  confirmed all six are module orphans: zero importers static or dynamic,
+  their queue literals appear nowhere else, and none is referenced by
+  `runScheduledJobs.ts`, `worker.ts`, `scheduler.ts`, `jobRegistry.ts`, or
+  `.github` workflows — so none ever ran. Deleted:
+  - `satelliteImageUpdate.ts` — standing Satellite/Vision-AI KILL (verdict
+    table above). The satellite describe block in
+    `tests/unit/killFabrications.test.ts` (which pinned imagery honesty over
+    this now-deleted code) was removed with a dated note at the site; the
+    rest of that suite is untouched.
+  - `valuationModelRetrain.ts` — never invoked; the drift runbook even called
+    a `retrain()` export that never existed (runbook corrected: retraining is
+    manual via `server/ml/valuation_model.py`, which is LIVE via
+    `server/ml/api.py` and untouched beyond stale header comments).
+  - `regulatoryComplianceCheck.ts` — orphan; the LIVE regulatory watcher
+    (`runScheduledJobs.ts` beatrice-regwatch) is separate and untouched.
+    Stale `ownedJobs` display string removed from `companyAgents.ts`.
+  - `dataIngestJob.ts` — the open-data inventory's claim that it ran "via
+    `scheduler.ts` self-rescheduling" was REFUTED and the doc corrected;
+    `countyAssessorIngest` remains the live `transaction_training` writer.
+  - `realtimeTranscription.ts` (the jobs file) — voice-family KILL (verdict
+    table above). `server/services/realtimeTranscription.ts` is a separate
+    ledger line item and was NOT touched. Stale "consumes OPENAI_API_KEY"
+    comments trimmed in `secretsValidation.ts`, `performanceEnhancements.ts`,
+    `openaiClient.ts`.
+  - `dailyBriefing.ts` — trap defused: the LIVE founder briefing is
+    `services/founderBriefing.ts` `sendDailyBriefing` (singular), dynamically
+    imported by `runScheduledJobs.ts` — a different module, untouched.
+  Collateral across the six: 15 stale `server/jobs/*` entries dropped from
+  `scripts/schema-column-baseline.json` (201→186); stale doc/comment
+  references corrected or annotated in `modelTraining.ts`, `server/ml/README.md`
+  / `valuation_model.py` headers, `sellerMotivationEngine.ts`,
+  `docs/runbooks/valuation-model-drift.md`,
+  `docs/company/open-data-platform-inventory.md`, roadmap lenses
+  (`wire-for-real-census.md`, `team-meta-lens-findings.md`, `tess.md`), audit
+  lenses 062/064-065, and archived audits (`wenzeslaus-etl.md`,
+  `_MASTER-FINDINGS.md` P2-51). Reachability/ratchet baselines
+  (`scripts/ratchets/*.json`) are locked centrally — not edited by this
+  wave; the central lock-in (unreachedExports 754→728 etc., see
+  reachability.json's lastBumpNote) was applied to the tree by the central
+  session during the wave. NO tables dropped and no
+  migrations created in this wave: the associated table drop was separately
+  escalated for explicit founder approval; this entry covers strictly the
+  reversible file deletions.
+
+- 2026-08-01 — **`server/routes-sso.ts` (108 LOC) deleted** (unmounted-router
+  resolution wave). A Clerk SAML-connection management router
+  (default-exported `ssoRouter`) that was never imported and had no mount path
+  anywhere — unreachable since creation. No backing tables: it proxied
+  `clerkClient.samlConnections` (Clerk Admin API) directly, so no table
+  readers stranded and no drop migration needed; Clerk's own dashboard remains
+  the real SAML configuration path. No client callers (zero SSO/SAML fetches
+  in `client/src`; the `auth-page.tsx` Clerk-SSO-callback comment is
+  unrelated). Even if mounted it would 422 without a Clerk Enterprise plan.
+  Style-dead too (`req: any` tier-gate helper predating the
+  `AuthenticatedRequest` rule). Collateral: `KNOWN_NON_MOUNTED` entry removed
+  from `server/routeManifest.ts`, allowlist snapshot regenerated
+  (`tests/unit/__snapshots__/routeManifest.test.ts.snap`); reachability
+  ratchet `unregisteredRoutes` baseline lock-in (2→1) **pending central
+  commit** — the ratchet baselines (`scripts/ratchets/*.json`) are locked
+  centrally and the change has not landed yet. The same deletion also earned
+  `unreachedExports` and `res-status-raw` drops, likewise pending that
+  central lock-in. Remaining doc mentions are archived audits/history only. **Flag for founder**: the
+  enterprise tier in `shared/schema.ts` (~:4259 `"sso"` feature key, ~:4264
+  "SSO & enterprise authentication" unlock string) still advertises SSO — an
+  unbacked pricing promise the router never delivered; pricing copy is a
+  founder-only hard-stop, so it is flagged here, not edited. NOT touched in
+  the same wave: `routes-api-keys.ts` stays deliberately dormant — the
+  `apiKeys` table it manages has live readers (`server/mcp/auth.ts`
+  per-org bearer path, `server/middleware/requireApiKey.ts`) and it holds the
+  repo's only `.insert(apiKeys)` mint path, while the constitution
+  (`expansion.marketplace-25-api-50`, "no public API before ~50 customers")
+  forbids mounting the self-service surface before its trigger.
+
 - 2026-07-29 — **Platform money-custody purge** ("be the rail, not the
   provider", founder ruling 2026-07-29). The ruling: AcreOS's payment
   architecture applies ONLY to direct subscription payments TO the platform;

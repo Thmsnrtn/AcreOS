@@ -260,9 +260,9 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
       "shared/schema.ts",
     ],
     enforcement: {
-      kind: "refusal-path",
-      refs: ["server/storage/noteRepo.ts", "server/routes-finance.ts"],
-      note: "NO DEDICATED TEST. The gate refuses to create or activate a covered note without an ATR determination, returning regulatoryCite '12 CFR §1026.43(c)'. Nothing pins that refusal, so a future refactor could remove it silently. This is the register's clearest piece of enforcement debt.",
+      kind: "unit-test",
+      refs: ["tests/unit/abilityToRepayGate.test.ts"],
+      note: "Gate refusal, evidence record, all 8 caller paths into note creation/activation, and the 0099 DB CHECK constraint are pinned by tests/unit/abilityToRepayGate.test.ts (2026-08-01). Residual: three payment-side status flips (noteRepo.createPayment, routes-borrower's Stripe transaction, achAutopay's settle path) bypass the app-layer gate via direct updates and rely on the DB CHECK alone — which the same audit found missing from scripts/migrate.mjs and which is now mirrored there.",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
@@ -306,7 +306,7 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
         "server/services/respa/earlyIntervention.test.ts",
         "tests/unit/acquiredNoteAging.test.ts",
       ],
-      note: "SCAFFOLD, NOT OUTREACH. The module fires an idempotent audit event at day 36 and persists the §-citation; it sends NO borrower-facing communication. The federal duty is to make contact — logging that contact was due does not discharge it.",
+      note: "FLAG, NOT OUTREACH. The module fires an idempotent audit event at day 36 and persists the §-citation; it sends NO borrower-facing communication, and as of 2026-08-01 every surface — header, log lines, reason strings, result docs — says so in those words, so a row can no longer be read as a discharged duty. The federal duty is to make contact; wiring an automatic send is a founder decision (hard-stop territory) and is deliberately absent.",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
@@ -317,11 +317,14 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     citation:
       "12 C.F.R. §1024.17(c)(1), §1024.17(f)(2)–(f)(4), §1024.17(i), §1024.17(l)(1)",
     what: "Escrow accounts on federally related mortgages require an annual analysis, a cushion capped at 1/6 of annual disbursements, prescribed surplus/shortage/deficiency handling, and delivery of an annual escrow statement within 30 days of the computation year's end.",
-    codeSites: ["server/services/respaEscrowAnalysis.ts"],
+    codeSites: ["server/services/respaEscrowAnalysis.ts", "server/routes-notes.ts"],
     enforcement: {
       kind: "unit-test",
-      refs: ["tests/unit/respaEscrowStatement.test.ts"],
-      note: "Uses the FEDERAL cushion cap. State law may be tighter and no state overlay is modelled.",
+      refs: [
+        "tests/unit/respaEscrowStatement.test.ts",
+        "tests/unit/respaEscrowAnalysisRoute.test.ts",
+      ],
+      note: "Uses the FEDERAL cushion cap. State law may be tighter and no state overlay is modelled. The ANALYSIS half is wired (2026-08-01): GET /api/notes/:id/escrow-analysis, org-scoped, seller-finance book only — the acquired book is refused because its schema lacks the 12-month trial-balance inputs and serving it would fabricate. The §1024.17(i) annual STATEMENT builder remains deliberately unwired: the actual-history records it requires exist nowhere in the schema, and the response says annualStatementProduced: false.",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
@@ -499,11 +502,16 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     id: "esign.consumer-consent",
     citation: "E-SIGN Act §101(c), 15 U.S.C. §7001(c)",
     what: "Before an electronic record may substitute for a required written consumer disclosure, the consumer must receive the prescribed disclosures and affirmatively consent electronically, in a way that reasonably demonstrates they can access the format.",
-    codeSites: ["server/routes-public-sign.ts", "shared/schema.ts"],
+    codeSites: [
+      "server/routes-public-sign.ts",
+      "server/routes-doc-system.ts",
+      "server/services/rental/leaseSigningPacket.ts",
+      "shared/schema.ts",
+    ],
     enforcement: {
-      kind: "refusal-path",
-      refs: ["server/routes-public-sign.ts"],
-      note: "NO TEST. The server-side gate refuses signing with ESIGN_CONSENT_REQUIRED unless a signing_consent_audit row exists for this signer + document at the CURRENT ESIGN_DISCLOSURE_VERSION, and all five §101(c) disclosure flags are true. A version bump correctly invalidates stale consent — but nothing pins that behaviour.",
+      kind: "unit-test",
+      refs: ["tests/unit/esignConsentGate.test.ts"],
+      note: "Gate refusal, all five §101(c) flags individually, version-bump invalidation of stale consent, per-signer scoping, consent-before-signature ordering, and lease-execute blocking are pinned by tests/unit/esignConsentGate.test.ts (2026-08-01). KNOWN UNGUARDED SIBLING, pinned in the test as a gap with rewrite-on-fix instructions: POST /api/signatures (routes-doc-system.ts) writes a signature with no consent check. An enumeration ratchet bounds createSignature callers so a third door cannot appear silently.",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
@@ -516,13 +524,14 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
     codeSites: [
       "server/services/fcraAttestation.ts",
       "server/routes-leads.ts",
+      "server/routes-skip-tracing.ts",
       "server/routes-rentals.ts",
       "shared/schema/rental.ts",
     ],
     enforcement: {
-      kind: "refusal-path",
-      refs: ["server/routes-leads.ts", "server/routes-rentals.ts"],
-      note: "NO TEST. Skip-trace and tenant-screening writes both refuse with FCRA_ATTESTATION_REQUIRED absent a current annual org-level attestation, and the attestation is persisted for class-action defence. Adverse-action timestamps exist on the screening record. Nothing tests the gate or the adverse-action path.",
+      kind: "unit-test",
+      refs: ["tests/unit/fcraPermissiblePurposeGate.test.ts"],
+      note: "Gate refusals (annual attestation, per-lookup purpose row, TTL, version), attestation-before-write ordering, adverse-action RECORD path, and skip-trace purpose validation are pinned by tests/unit/fcraPermissiblePurposeGate.test.ts (2026-08-01). The wave's audit found routes-skip-tracing.ts performing lookups with NO gate — closed in the same wave, and the test's enumeration ratchet was inverted to bound writers of createSkipTrace (the ACTION) rather than callers of the gate, so an ungated sibling now fails the suite. Remaining KNOWN GAP pinned in-test: POST /api/tenants CREATE accepts screening fields ungated.",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
@@ -692,17 +701,22 @@ export const STATUTE_REGISTER: readonly StatuteEntry[] = [
       "server/services/usury.ts",
       "server/services/usuryCeiling.ts",
       "shared/regulatory/rmloAdvisor.ts",
+      "server/services/regulatoryIntelligence.ts",
       "server/middleware/complianceGate.ts",
     ],
     enforcement: {
       kind: "unit-test",
-      refs: ["tests/unit/usury.test.ts"],
-      note: "PARTIAL. tests/unit/usury.test.ts imports and exercises server/services/usury.ts#checkUsury. tests/unit/usuryCeiling.test.ts does NOT import server/services/usuryCeiling.ts — it REIMPLEMENTS the logic inline, so the shipped service is untested and the two implementations can diverge without any test failing.",
+      refs: [
+        "tests/unit/usury.test.ts",
+        "tests/unit/usuryCeiling.test.ts",
+        "tests/unit/usuryConsistency.test.ts",
+      ],
+      note: "usuryCeiling.test.ts now imports the real service (2026-08-01) and its 51-state table matches the independent spec on every ceiling. usuryConsistency.test.ts probes all sources through their public APIs and pins the state of agreement: 23 states agree, 3 lane-mismatches are allowlisted with reasons, and 25 states carry UNRECONCILED conflicts (pinned individually, dated it.skip on the agreement assertion). None are resolvable from the citations in-repo; resolving them is legal research, not refactoring.",
     },
     reviewStatus: "UNREVIEWED",
     failureMode:
-      "A note is written at a rate the platform said was legal and the state says is usurious — forfeiting all interest on the note, or voiding it. And because two independent usury tables exist, two surfaces of the same product can give an operator two different answers about the same rate.",
-    note: "TWO overlapping usury registries (server/services/usury.ts and server/services/usuryCeiling.ts) plus a third cap table in shared/regulatory/rmloAdvisor.ts. Nothing reconciles them.",
+      "A note is written at a rate the platform said was legal and the state says is usurious — forfeiting all interest on the note, or voiding it. FOUR independent usury tables exist (usury.ts — the only one production actually calls; usuryCeiling.ts — the best-tested and entirely UNWIRED; rmloAdvisor.ts; and regulatoryIntelligence.ts, discovered during the consistency work), so different surfaces can give an operator different answers about the same rate. Named suspect entries: usury.ts NV 40% vs no-cap elsewhere; TX a three-way conflict AND the silent fallback state; rmloAdvisor AK stores a margin as a cap by its own note's admission.",
+    note: "CONSOLIDATION REQUIRED: four tables must become one registry, and the survivor should be the tested one. That is a legal-content decision (25 conflicts need resolving against the actual statutes) — flagged for founder/attorney review, not a refactor to run unattended.",
   },
   {
     id: "state.tax-lien-redemption",

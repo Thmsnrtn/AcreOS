@@ -130,21 +130,29 @@ four separate federal obligations misfire together.
 It also shows how this class of defect survives review: the code *documented*
 the missing override in a comment, and the comment was mistaken for the work.
 
-### 3. `regz.ability-to-repay` — a hard gate with nothing holding it
+### 3. `regz.ability-to-repay` — a hard gate that had nothing holding it
 
 `server/storage/noteRepo.ts` and `server/routes-finance.ts` refuse to create or
 activate a covered consumer note without an ATR determination, returning
-`regulatoryCite: "12 CFR §1026.43(c)"`. Good gate. **No test anywhere pins
-it.** A refactor that drops the check breaks nothing visible, and the register
-would still say the obligation is handled — because the refusal is in the code,
-not in a test.
+`regulatoryCite: "12 CFR §1026.43(c)"`. When this register was first written,
+**no test anywhere pinned it** — a refactor dropping the check would have
+broken nothing visible.
 
-The consequence is asymmetric in a way the other entries are not. A borrower
-gets a mortgage they cannot repay, and under §1026.43 they gain a defense to
-foreclosure **for the life of the loan** — meaning the lender's own software
-destroyed the record that would have defended them, and will not find out for
-years. It is the single highest-value place on this list to convert
-`refusal-path` → `unit-test`.
+RESOLVED 2026-08-01: `tests/unit/abilityToRepayGate.test.ts` (39 tests) pins
+the refusal, the evidence record, all 8 caller paths into note
+creation/activation, and the 0099 DB CHECK constraint. Writing those tests
+found two things the register's original entry could not see: three
+payment-side code paths flip a note to `active` via direct updates that bypass
+the app-layer gate entirely — leaving the DB CHECK as the only defense — and
+that CHECK constraint **was missing from `scripts/migrate.mjs`**, the migrator
+production actually runs. The deployed database had no last line of defense at
+all. Both are fixed; the constraint is now mirrored in a form that never drops
+it mid-deploy.
+
+The consequence remains asymmetric in a way the other entries are not: a
+borrower who gets a mortgage they cannot repay gains a §1026.43 defense to
+foreclosure **for the life of the loan**, evidenced by the lender's own
+database.
 
 **Honourable mention:** `esign.consumer-consent` and `fcra.permissible-purpose`
 are the same shape — well-designed refusals (five-flag §101(c) consent with
@@ -165,7 +173,7 @@ vehicle, with statutory damages per consumer.
 | 5 | 12 C.F.R. §1026.41(d)(8) — 45-day delinquency block | `unit-test` | UNREVIEWED |
 | 6 | 12 C.F.R. §1026.36(c)(2) — late-fee non-pyramiding | `unit-test` | UNREVIEWED |
 | 7 | 12 C.F.R. §1026.36(c)(1)(i),(ii) — prompt crediting + suspense | `unit-test` | UNREVIEWED |
-| 8 | 12 C.F.R. §1026.43(c),(e) — ability to repay | **`refusal-path`** | UNREVIEWED |
+| 8 | 12 C.F.R. §1026.43(c),(e) — ability to repay | `unit-test` | UNREVIEWED |
 | 9 | 12 C.F.R. §1026.36(a)(4); 12 U.S.C. §5102 — seller-financer exclusion | `unit-test` | UNREVIEWED |
 | 10 | 12 C.F.R. §1024.39(a) — RESPA early intervention (36 days) | `unit-test` | UNREVIEWED |
 | 11 | 12 C.F.R. §1024.17 — RESPA escrow analysis | `unit-test` | UNREVIEWED |
@@ -208,17 +216,26 @@ surfaced, worth recording because nobody was looking for them:
   deadlines. They can disagree. Nothing cross-checks them. One is tested; the
   other is not.
 
-- **Three overlapping usury tables.** `server/services/usury.ts`,
-  `server/services/usuryCeiling.ts`, and the cap table in
-  `shared/regulatory/rmloAdvisor.ts`. Two surfaces of the same product can give
-  an operator two different answers about the same rate.
+- **FOUR overlapping usury tables** — the consistency work found a fourth.
+  `server/services/usury.ts` (the only one production calls),
+  `server/services/usuryCeiling.ts` (the best-tested one, entirely unwired),
+  the cap table in `shared/regulatory/rmloAdvisor.ts`, and
+  `server/services/regulatoryIntelligence.ts` (production-mounted via
+  `routes-regulatory.ts`). `tests/unit/usuryConsistency.test.ts` now pins the
+  measured state of agreement: 23 states agree, 3 lane-mismatches are
+  allowlisted with reasons, and **25 states carry unreconciled conflicts**,
+  each pinned individually so it must be removed when resolved. Resolving them
+  is legal research against the actual statutes — a founder/attorney task, not
+  a refactor. Named suspects: `usury.ts` NV 40% vs no-cap in both others; TX a
+  three-way conflict AND the silent fallback state; `rmloAdvisor` AK storing a
+  margin as a cap by its own note's admission.
 
-- **A test that tests nothing.** `tests/unit/usuryCeiling.test.ts` does not
-  import `server/services/usuryCeiling.ts` — it **reimplements the logic
-  inline** and asserts against its own copy. The shipped service is untested,
-  and the file name says otherwise. This is a worked example of why the ratchet
-  checks that `unit-test` entries name a *file that exists* and why "there's a
-  test for that" is a hypothesis until you open it.
+- **A test that tested nothing — fixed, and the fix found the conflicts
+  above.** `tests/unit/usuryCeiling.test.ts` used to reimplement the service's
+  logic inline and assert against its own copy. It now imports the real
+  service, whose 51-state table matches the independently written spec on
+  every ceiling. This remains the worked example of why "there's a test for
+  that" is a hypothesis until you open it.
 
 - **Pub 1220's validator is structural, not semantic.** `assembleRecord()`
   proves fields are contiguous and correctly sized; `validateFireFile()` proves
@@ -249,8 +266,12 @@ overstates it. Then lower `UNREVIEWED_BASELINE` in the same commit.
 
 **Paying down enforcement debt.** `refusal-path` → `unit-test` is the cheapest
 high-value move in this repo: the refusal already exists, it just needs a test
-that would notice its removal. Start with `regz.ability-to-repay`,
-`esign.consumer-consent`, and `fcra.permissible-purpose`.
+that would notice its removal. The first three — `regz.ability-to-repay`,
+`esign.consumer-consent`, `fcra.permissible-purpose` — were converted on
+2026-08-01, and each conversion found at least one unguarded sibling path the
+refusal-only era could not see (an ungated POST /api/signatures, an ungated
+tenant CREATE accepting screening fields, an entire ungated skip-tracing
+router). That is the argument for converting the rest.
 
 **When a wave touches any of these files.** Verify against the code, not
 against the wave's report. Four of the five defects listed at the top of this

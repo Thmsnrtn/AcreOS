@@ -20,6 +20,19 @@
  *   primary phone/email are written back onto the lead record (only into
  *   EMPTY lead.phone / lead.email — we never overwrite operator-entered
  *   contact info).
+ *
+ * FCRA §1681b permissible-purpose gate (2026-08-01, closing the FW-WYNNE-1
+ * bypass): both POST endpoints here perform the SAME consumer lookup as the
+ * FCRA-gated POST /api/skip-traces in routes-leads.ts, so they carry the
+ * SAME gate — required `purposeOfUse` (skip-trace purpose enum) + required
+ * `justification` (≥10 chars) + a current annual FCRA attestation, refused
+ * with the same named codes (SKIP_TRACE_PURPOSE_REQUIRED /
+ * FCRA_ATTESTATION_REQUIRED) BEFORE any debit, provider call, or persisted
+ * row. The batch endpoint gates ONCE per request and stamps that one
+ * purpose + justification + attesting user onto EVERY persisted trace row —
+ * one attestation never silently covers N lookups under a different purpose.
+ * This is a deliberate breaking change to the request contract: the prior
+ * contract (no purpose field at all) was the §1681b violation.
  */
 
 import { Router, type Response } from "express";
@@ -29,7 +42,7 @@ import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/credi
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganizationId } from "./types/request";
+import { getOrganizationId, getUserId } from "./types/request";
 import { createRateLimiter } from "./middleware/rateLimit";
 import type { Lead, SkipTrace } from "@shared/schema";
 
@@ -187,6 +200,74 @@ export function toStoredResults(trace: SkipTraceResult): {
   };
 }
 
+// ── FCRA §1681b permissible-purpose gate ────────────────────────────────────
+
+/**
+ * Audit fields the gate yields on success — persisted onto EVERY
+ * skip_traces row this router writes (class-action defense trail, same
+ * columns POST /api/skip-traces in routes-leads.ts persists).
+ */
+interface SkipTraceGateResult {
+  purposeOfUse: string;
+  justification: string;
+  attestingUserId: string;
+  attestationVersion: string;
+}
+
+/**
+ * FW-WYNNE-1 permissible-purpose gate, applied to this router's consumer
+ * lookups (2026-08-01 — these endpoints previously performed the same
+ * lookup as the gated POST /api/skip-traces with NO gate at all).
+ *
+ * Reads `purposeOfUse` + `justification` from the request body (REQUIRED —
+ * their absence was the prior contract, and the prior contract was the
+ * violation), asserts purpose ∈ skip-trace purposes, justification ≥10
+ * chars, and a current annual FCRA attestation for this org + user.
+ *
+ * On refusal, writes the SAME shapes routes-leads.ts uses and returns null:
+ *   - SkipTracePurposeRequiredError → 400 Errors.badRequest with
+ *     details.code SKIP_TRACE_PURPOSE_REQUIRED (message cites §1681b);
+ *   - FcraAttestationStaleError → 403 { error: "FCRA_ATTESTATION_REQUIRED" }
+ *     with the /account/fcra-attestation remedy.
+ * MUST run before any credit debit, provider call, or persisted row.
+ */
+async function gateSkipTracePermitted(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<SkipTraceGateResult | null> {
+  const body = (req.body ?? {}) as { purposeOfUse?: unknown; justification?: unknown };
+  const purposeOfUse = typeof body.purposeOfUse === "string" ? body.purposeOfUse : undefined;
+  const justification = typeof body.justification === "string" ? body.justification : undefined;
+
+  // Same dynamic import as routes-leads.ts — the gate service pulls in the
+  // db module, which route unit tests keep out of the load graph.
+  const { assertSkipTracePermitted, respondFcraRefusal } =
+    await import("./services/fcraAttestation");
+
+  const attestingUserId = getUserId(req);
+  try {
+    const { attestationVersion } = await assertSkipTracePermitted({
+      organizationId: getOrganizationId(req),
+      userId: attestingUserId,
+      purposeOfUse,
+      justification,
+    });
+    // The gate only returns when both fields validated as non-empty strings.
+    return {
+      purposeOfUse: purposeOfUse as string,
+      justification: justification as string,
+      attestingUserId,
+      attestationVersion,
+    };
+  } catch (err) {
+    // Shared mapping — routes-leads.ts emits the identical refusal shapes, and
+    // duplicating them here is how the res-status-raw ratchet caught this file
+    // the day the gate landed. One mapping, one place.
+    if (respondFcraRefusal(res, err)) return null;
+    throw err;
+  }
+}
+
 // ── Shared persistence path ─────────────────────────────────────────────────
 
 interface PersistedTrace {
@@ -197,12 +278,15 @@ interface PersistedTrace {
 /**
  * Persist a successful provider result: create the skip_traces row (the
  * "traced" marker the batch filter and stats read) and write the primary
- * contacts back onto the lead through the existing storage layer.
+ * contacts back onto the lead through the existing storage layer. The
+ * caller's §1681b audit fields land on the row — a trace row without a
+ * recorded purpose can no longer be written from this router.
  */
 async function persistTraceResult(
   orgId: number,
   lead: Lead,
   trace: SkipTraceResult,
+  audit: SkipTraceGateResult,
 ): Promise<PersistedTrace> {
   const { results, hasAny } = toStoredResults(trace);
   const status: PersistedTrace["status"] = hasAny ? "completed" : "no_results";
@@ -223,6 +307,11 @@ async function persistTraceResult(
     results,
     requestedAt: now,
     completedAt: now,
+    // FCRA §1681b audit trail — same columns the routes-leads path persists.
+    purposeOfUse: audit.purposeOfUse,
+    justification: audit.justification,
+    attestingUserId: audit.attestingUserId,
+    attestationVersion: audit.attestationVersion,
   });
 
   const updates = buildLeadWriteBack(lead, trace);
@@ -263,6 +352,11 @@ router.post("/trace/:leadId", skipTraceLimiter, async (req: AuthenticatedRequest
     const orgId = getOrganizationId(req);
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
+
+    // FCRA §1681b gate FIRST — before the debit, before the provider, before
+    // the row. A refusal costs nothing and leaks nothing.
+    const audit = await gateSkipTracePermitted(req, res);
+    if (!audit) return;
 
     // Load the lead BEFORE debiting — a missing lead should never cost a
     // credit (previously we debited, then refunded on not-found).
@@ -325,7 +419,7 @@ router.post("/trace/:leadId", skipTraceLimiter, async (req: AuthenticatedRequest
       );
     }
 
-    const persisted = await persistTraceResult(orgId, lead, result);
+    const persisted = await persistTraceResult(orgId, lead, result, audit);
 
     res.json({
       ...toTraceResponse(lead, result, persisted),
@@ -352,6 +446,13 @@ router.post("/batch", skipTraceLimiter, async (req: AuthenticatedRequest, res: R
       return Errors.badRequest(res, "limit must be a positive number");
     }
     const capped = Math.min(Math.floor(limit), 100);
+
+    // FCRA §1681b gate — ONCE for the whole batch, before selection, debit,
+    // or any provider call. The single claimed purpose + justification is
+    // stamped onto EVERY row persisted below: one attestation never quietly
+    // covers N lookups made for some other purpose.
+    const audit = await gateSkipTracePermitted(req, res);
+    if (!audit) return;
 
     // Untraced = leads with NO finished skip_traces row. Finished traces
     // created below drop those leads out of the next selection, so each
@@ -415,7 +516,7 @@ router.post("/batch", skipTraceLimiter, async (req: AuthenticatedRequest, res: R
           continue;
         }
 
-        const persisted = await persistTraceResult(orgId, lead, result);
+        const persisted = await persistTraceResult(orgId, lead, result, audit);
         traced++;
         if (persisted.status === "completed") found++;
       } catch (err) {

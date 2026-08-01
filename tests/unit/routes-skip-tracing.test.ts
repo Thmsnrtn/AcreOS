@@ -13,6 +13,13 @@
  *      operator-entered contact info.
  *   4. Provider failure on the single-trace path refunds the debit and
  *      returns an honest 503 instead of a fabricated empty result.
+ *
+ * FCRA note (2026-08-01): both POST endpoints now require purposeOfUse +
+ * justification and a current annual attestation (the §1681b gate from
+ * routes-leads.ts). The gate module is mocked PERMISSIVE here so this suite
+ * keeps pinning the tracing mechanics; the gate's refusals, attestation TTL,
+ * once-per-batch semantics, and audit-field stamping are pinned for real in
+ * tests/unit/fcraPermissiblePurposeGate.test.ts.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +35,36 @@ vi.mock("../../server/utils/logger", () => ({
 vi.mock("../../server/middleware/rateLimit", () => ({
   createRateLimiter: () => (_req: any, _res: any, next: any) => next(),
 }));
+
+// Permissive gate double — see the FCRA note in the header. The route
+// imports this module dynamically; the error classes must exist for its
+// instanceof refusal mapping.
+vi.mock("../../server/services/fcraAttestation", () => {
+  class SkipTracePurposeRequiredError extends Error {
+    readonly code = "SKIP_TRACE_PURPOSE_REQUIRED" as const;
+  }
+  class FcraAttestationStaleError extends Error {
+    readonly code = "FCRA_ATTESTATION_REQUIRED" as const;
+  }
+  return {
+    SkipTracePurposeRequiredError,
+    FcraAttestationStaleError,
+    assertSkipTracePermitted: vi.fn(async () => ({ attestationVersion: "test-attestation-v1" })),
+    // Same wire shapes as the real helper (which the FCRA gate suite pins);
+    // never reached here because the assert double above always resolves.
+    respondFcraRefusal: (res: any, err: unknown): boolean => {
+      if (err instanceof SkipTracePurposeRequiredError) {
+        res.status(400).json({ error: "BAD_REQUEST", message: err.message, details: { code: err.code }, statusCode: 400 });
+        return true;
+      }
+      if (err instanceof FcraAttestationStaleError) {
+        res.status(403).json({ error: "FCRA_ATTESTATION_REQUIRED", message: err.message, statusCode: 403 });
+        return true;
+      }
+      return false;
+    },
+  };
+});
 
 // In-memory data the storage mock serves. Tests reset these in beforeEach.
 type FakeLead = {
@@ -107,11 +144,20 @@ import router, {
 import type { SkipTraceResult } from "../../server/services/skipTracingService";
 
 const ORG_ID = 42;
+const USER_ID = "user-1";
+
+// Required §1681b fields on every POST (the gate itself is mocked permissive
+// here — see header note).
+const FCRA_BODY = {
+  purposeOfUse: "collection",
+  justification: "Locating debtor for collection of delinquent note",
+};
 
 function makeApp() {
   const app = express();
   app.use(express.json());
   app.use((req: any, _res, next) => {
+    req.user = { id: USER_ID };
     req.organization = { id: ORG_ID, name: "Test Org" };
     req.organizationId = ORG_ID;
     next();
@@ -272,7 +318,7 @@ describe("GET /api/skip-tracing/stats", () => {
 describe("POST /api/skip-tracing/trace/:leadId", () => {
   it("persists the trace and writes contacts back onto the lead", async () => {
     LEADS = [lead(7)];
-    const res = await request(makeApp()).post("/api/skip-tracing/trace/7");
+    const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
 
     expect(res.status).toBe(200);
     expect(res.body.leadId).toBe(7);
@@ -283,13 +329,18 @@ describe("POST /api/skip-tracing/trace/:leadId", () => {
     expect(res.body.emails).toEqual([{ address: "owner@example.com", confidence: 0.7 }]);
     expect(res.body.leadUpdated).toEqual({ phone: true, email: true });
 
-    // Trace row persisted — the marker stats + batch filtering read.
+    // Trace row persisted — the marker stats + batch filtering read — and it
+    // carries the §1681b audit fields the gate yielded.
     expect(createSkipTraceMock).toHaveBeenCalledTimes(1);
     expect(createSkipTraceMock.mock.calls[0][0]).toMatchObject({
       organizationId: ORG_ID,
       leadId: 7,
       status: "completed",
       provider: "batch_skip_tracing",
+      purposeOfUse: FCRA_BODY.purposeOfUse,
+      justification: FCRA_BODY.justification,
+      attestingUserId: USER_ID,
+      attestationVersion: "test-attestation-v1",
     });
 
     // Write-back landed on the fields the rest of the app reads.
@@ -304,7 +355,7 @@ describe("POST /api/skip-tracing/trace/:leadId", () => {
 
   it("does not overwrite existing lead contact info", async () => {
     LEADS = [lead(7, { phone: "111-222-3333", email: "kept@example.com" })];
-    const res = await request(makeApp()).post("/api/skip-tracing/trace/7");
+    const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
     expect(res.status).toBe(200);
     expect(res.body.leadUpdated).toEqual({ phone: false, email: false });
     expect(updateLeadMock).not.toHaveBeenCalled();
@@ -314,7 +365,7 @@ describe("POST /api/skip-tracing/trace/:leadId", () => {
   it("records no_results honestly when the provider finds nothing", async () => {
     LEADS = [lead(7)];
     traceImpl = async () => providerMiss();
-    const res = await request(makeApp()).post("/api/skip-tracing/trace/7");
+    const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("no_results");
     expect(createSkipTraceMock.mock.calls[0][0]).toMatchObject({ status: "no_results", costCents: 0 });
@@ -324,7 +375,7 @@ describe("POST /api/skip-tracing/trace/:leadId", () => {
   it("refunds the debit and returns 503 when the provider fails", async () => {
     LEADS = [lead(7)];
     traceImpl = async () => ({ success: false, source: "none", contacts: [], error: "No skip tracing provider configured." });
-    const res = await request(makeApp()).post("/api/skip-tracing/trace/7");
+    const res = await request(makeApp()).post("/api/skip-tracing/trace/7").send(FCRA_BODY);
     expect(res.status).toBe(503);
     expect(res.body.error).toBe("SERVICE_UNAVAILABLE");
     expect(refundPoolDebitMock).toHaveBeenCalledTimes(1);
@@ -332,7 +383,7 @@ describe("POST /api/skip-tracing/trace/:leadId", () => {
   });
 
   it("404s a missing lead without debiting", async () => {
-    const res = await request(makeApp()).post("/api/skip-tracing/trace/999");
+    const res = await request(makeApp()).post("/api/skip-tracing/trace/999").send(FCRA_BODY);
     expect(res.status).toBe(404);
     expect(poolDebitMock).not.toHaveBeenCalled();
   });
@@ -345,7 +396,7 @@ describe("POST /api/skip-tracing/batch", () => {
     LEADS = [lead(1), lead(2), lead(3)];
     TRACES = [{ id: 1, leadId: 2, status: "completed" }]; // lead 2 already traced
 
-    const res = await request(makeApp()).post("/api/skip-tracing/batch").send({});
+    const res = await request(makeApp()).post("/api/skip-tracing/batch").send(FCRA_BODY);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ requested: 2, traced: 2, found: 2, failed: 0, untracedRemaining: 0 });
 
@@ -360,12 +411,12 @@ describe("POST /api/skip-tracing/batch", () => {
     LEADS = [lead(1), lead(2), lead(3)];
     const app = makeApp();
 
-    const first = await request(app).post("/api/skip-tracing/batch").send({ limit: 2 });
+    const first = await request(app).post("/api/skip-tracing/batch").send({ ...FCRA_BODY, limit: 2 });
     expect(first.body).toMatchObject({ requested: 2, traced: 2, untracedRemaining: 1 });
     expect(traceMock.mock.calls.map(([i]) => i.lastName)).toEqual(["Number1", "Number2"]);
 
     traceMock.mockClear();
-    const second = await request(app).post("/api/skip-tracing/batch").send({ limit: 2 });
+    const second = await request(app).post("/api/skip-tracing/batch").send({ ...FCRA_BODY, limit: 2 });
     // NOT the same first page — leads 1-2 now carry finished trace rows.
     expect(second.body).toMatchObject({ requested: 1, traced: 1, untracedRemaining: 0 });
     expect(traceMock.mock.calls.map(([i]) => i.lastName)).toEqual(["Number3"]);
@@ -373,7 +424,7 @@ describe("POST /api/skip-tracing/batch", () => {
 
   it("writes batch results back onto each lead", async () => {
     LEADS = [lead(1), lead(2, { phone: "kept" })];
-    const res = await request(makeApp()).post("/api/skip-tracing/batch").send({});
+    const res = await request(makeApp()).post("/api/skip-tracing/batch").send(FCRA_BODY);
     expect(res.status).toBe(200);
     expect(LEADS[0].phone).toBe("512-555-0100");
     expect(LEADS[0].email).toBe("owner@example.com");
@@ -385,7 +436,7 @@ describe("POST /api/skip-tracing/batch", () => {
   it("returns an honest zero without debiting when nothing is untraced", async () => {
     LEADS = [lead(1)];
     TRACES = [{ id: 1, leadId: 1, status: "no_results" }];
-    const res = await request(makeApp()).post("/api/skip-tracing/batch").send({});
+    const res = await request(makeApp()).post("/api/skip-tracing/batch").send(FCRA_BODY);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ requested: 0, traced: 0, found: 0, untracedRemaining: 0 });
     expect(poolDebitMock).not.toHaveBeenCalled();
@@ -399,7 +450,7 @@ describe("POST /api/skip-tracing/batch", () => {
         ? providerHit()
         : { success: false, source: "none", contacts: [], error: "provider down" };
 
-    const res = await request(makeApp()).post("/api/skip-tracing/batch").send({});
+    const res = await request(makeApp()).post("/api/skip-tracing/batch").send(FCRA_BODY);
     expect(res.body).toMatchObject({ requested: 2, traced: 1, found: 1, failed: 1, untracedRemaining: 1 });
     // Debited 2 units (40c) → refund half for the failed lookup.
     expect(refundPoolDebitMock).toHaveBeenCalledTimes(1);
@@ -408,7 +459,7 @@ describe("POST /api/skip-tracing/batch", () => {
 
   it("rejects a non-positive limit", async () => {
     LEADS = [lead(1)];
-    const res = await request(makeApp()).post("/api/skip-tracing/batch").send({ limit: 0 });
+    const res = await request(makeApp()).post("/api/skip-tracing/batch").send({ ...FCRA_BODY, limit: 0 });
     expect(res.status).toBe(400);
   });
 });

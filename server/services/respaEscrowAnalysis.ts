@@ -34,6 +34,20 @@
  * This service produces a RespaEscrowAnalysis shape AND the actual
  * §1024.17(i) annual escrow account statement artifact — see
  * `buildAnnualEscrowStatement` at the bottom of this file.
+ *
+ * WIRING STATUS (2026-08-01):
+ *   - `analyzeEscrowAccount` IS wired: GET /api/notes/:id/escrow-analysis
+ *     (server/routes-notes.ts) serves it, org-scoped, for the seller-finance
+ *     (originated) `notes` book — the schema this module reads
+ *     (notes.taxEscrowEnabled / monthlyTaxEscrow / taxEscrowBalance +
+ *     tax_escrow_payments).
+ *   - The ACQUIRED book (acquired_notes) is deliberately NOT served: it has
+ *     no monthly escrow-deposit amount and only a single next-disbursement
+ *     date/amount (taxDisbursementDueDate/AmountCents), so the 12-month
+ *     trial-balance inputs this analysis requires do not exist for it.
+ *     Inferring them would fabricate a compliance artifact.
+ *   - `buildAnnualEscrowStatement` / `renderAnnualEscrowStatementPdf` remain
+ *     deliberately UNWIRED (see the block comment above them).
  */
 
 import { db } from "../db";
@@ -43,6 +57,8 @@ import { jsPDF } from "jspdf";
 
 export interface RespaEscrowAnalysisInput {
   noteId: number;
+  /** Tenant scope — the analysis only reads notes belonging to this org. */
+  organizationId: number;
   /** Computation-year start (typically the borrower's escrow anniversary date). */
   computationYearStart: Date;
   /**
@@ -99,6 +115,15 @@ export interface RespaEscrowAnalysis {
   // or deficiency that needs spreading. Used by the servicer to update
   // the borrower's next-period escrow component.
   recomputedMonthlyEscrowPaymentCents: number | null;
+  /**
+   * Where the 12-month disbursement projection came from. HONESTY FLAG:
+   * "trailing_12mo_proxy" means no operator projection was supplied and the
+   * projection is last year's RECORDED tax_escrow_payments redistributed by
+   * month — a proxy the operator should replace with the county tax +
+   * insurance schedule before acting on the analysis. Optional because
+   * pre-existing consumers built this shape by hand.
+   */
+  projectionSource?: "operator_supplied" | "trailing_12mo_proxy";
   generatedAt: string;
 }
 
@@ -114,7 +139,11 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 export async function analyzeEscrowAccount(
   input: RespaEscrowAnalysisInput,
 ): Promise<RespaEscrowAnalysis> {
-  const [note] = await db.select().from(notes).where(eq(notes.id, input.noteId)).limit(1);
+  const [note] = await db
+    .select()
+    .from(notes)
+    .where(and(eq(notes.id, input.noteId), eq(notes.organizationId, input.organizationId)))
+    .limit(1);
   if (!note) throw new Error(`Note ${input.noteId} not found.`);
 
   if (!note.taxEscrowEnabled) {
@@ -130,6 +159,8 @@ export async function analyzeEscrowAccount(
 
   // ── Resolve projected disbursements ────────────────────────────────
   let projected = input.projectedDisbursementsByMonth ?? [];
+  let projectionSource: NonNullable<RespaEscrowAnalysis["projectionSource"]> =
+    projected.length > 0 ? "operator_supplied" : "trailing_12mo_proxy";
   if (projected.length === 0) {
     // Fall back: trailing 12 months of taxEscrowPayments, distributed
     // by their payment month. This is a proxy — operators should
@@ -141,6 +172,7 @@ export async function analyzeEscrowAccount(
       .from(taxEscrowPayments)
       .where(
         and(
+          eq(taxEscrowPayments.organizationId, input.organizationId),
           eq(taxEscrowPayments.noteId, input.noteId),
           gte(taxEscrowPayments.paymentDate, trailingStart),
           lte(taxEscrowPayments.paymentDate, yearStart),
@@ -280,6 +312,7 @@ export async function analyzeEscrowAccount(
     deficiencyCents: deficiency,
     requiredAction,
     recomputedMonthlyEscrowPaymentCents: recomputedMonthly,
+    projectionSource,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -303,6 +336,7 @@ export async function analyzeAllEscrowAccountsForOrg(
     try {
       const a = await analyzeEscrowAccount({
         noteId: n.id,
+        organizationId: orgId,
         computationYearStart,
       });
       analyses.push(a);
@@ -353,6 +387,15 @@ export async function analyzeAllEscrowAccountsForOrg(
 // reason. We never infer a deposit from the current monthly escrow amount,
 // never assume twelve equal deposits, and never reuse the projection as if
 // it were history — every one of those would be a fabricated disclosure.
+//
+// DELIBERATELY UNWIRED (2026-08-01): no route, job, or service calls
+// `buildAnnualEscrowStatement` / `renderAnnualEscrowStatementPdf`. That is a
+// decision, not an oversight — the required history inputs above do not exist
+// anywhere in the schema, so any wiring today would either always refuse or
+// fabricate. Wiring waits on a real decision to record per-payment escrow
+// history for the originated book. Only the analysis half of this module
+// (`analyzeEscrowAccount`) is production-reachable, via
+// GET /api/notes/:id/escrow-analysis in server/routes-notes.ts.
 
 /** One month of ACTUAL escrow activity during the computation year ended. */
 export interface EscrowStatementActualMonth {

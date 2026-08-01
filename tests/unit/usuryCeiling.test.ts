@@ -1,160 +1,77 @@
 /**
- * T263 — Usury Ceiling: tests of a REIMPLEMENTATION, not of the service.
+ * T263 — Usury Ceiling: tests of the REAL service.
  *
- * ⚠️ READ THIS BEFORE TRUSTING THE FILENAME. This file does NOT import
- * `server/services/usuryCeiling.ts`. It declares its own `StateLimits` and
- * `UsuryCeilingCheckResult` below under "Inline pure logic" and asserts against
- * that copy. Every assertion here can pass while the shipped service is broken,
- * deleted, or says the opposite.
+ * Rewritten 2026-08-01. This file previously reimplemented the ceiling logic
+ * inline and asserted against its own copy — every assertion could pass while
+ * `server/services/usuryCeiling.ts` said the opposite. It now imports the
+ * shipped service and asserts against it.
  *
- * Found 2026-07-31 while building the statute register. Left in place rather
- * than deleted because the inline logic is a readable specification of what the
- * ceiling rules are supposed to do — but the docstring said "Tests state usury
- * law compliance checks", and that sentence was providing false assurance about
- * a service that decides whether a seller-financed note is usurious.
+ * The inline `SPEC_STATE_LIMITS` table below is kept deliberately: it is an
+ * INDEPENDENT expectation, written separately from the implementation. The
+ * "service table matches independent spec" block compares the service's data
+ * to it. Where the two disagree, that is a finding to investigate — do NOT
+ * silently edit the spec to match the code.
  *
- * There are also THREE overlapping usury tables in this repo — `usury.ts`,
- * `usuryCeiling.ts`, and `rmloAdvisor.ts` — so two product surfaces can give
- * different answers about the same rate. Tracked as `usury.state-ceilings` in
+ * Status 2026-08-01: the service agrees with the spec on every ceiling and
+ * exemption flag for all six spec states (AR, FL, CA, TX, CO, NY). Service
+ * legalReference strings are supersets of the spec citations for CA and NY
+ * (extra statute cites), which is why those assertions use `toContain`.
+ *
+ * Cross-source consistency between the THREE overlapping usury tables
+ * (`usury.ts`, `usuryCeiling.ts`, `rmloAdvisor.ts`) is covered separately by
+ * tests/unit/usuryConsistency.test.ts. Tracked as `state.usury-ceilings` in
  * shared/governance/statuteRegister.ts.
- *
- * To make this file earn its name: import the service and assert against it.
  */
 
 import { describe, it, expect } from "vitest";
+import {
+  checkUsuryCeiling,
+  getStateLimits,
+  getAllStateLimits,
+} from "../../server/services/usuryCeiling";
 
-// ─── Inline pure logic ────────────────────────────────────────────────────────
+// ─── Independent expectation (the spec) ──────────────────────────────────────
+// Deliberately NOT typed with the service's StateLimits interface, so the spec
+// stays independent of the implementation's shape.
 
-interface StateLimits {
+interface SpecStateLimits {
   stateCode: string;
   stateName: string;
   civilCeiling: number | null;
   commercialCeiling: number | null;
   realEstateCeiling: number | null;
   sellerFinancingExemption: boolean;
-  notes: string;
+  /** Primary citation — asserted as a substring of the service's reference. */
   legalReference: string;
 }
 
-interface UsuryCeilingCheckResult {
-  stateCode: string;
-  stateName: string;
-  proposedRate: number;
-  applicable_ceiling: number | null;
-  isAboveCeiling: boolean;
-  risk: "compliant" | "borderline" | "likely_violation" | "consult_attorney";
-  summary: string;
-  recommendation: string;
-  legalReference: string;
-  sellerFinancingExemptionAvailable: boolean;
-}
-
-const STATE_USURY_DATA: StateLimits[] = [
-  { stateCode: "AR", stateName: "Arkansas", civilCeiling: 17, commercialCeiling: 17, realEstateCeiling: 17, sellerFinancingExemption: false, notes: "Constitutional 17% cap. Applies to all loans.", legalReference: "Ark. Const. amend. 89" },
-  { stateCode: "FL", stateName: "Florida", civilCeiling: 18, commercialCeiling: 25, realEstateCeiling: 18, sellerFinancingExemption: false, notes: "18% for RE, 25% criminal threshold.", legalReference: "Fla. Stat. § 687.01" },
-  { stateCode: "CA", stateName: "California", civilCeiling: 10, commercialCeiling: null, realEstateCeiling: null, sellerFinancingExemption: true, notes: "Seller-financing exemption for non-dwelling RE.", legalReference: "Cal. Const. art. XV" },
-  { stateCode: "TX", stateName: "Texas", civilCeiling: null, commercialCeiling: null, realEstateCeiling: null, sellerFinancingExemption: true, notes: "No effective ceiling for written commercial RE agreements.", legalReference: "Tex. Fin. Code § 302.001" },
-  { stateCode: "CO", stateName: "Colorado", civilCeiling: null, commercialCeiling: null, realEstateCeiling: null, sellerFinancingExemption: true, notes: "No general usury ceiling.", legalReference: "C.R.S. § 5-12-103" },
-  { stateCode: "NY", stateName: "New York", civilCeiling: 16, commercialCeiling: 25, realEstateCeiling: null, sellerFinancingExemption: true, notes: "Criminal usury at 25%+.", legalReference: "N.Y. Gen. Oblig. Law § 5-511" },
+const SPEC_STATE_LIMITS: SpecStateLimits[] = [
+  { stateCode: "AR", stateName: "Arkansas", civilCeiling: 17, commercialCeiling: 17, realEstateCeiling: 17, sellerFinancingExemption: false, legalReference: "Ark. Const. amend. 89" },
+  { stateCode: "FL", stateName: "Florida", civilCeiling: 18, commercialCeiling: 25, realEstateCeiling: 18, sellerFinancingExemption: false, legalReference: "Fla. Stat. § 687.01" },
+  { stateCode: "CA", stateName: "California", civilCeiling: 10, commercialCeiling: null, realEstateCeiling: null, sellerFinancingExemption: true, legalReference: "Cal. Const. art. XV" },
+  { stateCode: "TX", stateName: "Texas", civilCeiling: null, commercialCeiling: null, realEstateCeiling: null, sellerFinancingExemption: true, legalReference: "Tex. Fin. Code § 302.001" },
+  { stateCode: "CO", stateName: "Colorado", civilCeiling: null, commercialCeiling: null, realEstateCeiling: null, sellerFinancingExemption: true, legalReference: "C.R.S. § 5-12-103" },
+  { stateCode: "NY", stateName: "New York", civilCeiling: 16, commercialCeiling: 25, realEstateCeiling: null, sellerFinancingExemption: true, legalReference: "N.Y. Gen. Oblig. Law § 5-511" },
 ];
 
-const stateMap = new Map(STATE_USURY_DATA.map(s => [s.stateCode, s]));
+// ─── Service table vs independent spec ───────────────────────────────────────
 
-function checkUsuryCeiling(
-  stateCode: string,
-  proposedAnnualRateDecimal: number,
-  isCommercialOrBusiness: boolean = false,
-  hasDwelling: boolean = false
-): UsuryCeilingCheckResult {
-  const state = stateMap.get(stateCode.toUpperCase());
-  const ratePercent = proposedAnnualRateDecimal * 100;
-
-  if (!state) {
-    return {
-      stateCode,
-      stateName: stateCode,
-      proposedRate: ratePercent,
-      applicable_ceiling: null,
-      isAboveCeiling: false,
-      risk: "consult_attorney",
-      summary: `State "${stateCode}" not found in database.`,
-      recommendation: "Consult a licensed real estate attorney.",
-      legalReference: "Unknown",
-      sellerFinancingExemptionAvailable: false,
-    };
+describe("service table matches independent spec", () => {
+  for (const spec of SPEC_STATE_LIMITS) {
+    it(`${spec.stateCode} (${spec.stateName}) ceilings, exemption, and citation match the spec`, () => {
+      const actual = getStateLimits(spec.stateCode);
+      expect(actual, `${spec.stateCode} missing from service table`).not.toBeNull();
+      expect(actual!.stateName).toBe(spec.stateName);
+      expect(actual!.civilCeiling, `${spec.stateCode} civilCeiling`).toBe(spec.civilCeiling);
+      expect(actual!.commercialCeiling, `${spec.stateCode} commercialCeiling`).toBe(spec.commercialCeiling);
+      expect(actual!.realEstateCeiling, `${spec.stateCode} realEstateCeiling`).toBe(spec.realEstateCeiling);
+      expect(actual!.sellerFinancingExemption, `${spec.stateCode} sellerFinancingExemption`).toBe(spec.sellerFinancingExemption);
+      expect(actual!.legalReference, `${spec.stateCode} legalReference`).toContain(spec.legalReference);
+    });
   }
+});
 
-  // Seller-financing exemption for non-dwelling RE
-  if (state.sellerFinancingExemption && !hasDwelling) {
-    return {
-      stateCode,
-      stateName: state.stateName,
-      proposedRate: ratePercent,
-      applicable_ceiling: null,
-      isAboveCeiling: false,
-      risk: "compliant",
-      summary: `${state.stateName} has a seller-financing exemption for non-dwelling real estate.`,
-      recommendation: `Document the seller-financing nature of the transaction. ${state.notes}`,
-      legalReference: state.legalReference,
-      sellerFinancingExemptionAvailable: true,
-    };
-  }
-
-  // Determine applicable ceiling
-  let ceiling: number | null = null;
-  if (isCommercialOrBusiness && state.commercialCeiling !== null) {
-    ceiling = state.commercialCeiling;
-  } else if (state.realEstateCeiling !== null) {
-    ceiling = state.realEstateCeiling;
-  } else if (state.civilCeiling !== null) {
-    ceiling = state.civilCeiling;
-  }
-
-  if (ceiling === null) {
-    return {
-      stateCode,
-      stateName: state.stateName,
-      proposedRate: ratePercent,
-      applicable_ceiling: null,
-      isAboveCeiling: false,
-      risk: "compliant",
-      summary: `${state.stateName} has no statutory usury ceiling for this type of transaction.`,
-      recommendation: state.notes,
-      legalReference: state.legalReference,
-      sellerFinancingExemptionAvailable: state.sellerFinancingExemption,
-    };
-  }
-
-  const isAbove = ratePercent > ceiling;
-  const borderline = !isAbove && ratePercent >= ceiling * 0.9;
-
-  return {
-    stateCode,
-    stateName: state.stateName,
-    proposedRate: ratePercent,
-    applicable_ceiling: ceiling,
-    isAboveCeiling: isAbove,
-    risk: isAbove ? "likely_violation" : borderline ? "borderline" : "compliant",
-    summary: isAbove
-      ? `USURY ALERT: Proposed rate of ${ratePercent.toFixed(2)}% exceeds ${state.stateName}'s ceiling of ${ceiling}%.`
-      : `Proposed rate of ${ratePercent.toFixed(2)}% is within ${state.stateName}'s ceiling of ${ceiling}%.`,
-    recommendation: isAbove
-      ? `Reduce the interest rate to ${ceiling}% or below. ${state.notes}`
-      : state.notes,
-    legalReference: state.legalReference,
-    sellerFinancingExemptionAvailable: state.sellerFinancingExemption,
-  };
-}
-
-function getStateLimits(stateCode: string): StateLimits | null {
-  return stateMap.get(stateCode.toUpperCase()) || null;
-}
-
-function getAllStateLimits(): StateLimits[] {
-  return STATE_USURY_DATA;
-}
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
+// ─── Behavioral tests against the real service ───────────────────────────────
 
 describe("checkUsuryCeiling", () => {
   describe("seller-financing exemption", () => {
@@ -268,10 +185,14 @@ describe("getStateLimits", () => {
 });
 
 describe("getAllStateLimits", () => {
-  it("returns an array of state limits", () => {
+  it("covers at least the 50 states plus DC", () => {
     const all = getAllStateLimits();
     expect(Array.isArray(all)).toBe(true);
-    expect(all.length).toBeGreaterThan(0);
+    expect(all.length).toBeGreaterThanOrEqual(51);
+    const codes = new Set(all.map((s) => s.stateCode));
+    for (const spec of SPEC_STATE_LIMITS) {
+      expect(codes.has(spec.stateCode), `missing ${spec.stateCode}`).toBe(true);
+    }
   });
 
   it("all entries have required fields", () => {

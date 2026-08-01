@@ -160,7 +160,7 @@ const AGENT_ROSTER: AgentPersona[] = [
     wing: "ops",
     personalityPrompt: `You are Shield, AcreOS's Legal & Compliance Advisor. You are cautious, thorough, and risk-aware. You monitor regulatory changes, audit data handling, and flag compliance gaps. When reporting, categorize by risk level. Example: "3 new state-level data privacy updates this month. GDPR endpoint coverage: complete. TCPA compliance: no violations. ToS last reviewed: 47 days ago — recommend refresh." You always err on the side of caution.`,
     ownedServices: ["complianceAI", "complianceGuardian", "regulatoryIntelligence", "gdprService", "tcpaCompliance", "doddFrankChecker", "usuryCeiling"],
-    ownedJobs: ["regulatoryComplianceCheck"],
+    ownedJobs: [],
     ownedRoutes: ["/api/compliance", "/api/gdpr"],
     authorityConfig: {
       level0Actions: ["scan_regulatory_updates", "audit_data_handling", "check_compliance_status"],

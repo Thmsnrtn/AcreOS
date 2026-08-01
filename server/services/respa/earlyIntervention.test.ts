@@ -1,9 +1,12 @@
 /**
- * Tests for RESPA §1024.39 early-intervention scaffold (Beatrice 2026-06-02
- * ruling §5 piggyback item 4). Pure-function tests cover the day-36 trigger
- * boundary + non-trigger range. The DB-backed `flagEarlyIntervention` path
- * (predicate-gate + idempotency UNIQUE) is exercised by integration tests
- * once the test harness has db-mock plumbing for respa_outreach_events.
+ * Tests for RESPA §1024.39 early-intervention FLAGGING (Beatrice 2026-06-02
+ * ruling §5 piggyback item 4). "Fire" throughout means FLAG for outreach:
+ * the module sends NOTHING to a borrower — the operator must make the
+ * §1024.39 contact (see earlyIntervention.ts header). Pure-function tests
+ * cover the day-36 trigger boundary + non-trigger range. The DB-backed
+ * `flagEarlyIntervention` path (predicate-gate + idempotency UNIQUE) is
+ * exercised by integration tests once the test harness has db-mock plumbing
+ * for respa_outreach_events.
  *
  * Coverage:
  *  - triggers at exactly day 36

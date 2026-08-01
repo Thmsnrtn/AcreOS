@@ -23,6 +23,13 @@ Internal deals ──► dataIngestJob (BullMQ cron ~22:00 UTC) ──► transa
 Retention ──► dataRetention (cron 03:00 UTC) ──► hard DELETE on 7 ops tables
 ```
 
+> *Editor's note, 2026-08-01: `server/jobs/dataIngestJob.ts` (the "Internal deals"
+> lane above and its mentions throughout this archived audit) has been deleted —
+> adversarial verification found it was a module orphan: zero importers and never
+> actually registered with BullMQ, any scheduler, or the worker, so the "BullMQ
+> cron ~22:00 UTC" lane never ran. `countyAssessorIngest` remains the live
+> `transaction_training` writer. Historical text below left as written.*
+
 There is no analytics warehouse. There is no Airflow / Prefect / Dagster. Postgres is both OLTP and the analytics store. BullMQ + a couple of `setInterval` loops + cron strings inside `Queue.add({ repeat })` is the entire orchestration layer.
 
 That's defensible at this stage — but the team is calling things "pipelines" that an ETL engineer would call "scheduled scripts," and the gap shows up in the failure modes.

@@ -41,8 +41,8 @@ const SECRETS: SecretSpec[] = [
   // The tiered router in services/aiRouter.ts maps complexity → model
   // (SIMPLE→DeepSeek, MODERATE→Haiku, COMPLEX→Sonnet, CRITICAL→Opus) which
   // keeps cost as low as the task allows. OPENAI_API_KEY is retained for
-  // Whisper transcription only (routes-field-scout.ts, jobs/realtimeTranscription.ts) —
-  // OpenRouter doesn't proxy /v1/audio so audio jobs hit OpenAI directly.
+  // Whisper transcription only (routes-field-scout.ts) —
+  // OpenRouter doesn't proxy /v1/audio so audio callers hit OpenAI directly.
   { key: "AI_INTEGRATIONS_OPENROUTER_API_KEY", required: false, description: "OpenRouter API key — sole chat/completion provider", productionOnly: true },
   { key: "OPENAI_API_KEY", required: false, description: "OpenAI key for Whisper audio transcription only (no longer used for chat)" },
 
