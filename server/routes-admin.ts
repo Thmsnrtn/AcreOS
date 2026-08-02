@@ -4546,7 +4546,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       // UUID), NOT the Clerk id. Minting with the Clerk id would make
       // `session.founderUserId === userId` never true, silently disabling the
       // whole mechanism (built-but-unwired). Use the DB user id here.
-      const founderDbUserId = String((req.user as any)?.id ?? "");
+      const founderDbUserId = String(req.user.id ?? "");
       if (!founderDbUserId) return Errors.unauthorized(res);
 
       // Mint a REAL, enforced token — getOrCreateOrg swaps the org for THIS
@@ -4571,7 +4571,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         const { chainAndInsertAuditEvent } = await import("./utils/auditEventsChain");
         await chainAndInsertAuditEvent({
           actorUserId: getClerkAuth(req)?.userId ?? founderDbUserId,
-          actorEmail: (req.user as any)?.email ?? null,
+          actorEmail: req.user.email ?? null,
           action: "impersonation_started",
           targetType: "organization",
           targetId: String(targetOrgId),
@@ -4606,12 +4606,12 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const endedTargetOrgId = req.impersonation?.targetOrgId ?? null;
       res.clearCookie(IMPERSONATION_COOKIE, { path: "/" });
 
-      const founderUserId = getClerkAuth(req)?.userId ?? (req.user as any)?.clerkUserId ?? (req.user as any)?.id ?? null;
+      const founderUserId = getClerkAuth(req)?.userId ?? req.user.clerkUserId ?? req.user.id ?? null;
       try {
         const { chainAndInsertAuditEvent } = await import("./utils/auditEventsChain");
         await chainAndInsertAuditEvent({
           actorUserId: founderUserId ? String(founderUserId) : null,
-          actorEmail: (req.user as any)?.email ?? null,
+          actorEmail: req.user.email ?? null,
           action: "impersonation_ended",
           targetType: "organization",
           targetId: endedTargetOrgId != null ? String(endedTargetOrgId) : "none",

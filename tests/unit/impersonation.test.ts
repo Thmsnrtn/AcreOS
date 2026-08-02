@@ -76,7 +76,7 @@ describe("impersonation middleware write-safety (source invariants)", () => {
     // getOrCreateOrg compares session.founderUserId === userId (userId = user.id, DB UUID)
     expect(mw).toMatch(/session\.founderUserId === userId/);
     // the mint must therefore use the DB user id, not the Clerk id
-    expect(admin).toMatch(/founderDbUserId = String\(\(req\.user as any\)\?\.id/);
+    expect(admin).toMatch(/founderDbUserId = String\(req\.user\.id/);
     expect(admin).toMatch(/mintImpersonationToken\(founderDbUserId,/);
   });
 });

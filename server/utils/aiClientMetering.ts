@@ -30,10 +30,21 @@ export interface AiUsageSample {
   responseId: string | null;
 }
 
+interface RawCompletion {
+  model?: unknown;
+  id?: unknown;
+  usage?: {
+    prompt_tokens?: unknown;
+    completion_tokens?: unknown;
+    prompt_tokens_details?: { cached_tokens?: unknown };
+  };
+}
+
 /** Pure extraction of the billable usage from a non-streaming completion. */
 export function extractAiUsage(res: unknown): AiUsageSample | null {
-  const r = res as any;
-  if (!r || typeof r !== "object" || !r.usage || !r.model) return null;
+  if (!res || typeof res !== "object") return null;
+  const r = res as RawCompletion;
+  if (!r.usage || !r.model) return null;
   return {
     model: String(r.model),
     promptTokens: Number(r.usage.prompt_tokens ?? 0) || 0,
