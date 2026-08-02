@@ -4532,30 +4532,94 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
   app.post("/api/admin/impersonate/:orgId", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const org = getOrganization(req);
       const targetOrgId = parseInt(req.params.orgId);
+      if (!Number.isInteger(targetOrgId) || targetOrgId <= 0) {
+        return Errors.badRequest(res, "Invalid organization id");
+      }
       const { organizations } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       const target = await db.query.organizations.findFirst({ where: eq(organizations.id, targetOrgId) });
       if (!target) return Errors.notFound(res, "Organization");
-      // Log impersonation
-      const { activityLog } = await import("@shared/schema");
-      await db.insert(activityLog).values({
-        organizationId: targetOrgId,
-        entityType: "organization",
-        entityId: targetOrgId,
-        action: "impersonation_started",
-        details: { founderOrgId: org.id, readOnly: true, expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() },
-      } as any);
+
+      const founderUserId = getClerkAuth(req)?.userId ?? (req.user as any)?.clerkUserId ?? (req.user as any)?.id ?? null;
+      if (!founderUserId) return Errors.unauthorized(res);
+
+      // Mint a REAL, enforced token — getOrCreateOrg swaps the org for THIS
+      // founder and blocks every mutation. Fabricated readOnly/expiry claims are
+      // gone: what we return is exactly what the middleware enforces.
+      const { mintImpersonationToken, IMPERSONATION_COOKIE, IMPERSONATION_TTL_MS } =
+        await import("./services/impersonation");
+      const minted = mintImpersonationToken(String(founderUserId), targetOrgId, Date.now());
+      if (!minted) {
+        return Errors.internal(res, new Error("Impersonation signing secret not configured (SESSION_SECRET)"));
+      }
+      res.cookie(IMPERSONATION_COOKIE, minted.token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: IMPERSONATION_TTL_MS,
+      });
+
+      // Founder-visible, immutable, hash-chained audit — NOT the tenant's log.
+      try {
+        const { chainAndInsertAuditEvent } = await import("./utils/auditEventsChain");
+        await chainAndInsertAuditEvent({
+          actorUserId: String(founderUserId),
+          actorEmail: (req.user as any)?.email ?? null,
+          action: "impersonation_started",
+          targetType: "organization",
+          targetId: String(targetOrgId),
+          justification: (req.body?.reason as string) ?? null,
+          metadata: { orgName: target.name, readOnly: true, expiresAt: minted.session.expiresAt },
+          ip: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? null,
+          userAgent: (req.headers["user-agent"] as string) ?? null,
+        });
+      } catch (auditErr) {
+        logger.error("[admin] impersonation audit write failed", auditErr as Error);
+      }
+
       res.json({
         success: true,
         impersonation: {
           orgId: targetOrgId,
           orgName: target.name,
-          readOnly: true,
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          readOnly: true, // enforced: all mutations return 403 while this session is active
+          expiresAt: new Date(minted.session.expiresAt).toISOString(),
         },
       });
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  });
+
+  // End an impersonation session — clears the cookie and audits the stop.
+  app.post("/api/admin/impersonate/end", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { IMPERSONATION_COOKIE } = await import("./services/impersonation");
+      // Capture the target (if any) BEFORE clearing, for the audit record.
+      const endedTargetOrgId = req.impersonation?.targetOrgId ?? null;
+      res.clearCookie(IMPERSONATION_COOKIE, { path: "/" });
+
+      const founderUserId = getClerkAuth(req)?.userId ?? (req.user as any)?.clerkUserId ?? (req.user as any)?.id ?? null;
+      try {
+        const { chainAndInsertAuditEvent } = await import("./utils/auditEventsChain");
+        await chainAndInsertAuditEvent({
+          actorUserId: founderUserId ? String(founderUserId) : null,
+          actorEmail: (req.user as any)?.email ?? null,
+          action: "impersonation_ended",
+          targetType: "organization",
+          targetId: endedTargetOrgId != null ? String(endedTargetOrgId) : "none",
+          justification: null,
+          metadata: {},
+          ip: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? null,
+          userAgent: (req.headers["user-agent"] as string) ?? null,
+        });
+      } catch (auditErr) {
+        logger.error("[admin] impersonation-end audit write failed", auditErr as Error);
+      }
+
+      res.json({ success: true, ended: true });
     } catch (err: any) {
       Errors.internal(res, err);
     }

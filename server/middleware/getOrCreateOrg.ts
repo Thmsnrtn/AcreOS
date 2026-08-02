@@ -13,6 +13,13 @@ import { computeReqIpBucket, recordSignalsNotEmitted } from "./botSignals";
 import { subscriptionPauseGate } from "./subscriptionPauseGate";
 import { dunningAccessGate } from "./dunningAccessGate";
 import { getClerkAuth } from "../types/request";
+import {
+  IMPERSONATION_COOKIE,
+  IMPERSONATION_HEADER,
+  verifyImpersonationToken,
+  isMutatingMethod,
+  type ImpersonationSession,
+} from "../services/impersonation";
 
 /**
  * Cookie name + options for the per-session "active organization" override.
@@ -71,13 +78,57 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
 
   let org: any = undefined;
 
+  // ── Founder read-only impersonation ──────────────────────────────────────
+  // ONLY a cryptographically-valid, unexpired token minted for THIS founder can
+  // swap the active org. Any failure (non-founder, no token, bad signature,
+  // expired, wrong founder, missing org, db error) falls through to the normal
+  // resolution below — making a non-impersonated request byte-identical to
+  // before this branch existed. When active, every mutating method is blocked.
+  let impersonation: ImpersonationSession | null = null;
+  if (isFounder) {
+    const token =
+      req.cookies?.[IMPERSONATION_COOKIE] ||
+      (req.get?.(IMPERSONATION_HEADER) as string | undefined);
+    const session = verifyImpersonationToken(token, Date.now());
+    if (session && session.founderUserId === userId) {
+      try {
+        const [target] = await db
+          .select()
+          .from(organizations)
+          .where(eq(organizations.id, session.targetOrgId))
+          .limit(1);
+        if (target) {
+          org = target;
+          impersonation = session;
+        }
+      } catch {
+        /* non-fatal — fall through to normal resolution */
+      }
+    }
+  }
+  if (impersonation) {
+    req.impersonation = impersonation;
+    // The impersonation control endpoints (start/end) must stay reachable so the
+    // founder can always end the session; every OTHER mutation is blocked.
+    const path = req.path || req.originalUrl || "";
+    const isImpersonationControl = path.startsWith("/api/admin/impersonate");
+    if (!isImpersonationControl && isMutatingMethod(req.method)) {
+      return res.status(403).json({
+        error: "impersonation_read_only",
+        message:
+          "Read-only impersonation session — mutations are blocked. End impersonation to act as yourself.",
+        statusCode: 403,
+      });
+    }
+  }
+
   // Reyna §2 — honor the active-org cookie set by /api/auth/switch-organization,
   // but only if the user is still a verified active member of that org.
   // A revoked seat cannot keep operating in someone else's org by holding
   // onto a stale cookie.
   const activeOrgCookieRaw = req.cookies?.[ACTIVE_ORG_COOKIE];
   const activeOrgCookieId = activeOrgCookieRaw ? Number(activeOrgCookieRaw) : NaN;
-  if (Number.isFinite(activeOrgCookieId) && activeOrgCookieId > 0) {
+  if (!impersonation && Number.isFinite(activeOrgCookieId) && activeOrgCookieId > 0) {
     try {
       const [candidate] = await db
         .select()

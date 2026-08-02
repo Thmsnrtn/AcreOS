@@ -2,6 +2,7 @@ import type { Request } from "express";
 import type { User } from "@shared/models/auth";
 import type { Organization } from "@shared/schema";
 import type { UserPermissionContext } from "../utils/permissions";
+import type { ImpersonationSession } from "../services/impersonation";
 
 /**
  * Express request with authenticated user, organization, and permission context.
@@ -13,6 +14,12 @@ export interface AuthenticatedRequest extends Request {
   organizationId: number;
   permissionContext?: UserPermissionContext;
   isFounder?: boolean;
+  /**
+   * Set by getOrCreateOrg when a founder is inside a valid read-only
+   * impersonation session; `organization`/`organizationId` then point at the
+   * impersonated tenant and all mutating requests are already blocked with 403.
+   */
+  impersonation?: ImpersonationSession;
 }
 
 /**

@@ -21,6 +21,7 @@
 import type { User } from "@shared/models/auth";
 import type { Organization } from "@shared/schema";
 import type { UserPermissionContext } from "../utils/permissions";
+import type { ImpersonationSession } from "../services/impersonation";
 
 declare global {
   namespace Express {
@@ -30,6 +31,8 @@ declare global {
       organizationId: number;
       permissionContext?: UserPermissionContext;
       isFounder?: boolean;
+      /** Set by getOrCreateOrg during a founder read-only impersonation session. */
+      impersonation?: ImpersonationSession;
     }
   }
 }
