@@ -790,7 +790,7 @@ export default function AVMPage() {
                             <p className="font-medium text-sm">Comparable #{i + 1}</p>
                             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                               <MapPin className="w-3 h-3" />
-                              {c.distance.toFixed(1)} miles away
+                              {c.distance != null ? `${c.distance.toFixed(1)} miles away` : "Distance unknown"}
                             </p>
                           </div>
                           <div className="text-right">

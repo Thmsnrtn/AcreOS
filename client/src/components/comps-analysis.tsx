@@ -29,7 +29,7 @@ interface ComparableProperty {
   landValue: number | null;
   propertyType: string;
   zoning: string;
-  distance: number;
+  distance: number | null;
   coordinates: {
     lat: number;
     lng: number;
@@ -555,8 +555,8 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
                       <TableCell className="text-right tabular-nums">
                         {comp.pricePerAcre ? formatCurrency(comp.pricePerAcre) : "N/A"}
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground tabular-nums" aria-label={comp.distance !== undefined ? `${comp.distance.toFixed(1)} miles away` : undefined}>
-                        {comp.distance?.toFixed(1)} mi
+                      <TableCell className="text-right text-muted-foreground tabular-nums" aria-label={comp.distance != null ? `${comp.distance.toFixed(1)} miles away` : "Distance unknown"}>
+                        {comp.distance != null ? `${comp.distance.toFixed(1)} mi` : "—"}
                       </TableCell>
                     </TableRow>
                   ))}

@@ -179,13 +179,93 @@ interface ValuationResult {
     propertyId: string;
     salePrice: number;
     pricePerAcre: number;
-    distance: number; // miles
+    /** Miles from the subject, or null when unknown (the comps corpus has no
+     *  lat/long). NEVER 0 as a placeholder — a fake 0 inflated confidence. */
+    distance: number | null;
     similarity: number; // 0-100
   }[];
   marketAdjustments: {
     factor: string;
     adjustment: number; // percentage
   }[];
+  /**
+   * Optional AI qualitative take, kept SEPARATE from estimatedValue (which is
+   * pure comps + explicit market adjustments). The model no longer silently
+   * folds an unexplained LLM ±20% into a figure labeled "comparable sales" —
+   * the charter forbids an AI number without lineage. Rendered as advisory.
+   */
+  aiAdvisory?: {
+    /** Percentage the LLM would adjust by — NOT applied to estimatedValue. */
+    suggestedAdjustmentPct: number;
+    reasoning: string;
+  };
+}
+
+/**
+ * Confidence score (0-100) for a comps-based valuation. Pure + exported so the
+ * honesty invariant is directly testable.
+ *
+ * `nearestDistance` is null when the distance to the closest comp is unknown
+ * (the land comps corpus has no lat/long). In that case NO proximity bonus is
+ * awarded — the old code passed a fabricated 0 here and every valuation got a
+ * free +15 "nearest comp within 5 miles", inflating confidence (INV-TRUTH-1).
+ */
+export function computeConfidence(
+  comparableCount: number,
+  nearestDistance: number | null,
+  volatility: number,
+): number {
+  let confidence = 50;
+
+  // More comparables = higher confidence (up to +30)
+  confidence += Math.min(30, comparableCount * 3);
+
+  // Closer comparables = higher confidence (up to +15) — ONLY when the distance
+  // is actually known. Unknown distance earns no proximity bonus.
+  if (nearestDistance != null) {
+    if (nearestDistance < 5) confidence += 15;
+    else if (nearestDistance < 15) confidence += 10;
+    else if (nearestDistance < 30) confidence += 5;
+  }
+
+  // Lower volatility = higher confidence (up to +15)
+  const volatilityScore = Math.max(0, (0.5 - volatility) * 30);
+  confidence += volatilityScore;
+
+  return Math.max(10, Math.min(95, confidence));
+}
+
+/**
+ * Similarity score (0-100) between a subject and a comparable. Pure + exported.
+ * The zip bonus is only awarded when BOTH zips are known and equal — the old
+ * code compared two empty strings ('' === '') and handed every land comp a
+ * spurious +30 (the corpus carries no zip).
+ */
+export function computeSimilarity(
+  acres1: number,
+  location1: { county?: string; state?: string; zipCode?: string },
+  acres2: number,
+  location2: { county?: string; state?: string; zipCode?: string },
+): number {
+  let similarity = 0;
+
+  // Acreage similarity (40 points)
+  const acreRatio = Math.min(acres1, acres2) / Math.max(acres1, acres2);
+  similarity += acreRatio * 40;
+
+  // Same county (30 points) / same state (15 points)
+  if (location1.county && location2.county && location1.county === location2.county) {
+    similarity += 30;
+  } else if (location1.state && location2.state && location1.state === location2.state) {
+    similarity += 15;
+  }
+
+  // Zip proximity (30 points) — only when both zips are actually known.
+  if (location1.zipCode && location2.zipCode && location1.zipCode === location2.zipCode) {
+    similarity += 30;
+  }
+
+  return Math.min(100, similarity);
 }
 
 class AcreOSValuationModel {
@@ -329,14 +409,19 @@ class AcreOSValuationModel {
         adjustedValue *= (1 + adj.adjustment / 100);
       }
 
-      // Step 4: Use GPT-4 for qualitative analysis
+      // Step 4: Use GPT-4 for qualitative analysis — ADVISORY ONLY. Its
+      // suggested % is NOT folded into the headline number: a "comparable
+      // sales" figure must be defensible from the comps + explicit
+      // adjustments alone (charter §5.5 provenance). The LLM's take and its
+      // reasoning are surfaced separately in `aiAdvisory` so nothing about the
+      // number is hidden.
       const aiEnhancement = await this.getAIValuationEnhancement(
         request,
         comparables,
         adjustedValue
       );
 
-      const finalValue = adjustedValue * (1 + aiEnhancement.adjustment / 100);
+      const finalValue = adjustedValue;
       const pricePerAcre = finalValue / request.acres;
 
       // Step 5: Calculate confidence interval
@@ -346,10 +431,12 @@ class AcreOSValuationModel {
         high: finalValue * (1 + volatility),
       };
 
-      // Calculate overall confidence
-      const confidence = this.calculateConfidence(
+      // Calculate overall confidence. nearestDistance is null for the land
+      // comps corpus (no lat/long) — the proximity bonus is only awarded when a
+      // real distance is known, never off a fabricated 0.
+      const confidence = computeConfidence(
         comparables.length,
-        comparables[0].distance,
+        comparables[0]?.distance ?? null,
         volatility
       );
 
@@ -408,9 +495,13 @@ class AcreOSValuationModel {
           high: Math.round(confidenceInterval.high),
         },
         confidence,
-        methodology: 'AcreOS Valuation Model v1.1 (comparable sales + market adjustments)',
+        methodology: 'AcreOS Valuation Model v1.1 (comparable sales + market adjustments; AI take advisory only)',
         comparables,
         marketAdjustments: adjustments,
+        aiAdvisory: {
+          suggestedAdjustmentPct: aiEnhancement.adjustment,
+          reasoning: aiEnhancement.reasoning,
+        },
       };
     } catch (error) {
       logger.error('Valuation generation failed', error);
@@ -725,22 +816,27 @@ Base your estimate on typical rural land market conditions in ${county} County, 
       const comparablesWithScores = transactions
         .map(t => {
           const compAcres = Number(t.sizeAcres);
-          const similarity = this.calculateSimilarity(
+          const similarity = computeSimilarity(
             acres,
             location,
             compAcres,
-            { state: t.state, county: t.county, zipCode: '' }
+            { state: t.state, county: t.county ?? undefined, zipCode: '' }
           );
 
           return {
             propertyId: t.transactionHash,
             salePrice: Number(t.salePrice),
             pricePerAcre: Number(t.pricePerAcre),
-            distance: 0,
+            // Distance is genuinely UNKNOWN — the corpus has no lat/long. Record
+            // null, never a placeholder 0 (a fake 0 made every comp read as
+            // "within 5 miles" and auto-inflated confidence by +15).
+            distance: null as number | null,
             similarity,
           };
         })
-        .filter(c => c.distance <= maxDistance)
+        // No geographic filter is possible without coordinates; comps are
+        // ranked on county/state + acreage similarity alone.
+        .filter(c => c.distance === null || c.distance <= maxDistance)
         .sort((a, b) => b.similarity - a.similarity) // Sort by similarity
         .slice(0, maxResults);
 
@@ -775,37 +871,6 @@ Base your estimate on typical rural land market conditions in ${county} County, 
 
   private toRadians(degrees: number): number {
     return degrees * (Math.PI / 180);
-  }
-
-  /**
-   * Calculate similarity score between properties
-   */
-  private calculateSimilarity(
-    acres1: number,
-    location1: ValuationRequest['location'],
-    acres2: number,
-    location2: any
-  ): number {
-    let similarity = 0;
-
-    // Acreage similarity (40 points)
-    const acreRatio = Math.min(acres1, acres2) / Math.max(acres1, acres2);
-    similarity += acreRatio * 40;
-
-    // Same county (30 points)
-    if (location1.county === location2.county) {
-      similarity += 30;
-    } else if (location1.state === location2.state) {
-      // Same state but different county (15 points)
-      similarity += 15;
-    }
-
-    // Zip code proximity (30 points)
-    if (location1.zipCode === location2.zipCode) {
-      similarity += 30;
-    }
-
-    return Math.min(100, similarity);
   }
 
   /**
@@ -993,27 +1058,6 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
   /**
    * Calculate overall confidence score
    */
-  private calculateConfidence(
-    comparableCount: number,
-    nearestDistance: number,
-    volatility: number
-  ): number {
-    let confidence = 50;
-
-    // More comparables = higher confidence (up to +30)
-    confidence += Math.min(30, comparableCount * 3);
-
-    // Closer comparables = higher confidence (up to +15)
-    if (nearestDistance < 5) confidence += 15;
-    else if (nearestDistance < 15) confidence += 10;
-    else if (nearestDistance < 30) confidence += 5;
-
-    // Lower volatility = higher confidence (up to +15)
-    const volatilityScore = Math.max(0, (0.5 - volatility) * 30);
-    confidence += volatilityScore;
-
-    return Math.max(10, Math.min(95, confidence));
-  }
 
   /**
    * Bulk import transactions from external source

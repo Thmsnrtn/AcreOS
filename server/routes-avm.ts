@@ -118,7 +118,11 @@ router.post('/property/:propertyId', async (req: AuthenticatedRequest, res: Resp
       },
       characteristics: {
         zoning: property.zoning || undefined,
-        waterRights: property.utilities?.water || undefined,
+        // Do NOT infer water RIGHTS from municipal water AVAILABILITY — they are
+        // different things (a legal entitlement vs. a utility hookup), and the
+        // conflation handed a +15% "water rights" bump to any parcel with city
+        // water. Water rights are unknown here until a real source populates them.
+        waterRights: undefined,
         utilities,
         roadAccess: property.roadAccess || undefined,
         topography: property.terrain || undefined,
