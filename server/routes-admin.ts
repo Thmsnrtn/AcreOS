@@ -4541,15 +4541,20 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const target = await db.query.organizations.findFirst({ where: eq(organizations.id, targetOrgId) });
       if (!target) return Errors.notFound(res, "Organization");
 
-      const founderUserId = getClerkAuth(req)?.userId ?? (req.user as any)?.clerkUserId ?? (req.user as any)?.id ?? null;
-      if (!founderUserId) return Errors.unauthorized(res);
+      // CRITICAL: the token's founderUserId must be the SAME identity domain
+      // getOrCreateOrg compares against — it reads `req.user.id` (the DB user
+      // UUID), NOT the Clerk id. Minting with the Clerk id would make
+      // `session.founderUserId === userId` never true, silently disabling the
+      // whole mechanism (built-but-unwired). Use the DB user id here.
+      const founderDbUserId = String((req.user as any)?.id ?? "");
+      if (!founderDbUserId) return Errors.unauthorized(res);
 
       // Mint a REAL, enforced token — getOrCreateOrg swaps the org for THIS
       // founder and blocks every mutation. Fabricated readOnly/expiry claims are
       // gone: what we return is exactly what the middleware enforces.
       const { mintImpersonationToken, IMPERSONATION_COOKIE, IMPERSONATION_TTL_MS } =
         await import("./services/impersonation");
-      const minted = mintImpersonationToken(String(founderUserId), targetOrgId, Date.now());
+      const minted = mintImpersonationToken(founderDbUserId, targetOrgId, Date.now());
       if (!minted) {
         return Errors.internal(res, new Error("Impersonation signing secret not configured (SESSION_SECRET)"));
       }
@@ -4565,7 +4570,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       try {
         const { chainAndInsertAuditEvent } = await import("./utils/auditEventsChain");
         await chainAndInsertAuditEvent({
-          actorUserId: String(founderUserId),
+          actorUserId: getClerkAuth(req)?.userId ?? founderDbUserId,
           actorEmail: (req.user as any)?.email ?? null,
           action: "impersonation_started",
           targetType: "organization",

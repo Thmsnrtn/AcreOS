@@ -319,8 +319,13 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     } catch {
       /* non-fatal */
     }
-  } else if (isFounder && !org.isFounder) {
-    // Upgrade existing org to founder status
+  } else if (!impersonation && isFounder && !org.isFounder) {
+    // Upgrade existing org to founder status.
+    // NEVER during impersonation: `org` is then the TARGET tenant, and this
+    // would permanently convert that customer into a founder/enterprise org
+    // (cross-tenant reach + unlimited credits) on a mere read. The read-only
+    // guard blocks the request handler by method, not this middleware write —
+    // so it must be gated here explicitly.
     await db
       .update(organizations)
       .set({
@@ -349,9 +354,10 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // last-seen time (it was never written, so every org read as "no activity" /
   // high churn risk). Throttled to ~15 min and fire-and-forget — never block or
   // fail the request on a heartbeat write miss.
+  // Skip during impersonation — never stamp activity on the impersonated tenant.
   const HEARTBEAT_MS = 15 * 60 * 1000;
   const lastActiveTs = org.lastActiveAt ? new Date(org.lastActiveAt).getTime() : 0;
-  if (Date.now() - lastActiveTs > HEARTBEAT_MS) {
+  if (!impersonation && Date.now() - lastActiveTs > HEARTBEAT_MS) {
     db.update(organizations)
       .set({ lastActiveAt: new Date() })
       .where(eq(organizations.id, org.id))

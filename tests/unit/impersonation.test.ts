@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   mintImpersonationToken,
   verifyImpersonationToken,
@@ -47,7 +49,40 @@ describe("impersonation token", () => {
     for (const m of ["POST", "PUT", "PATCH", "DELETE", "post"]) expect(isMutatingMethod(m)).toBe(true);
     for (const m of ["GET", "HEAD", "OPTIONS", "get"]) expect(isMutatingMethod(m)).toBe(false);
   });
+});
 
+/**
+ * Regression guard for the two bugs the adversarial security review found:
+ * getOrCreateOrg performs org-state writes (founder self-upgrade + activity
+ * heartbeat) AFTER the org is swapped, which during impersonation would mutate
+ * the TARGET tenant on a mere GET — outside the method-based read-only guard.
+ * A full middleware integration test needs a live DB; this pins the source
+ * invariant that both writes are gated on `!impersonation`, and that the token
+ * is minted with the same identity domain getOrCreateOrg compares (DB user id).
+ */
+describe("impersonation middleware write-safety (source invariants)", () => {
+  const mw = readFileSync(resolve(__dirname, "../../server/middleware/getOrCreateOrg.ts"), "utf8");
+  const admin = readFileSync(resolve(__dirname, "../../server/routes-admin.ts"), "utf8");
+
+  it("gates the founder self-upgrade on !impersonation", () => {
+    expect(mw).toMatch(/}\s*else if \(!impersonation && isFounder && !org\.isFounder\)/);
+  });
+
+  it("gates the activity heartbeat on !impersonation", () => {
+    expect(mw).toMatch(/if \(!impersonation && Date\.now\(\) - lastActiveTs > HEARTBEAT_MS\)/);
+  });
+
+  it("compares the token founderUserId against the same domain it is minted with", () => {
+    // getOrCreateOrg compares session.founderUserId === userId (userId = user.id, DB UUID)
+    expect(mw).toMatch(/session\.founderUserId === userId/);
+    // the mint must therefore use the DB user id, not the Clerk id
+    expect(admin).toMatch(/founderDbUserId = String\(\(req\.user as any\)\?\.id/);
+    expect(admin).toMatch(/mintImpersonationToken\(founderDbUserId,/);
+  });
+});
+
+describe("impersonation token (secret fallback)", () => {
+  const NOW = 1_000_000_000_000;
   it("fails safe (returns null) when no signing secret is configured", () => {
     const saved = process.env.SESSION_SECRET;
     const savedClerk = process.env.CLERK_SECRET_KEY;
