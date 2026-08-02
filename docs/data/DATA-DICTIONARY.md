@@ -5,6 +5,15 @@
 > re-runnable via the approach described in `docs/audit/PLATFORM-AUDIT.md` §3). This is a **code-side**
 > dictionary: it reflects what the schema declares and what the codebase references, not the live database.
 > Liveness = referenced by runtime (non-test) code outside the schema files themselves.
+>
+> **Known extraction gap (corrected by hand):** the automated extractor's regex matched
+> `export const <name> = pgTable`, which skipped one `: any`-annotated definition
+> (`founderChatBackgroundTasks` at `shared/schema.ts:2741`); its row is added below. The
+> **748** headline is the shared-scope ratchet count (`scripts/ratchets/table-count.json`,
+> globs `shared/**/*.ts`). Enumerated repo-wide, this dictionary lists **749** real `pgTable`
+> definitions: 500 in `shared/schema.ts` + 244 in `shared/schema/` + 4 in `shared/models/`
+> (= 748 in the ratchet's `shared/` scope) **plus** 1 out-of-scope rogue in server code
+> (`atlas_tool_usage`, `server/services/atlasToolRegistry.ts:22`, imported by nothing).
 
 ## Totals
 
@@ -24,7 +33,7 @@
 `DDL` = where a CREATE TABLE exists: `mig` (migrations/), `mjs` (scripts/migrate.mjs — the path production actually runs), `both`, or `NONE`.
 `Refs` = runtime files referencing the table.
 
-## `shared/schema.ts` (499 tables)
+## `shared/schema.ts` (500 tables)
 
 | Table | Line | Cols | Org | FK | Idx | DDL | Refs | Liveness |
 |---|---|---|---|---|---|---|---|---|
@@ -269,6 +278,7 @@
 | `founder_ad_accounts` | 14193 | 10 | — | — | — | mig | 5 | live |
 | `founder_briefings` | 17257 | 11 | yes | — | yes | mig | 1 | live |
 | `founder_briefs` | 14647 | 6 | — | — | — | **NONE** | 0 | **DEAD** |
+| `founder_chat_background_tasks` | 2741 | 14 | — | yes | yes | mjs | 2 | live |
 | `founder_dependency_events` | 17539 | 12 | yes | — | yes | **NONE** | 1 | live |
 | `founder_digest_history` | 13672 | 16 | — | — | yes | mig | 1 | live |
 | `founder_drafts` | 15481 | 9 | — | — | yes | **NONE** | 1 | live |

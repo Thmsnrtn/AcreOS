@@ -61,7 +61,7 @@
 
 3. **Direct-mail pool debit keyed on `Date.now()` (INV-MONEY, ASP-3).**
    A client retry double-debits the customer's credit pool; money-out is still held by the interlock
-   but the ledger double-counts (`server/routes-outreach-mail.ts:451-459`).
+   but the ledger double-counts (`server/routes-outreach-mail.ts:449-459` — the `Date.now()` key is built at :449).
    *Remedy:* derive the debit `externalEventId` from request content + client `Idempotency-Key`.
 
 4. **Impersonation `readOnly`/`expiresAt` are unenforced JSON (INV-AUDIT-1, INV-TRUTH-1).**

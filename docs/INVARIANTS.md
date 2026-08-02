@@ -39,7 +39,7 @@ only payments AcreOS is a party to. *(Mirrors constitution `rails.customer-money
 Only Tier 1 ($0–500) is autonomous; every larger spend routes to the founder and never self-executes.
 *(Mirrors constitution `hard-stop.spend-over-500`.)*
 - **Enforcement:** code-invariant — `spendIsAutonomous` Tier-1-only + pre-AI amount block (`server/services/financialAuthorityGate.ts:98-178,290-312`, `server/services/autonomousDecisionExecutor.ts:572,611-616`), pinned by `tests/unit/spendHardStop.test.ts` + constitution ratchet.
-- **Gap:** lane-scoped — the support-agent `apply_billing_fix` tool moved uncapped platform-Stripe money outside both enforcement points (confirmed bypass; see `docs/audit/BLAST-RADIUS.md` B2). **Closing this is Phase 1 work.**
+- **Gap:** lane-scoped — the support-agent `apply_billing_fix` tool moved uncapped platform-Stripe money outside both enforcement points (confirmed bypass; see `docs/audit/BLAST-RADIUS.md` confirmed bypass #1). **Closing this is Phase 1 work.**
 
 ### INV-MONEY-3 — Absolute autonomous-spend ceiling
 Above the absolute cap (default $25,000) the system refuses to even *create* an approval record.
@@ -182,7 +182,7 @@ unwired scaffold (`server/services/publicWebhookDispatcher.ts:20-23` — zero ba
 ### ASP-3 — Universal idempotency on state-changing routes
 `idempotencyMiddleware` covers ~10 route groups (billing, e-sign, SMS, api-v1). Not universal:
 the direct-mail pool debit key embeds `Date.now()` (client retry double-debits,
-`server/routes-outreach-mail.ts:451-459`); phone-number purchase has no key; the middleware's
+`server/routes-outreach-mail.ts:449-459`); phone-number purchase has no key; the middleware's
 in-memory fallback store is per-process on a multi-machine Fly deploy.
 
 ### ASP-4 — Enforced audit coverage on every blast-radius path
