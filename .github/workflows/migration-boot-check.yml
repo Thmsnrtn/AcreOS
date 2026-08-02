@@ -1,0 +1,57 @@
+# Boot-and-SELECT migration check.
+#
+# Applies the migration path to a CLEAN pgvector database and asserts every
+# pgTable declared in code exists — the check that would have caught the 95
+# "declared but never created" orphan tables and the users-table drift.
+#
+# PREPARED, NOT YET A REQUIRED GATE. It runs on manual dispatch today so it can
+# be exercised and its orphan list burned down (see docs/migration-cutover-plan.md
+# step 5) before it becomes a required check. Uncomment the `pull_request` trigger
+# to run it on schema changes once the orphan count is 0.
+name: migration-boot-check
+
+on:
+  workflow_dispatch: {}
+  # pull_request:
+  #   paths:
+  #     - "shared/schema.ts"
+  #     - "shared/schema/**"
+  #     - "shared/models/**"
+  #     - "scripts/migrate.mjs"
+  #     - "migrations/**"
+
+jobs:
+  boot-check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: acreos
+          POSTGRES_PASSWORD: acreos
+          POSTGRES_DB: acreos_boot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U acreos"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_boot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci --no-audit --no-fund
+      # Enable pgvector so migrate.mjs's vector columns apply cleanly.
+      - name: Enable pgvector extension
+        run: psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+      # Apply the CURRENT production migration path against the clean DB.
+      # (Post-cutover this step becomes `npx drizzle-kit migrate`.)
+      - name: Apply migrations (prod path)
+        run: node scripts/migrate.mjs
+      # Assert every declared pgTable now exists — fail on any orphan.
+      - name: Verify every declared table exists
+        run: node scripts/verify-schema-boot.mjs

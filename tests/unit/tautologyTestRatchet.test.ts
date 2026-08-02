@@ -22,9 +22,11 @@ import { join } from "node:path";
  * delete its entry from TAUTOLOGY_BASELINE below.
  */
 
-// A test "imports app code" if it pulls from server/shared/client (relative or alias).
+// A test "imports app code" if it pulls from server/shared/client/scripts
+// (relative or alias). `scripts/` counts: those .mjs helpers are real code a
+// test can genuinely exercise (e.g. schema discovery, the boot verifier).
 const APP_IMPORT =
-  /(from\s+|import\s*\(?\s*|require\s*\(\s*)["'](\.\.\/\.\.\/(server|shared|client)\/|@shared\/|@\/|@sovereign\/|@content\/|@acreos\/)/;
+  /(from\s+|import\s*\(?\s*|require\s*\(\s*)["'](\.\.\/\.\.\/(server|shared|client|scripts)\/|@shared\/|@\/|@sovereign\/|@content\/|@acreos\/)/;
 // fs source/config scanners are legitimately app-code-free.
 const FS_IMPORT = /(from|require\(|import\()\s*["'](node:fs|fs|node:fs\/promises)["']/;
 
@@ -44,11 +46,11 @@ const TAUTOLOGY_BASELINE: readonly string[] = [
   "cashFlowForecaster.test.ts", "certification.test.ts", "changePassword.test.ts",
   "churnEngine.test.ts", "cohortAnalysis.test.ts", "commissionService.test.ts",
   "complianceAutomation.test.ts", "contextualComments.test.ts", "costBasisTracker.test.ts",
-  "countyBrokerNormalizer.test.ts", "countyRecordingFees.test.ts", "dataIntegrity.test.ts",
+  "countyRecordingFees.test.ts", "dataIntegrity.test.ts",
   "ddReportGenerator.test.ts", "dealFeedEngine.test.ts", "dealHunter.test.ts",
   "dealPatternCloning.test.ts", "depreciationService.test.ts", "dispositionOptimizer.test.ts",
   "doddFrankChecker.test.ts", "dunningService.test.ts", "encryption.test.ts",
-  "exchange1031.test.ts", "flyNightMode.test.ts", "founder-finance.test.ts",
+  "exchange1031.test.ts", "founder-finance.test.ts",
   "freedomCalculator.test.ts", "gdprService.test.ts", "gradientBoostingModel.test.ts",
   "import.test.ts", "integrationCredentials.test.ts", "investorVerification.test.ts",
   "landCredit.test.ts", "landCreditBadge.test.ts", "leadEnrichment.test.ts",
