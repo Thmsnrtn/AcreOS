@@ -54,6 +54,49 @@ export const MONEY_MUTATING_BILLING_FIXES = [
   "cancel_pending_invoice",
 ] as const;
 
+/**
+ * Support tools that mutate privileged infrastructure or destroy data. These
+ * are OPERATOR actions and must never be offered to the customer-driven
+ * interactive agent (`processSupportChat`) — a prompt-injected support chat
+ * could otherwise clear caches, invalidate sessions, or (worst) call
+ * `repair_orphaned_records` with `dry_run:false`, which DELETES records. Such
+ * work escalates to a human instead. The autonomous resolver already restricts
+ * itself via RESOLVER_TOOL_NAMES; this is the interactive-lane equivalent.
+ */
+export const INTERACTIVE_BLOCKED_SUPPORT_TOOLS: readonly string[] = [
+  "apply_bulk_fix",
+  "apply_self_healing_fix",
+  "clear_org_cache",
+  "fix_common_issue",
+  "fix_data_integrity_issue",
+  "invalidate_user_sessions",
+  "refresh_auth_tokens",
+  "repair_orphaned_records",
+  "reset_user_preferences",
+  "resync_stripe",
+  "retry_failed_jobs",
+  "trigger_data_resync",
+  "unlock_stuck_jobs",
+];
+
+/**
+ * Default-deny guard rail (enforced by supportInteractiveToolGate.test.ts): any
+ * tool whose name begins with a destructive verb must be blocked from the
+ * interactive lane unless it is on the reviewed-safe exceptions list — so a
+ * NEW `apply_*`/`repair_*`/`delete_*`/… tool cannot silently reach a customer
+ * chat without a conscious classification.
+ */
+export const DESTRUCTIVE_TOOL_NAME_PREFIXES: readonly string[] = [
+  "apply_", "fix_", "repair_", "reset_", "clear_", "invalidate_",
+  "refresh_", "retry_", "trigger_", "unlock_", "resync_", "purge_",
+  "delete_", "drop_", "wipe_",
+];
+
+/** Destructive-prefixed tools reviewed and confirmed safe for the interactive lane. */
+export const DESTRUCTIVE_PREFIX_SAFE_EXCEPTIONS: readonly string[] = [
+  "apply_billing_fix", // money-guarded above; only sends a self-service link
+];
+
 export const supportToolDefinitions = {
   search_knowledge_base: {
     name: "search_knowledge_base",
@@ -5186,10 +5229,15 @@ export async function processSupportChat(
   userId: string,
   ticketId: number
 ): Promise<{ response: string; toolsUsed: string[]; actionsPerformed: any[] }> {
-  const tools = Object.values(supportToolDefinitions).map(tool => ({
-    type: "function" as const,
-    function: tool
-  }));
+  // Interactive lane is customer-driven: never offer operator-only destructive
+  // tools (INTERACTIVE_BLOCKED_SUPPORT_TOOLS). Such work escalates to a human.
+  const blocked = new Set(INTERACTIVE_BLOCKED_SUPPORT_TOOLS);
+  const tools = Object.values(supportToolDefinitions)
+    .filter(tool => !blocked.has((tool as { name: string }).name))
+    .map(tool => ({
+      type: "function" as const,
+      function: tool
+    }));
   
   const previousMessages = await db.select()
     .from(supportTicketMessages)

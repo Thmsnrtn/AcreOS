@@ -39,6 +39,11 @@
 
 > **Status — Phase 1 Wave 1 (closed):** #1, #2, and #3 below are fixed and test-pinned
 > (`supportAgentMoneyGuard`, `agentSkillsMailLane`, `mailDebitKey` + `consentCheckboxHonesty`).
+> **Wave 2 (closed):** the interactive support catalog no longer offers operator-only destructive
+> tools (`repair_orphaned_records` dry_run:false deletes records, `invalidate_user_sessions`,
+> `apply_bulk_fix`, `clear_org_cache`, `resync_stripe`, …) to the customer-driven LLM —
+> `INTERACTIVE_BLOCKED_SUPPORT_TOOLS` filter + a default-deny ratchet on destructive-verb tool
+> names (`supportInteractiveToolGate.test.ts`), completing the audit's allowlist remedy for #1.
 > #4 (impersonation) and #5 (webhook retry) remain; the broader 42-call-site counterparty-mail
 > ratchet and the `purpose`-required default are still owed.
 
