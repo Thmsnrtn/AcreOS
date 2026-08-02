@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { openAICircuitBreaker, CircuitOpenError } from "./circuitBreaker";
 import { logger } from "./logger";
+import { meterChatCompletions } from "./aiClientMetering";
 
 let openaiClient: OpenAI | null = null;
 let warnedNoKey = false;
@@ -40,6 +41,11 @@ export function getOpenAIClient(): OpenAI | null {
       baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
       defaultHeaders: { "HTTP-Referer": "https://acreos.fly.dev", "X-Title": "AcreOS" },
     });
+    // Meter the raw-client callsites (the ~23 files that call this helper
+    // directly, outside routeAITask) so their token spend lands in the same
+    // telemetry the cost dashboards + platform budget read. aiRouter builds its
+    // own clients, so this can never double-count. Best-effort, non-blocking.
+    openaiClient = meterChatCompletions(openaiClient);
   }
   return openaiClient;
 }

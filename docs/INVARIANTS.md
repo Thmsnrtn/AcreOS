@@ -148,6 +148,17 @@ tables are counted debt that may only shrink.
 
 ## 10. Expansion gates & AI surface
 
+### INV-AI-COST-1 — Platform AI spend is observable (partial → improving)
+Every AI completion should land in the cost telemetry the founder's dashboards and the platform
+budget read, so spend can never run away invisibly.
+- **Enforcement:** code — `aiRouter` meters its own path (`recordAiCall`); **Phase 1 Wave 6** added a
+  metering shim (`server/utils/aiClientMetering.ts`) on the raw-client chokepoint
+  (`getOpenAIClient`), so the ~23 bypass callsites' token spend now posts to the same sink
+  (`tests/unit/aiClientMetering.test.ts`). Double-count-safe (aiRouter builds its own clients).
+- **Gap:** the shim *counts* bypass spend but does not yet *cap* it (bypass calls skip the
+  pre-flight ceiling check) and skips streaming calls; capping + streaming are completed by the full
+  `routeAITask` migration (still owed). Per-org attribution is null for raw-client calls.
+
 ### INV-EXPANSION-1 — No marketplace before ~25 customers; no public API before ~50
 - **Enforcement:** prose-only with structural friction — marketplace behind `featureGate('feature_marketplace')` (`server/routes.ts:1323`); the api-v1 router deliberately unmounted, pinned as the reachability ratchet's single allowed unmounted route.
 - **Gap:** no automated customer-count gate; the constitution labels this governance debt honestly.
