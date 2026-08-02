@@ -256,27 +256,13 @@ const SHARED_DIR = join(REPO_ROOT, "shared");
 // File discovery
 // ----------------------------------------------------------------------------
 
+import { discoverSchemaFiles } from "./schema-files.mjs";
+
+// Unified with the runtime drift detector and the column-ref validator: the
+// canonical set now includes shared/models/*.ts, so the `users` table is
+// finally covered by this shard-readiness lint too (schema-files.mjs).
 function findSchemaFiles() {
-  const files = [];
-  // shared/schema.ts + shared/schema-*.ts
-  for (const entry of readdirSync(SHARED_DIR)) {
-    const full = join(SHARED_DIR, entry);
-    if (!statSync(full).isFile()) continue;
-    if (entry === "schema.ts") files.push(full);
-    else if (entry.startsWith("schema-") && entry.endsWith(".ts")) {
-      files.push(full);
-    }
-  }
-  // shared/schema/*.ts (excluding test files)
-  const subdir = join(SHARED_DIR, "schema");
-  if (statSync(subdir, { throwIfNoEntry: false })?.isDirectory()) {
-    for (const entry of readdirSync(subdir)) {
-      if (!entry.endsWith(".ts")) continue;
-      if (entry.endsWith(".test.ts") || entry.endsWith(".spec.ts")) continue;
-      files.push(join(subdir, entry));
-    }
-  }
-  return files.sort();
+  return discoverSchemaFiles();
 }
 
 // ----------------------------------------------------------------------------

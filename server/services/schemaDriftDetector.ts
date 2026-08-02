@@ -20,6 +20,9 @@ import { Project, Node } from "ts-morph";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// @ts-expect-error — pure-Node .mjs helper, no type decls
+import { discoverSchemaFiles } from "../../scripts/schema-files.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SCHEMA_FILE = path.resolve(__dirname, "../../shared/schema.ts");
@@ -36,8 +39,21 @@ function indexSchemaSource(): Map<string, Set<string>> {
     skipFileDependencyResolution: true,
     skipAddingFilesFromTsConfig: true,
   });
-  const source = project.addSourceFileAtPath(SCHEMA_FILE);
+  // Unified discovery (scripts/schema-files.mjs): schema.ts + schema/*.ts +
+  // models/*.ts, so drift on the `users` table (shared/models/auth.ts) — the
+  // one that caused the production login outages — is finally detected too.
+  // Falls back to shared/schema.ts alone if the helper resolves nothing (e.g. a
+  // bundled runtime where only that path exists).
+  const schemaFiles: string[] = (discoverSchemaFiles() as string[]);
+  const filesToIndex = schemaFiles.length > 0 ? schemaFiles : [SCHEMA_FILE];
   const tables = new Map<string, Set<string>>();
+  for (const schemaFile of filesToIndex) {
+    let source;
+    try {
+      source = project.addSourceFileAtPath(schemaFile);
+    } catch {
+      continue; // unreadable in this context — skip, never crash the daily job
+    }
   for (const v of source.getVariableStatements()) {
     for (const decl of v.getDeclarations()) {
       const init = decl.getInitializer();
@@ -66,6 +82,7 @@ function indexSchemaSource(): Map<string, Set<string>> {
       }
       tables.set(tableName, cols);
     }
+  }
   }
   return tables;
 }

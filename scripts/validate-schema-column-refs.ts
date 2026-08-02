@@ -31,10 +31,12 @@ import fs from "node:fs";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+// @ts-expect-error — pure-Node .mjs helper, no type decls
+import { discoverSchemaFiles } from "./schema-files.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..");
-const SCHEMA_FILE = path.join(REPO_ROOT, "shared/schema.ts");
 
 interface Violation {
   file: string;
@@ -44,39 +46,45 @@ interface Violation {
   context: string;
 }
 
-// ── Build the table → columns index from shared/schema.ts ────────────
+// ── Build the table → columns index from ALL schema files ────────────
 //
-// We parse the schema source and pick up every `export const X =
-// pgTable("...", { col1: ..., col2: ... })` declaration. Each
-// becomes an entry in our column-name set.
+// We parse every canonical schema source (schema.ts + schema/*.ts +
+// models/*.ts — see scripts/schema-files.mjs) and pick up every
+// `export const X = pgTable("...", { col1: ..., col2: ... })`. Previously this
+// read only shared/schema.ts, so refs to the 244 split-module and 4
+// shared/models tables (including `users`) were silently skipped — the same
+// blind spot that let the users-table drift ship. Keying by const name is
+// safe: every table const is unique across the barrel.
 function buildSchemaIndex(): Map<string, Set<string>> {
   const project = new Project({
     skipFileDependencyResolution: true,
     skipAddingFilesFromTsConfig: true,
   });
-  const source = project.addSourceFileAtPath(SCHEMA_FILE);
   const tables = new Map<string, Set<string>>();
 
-  for (const v of source.getVariableStatements()) {
-    for (const decl of v.getDeclarations()) {
-      const init = decl.getInitializer();
-      if (!init || !Node.isCallExpression(init)) continue;
-      const expr = init.getExpression().getText();
-      if (expr !== "pgTable") continue;
-      const args = init.getArguments();
-      if (args.length < 2) continue;
-      const colsArg = args[1];
-      if (!Node.isObjectLiteralExpression(colsArg)) continue;
-      const tableConstName = decl.getName();
-      const cols = new Set<string>();
-      for (const p of colsArg.getProperties()) {
-        if (Node.isPropertyAssignment(p)) {
-          cols.add(p.getName());
-        } else if (Node.isShorthandPropertyAssignment(p)) {
-          cols.add(p.getName());
+  for (const schemaFile of discoverSchemaFiles() as string[]) {
+    const source = project.addSourceFileAtPath(schemaFile);
+    for (const v of source.getVariableStatements()) {
+      for (const decl of v.getDeclarations()) {
+        const init = decl.getInitializer();
+        if (!init || !Node.isCallExpression(init)) continue;
+        const expr = init.getExpression().getText();
+        if (expr !== "pgTable") continue;
+        const args = init.getArguments();
+        if (args.length < 2) continue;
+        const colsArg = args[1];
+        if (!Node.isObjectLiteralExpression(colsArg)) continue;
+        const tableConstName = decl.getName();
+        const cols = new Set<string>();
+        for (const p of colsArg.getProperties()) {
+          if (Node.isPropertyAssignment(p)) {
+            cols.add(p.getName());
+          } else if (Node.isShorthandPropertyAssignment(p)) {
+            cols.add(p.getName());
+          }
         }
+        tables.set(tableConstName, cols);
       }
-      tables.set(tableConstName, cols);
     }
   }
   return tables;
@@ -269,7 +277,7 @@ function main() {
   const stagedOnly = process.argv.includes("--staged");
   const updateBaseline = process.argv.includes("--update-baseline");
 
-  console.log("Building schema index from shared/schema.ts ...");
+  console.log("Building schema index from all schema files (schema.ts + schema/*.ts + models/*.ts) ...");
   const schema = buildSchemaIndex();
   console.log(`  found ${schema.size} tables, ${[...schema.values()].reduce((n, s) => n + s.size, 0)} columns.`);
 
