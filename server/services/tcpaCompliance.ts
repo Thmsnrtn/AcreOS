@@ -4,6 +4,7 @@ import { leads, activityLog } from "@shared/schema";
 import { eq, and, ilike } from "drizzle-orm";
 import type { Lead } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { detectOptSignal } from "./compliance/optOut";
 
 // ─── TCPA QUIET-HOURS NOTE ────────────────────────────────────────────────────
 // TCPA § 64.1200(c)(1) and most state mini-TCPAs require contact between
@@ -224,22 +225,16 @@ export function isWithinQuietHoursForLead(
   return isWithinQuietHours(phone, lead.timezone ?? null);
 }
 
-// STOP keywords per CTIA/TCPA guidelines
-const STOP_KEYWORDS = new Set([
-  'stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit', 'optout', 'opt-out',
-]);
-
-const START_KEYWORDS = new Set(['start', 'yes', 'unstop', 'optin', 'opt-in']);
-
 /**
  * Detect if an inbound SMS is an opt-out or opt-in signal.
  * Returns: 'opt_out' | 'opt_in' | null
+ *
+ * Delegates to the canonical detector (server/services/compliance/optOut.ts),
+ * which unifies the keyword set (now including "revoke") and honors
+ * natural-language revocations per the April-2025 FCC any-reasonable-means rule.
  */
 export function detectOptKeyword(messageBody: string): 'opt_out' | 'opt_in' | null {
-  const normalized = messageBody.trim().toLowerCase().replace(/[^a-z-]/g, '');
-  if (STOP_KEYWORDS.has(normalized)) return 'opt_out';
-  if (START_KEYWORDS.has(normalized)) return 'opt_in';
-  return null;
+  return detectOptSignal(messageBody);
 }
 
 /**

@@ -41,7 +41,9 @@ import { twilioProvider } from "./comms/providers/twilio";
 // the router even though no caller uses it directly today.
 import "./comms/providers/telnyx";
 
-const SMS_STOP_WORDS = new Set(["stop", "stopall", "unsubscribe", "cancel", "end", "quit"]);
+// Revocation detection is unified in the canonical opt-out module (includes
+// "revoke" + natural-language refusals). See server/services/compliance/optOut.ts.
+import { detectOptSignal } from "./compliance/optOut";
 
 /**
  * Pillar 1.6 — per-segment Twilio SMS cost in cents.
@@ -407,7 +409,7 @@ export async function handleIncomingSMS(
   // still saw consent=null & would have shipped. That's a $1500/violation
   // TCPA exposure per lead per mailing.
   const normalizedBody = body.trim().toLowerCase();
-  if (SMS_STOP_WORDS.has(normalizedBody)) {
+  if (detectOptSignal(body) === "opt_out") {
     const allLeadsInOrg = await db
       .select()
       .from(leads)
