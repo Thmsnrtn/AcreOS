@@ -3729,7 +3729,45 @@ export async function executeSupportTool(
         // loop — refuse BEFORE any Stripe/db call, regardless of how the tool was
         // invoked or whether the enum is ever widened again. Closes the Phase-0
         // CRITICAL bypass (uncapped, ungated, un-audited platform-Stripe money).
+        //
+        // The founder-adjustable SUPPORT_CREDIT_AUTONOMY knob only chooses the
+        // REFUSAL STYLE: "off" (default) refuses plainly; "propose" additionally
+        // logs a founder-visible proposal. NEITHER moves money — applying a
+        // credit is always the founder's action.
         if ((MONEY_MUTATING_BILLING_FIXES as readonly string[]).includes(fix_type)) {
+          let level: "off" | "propose" = "off";
+          try {
+            const { getSupportCreditAutonomy } = await import("../services/supportCreditAutonomy");
+            level = await getSupportCreditAutonomy();
+          } catch {
+            /* fail safe to "off" */
+          }
+          if (level === "propose") {
+            try {
+              const { chainAndInsertAuditEvent } = await import("../utils/auditEventsChain");
+              await chainAndInsertAuditEvent({
+                actorUserId: null,
+                actorEmail: null,
+                action: "support_credit_proposed",
+                targetType: "organization",
+                targetId: String(org.id),
+                justification:
+                  `support AI proposed billing fix '${fix_type}'` +
+                  (ticketId ? ` on ticket ${ticketId}` : ""),
+                metadata: { fixType: fix_type, ticketId: ticketId ?? null },
+                ip: null,
+                userAgent: null,
+              });
+            } catch {
+              /* audit is best-effort — never fail the tool call on it */
+            }
+            return {
+              success: false,
+              error:
+                "This billing credit needs founder approval — it has been logged for " +
+                "the founder to review. No credit has been applied.",
+            };
+          }
           return {
             success: false,
             error:

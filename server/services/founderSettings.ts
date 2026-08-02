@@ -69,6 +69,19 @@ export const KNOBS: KnobDefinition[] = [
     units: "hours",
   },
   {
+    key: "SUPPORT_CREDIT_AUTONOMY",
+    valueType: "string",
+    defaultValue: "off",
+    description:
+      "How much the support AI may do about a customer billing credit. " +
+      "'off' (default): it can never touch credits — a credit request is refused " +
+      "and escalated to you. 'propose': it still cannot move money, but it logs a " +
+      "founder-visible proposal (fix, ticket, reason) for you to approve or decline. " +
+      "Money is NEVER moved autonomously under any setting — applying a credit is " +
+      "always your action.",
+    category: "safety",
+  },
+  {
     key: "AUTO_EXECUTE_THRESHOLD",
     valueType: "number",
     defaultValue: "75",
