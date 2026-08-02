@@ -6,8 +6,21 @@ gated, with written reactivation criteria), or **KEEP** (not speculative —
 load-bearing for the wedge or the autopilot). Verdicts were established by
 code inventory: mounted-ness, UI reachability, imports from core, and
 whether the backing data is real or synthetic. Execute KILLs in H2; record
-each execution in place with a date and commit SHA. Codebase targets:
-≤600K LOC / ≤450 tables by end of H2.*
+each execution in place with a date and commit SHA.*
+
+> **Ruling 2026-08-02 (founder-delegated during the Phase-0/1 charter work) —
+> the ≤600K LOC / ≤450 tables H2 deadline is RETIRED, the down-only discipline
+> STANDS.** The original targets (≤600K LOC / ≤450 tables by end of H2) were set
+> before ruling #11 (2026-07-28, "build ALL registered verticals fully"), which
+> deliberately grew the repo to ~1.04M LOC / 748 tables. Those two founder
+> decisions were in direct conflict. Resolution: **hold the line, not force a
+> shrink.** The `table-count` ratchet stays strict-**down** at its current
+> baseline (748) so the schema can only shrink, never grow, and consolidation
+> continues opportunistically (dead tables, duplicate clusters) — but there is no
+> ≤450 deadline to hit and no dedicated deletion campaign is scheduled against the
+> moat/safety work. If a future founder decision wants an active shrink program,
+> it re-opens here. Recorded per this ledger's own keep-in-sync rule; mirrored in
+> CLAUDE.md and `scripts/ratchets/table-count.json`.
 
 ## Verdict table
 

@@ -1,6 +1,6 @@
 {
   "name": "table-count",
-  "description": "Number of Drizzle pgTable() definitions across shared/. The mature-machine north star is a SMALLER schema (<=450 tables); today's count is far above it. This strict down-only ratchet makes the schema monotonic: adding a table fails CI until the baseline is deliberately bumped (a conscious 'yes we need this'), and every consolidation lowers the baseline toward the target. Founder-chosen 'strict' 2026-07-16.",
+  "description": "Number of Drizzle pgTable() definitions across shared/. This strict down-only ratchet makes the schema monotonic: adding a table fails CI until the baseline is deliberately bumped (a conscious 'yes we need this'), and every consolidation lowers the baseline. Founder-chosen 'strict' 2026-07-16. RULING 2026-08-02 (founder-delegated): the old '<=450 tables by end of H2' deadline is RETIRED (overtaken by ruling #11, build-all-verticals) — the down-only discipline STANDS but there is no target count to hit and no scheduled shrink campaign. See docs/company/deletion-ledger.md for the full ruling. Consolidate opportunistically; the baseline may only fall.",
   "pattern": "pgTable\\(",
   "globs": [
     "shared/**/*.ts"

@@ -93,6 +93,18 @@ These decisions are also mirrored, machine-readable, in `shared/governance/const
 - **Fabrication is never acceptable**: no invented numbers, no fake activity, no placeholder data presented as real. Refuse-not-fabricate everywhere (`lint:no-fabrication` gate).
 - **Hard-stops stay founder-only forever**: pricing changes, legal signing, spends >$500, customer-data deletion.
 
+## Schema size — down-only, no deadline (ruling 2026-08-02)
+
+The `table-count` ratchet (`scripts/ratchets/table-count.json`) is strict-**down**
+at its current baseline (748): a table may never be added without a deliberate
+baseline bump, and consolidation may only lower it. The earlier `≤450 tables by
+end of H2` deadline is **RETIRED** (founder-delegated ruling, recorded in
+`docs/company/deletion-ledger.md`) — it was overtaken by ruling #11
+(build-all-verticals, ~1.04M LOC / 748 tables). So: keep shrinking opportunistically
+(dead tables, duplicate clusters), never grow, but there is no target count to hit
+and no scheduled deletion campaign competing with moat/safety work. Re-opening an
+active shrink program is a new founder decision.
+
 ## Wave discipline — never trust a wave's self-report
 
 Large changes ship as "waves": a fleet of parallel agents with exclusive file
