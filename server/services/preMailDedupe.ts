@@ -17,12 +17,33 @@ import { db } from "../db";
 import { leads, properties, mailingOrderPieces, mailingOrders } from "@shared/schema";
 import { and, eq, inArray, gte, isNotNull, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import {
+  screenParcels,
+  hasActiveRules,
+  type DisqualifierRules,
+  type ParcelSignals,
+  type DisqualifierReason,
+  type DisqualifierCategory,
+} from "./parcelScreening";
 
 export interface PreMailDedupeInput {
   organizationId: number;
   leadIds: number[];
   /** Skip leads mailed within this many days (default 90). */
   recentMailWindowDays?: number;
+  /**
+   * Optional pre-spend parcel-quality screening (charter §7.2). OFF unless
+   * supplied with active rules — when absent the result is byte-identical to
+   * before. The caller supplies cached free-data signals per lead and the cost
+   * per piece; disqualified parcels move to the `parcelDisqualified` bucket and
+   * the projected spend saved is reported. Fail-open by construction (unknown
+   * signals never disqualify).
+   */
+  parcelScreening?: {
+    rules: DisqualifierRules;
+    signalsByLeadId: Record<number, ParcelSignals>;
+    costPerPieceCents: number;
+  };
 }
 
 export interface DedupedLead {
@@ -43,11 +64,19 @@ export interface PreMailDedupeResult {
     returnedMail: DedupedLead[];
     doNotContact: DedupedLead[];
     missingAddress: DedupedLead[];
+    /** Disqualified by parcel-quality screening (flood/wetlands/landlocked/slope). Empty unless screening ran. */
+    parcelDisqualified: DedupedLead[];
   };
   totals: {
     input: number;
     accepted: number;
     skipped: number;
+  };
+  /** Present only when parcel-quality screening ran (active rules supplied). */
+  parcelScreening?: {
+    spendSavedCents: number;
+    byCategory: Record<DisqualifierCategory, number>;
+    reasonsByLeadId: Record<number, DisqualifierReason[]>;
   };
 }
 
@@ -67,7 +96,7 @@ export async function runPreMailDedupe(
   if (leadIds.length === 0) {
     return {
       acceptedLeads: [],
-      skipped: { ownedParcel: [], recentlyMailed: [], returnedMail: [], doNotContact: [], missingAddress: [] },
+      skipped: { ownedParcel: [], recentlyMailed: [], returnedMail: [], doNotContact: [], missingAddress: [], parcelDisqualified: [] },
       totals: { input: 0, accepted: 0, skipped: 0 },
     };
   }
@@ -118,7 +147,7 @@ export async function runPreMailDedupe(
       skippedDnc.length + skippedMissing.length;
     return {
       acceptedLeads: [],
-      skipped: { ownedParcel: [], recentlyMailed: [], returnedMail: [], doNotContact: skippedDnc, missingAddress: skippedMissing },
+      skipped: { ownedParcel: [], recentlyMailed: [], returnedMail: [], doNotContact: skippedDnc, missingAddress: skippedMissing, parcelDisqualified: [] },
       totals: { input: leadIds.length, accepted: 0, skipped },
     };
   }
@@ -209,12 +238,41 @@ export async function runPreMailDedupe(
     acceptedLeads.push(lead);
   }
 
+  // 5. Optional pre-spend parcel-quality screening over the ACCEPTED leads.
+  //    OFF unless the caller supplies active rules — otherwise byte-identical.
+  //    Fail-open: a lead with no cached signals is never disqualified.
+  const skippedParcel: DedupedLead[] = [];
+  let parcelScreeningSummary: PreMailDedupeResult["parcelScreening"];
+  const screening = input.parcelScreening;
+  if (screening && hasActiveRules(screening.rules)) {
+    const items = acceptedLeads.map((l) => ({
+      id: l.id,
+      signals: screening.signalsByLeadId[l.id] ?? {},
+    }));
+    const result = screenParcels(items, screening.rules, screening.costPerPieceCents);
+    const disqualifiedIds = new Set(result.disqualified.map((d) => d.id));
+    const kept: DedupedLead[] = [];
+    for (const lead of acceptedLeads) {
+      if (disqualifiedIds.has(lead.id)) skippedParcel.push(lead);
+      else kept.push(lead);
+    }
+    // Replace the accepted set with the screened-in leads.
+    acceptedLeads.length = 0;
+    acceptedLeads.push(...kept);
+    parcelScreeningSummary = {
+      spendSavedCents: result.spendSavedCents,
+      byCategory: result.byCategory,
+      reasonsByLeadId: Object.fromEntries(result.disqualified.map((d) => [d.id, d.reasons])),
+    };
+  }
+
   const skippedTotal =
     skippedOwned.length +
     skippedRecent.length +
     skippedReturned.length +
     skippedDnc.length +
-    skippedMissing.length;
+    skippedMissing.length +
+    skippedParcel.length;
 
   return {
     acceptedLeads,
@@ -224,11 +282,13 @@ export async function runPreMailDedupe(
       returnedMail: skippedReturned,
       doNotContact: skippedDnc,
       missingAddress: skippedMissing,
+      parcelDisqualified: skippedParcel,
     },
     totals: {
       input: leadIds.length,
       accepted: acceptedLeads.length,
       skipped: skippedTotal,
     },
+    parcelScreening: parcelScreeningSummary,
   };
 }
