@@ -47,6 +47,7 @@ import {
   type ProviderQuote,
 } from "./services/mail/router";
 import { mintQrCode, qrRedirectUrl, qrSigningConfigured } from "./services/mail/qrCodes";
+import { mailDebitIdempotencyKey } from "./services/mail/mailDebitKey";
 import { assignTrackingNumberForMailShipment } from "./services/comms/tracking-pool";
 import { registerQrRedirectRoutes } from "./routes/public-qr-redirect";
 import { registerLobWebhookRoutes } from "./routes/lob-webhooks";
@@ -446,7 +447,18 @@ export function registerOutreachMailRoutes(app: Express): void {
         // postcard_eddm; letters fall back to letter_presort). Per-piece
         // weight × count, rounded up.
         const poolAction: CreditAction = mailPoolActionFor(quote.provider, pieceType);
-        const mailDebitKey = `mail:queue:${org.id}:${Date.now()}:${recipients.length}`;
+        // ASP-3 — deterministic debit key so a client retry / double-click can
+        // never double-debit the pool. Honors an Idempotency-Key header when the
+        // client sends one; otherwise derives from the stable request content.
+        const idempotencyHeader = req.headers["idempotency-key"];
+        const mailDebitKey = mailDebitIdempotencyKey({
+          orgId: org.id,
+          clientKey: typeof idempotencyHeader === "string" ? idempotencyHeader : null,
+          audienceFilter,
+          pieceType,
+          provider: quote.provider,
+          pieceCount: quote.pieceCount,
+        });
         const mailDebit = await poolDebit({
           organizationId: org.id,
           action: poolAction,

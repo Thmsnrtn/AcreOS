@@ -482,7 +482,7 @@ export function registerLeadRoutes(app: Express): void {
       const inputAny = input as any;
       if (inputAny.tcpaConsent === true) {
         try {
-          const { recordConsentGranted } = await import("./services/consentEvents");
+          const { recordConsentGranted, normalizeConsentCheckbox } = await import("./services/consentEvents");
           const sourceRaw = (inputAny.consentSource ?? "website") as string;
           const allowedSources = new Set([
             "website",
@@ -498,10 +498,10 @@ export function registerLeadRoutes(app: Express): void {
             channels: ["sms", "email", "phone", "direct_mail"],
             source: (allowedSources.has(sourceRaw) ? sourceRaw : "admin_manual") as any,
             consentText: (req.body.consentText ?? req.body.consent_text ?? null) as string | null,
-            checkboxChecked:
-              typeof req.body.consentCheckboxChecked === "boolean"
-                ? req.body.consentCheckboxChecked
-                : true, // default: tcpaConsent=true implies checkbox was checked
+            // INV-TRUTH-1: record the checkbox state ONLY if the client actually
+            // sent one; never infer "true" from tcpaConsent — that fabricates an
+            // exhibit no one observed. `null` = not captured.
+            checkboxChecked: normalizeConsentCheckbox(req.body.consentCheckboxChecked),
             ipAddress: req.ip || (req.socket?.remoteAddress ?? null),
             userAgent: (req.headers["user-agent"] as string) || null,
             pageUrl: (req.body.pageUrl ?? req.headers.referer ?? null) as string | null,

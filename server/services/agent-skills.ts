@@ -293,6 +293,12 @@ const sendEmailSkill: Skill = {
         subject,
         html: body.includes("<") ? body : `<p>${body.replace(/\n/g, "</p><p>")}</p>`,
         organizationId: context.organizationId,
+        // INV-RAILS-1 (founder decision 2026-07-17): this skill emails
+        // counterparties (sellers/buyers/leads), so it MUST ride the org's own
+        // connected identity — never the platform @acreos.io sender. The
+        // counterparty lane refuses honestly when no org identity is configured
+        // rather than silently fronting the platform brand for deal mail.
+        purpose: "counterparty",
       });
 
       if (result.success) {

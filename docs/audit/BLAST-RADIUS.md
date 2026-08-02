@@ -37,7 +37,12 @@
 
 ## Confirmed bypasses (Phase 1, ranked)
 
-1. **`supportAgent.apply_billing_fix` — uncapped platform-Stripe money from customer support chat.**
+> **Status — Phase 1 Wave 1 (closed):** #1, #2, and #3 below are fixed and test-pinned
+> (`supportAgentMoneyGuard`, `agentSkillsMailLane`, `mailDebitKey` + `consentCheckboxHonesty`).
+> #4 (impersonation) and #5 (webhook retry) remain; the broader 42-call-site counterparty-mail
+> ratchet and the `purpose`-required default are still owed.
+
+1. **[CLOSED — Wave 1]** **`supportAgent.apply_billing_fix` — uncapped platform-Stripe money from customer support chat.**
    `apply_credit` calls `stripe.customers.update(balance: -amount_cents)` with no bound; `invoices.pay`
    and `voidInvoice` likewise; reachable from customer-authenticated support chat that exposes the full
    tool catalog (`server/ai/supportAgent.ts:671-688,3661-3790,5242`, `server/routes-support-tickets.ts:197-198`).
@@ -50,7 +55,7 @@
    or route credits through `financialAuthorityGate.requestSpend` with a hard per-ticket cap and a
    chained audit write; add a ratchet asserting the interactive tool set ⊆ an allowlisted read/draft set.
 
-2. **agent-skills `sendEmail` fronts the platform identity for counterparty mail (INV-RAILS-1).**
+2. **[CLOSED — Wave 1]** **agent-skills `sendEmail` fronts the platform identity for counterparty mail (INV-RAILS-1).**
    The skill — whose own docstring example is `sendEmail({to: "seller@example.com"})` — calls
    `emailService.sendEmail` without `purpose:'counterparty'`, defaulting to the `system` lane
    (`server/services/agent-skills.ts:269-296`, `server/services/emailService.ts:317`). One forgotten
@@ -59,7 +64,7 @@
    `system` opt-in), fix the skill in the same commit, add the source ratchet the constitution already
    marks owed.
 
-3. **Direct-mail pool debit keyed on `Date.now()` (INV-MONEY, ASP-3).**
+3. **[CLOSED — Wave 1]** **Direct-mail pool debit keyed on `Date.now()` (INV-MONEY, ASP-3).**
    A client retry double-debits the customer's credit pool; money-out is still held by the interlock
    but the ledger double-counts (`server/routes-outreach-mail.ts:449-459` — the `Date.now()` key is built at :449).
    *Remedy:* derive the debit `externalEventId` from request content + client `Idempotency-Key`.

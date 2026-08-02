@@ -39,7 +39,7 @@ only payments AcreOS is a party to. *(Mirrors constitution `rails.customer-money
 Only Tier 1 ($0–500) is autonomous; every larger spend routes to the founder and never self-executes.
 *(Mirrors constitution `hard-stop.spend-over-500`.)*
 - **Enforcement:** code-invariant — `spendIsAutonomous` Tier-1-only + pre-AI amount block (`server/services/financialAuthorityGate.ts:98-178,290-312`, `server/services/autonomousDecisionExecutor.ts:572,611-616`), pinned by `tests/unit/spendHardStop.test.ts` + constitution ratchet.
-- **Gap:** lane-scoped — the support-agent `apply_billing_fix` tool moved uncapped platform-Stripe money outside both enforcement points (confirmed bypass; see `docs/audit/BLAST-RADIUS.md` confirmed bypass #1). **Closing this is Phase 1 work.**
+- **Gap:** ~~lane-scoped — the support-agent `apply_billing_fix` tool moved uncapped platform-Stripe money outside both enforcement points.~~ **CLOSED (Phase 1 Wave 1):** the money-moving fix types (`retry_payment`/`apply_credit`/`cancel_pending_invoice`) are refused in `executeSupportTool` before any Stripe/db call and removed from the tool schema; enforced by `tests/unit/supportAgentMoneyGuard.test.ts`. Money-moving billing changes now escalate to a human.
 
 ### INV-MONEY-3 — Absolute autonomous-spend ceiling
 Above the absolute cap (default $25,000) the system refuses to even *create* an approval record.
@@ -63,7 +63,7 @@ Pre-flight credit balance check; debit only on non-cached, non-BYOK success with
 The platform sender is for system mail only; there is no silent platform fallback for
 counterparty mail. *(Mirrors constitution rails decision, 2026-07-17.)*
 - **Enforcement:** code-invariant, **opt-in** — `purpose:'counterparty'` branch refuses without org identity (`server/services/emailService.ts:317,523-560`); workflow engine source-ratcheted to the counterparty lane (`tests/unit/workflowActionHonesty.test.ts:364-369`).
-- **Gap:** `purpose` *defaults to `'system'`*; only ~8 of 42 caller files opt in; confirmed live bypass in the agent-skills `sendEmail` skill; the constitution itself flags the missing ratchet as governance debt. **Flip the default / require the field — Phase 1.**
+- **Gap:** `purpose` *defaults to `'system'`*; only ~8 of 42 caller files opt in; the constitution itself flags the missing ratchet as governance debt. The confirmed agent-skills `sendEmail` bypass is **CLOSED (Phase 1 Wave 1)** — it now sets `purpose:'counterparty'` (`tests/unit/agentSkillsMailLane.test.ts`). **Still owed:** flip the default / require the field, and the 42-call-site enumerating ratchet.
 
 ### INV-RAILS-2 — Platform-keyed physical mail cannot go live unless deliberately armed
 Live Lob sends require `NODE_ENV=production` AND `LOB_LIVE_SEND_ENABLED=true`; otherwise the Lob
@@ -111,7 +111,7 @@ version pinning persisted to `signingConsentAudit`; autonomous envelope dispatch
 No invented numbers, no fake activity, no synthetic processor ids, no phantom action success.
 Refuse-not-fabricate everywhere. *(Mirrors constitution no-fabrication.)*
 - **Enforcement:** lint + ratchet-test — `scripts/check-no-fabrication.mjs`, fabricated-id scan (`tests/unit/moneyCustodyHardStop.test.ts:221-236`), derived live-trigger set + rail-read-back success ratchet (`tests/unit/workflowActionHonesty.test.ts:348-541`), `noMockWidgets.test.ts`.
-- **Gap:** the lint covers known vectors (Math.random allowlist), not the concept. Phase 0 found three live violations of the *spirit*: consent `checkboxChecked` defaulted to `true` in the evidence table (`server/routes-leads.ts:503-505`), valuation comp distance hardcoded to 0 feeding a +15 confidence bonus (`server/services/acreOSValuation.ts:739,1007`), and impersonation's `readOnly/expiresAt` claims enforced by nothing (`server/routes-admin.ts:4533-4562`). All three are Phase 1 fixes.
+- **Gap:** the lint covers known vectors (Math.random allowlist), not the concept. Phase 0 found three live violations of the *spirit*. **CLOSED (Phase 1 Wave 1):** consent `checkboxChecked` no longer defaults to `true` — it records `null` when absent (`normalizeConsentCheckbox` in `server/services/consentEvents.ts`, `tests/unit/consentCheckboxHonesty.test.ts`). **Still open:** valuation comp distance hardcoded to 0 feeding a +15 confidence bonus (`server/services/acreOSValuation.ts:739,1007` — Phase 2), and impersonation's `readOnly/expiresAt` claims enforced by nothing (`server/routes-admin.ts:4533-4562` — Phase 1 later wave).
 
 ## 6. Tenancy
 
@@ -181,9 +181,11 @@ unwired scaffold (`server/services/publicWebhookDispatcher.ts:20-23` — zero ba
 
 ### ASP-3 — Universal idempotency on state-changing routes
 `idempotencyMiddleware` covers ~10 route groups (billing, e-sign, SMS, api-v1). Not universal:
-the direct-mail pool debit key embeds `Date.now()` (client retry double-debits,
-`server/routes-outreach-mail.ts:449-459`); phone-number purchase has no key; the middleware's
-in-memory fallback store is per-process on a multi-machine Fly deploy.
+~~the direct-mail pool debit key embeds `Date.now()`~~ **CLOSED (Phase 1 Wave 1)** — the mail
+debit key is now derived deterministically from request content and honors a client
+`Idempotency-Key` (`server/services/mail/mailDebitKey.ts`, `tests/unit/mailDebitKey.test.ts`).
+Still open: phone-number purchase has no key; the middleware's in-memory fallback store is
+per-process on a multi-machine Fly deploy.
 
 ### ASP-4 — Enforced audit coverage on every blast-radius path
 The primitives are excellent (INV-AUDIT-1); no test enumerates the spend/send/legal/cross-tenant

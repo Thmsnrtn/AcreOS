@@ -29,6 +29,20 @@ export type ConsentSource =
   | "inbound_stop"
   | "admin_manual";
 
+/**
+ * Normalize a raw request-body checkbox value into the evidentiary record.
+ *
+ * The `lead_consent_events` table is the primary evidence chain a plaintiff's
+ * expert will read, so this field must record ONLY what actually happened
+ * (INV-TRUTH-1 / no-fabrication): a real boolean when the client sent one, and
+ * `null` — "not captured" — when it did not. It must NEVER default an absent
+ * value to `true`; inferring "tcpaConsent=true implies the box was checked"
+ * manufactures an exhibit that no one observed.
+ */
+export function normalizeConsentCheckbox(raw: unknown): boolean | null {
+  return typeof raw === "boolean" ? raw : null;
+}
+
 export interface GrantConsentArgs {
   organizationId: number;
   leadId: number;

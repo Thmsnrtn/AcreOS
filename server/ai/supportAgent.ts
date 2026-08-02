@@ -36,6 +36,24 @@ export function getOpenAIClient(): OpenAI {
   });
 }
 
+/**
+ * Billing-fix types that move real money on the PLATFORM Stripe account
+ * (charging a card, applying an account credit, or voiding an invoice owed).
+ * These are founder-only forever per INV-MONEY-2 / INV-HARD-1: a
+ * customer-driven support chat (or any autonomous loop) must never move money
+ * with no cap, no approval gate, and no audit-log entry — the exact bypass the
+ * Phase-0 audit flagged CRITICAL. The interactive agent may only send a
+ * self-service payment-update link; every money-moving change escalates to a
+ * human. Enforced BOTH structurally (the tool enum below offers only the safe
+ * fix) and as a hard runtime refusal in executeSupportTool before any
+ * Stripe/db call, so re-adding the enum value can never silently re-open it.
+ */
+export const MONEY_MUTATING_BILLING_FIXES = [
+  "retry_payment",
+  "apply_credit",
+  "cancel_pending_invoice",
+] as const;
+
 export const supportToolDefinitions = {
   search_knowledge_base: {
     name: "search_knowledge_base",
@@ -670,17 +688,19 @@ export const supportToolDefinitions = {
   
   apply_billing_fix: {
     name: "apply_billing_fix",
-    description: "Apply a common billing fix such as retrying a failed payment or updating payment method. Requires customer confirmation.",
+    description:
+      "Send the customer a self-service link to update their payment method. " +
+      "Money-moving changes (retrying a charge, applying an account credit, or " +
+      "voiding an invoice) are founder-only and NOT available here — escalate " +
+      "those to a human with escalate_to_human.",
     parameters: {
       type: "object",
       properties: {
-        fix_type: { 
-          type: "string", 
-          enum: ["retry_payment", "send_update_payment_link", "apply_credit", "cancel_pending_invoice"],
-          description: "Type of billing fix to apply" 
+        fix_type: {
+          type: "string",
+          enum: ["send_update_payment_link"],
+          description: "Only 'send_update_payment_link' is supported from support chat.",
         },
-        invoice_id: { type: "string", description: "Invoice ID for payment retry (if applicable)" },
-        amount_cents: { type: "number", description: "Amount in cents for credit application (if applicable)" },
         reason: { type: "string", description: "Reason for the billing fix" }
       },
       required: ["fix_type", "reason"]
@@ -3659,8 +3679,25 @@ export async function executeSupportTool(
       }
       
       case "apply_billing_fix": {
-        const { fix_type, invoice_id, amount_cents, reason } = args;
-        
+        const { fix_type } = args;
+
+        // INV-MONEY-2 / INV-HARD-1 hard backstop. Money-moving billing fixes are
+        // founder-only and must never execute from support chat or an autonomous
+        // loop — refuse BEFORE any Stripe/db call, regardless of how the tool was
+        // invoked or whether the enum is ever widened again. Closes the Phase-0
+        // CRITICAL bypass (uncapped, ungated, un-audited platform-Stripe money).
+        if ((MONEY_MUTATING_BILLING_FIXES as readonly string[]).includes(fix_type)) {
+          return {
+            success: false,
+            error:
+              "Billing changes that move money (retrying a charge, applying an " +
+              "account credit, or voiding an invoice) are founder-only and cannot be " +
+              "applied from support. Escalate to a human with escalate_to_human, or " +
+              "send the customer a self-service payment-update link " +
+              "(fix_type 'send_update_payment_link').",
+          };
+        }
+
         if (!org.stripeCustomerId) {
           return { success: false, error: "No Stripe customer configured for this organization." };
         }
@@ -3673,44 +3710,6 @@ export async function executeSupportTool(
           });
           
           switch (fix_type) {
-            case "retry_payment": {
-              if (!invoice_id) {
-                return { success: false, error: "Invoice ID required for payment retry" };
-              }
-              
-              const invoice = await stripe.invoices.pay(invoice_id);
-              
-              // Log to memory
-              await db.insert(paxMemory).values({
-                organizationId: org.id,
-                userId: org.ownerId,
-                memoryType: "issue_history",
-                key: `billing_fix_retry_${Date.now()}`,
-                value: {
-                  summary: `Retried payment for invoice ${invoice_id}`,
-                  fixType: fix_type,
-                  invoiceId: invoice_id,
-                  result: invoice.status,
-                  reason,
-                  timestamp: new Date().toISOString()
-                } as any,
-                importance: 8,
-                sourceTicketId: ticketId
-              });
-              
-              return {
-                success: true,
-                data: {
-                  fixApplied: true,
-                  invoiceId: invoice.id,
-                  newStatus: invoice.status,
-                  message: invoice.status === "paid" 
-                    ? "Payment successfully processed!" 
-                    : `Payment attempt made. New status: ${invoice.status}`
-                }
-              };
-            }
-            
             case "send_update_payment_link": {
               const session = await stripe.billingPortal.sessions.create({
                 customer: org.stripeCustomerId,
@@ -3727,62 +3726,10 @@ export async function executeSupportTool(
               };
             }
             
-            case "apply_credit": {
-              if (!amount_cents || amount_cents <= 0) {
-                return { success: false, error: "Valid amount required for credit application" };
-              }
-              
-              // Apply credit balance to customer
-              await stripe.customers.update(org.stripeCustomerId, {
-                balance: -amount_cents // Negative = credit
-              });
-              
-              // Log to memory
-              await db.insert(paxMemory).values({
-                organizationId: org.id,
-                userId: org.ownerId,
-                memoryType: "issue_history",
-                key: `billing_credit_${Date.now()}`,
-                value: {
-                  summary: `Applied $${(amount_cents / 100).toFixed(2)} credit to account`,
-                  fixType: fix_type,
-                  amountCents: amount_cents,
-                  reason,
-                  timestamp: new Date().toISOString()
-                } as any,
-                importance: 9,
-                sourceTicketId: ticketId
-              });
-              
-              return {
-                success: true,
-                data: {
-                  creditApplied: true,
-                  amount: (amount_cents / 100).toFixed(2),
-                  message: `Successfully applied $${(amount_cents / 100).toFixed(2)} credit to customer account`
-                }
-              };
-            }
-            
-            case "cancel_pending_invoice": {
-              if (!invoice_id) {
-                return { success: false, error: "Invoice ID required to cancel" };
-              }
-              
-              const invoice = await stripe.invoices.voidInvoice(invoice_id);
-              
-              return {
-                success: true,
-                data: {
-                  invoiceVoided: true,
-                  invoiceId: invoice.id,
-                  message: "Invoice has been voided and will not be charged"
-                }
-              };
-            }
-            
             default:
-              return { success: false, error: `Unknown fix type: ${fix_type}` };
+              // Money-moving fix types are refused above by the
+              // MONEY_MUTATING_BILLING_FIXES backstop; anything else is unknown.
+              return { success: false, error: `Unknown or unsupported fix type: ${fix_type}` };
           }
         } catch (err: any) {
           return { success: false, error: `Billing fix failed: ${err.message}` };
