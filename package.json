@@ -204,6 +204,7 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.1",
     "@clerk/testing": "2.2.3",
     "@playwright/test": "^1.61.1",
     "@sentry/cli": "2.58.5",

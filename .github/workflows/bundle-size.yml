@@ -1,0 +1,46 @@
+name: Bundle size
+
+# The bundle-size gate (scripts/check-bundle-size.js) used to exist but ran in
+# NO workflow — so it never gated anything. This wires it onto PRs. The script
+# fails closed in CI (CI=1): a missing/empty build is a FAILURE, not a friendly
+# skip, so a dropped build step can't sneak an unweighed bundle past the gate.
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bundle-size-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bundle-size:
+    name: Bundle size budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Build production bundle
+        run: npm run build
+
+      # CI=true (GitHub Actions sets it, but pin it so the fail-closed branch is
+      # explicit): a missing dist/ now exits 1 instead of silently passing.
+      - name: Check bundle size budget
+        run: node scripts/check-bundle-size.js
+        env:
+          CI: true
