@@ -836,6 +836,7 @@ export function registerCampaignRoutes(app: Express): void {
               returnedMail: dedupe.skipped.returnedMail.length,
               doNotContact: dedupe.skipped.doNotContact.length,
               missingAddress: dedupe.skipped.missingAddress.length,
+              parcelDisqualified: dedupe.skipped.parcelDisqualified.length,
             },
           },
         });
