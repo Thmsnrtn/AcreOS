@@ -152,6 +152,16 @@ export const organizations = pgTable("organizations", {
       order: string[];
       visibility: Record<string, boolean>;
     };
+    // Pre-spend parcel-quality screening rules (charter §7.2). OFF unless the
+    // org sets rules — "not worth mailing" is a per-org strategy call (some
+    // investors WANT cheap flood/landlocked parcels), so this is never a
+    // default. Screening is fail-open (unknown signals never disqualify).
+    parcelScreening?: {
+      floodZones?: string[];
+      maxWetlandsPercent?: number;
+      excludeLandlocked?: boolean;
+      maxSlopePercent?: number;
+    };
   }>(),
   // Free trial tracking
   trialStartedAt: timestamp("trial_started_at"), // When trial began

@@ -803,10 +803,22 @@ export function registerCampaignRoutes(app: Express): void {
       //   - DNC / opted-out / missing-address leads
       // The scanner runs unconditionally before any postage is paid.
       const { runPreMailDedupe } = await import("./services/preMailDedupe");
+      // Pre-spend parcel-quality screening (charter §7.2) — OFF unless this org
+      // has configured rules; when off, this resolves to undefined and the
+      // dedupe call is byte-identical. Disqualified parcels drop out of the
+      // accepted set below, so they are neither mailed nor charged for.
+      const { buildParcelScreeningInput } = await import("./services/campaignParcelSignals");
+      const parcelScreening = await buildParcelScreeningInput(
+        org.id,
+        validLeadsRaw.map(l => l!.id),
+        org.settings,
+        costPerPiece,
+      );
       const dedupe = await runPreMailDedupe({
         organizationId: org.id,
         leadIds: validLeadsRaw.map(l => l!.id),
         recentMailWindowDays: 90,
+        parcelScreening,
       });
       const acceptedIds = new Set(dedupe.acceptedLeads.map(l => l.id));
       const validLeads = validLeadsRaw.filter(l => acceptedIds.has(l!.id));
@@ -1093,17 +1105,24 @@ export function registerCampaignRoutes(app: Express): void {
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) return Errors.notFound(res, "Campaign");
 
+      // Per-piece cost first — it feeds both the screening spend-saved figure
+      // and the credit-burn forecast below.
+      const { DIRECT_MAIL_COSTS } = await import("./services/directMail");
+      const piece = (pieceType || "letter_1_page") as keyof typeof DIRECT_MAIL_COSTS;
+      const costPerPiece = DIRECT_MAIL_COSTS[piece] || 75;
+
       const { runPreMailDedupe } = await import("./services/preMailDedupe");
+      // Pre-spend parcel-quality screening (charter §7.2) — OFF unless the org
+      // configured rules; this is a preview, so it shows the projected spend
+      // saved before a dollar is committed.
+      const { buildParcelScreeningInput } = await import("./services/campaignParcelSignals");
+      const previewScreening = await buildParcelScreeningInput(org.id, leadIds, org.settings, costPerPiece);
       const dedupe = await runPreMailDedupe({
         organizationId: org.id,
         leadIds,
         recentMailWindowDays: 90,
+        parcelScreening: previewScreening,
       });
-
-      // Credit-burn forecast against the accepted set
-      const { DIRECT_MAIL_COSTS } = await import("./services/directMail");
-      const piece = (pieceType || "letter_1_page") as keyof typeof DIRECT_MAIL_COSTS;
-      const costPerPiece = DIRECT_MAIL_COSTS[piece] || 75;
 
       const usingOrgLobCredentials = await (
         await import("./services/directMail")
@@ -1146,7 +1165,18 @@ export function registerCampaignRoutes(app: Express): void {
             returnedMail: dedupe.skipped.returnedMail.length,
             doNotContact: dedupe.skipped.doNotContact.length,
             missingAddress: dedupe.skipped.missingAddress.length,
+            parcelDisqualified: dedupe.skipped.parcelDisqualified.length,
           },
+          // Projected spend saved by parcel-quality screening (present only when
+          // the org has screening rules configured). The clearest ROI story.
+          parcelScreening: dedupe.parcelScreening
+            ? {
+                disqualified: dedupe.skipped.parcelDisqualified.length,
+                spendSavedCents: dedupe.parcelScreening.spendSavedCents,
+                spendSavedDollars: dedupe.parcelScreening.spendSavedCents / 100,
+                byCategory: dedupe.parcelScreening.byCategory,
+              }
+            : undefined,
           examples: {
             ownedParcel: dedupe.skipped.ownedParcel.slice(0, 3).map(l => ({
               id: l.id,
