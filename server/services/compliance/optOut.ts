@@ -23,7 +23,8 @@ export const STOP_KEYWORDS: ReadonlySet<string> = new Set([
   "optout", "opt-out", "revoke", "revokeconsent", "remove",
 ]);
 
-export const START_KEYWORDS: ReadonlySet<string> = new Set([
+// Internal to detectOptSignal — not part of this module's public surface.
+const START_KEYWORDS: ReadonlySet<string> = new Set([
   "start", "yes", "unstop", "optin", "opt-in",
 ]);
 

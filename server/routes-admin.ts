@@ -4530,6 +4530,41 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
+  // End an impersonation session — clears the cookie and audits the stop.
+  // NOTE: this LITERAL route MUST be registered before the `/:orgId` param
+  // route below, or Express matches "/impersonate/end" as orgId="end" and the
+  // stop endpoint becomes unreachable (checked by lint:route-order).
+  app.post("/api/admin/impersonate/end", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { IMPERSONATION_COOKIE } = await import("./services/impersonation");
+      // Capture the target (if any) BEFORE clearing, for the audit record.
+      const endedTargetOrgId = req.impersonation?.targetOrgId ?? null;
+      res.clearCookie(IMPERSONATION_COOKIE, { path: "/" });
+
+      const founderUserId = getClerkAuth(req)?.userId ?? req.user.clerkUserId ?? req.user.id ?? null;
+      try {
+        const { chainAndInsertAuditEvent } = await import("./utils/auditEventsChain");
+        await chainAndInsertAuditEvent({
+          actorUserId: founderUserId ? String(founderUserId) : null,
+          actorEmail: req.user.email ?? null,
+          action: "impersonation_ended",
+          targetType: "organization",
+          targetId: endedTargetOrgId != null ? String(endedTargetOrgId) : "none",
+          justification: null,
+          metadata: {},
+          ip: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? null,
+          userAgent: (req.headers["user-agent"] as string) ?? null,
+        });
+      } catch (auditErr) {
+        logger.error("[admin] impersonation-end audit write failed", auditErr as Error);
+      }
+
+      res.json({ success: true, ended: true });
+    } catch (err: any) {
+      Errors.internal(res, err);
+    }
+  });
+
   app.post("/api/admin/impersonate/:orgId", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const targetOrgId = parseInt(req.params.orgId);
@@ -4593,38 +4628,6 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
           expiresAt: new Date(minted.session.expiresAt).toISOString(),
         },
       });
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
-  });
-
-  // End an impersonation session — clears the cookie and audits the stop.
-  app.post("/api/admin/impersonate/end", isAuthenticated, getOrCreateOrg, isFounderAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { IMPERSONATION_COOKIE } = await import("./services/impersonation");
-      // Capture the target (if any) BEFORE clearing, for the audit record.
-      const endedTargetOrgId = req.impersonation?.targetOrgId ?? null;
-      res.clearCookie(IMPERSONATION_COOKIE, { path: "/" });
-
-      const founderUserId = getClerkAuth(req)?.userId ?? req.user.clerkUserId ?? req.user.id ?? null;
-      try {
-        const { chainAndInsertAuditEvent } = await import("./utils/auditEventsChain");
-        await chainAndInsertAuditEvent({
-          actorUserId: founderUserId ? String(founderUserId) : null,
-          actorEmail: req.user.email ?? null,
-          action: "impersonation_ended",
-          targetType: "organization",
-          targetId: endedTargetOrgId != null ? String(endedTargetOrgId) : "none",
-          justification: null,
-          metadata: {},
-          ip: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? null,
-          userAgent: (req.headers["user-agent"] as string) ?? null,
-        });
-      } catch (auditErr) {
-        logger.error("[admin] impersonation-end audit write failed", auditErr as Error);
-      }
-
-      res.json({ success: true, ended: true });
     } catch (err: any) {
       Errors.internal(res, err);
     }

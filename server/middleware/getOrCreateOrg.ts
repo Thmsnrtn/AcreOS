@@ -113,12 +113,11 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     const path = req.path || req.originalUrl || "";
     const isImpersonationControl = path.startsWith("/api/admin/impersonate");
     if (!isImpersonationControl && isMutatingMethod(req.method)) {
-      return res.status(403).json({
-        error: "impersonation_read_only",
-        message:
-          "Read-only impersonation session — mutations are blocked. End impersonation to act as yourself.",
-        statusCode: 403,
-      });
+      Errors.forbidden(
+        res,
+        "Read-only impersonation session — mutations are blocked. End impersonation to act as yourself.",
+      );
+      return;
     }
   }
 
