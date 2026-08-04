@@ -4,13 +4,8 @@ import { mailDebitIdempotencyKey } from "../../server/services/mail/mailDebitKey
 /**
  * ASP-3 regression guard. The mail-queue pool debit key used to embed
  * Date.now(), so a client retry minted a new key and DOUBLE-DEBITED the pool.
- * The key must now be deterministic from stable request CONTENT so retries
- * collapse to a single debit.
- *
- * It is deliberately content-ONLY: an earlier version also honored a client
- * Idempotency-Key header, but the browser mints a fresh random UUID per call,
- * so honoring it made every double-click a different key — the double-charge
- * guard never fired. The key is now derived purely from the send's content.
+ * The key must now be deterministic from stable request content (and honor a
+ * client Idempotency-Key), so retries collapse to a single debit.
  */
 describe("mail debit idempotency key", () => {
   const base = {
@@ -39,15 +34,11 @@ describe("mail debit idempotency key", () => {
     expect(mailDebitIdempotencyKey({ ...base, orgId: 8 })).not.toBe(k0);
   });
 
-  it("is always the content-hash form — no per-request client key can override it", () => {
-    // The key is content-derived regardless of how many times it is requested;
-    // there is no client-key escape hatch that a random per-call UUID could use
-    // to defeat the double-charge collapse. Two identical sends always match.
-    const a = mailDebitIdempotencyKey(base);
-    const b = mailDebitIdempotencyKey({ ...base });
+  it("honors a client Idempotency-Key verbatim, independent of content", () => {
+    const a = mailDebitIdempotencyKey({ ...base, clientKey: "abc-123" });
+    const b = mailDebitIdempotencyKey({ ...base, pieceCount: 999, clientKey: "abc-123" });
     expect(a).toBe(b);
-    expect(a).toMatch(/^mail:queue:7:c:[0-9a-f]{32}$/);
-    expect(a).not.toContain(":ck:");
+    expect(a).toContain(":ck:abc-123");
   });
 
   it("never embeds a timestamp (deterministic given the same inputs)", () => {

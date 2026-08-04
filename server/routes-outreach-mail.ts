@@ -447,13 +447,13 @@ export function registerOutreachMailRoutes(app: Express): void {
         // postcard_eddm; letters fall back to letter_presort). Per-piece
         // weight × count, rounded up.
         const poolAction: CreditAction = mailPoolActionFor(quote.provider, pieceType);
-        // ASP-3 — deterministic, CONTENT-derived debit key so a double-click /
-        // lost-response retry can never double-debit the pool. The client's
-        // per-call Idempotency-Key header is deliberately NOT used: the browser
-        // mints a fresh random UUID per apiRequest, so honoring it made every
-        // click a distinct key and the double-charge guard never fired.
+        // ASP-3 — deterministic debit key so a client retry / double-click can
+        // never double-debit the pool. Honors an Idempotency-Key header when the
+        // client sends one; otherwise derives from the stable request content.
+        const idempotencyHeader = req.headers["idempotency-key"];
         const mailDebitKey = mailDebitIdempotencyKey({
           orgId: org.id,
+          clientKey: typeof idempotencyHeader === "string" ? idempotencyHeader : null,
           audienceFilter,
           pieceType,
           provider: quote.provider,
@@ -471,41 +471,6 @@ export function registerOutreachMailRoutes(app: Express): void {
         // Tier 1I — pool refusals are surfaced, never swallowed.
         if (!mailDebit.allowed) {
           return Errors.limitExceeded(res, poolRefusalDetails(poolAction, mailDebit));
-        }
-
-        // Idempotent replay: this exact send (same content key) was already
-        // queued by a prior request (double-click / retry). The pool was NOT
-        // re-debited (poolDebit's atomic ON CONFLICT). Do NOT insert a second
-        // shipment or dispatch duplicate physical mail — return the existing
-        // shipment so the client sees the same queued result. Without this, the
-        // debit collapses but the non-idempotent shipment insert + dispatch
-        // below would still run twice.
-        if (mailDebit.idempotentReplay) {
-          const [existing] = await db
-            .select({ id: mailShipments.id, leavesAt: mailShipments.leavesAt })
-            .from(mailShipments)
-            .where(
-              and(
-                eq(mailShipments.organizationId, org.id),
-                eq(mailShipments.debitEventKey, mailDebitKey),
-              ),
-            )
-            .orderBy(desc(mailShipments.id))
-            .limit(1);
-          if (existing) {
-            return res.json({
-              shipmentId: existing.id,
-              leavesAt: existing.leavesAt.toISOString(),
-              holdWindowMinutes: HOLD_WINDOW_MINUTES,
-              quote,
-              duplicate: true,
-            });
-          }
-          // Winning concurrent request has debited but not yet committed its
-          // shipment row — accept idempotently (200) without creating a
-          // duplicate. The client's onSuccess refetches the shipments list,
-          // which shows the queued shipment once the winner commits.
-          return res.json({ duplicate: true, pending: true });
         }
 
         // Transaction: insert shipment header + per-piece rows.

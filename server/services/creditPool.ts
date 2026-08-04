@@ -155,16 +155,6 @@ export interface PoolDebitResult {
    * stayed blocked, because poolDebit never read creditBalance.
    */
   fundedBy?: "purchased_credits";
-  /**
-   * True when this call was an idempotent REPLAY of an existing externalEventId
-   * (the atomic ON CONFLICT found the row already posted, so nothing was
-   * debited this time). Distinct from the founder/BYOK/zero-cost cases, which
-   * return earlier. Callers that perform a NON-idempotent side effect after the
-   * debit (e.g. inserting a mail shipment + dispatching physical mail) must
-   * check this and skip that side effect on a replay, or a retry/double-click
-   * repeats it even though the pool was correctly charged only once.
-   */
-  idempotentReplay?: boolean;
 }
 
 async function fetchOrgTier(
@@ -458,9 +448,6 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
       poolMonthly,
       ledgerRowId: inserted[0]?.id ?? null,
       overPool,
-      // Past all the founder/BYOK/zero-cost early returns, zero rows inserted
-      // here means the externalEventId already existed — an idempotent replay.
-      idempotentReplay: inserted.length === 0,
     };
   } catch (err) {
     logger.error("[credit-pool] debit failed", err instanceof Error ? err : undefined);
