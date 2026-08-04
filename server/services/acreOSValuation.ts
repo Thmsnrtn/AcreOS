@@ -188,17 +188,6 @@ interface ValuationResult {
     factor: string;
     adjustment: number; // percentage
   }[];
-  /**
-   * Optional AI qualitative take, kept SEPARATE from estimatedValue (which is
-   * pure comps + explicit market adjustments). The model no longer silently
-   * folds an unexplained LLM ±20% into a figure labeled "comparable sales" —
-   * the charter forbids an AI number without lineage. Rendered as advisory.
-   */
-  aiAdvisory?: {
-    /** Percentage the LLM would adjust by — NOT applied to estimatedValue. */
-    suggestedAdjustmentPct: number;
-    reasoning: string;
-  };
 }
 
 /**
@@ -409,18 +398,6 @@ class AcreOSValuationModel {
         adjustedValue *= (1 + adj.adjustment / 100);
       }
 
-      // Step 4: Use GPT-4 for qualitative analysis — ADVISORY ONLY. Its
-      // suggested % is NOT folded into the headline number: a "comparable
-      // sales" figure must be defensible from the comps + explicit
-      // adjustments alone (charter §5.5 provenance). The LLM's take and its
-      // reasoning are surfaced separately in `aiAdvisory` so nothing about the
-      // number is hidden.
-      const aiEnhancement = await this.getAIValuationEnhancement(
-        request,
-        comparables,
-        adjustedValue
-      );
-
       const finalValue = adjustedValue;
       const pricePerAcre = finalValue / request.acres;
 
@@ -498,10 +475,6 @@ class AcreOSValuationModel {
         methodology: 'AcreOS Valuation Model v1.1 (comparable sales + market adjustments; AI take advisory only)',
         comparables,
         marketAdjustments: adjustments,
-        aiAdvisory: {
-          suggestedAdjustmentPct: aiEnhancement.adjustment,
-          reasoning: aiEnhancement.reasoning,
-        },
       };
     } catch (error) {
       logger.error('Valuation generation failed', error);
@@ -979,60 +952,6 @@ Base your estimate on typical rural land market conditions in ${county} County, 
     }
 
     return adjustments;
-  }
-
-  /**
-   * Get AI-powered valuation enhancement
-   */
-  private async getAIValuationEnhancement(
-    request: ValuationRequest,
-    comparables: ValuationResult['comparables'],
-    preliminaryValue: number
-  ): Promise<{ adjustment: number; reasoning: string }> {
-    try {
-      const prompt = `You are a land valuation expert analyzing a property in ${request.location.county}, ${request.location.state}.
-
-Property Details:
-- Acres: ${request.acres}
-- Zoning: ${request.characteristics.zoning || 'Unknown'}
-- Water Rights: ${request.characteristics.waterRights ? 'Yes' : 'No'}
-- Utilities: ${request.characteristics.utilities?.join(', ') || 'None'}
-- Road Access: ${request.characteristics.roadAccess || 'Unknown'}
-- Topography: ${request.characteristics.topography || 'Unknown'}
-
-Comparable Sales: ${comparables.length} properties
-Average Comparable Price/Acre: $${Math.round(comparables.reduce((sum, c) => sum + c.pricePerAcre, 0) / comparables.length).toLocaleString()}
-
-Preliminary Valuation: $${preliminaryValue.toLocaleString()}
-
-Based on market trends, location factors, and property characteristics, provide:
-1. A percentage adjustment (-20% to +20%) to the preliminary valuation
-2. Brief reasoning (1-2 sentences)
-
-Consider factors like:
-- Market momentum in this area
-- Unique property characteristics
-- Development potential
-- Location advantages/disadvantages
-
-Respond in JSON format: { "adjustment": number, "reasoning": string }`;
-
-      const completion = await requireOpenAIClient().chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-      });
-
-      const result = JSON.parse(completion.choices[0].message.content || '{}');
-      
-      return {
-        adjustment: result.adjustment || 0,
-        reasoning: result.reasoning || 'No additional adjustments',
-      };
-    } catch (error) {
-      logger.error('AI valuation enhancement failed', error);
-      return { adjustment: 0, reasoning: 'AI enhancement unavailable' };
-    }
   }
 
   /**

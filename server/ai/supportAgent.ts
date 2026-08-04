@@ -3722,7 +3722,7 @@ export async function executeSupportTool(
       }
       
       case "apply_billing_fix": {
-        const { fix_type } = args;
+        const { fix_type, reason } = args;
 
         // INV-MONEY-2 / INV-HARD-1 hard backstop. Money-moving billing fixes are
         // founder-only and must never execute from support chat or an autonomous
@@ -3753,8 +3753,18 @@ export async function executeSupportTool(
                 targetId: String(org.id),
                 justification:
                   `support AI proposed billing fix '${fix_type}'` +
-                  (ticketId ? ` on ticket ${ticketId}` : ""),
-                metadata: { fixType: fix_type, ticketId: ticketId ?? null },
+                  (ticketId ? ` on ticket ${ticketId}` : "") +
+                  (typeof reason === "string" && reason.trim()
+                    ? ` — reason: ${reason.trim()}`
+                    : ""),
+                // A founder reviews this proposal out of band; the reason (the
+                // customer's stated justification) is what the SUPPORT_CREDIT_AUTONOMY
+                // knob text promises the log carries, so persist it here.
+                metadata: {
+                  fixType: fix_type,
+                  ticketId: ticketId ?? null,
+                  reason: typeof reason === "string" ? reason : null,
+                },
                 ip: null,
                 userAgent: null,
               });

@@ -68,6 +68,21 @@ const orgSettingsPatchSchema = z.object({
   mailMode: z.enum(["test", "live"]).optional(),
   retentionPolicies: z.record(z.string(), z.unknown()).optional(),
   aiSettings: z.record(z.string(), z.unknown()).optional(),
+  // Per-org pre-spend parcel-screening rules (Phase 2). WRITE side for
+  // organizations.settings.parcelScreening, which the campaign dedupe path
+  // reads (campaignParcelSignals.parseOrgScreeningRules). Without this the key
+  // was stripped here, so screening could only be enabled by a manual DB edit
+  // — the feature was unreachable through the product. The reader re-validates
+  // defensively; these bounds just reject nonsense early. Off by default: an
+  // absent/empty ruleset disqualifies nothing (fail-open).
+  parcelScreening: z
+    .object({
+      floodZones: z.array(z.string().max(8)).max(128).optional(),
+      maxWetlandsPercent: z.number().min(0).max(100).optional(),
+      excludeLandlocked: z.boolean().optional(),
+      maxSlopePercent: z.number().min(0).max(100).optional(),
+    })
+    .optional(),
 });
 
 // Zod schema for safe organization updates via PATCH /api/organization.
