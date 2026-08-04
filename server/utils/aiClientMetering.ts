@@ -62,12 +62,17 @@ export const defaultAiUsageRecorder: AiUsageRecorder = async (usage, latencyMs) 
     let costCents = 0;
     try {
       const { estimateCost } = await import("../services/aiRouter");
+      // estimateCost returns USD (dollars); recordAiCall / ai_call_log and the
+      // platform budget all expect CENTS — the authoritative caller in
+      // aiRouter.ts passes `costEstimate * 100`. Without this conversion the
+      // shim recorded spend at 1/100th, under-counting exactly the bypass spend
+      // it exists to surface.
       costCents = estimateCost(
         usage.model,
         usage.promptTokens,
         usage.completionTokens,
         usage.cachedInputTokens,
-      );
+      ) * 100;
     } catch {
       /* cost stays 0 — the call is still recorded (token counts visible) */
     }
