@@ -35,6 +35,25 @@ describe("opt-out detection", () => {
     }
   });
 
+  it("honors a bare stop keyword surrounded only by benign filler", () => {
+    // These compact to a multi-word token the exact-match path misses, and
+    // contain no NL phrase — but they are unambiguous revocations.
+    for (const msg of [
+      "please stop",
+      "Please STOP",
+      "stop please",
+      "pls stop",
+      "plz stop",
+      "stop now",
+      "STOP now",
+      "stop asap",
+      "just stop",
+      "cancel please",
+    ]) {
+      expect(detectOptSignal(msg), msg).toBe("opt_out");
+    }
+  });
+
   it("detects opt-in keywords", () => {
     expect(detectOptSignal("START")).toBe("opt_in");
     expect(detectOptSignal("yes")).toBe("opt_in");
@@ -47,6 +66,8 @@ describe("opt-out detection", () => {
       "I'll take it — where do I sign?",
       "The deal ended well, thanks!",
       "Let's cancel the 3pm and do 4pm", // 'cancel' mid-sentence, not the whole message
+      "just stop by later", // 'stop' + filler but also non-filler 'by'/'later'
+      "yes please", // filler-only opt-in-ish, no stop keyword — must not be opt_out
     ]) {
       expect(detectOptSignal(msg), msg).toBeNull();
     }

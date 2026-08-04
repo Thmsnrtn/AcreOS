@@ -45,6 +45,17 @@ const NL_REVOCATION_PHRASES: readonly string[] = [
 ];
 
 /**
+ * Benign filler words that commonly surround a bare stop keyword without
+ * changing its meaning ("please stop", "stop now", "pls stop"). A message whose
+ * ONLY meaningful tokens are a stop keyword plus these is an opt-out — but a
+ * token like "by"/"office" (as in "stop by my office") is NOT filler, so that
+ * benign message never trips.
+ */
+const STOP_FILLER: ReadonlySet<string> = new Set([
+  "please", "pls", "plz", "now", "asap", "immediately", "just", "me",
+]);
+
+/**
  * Classify an inbound SMS body as an opt-out, opt-in, or neither.
  * Exact-keyword match first (stripped to letters/hyphen), then unambiguous
  * natural-language refusal phrases.
@@ -60,6 +71,20 @@ export function detectOptSignal(messageBody: string): "opt_out" | "opt_in" | nul
   // Natural-language refusal: normalize to spaced words, look for a phrase.
   const phrase = messageBody.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   if (NL_REVOCATION_PHRASES.some((p) => phrase.includes(p))) return "opt_out";
+
+  // Bare stop keyword surrounded ONLY by benign filler ("please stop",
+  // "stop now", "pls stop") — a very common revocation the exact-match path
+  // misses because it compacts the whole message into one token. Require every
+  // meaningful token to be a stop keyword or filler, so "stop by my office"
+  // (contains non-filler "by"/"office") is never suppressed.
+  const tokens = phrase.split(" ").filter(Boolean);
+  if (
+    tokens.length > 0 &&
+    tokens.some((t) => STOP_KEYWORDS.has(t)) &&
+    tokens.every((t) => STOP_KEYWORDS.has(t) || STOP_FILLER.has(t))
+  ) {
+    return "opt_out";
+  }
 
   return null;
 }

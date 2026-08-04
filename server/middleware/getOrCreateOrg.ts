@@ -13,6 +13,7 @@ import { computeReqIpBucket, recordSignalsNotEmitted } from "./botSignals";
 import { subscriptionPauseGate } from "./subscriptionPauseGate";
 import { dunningAccessGate } from "./dunningAccessGate";
 import { getClerkAuth } from "../types/request";
+import { isFounderIdentity } from "../services/founder";
 import {
   IMPERSONATION_COOKIE,
   IMPERSONATION_HEADER,
@@ -85,7 +86,19 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // resolution below — making a non-impersonated request byte-identical to
   // before this branch existed. When active, every mutating method is blocked.
   let impersonation: ImpersonationSession | null = null;
-  if (isFounder) {
+  // Gate impersonation ENFORCEMENT on the SAME broad founder identity the start
+  // endpoint authorizes with (isFounderAdmin -> isFounderIdentity: founder email
+  // OR Clerk id). The email-only `isFounder` above diverged from it, so a founder
+  // configured only via FOUNDER_USER_IDS received a minted token + a
+  // {readOnly:true} response while this branch silently no-op'd — a fabricated
+  // "enforced" success. The token check below (session.founderUserId === userId)
+  // stays the real cryptographic boundary; this pre-check just mirrors the start
+  // endpoint so email-only and Clerk-id-only founders enforce identically.
+  const isFounderForImpersonation = isFounderIdentity({
+    email: userEmail,
+    userId: getClerkAuth(req)?.userId ?? user.clerkUserId ?? userId,
+  });
+  if (isFounderForImpersonation) {
     const token =
       req.cookies?.[IMPERSONATION_COOKIE] ||
       (req.get?.(IMPERSONATION_HEADER) as string | undefined);
