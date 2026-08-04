@@ -3730,10 +3730,10 @@ export async function executeSupportTool(
         // invoked or whether the enum is ever widened again. Closes the Phase-0
         // CRITICAL bypass (uncapped, ungated, un-audited platform-Stripe money).
         //
-        // The founder-adjustable SUPPORT_CREDIT_AUTONOMY knob only chooses the
+        // This founder-only SUPPORT_CREDIT_AUTONOMY knob only chooses the
         // REFUSAL STYLE: "off" (default) refuses plainly; "propose" additionally
         // logs a founder-visible proposal. NEITHER moves money — applying a
-        // credit is always the founder's action.
+        // credit is always a founder-only action.
         if ((MONEY_MUTATING_BILLING_FIXES as readonly string[]).includes(fix_type)) {
           let level: "off" | "propose" = "off";
           try {
@@ -3764,8 +3764,8 @@ export async function executeSupportTool(
             return {
               success: false,
               error:
-                "This billing credit needs founder approval — it has been logged for " +
-                "the founder to review. No credit has been applied.",
+                "This billing credit needs manual approval — it has been logged for " +
+                "our team to review. No credit has been applied.",
             };
           }
           return {
