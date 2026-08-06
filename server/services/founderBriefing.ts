@@ -185,6 +185,32 @@ export async function sendDailyBriefing(): Promise<void> {
     return; // Already sent today
   }
 
+  // Audit F-18-1: once/day, page/warn on an approaching sole-source credential
+  // expiry (e.g. the ATTOM trial key). Milestone-gated via a deterministic
+  // dedupeKey (T-14/7/2 + expired) so there is no daily spam; warning severity
+  // records a finding, critical (≤2 days or already expired) pages the phone.
+  try {
+    const { imminentCredentialExpiries, EXPIRY_PAGE_THRESHOLDS } = await import("./vendorCredentialExpiry");
+    for (const v of imminentCredentialExpiries(new Date(), 14)) {
+      const atMilestone = v.daysLeft < 0 || (EXPIRY_PAGE_THRESHOLDS as readonly number[]).includes(v.daysLeft);
+      if (!atMilestone) continue;
+      const { raiseAlert } = await import("./alertSpine");
+      await raiseAlert({
+        severity: v.daysLeft <= 2 ? "critical" : "warning",
+        source: "vendorCredentialExpiry",
+        title: v.daysLeft < 0 ? `${v.vendor} API key EXPIRED` : `${v.vendor} API key expires in ~${v.daysLeft} day(s)`,
+        detail: `${v.envVar} — sole source for ${v.isSoleSourceFor}. ${v.note}`,
+        dedupeKey: `vendor_expiry_${v.envVar}_${v.daysLeft < 0 ? "expired" : v.daysLeft}`,
+        domain: "reliability",
+        citedReason: "A sole-source vendor key that lapses mid-absence degrades the product with no warning.",
+      });
+    }
+  } catch (err) {
+    logger.warn("[FounderBriefing] vendor-expiry check failed", {
+      metadata: { detail: err instanceof Error ? err.message : String(err) },
+    });
+  }
+
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const [stats, topActions] = await Promise.all([

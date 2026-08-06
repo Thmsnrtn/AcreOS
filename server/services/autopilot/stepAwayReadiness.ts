@@ -289,6 +289,35 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
     );
   }
 
+  // ── Vendor credential expiry (audit F-18-1) ────────────────────────────────
+  // A sole-source external key that lapses mid-absence silently degrades the
+  // product with zero warning. Surfaces an approaching (or past) expiry in the
+  // "can I step away?" verdict so it can never say "every system is armed"
+  // while a key is about to die.
+  {
+    const base = { key: "vendor_credentials", title: "External keys won't lapse while you're gone", critical: false, href: "/founder/autopilot/control" };
+    try {
+      const { imminentCredentialExpiries } = await import("../vendorCredentialExpiry");
+      const soon = imminentCredentialExpiries(new Date(), 14);
+      if (soon.length === 0) {
+        checks.push({ ...base, status: "ready", detail: "No configured sole-source external credential expires in the next 14 days." });
+      } else {
+        const worst = soon[0];
+        const expired = worst.daysLeft < 0;
+        checks.push({
+          ...base,
+          status: expired ? "action_needed" : "attention",
+          detail: expired
+            ? `${worst.vendor} (${worst.envVar}) EXPIRED ${-worst.daysLeft} day(s) ago — ${worst.isSoleSourceFor} is degraded.`
+            : `${worst.vendor} (${worst.envVar}) expires in ~${worst.daysLeft} day(s) — sole source for ${worst.isSoleSourceFor}.`,
+          fix: `Renew or convert the ${worst.vendor} plan before then. ${worst.note}`,
+        });
+      }
+    } catch (err) {
+      checks.push(attention(base, err instanceof Error ? err.message : String(err)));
+    }
+  }
+
   const readyCount = checks.filter((c) => c.status === "ready").length;
   const criticalNotReady = checks.filter((c) => c.critical && c.status !== "ready");
   const verdict: StepAwayReadiness["verdict"] = criticalNotReady.length === 0 ? "ready" : "not_ready";
