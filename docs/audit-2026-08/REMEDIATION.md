@@ -49,8 +49,15 @@ These are real but each is a behavior-changing refactor or new CI infrastructure
 
 ---
 
-## Suggested verification before merge
+## Verification run (2026-08-06)
 
-- `npm run check` (tsc + all lints + ratchets) — run across the full change set.
-- `npx vitest run tests/unit/tenantBoundaryTaskTools.test.ts` — the tenant P0 test.
-- Manual smoke: a WS connect with a foreign `?orgId=` should close 4003; a campaign SMS to a DNC number should be blocked + credited back.
+- **`npm run check` — PASS (exit 0)** across the full change set: `tsc --noEmit --incremental false` + all 17 lints + all ratchets (`as-any` 1417, `sql-raw` 38, `colon-any` 3085, `table-count` 748, reachability, org-fetch 0 new/0 stale, …). Ran twice: the first run surfaced one stale `org-fetch` baseline entry that the F-23-4 fix had earned (markNotificationRead retired) — removed it, second run green.
+- **`npx vitest run tests/unit/tenantBoundaryTaskTools.test.ts` — 4/4 pass** (the tenant P0 test).
+- Each commit additionally passed the repo's pre-commit staged-file typecheck.
+
+## Suggested manual smoke before deploy
+
+- A WS connect with a foreign `?orgId=` should close 4003; a same-org connect still works.
+- A non-founder subscribing to `founder:activity` should be rejected.
+- A campaign SMS to a DNC/consent-blocked number should NOT send and should refund the credit.
+- Pax `update_task` with another org's task id should return not-found and mutate nothing.
