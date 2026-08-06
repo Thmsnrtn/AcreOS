@@ -1,3 +1,4 @@
+import type Stripe from "stripe";
 import { db, withTransaction } from "../db";
 import { eq, desc, sql, and } from "drizzle-orm";
 import {
@@ -504,7 +505,7 @@ export class UsageMeteringService {
     const { shouldTopUp, amountCents: configuredCents } = await this.checkAutoTopUp(organizationId);
     if (!shouldTopUp) return { executed: false, reason: "not_triggered" };
 
-    let stripe: any;
+    let stripe: Stripe; // audit F-06-1: typed the money SDK client (was untyped)
     try {
       const { getUncachableStripeClient } = await import("../stripeClient");
       stripe = await getUncachableStripeClient();
