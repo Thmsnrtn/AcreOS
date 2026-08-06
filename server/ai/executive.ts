@@ -54,6 +54,118 @@ import { evaluateLivePaxOutput } from "../services/aiEvalHarness";
 // runs). Keyed to the same eval set/version (dg-v1, surface=pax_inbox).
 export const PAX_LIVE_GATE_ENABLED = true;
 
+/**
+ * Apply the hallucination guard + live eval gate to a completed Pax reply and
+ * return a SAFE version of the text (corrected once, or an honest deflection if
+ * still unsafe). This is the non-streaming twin of the guard block inside
+ * processChatStream — the streaming path had both gates but processChat had
+ * only the system-prompt leak check, so a caller on the non-stream route (and
+ * the scheduler / pax_subagent) could receive a fabricated parcel fact
+ * (audit F-08-1). Both entry points now run the same two gates before persist.
+ * Never throws: the guards are defense-in-depth and must not fail the reply.
+ */
+async function finalizePaxOutput(params: {
+  organizationId: number;
+  output: string;
+  toolCallsExecuted: Array<{ name: string; arguments: unknown; result: unknown }>;
+  chatMessages: any[];
+  client: any;
+  model: string;
+  conversationId?: number;
+}): Promise<string> {
+  const { organizationId, toolCallsExecuted, chatMessages, client, model, conversationId } = params;
+  let text = params.output;
+  const HONEST_DEFLECTION =
+    "I don't have verified data to answer that confidently right now. " +
+    "I can pull the underlying records first — want me to run that lookup?";
+
+  // 1) Hallucination guard — fabricated numbers / cross-org entities.
+  try {
+    const { guardPaxOutput } = await import("../services/paxHallucinationGuard");
+    const { extractSourceContext } = await import("./paxSourceExtraction");
+    const sourceCtx = extractSourceContext(toolCallsExecuted);
+    const guardArgs = (out: string) => ({
+      organizationId,
+      output: out,
+      sourceNumbers: sourceCtx.sourceNumbers.length > 0 ? sourceCtx.sourceNumbers : undefined,
+      claimedPropertyIds: sourceCtx.claimedPropertyIds.length > 0 ? sourceCtx.claimedPropertyIds : undefined,
+      claimedLeadIds: sourceCtx.claimedLeadIds.length > 0 ? sourceCtx.claimedLeadIds : undefined,
+      claimedDealIds: sourceCtx.claimedDealIds.length > 0 ? sourceCtx.claimedDealIds : undefined,
+    });
+    let guarded = await guardPaxOutput(guardArgs(text));
+    if (!guarded.safe) {
+      const errorDetails = guarded.warnings
+        .filter((w) => w.severity === "error")
+        .map((w) => w.detail)
+        .join("; ");
+      const correctionInstruction =
+        `Your previous draft contained unsupported claims and was NOT sent. ` +
+        `Issues: ${errorDetails}. ` +
+        `Rewrite your answer using ONLY facts present in the tool results from this turn. ` +
+        `Do not state any number, parcel fact (flood zone, soil, acreage, zoning, owner), ` +
+        `or entity you cannot ground in those results. If you don't have a value, say so plainly ` +
+        `and offer the paid-tier lookup path instead of guessing.`;
+      try {
+        const cr = await client.chat.completions.create({
+          model,
+          messages: [...chatMessages, { role: "assistant", content: text }, { role: "user", content: correctionInstruction }],
+          max_tokens: 1024,
+        });
+        const corrected = cr.choices?.[0]?.message?.content?.trim();
+        if (corrected) {
+          const reguarded = await guardPaxOutput(guardArgs(corrected));
+          if (reguarded.safe) {
+            text = corrected;
+            guarded = reguarded;
+          }
+        }
+      } catch { /* corrective retry is best-effort */ }
+      if (!guarded.safe) text = HONEST_DEFLECTION;
+    }
+  } catch { /* guard is advisory — never block reply persistence on its failure */ }
+
+  // 2) Live eval gate — semantic forbidden patterns the number-guard can't see
+  // ("minimal flood risk" after a flood MISS, "you should buy", "guaranteed").
+  if (PAX_LIVE_GATE_ENABLED) {
+    try {
+      let gate = evaluateLivePaxOutput(text);
+      if (!gate.clear) {
+        logger.warn("[pax] live eval gate tripped on non-stream reply", {
+          source: "pax",
+          metadata: { organizationId, conversationId, hits: gate.hits.map((h) => ({ caseId: h.caseId, trait: h.trait })) },
+        });
+        const tripped = gate.hits.map((h) => `"${h.trait}" (${h.caseName})`).join("; ");
+        const correctionInstruction =
+          `Your previous draft asserted a parcel fact or made a directive/guarantee ` +
+          `that is not allowed and was NOT sent. Disallowed patterns it contained: ${tripped}. ` +
+          `Rewrite your answer using ONLY facts present in this turn's tool results. ` +
+          `If a lookup returned no value (flood zone, soil class, acreage, zoning, owner), ` +
+          `say plainly that you don't have it and offer the paid lookup — never name or imply ` +
+          `a value. Never tell the customer to buy or pass, and never guarantee a future return. ` +
+          `Stay informational.`;
+        try {
+          const cr = await client.chat.completions.create({
+            model,
+            messages: [...chatMessages, { role: "assistant", content: text }, { role: "user", content: correctionInstruction }],
+            max_tokens: 1024,
+          });
+          const corrected = cr.choices?.[0]?.message?.content?.trim();
+          if (corrected) {
+            const recheck = evaluateLivePaxOutput(corrected);
+            if (recheck.clear) {
+              text = corrected;
+              gate = recheck;
+            }
+          }
+        } catch { /* corrective retry is best-effort */ }
+        if (!gate.clear) text = HONEST_DEFLECTION;
+      }
+    } catch { /* live gate is defense-in-depth — never block persistence */ }
+  }
+
+  return text;
+}
+
 // Andrei E5: build the Pax tool list for a role, then drop the land-knowledge
 // retrieval tool when its feature flag is off. Synchronous + cheap (env read),
 // safe to call on every turn. Centralized so processChat + processChatStream
@@ -1612,7 +1724,19 @@ export async function processChat(
     source: "pax.processChat",
     organizationId: org.id,
   });
-  const finalContent = _validated.response;
+  // Audit F-08-1: run the SAME hallucination guard + live eval gate the
+  // streaming path runs, before persisting. Previously this non-stream path
+  // (customer-reachable at routes-ai.ts, plus paxScheduler and pax_subagent)
+  // shipped fabricated parcel facts with only the leak check above.
+  const finalContent = await finalizePaxOutput({
+    organizationId: org.id,
+    output: _validated.response,
+    toolCallsExecuted,
+    chatMessages,
+    client,
+    model,
+    conversationId: conversation.id,
+  });
 
   await createMessage({
     conversationId: conversation.id,
