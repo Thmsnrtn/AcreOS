@@ -1862,12 +1862,12 @@ export async function registerRoutes(
     app.use('/api/scp/v2', isAuthenticated, getOrCreateOrg, requireFounder);
     app.use('/api/notifications', isAuthenticated, getOrCreateOrg);
 
-    const { registerFounderV6Routes } = await import("./routes-founder-sovereign-company");
-    registerFounderV6Routes(app);
-    const { registerFounderV7Routes } = await import("./routes-founder-learning-company");
-    registerFounderV7Routes(app);
-    const { registerFounderV8Routes } = await import("./routes-founder-living-organization");
-    registerFounderV8Routes(app);
+    // V6–V8 founder-narrative routers (sovereign-company / learning-company /
+    // living-organization) were deleted 2026-08-06 (audit F-17-1): their only
+    // client consumers were the retired founder narrative components (WarRoom,
+    // ScenarioEngine, StrategicCompass, …), all long-unmounted. The underlying
+    // services they fronted stay live via ceoCommandBridge and the worker jobs;
+    // only the dead HTTP facade + the three services it solely owned were removed.
     const { registerFounderV10Routes } = await import("./routes-founder-conscious-organization");
     registerFounderV10Routes(app);
     const { registerFounderV11Routes } = await import("./routes-founder-anticipatory-enterprise");

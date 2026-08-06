@@ -1,0 +1,10 @@
+[
+  {
+    "ref": "@shared/validators.ts",
+    "reason": "Historical evidence in an OPEN defect-registry row. `@shared/validators.ts` was never a real file — the validators live at `server/ai/validators.ts`; the alias reference is a shorthand the registry author used at filing time. Kept verbatim as the row's original evidence; the live signal is the code, not this path."
+  },
+  {
+    "ref": "routes-2fa.ts",
+    "reason": "Cited as count-evidence in DEFECT-0063 ('(req as any) used 73+ times'). The file was deleted after the defect was filed; the live tracker for that defect is the req-as-any.json ratchet, not this per-file tally. Left as the row's historical evidence."
+  }
+]
