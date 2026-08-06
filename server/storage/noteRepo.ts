@@ -14,6 +14,7 @@ import {
 } from "@shared/schema";
 import { addMonths } from "../utils/dateUtils";
 import type { DatabaseStorage } from "../storage";
+import { LIST_READ_CAP, capListRead } from "./listCap";
 
 // Amortization helpers — co-located with notes since they're only used
 // inside createNote. Original implementations lived in server/storage.ts
@@ -60,9 +61,13 @@ export function calculateMonthlyPayment(principal: number, annualRate: number, t
 export const noteRepo = {
   // Notes (Financing)
   async getNotes(this: DatabaseStorage, orgId: number): Promise<Note[]> {
-    return await db.select().from(notes)
+    // Audit F-10-2: was unbounded (OOM risk on a large note book). Bounded with
+    // a LOUD cap — truncation is logged, never silent.
+    const rows = await db.select().from(notes)
       .where(eq(notes.organizationId, orgId))
-      .orderBy(desc(notes.createdAt));
+      .orderBy(desc(notes.createdAt))
+      .limit(LIST_READ_CAP + 1);
+    return capListRead(rows, LIST_READ_CAP, "getNotes", orgId);
   },
 
   async getNote(this: DatabaseStorage, orgId: number, id: number): Promise<Note | undefined> {

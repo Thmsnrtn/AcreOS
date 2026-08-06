@@ -82,6 +82,15 @@ function platformCredentials(): TwilioCredentials | null {
 }
 
 /**
+ * True iff the org has its OWN connected (BYO) Twilio identity — used by
+ * counterparty send paths (e.g. campaign SMS) that must NOT fall back to the
+ * platform account per the "be the rail, not the provider" founder ruling.
+ */
+export async function orgHasByoTwilio(organizationId: number): Promise<boolean> {
+  return (await getOrgTwilioCredentials(organizationId).catch(() => null)) != null;
+}
+
+/**
  * Resolve effective Twilio creds: BYOK wins, falls back to platform env.
  */
 async function resolveCredentials(organizationId?: number): Promise<TwilioCredentials | null> {
@@ -127,7 +136,15 @@ class TwilioProvider implements CommsProvider {
       return { sid: rec.id, costCents: 0 };
     }
 
-    const creds = await resolveCredentials(opts.organizationId);
+    // Counterparty sends ("be the rail, not the provider", founder ruling
+    // 2026-07-29) MUST use the org's OWN connected (BYO) identity — resolve
+    // BYO-only, never the platform account. Checked here at real-send time so
+    // a BYO credential disabled/rotated mid-batch cannot fall back to platform.
+    const creds = opts.requireByoIdentity
+      ? (opts.organizationId != null
+          ? await getOrgTwilioCredentials(opts.organizationId).catch(() => null)
+          : null)
+      : await resolveCredentials(opts.organizationId);
     if (!creds) {
       // FAIL VISIBLY (product-truth audit): with no credentials and NOT in
       // simulation mode, an SMS genuinely cannot be sent. Previously this
@@ -137,7 +154,9 @@ class TwilioProvider implements CommsProvider {
       // the caller's catch surfaces a real failure. A deliberate dry-run still
       // goes through the simulation-mode path above (a recorded, honest sim).
       throw new Error(
-        "twilio.sendSms: credentials unavailable (set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER, or enable simulation mode)",
+        opts.requireByoIdentity
+          ? "twilio.sendSms: no connected (BYO) SMS identity — counterparty SMS will not fall back to the platform account"
+          : "twilio.sendSms: credentials unavailable (set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER, or enable simulation mode)",
       );
     }
 

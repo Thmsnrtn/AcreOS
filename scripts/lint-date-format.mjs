@@ -43,7 +43,6 @@ const BASELINE = new Map([
   ["client/src/components/founder-chat/artifacts/mrr_sparkline.tsx", 1],
   ["client/src/components/founder/ActivityTimeline.tsx", 2],
   ["client/src/components/founder/MorningBriefing.tsx", 1],
-  ["client/src/components/founder/WarRoom.tsx", 1],
   ["client/src/components/freedom-progress-card.tsx", 2],
   ["client/src/components/notification-banner.tsx", 1],
   ["client/src/components/pax-copilot-rail.tsx", 2],

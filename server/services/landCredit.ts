@@ -1370,12 +1370,16 @@ class LandCreditScoring {
   /**
    * Generate a 2-page Land Credit Report PDF
    */
-  async generateLandCreditReport(propertyId: any, organizationId: any): Promise<Buffer> {
+    // Audit F-06-1: propertyId/organizationId were `: any` — a tenant key
+    // erased to `any` is exactly the class the ratchet exists to stop. They
+    // arrive as strings (URL param + org.id.toString()); calculateCreditScore
+    // takes strings, and properties.id is a serial so the row lookup coerces.
+  async generateLandCreditReport(propertyId: string, organizationId: string): Promise<Buffer> {
     const { jsPDF } = await import("jspdf");
 
     const score = await this.calculateCreditScore(organizationId, propertyId);
     const property = await db.query.properties.findFirst({
-      where: eq(properties.id, propertyId),
+      where: eq(properties.id, Number(propertyId)),
     });
 
     const doc = new jsPDF({ unit: "in", format: "letter" });

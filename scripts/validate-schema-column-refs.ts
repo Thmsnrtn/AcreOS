@@ -49,34 +49,57 @@ interface Violation {
 // We parse the schema source and pick up every `export const X =
 // pgTable("...", { col1: ..., col2: ... })` declaration. Each
 // becomes an entry in our column-name set.
+// Audit F-05-1: index EVERY schema file, not just the monolith. Previously
+// only shared/schema.ts was parsed, so the 248 tables in shared/schema/*.ts
+// (rental, notes, finance, compliance, reg-z, marketplace, …) were invisible —
+// a bad column ref against any of them was silently skipped (checkColumnRef
+// returns early on an unknown table), so the exact "route 500s on a missing
+// column" class this gate exists to stop walked straight through. Worse, the
+// ongoing schema-split campaign kept WIDENING the blind spot as tables moved
+// out of schema.ts. Mirror drizzle.config.ts: schema.ts + schema/*.ts.
+function schemaFiles(): string[] {
+  const files = [SCHEMA_FILE];
+  const dir = path.join(REPO_ROOT, "shared/schema");
+  if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+    for (const e of fs.readdirSync(dir)) {
+      if (!e.endsWith(".ts")) continue;
+      if (e.endsWith(".test.ts") || e.endsWith(".spec.ts")) continue;
+      files.push(path.join(dir, e));
+    }
+  }
+  return files;
+}
+
 function buildSchemaIndex(): Map<string, Set<string>> {
   const project = new Project({
     skipFileDependencyResolution: true,
     skipAddingFilesFromTsConfig: true,
   });
-  const source = project.addSourceFileAtPath(SCHEMA_FILE);
   const tables = new Map<string, Set<string>>();
 
-  for (const v of source.getVariableStatements()) {
-    for (const decl of v.getDeclarations()) {
-      const init = decl.getInitializer();
-      if (!init || !Node.isCallExpression(init)) continue;
-      const expr = init.getExpression().getText();
-      if (expr !== "pgTable") continue;
-      const args = init.getArguments();
-      if (args.length < 2) continue;
-      const colsArg = args[1];
-      if (!Node.isObjectLiteralExpression(colsArg)) continue;
-      const tableConstName = decl.getName();
-      const cols = new Set<string>();
-      for (const p of colsArg.getProperties()) {
-        if (Node.isPropertyAssignment(p)) {
-          cols.add(p.getName());
-        } else if (Node.isShorthandPropertyAssignment(p)) {
-          cols.add(p.getName());
+  for (const file of schemaFiles()) {
+    const source = project.addSourceFileAtPath(file);
+    for (const v of source.getVariableStatements()) {
+      for (const decl of v.getDeclarations()) {
+        const init = decl.getInitializer();
+        if (!init || !Node.isCallExpression(init)) continue;
+        const expr = init.getExpression().getText();
+        if (expr !== "pgTable") continue;
+        const args = init.getArguments();
+        if (args.length < 2) continue;
+        const colsArg = args[1];
+        if (!Node.isObjectLiteralExpression(colsArg)) continue;
+        const tableConstName = decl.getName();
+        const cols = new Set<string>();
+        for (const p of colsArg.getProperties()) {
+          if (Node.isPropertyAssignment(p)) {
+            cols.add(p.getName());
+          } else if (Node.isShorthandPropertyAssignment(p)) {
+            cols.add(p.getName());
+          }
         }
+        tables.set(tableConstName, cols);
       }
-      tables.set(tableConstName, cols);
     }
   }
   return tables;
@@ -269,7 +292,7 @@ function main() {
   const stagedOnly = process.argv.includes("--staged");
   const updateBaseline = process.argv.includes("--update-baseline");
 
-  console.log("Building schema index from shared/schema.ts ...");
+  console.log("Building schema index from shared/schema.ts + shared/schema/*.ts ...");
   const schema = buildSchemaIndex();
   console.log(`  found ${schema.size} tables, ${[...schema.values()].reduce((n, s) => n + s.size, 0)} columns.`);
 

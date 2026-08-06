@@ -88,10 +88,20 @@ export function registerSovereignIntegrationRoutes(app: Express) {
    * GET /api/notifications/history — In-app notification history
    */
   app.get("/api/notifications/history", async (req: Request, res: Response) => {
+    // Audit F-23-4: previously served notificationDispatcher.getNotifications(),
+    // a process-global singleton holding EVERY org's dispatched notifications
+    // with no org filter — any authenticated user saw all orgs' tray. Now
+    // served from the org-scoped DB store (mounted behind isAuthenticated +
+    // getOrCreateOrg at routes.ts, so req.organization/req.user are set).
     try {
-      const { notificationDispatcher } = await import("./services/notificationDispatcher");
+      const areq = req as AuthenticatedRequest;
+      const orgId = areq.organization?.id;
+      const userId = areq.user?.id;
+      if (!orgId || !userId) return res.json([]);
+      const { storage } = await import("./storage");
       const limit = parseInt(req.query.limit as string) || 50;
-      res.json(notificationDispatcher.getNotifications(limit));
+      const rows = await storage.getNotifications(orgId, String(userId), false);
+      res.json(rows.slice(0, limit));
     } catch (err: any) {
       res.json([]);
     }
@@ -100,10 +110,16 @@ export function registerSovereignIntegrationRoutes(app: Express) {
   /**
    * GET /api/notifications/unread-count — Unread notification count
    */
-  app.get("/api/notifications/unread-count", async (_req: Request, res: Response) => {
+  app.get("/api/notifications/unread-count", async (req: Request, res: Response) => {
+    // Audit F-23-4 — org+user scoped, was the global singleton count.
     try {
-      const { notificationDispatcher } = await import("./services/notificationDispatcher");
-      res.json({ count: notificationDispatcher.getUnreadCount() });
+      const areq = req as AuthenticatedRequest;
+      const orgId = areq.organization?.id;
+      const userId = areq.user?.id;
+      if (!orgId || !userId) return res.json({ count: 0 });
+      const { storage } = await import("./storage");
+      const count = await storage.getUnreadNotificationCount(orgId, String(userId));
+      res.json({ count });
     } catch (err: any) {
       res.json({ count: 0 });
     }
@@ -113,10 +129,20 @@ export function registerSovereignIntegrationRoutes(app: Express) {
    * POST /api/notifications/:id/read — Mark notification as read
    */
   app.post("/api/notifications/:id/read", async (req: Request, res: Response) => {
+    // Audit F-23-4 — org-scoped write so a caller cannot flip another org's
+    // notification by guessing its id. F-17-1 completeness pass — also
+    // user-scoped, since notifications are per-user and a caller must not flip
+    // a co-org user's notification either.
     try {
-      const { notificationDispatcher } = await import("./services/notificationDispatcher");
-      const success = notificationDispatcher.markAsRead(req.params.id);
-      res.json({ success });
+      const areq = req as AuthenticatedRequest;
+      const orgId = areq.organization?.id;
+      const userId = areq.user?.id;
+      if (!orgId || !userId) return Errors.unauthorized(res);
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid notification id");
+      const { storage } = await import("./storage");
+      const updated = await storage.markNotificationRead(id, orgId, String(userId));
+      res.json({ success: !!updated });
     } catch (err) {
       Errors.internal(res, err);
     }

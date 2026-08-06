@@ -1,0 +1,9 @@
+{
+  "name": "colon-any",
+  "description": "The `: any` type ANNOTATION is the uncounted sibling of the ratcheted `as any` cast (audit F-06-1). `: any` on a tenant key (organizationId), a money value, an auth field, or external input erases the type checker exactly as `as any` does — the leads.organizationId-widening class the as-any ratchet exists to stop, walking straight past it because that ratchet only matches the `as any` cast form. This freezes the annotation count over server/ and drives it DOWN. Remediate the tenant-key/money/auth subset first; lower baselineCount as annotations are typed away. New `: any` now fails CI.",
+  "pattern": ":\\s*any\\b",
+  "globs": ["server/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts"],
+  "baselineCount": 3020,
+  "direction": "down"
+}

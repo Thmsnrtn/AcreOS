@@ -937,9 +937,7 @@ export async function registerRoutes(
   app.use("/api/chat", promptInjectionMiddleware);
   app.use("/api/executive", promptInjectionMiddleware);
   app.use("/api/pax", promptInjectionMiddleware);
-  app.use("/api/founder/v6", promptInjectionMiddleware);
-  app.use("/api/founder/v7", promptInjectionMiddleware);
-  app.use("/api/founder/v8", promptInjectionMiddleware);
+  // v6/v7/v8 routers were deleted (audit F-17-1); their prefix guards go too.
   app.use("/api/founder/v10", promptInjectionMiddleware);
   app.use("/api/founder/v12", promptInjectionMiddleware);
   app.use("/api/founder/v13", promptInjectionMiddleware);
@@ -1845,9 +1843,7 @@ export async function registerRoutes(
     // the per-route handlers run. Without it any customer can hit Sovereign
     // Company Protocol endpoints (constitution, evolution, costs, briefing,
     // etc.). /api/notifications stays customer-reachable.
-    app.use('/api/founder/v6', isAuthenticated, getOrCreateOrg, requireFounder);
-    app.use('/api/founder/v7', isAuthenticated, getOrCreateOrg, requireFounder);
-    app.use('/api/founder/v8', isAuthenticated, getOrCreateOrg, requireFounder);
+    // v6/v7/v8 routers were deleted (audit F-17-1); their auth guards go too.
     app.use('/api/founder/v10', isAuthenticated, getOrCreateOrg, requireFounder);
     app.use('/api/founder/v11', isAuthenticated, getOrCreateOrg, requireFounder);
     app.use('/api/founder/v12', isAuthenticated, getOrCreateOrg, requireFounder);
@@ -1862,12 +1858,12 @@ export async function registerRoutes(
     app.use('/api/scp/v2', isAuthenticated, getOrCreateOrg, requireFounder);
     app.use('/api/notifications', isAuthenticated, getOrCreateOrg);
 
-    const { registerFounderV6Routes } = await import("./routes-founder-sovereign-company");
-    registerFounderV6Routes(app);
-    const { registerFounderV7Routes } = await import("./routes-founder-learning-company");
-    registerFounderV7Routes(app);
-    const { registerFounderV8Routes } = await import("./routes-founder-living-organization");
-    registerFounderV8Routes(app);
+    // V6–V8 founder-narrative routers (sovereign-company / learning-company /
+    // living-organization) were deleted 2026-08-06 (audit F-17-1): their only
+    // client consumers were the retired founder narrative components (WarRoom,
+    // ScenarioEngine, StrategicCompass, …), all long-unmounted. The underlying
+    // services they fronted stay live via ceoCommandBridge and the worker jobs;
+    // only the dead HTTP facade + the three services it solely owned were removed.
     const { registerFounderV10Routes } = await import("./routes-founder-conscious-organization");
     registerFounderV10Routes(app);
     const { registerFounderV11Routes } = await import("./routes-founder-anticipatory-enterprise");

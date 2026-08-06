@@ -208,6 +208,10 @@ export function useCreateLead() {
         refetchType: "active",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
+      // Audit F-11-1 (completeness pass): the Today door reads /api/today and
+      // surfaces an unscored-lead nudge — a freshly created lead is exactly
+      // that, so the create path must invalidate it too (delete already did).
+      queryClient.invalidateQueries({ queryKey: ["/api/today"] });
       toast({
         title: "Success",
         description: "Lead created successfully.",
@@ -243,6 +247,9 @@ export function useUpdateLead() {
       return api.leads.update.responses[200].parse(await res.json());
     },
     listKeys: [[api.leads.list.path]],
+    // Audit F-11-1 (completeness pass): a status/score change moves the lead
+    // in the Today door's priority feed — invalidate /api/today too.
+    extraInvalidateKeys: [["/api/today"]],
     detailKey: ({ id }) => [api.leads.get.path, id],
     getId: ({ id }) => id,
     successToast: { title: "Success", description: "Lead updated successfully." },
@@ -273,6 +280,9 @@ export function useDeleteLead() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
+      // Audit F-11-1: the Today door reads /api/today (not today-priorities);
+      // without this the primary customer door goes stale after a mutation.
+      queryClient.invalidateQueries({ queryKey: ["/api/today"] });
       queryClient.invalidateQueries({ queryKey: ["/api/leads/aging"] });
       queryClient.removeQueries({ queryKey: [api.leads.get.path, id] });
       toast({
@@ -287,6 +297,7 @@ export function useDeleteLead() {
               queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
               queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
               queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
+              queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1
               queryClient.invalidateQueries({ queryKey: ["/api/leads/aging"] });
             } catch { /* ignore */ }
           },

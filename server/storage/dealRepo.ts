@@ -10,14 +10,17 @@ import {
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { logger } from "../utils/logger";
 import { publishDealLifecycle } from "../services/dealLifecycleEvents";
+import { LIST_READ_CAP, capListRead } from "./listCap";
 
 export const dealRepo = {
   async getDeals(this: DatabaseStorage, orgId: number): Promise<Deal[]> {
     // Task 223: exclude soft-deleted deals from list queries
-    return await db.select().from(deals)
+    // Audit F-10-2: loud cap — truncation past the cap is logged, not silent.
+    const rows = await db.select().from(deals)
       .where(and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`))
       .orderBy(desc(deals.createdAt))
-      .limit(5000);
+      .limit(LIST_READ_CAP + 1);
+    return capListRead(rows, LIST_READ_CAP, "getDeals", orgId);
   },
 
   async getDealsPaginated(this: DatabaseStorage, orgId: number, options: PaginationOptions): Promise<PaginatedResult<Deal>> {

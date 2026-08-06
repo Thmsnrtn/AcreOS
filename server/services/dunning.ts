@@ -1,3 +1,4 @@
+import type Stripe from "stripe";
 import { storage } from "../storage";
 import { db } from "../db";
 import { eq, and, or, desc, sql, count } from "drizzle-orm";
@@ -506,7 +507,7 @@ class DunningService {
   // -------------------------------------------------------------------
 
   async processAutoRetries(now: Date = new Date()): Promise<void> {
-    let stripe: any;
+    let stripe: Stripe; // audit F-06-1: typed the money SDK client (was untyped)
     try {
       const { getUncachableStripeClient } = await import("../stripeClient");
       stripe = await getUncachableStripeClient();

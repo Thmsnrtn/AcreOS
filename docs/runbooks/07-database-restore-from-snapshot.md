@@ -4,7 +4,7 @@
 **Owner:** Founder + engineering, two-person flow
 **Time to first response:** 15 min
 
-> **Drill reference:** Boniface DR drill — `docs/exhaustive-completion/dr-drill-boniface.md` for the most recent timed restore exercise. Re-read before starting; this runbook is the in-the-moment compressed version.
+> **DR readiness (corrected 2026-08 audit, F-13-2):** No full timed restore drill has ever been executed — RTO/RPO are UNPROVEN. The only related artifact, `docs/archive/exhaustive-completion/elite-team-deeper-2026-05-01/boniface-dr.md`, is a **tabletop audit, not a drill**; its own verdict is "AcreOS has backups but no demonstrated restore." The weekly automated `backupRestoreVerify` job proves a backup is *restorable* into a scratch DB (parity-checked) but does NOT measure full production-cutover RTO. Run this runbook end-to-end once against a real snapshot, fill the RTO table below, and append a `dr-drill-history.md` block + a `dr_drills` row. Until then, treat the RTO as a hope.
 
 ---
 
@@ -78,4 +78,4 @@ If the issue is "slow queries" or "one table is wrong" — **do not restore.** U
 ---
 
 ## Drill cadence
-This runbook is exercised quarterly. Last drill: see `docs/exhaustive-completion/dr-drill-boniface.md`. If the last drill is more than 90 days old, schedule one before you actually need this runbook.
+Target: exercised quarterly. **Last full timed drill: NONE (as of the 2026-08 audit).** The `dr_drills` table is empty; the step-away readiness verdict ("External keys / DR" checks) surfaces this until a drill is recorded. When ≥1 drill exists, "last drill" is the newest `dr_drills.ran_at`; if it is more than 90 days old, schedule one before you actually need this runbook.

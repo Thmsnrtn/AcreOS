@@ -105,7 +105,9 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage/vaEngineRepo.ts::getSellerCommunicationsByLead",
   "server/storage/vaRepo.ts::getVaAction",
   "server/storage/mailRepo.ts::incrementMailingOrderPieces",
-  "server/storage/automationRepo.ts::markNotificationRead",
+  // markNotificationRead removed 2026-08-06 (audit F-23-4): it now takes an
+  // optional organizationId and scopes the update when supplied, so it is no
+  // longer an unscoped offender.
   "server/storage/supportOpsRepo.ts::resolveAlert",
   "server/storage/supportOpsRepo.ts::resolveAllAlerts",
   "server/storage/documentsRepo.ts::seedSystemTemplates",

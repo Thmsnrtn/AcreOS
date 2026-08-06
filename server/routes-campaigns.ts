@@ -29,6 +29,7 @@ import { storage, db } from "./storage";
 import { eq, sql, and, gte, desc } from "drizzle-orm";
 import { leads, deals, properties, campaignResponses, campaignDeliveryEvents } from "@shared/schema";
 import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
+import { sendOrgSMS, orgHasConnectedSmsIdentity } from "./services/smsService";
 
 export function registerCampaignRoutes(app: Express): void {
   const api = app;
@@ -2138,53 +2139,40 @@ export function registerCampaignRoutes(app: Express): void {
         }
       }
 
-      // Check Twilio configuration
-      const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-      const twilioToken = process.env.TWILIO_AUTH_TOKEN;
-      const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
-
-      if (!twilioSid || !twilioToken || !twilioPhone) {
-        // Refund all credits since we can't send without Twilio
-        if (!req.isFounder) {
-          await creditService.addCredits(
-            org.id, totalCost, "refund",
-            `Refund: SMS not configured for campaign: ${campaign.name}`
-          );
-        }
-        return Errors.badRequest(res, "SMS not configured. Please add Twilio credentials in Settings → Integrations.");
-      }
+      // Audit F-21-1/F-21-2: campaign SMS now sends through sendOrgSMS →
+      // commsRouter, which runs the Searchbug DNC/litigator scrub, quiet hours,
+      // consent and the contact-frequency cap — the raw Twilio call bypassed
+      // every one. TWILIO_PHONE_NUMBER is read only to label simulated sends.
+      const twilioPhone = process.env.TWILIO_PHONE_NUMBER ?? "byo";
 
       const messageBody = (campaign as any).textContent || (campaign as any).smsBody || campaign.name || "Message from AcreOS";
 
       // Send SMS messages with in-memory dedup for this execution
       const sentInExecution = new Set<number>();
       const results = { sent: 0, failed: 0, errors: [] as string[] };
-      // Honor SIMULATION_MODE / org.settings.simulationMode here too — this
-      // callsite previously bypassed the shouldSimulate gate because it
-      // called Twilio directly instead of going through smsService. Without
-      // this branch a global kill-switch was a lie for the campaign batch
-      // path. Caught 2026-05-10.
-      // Minimal structural type for the subset of the Twilio SDK we call.
-      // The `twilio` package is an optional runtime dependency (loaded only
-      // for live sends), so it is imported through a non-literal specifier to
-      // avoid a compile-time module resolution requirement.
-      type TwilioClient = {
-        messages: {
-          create(opts: {
-            to: string;
-            from: string;
-            body: string;
-            mediaUrl?: string[];
-          }): Promise<unknown>;
-        };
-      };
-      type TwilioFactory = (sid: string, token: string) => TwilioClient;
+      // Honor SIMULATION_MODE / org.settings.simulationMode — a global
+      // kill-switch must hold on the campaign batch path too (caught 2026-05-10).
       const simulated = shouldSimulate("sms", org);
-      const twilioModuleName = "twilio";
-      const twilio = simulated
-        ? null
-        : ((await import(twilioModuleName)).default as TwilioFactory);
-      const client: TwilioClient | null = simulated ? null : twilio!(twilioSid, twilioToken);
+
+      // "Be the rail, not the provider" (founder ruling 2026-07-29): campaign
+      // SMS is COUNTERPARTY traffic and must run on the org's OWN connected
+      // (BYO) Twilio identity. The comms router falls back to the platform
+      // TWILIO_* account when no BYO is connected (that account is system-mail
+      // only) — so refuse the whole batch here rather than send counterparty
+      // texts on AcreOS's account. Refund the upfront deduct; no send happens.
+      if (!simulated && !(await orgHasConnectedSmsIdentity(org.id))) {
+        if (!req.isFounder) {
+          await creditService.addCredits(
+            org.id, totalCost, "refund",
+            `Refund: campaign ${campaign.name} not sent — no connected SMS identity`,
+          );
+        }
+        return Errors.badRequest(
+          res,
+          "Connect your own Twilio/SMS number before sending campaign texts — AcreOS does not send counterparty SMS on the platform account.",
+          { reason: "no_byo_sms_identity" },
+        );
+      }
 
       for (const lead of dedupedLeads) {
         // In-memory dedup for this execution
@@ -2211,26 +2199,43 @@ export function registerCampaignRoutes(app: Express): void {
               org
             );
           } else {
-            await client!.messages.create({
-              to: lead!.phone!,
-              from: twilioPhone,
+            // Real send through the gated choke point (DNC + frequency + BYO).
+            const sendResult = await sendOrgSMS(
+              org.id,
+              lead!.phone!,
               body,
-              // Twilio's Node SDK accepts mediaUrl as string | string[]; pass
-              // an array so multi-image MMS (when we lift the UI cap) works
-              // without further changes.
-              ...(hasMms ? { mediaUrl: campaignMediaUrls } : {}),
-            });
+              hasMms ? campaignMediaUrls : undefined,
+            );
+            if (!sendResult.success) {
+              // Not delivered (DNC/consent/quiet-hours block, or no connected
+              // SMS identity). Count it as failed and let the SINGLE post-loop
+              // batch refund below credit every failed recipient exactly once.
+              // Do NOT also refund inline here — that double-refunded blocked
+              // recipients (they are counted in results.failed AND were batch-
+              // refunded), minting credits. Audit F-17-1 completeness pass.
+              results.failed++;
+              results.errors.push(`${lead!.phone}: ${sendResult.error ?? "send blocked"}`);
+              continue;
+            }
           }
           results.sent++;
           sentInExecution.add(lead!.id);
 
-          // Record delivery event for future dedup
-          await db.insert(campaignDeliveryEvents).values({
-            campaignId,
-            leadId: lead!.id,
-            channel: "sms",
-            status: "sent",
-          });
+          // Record delivery event for future dedup. Its OWN try/catch: the SMS
+          // already went out, so a failed dedup insert must NOT fall through to
+          // the outer catch (which would results.failed++ a sent message and
+          // then refund it — an under-charge). Adjacent hardening surfaced while
+          // fixing the refund path (audit F-17-1 completeness pass).
+          try {
+            await db.insert(campaignDeliveryEvents).values({
+              campaignId,
+              leadId: lead!.id,
+              channel: "sms",
+              status: "sent",
+            });
+          } catch (insErr) {
+            logger.warn(`[campaigns] delivery-event insert failed after a sent SMS (lead ${lead!.id}, campaign ${campaignId}): ${String(insErr)}`);
+          }
         } catch (err: any) {
           results.failed++;
           results.errors.push(`${lead!.phone}: ${err.message}`);

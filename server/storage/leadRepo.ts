@@ -10,6 +10,7 @@ import {
 } from "@shared/schema";
 import { assertNotUnderLegalHold, filterOutHeldIds } from "../services/legalHold";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
+import { LIST_READ_CAP, capListRead } from "./listCap";
 
 export const leadRepo = {
   // Leads
@@ -20,10 +21,12 @@ export const leadRepo = {
     } else if (filters?.assignedTo !== undefined) {
       conditions.push(eq(leads.assignedTo, filters.assignedTo));
     }
-    return await db.select().from(leads)
+    // Audit F-10-2: loud cap — truncation past the cap is logged, not silent.
+    const rows = await db.select().from(leads)
       .where(and(...conditions))
       .orderBy(desc(leads.createdAt))
-      .limit(5000);
+      .limit(LIST_READ_CAP + 1);
+    return capListRead(rows, LIST_READ_CAP, "getLeads", orgId);
   },
 
   async getLeadsPaginated(this: DatabaseStorage, orgId: number, options: PaginationOptions, filters?: { assignedTo?: number | null; q?: string }): Promise<PaginatedResult<Lead>> {

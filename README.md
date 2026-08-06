@@ -109,19 +109,20 @@ GET /api/health/cached — Last cached result (fast, no external calls)
 
 ```
 client/src/          React SPA
-  pages/             260 page components
+  pages/             ~258 page components
   components/        Shared UI (shadcn/ui based)
 
 server/              Express API
   auth/              Clerk authentication
   ai/                AI agents (Atlas, Pax, Sophie)
-  services/          823 service files
+  services/          ~991 service files
   middleware/        Rate limiting, CSRF, org resolution, security
   routes.ts          Route registrations
 
 shared/
-  schema.ts          Drizzle tables + Zod schemas (491 tables)
-  schema/            Domain schema modules (241 more tables; 732 total)
+  schema.ts          Drizzle tables + Zod schemas (500 tables)
+  schema/            Domain schema modules (248 more tables; 748 total —
+                     source of truth: scripts/ratchets/table-count.json)
 
 tests/               Vitest + Playwright test suites
 ```

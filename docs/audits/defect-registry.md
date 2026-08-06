@@ -599,12 +599,12 @@ Resolving commits: pending
 ### DEFECT-0059
 Title: Two competing onboarding wizards with no routing logic between them
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: 86 (F086-1)
-Description: V1 `onboarding-wizard.tsx` (4-step) and V2 `onboarding-v2.tsx` (path-branching, 7-step) both exist. No routing logic determines which is served. V1 redirects to `/dashboard`, V2 to `/today`.
-Evidence: Both files exist and both have routes defined.
-Remediation plan: Remove V1 entirely or gate behind feature flag. Canonicalize on V2.
-Resolving commits: pending
+Description: V1 `onboarding-wizard.tsx` (4-step) and V2 `onboarding-v2.tsx` (path-branching, 7-step) both existed. No routing logic determined which was served. V1 redirected to `/dashboard`, V2 to `/today`.
+Evidence: RESOLVED by the 2026-05-11 onboarding consolidation — `/onboarding-v2` is canonical (`App.tsx:494-497`), the standalone `onboarding-wizard.tsx` page was deleted (`App.tsx:36` "`OnboardingWizard` is no longer mounted"; `find client/src -iname "*onboarding-wizard*"` returns nothing at HEAD). Registry status was stale ("both files exist" was false at HEAD) — corrected by the 2026-08 audit (F-17-3).
+Remediation plan: Done — V1 removed, canonicalized on V2.
+Resolving commits: 2026-05-11 onboarding consolidation (App.tsx:494)
 
 ### DEFECT-0060
 Title: 1098 tax statement year boundaries ignore timezone -- compliance error

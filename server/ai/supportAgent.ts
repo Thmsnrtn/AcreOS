@@ -15,6 +15,7 @@ import {
 import { gte, lte } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { validateCompliance } from "../services/complianceValidator";
+import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
 
 const MAX_TOOL_ITERATIONS = 10;
 
@@ -5290,7 +5291,12 @@ export async function processSupportChat(
   const actionsPerformed: any[] = [];
   
   const openai = getOpenAIClient();
-  
+
+  // Audit F-16-1: enforce the platform cost ceiling + record spend. This
+  // tool-calling agent can't route through routeAITask (no tool support), so
+  // it gets the ceiling gate and telemetry directly.
+  await assertAiSpendAllowed(org.id);
+
   const traceStarted = Date.now();
   let response = await openai.chat.completions.create({
     model: "gpt-4o",
@@ -5298,6 +5304,7 @@ export async function processSupportChat(
     tools,
     tool_choice: "auto"
   });
+  recordExternalAiSpend({ orgId: org.id, taskType: "support_chat", model: "gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
 
   let assistantMessage = response.choices[0].message;
 
@@ -5363,10 +5370,11 @@ export async function processSupportChat(
       tools,
       tool_choice: "auto"
     });
+    recordExternalAiSpend({ orgId: org.id, taskType: "support_chat", model: "gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
 
     assistantMessage = response.choices[0].message;
   }
-  
+
   const rawFinal = assistantMessage.content || "I apologize, but I'm having trouble processing your request. Let me escalate this to our support team.";
 
   // Phase 4 W21-22 — compliance post-validator. Customer-support auto-resolver

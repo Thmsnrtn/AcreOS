@@ -801,7 +801,7 @@ export interface IStorage {
   getNotifications(orgId: number, userId: string, unreadOnly?: boolean): Promise<Notification[]>;
   getUnreadNotificationCount(orgId: number, userId: string): Promise<number>;
   createNotification(notification: InsertNotification): Promise<Notification>;
-  markNotificationRead(id: number): Promise<Notification>;
+  markNotificationRead(id: number, organizationId?: number): Promise<Notification>;
   markAllNotificationsRead(orgId: number, userId: string): Promise<void>;
 
   // Activity Feed (8.3)

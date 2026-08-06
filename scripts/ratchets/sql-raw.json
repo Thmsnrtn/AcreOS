@@ -1,0 +1,9 @@
+{
+  "name": "sql-raw",
+  "description": "sql.raw(...) drops out of Drizzle's parameterization — every site is a manual SQL-injection review. DEFECT-0002 fixed two specific interpolation sites by hand, but the CLASS was gated by NOTHING (audit F-07): no lint, no ratchet counted it, and check-org-scoped-fetch/no-fabrication can't see it. This freezes the count and drives it DOWN — a new raw-SQL site now fails CI until it is a conscious, reviewed decision. Lower baselineCount whenever a site is removed. Prefer Drizzle query builders / inArray() / .where() over sql.raw wherever the shape allows.",
+  "pattern": "sql\\.raw\\(",
+  "globs": ["server/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts"],
+  "baselineCount": 38,
+  "direction": "down"
+}

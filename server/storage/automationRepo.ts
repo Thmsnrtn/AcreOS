@@ -111,10 +111,22 @@ export const automationRepo = {
     return newNotification;
   },
 
-  async markNotificationRead(this: DatabaseStorage, id: number): Promise<Notification> {
+  async markNotificationRead(this: DatabaseStorage, id: number, organizationId?: number, userId?: string): Promise<Notification> {
+    // When organizationId is supplied the update is tenant-scoped so a caller
+    // cannot flip another org's notification by guessing its id (audit F-23-4).
+    // Notifications are per-user; when userId is supplied the update is also
+    // user-scoped so a caller cannot flip a CO-ORG user's notification by
+    // guessing its id (audit F-17-1 completeness pass).
+    const conditions = [eq(notifications.id, id)];
+    if (organizationId !== undefined) {
+      conditions.push(eq(notifications.organizationId, organizationId));
+    }
+    if (userId !== undefined) {
+      conditions.push(eq(notifications.userId, userId));
+    }
     const [updated] = await db.update(notifications)
       .set({ isRead: true, readAt: new Date() })
-      .where(eq(notifications.id, id))
+      .where(and(...conditions))
       .returning();
     return updated;
   },
