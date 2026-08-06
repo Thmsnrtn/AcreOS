@@ -22,6 +22,7 @@
 | **F-17-1/2/3/4** stale docs | P1–P3 | ledger row #1 corrected (renamed filenames + vN decoder + NOT-EXECUTED); DEFECT-0059 OPEN→FIXED; H0 boxes ticked; README counts refreshed | doc review |
 | **F-07** `sql.raw` ungated | P2 | new `sql-raw` ratchet, baseline **38**, down-only | **ratchet green** |
 | **F-06-1** `: any` ungated | P1 | new `colon-any` ratchet over `server/`, baseline **3085**, down-only | **ratchet green** |
+| **F-16-1 / F-08-4** va/support AI escapes cost chokepoint | P1 | new `aiSpendGuard` — cost-ceiling gate at agent entry + telemetry per call (so their spend counts toward the ceiling + COGS); wired into `processAgentTask`, `generateBriefing`, `processSupportChat`; new `openai-bypass` ratchet (baseline **89**, down-only) | **test 4/4 + ratchet green** |
 
 **Net: all 6 P0s + 9 P1 groups fixed, plus 2 new gates.** One integration test added (the crown-jewel tool P0); the rest verified by typecheck + reading + (for the schema/ratchet fixes) running the gate.
 
@@ -39,7 +40,7 @@
 
 These are real but each is a behavior-changing refactor or new CI infrastructure that warrants its own reviewed change rather than being folded into this security sweep:
 
-1. **F-16-1 / F-08-4 — route `/api/va` + `supportAgent` through `aiRouter`.** Both build their own `new OpenAI()` and call `gpt-4o` directly, escaping the per-org quota, the $15/day platform ceiling, and telemetry. Fix: route `processSupportChat` + the va agent through `routeAITask`; add `lint:ai-through-router` (baseline: 4 supportAgent + 3 vaService raw sites). *Risk: changes the runtime model path for two live surfaces — wants its own test pass.*
+1. **F-16-1 / F-08-4 — full tool-aware router migration (partially done).** ✅ The cost-ceiling gate + telemetry + the `openai-bypass` ratchet shipped (see the fixed table), so va/support spend is now capped and visible. ⏳ The *remaining* piece is routing these agents fully through a router — blocked because `routeAITask`'s message shape has **no `tool` role and its response has no `tool_calls`**, so tool-calling agents can't use it. The real unblock is extending `routeAITask` (or adding a tool-aware sibling) to carry `tools`/`tool_calls`, then migrating vaService/supportAgent/executive and driving the `openai-bypass` ratchet to 0. That's a shared-chokepoint change with wide blast radius — its own project.
 2. **F-08-2 / F-08-3 — eval the served (Haiku) model; derive `DATA_GROUNDING_EVAL_GREEN` from a real run.** Add a Haiku lane to `eval.yml`; wire the switch to the last real Haiku dg-v1 pass-rate. The interim "drop `data_lookup_restate` floor to Sonnet" **raises AI cost** — a founder cost decision, deliberately not made unilaterally.
 3. **F-05-2 — `lint:schema-migrate-mirror`.** Assert every `pgTable` column has a matching DDL statement in `migrate.mjs`. High value (prevents deploy 500s) but a robust textual matcher (renames, type changes) is non-trivial; a naive version would be noisy.
 4. **F-10-2 — paginate `getNotes` / the 5000-capped reads.** Pre-scale (near-empty tables today); the right fix is real pagination, not another silent cap. Do before the first large tenant.
