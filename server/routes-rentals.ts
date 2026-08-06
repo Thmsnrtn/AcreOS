@@ -563,6 +563,39 @@ export function registerRentalRoutes(app: Express): void {
       const parsed = tenantSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
+      // Audit F-15-1: gate FCRA screening fields on CREATE, mirroring the PATCH
+      // handler. Previously screening data (credit score, prior eviction,
+      // criminal record, income, criteria met) could be written on create with
+      // NO permissible-purpose gate, bypassing the PATCH gate entirely — a
+      // customer could set the exact regulated fields by creating rather than
+      // patching. Per-lookup attestation is per-tenant and cannot exist before
+      // the row, so create requires the org-level annual FCRA attestation.
+      const isScreeningCreate =
+        parsed.data.screeningCreditScore !== undefined ||
+        parsed.data.screeningHasPriorEviction !== undefined ||
+        parsed.data.screeningHasCriminalRecord !== undefined ||
+        parsed.data.screeningIncomeMonthlyCents !== undefined ||
+        parsed.data.screeningCriteriaMet !== undefined ||
+        parsed.data.status === "denied" ||
+        parsed.data.status === "approved";
+      if (isScreeningCreate) {
+        const { assertScreeningPermitted, FcraAttestationStaleError, TenantScreeningNotAttestedError } =
+          await import("./services/fcraAttestation");
+        try {
+          await assertScreeningPermitted({
+            organizationId: orgId,
+            userId,
+            tenantId: "", // no tenant row yet — org-level attestation only
+            requirePerLookupRow: false,
+          });
+        } catch (err: any) {
+          if (err instanceof FcraAttestationStaleError || err instanceof TenantScreeningNotAttestedError) {
+            return sendError(res, 422, err.code, err.message);
+          }
+          throw err;
+        }
+      }
+
       const [created] = await db.insert(tenants).values({
         organizationId: orgId,
         firstName: parsed.data.firstName,
