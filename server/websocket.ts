@@ -14,7 +14,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage, Server } from 'http';
 import crypto from 'crypto';
 import { db } from './db';
-import { sql } from 'drizzle-orm';
+import { sql, and, eq } from 'drizzle-orm';
+import { organizations, teamMembers } from '@shared/schema';
 import { logger } from "./utils/logger";
 import { isFounderEmail } from "./services/founder";
 
@@ -100,21 +101,27 @@ async function validateWsSession(
     // stolen cookie from authenticating as another user via the querystring.
     if (String(row.id) !== String(claimedUserId)) return null;
 
-    // (3) the tenant boundary: the user must belong to the claimed org.
+    // (3) the tenant boundary: the user must belong to the claimed org —
+    // either they own it or hold an active team seat. Uses the Drizzle query
+    // builder (typed, parameterized) rather than raw SQL.
     if (!Number.isFinite(claimedOrgId) || claimedOrgId <= 0) return null;
-    const owns = await db.execute(
-      sql`SELECT 1 FROM organizations WHERE id = ${claimedOrgId} AND owner_id = ${row.id} LIMIT 1`
-    );
-    let member = ((owns as any)?.rows?.length ?? 0) > 0;
+    const ownRows = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(and(eq(organizations.id, claimedOrgId), eq(organizations.ownerId, String(row.id))))
+      .limit(1);
+    let member = ownRows.length > 0;
     if (!member) {
-      const seat = await db.execute(
-        sql`SELECT 1 FROM team_members
-            WHERE organization_id = ${claimedOrgId}
-              AND user_id = ${row.id}
-              AND is_active = true
-            LIMIT 1`
-      );
-      member = ((seat as any)?.rows?.length ?? 0) > 0;
+      const seatRows = await db
+        .select({ orgId: teamMembers.organizationId })
+        .from(teamMembers)
+        .where(and(
+          eq(teamMembers.organizationId, claimedOrgId),
+          eq(teamMembers.userId, String(row.id)),
+          eq(teamMembers.isActive, true),
+        ))
+        .limit(1);
+      member = seatRows.length > 0;
     }
     if (!member) return null;
 
