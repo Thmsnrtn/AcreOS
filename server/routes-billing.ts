@@ -1132,33 +1132,49 @@ export function registerBillingRoutes(app: Express): void {
         timestamp: event.created,
       });
 
-      // Idempotency: skip already-processed events (P1-4 fix)
+      // Idempotency (audit F-20-1/F-20-3): atomically CLAIM the event before
+      // processing — INSERT ... ON CONFLICT DO NOTHING RETURNING. Only the
+      // instance whose insert wins proceeds; a concurrent redelivery gets no
+      // row back and skips (replaces the racy SELECT-then-INSERT). Critically,
+      // if the handler THROWS we RELEASE the claim and rethrow so Stripe
+      // redelivers — the previous code marked the event processed in a
+      // `finally` that ran even on failure, so a transient DB error left the
+      // borrower charged but the note never updated, with no retry. The
+      // platform webhook already claims-then-releases; this is its twin.
+      let claimed = false;
       try {
-        const [existing] = await db
-          .select({ id: stripeProcessedEvents.id })
-          .from(stripeProcessedEvents)
-          .where(eq(stripeProcessedEvents.stripeEventId, event.id))
-          .limit(1);
-        if (existing) {
-          logger.info(`[connect-webhook] Skipping duplicate event: ${event.id} (${event.type})`);
-          return res.status(200).json({ received: true, duplicate: true });
-        }
+        const claimRows = await db
+          .insert(stripeProcessedEvents)
+          .values({ stripeEventId: event.id, eventType: event.type })
+          .onConflictDoNothing()
+          .returning({ id: stripeProcessedEvents.id });
+        claimed = claimRows.length > 0;
       } catch {
-        // Table may not exist yet during migration — allow processing
+        // Table may not exist yet during migration — process without the
+        // idempotency guarantee rather than dropping the event.
+        claimed = true;
+      }
+      if (!claimed) {
+        logger.info(`[connect-webhook] Skipping duplicate event: ${event.id} (${event.type})`);
+        return res.status(200).json({ received: true, duplicate: true });
       }
 
       try {
         await stripeConnectService.handleWebhookEvent(event);
-      } finally {
-        // Always mark processed to prevent infinite Stripe retries
+      } catch (handlerErr) {
+        // Release the claim so Stripe's bounded retry can re-claim and
+        // reprocess instead of the event being lost as a "duplicate".
         try {
-          await db.insert(stripeProcessedEvents).values({
-            stripeEventId: event.id,
-            eventType: event.type,
-          }).onConflictDoNothing();
-        } catch (markErr) {
-          logger.warn(`[connect-webhook] Failed to record processed event ${event.id}`, markErr instanceof Error ? markErr : undefined);
+          await db
+            .delete(stripeProcessedEvents)
+            .where(eq(stripeProcessedEvents.stripeEventId, event.id));
+        } catch (relErr) {
+          logger.error(
+            `[connect-webhook] Failed to release claim for ${event.id} after handler error`,
+            relErr instanceof Error ? relErr : undefined,
+          );
         }
+        throw handlerErr; // → outer catch → 500 → Stripe redelivers
       }
 
       logger.info("Stripe Connect webhook event processed", {
