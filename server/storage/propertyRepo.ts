@@ -11,14 +11,17 @@ import {
 } from "@shared/schema";
 import { assertNotUnderLegalHold } from "../services/legalHold";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
+import { LIST_READ_CAP, capListRead } from "./listCap";
 
 export const propertyRepo = {
   async getProperties(this: DatabaseStorage, orgId: number): Promise<Property[]> {
     // Task 223: exclude soft-deleted properties from list queries
-    return await db.select().from(properties)
+    // Audit F-10-2: loud cap — truncation past the cap is logged, not silent.
+    const rows = await db.select().from(properties)
       .where(and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`))
       .orderBy(desc(properties.createdAt))
-      .limit(5000);
+      .limit(LIST_READ_CAP + 1);
+    return capListRead(rows, LIST_READ_CAP, "getProperties", orgId);
   },
 
   async getPropertiesPaginated(this: DatabaseStorage, orgId: number, options: PaginationOptions): Promise<PaginatedResult<Property>> {
