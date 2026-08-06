@@ -3,6 +3,18 @@
 **Date:** 2026-05-27
 **Trigger:** Lens 10 flagged versioned `routes-founder-v{6..14}.ts` files coexisting on `main` as a code smell.
 
+> **⚠ UPDATE 2026-08-06 (audit F-17-1):** the "None are dead" rationale below is
+> **no longer true for V6/V7/V8.** Those three routers (renamed to
+> `routes-founder-{sovereign-company,learning-company,living-organization}.ts`)
+> and their 17 client components (WarRoom, ScenarioEngine, StrategicCompass, …)
+> were verified DEAD (zero live client importers) and **DELETED**. Their backing
+> services stay live via `ceoCommandBridge` + the worker jobs. **V10–V14 remain
+> live** — they back the refit founder pages (`/founder/scenarios`,
+> `/founder/governance`, `/founder/memory`) and the `use-sovereign-dashboard`
+> hook. See the corrected row in `docs/company/deletion-ledger.md` for the full
+> reachability map. Rows 10–12 and the Rationale are kept below as the
+> 2026-05-27 record.
+
 ## Inventory
 
 | File | Codename | Endpoints | Client references | Decision |

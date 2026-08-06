@@ -82,6 +82,15 @@ function platformCredentials(): TwilioCredentials | null {
 }
 
 /**
+ * True iff the org has its OWN connected (BYO) Twilio identity — used by
+ * counterparty send paths (e.g. campaign SMS) that must NOT fall back to the
+ * platform account per the "be the rail, not the provider" founder ruling.
+ */
+export async function orgHasByoTwilio(organizationId: number): Promise<boolean> {
+  return (await getOrgTwilioCredentials(organizationId).catch(() => null)) != null;
+}
+
+/**
  * Resolve effective Twilio creds: BYOK wins, falls back to platform env.
  */
 async function resolveCredentials(organizationId?: number): Promise<TwilioCredentials | null> {

@@ -29,7 +29,7 @@ import { storage, db } from "./storage";
 import { eq, sql, and, gte, desc } from "drizzle-orm";
 import { leads, deals, properties, campaignResponses, campaignDeliveryEvents } from "@shared/schema";
 import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
-import { sendOrgSMS } from "./services/smsService";
+import { sendOrgSMS, orgHasConnectedSmsIdentity } from "./services/smsService";
 
 export function registerCampaignRoutes(app: Express): void {
   const api = app;
@@ -2140,12 +2140,9 @@ export function registerCampaignRoutes(app: Express): void {
       }
 
       // Audit F-21-1/F-21-2: campaign SMS now sends through sendOrgSMS →
-      // commsRouter, which (a) runs the Searchbug DNC/litigator scrub, quiet
-      // hours, consent and the contact-frequency cap — the raw Twilio call
-      // bypassed every one — and (b) resolves the org's OWN connected (BYO)
-      // Twilio identity, refusing per-recipient when none is connected. The
-      // platform TWILIO_* env is no longer the send gate; TWILIO_PHONE_NUMBER
-      // is read only to label simulated sends.
+      // commsRouter, which runs the Searchbug DNC/litigator scrub, quiet hours,
+      // consent and the contact-frequency cap — the raw Twilio call bypassed
+      // every one. TWILIO_PHONE_NUMBER is read only to label simulated sends.
       const twilioPhone = process.env.TWILIO_PHONE_NUMBER ?? "byo";
 
       const messageBody = (campaign as any).textContent || (campaign as any).smsBody || campaign.name || "Message from AcreOS";
@@ -2156,6 +2153,26 @@ export function registerCampaignRoutes(app: Express): void {
       // Honor SIMULATION_MODE / org.settings.simulationMode — a global
       // kill-switch must hold on the campaign batch path too (caught 2026-05-10).
       const simulated = shouldSimulate("sms", org);
+
+      // "Be the rail, not the provider" (founder ruling 2026-07-29): campaign
+      // SMS is COUNTERPARTY traffic and must run on the org's OWN connected
+      // (BYO) Twilio identity. The comms router falls back to the platform
+      // TWILIO_* account when no BYO is connected (that account is system-mail
+      // only) — so refuse the whole batch here rather than send counterparty
+      // texts on AcreOS's account. Refund the upfront deduct; no send happens.
+      if (!simulated && !(await orgHasConnectedSmsIdentity(org.id))) {
+        if (!req.isFounder) {
+          await creditService.addCredits(
+            org.id, totalCost, "refund",
+            `Refund: campaign ${campaign.name} not sent — no connected SMS identity`,
+          );
+        }
+        return Errors.badRequest(
+          res,
+          "Connect your own Twilio/SMS number before sending campaign texts — AcreOS does not send counterparty SMS on the platform account.",
+          { reason: "no_byo_sms_identity" },
+        );
+      }
 
       for (const lead of dedupedLeads) {
         // In-memory dedup for this execution
@@ -2190,19 +2207,14 @@ export function registerCampaignRoutes(app: Express): void {
               hasMms ? campaignMediaUrls : undefined,
             );
             if (!sendResult.success) {
+              // Not delivered (DNC/consent/quiet-hours block, or no connected
+              // SMS identity). Count it as failed and let the SINGLE post-loop
+              // batch refund below credit every failed recipient exactly once.
+              // Do NOT also refund inline here — that double-refunded blocked
+              // recipients (they are counted in results.failed AND were batch-
+              // refunded), minting credits. Audit F-17-1 completeness pass.
               results.failed++;
               results.errors.push(`${lead!.phone}: ${sendResult.error ?? "send blocked"}`);
-              // Refund the pre-deducted credit — this recipient was never
-              // messaged (blocked by DNC/consent/quiet-hours, or the org has
-              // no connected SMS identity). Refuse-not-charge.
-              if (!req.isFounder) {
-                await creditService.addCredits(
-                  org.id,
-                  perRecipientCost,
-                  "refund",
-                  `Refund: SMS not sent to ${lead!.phone} (campaign ${campaign.name})`,
-                );
-              }
               continue;
             }
           }

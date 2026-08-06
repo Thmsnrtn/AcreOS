@@ -16,7 +16,7 @@
 | **F-08-1** hallucination guard stream-only | P0 | `finalizePaxOutput` helper runs the guard + live eval gate on the non-stream `processChat` before persist | tsc |
 | **F-20-1/3** Connect webhook acks on failure | P1 | atomic claim-then-release: on handler throw the claim is released and rethrown so Stripe redelivers (was `finally`-marked) | tsc |
 | **F-15-1** FCRA screening ungated on CREATE | P1 | `POST /api/tenants` requires the org-level FCRA attestation when screening fields present, mirroring PATCH | tsc |
-| **F-11-1** Today door stale after mutation | P1 | lead/deal/property hooks now invalidate `/api/today` (the door's real key), not just `today-priorities` | tsc |
+| **F-11-1** Today door stale after mutation | P1 | lead/deal/property hooks invalidate `/api/today` (the door's real key) on **create, update AND delete** — the original commit only covered delete (caught + fixed in the completeness pass below) | tsc |
 | **F-05-1** schema validator blind to 248 tables | P1 | column validator indexes `schema.ts` + `schema/*.ts` | **ran: 500→744 tables, 0 new violations** |
 | **F-13-1** failing critical job never pages | P1 | `backupRestoreVerify` + `dbBackup` call `alertSpine.raiseAlert(critical)` on failure (the live page path), not the Class-C tray | tsc |
 | **F-17-1/2/3/4** stale docs | P1–P3 | ledger row #1 corrected (renamed filenames + vN decoder + NOT-EXECUTED); DEFECT-0059 OPEN→FIXED; H0 boxes ticked; README counts refreshed | doc review |
@@ -47,6 +47,24 @@ Each was implemented, verified against code (not against a self-report), and com
 
 ### The paxModelTier tsc-break caught in this batch
 Item 6's commit (`c717d79`) shipped a JSDoc comment containing the literal `safe*/adversarial*` — the `*/` **closed the block comment early** and broke `tsc` for the whole tree. It survived because that run's "exit 0" was read from a trailing `echo`, not from `npm run check`. Fixed here; the process lesson is baked into the verification method below (read the command's OWN exit code via a sentinel file, never a wrapped one).
+
+---
+
+## Completeness audit (2026-08-06) — an independent 6-dimension adversarial pass over the WHOLE branch
+
+Because the paxModelTier break proved a "green" claim had been read wrong, the entire remediation branch (base `5ca0f29`, ~30 commits) was re-audited by an independent fan-out that treated every "fixed" claim as a hypothesis: build-integrity, security-P0 bypass, built-but-unwired, ratchet honesty, deletion residue, and claim-vs-code. **Clean dimensions (zero findings): build-integrity, built-but-unwired, ratchet-honesty.** It confirmed **7 defects — 2 of them P1 I introduced in this very remediation** — all now fixed:
+
+| Sev | Defect | Fix |
+|---|---|---|
+| **P1** | `websocket.ts` `isAllowedChannel` prefix-matched `org:${id}` with no delimiter → org 1 could subscribe to `org:19`/`org:100` and receive their live streams (defeated the F-23-1 boundary) | exact-match `channel === org:${id} \|\| startsWith(org:${id}:)`, same for `user:` |
+| **P1** | `routes-campaigns.ts` blocked-SMS **double refund** — the inline per-recipient refund I added stacked with the pre-existing post-loop batch refund → blocked recipients minted free credits | removed the inline refund; the single post-loop batch refund credits every failure exactly once |
+| **P2** | Campaign SMS fell back to the **platform** Twilio account when the org had no BYO identity — a "be the rail" constitution breach; the fix comment even claimed the opposite | added `orgHasConnectedSmsIdentity` gate — campaign (counterparty) send refuses + refunds when no BYO is connected; corrected the false comment |
+| **P2** | **F-11-1 was overclaimed** — only DELETE hooks invalidated `/api/today`; create/update left the Today door stale | added `/api/today` invalidation to create + update hooks for leads/deals/properties |
+| **P3** | `POST /api/notifications/:id/read` scoped by org only → a user could flip a co-org user's notification by id | `markNotificationRead` now also filters `userId`; route passes it |
+| **P3** | Six orphaned middleware mounts for the deleted `/api/founder/v6\|v7\|v8` prefixes survived in `routes.ts` | removed |
+| **P3** | `docs/founder-routes-audit.md` still said V6/V7/V8 are live ("None are dead") | dated update banner correcting it to the true reachability map |
+
+Verified: full `npm run check` green after all 7 fixes; the two P1s were re-read against code before and after.
 
 ---
 

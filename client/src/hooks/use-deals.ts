@@ -117,6 +117,7 @@ export function useCreateDeal() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1: Today door key (create parity with delete)
       toast({
         title: "Success",
         description: "Deal created successfully.",
@@ -144,6 +145,7 @@ export function useUpdateDeal() {
       return res.json();
     },
     listKeys: [["/api/deals"]],
+    extraInvalidateKeys: [["/api/today"]], // F-11-1: stage/status change moves the deal in the Today feed
     detailKey: ({ id }) => ["/api/deals", id],
     getId: ({ id }) => id,
     successToast: { title: "Success", description: "Deal updated successfully." },

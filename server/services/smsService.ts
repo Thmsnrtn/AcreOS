@@ -309,6 +309,17 @@ export async function sendOrgSMS(
   }
 }
 
+/**
+ * Does the org have its OWN connected (BYO) SMS identity? Counterparty send
+ * paths (campaign SMS) must refuse rather than fall back to AcreOS's platform
+ * Twilio account — "be the rail, not the provider" (founder ruling 2026-07-29).
+ * The platform account is system-mail only.
+ */
+export async function orgHasConnectedSmsIdentity(organizationId: number): Promise<boolean> {
+  const { orgHasByoTwilio } = await import("./comms/providers/twilio");
+  return orgHasByoTwilio(organizationId);
+}
+
 export async function sendSMSToLead(
   organizationId: number,
   leadId: number,

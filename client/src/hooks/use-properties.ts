@@ -78,6 +78,7 @@ export function useCreateProperty() {
       // it; property create did not, so the tile never ticked after
       // the user added their first property.
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1: Today door key (create parity with delete)
       toast({
         title: "Success",
         description: "Property created successfully.",

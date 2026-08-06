@@ -289,10 +289,17 @@ class AcreOSWebSocketServer {
     }
   }
 
-  // Only allow subscribing to channels scoped to the client's own org/user
+  // Only allow subscribing to channels scoped to the client's own org/user.
+  // Match the FULL id, not a prefix: `channel.startsWith('org:'+id)` would let
+  // org 1 subscribe to `org:19`/`org:100` and receive their live streams
+  // (audit F-17-1 completeness pass). Broadcasts use exactly `org:${id}` /
+  // `user:${id}` (websocket.ts:358/365/402); the trailing-colon form keeps any
+  // future `org:${id}:sub` channel scoped without reopening the prefix hole.
   private isAllowedChannel(client: WSClient, channel: string): boolean {
-    if (channel.startsWith(`org:${client.organizationId}`)) return true;
-    if (channel.startsWith(`user:${client.userId}`)) return true;
+    const orgId = `org:${client.organizationId}`;
+    if (channel === orgId || channel.startsWith(`${orgId}:`)) return true;
+    const userId = `user:${client.userId}`;
+    if (channel === userId || channel.startsWith(`${userId}:`)) return true;
     // Entity channels must be org-scoped to prevent cross-org data leakage
     const orgPrefix = `${client.organizationId}:`;
     if (channel.startsWith(`deal:${orgPrefix}`)) return true;

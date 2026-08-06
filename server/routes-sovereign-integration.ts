@@ -130,15 +130,18 @@ export function registerSovereignIntegrationRoutes(app: Express) {
    */
   app.post("/api/notifications/:id/read", async (req: Request, res: Response) => {
     // Audit F-23-4 — org-scoped write so a caller cannot flip another org's
-    // notification by guessing its id.
+    // notification by guessing its id. F-17-1 completeness pass — also
+    // user-scoped, since notifications are per-user and a caller must not flip
+    // a co-org user's notification either.
     try {
       const areq = req as AuthenticatedRequest;
       const orgId = areq.organization?.id;
-      if (!orgId) return Errors.unauthorized(res);
+      const userId = areq.user?.id;
+      if (!orgId || !userId) return Errors.unauthorized(res);
       const id = parseInt(req.params.id, 10);
       if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid notification id");
       const { storage } = await import("./storage");
-      const updated = await storage.markNotificationRead(id, orgId);
+      const updated = await storage.markNotificationRead(id, orgId, String(userId));
       res.json({ success: !!updated });
     } catch (err) {
       Errors.internal(res, err);
