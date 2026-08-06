@@ -9,10 +9,17 @@
 |---|---|---|
 | 0 — Priors + regression check | ✅ DONE | Orientation written; founder approved |
 | 1 — Gate coverage (load-bearing six) | ✅ DONE | `01-gate-coverage.md` committed |
-| Fan-out (T1–T5, 04–18, cosmetic) | ⏳ RUNNING | workflow `wd81gdj38`; T1+T2 landed & verified |
-| 3 — Ledger reconciliation | ⏳ prep started | independent KILL-residue/FREEZE checks below |
-| Synthesis (99-master) | ⛔ | |
-| Adversarial pass | ⛔ | |
+| Fan-out (T1–T5, 04–18, cosmetic) | ✅ DONE | 21/21 slices, 0 errors, 6 P0 / 20 P1 |
+| Cross-slice verification | ✅ DONE | all 6 P0s + load-bearing P1s: citations opened, held |
+| 3 — Ledger reconciliation | ✅ DONE | `03-ledger-reconciliation.md` committed |
+| Synthesis (99-master) | ✅ DONE | `99-master.md` — State, Coverage, Findings, The Ten, New Gates, Ledger adds, Deferrals, Collisions, Sequencing, If-mine |
+| Adversarial pass | ✅ DONE | appended to master; F-14-1 P1→P2, F-22-3 softened, 7th-P0 pointer at connectors/executor.ts |
+
+## Verification outcome — every P0 + load-bearing P1 opened and confirmed
+
+All 6 P0s CONFIRMED against code: F-21-1 (DNC bypass), F-23-1/2/3/4 (tenant boundary), F-08-1 (guard parity). Load-bearing P1s confirmed: F-20-1, F-21-2, F-05-1, F-05-2, F-08-2, F-08-3, F-10-2, F-11-1, F-13-1/2, F-15-1, F-16-1, F-17-1, F-18-1, F-12-1. Only corrections: F-11-1 phrasing (wrong query key, not "never"), F-17-1 (V6-V14 renamed not deleted — corrected my own Phase-0 read), F-14-1 downgraded P1→P2 (handleQueryError IS wired). No slice citation failed to hold.
+
+## Run complete. Deliverables under docs/audit-2026-08/: 00,01,02,03,04–18,20–24,99 + PROGRESS.
 
 ## Verification log (trust discipline — citations opened)
 
