@@ -29,6 +29,7 @@ import { storage, db } from "./storage";
 import { eq, sql, and, gte, desc } from "drizzle-orm";
 import { leads, deals, properties, campaignResponses, campaignDeliveryEvents } from "@shared/schema";
 import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
+import { sendOrgSMS } from "./services/smsService";
 
 export function registerCampaignRoutes(app: Express): void {
   const api = app;
@@ -2138,53 +2139,23 @@ export function registerCampaignRoutes(app: Express): void {
         }
       }
 
-      // Check Twilio configuration
-      const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-      const twilioToken = process.env.TWILIO_AUTH_TOKEN;
-      const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
-
-      if (!twilioSid || !twilioToken || !twilioPhone) {
-        // Refund all credits since we can't send without Twilio
-        if (!req.isFounder) {
-          await creditService.addCredits(
-            org.id, totalCost, "refund",
-            `Refund: SMS not configured for campaign: ${campaign.name}`
-          );
-        }
-        return Errors.badRequest(res, "SMS not configured. Please add Twilio credentials in Settings → Integrations.");
-      }
+      // Audit F-21-1/F-21-2: campaign SMS now sends through sendOrgSMS →
+      // commsRouter, which (a) runs the Searchbug DNC/litigator scrub, quiet
+      // hours, consent and the contact-frequency cap — the raw Twilio call
+      // bypassed every one — and (b) resolves the org's OWN connected (BYO)
+      // Twilio identity, refusing per-recipient when none is connected. The
+      // platform TWILIO_* env is no longer the send gate; TWILIO_PHONE_NUMBER
+      // is read only to label simulated sends.
+      const twilioPhone = process.env.TWILIO_PHONE_NUMBER ?? "byo";
 
       const messageBody = (campaign as any).textContent || (campaign as any).smsBody || campaign.name || "Message from AcreOS";
 
       // Send SMS messages with in-memory dedup for this execution
       const sentInExecution = new Set<number>();
       const results = { sent: 0, failed: 0, errors: [] as string[] };
-      // Honor SIMULATION_MODE / org.settings.simulationMode here too — this
-      // callsite previously bypassed the shouldSimulate gate because it
-      // called Twilio directly instead of going through smsService. Without
-      // this branch a global kill-switch was a lie for the campaign batch
-      // path. Caught 2026-05-10.
-      // Minimal structural type for the subset of the Twilio SDK we call.
-      // The `twilio` package is an optional runtime dependency (loaded only
-      // for live sends), so it is imported through a non-literal specifier to
-      // avoid a compile-time module resolution requirement.
-      type TwilioClient = {
-        messages: {
-          create(opts: {
-            to: string;
-            from: string;
-            body: string;
-            mediaUrl?: string[];
-          }): Promise<unknown>;
-        };
-      };
-      type TwilioFactory = (sid: string, token: string) => TwilioClient;
+      // Honor SIMULATION_MODE / org.settings.simulationMode — a global
+      // kill-switch must hold on the campaign batch path too (caught 2026-05-10).
       const simulated = shouldSimulate("sms", org);
-      const twilioModuleName = "twilio";
-      const twilio = simulated
-        ? null
-        : ((await import(twilioModuleName)).default as TwilioFactory);
-      const client: TwilioClient | null = simulated ? null : twilio!(twilioSid, twilioToken);
 
       for (const lead of dedupedLeads) {
         // In-memory dedup for this execution
@@ -2211,15 +2182,29 @@ export function registerCampaignRoutes(app: Express): void {
               org
             );
           } else {
-            await client!.messages.create({
-              to: lead!.phone!,
-              from: twilioPhone,
+            // Real send through the gated choke point (DNC + frequency + BYO).
+            const sendResult = await sendOrgSMS(
+              org.id,
+              lead!.phone!,
               body,
-              // Twilio's Node SDK accepts mediaUrl as string | string[]; pass
-              // an array so multi-image MMS (when we lift the UI cap) works
-              // without further changes.
-              ...(hasMms ? { mediaUrl: campaignMediaUrls } : {}),
-            });
+              hasMms ? campaignMediaUrls : undefined,
+            );
+            if (!sendResult.success) {
+              results.failed++;
+              results.errors.push(`${lead!.phone}: ${sendResult.error ?? "send blocked"}`);
+              // Refund the pre-deducted credit — this recipient was never
+              // messaged (blocked by DNC/consent/quiet-hours, or the org has
+              // no connected SMS identity). Refuse-not-charge.
+              if (!req.isFounder) {
+                await creditService.addCredits(
+                  org.id,
+                  perRecipientCost,
+                  "refund",
+                  `Refund: SMS not sent to ${lead!.phone} (campaign ${campaign.name})`,
+                );
+              }
+              continue;
+            }
           }
           results.sent++;
           sentInExecution.add(lead!.id);
