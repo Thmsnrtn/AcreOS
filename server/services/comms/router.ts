@@ -34,6 +34,12 @@ export interface SendSmsOpts {
   feature?: string;
   externalEventId?: string;
   mediaUrls?: string[];
+  // Counterparty ("be the rail") sends set this: the provider MUST use the
+  // org's OWN connected (BYO) identity and MUST NOT fall back to the platform
+  // account. Checked at real-send time (per recipient), so a BYO credential
+  // rotated/disabled mid-batch cannot slip a counterparty message onto the
+  // platform account. Unset (system mail) keeps the normal platform fallback.
+  requireByoIdentity?: boolean;
 }
 
 export interface SendSmsResult {

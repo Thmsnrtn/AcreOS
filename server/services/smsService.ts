@@ -287,6 +287,12 @@ export async function sendOrgSMS(
       mediaUrls,
       organizationId,
       feature: "sms",
+      // Every sendOrgSMS caller messages a lead/recipient — this is the
+      // COUNTERPARTY path (it carries the TCPA gate above). Require the org's
+      // OWN BYO identity at send time; never fall back to AcreOS's platform
+      // Twilio account ("be the rail, not the provider"). This is the real
+      // chokepoint the campaign-level pre-loop gate only approximates.
+      requireByoIdentity: true,
     });
     // Pillar 1.6 — record opex on successful real send.
     await postSmsCostToLedger(organizationId, result.sid);

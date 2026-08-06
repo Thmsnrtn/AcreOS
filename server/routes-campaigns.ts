@@ -2221,13 +2221,21 @@ export function registerCampaignRoutes(app: Express): void {
           results.sent++;
           sentInExecution.add(lead!.id);
 
-          // Record delivery event for future dedup
-          await db.insert(campaignDeliveryEvents).values({
-            campaignId,
-            leadId: lead!.id,
-            channel: "sms",
-            status: "sent",
-          });
+          // Record delivery event for future dedup. Its OWN try/catch: the SMS
+          // already went out, so a failed dedup insert must NOT fall through to
+          // the outer catch (which would results.failed++ a sent message and
+          // then refund it — an under-charge). Adjacent hardening surfaced while
+          // fixing the refund path (audit F-17-1 completeness pass).
+          try {
+            await db.insert(campaignDeliveryEvents).values({
+              campaignId,
+              leadId: lead!.id,
+              channel: "sms",
+              status: "sent",
+            });
+          } catch (insErr) {
+            logger.warn(`[campaigns] delivery-event insert failed after a sent SMS (lead ${lead!.id}, campaign ${campaignId}): ${String(insErr)}`);
+          }
         } catch (err: any) {
           results.failed++;
           results.errors.push(`${lead!.phone}: ${err.message}`);
