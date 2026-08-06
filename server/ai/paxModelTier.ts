@@ -95,16 +95,27 @@ export type PaxTaskType =
 
 // ── Eval gate ────────────────────────────────────────────────────────────────
 /**
- * THE GATE. Mirrors the state of the Wave-2 data-grounding eval set
- * (server/ai/dataGroundingEvalCases.ts, DATA_GROUNDING_VERSION "dg-v1",
- * surface=pax_inbox). The eval shipped GREEN in Wave 2 — the safe* outputs
- * pass and adversarial* outputs trip the gate (asserted in
- * dataGroundingEvalCases.test.ts).
- *
- * This is the single reversible switch: set to `false` and no task type is
- * ever routed below its tier ceiling, regardless of per-type policy. Andrei's
+ * THE GATE — a MANUAL operator kill-switch. Set to `false` and no task type is
+ * ever routed below its tier ceiling, regardless of per-type policy (Andrei's
  * rule: no sub-ceiling routing of customer-facing synthesis without a green
- * eval supporting it.
+ * eval supporting it).
+ *
+ * HONESTY (audit F-08-3): this is a hand-set constant, NOT auto-derived from a
+ * model eval. `dataGroundingEvalCases.test.ts` only checks FIXTURE consistency
+ * — that hand-written safe*/adversarial* STRINGS pass/fail detectHallucinations
+ * — it does NOT run the served model (Haiku) against the grounding set, so it
+ * never proved Haiku grounds well enough for the downgrade this switch
+ * authorizes. The REAL model-eval of the served model now runs in CI: the
+ * eval.yml Haiku matrix leg (audit F-08-2) scores Haiku on the golden set every
+ * AI-touching PR and blocks a merge on a >5% regression — so the `true` below
+ * is earned by a gate that actually exercises Haiku, not a fixture check.
+ *
+ * REMAINING UNBLOCK: deriving this constant from a PERSISTED live eval pass-rate
+ * (a scheduled dg-v1-on-Haiku run writing ai_eval_gate_runs, read here with a
+ * conservative default) would also catch a WILD Haiku regression between PRs.
+ * That crosses into the model-tier COST decision (a red eval would flip routing
+ * to Sonnet, raising spend) and the routing hot path, so it is left as a
+ * founder-owned follow-on rather than changed here.
  */
 export const DATA_GROUNDING_EVAL_GREEN = true;
 

@@ -30,6 +30,15 @@ jobs:
   eval:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Audit F-08-2: eval BOTH the default model (Sonnet) AND the model that
+    # actually serves the free trial + the most-common data_lookup_restate turn
+    # (Haiku, per shared/schema/solene-chat-config.ts + server/ai/paxModelTier.ts).
+    # An eval whose model differs from the served model gates nothing. Each
+    # matrix leg runs on its own isolated runner, so report dirs don't collide.
+    strategy:
+      fail-fast: false
+      matrix:
+        model: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001']
     steps:
       - name: Checkout PR
         uses: actions/checkout@v7
@@ -52,7 +61,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AI_INTEGRATIONS_OPENROUTER_API_KEY: ${{ secrets.AI_INTEGRATIONS_OPENROUTER_API_KEY }}
         run: |
-          npm run eval -- --report-dir evals/reports/pr
+          npm run eval -- --model ${{ matrix.model }} --report-dir evals/reports/pr
           PR_SCORE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('evals/reports/pr/latest.json','utf8')).totals.avgOverall.toFixed(4))")
           echo "pr_score=$PR_SCORE" >> "$GITHUB_OUTPUT"
 
@@ -74,7 +83,7 @@ jobs:
             cp -r /tmp/main/evals/* evals_main_tmp/ 2>/dev/null || true
             mkdir -p evals_main_tmp
             cp -r /tmp/main/evals/. evals_main_tmp/
-            npx tsx evals_main_tmp/run-eval.ts --prompts evals_main_tmp/golden-set.json --report-dir evals/reports/main || true
+            npx tsx evals_main_tmp/run-eval.ts --model ${{ matrix.model }} --prompts evals_main_tmp/golden-set.json --report-dir evals/reports/main || true
           fi
           if [ -f evals/reports/main/latest.json ]; then
             MAIN_SCORE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('evals/reports/main/latest.json','utf8')).totals.avgOverall.toFixed(4))")
@@ -108,7 +117,7 @@ jobs:
               ? `Within the 5% regression budget.`
               : `**Regression > 5% — blocking merge.**`;
             const body = [
-              `### ${emoji} AI eval harness`,
+              `### ${emoji} AI eval harness — model: \`${{ matrix.model }}\``,
               ``,
               `| metric | value |`,
               `| --- | --- |`,
@@ -128,7 +137,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: eval-reports
+          name: eval-reports-${{ matrix.model }}
           path: evals/reports
           retention-days: 14
 
