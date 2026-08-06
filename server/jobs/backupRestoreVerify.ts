@@ -40,6 +40,30 @@ import { backupConfigMissingReason } from "./jobRegistry";
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * Audit F-13-1: page the founder's phone when restore-verification fails.
+ * Routed through alertSpine.raiseAlert (critical → pageCriticalThrottled),
+ * the SAME live page path the deadman uses — NOT the Class-C in-app tray the
+ * generic job:failed event resolves to. Best-effort: a page failure must never
+ * change the verification result.
+ */
+async function pageBackupVerifyFailure(detail: string): Promise<void> {
+  try {
+    const { raiseAlert } = await import("../services/alertSpine");
+    await raiseAlert({
+      severity: "critical",
+      source: "backupRestoreVerify",
+      title: "Weekly backup restore-verification FAILED",
+      detail,
+      dedupeKey: "backup_restore_verify_failed",
+      domain: "reliability",
+      citedReason: "A backup that cannot be restored is not a backup — this is data-loss exposure.",
+    });
+  } catch (err) {
+    logger.error("[backupRestoreVerify] failed to page on verification failure", err instanceof Error ? err : undefined);
+  }
+}
+
 /** Fixed scratch DB name — a crashed prior run is cleaned up by the next. */
 export const SCRATCH_DB_NAME = "acreos_restore_verify";
 
@@ -308,6 +332,12 @@ export async function runBackupRestoreVerification(): Promise<RestoreVerifyResul
       undefined,
       { metadata: { tables: result.tables } },
     );
+    // Audit F-13-1: a job that RUNS AND FAILS must reach the founder's phone,
+    // not just the Class-C in-app tray. A silently-corrupt backup is data-loss
+    // exposure — page it.
+    await pageBackupVerifyFailure(
+      `Restore-verification FAILED for ${backupKey}: crown-jewel row-count parity out of tolerance (${result.tables.filter((t) => !t.ok).map((t) => t.table).join(", ")}).`,
+    );
     return { status: "failed", backupKey, maxDriftPct: result.maxDriftPct, tables: result.tables };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -324,6 +354,9 @@ export async function runBackupRestoreVerification(): Promise<RestoreVerifyResul
     } catch {
       /* proof-row write is best-effort */
     }
+    // Audit F-13-1: page — a restore-verify that errors out is as serious as
+    // one that fails the parity check.
+    await pageBackupVerifyFailure(`Restore-verification errored: ${message}`);
     return { status: "failed", backupKey: backupKey || undefined, error: message };
   } finally {
     try { if (fs.existsSync(dumpPath)) fs.unlinkSync(dumpPath); } catch { /* tmp cleanup */ }

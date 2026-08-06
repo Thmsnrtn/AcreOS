@@ -109,6 +109,22 @@ export async function runDbBackup(): Promise<BackupResult> {
     try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch {}
 
     log(`Backup failed: ${err.message}`, "dbBackup");
+    // Audit F-13-1: a failing daily backup must page the founder's phone, not
+    // sit in the Class-C in-app tray the generic job:failed event resolves to.
+    try {
+      const { raiseAlert } = await import("../services/alertSpine");
+      await raiseAlert({
+        severity: "critical",
+        source: "dbBackup",
+        title: "Daily DB backup FAILED",
+        detail: `The daily database backup job failed: ${err.message}`,
+        dedupeKey: "db_backup_failed",
+        domain: "reliability",
+        citedReason: "A backup that does not run is data-loss exposure for customer records.",
+      });
+    } catch (pageErr) {
+      log(`DB backup failure page also failed: ${pageErr}`, "dbBackup");
+    }
     return {
       success: false,
       error: err.message,
