@@ -141,6 +141,56 @@ describe("statute register — every pointer is real", () => {
     ).map((e) => e.id);
     expect(bad, `'ratchet' entries with no ratchet test: ${bad.join(", ")}`).toEqual([]);
   });
+
+  // Audit F-15-2: the checks above verify a pointer FILE EXISTS — not that it
+  // actually enforces the statute. A statute tagged 'unit-test' pointing at an
+  // empty or fully-skipped test file passed green ("false assurance ships
+  // green"). These two assertions verify the CLAIM, not just the pointer:
+  // the enforcement test must contain real assertions and must not be skipped.
+  it("every 'unit-test' enforcement ref actually asserts something (not a hollow file)", () => {
+    const hollow: string[] = [];
+    for (const e of STATUTE_REGISTER) {
+      if (e.enforcement.kind !== "unit-test") continue;
+      for (const ref of e.enforcement.refs) {
+        if (!isTestFile(ref)) continue;
+        const full = path.join(ROOT, ref);
+        if (!fs.existsSync(full)) continue; // existence is the prior test's job
+        if (!/\bexpect\s*\(/.test(fs.readFileSync(full, "utf8"))) hollow.push(`${e.id} → ${ref}`);
+      }
+    }
+    expect(
+      hollow,
+      `'unit-test' enforcement refs with NO expect() — the register claims the ` +
+        `statute is tested but the file asserts nothing:\n${hollow.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("no 'unit-test' enforcement ref is entirely skipped (a skipped enforcement test is a false green)", () => {
+    const skipped: string[] = [];
+    for (const e of STATUTE_REGISTER) {
+      if (e.enforcement.kind !== "unit-test") continue;
+      for (const ref of e.enforcement.refs) {
+        if (!isTestFile(ref)) continue;
+        const full = path.join(ROOT, ref);
+        if (!fs.existsSync(full)) continue;
+        const src = fs.readFileSync(full, "utf8");
+        const liveCases = (src.match(/\b(?:it|test)\s*\(/g) || []).length;
+        const skippedCases = (src.match(/\b(?:it|test|describe)\s*\.\s*(?:skip|todo)\s*\(/g) || []).length;
+        const topSkippedSuite = /\bdescribe\s*\.\s*(?:skip|todo)\s*\(/.test(src);
+        // Flagged only when the file has tests but ZERO of them can run — i.e.
+        // a top-level describe.skip, or every it/test is .skip/.todo. This
+        // never false-positives on a large file with one unrelated skip.
+        if ((topSkippedSuite || (skippedCases > 0 && liveCases === 0)) && (liveCases + skippedCases) > 0) {
+          skipped.push(`${e.id} → ${ref}`);
+        }
+      }
+    }
+    expect(
+      skipped,
+      `'unit-test' enforcement refs that are entirely skipped — the assertion ` +
+        `never runs, so the statute is unenforced behind a green pointer:\n${skipped.join("\n")}`,
+    ).toEqual([]);
+  });
 });
 
 describe("statute register — review honesty", () => {
@@ -211,6 +261,23 @@ describe("statute register ratchet — UNREVIEWED may only shrink", () => {
     const prose = unenforced().map((e) => e.id);
     const refusal = refusalOnly().map((e) => e.id);
     expect(prose.length + refusal.length).toBeLessThan(STATUTE_REGISTER.length);
+    // Audit F-15-2: prose-only statutes have NO automated backstop — the exact
+    // "false assurance ships green" shape. Freeze the count down-only (mirrors
+    // constitution.ts unenforcedHardStops): a NEW prose-only statute fails, and
+    // adding a real test/gate + reclassifying is the only way to lower it.
+    const PROSE_ONLY_BASELINE = 4;
+    const REFUSAL_ONLY_BASELINE = 1;
+    expect(
+      prose.length,
+      `prose-only statutes (${prose.length}) exceed the baseline (${PROSE_ONLY_BASELINE}). ` +
+        `Each implements a law with NO automated enforcement. Add a real test/gate and ` +
+        `reclassify, then lower the baseline. Current: ${prose.join(", ")}`,
+    ).toBeLessThanOrEqual(PROSE_ONLY_BASELINE);
+    expect(
+      refusal.length,
+      `refusal-path-only statutes (${refusal.length}) exceed the baseline ` +
+        `(${REFUSAL_ONLY_BASELINE}): ${refusal.join(", ")}`,
+    ).toBeLessThanOrEqual(REFUSAL_ONLY_BASELINE);
     // The five obligations the audits actually got wrong must never fall back
     // to prose — they are the reason this file exists.
     for (const id of [
