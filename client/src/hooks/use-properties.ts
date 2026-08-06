@@ -137,6 +137,7 @@ export function useDeleteProperty() {
       queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1: Today door key
       queryClient.removeQueries({ queryKey: [api.properties.get.path, id] });
       toast({
         title: "Success",

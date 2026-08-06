@@ -273,6 +273,9 @@ export function useDeleteLead() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
+      // Audit F-11-1: the Today door reads /api/today (not today-priorities);
+      // without this the primary customer door goes stale after a mutation.
+      queryClient.invalidateQueries({ queryKey: ["/api/today"] });
       queryClient.invalidateQueries({ queryKey: ["/api/leads/aging"] });
       queryClient.removeQueries({ queryKey: [api.leads.get.path, id] });
       toast({
@@ -287,6 +290,7 @@ export function useDeleteLead() {
               queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
               queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
               queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
+              queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1
               queryClient.invalidateQueries({ queryKey: ["/api/leads/aging"] });
             } catch { /* ignore */ }
           },

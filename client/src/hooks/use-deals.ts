@@ -167,6 +167,7 @@ export function useDeleteDeal() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/today-priorities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/today"] }); // F-11-1: Today door key
       queryClient.removeQueries({ queryKey: ['/api/deals', id] });
       toast({
         title: "Success",
