@@ -5,6 +5,7 @@ import { serializeToolResultForModel, USER_DATA_SYSTEM_CLAUSE } from "./untruste
 import type { Organization, VaAgent, VaAction, InsertVaAction, InsertVaBriefing } from "@shared/schema";
 import { validateAtlasOutput, AtlasOutputType } from "./validators";
 import { logger } from "../utils/logger";
+import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
 
 // Lazy client: constructing OpenAI at module scope threw at import time when
 // the key was unset, so the first hit on any VA route surfaced as a generic
@@ -658,12 +659,18 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     const toolsUsed: string[] = [];
     const proposedActions: VaAction[] = [];
 
+    // Audit F-16-1: this tool-calling agent can't route through routeAITask
+    // (no tool support), so it enforces the platform cost ceiling directly and
+    // records its spend to telemetry so it counts toward that ceiling + COGS.
+    await assertAiSpendAllowed(orgId);
+
     let response = await getOpenAI().chat.completions.create({
       model: "gpt-4o",
       messages,
       tools: tools.length > 0 ? tools : undefined,
       max_tokens: 2048
     });
+    recordExternalAiSpend({ orgId, taskType: `va_agent_${agentType}`, model: "gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
 
     let assistantMessage = response.choices[0].message;
 
@@ -701,6 +708,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         tools: tools.length > 0 ? tools : undefined,
         max_tokens: 2048
       });
+      recordExternalAiSpend({ orgId, taskType: `va_agent_${agentType}`, model: "gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
 
       assistantMessage = response.choices[0].message;
     }
@@ -781,6 +789,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     if (!org) {
       throw new Error("Organization not found");
     }
+    await assertAiSpendAllowed(orgId); // audit F-16-1: respect the platform cost ceiling
 
     const [leads, properties, notesData, pendingActions] = await Promise.all([
       storage.getLeads(orgId),
@@ -845,6 +854,7 @@ Keep it concise and actionable.`;
       ],
       max_tokens: 1500
     });
+    recordExternalAiSpend({ orgId, taskType: "va_briefing", model: "gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
 
     const content = response.choices[0].message.content || "";
     

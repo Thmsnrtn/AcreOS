@@ -1,0 +1,9 @@
+{
+  "name": "openai-bypass",
+  "description": "Direct chat.completions.create() calls bypass the aiRouter cost chokepoint (per-org quota, platform daily cost ceiling, category budget, telemetry/COGS, Haiku kill-switch). Single-shot surfaces migrate to routeAITask (docs/openai-bypass-migration.md); tool-calling agents (vaService, supportAgent, executive) cannot until routeAITask gains tool support, so they use aiSpendGuard (ceiling + telemetry) and remain in this baseline. Audit F-16-1/F-08-4. Freezes the count and drives it DOWN toward the migration's 0-callsite goal; a NEW direct call now fails CI. aiRouter.ts is excluded (it IS the sanctioned caller).",
+  "pattern": "chat\\.completions\\.create\\(",
+  "globs": ["server/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts", "server/services/aiRouter.ts"],
+  "baselineCount": 89,
+  "direction": "down"
+}
