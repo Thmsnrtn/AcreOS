@@ -102,7 +102,8 @@ export type PaxTaskType =
  *
  * HONESTY (audit F-08-3): this is a hand-set constant, NOT auto-derived from a
  * model eval. `dataGroundingEvalCases.test.ts` only checks FIXTURE consistency
- * — that hand-written safe*/adversarial* STRINGS pass/fail detectHallucinations
+ * — that the hand-written safe-prefixed and adversarial-prefixed fixture STRINGS
+ *   pass/fail detectHallucinations as expected
  * — it does NOT run the served model (Haiku) against the grounding set, so it
  * never proved Haiku grounds well enough for the downgrade this switch
  * authorizes. The REAL model-eval of the served model now runs in CI: the
