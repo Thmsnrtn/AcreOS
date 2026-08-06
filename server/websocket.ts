@@ -16,6 +16,7 @@ import crypto from 'crypto';
 import { db } from './db';
 import { sql } from 'drizzle-orm';
 import { logger } from "./utils/logger";
+import { isFounderEmail } from "./services/founder";
 
 /** Inline cookie parser — avoids requiring @types/cookie. */
 function parseCookies(header: string): Record<string, string> {
@@ -44,40 +45,82 @@ function parseCookies(header: string): Record<string, string> {
  * the JWT's `sub` is mapped to our users table to compare against the
  * claimed id.
  */
+interface WsSessionAuth {
+  /** The authenticated user's own org membership was verified for the
+   * claimed org. */
+  isFounder: boolean;
+}
+
+/**
+ * Verify the WebSocket handshake. Returns null (reject) unless ALL hold:
+ *   1. the __session JWT is cryptographically valid and unexpired,
+ *   2. its `sub` maps to a users row whose id === the claimed `?userId=`, and
+ *   3. that user actually belongs to the claimed `?orgId=` — either they own
+ *      the org (organizations.owner_id) or hold an ACTIVE team_members seat.
+ *
+ * (3) is the tenant boundary: without it a user with their OWN valid session
+ * could pass any victim's `?orgId=` and be auto-subscribed to that org's live
+ * event stream (audit F-23-1). This mirrors getOrCreateOrg's Reyna §2
+ * discipline — the claimed org is trusted only after membership is verified.
+ * On success, reports whether the user is the platform founder so the caller
+ * can gate the founder-only `founder:activity` channel (audit F-23-2).
+ */
 async function validateWsSession(
   req: IncomingMessage,
   claimedUserId: string,
-): Promise<boolean> {
+  claimedOrgId: number,
+): Promise<WsSessionAuth | null> {
   try {
     const cookieHeader = req.headers.cookie || '';
     const cookies = parseCookies(cookieHeader);
     const sessionCookie = cookies['__session'];
     const jwtKey = process.env.CLERK_JWT_KEY;
-    if (!sessionCookie || !jwtKey) return false;
+    if (!sessionCookie || !jwtKey) return null;
 
     const [headerB64, payloadB64, sigB64] = sessionCookie.split('.');
-    if (!headerB64 || !payloadB64 || !sigB64) return false;
+    if (!headerB64 || !payloadB64 || !sigB64) return null;
 
     const verifier = crypto.createVerify('RSA-SHA256');
     verifier.update(headerB64 + '.' + payloadB64);
-    if (!verifier.verify(jwtKey, sigB64, 'base64url')) return false;
+    if (!verifier.verify(jwtKey, sigB64, 'base64url')) return null;
 
     const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
     const GRACE_PERIOD_MS = 30 * 1000;
-    if (!payload.sub || payload.exp * 1000 <= Date.now() - GRACE_PERIOD_MS) return false;
+    if (!payload.sub || payload.exp * 1000 <= Date.now() - GRACE_PERIOD_MS) return null;
 
-    // Map Clerk user id → our internal users.id and compare to what the
-    // client claimed. Prevents a stolen cookie from authenticating as
-    // another org's user by passing their id in the querystring.
-    const result = await db.execute<{ id: number }>(
-      sql`SELECT id FROM users WHERE clerk_user_id = ${payload.sub} LIMIT 1`
+    // Map Clerk user id → our users row. users.id is a varchar UUID and is the
+    // value stored in organizations.owner_id / team_members.user_id.
+    const result = await db.execute<{ id: string; email: string | null }>(
+      sql`SELECT id, email FROM users WHERE clerk_user_id = ${payload.sub} LIMIT 1`
     );
     const row = (result as any)?.rows?.[0];
-    if (!row) return false;
+    if (!row) return null;
 
-    return String(row.id) === String(claimedUserId);
+    // (2) the claimed userId must be this session's own user — prevents a
+    // stolen cookie from authenticating as another user via the querystring.
+    if (String(row.id) !== String(claimedUserId)) return null;
+
+    // (3) the tenant boundary: the user must belong to the claimed org.
+    if (!Number.isFinite(claimedOrgId) || claimedOrgId <= 0) return null;
+    const owns = await db.execute(
+      sql`SELECT 1 FROM organizations WHERE id = ${claimedOrgId} AND owner_id = ${row.id} LIMIT 1`
+    );
+    let member = ((owns as any)?.rows?.length ?? 0) > 0;
+    if (!member) {
+      const seat = await db.execute(
+        sql`SELECT 1 FROM team_members
+            WHERE organization_id = ${claimedOrgId}
+              AND user_id = ${row.id}
+              AND is_active = true
+            LIMIT 1`
+      );
+      member = ((seat as any)?.rows?.length ?? 0) > 0;
+    }
+    if (!member) return null;
+
+    return { isFounder: isFounderEmail(row.email ?? undefined) };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -89,6 +132,9 @@ interface WSClient {
   // is the recipient key for `user:{userId}` channels and must be compared
   // as a string; parseInt-ing a UUID silently corrupts the identity.
   userId: string;
+  /** Whether the authenticated user is the platform founder — session-derived
+   * at handshake, never client-asserted. Gates the founder:activity channel. */
+  isFounder: boolean;
   subscribedChannels: Set<string>;
   lastPing: number;
 }
@@ -153,10 +199,12 @@ class AcreOSWebSocketServer {
       return;
     }
 
-    // T-WS-AUTH: Verify the session cookie before accepting the connection
-    const sessionValid = await validateWsSession(req, userId);
-    if (!sessionValid) {
-      ws.close(4003, 'Invalid or expired session');
+    // T-WS-AUTH: Verify the session cookie AND that the user belongs to the
+    // claimed org before accepting the connection (audit F-23-1). A rejected
+    // membership check closes with the same 4003 as an invalid session.
+    const auth = await validateWsSession(req, userId, organizationId);
+    if (!auth) {
+      ws.close(4003, 'Invalid session or org membership');
       return;
     }
 
@@ -165,6 +213,7 @@ class AcreOSWebSocketServer {
       ws,
       organizationId,
       userId,
+      isFounder: auth.isFounder,
       subscribedChannels: new Set([
         `org:${organizationId}`,
         `user:${userId}`,
@@ -244,8 +293,11 @@ class AcreOSWebSocketServer {
     if (channel.startsWith(`negotiation:${orgPrefix}`)) return true;
     // Market channels are public (no org-specific data)
     if (channel.startsWith('market:')) return true;
-    // Founder activity only for founder orgs
-    if (channel === 'founder:activity') return true;
+    // Founder activity is the platform-wide agent/founder event stream and
+    // legitimately aggregates every org — so it is gated on the session-derived
+    // founder flag, never open to any authenticated client (audit F-23-2, the
+    // DEFECT-0022 residue: this branch previously returned true unconditionally).
+    if (channel === 'founder:activity') return client.isFounder === true;
     return false;
   }
 

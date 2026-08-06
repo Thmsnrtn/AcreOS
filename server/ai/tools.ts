@@ -1499,18 +1499,31 @@ export async function executeTool(
       }
 
       case "update_task": {
+        // Org precheck (audit F-23-3): task_id is model/user-supplied and task
+        // ids are sequential — without this, Pax could read+mutate any org's
+        // task. Every sibling tool (update_lead_status, update_property) does
+        // this; these two were missing it. getTask is org-scoped.
+        const existingTask = await storage.getTask(org.id, args.task_id);
+        if (!existingTask) {
+          return { success: false, error: `Task ${args.task_id} not found` };
+        }
         const taskUpdates: Record<string, any> = {};
         if (args.status) taskUpdates.status = args.status;
         if (args.priority) taskUpdates.priority = args.priority;
         if (args.dueDate) taskUpdates.dueDate = new Date(args.dueDate);
-        
-        const task = await storage.updateTask(args.task_id, taskUpdates);
+
+        const task = await storage.updateTask(args.task_id, taskUpdates, org.id);
         invalidateContextCache(org.id);
         return { success: true, data: { message: "Task updated successfully", task } };
       }
 
       case "complete_task": {
-        const task = await storage.updateTask(args.task_id, { status: "completed" });
+        // Org precheck (audit F-23-3) — see update_task.
+        const existingTask = await storage.getTask(org.id, args.task_id);
+        if (!existingTask) {
+          return { success: false, error: `Task ${args.task_id} not found` };
+        }
+        const task = await storage.updateTask(args.task_id, { status: "completed" }, org.id);
         invalidateContextCache(org.id);
         return { success: true, data: { message: "Task marked as completed", task } };
       }
