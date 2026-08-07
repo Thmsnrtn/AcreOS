@@ -31,6 +31,11 @@
 //       server/routes-notes.ts, server/routes-rent-ledger.ts,
 //       server/routes-borrower.ts and
 //       server/services/notePaymentDueDetector.ts → emitPaymentEvent.
+//   rehab.milestone / rehab.punch_list_complete (audit Wave 1, fix-and-flip)
+//       server/services/rehabEvents.ts → emitRehabStatusChange → emitRehabEvent,
+//       called from server/routes-rehabs.ts (PATCH status transition). Fires
+//       rehab.milestone when demo completes and rehab.punch_list_complete when
+//       the rehab reaches "listed".
 //
 // `property.updated` and `deal.updated` are deliberately ABSENT: their emit
 // helpers declare them, but no call site ever passes them, so a workflow on
@@ -61,6 +66,8 @@ export const LIVE_WORKFLOW_TRIGGER_EVENTS = [
   "deal.stage_changed",
   "payment.received",
   "payment.missed",
+  "rehab.milestone",
+  "rehab.punch_list_complete",
 ] as const;
 
 export type LiveWorkflowTriggerEvent =

@@ -154,7 +154,17 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     //     unavailable state naming the fix path, never land-as-house data
     //     (pinned by residentialComps / residentialNoLandFallback /
     //     residentialConsumerFork tests).
-    maturity: "beta",
+    //
+    // 2026-08 (audit Wave 1, beta→core): the renovate half of the loop is now
+    // LIVE, not just declared — rehab.milestone + rehab.punch_list_complete are
+    // emitted from the rehab status machine (server/services/rehabEvents.ts,
+    // registered in shared/workflow-live-triggers.ts, pinned by
+    // tests/unit/rehabEvents.test.ts + workflowActionHonesty). The two flip
+    // milestone templates were corrected to bind only real rehab fields and
+    // prompt the operator to pull comps rather than interpolate an invented
+    // comp number. With the ATTOM data seam already wired, the loop now fires
+    // end-to-end — so this passes the honesty bar for core.
+    maturity: "core",
     // 2026-07-29 truth pass: all three flip templates ship in
     // workflow-engine.ts; the Flip sidebar module (businessTypeOnly
     // fix_and_flip) surfaces /rehabs + /contractors, which existing
@@ -165,7 +175,10 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_flip_listing_ready",
     ],
     spotlightModules: ["rehabs", "contractors", "properties", "deals"],
-    integrations: ["stripe"],
+    // ATTOM is the vertical-defining data integration (residential comps +
+    // valuation, pay-per-call via the residentialComps seam / provider
+    // registry) — named here honestly, not just Stripe (audit Wave 1).
+    integrations: ["stripe", "attom"],
   },
   residential_wholesaler: {
     id: "residential_wholesaler",

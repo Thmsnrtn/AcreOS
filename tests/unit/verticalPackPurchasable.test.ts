@@ -51,7 +51,7 @@ describe("vertical pack purchasability", () => {
     }
   });
 
-  it("sells the fix_and_flipper pack now that fix_and_flip is beta (ruling #11, wave V3)", () => {
+  it("sells the fix_and_flipper pack now that fix_and_flip is core (audit Wave 1, beta→core)", () => {
     // 2026-07-29 wave V3: fix_and_flip flipped roadmap → beta because the
     // 2026-07-11 demotion's ROOT CAUSE is fixed — residential verticals'
     // comps/valuation route through the residentialComps seam (provider
@@ -62,7 +62,13 @@ describe("vertical pack purchasability", () => {
     // residentialComps / residentialNoLandFallback / residentialConsumerFork
     // tests; pinned here so a silent re-demotion (or a silent unsellable
     // pack) fails loudly.
-    expect(getBusinessType("fix_and_flip")?.maturity).toBe("beta");
+    //
+    // 2026-08 audit Wave 1: beta → core — the renovate half of the flip loop
+    // is now LIVE (rehab.milestone + rehab.punch_list_complete emitted from the
+    // rehab status machine; rehabEvents.ts + workflowActionHonesty pin it), so
+    // the vertical passes the honesty bar for core. Purchasability is unchanged
+    // (core, like beta, is production-ready) — this assertion now tracks core.
+    expect(getBusinessType("fix_and_flip")?.maturity).toBe("core");
     expect(isVerticalPackPurchasable("fix_and_flipper")).toBe(true);
     expect(purchasableVerticalPacks().map((p) => p.key)).toContain("fix_and_flipper");
   });

@@ -1182,7 +1182,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           title: "Framing kickoff — {{propertyAddress}}",
           description:
-            "Demo complete {{milestoneDate}}. Confirm framing/structural crew start date (target: within {{nextStageDays}}d). Reconcile demo-stage spend vs budget: actual ${{actualSpend}} / planned ${{plannedSpend}}.",
+            "Demo complete {{milestoneDate}}. Confirm framing/structural crew start date. Reconcile demo-stage spend vs budget: actual ${{actualSpend}} / planned ${{plannedSpend}}.",
           priority: "high",
           dueInDays: 3,
         },
@@ -1223,7 +1223,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           title: "Listing prep — {{propertyAddress}} (target ARV ${{afterRepairValue}})",
           description:
-            "Punch list closed {{punchListDate}}. Order professional photography, schedule staging, finalize listing price (comp ARV ${{compArv}} vs target ARV ${{afterRepairValue}}), select listing agent, list target date {{targetListDate}}.",
+            "Punch list closed {{punchListDate}}. Order professional photography, schedule staging, pull fresh comps and finalize listing price against target ARV ${{afterRepairValue}}, select listing agent, list target date {{targetListDate}}.",
           priority: "high",
           dueInDays: 5,
         },
@@ -1234,7 +1234,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           title: "Pricing-vs-comp decision — {{propertyAddress}}",
           description:
-            "Comp range: ${{compLow}}-${{compHigh}}. Target ARV: ${{afterRepairValue}}. Recent comparable list-to-sale ratios: {{recentListSaleRatio}}. Set list price.",
+            "Target ARV: ${{afterRepairValue}}. Pull comparable sales on the comps surface and set the list price against recent list-to-sale ratios.",
           priority: "high",
           dueInDays: 3,
         },
@@ -1768,7 +1768,7 @@ export type WorkflowEventData = {
   event: WorkflowTriggerEvent;
   organizationId: number;
   entityId: number;
-  entityType: "lead" | "property" | "deal" | "payment" | "parcel";
+  entityType: "lead" | "property" | "deal" | "payment" | "parcel" | "rehab";
   data: Record<string, any>;
   previousData?: Record<string, any>;
 };
@@ -2701,5 +2701,29 @@ export function emitParcelEvent(
     entityType: "parcel",
     data,
     previousData,
+  });
+}
+
+// emitRehabEvent — the fix-and-flip rehab lifecycle emitter (audit Wave 1,
+// beta→core). Mirrors emitParcelEvent. A rehab's id is a varchar UUID but
+// WorkflowEventData.entityId is numeric, so the rehab's own propertyId (one
+// rehab per property — rehabs_property_uk) is the numeric entity handle; the
+// rehab id + template fields ride in `data`. Until this shipped, the two flip
+// milestone templates (tpl_flip_milestone_demo_complete / tpl_flip_listing_ready)
+// had ZERO emitters and sat idle forever. Register both events in
+// shared/workflow-live-triggers.ts in the SAME change (workflowActionHonesty
+// test pins that relationship).
+export function emitRehabEvent(
+  event: "rehab.milestone" | "rehab.punch_list_complete",
+  organizationId: number,
+  propertyId: number,
+  data: Record<string, any>,
+): void {
+  workflowEngine.emit({
+    event,
+    organizationId,
+    entityId: propertyId,
+    entityType: "rehab",
+    data,
   });
 }

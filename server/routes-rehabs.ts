@@ -33,6 +33,7 @@ import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
+import { emitRehabStatusChange } from "./services/rehabEvents";
 import { logger } from "./utils/logger";
 
 // ----------------------------------------------------------------------------
@@ -336,10 +337,24 @@ export function registerRehabRoutes(app: Express): void {
       ] as const) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
+      // Capture the pre-image status so the workflow emitter can detect a
+      // GENUINE status transition (audit Wave 1 — wire the fix-and-flip
+      // milestone loop). Only needed when status is actually being changed.
+      let beforeStatus: string | null = null;
+      if (parsed.data.status !== undefined) {
+        const [prev] = await db
+          .select({ status: rehabs.status })
+          .from(rehabs)
+          .where(and(eq(rehabs.id, req.params.id), eq(rehabs.organizationId, orgId)));
+        beforeStatus = prev?.status ?? null;
+      }
       const [updated] = await db.update(rehabs).set(updates)
         .where(and(eq(rehabs.id, req.params.id), eq(rehabs.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Rehab");
+      // Fire the flip lifecycle workflow on a real status transition
+      // (fire-and-forget; a workflow failure never fails the rehab write).
+      emitRehabStatusChange(beforeStatus, updated);
       return res.json({ rehab: updated });
     } catch (err) {
       return Errors.internal(res, err);
