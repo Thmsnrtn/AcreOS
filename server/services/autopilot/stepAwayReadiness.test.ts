@@ -25,6 +25,8 @@ let pendingCount = 0;
 let askCount = 0;
 let grants: Array<{ expiresAt: Date; maxActions: number; usedCount: number }> = [];
 let deadLetterRows: Array<{ id: number }> = [];
+// DR restore-drill rows (audit F-13-2 check). A fully-armed world has run one.
+let drillRows: Array<{ ranAt: Date; passed: boolean; rto: number }> = [];
 let patchCapable = { capable: true, reason: "ok" };
 let ledgerLevels = ["execute_gated", "autonomous_gated", "draft", "observe", "observe"];
 
@@ -68,7 +70,14 @@ vi.mock("../solene/founderCollab", () => ({ listOpenAsks: async () => Array.from
 vi.mock("./witnessGrantStore", () => ({ liveGrantsFor: async () => grants }));
 vi.mock("../../db", () => ({
   db: {
-    select: () => ({ from: () => ({ where: () => Promise.resolve(deadLetterRows) }) }),
+    select: () => ({
+      from: () => ({
+        // dead-letter check: select().from().where() → deadLetterRows
+        where: () => Promise.resolve(deadLetterRows),
+        // DR-drill check (F-13-2): select().from().orderBy().limit() → drillRows
+        orderBy: () => ({ limit: () => Promise.resolve(drillRows) }),
+      }),
+    }),
   },
 }));
 vi.mock("./selfPatchGitOps", () => ({ assertSelfPatchCapable: async () => patchCapable }));
@@ -89,6 +98,8 @@ beforeEach(() => {
   askCount = 0;
   grants = [{ expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), maxActions: 20, usedCount: 3 }];
   deadLetterRows = [];
+  // A recent, passing DR drill → the F-13-2 check is green in the armed world.
+  drillRows = [{ ranAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), passed: true, rto: 30 }];
   patchCapable = { capable: true, reason: "ok" };
   process.env.FOUNDER_EMAIL = "tom@example.com";
   process.env.SELF_PATCH_ENABLED = "true";

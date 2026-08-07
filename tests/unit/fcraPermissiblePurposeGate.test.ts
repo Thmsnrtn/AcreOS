@@ -1032,14 +1032,14 @@ describe("writer enumeration for consumer-report rows (action-anchored ratchet)"
     expect(gateIdx).toBeLessThan(writeIdx);
   });
 
-  it("KNOWN GAP (statute register fcra.permissible-purpose): POST /api/tenants CREATE accepts screening fields ungated", () => {
-    // This pins the CURRENT state so the gap stays visible, not to bless it:
-    // the tenant-create handler inserts screeningCreditScore et al. with no
-    // assertScreeningPermitted call, so an operator can record consumer-report
-    // data with zero purpose attestation by creating instead of patching. If
-    // this assertion starts failing, the gate has been added — REWRITE this
-    // test to assert the gate's presence and ordering in the create path
-    // (do not delete it).
+  it("statute register fcra.permissible-purpose: POST /api/tenants CREATE gates screening fields (gap closed, audit F-15-1)", () => {
+    // Formerly a KNOWN GAP: the tenant-create handler inserted
+    // screeningCreditScore et al. with NO assertScreeningPermitted call, so an
+    // operator could record consumer-report data with zero purpose attestation
+    // by creating instead of patching. Audit F-15-1 closed it — the create path
+    // now runs the same gate as PATCH before the insert. This rewrite (per the
+    // original test's own instruction) pins the gate's PRESENCE and ORDERING so
+    // the gap cannot silently reopen.
     const src = stripComments(fs.readFileSync(path.join(ROOT, "server/routes-rentals.ts"), "utf8"));
     const start = src.indexOf('app.post("/api/tenants"');
     const end = src.indexOf('app.patch("/api/tenants/:id"');
@@ -1047,6 +1047,11 @@ describe("writer enumeration for consumer-report rows (action-anchored ratchet)"
     expect(end).toBeGreaterThan(start);
     const createHandler = src.slice(start, end);
     expect(createHandler).toContain("screeningCreditScore");
-    expect(createHandler).not.toContain("assertScreeningPermitted");
+    // The gate is now present AND precedes the tenant insert (refuse-before-write).
+    const gateIdx = createHandler.indexOf("assertScreeningPermitted");
+    const writeIdx = createHandler.indexOf("db.insert(tenants)");
+    expect(gateIdx).toBeGreaterThan(-1);
+    expect(writeIdx).toBeGreaterThan(-1);
+    expect(gateIdx).toBeLessThan(writeIdx);
   });
 });
