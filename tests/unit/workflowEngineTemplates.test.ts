@@ -115,6 +115,10 @@ const LEGACY_EXTENDED_TRIGGER_TEMPLATE_IDS = new Set([
   // in audit Wave 1 (wholesaler beta→core): buyer.match_created is now a declared
   // member of the shared WORKFLOW_TRIGGER_EVENTS union with a real emitter
   // (buyerEvents.ts → emitBuyerEvent). The set may only shrink — this is a shrink.
+  // tpl_lease_expiring (lease.expiring_60d) GRADUATED out in audit Wave 1
+  // (buy_and_hold beta→core): lease.expiring_60d is now a declared member of the
+  // shared union with a real emitter (rentalEvents.ts → emitRentalEvent, fired by
+  // the daily leaseExpiryDetector). The set may only shrink — this is a shrink.
   "tpl_payment_received", // payment.confirmed
   "tpl_delinquency_escalation", // note.delinquent_60d
   "tpl_property_listed", // property.listed
@@ -122,7 +126,6 @@ const LEGACY_EXTENDED_TRIGGER_TEMPLATE_IDS = new Set([
   "tpl_referral_milestone", // org.milestone_reached
   "tpl_lead_score_high", // lead.scored
   "tpl_offer_batch_sent", // offers.batch_sent
-  "tpl_lease_expiring", // lease.expiring_60d
   "tpl_support_ticket", // support.ticket_created
   "tpl_weekly_pipeline_review", // schedule.weekly_monday
 ]);
@@ -500,5 +503,97 @@ describe("wholesaler templates interpolate only real emitted payload fields", ()
     expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("deal.contract_signed");
     expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("deal.assignment_pending");
     expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("buyer.match_created");
+  });
+});
+
+describe("landlord + cross-vertical templates interpolate only real emitted payload fields", () => {
+  // Audit Wave 1 (buy_and_hold beta→core): the four landlord templates are now
+  // LIVE — rentalEvents.ts → emitRentalEvent fires them on the rent-ledger POST
+  // seam (rent.received), the maintenance POST seam (maintenance.request_received)
+  // and the daily leaseExpiryDetector (lease.renewal_countdown_60d +
+  // lease.expiring_60d). Making those events live ALSO activated two other
+  // verticals' templates that ride the same events: tpl_mobile_home_lot_rent_receipt
+  // (rent.received) and tpl_multifamily_unit_turn (lease.renewal_countdown_60d).
+  // Each template may only interpolate fields its emitter actually sends — a
+  // reintroduced {{marketRent}}/{{suggestedRenewalRent}} (dropped: residential-
+  // comps hard-stop) or {{urgencyRationale}}/{{suggestedVendor}}/{{estimatedCost}}/
+  // {{responseTimeSla}} (dropped: no such column/engine) would render as a literal
+  // {{placeholder}}, i.e. fabricated-looking output. These sets are the payloads
+  // buildRentReceivedPayload / buildMaintenanceRequestPayload / buildLeasePayload
+  // send in server/services/rentalEvents.ts.
+  const RENT_RECEIVED_FIELDS = new Set([
+    "leaseId", "paymentId", "rentAmount", "rentPeriodLabel", "tenantName",
+    "tenantEmail", "propertyAddress", "ytdPaid", "nextDueDate", "lateFeeApplied",
+    "orgName",
+  ]);
+  const MAINTENANCE_FIELDS = new Set([
+    "ticketId", "propertyAddress", "requestCategory", "urgencyLevel",
+    "requestDescription", "tenantName", "tenantEmail", "orgName",
+  ]);
+  const LEASE_FIELDS = new Set([
+    "leaseId", "propertyAddress", "tenantName", "tenantEmail", "leaseEndDate",
+    "currentRent", "state", "orgName",
+  ]);
+  const RENTAL_PAYLOAD_FIELDS: Record<string, Set<string>> = {
+    // rent.received
+    tpl_landlord_rent_received_receipt: RENT_RECEIVED_FIELDS,
+    tpl_mobile_home_lot_rent_receipt: RENT_RECEIVED_FIELDS, // cross-vertical, same event
+    // maintenance.request_received
+    tpl_landlord_maintenance_request_triage: MAINTENANCE_FIELDS,
+    // lease.renewal_countdown_60d / lease.expiring_60d
+    tpl_landlord_lease_renewal_countdown: LEASE_FIELDS,
+    tpl_multifamily_unit_turn: LEASE_FIELDS, // cross-vertical, same renewal event
+    tpl_lease_expiring: LEASE_FIELDS,
+  };
+
+  it.each(Object.keys(RENTAL_PAYLOAD_FIELDS))(
+    "%s uses only fields the emitter sends",
+    (id) => {
+      const t = templateById.get(id)!;
+      const used = new Set<string>();
+      for (const action of t.actions) extractPlaceholders(action.config, used);
+      expect(used.size).toBeGreaterThan(0);
+      const allowed = RENTAL_PAYLOAD_FIELDS[id];
+      for (const field of used) {
+        expect(
+          allowed.has(field),
+          `${id} interpolates {{${field}}}, which emitRentalEvent never sends for its event`,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("the corrected fabrications stay gone (market/suggested rent; urgency rationale/vendor/cost/SLA)", () => {
+    const usedIn = (id: string) => {
+      const used = new Set<string>();
+      for (const a of templateById.get(id)!.actions) extractPlaceholders(a.config, used);
+      return used;
+    };
+
+    for (const id of ["tpl_landlord_lease_renewal_countdown", "tpl_multifamily_unit_turn"]) {
+      const used = usedIn(id);
+      expect(used.has("marketRent"), `${id} must not fabricate market rent`).toBe(false);
+      expect(used.has("suggestedRenewalRent")).toBe(false);
+      expect(used.has("rentChangePct")).toBe(false);
+      expect(used.has("currentRent"), `${id} keeps the real current rent`).toBe(true);
+    }
+
+    const maint = usedIn("tpl_landlord_maintenance_request_triage");
+    expect(maint.has("urgencyRationale")).toBe(false);
+    expect(maint.has("suggestedVendor")).toBe(false);
+    expect(maint.has("estimatedCost")).toBe(false);
+    expect(maint.has("responseTimeSla")).toBe(false);
+    expect(maint.has("urgencyLevel"), "the real severity enum stays").toBe(true);
+  });
+
+  it("all four landlord events are live (rentalEvents.ts + leaseExpiryDetector.ts)", async () => {
+    const { LIVE_WORKFLOW_TRIGGER_EVENTS } = await import(
+      "../../shared/workflow-live-triggers"
+    );
+    const live = [...LIVE_WORKFLOW_TRIGGER_EVENTS];
+    expect(live).toContain("rent.received");
+    expect(live).toContain("maintenance.request_received");
+    expect(live).toContain("lease.renewal_countdown_60d");
+    expect(live).toContain("lease.expiring_60d");
   });
 });

@@ -143,7 +143,12 @@ type ExtendedTriggerEvent =
   | "org.milestone_reached"
   | "lead.scored"
   | "offers.batch_sent"
-  | "lease.expiring_60d"
+  // lease.expiring_60d GRADUATED out of this escape hatch in audit Wave 1
+  // (buy_and_hold beta→core): it now has a real emitter (rentalEvents.ts →
+  // emitRentalEvent, fired by the new leaseExpiryDetector daily job) and is a
+  // declared member of shared WORKFLOW_TRIGGER_EVENTS, so tpl_lease_expiring is
+  // no longer a local-only trigger. LEGACY_EXTENDED_TRIGGER_TEMPLATE_IDS shrank
+  // by tpl_lease_expiring in the same change.
   | "support.ticket_created"
   | "schedule.weekly_monday";
 
@@ -1069,6 +1074,16 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       "60 days before lease end, surface the renewal-or-vacate decision: rent-review math + drafted renewal/vacate letters so the landlord can act before the legal vacate-notice window closes.",
     category: "deals",
     trigger: { event: "lease.renewal_countdown_60d" },
+    // audit Wave 1 (buy_and_hold beta→core): the original tasks interpolated
+    // {{marketRent}}, {{suggestedRenewalRent}}, {{rentChangePct}},
+    // {{renewalTermMonths}}, {{renewalDecisionDeadline}} and {{stateNoticeDays}}
+    // — NONE of which a lease row holds. Rendering a market/suggested rent would
+    // mean touching the residential-comps data plane, a STANDING HARD-STOP for
+    // buy_and_hold (no residential comps before its revenue trigger). Those were
+    // dropped (refuse-not-fabricate); the task now binds the real lease fields
+    // rentalEvents.ts sends (currentRent, state, propertyAddress, tenantName,
+    // leaseEndDate, orgName) and PROMPTS the operator to pull current market rent
+    // on their own rent-comp surface rather than rendering an invented number.
     actions: [
       {
         id: "action_renewal_decision_task",
@@ -1076,7 +1091,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           title: "Renewal decision — {{propertyAddress}} / {{tenantName}} (lease ends {{leaseEndDate}})",
           description:
-            "Current rent ${{currentRent}}. Market rent (per AVM/comps) ${{marketRent}}. Suggested renewal rent ${{suggestedRenewalRent}}. Decide: (a) offer renewal at {{suggestedRenewalRent}}, (b) offer renewal at current rent (retention), (c) issue notice to vacate. Per-state notice period: {{stateNoticeDays}}d.",
+            "Current rent ${{currentRent}} ({{state}}). Pull the current market rent for this unit on your own rent-comp surface before you decide — AcreOS does not provide residential comps and will not invent a figure. Then choose: (a) offer a renewal, (b) renew at current rent to retain the tenant, or (c) issue notice to vacate. Confirm your state's notice-period requirement before the vacate-notice window closes.",
           priority: "high",
           dueInDays: 14,
         },
@@ -1088,7 +1103,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           to: "{{tenantEmail}}",
           subject: "Lease renewal offer — {{propertyAddress}}",
           body:
-            "Hi {{tenantName}},\n\nYour lease at {{propertyAddress}} ends {{leaseEndDate}}. We'd like to offer you a renewal at ${{suggestedRenewalRent}}/mo for another {{renewalTermMonths}}-month term ({{rentChangePct}} change from current ${{currentRent}}).\n\nIf you'd like to renew at these terms, please reply by {{renewalDecisionDeadline}}. If you'd prefer a different term length, let us know — we're happy to discuss.\n\n{{orgName}}",
+            "Hi {{tenantName}},\n\nYour lease at {{propertyAddress}} ends {{leaseEndDate}}, and we'd like to talk with you about renewing. Your current rent is ${{currentRent}}/mo; we'll confirm the renewal terms with you directly.\n\nIf you'd like to renew, please reply and let us know — and tell us if you'd prefer a different term length.\n\n{{orgName}}",
         },
       },
     ],
@@ -1100,6 +1115,14 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       "Auto-categorize urgency on every maintenance request, then route to the appropriate vendor (or surface a DIY-vs-call decision for self-managed landlords).",
     category: "deals",
     trigger: { event: "maintenance.request_received" },
+    // audit Wave 1 (buy_and_hold beta→core): the original task interpolated
+    // {{urgencyRationale}}, {{suggestedVendor}}, {{estimatedCost}} and
+    // {{responseTimeSla}} — none of which a maintenance_tickets row holds. AcreOS
+    // does not model vendors-per-trade, does not estimate repair cost, and has no
+    // SLA engine, so those were AI-shaped fabrications. They were dropped
+    // (refuse-not-fabricate); {{urgencyLevel}} now binds the REAL
+    // maintenance_tickets.severity enum, not an invented rationale, and the task
+    // tells the operator to triage against their OWN vendor list.
     actions: [
       {
         id: "action_triage_task",
@@ -1107,7 +1130,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           title: "Maintenance — {{propertyAddress}} ({{requestCategory}}, {{urgencyLevel}})",
           description:
-            "Tenant {{tenantName}} reported {{requestDescription}}. Category: {{requestCategory}}. Urgency: {{urgencyLevel}} ({{urgencyRationale}}). Suggested vendor: {{suggestedVendor}}. Estimated cost: ${{estimatedCost}}.",
+            "Tenant {{tenantName}} reported: {{requestDescription}}. Category: {{requestCategory}}. Severity: {{urgencyLevel}}. Triage against your own vendor list and dispatch — AcreOS does not estimate the cost or pick the vendor for you.",
           priority: "high",
           dueInDays: 1,
         },
@@ -1119,7 +1142,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           to: "{{tenantEmail}}",
           subject: "Maintenance request received — {{propertyAddress}}",
           body:
-            "Hi {{tenantName}},\n\nWe received your maintenance request: \"{{requestDescription}}\". Based on urgency, we'll have someone out within {{responseTimeSla}}. We'll send you a follow-up once the visit is scheduled.\n\n{{orgName}}",
+            "Hi {{tenantName}},\n\nWe received your maintenance request: \"{{requestDescription}}\". We'll review it and follow up once a visit is scheduled.\n\n{{orgName}}",
         },
       },
       {
@@ -1140,6 +1163,15 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       "On every rent payment, email a receipt, update YTD income, and flag if a late-fee should have applied based on the lease terms.",
     category: "deals",
     trigger: { event: "rent.received" },
+    // audit Wave 1 (buy_and_hold beta→core): every placeholder here binds a real
+    // field rentalEvents.ts sends (rentAmount, rentPeriodLabel, ytdPaid — a REAL
+    // SUM of this lease's payments this calendar year, nextDueDate — the next open
+    // charge or null, propertyAddress, tenantName, tenantEmail, orgName). The
+    // notification previously carried a `{{lateFeeApplied ? … : …}}` TERNARY, which
+    // interpolateTemplate cannot evaluate (its regex only matches bare
+    // {{identifier}}), so it rendered the literal ternary string in operator copy.
+    // Removed. lateFeeApplied is still sent in the payload as a real boolean for
+    // workflow CONDITIONS to match on; it is simply no longer interpolated as text.
     actions: [
       {
         id: "action_rent_receipt_email",
@@ -1157,7 +1189,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           notificationType: "info",
           message:
-            "Rent received: {{propertyAddress}} — ${{rentAmount}} ({{lateFeeApplied ? 'late-fee applied' : 'on-time'}}).",
+            "Rent received: {{propertyAddress}} — ${{rentAmount}} for {{rentPeriodLabel}}.",
         },
       },
     ],
@@ -1637,6 +1669,14 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       "60 days before a unit's lease ends, surface the renew-or-turn decision and the make-ready plan for a non-renewal, so the unit is re-rented instead of sitting vacant.",
     category: "deals",
     trigger: { event: "lease.renewal_countdown_60d" },
+    // audit Wave 1 (buy_and_hold beta→core, cross-vertical): this multifamily
+    // template rides the SAME lease.renewal_countdown_60d event the landlord
+    // template does, so making that event live activates it too. It interpolated
+    // {{marketRent}} and {{suggestedRenewalRent}} — fields no lease row holds and
+    // which rentalEvents.ts deliberately does NOT send (rendering them would touch
+    // the residential-comps data plane, a standing hard-stop). Dropped
+    // (refuse-not-fabricate) so those never render as literal {{placeholders}};
+    // the task now prompts the operator to pull market rent on their own surface.
     actions: [
       {
         id: "action_unit_turn_decision_task",
@@ -1644,7 +1684,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           title: "Renew or turn — {{propertyAddress}} / {{tenantName}} (lease ends {{leaseEndDate}})",
           description:
-            "Current rent ${{currentRent}}; market rent ${{marketRent}}. Decide: (a) offer renewal at ${{suggestedRenewalRent}}, (b) renew at current rent to avoid a turn, or (c) plan the unit turn. A turn typically costs a month-plus of rent in make-ready and vacancy — price the renewal against that.",
+            "Current rent ${{currentRent}}. Pull the current market rent for this unit on your own rent-comp surface before you decide — AcreOS does not provide residential comps. Then choose: (a) offer a renewal, (b) renew at current rent to avoid a turn, or (c) plan the unit turn. A turn typically costs a month-plus of rent in make-ready and vacancy — price the renewal against that.",
           priority: "high",
           dueInDays: 7,
         },
@@ -2850,6 +2890,33 @@ export function emitBuyerEvent(event: "buyer.match_created", organizationId: num
     organizationId,
     entityId,
     entityType: "buyer",
+    data,
+  });
+}
+
+// emitRentalEvent — the buy-and-hold landlord lifecycle emitter (audit Wave 1,
+// beta→core). Mirrors emitBuyerEvent. The four landlord templates
+// (tpl_landlord_rent_received_receipt / tpl_landlord_maintenance_request_triage
+// / tpl_landlord_lease_renewal_countdown / tpl_lease_expiring) had ZERO emitters
+// and sat idle forever — the whole landlord automation lane was dead. This makes
+// rent.received (rent-ledger POST seam), maintenance.request_received (maintenance
+// POST seam) and lease.renewal_countdown_60d / lease.expiring_60d (the new daily
+// leaseExpiryDetector job) real; see server/services/rentalEvents.ts.
+//
+// entityType/entityId: every rental entity hangs off a real PROPERTY —
+// rentalLeases.propertyId and maintenanceTickets.propertyId are both non-null FKs
+// to properties.id — so entityType reuses "property" (no new union member) and
+// entityId is that properties.id. The uuid keys (leaseId, paymentId, ticketId)
+// ride in `data`. Register all four events in shared/workflow-live-triggers.ts in
+// the SAME change (workflowActionHonesty pins the call-site ↔ list relationship).
+// The event union MUST stay on one physical line — the honesty ratchet's
+// derivation regex stops at the first newline after `event:`.
+export function emitRentalEvent(event: "rent.received" | "maintenance.request_received" | "lease.renewal_countdown_60d" | "lease.expiring_60d", organizationId: number, entityId: number, data: Record<string, any>): void {
+  workflowEngine.emit({
+    event,
+    organizationId,
+    entityId,
+    entityType: "property",
     data,
   });
 }

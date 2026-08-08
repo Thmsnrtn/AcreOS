@@ -9174,6 +9174,13 @@ export const WORKFLOW_TRIGGER_EVENTS = [
   "lease.renewal_countdown_60d",
   "maintenance.request_received",
   "rent.received",
+  // lease.expiring_60d GRADUATED out of the engine-local ExtendedTriggerEvent
+  // escape hatch in audit Wave 1 (buy_and_hold beta→core): it now has a real
+  // emitter (rentalEvents.ts → emitRentalEvent, fired by the daily
+  // leaseExpiryDetector job alongside lease.renewal_countdown_60d), so it joins
+  // the shared union here and tpl_lease_expiring left
+  // LEGACY_EXTENDED_TRIGGER_TEMPLATE_IDS in the same change.
+  "lease.expiring_60d",
   // Iyari (Chief of Future) #5 — Owner-change & tax-status delta detector.
   // Derived FREE from the append-only parcel_observations log (migration 0121)
   // by a scheduled diff job (server/services/parcelDeltaDetector.ts). Fires when

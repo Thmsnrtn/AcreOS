@@ -83,6 +83,12 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { emitPaymentEvent } from "./services/workflow-engine";
+// Audit Wave 1 (buy_and_hold beta→core): the landlord rent-receipt template never
+// ran because nothing emitted rent.received. This fires it, SECOND, right after
+// the pre-existing payment.received emit — both for one payment, on purpose (the
+// generic money lane vs. the landlord receipt lane). Fire-and-forget — see
+// services/rentalEvents.ts.
+import { emitRentReceived } from "./services/rentalEvents";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -848,6 +854,23 @@ export function registerRentLedgerRoutes(app: Express): void {
         unappliedCents: allocation.unappliedCents,
         allocationLineCount: allocation.allocations.length,
         allocationExplanation: allocation.explanation,
+      });
+
+      // Audit Wave 1 (buy_and_hold beta→core) — SECOND emit for the SAME posted
+      // payment: rent.received drives the landlord receipt template
+      // (tpl_landlord_rent_received_receipt) and the mobile-home lot-rent receipt.
+      // Both events firing for one payment is intended and documented above the
+      // import. Fire-and-forget: rentalEvents resolves the tenant/property/org +
+      // the real YTD sum off the request path and never throws.
+      emitRentReceived({
+        organizationId: orgId,
+        leaseId: lease.id,
+        paymentId: payment.id,
+        propertyId: lease.propertyId,
+        amountCents: parsed.data.amountCents,
+        receivedAt: parsed.data.receivedAt,
+        rentChargeId: firstCharge?.chargeId ?? null,
+        rentPeriodMonth: firstCharge?.chargedForMonth ?? null,
       });
 
       return res.status(201).json({

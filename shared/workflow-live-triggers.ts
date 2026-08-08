@@ -71,6 +71,19 @@
 //       matchPropertyToBuyers and matchBuyerToProperties (never the
 //       update-existing branch, so a re-run never re-fires). entityType "buyer"
 //       (entityId = buyer_profiles.id).
+//   rent.received / maintenance.request_received /
+//   lease.renewal_countdown_60d / lease.expiring_60d (audit Wave 1, buy_and_hold)
+//       server/services/rentalEvents.ts → emitRentalEvent. rent.received on the
+//       rent-ledger POST seam (server/routes-rent-ledger.ts POST
+//       /api/leases/:id/payments, a SECOND emit alongside payment.received — one
+//       payment, two events, on purpose); maintenance.request_received on the
+//       maintenance POST seam (server/routes-maintenance-tickets.ts POST
+//       /api/maintenance-tickets); and BOTH lease.renewal_countdown_60d and
+//       lease.expiring_60d from the daily server/services/leaseExpiryDetector.ts
+//       (a lease ~60 days from its end date, deduped per (lease, endDate) against
+//       the mesh ledger). entityType "property" (entityId = the lease/ticket's
+//       properties.id). rent.received also drives the mobile_home lot-rent
+//       receipt and lease.renewal_countdown_60d the multifamily unit-turn.
 //
 // `property.updated` and `deal.updated` are deliberately ABSENT: their emit
 // helpers declare them, but no call site ever passes them, so a workflow on
@@ -113,6 +126,10 @@ export const LIVE_WORKFLOW_TRIGGER_EVENTS = [
   "deal.contract_signed",
   "deal.assignment_pending",
   "buyer.match_created",
+  "rent.received",
+  "maintenance.request_received",
+  "lease.renewal_countdown_60d",
+  "lease.expiring_60d",
 ] as const;
 
 export type LiveWorkflowTriggerEvent =

@@ -29,6 +29,10 @@ import { startLeadNurturingJob, startCampaignOptimizationJob } from "./leadCampa
 import { startWorkflowDelayResumeJob } from "./workflowDelayResume"; // S3 decomposition slice 2 (Wave B)
 import { startAchAutopayJob } from "./achAutopayRun"; // S3 decomposition slice 3 (Wave C — money moves)
 import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-note delinquency sweep
+// Daily due/expiry detectors — extracted from this file into a cohesive
+// job-group (S3 decomposition). startLeaseExpiryDetectorJob is the net-new
+// buy_and_hold beta→core registration (audit Wave 1).
+import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob } from "./expiryDetectorJobs";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 
 // Auto-seed county GIS endpoints on startup
@@ -594,40 +598,6 @@ function startCustomerConcentrationJob() {
           log(`Customer concentration job failed: ${err}`, 'concentration');
         });
       }).catch(err => log(`Customer concentration import failed: ${err}`, 'concentration'));
-    }
-  }, ONE_HOUR);
-}
-
-// ============================================================================
-// Jarvis 2.1 (audit G2) — Note payment due-date detector. Daily 11:00 UTC
-// (an hour before the Solene morning pulse at 12:00 UTC so the tick reads a
-// fresh signal). Scans active notes for borrower payments due in the next 7
-// days or overdue: one mesh event per NEW finding (deterministic dedupe key
-// checked against the mesh ledger — a rerun never re-publishes), plus
-// aggregate counts-only outward senses via perception.recordSense. Observe-
-// only; overdue events at priority 3 ride the existing notification-router.
-// Cheap: two indexed reads + a handful of inserts; no external API calls.
-// ============================================================================
-function startNotePaymentDueDetectorJob() {
-  const ONE_HOUR = 60 * 60 * 1000;
-  const TTL_SECONDS = 10 * 60;
-
-  log('Registering note payment due-date detector (daily 11:00 UTC)', 'note-payments');
-
-  trackInterval(() => {
-    const now = new Date();
-    if (now.getUTCHours() === 11) {
-      import('../services/notePaymentDueDetector').then(({ runNotePaymentDueScan }) => {
-        withJobLock('note_payment_due_scan', TTL_SECONDS, async () => {
-          const r = await runNotePaymentDueScan();
-          log(
-            `Note payment scan: scanned=${r.scanned} dueSoon=${r.dueSoon} overdue=${r.overdue} published=${r.published} errors=${r.errors}`,
-            'note-payments',
-          );
-        }).catch(err => {
-          log(`Note payment due scan failed: ${err}`, 'note-payments');
-        });
-      }).catch(err => log(`Note payment detector import failed: ${err}`, 'note-payments'));
     }
   }, ONE_HOUR);
 }
@@ -4198,6 +4168,11 @@ export async function runScheduledJobs(): Promise<void> {
   // Jarvis 2.1 (audit G2) — note payment due-date detector (daily 11:00 UTC):
   // borrower payments due-soon/overdue become mesh events + outward senses.
   startNotePaymentDueDetectorJob();
+
+  // Audit Wave 1 (buy_and_hold beta→core) — lease-expiry detector (daily 10:00
+  // UTC): active leases ~60 days from end become mesh events + fire both lease
+  // workflow events (renewal countdown + expiring). Deduped per (lease, endDate).
+  startLeaseExpiryDetectorJob();
 
   // Launch-Week WS4 — Gate-Watcher (daily 09:00 UTC): condition-gated
   // roadmap items detect their own moment and become one-tap founder

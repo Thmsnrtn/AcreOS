@@ -244,8 +244,19 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // Rent operations do NOT touch the residential-comps data plane, so
     // the "no residential comps before its revenue trigger" hard-stop is
     // unaffected (fix_and_flip stays roadmap for exactly that reason).
-    maturity: "beta",
-    // All four exist in workflow-engine.ts (landlord moments + lease expiry).
+    // 2026-08 audit Wave 1: beta → core. All four landlord templates are now
+    // LIVE — rent.received fires on the rent-ledger payment POST seam,
+    // maintenance.request_received on the maintenance-ticket POST seam, and the
+    // two lease events (renewal countdown + expiring) from the new daily
+    // leaseExpiryDetector job (server/services/rentalEvents.ts → emitRentalEvent).
+    // The templates were de-fabricated in the same change — the market/suggested
+    // rent placeholders were dropped rather than touch the residential-comps data
+    // plane (that hard-stop is upheld: the templates now PROMPT the operator to
+    // pull market rent on their own surface). The vertical passes the honesty bar
+    // for core.
+    maturity: "core",
+    // All four exist in workflow-engine.ts (landlord moments + lease expiry) and
+    // are now wired live (see rentalEvents.ts + leaseExpiryDetector.ts).
     workflowTemplateIds: [
       "tpl_landlord_lease_renewal_countdown",
       "tpl_landlord_maintenance_request_triage",
@@ -253,10 +264,12 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_lease_expiring",
     ],
     spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
-    // Honest: no dedicated integration is wired yet — the rent ledger is
-    // manual-entry (Stripe ACH explicitly out of scope per
-    // routes-rent-ledger.ts) and no screening-bureau provider exists in
-    // the provider registry.
+    // Honest, and UNCHANGED by the beta→core flip: no dedicated integration is
+    // wired yet — the rent ledger is manual-entry (Stripe ACH explicitly out of
+    // scope per routes-rent-ledger.ts) and no screening-bureau provider exists in
+    // the provider registry. The rent-receipt / renewal / acknowledgment emails
+    // ride the org's OWN connected identity (the BYO counterparty email lane),
+    // not a provider-registry integration, so there is nothing to declare here.
     integrations: [],
   },
   short_term_rental: {

@@ -73,13 +73,24 @@ describe("vertical pack purchasability", () => {
     expect(purchasableVerticalPacks().map((p) => p.key)).toContain("fix_and_flipper");
   });
 
-  it("sells the property-management pack now that buy_and_hold is beta (ruling #11, wave V1)", () => {
+  it("sells the property-management pack now that buy_and_hold is core (audit Wave 1, beta→core)", () => {
     // 2026-07-29 truth pass: buy_and_hold flipped roadmap → beta because
     // the build justifies it (rental schema + routes + pages + Rentals nav
     // module). isVerticalPackPurchasable derives from that maturity, so the
     // pack becoming sellable is the ruling working as designed — pinned
     // here so a silent demotion would fail loudly.
-    expect(getBusinessType("buy_and_hold")?.maturity).toBe("beta");
+    //
+    // 2026-08 audit Wave 1: beta → core — all four landlord templates are now
+    // LIVE (rent.received on the rent-ledger POST seam,
+    // maintenance.request_received on the maintenance POST seam, and
+    // lease.renewal_countdown_60d + lease.expiring_60d from the daily
+    // leaseExpiryDetector; rentalEvents.ts + workflowActionHonesty pin it). The
+    // templates were de-fabricated in the same change WITHOUT touching the
+    // residential-comps data plane (that hard-stop stands — the renewal template
+    // prompts the operator to pull market rent on their own surface), so the
+    // vertical passes the honesty bar for core. Purchasability is unchanged
+    // (core, like beta, is production-ready) — this assertion now tracks core.
+    expect(getBusinessType("buy_and_hold")?.maturity).toBe("core");
     expect(isVerticalPackPurchasable("buy_and_hold")).toBe(true);
     expect(purchasableVerticalPacks().map((p) => p.key)).toContain("buy_and_hold");
   });
