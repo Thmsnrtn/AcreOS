@@ -1266,10 +1266,17 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       {
         id: "action_plat_timeline_task",
         type: "create_task",
+        // audit Wave 1 (beta→core): dropped two fabricated clauses — the
+        // "{{nextCountyCheckinDays}}d intervals" cadence and the
+        // "{{estimatedApprovalMonths}}mo" timeline. No plan/checklist column
+        // supplies either (a per-county p50 lives in county_subdivision_timelines
+        // but the plan write-path does not join it), so emitSubdivisionEvent
+        // sends neither. Every remaining placeholder binds a real emitted field
+        // (platId/propertyAddress/countyName/state/numLots/submittedDate).
         config: {
           title: "Plat submitted — track approval timeline for {{propertyAddress}}",
           description:
-            "Plat #{{platId}} submitted {{submittedDate}} to {{countyName}}. Typical {{state}}-{{countyName}} timeline: {{estimatedApprovalMonths}}mo. Stages: 1) Engineering review, 2) Planning department, 3) Planning commission, 4) Approval/recordation. Track each stage's completion + ping county at {{nextCountyCheckinDays}}d intervals.",
+            "Plat #{{platId}} submitted {{submittedDate}} to {{countyName}} ({{state}}). Stages: 1) Engineering review, 2) Planning department, 3) Planning commission, 4) Approval/recordation. Track each stage's completion, and pull the county's typical approval timeline from the state-rules surface.",
           priority: "medium",
           dueInDays: 14,
         },
@@ -1280,7 +1287,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           notificationType: "info",
           message:
-            "Plat submitted for {{propertyAddress}} ({{numLots}} lots). Estimated approval timeline: {{estimatedApprovalMonths}}mo.",
+            "Plat submitted for {{propertyAddress}} ({{numLots}} lots).",
         },
       },
     ],
@@ -1326,10 +1333,14 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       {
         id: "action_phase_recorded_task",
         type: "create_task",
+        // audit Wave 1 (beta→core): replaced the fabricated {{phaseNumber}} with
+        // {{planName}} — subdivision_plans has a real `name` column ("Plan A —
+        // 12 lots") but no phase-number column, so emitSubdivisionEvent sends
+        // planName (plan.name), never an invented phase index.
         config: {
-          title: "Generate lots + marketing for {{propertyAddress}} Phase {{phaseNumber}}",
+          title: "Generate lots + marketing for {{propertyAddress}} Phase {{planName}}",
           description:
-            "Phase {{phaseNumber}} recorded {{recordedDate}}. Generates {{lotCount}} lots. For each: (a) create property row with phase + lot designation, (b) commission lot photo/drone, (c) set asking price per the lot-pricing model.",
+            "Phase {{planName}} recorded {{recordedDate}}. Generates {{lotCount}} lots. For each: (a) create property row with phase + lot designation, (b) commission lot photo/drone, (c) set asking price per the lot-pricing model.",
           priority: "high",
           dueInDays: 7,
         },
@@ -1340,7 +1351,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           notificationType: "info",
           message:
-            "Phase {{phaseNumber}} recorded for {{propertyAddress}}. {{lotCount}} lots now sellable.",
+            "Phase {{planName}} recorded for {{propertyAddress}}. {{lotCount}} lots now sellable.",
         },
       },
     ],
@@ -2585,7 +2596,17 @@ class WorkflowEngine {
       for (const part of parts) {
         value = value?.[part];
       }
-      return value !== undefined ? String(value) : match;
+      // An UNRESOLVED variable (undefined) keeps its literal {{placeholder}} —
+      // the honesty ratchet relies on this so a workflow can never silently
+      // render a variable it was never given. An emitter that DELIBERATELY sends
+      // a real-but-absent field as `null` (refuse-not-fabricate — the fact is
+      // genuinely unknown) must render as blank, never the literal string
+      // "null", which would leak into customer-facing task/email/notification
+      // copy (see accessibility.spec.ts / SIMULATION-SPEC: output is never
+      // "null").
+      if (value === undefined) return match;
+      if (value === null) return "";
+      return String(value);
     });
   }
 
@@ -2744,6 +2765,29 @@ export function emitCertEvent(event: "cert.acquired" | "cert.redemption_period_6
     organizationId,
     entityId,
     entityType: "cert",
+    data,
+  });
+}
+
+// emitSubdivisionEvent — the subdivider lifecycle emitter (audit Wave 1,
+// beta→core). Mirrors emitCertEvent. The subdivision seams (a plat submitted to
+// the county, a permit gate approved, a plat recorded) all hang off a parent
+// PARCEL, which IS a properties row — so entityType is "property" and entityId
+// is the parent parcel's properties.id (a real FK, properties.parent_parcel_id
+// and the subdivision tables' parent_parcel_id both point at properties.id). No
+// new entityType needed. Until this shipped the three subdivider templates
+// (tpl_subdivision_plat_submitted / tpl_subdivision_vendor_milestone /
+// tpl_subdivision_phase_recorded) had ZERO emitters and sat idle forever.
+// Register all three events in shared/workflow-live-triggers.ts in the SAME
+// change (workflowActionHonesty pins the call-site ↔ list relationship). The
+// event union MUST stay on one physical line — the honesty ratchet's derivation
+// regex stops at the first newline after `event:`.
+export function emitSubdivisionEvent(event: "plat.submitted" | "subdivision.vendor_milestone" | "subdivision.phase_recorded", organizationId: number, entityId: number, data: Record<string, any>): void {
+  workflowEngine.emit({
+    event,
+    organizationId,
+    entityId,
+    entityType: "property",
     data,
   });
 }

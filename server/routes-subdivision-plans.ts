@@ -28,6 +28,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { emitPlanStatusChange } from "./services/subdivisionEvents";
 
 const featureCollectionSchema = z.object({
   type: z.literal("FeatureCollection"),
@@ -223,11 +224,34 @@ export function registerSubdivisionPlanRoutes(app: Express): void {
           updates.totalAcres = s.totalAcres > 0 ? String(s.totalAcres) : null;
         }
 
+        // Resolve the parent parcel (real properties.* columns) so the plan
+        // lifecycle emitter can label the parcel + carry county/state. address
+        // is nullable; the emitter falls back to county/state, never a
+        // fabricated address.
+        const [parentProperty] = await db
+          .select({
+            address: properties.address,
+            county: properties.county,
+            state: properties.state,
+          })
+          .from(properties)
+          .where(eq(properties.id, existing.parentParcelId));
+
         const [updated] = await db
           .update(subdivisionPlans)
           .set(updates)
           .where(eq(subdivisionPlans.id, existing.id))
           .returning();
+
+        // SD-7 audit Wave 1 (beta→core): fire plat.submitted on a genuine
+        // →county_submitted transition and subdivision.phase_recorded on a
+        // genuine →recorded transition (pre-image = existing.status). Recording
+        // emits from THIS path only — the permit-gate plat_recorded/assessor_split
+        // gates are deliberately not wired, so a recording never emits twice.
+        // Fire-and-forget: emitPlanStatusChange never throws.
+        emitPlanStatusChange(existing.status, updated, parentProperty, {
+          parentParcelId: existing.parentParcelId,
+        });
 
         return res.json({ plan: updated });
       } catch (err) {

@@ -383,12 +383,22 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "subdivider",
     label: "Subdivider",
     shortDescription: "Buy parent parcels, split into lots.",
-    maturity: "beta",
+    maturity: "core",
     // 2026-07-29 truth pass: all three subdivision templates exist in
     // workflow-engine.ts. "subdivision-editor" was a dangling name — there
     // is no such route; subdivision editing lives on the parcel-detail
     // Subdivision tab, and the Subdivision sidebar module surfaces
     // /permits, /county-timelines, /lot-pricing, /ccr-templates.
+    // 2026-08 audit Wave 1: beta → core. All THREE subdivision templates now
+    // have LIVE emitters on genuine operator transitions — subdivisionEvents.ts
+    // → emitSubdivisionEvent fires subdivision.vendor_milestone when a permit
+    // gate reaches "approved" (routes-permit-tracker PATCH), plat.submitted when
+    // a plan reaches "county_submitted", and subdivision.phase_recorded when a
+    // plan reaches "recorded" (routes-subdivision-plans PATCH). The two
+    // fabricated placeholders were corrected in the same change
+    // ({{nextCountyCheckinDays}} dropped, {{phaseNumber}} → {{planName}}).
+    // Registered in shared/workflow-live-triggers.ts; workflowActionHonesty pins
+    // the call-site ↔ list relationship. Passes the honesty bar for core.
     workflowTemplateIds: [
       "tpl_subdivision_plat_submitted",
       "tpl_subdivision_vendor_milestone",

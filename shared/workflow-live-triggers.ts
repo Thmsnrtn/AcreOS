@@ -45,6 +45,15 @@
 //       server/jobs/redemptionClockRefresh.ts (the nightly clock fires
 //       cert.redemption_period_60d in the 60-day window and
 //       cert.foreclosure_eligible once the deadline has lapsed).
+//   plat.submitted / subdivision.vendor_milestone / subdivision.phase_recorded
+//   (audit Wave 1, subdivider)
+//       server/services/subdivisionEvents.ts → emitSubdivisionEvent, called
+//       from server/routes-permit-tracker.ts (PATCH /api/permit-gates/:gateId
+//       fires subdivision.vendor_milestone on a genuine gate→"approved"
+//       transition) and server/routes-subdivision-plans.ts (PATCH
+//       /api/plans/:planId fires plat.submitted on plan→"county_submitted" and
+//       subdivision.phase_recorded on plan→"recorded"). entityType "property"
+//       (entityId = parent parcel's properties.id).
 //
 // `property.updated` and `deal.updated` are deliberately ABSENT: their emit
 // helpers declare them, but no call site ever passes them, so a workflow on
@@ -81,6 +90,9 @@ export const LIVE_WORKFLOW_TRIGGER_EVENTS = [
   "cert.redemption_period_60d",
   "cert.foreclosure_eligible",
   "cert.redeemed",
+  "plat.submitted",
+  "subdivision.vendor_milestone",
+  "subdivision.phase_recorded",
 ] as const;
 
 export type LiveWorkflowTriggerEvent =

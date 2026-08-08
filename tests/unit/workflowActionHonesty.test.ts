@@ -335,6 +335,31 @@ describe("actions report success only when a real rail ran (behavioral)", () => 
     expect(createTask.mock.calls[0][0].title).toBe("t {{emailSent}}");
   });
 
+  it("renders a deliberately-null variable as blank — never the literal 'null' — while an unset variable stays literal", async () => {
+    // Emitters send a genuinely-unknown field as null (refuse-not-fabricate).
+    // Interpolation must turn that null into blank, NOT the string "null", which
+    // would leak into customer-facing task/email/notification copy (a deed-state
+    // cert's absent statutory rate, a subdivision gate with no next stage, etc).
+    // An UNRESOLVED variable still keeps its literal {{placeholder}}.
+    await workflowEngine.executeWorkflow(
+      makeWorkflow([
+        {
+          id: "a_task",
+          type: "create_task",
+          config: { title: "rate [{{rateVar}}] next [{{missingVar}}] id [{{realVar}}]", description: "d" },
+        },
+      ]),
+      {
+        event: "parcel.owner_changed" as any,
+        entityId: 1,
+        entityType: "parcel",
+        data: { rateVar: null, realVar: "cert_1" },
+      },
+    );
+    expect(createTask).toHaveBeenCalledTimes(1);
+    expect(createTask.mock.calls[0][0].title).toBe("rate [] next [{{missingVar}}] id [cert_1]");
+  });
+
   it("isActionUnavailableResult discriminates correctly", () => {
     expect(
       isActionUnavailableResult({ status: ACTION_STATUS_UNAVAILABLE, reason: "x" }),

@@ -345,3 +345,73 @@ describe("parcel templates interpolate only real emitted payload fields", () => 
     }
   });
 });
+
+describe("subdivision templates interpolate only real emitted payload fields", () => {
+  // Audit Wave 1 (beta→core): the three subdivider templates are now LIVE —
+  // subdivisionEvents.ts → emitSubdivisionEvent fires them on genuine operator
+  // transitions (permit gate → approved; plan → county_submitted / recorded).
+  // Each template may only interpolate fields its emitter actually sends — a
+  // reintroduced {{nextCountyCheckinDays}} (dropped) or {{phaseNumber}}
+  // (replaced by the real {{planName}}) would render as a literal placeholder,
+  // i.e. fabricated-looking output. Refuse-not-fabricate applies to template
+  // plumbing too. These sets are the payloads in server/services/subdivisionEvents.ts.
+  const SUBDIVISION_PAYLOAD_FIELDS: Record<string, Set<string>> = {
+    // emitPlanStatusChange → plat.submitted
+    tpl_subdivision_plat_submitted: new Set([
+      "platId",
+      "propertyAddress",
+      "countyName",
+      "state",
+      "numLots",
+      "submittedDate",
+    ]),
+    // emitPermitGateApproved → subdivision.vendor_milestone
+    tpl_subdivision_vendor_milestone: new Set([
+      "milestoneName",
+      "milestoneDate",
+      "propertyAddress",
+      "nextStage",
+      "nextVendor",
+      "nextStageDays",
+    ]),
+    // emitPlanStatusChange → subdivision.phase_recorded
+    tpl_subdivision_phase_recorded: new Set([
+      "propertyAddress",
+      "lotCount",
+      "planName",
+      "recordedDate",
+    ]),
+  };
+
+  it.each(Object.keys(SUBDIVISION_PAYLOAD_FIELDS))(
+    "%s uses only fields the emitter sends",
+    (id) => {
+      const t = templateById.get(id)!;
+      const used = new Set<string>();
+      for (const action of t.actions) extractPlaceholders(action.config, used);
+      expect(used.size).toBeGreaterThan(0);
+      const allowed = SUBDIVISION_PAYLOAD_FIELDS[id];
+      for (const field of used) {
+        expect(
+          allowed.has(field),
+          `${id} interpolates {{${field}}}, which emitSubdivisionEvent never sends for its event`,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("the corrected fabrications stay gone (nextCountyCheckinDays / phaseNumber)", () => {
+    const platUsed = new Set<string>();
+    for (const a of templateById.get("tpl_subdivision_plat_submitted")!.actions) {
+      extractPlaceholders(a.config, platUsed);
+    }
+    expect(platUsed.has("nextCountyCheckinDays")).toBe(false);
+
+    const phaseUsed = new Set<string>();
+    for (const a of templateById.get("tpl_subdivision_phase_recorded")!.actions) {
+      extractPlaceholders(a.config, phaseUsed);
+    }
+    expect(phaseUsed.has("phaseNumber")).toBe(false);
+    expect(phaseUsed.has("planName")).toBe(true); // the real replacement is present
+  });
+});
