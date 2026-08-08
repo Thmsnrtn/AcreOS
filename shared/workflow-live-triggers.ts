@@ -36,6 +36,15 @@
 //       called from server/routes-rehabs.ts (PATCH status transition). Fires
 //       rehab.milestone when demo completes and rehab.punch_list_complete when
 //       the rehab reaches "listed".
+//   cert.acquired / cert.redemption_period_60d / cert.foreclosure_eligible /
+//   cert.redeemed (audit Wave 1, tax-lien / deed)
+//       server/services/certificateEvents.ts → emitCertEvent, called from
+//       server/routes-tax-certificates.ts (cert.acquired on create; cert.redeemed
+//       on a genuine active→redeemed PATCH), server/routes-tax-researcher.ts
+//       (cert.acquired on the won-bid→certificate handoff), and
+//       server/jobs/redemptionClockRefresh.ts (the nightly clock fires
+//       cert.redemption_period_60d in the 60-day window and
+//       cert.foreclosure_eligible once the deadline has lapsed).
 //
 // `property.updated` and `deal.updated` are deliberately ABSENT: their emit
 // helpers declare them, but no call site ever passes them, so a workflow on
@@ -68,6 +77,10 @@ export const LIVE_WORKFLOW_TRIGGER_EVENTS = [
   "payment.missed",
   "rehab.milestone",
   "rehab.punch_list_complete",
+  "cert.acquired",
+  "cert.redemption_period_60d",
+  "cert.foreclosure_eligible",
+  "cert.redeemed",
 ] as const;
 
 export type LiveWorkflowTriggerEvent =

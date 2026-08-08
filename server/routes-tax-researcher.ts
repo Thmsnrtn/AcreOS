@@ -57,6 +57,7 @@ import {
   type WonLot,
 } from "./services/wonBidToCertificate";
 import { getStateRuleCoverage, UNREVIEWED_RULE_CAVEAT } from "./services/taxRuleCoverage";
+import { emitCertAcquired } from "./services/certificateEvents";
 
 const partnerSplitSchema = z.array(z.object({
   investorName: z.string().min(1).max(240),
@@ -734,6 +735,28 @@ async function handoffWonLotToCertificate(params: {
       deadlineSource: built.deadlineSource,
       attorneyReviewed: false,
     },
+  });
+
+  // A won-bid handoff that genuinely creates a certificate IS the cert.acquired
+  // event — fire the acquired-kickoff workflow lane, mirroring the direct POST
+  // path. ONLY on the "created" branch (not "existing"/"blocked" above, which
+  // return early). Fire-and-forget; never throws. bidDownRateBps is not part of
+  // the won-lot draft and rides as null (honest — the emitter falls back to the
+  // encoded state statutory rate).
+  emitCertAcquired({
+    id: created.id,
+    organizationId,
+    propertyId: d.propertyId ?? null,
+    state: d.state,
+    county: d.county,
+    apn: d.apn,
+    saleType: d.saleType,
+    saleDate: d.saleDate,
+    bidDownRateBps: null,
+    redemptionDeadline: created.redemptionDeadline as unknown as string,
+    status: "active",
+    redeemedAt: null,
+    redeemedAmountCents: null,
   });
 
   return {

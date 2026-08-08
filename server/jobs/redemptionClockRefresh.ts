@@ -39,12 +39,56 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { taxCertificates, systemAlerts } from "@shared/schema";
 import { computeRedemptionDeadline } from "../services/redemptionClock";
+import {
+  emitCertRedemptionApproaching,
+  emitCertForeclosureEligible,
+  type CertEventRow,
+} from "../services/certificateEvents";
 import { logger } from "../utils/logger";
 
 // "Crosses threshold today" window. Configurable later via founder_settings
 // once we add the surface; 7d is the bucket Marcus uses in his head ("if
 // it's inside a week I'm in the office calling the redeemer").
 const THRESHOLD_DAYS = 7;
+// 60-day redemption-approaching workflow window (cert.redemption_period_60d).
+const SIXTY_DAY_MS = 60 * 86_400_000;
+
+/**
+ * Build the CertEventRow slice the workflow emitters need from a scanned cert
+ * row + the freshly recomputed deadline. Real columns only; the emitters never
+ * touch redeemed fields on an active cert, so they pass through null.
+ */
+function jobRowToCertEventRow(
+  row: {
+    id: string;
+    organizationId: number;
+    propertyId: number | null;
+    state: string;
+    county: string;
+    apn: string;
+    saleType: string;
+    bidDownRateBps: number | null;
+    status: string;
+  },
+  saleDate: string,
+  redemptionDeadline: string,
+): CertEventRow {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    propertyId: row.propertyId,
+    state: row.state,
+    county: row.county,
+    apn: row.apn,
+    saleType: row.saleType,
+    saleDate,
+    bidDownRateBps: row.bidDownRateBps,
+    redemptionDeadline,
+    status: row.status,
+    redeemedAt: null,
+    redeemedAmountCents: null,
+  };
+}
 
 export interface RefreshResult {
   certsScanned: number;
@@ -67,6 +111,12 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
     id: string;
     organizationId: number;
     state: string;
+    county: string;
+    apn: string;
+    propertyId: number | null;
+    saleType: string;
+    bidDownRateBps: number | null;
+    status: string;
     saleDate: unknown;
     redemptionDeadline: unknown;
     ownerOccupiedAtSale: boolean | null;
@@ -78,6 +128,12 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
         id: taxCertificates.id,
         organizationId: taxCertificates.organizationId,
         state: taxCertificates.state,
+        county: taxCertificates.county,
+        apn: taxCertificates.apn,
+        propertyId: taxCertificates.propertyId,
+        saleType: taxCertificates.saleType,
+        bidDownRateBps: taxCertificates.bidDownRateBps,
+        status: taxCertificates.status,
         saleDate: taxCertificates.saleDate,
         redemptionDeadline: taxCertificates.redemptionDeadline,
         ownerOccupiedAtSale: taxCertificates.ownerOccupiedAtSale,
@@ -138,6 +194,92 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
       //    - we haven't already emitted today's alert for this cert
       const deadlineMs = new Date(recomputed).getTime();
       const msUntil = deadlineMs - today.getTime();
+
+      // ── Workflow lanes (audit Wave 1, beta→core) ─────────────────────────
+      // These fire the cert.* workflow trigger events for the tax-lien / deed
+      // vertical. Each is deduped by a systemAlerts marker that ALSO serves as
+      // a genuinely-useful operator alert (same pattern as the 7-day threshold
+      // alert below), so the emit happens at most once per cert per recomputed
+      // deadline. Rows are already scoped to status = "active", so neither
+      // event ever fires for a redeemed / deed-obtained / cancelled cert.
+
+      // 60-day redemption-approaching lane. cert.redemption_period_60d.
+      if (msUntil >= 0 && msUntil <= SIXTY_DAY_MS) {
+        const marker60 = `cert_redemption_60d_event:${row.id}:${recomputed}`;
+        const [existing60] = await db
+          .select({ id: systemAlerts.id })
+          .from(systemAlerts)
+          .where(
+            and(
+              eq(systemAlerts.organizationId, row.organizationId),
+              sql`${systemAlerts.message} = ${marker60}`,
+            ),
+          )
+          .limit(1);
+        if (!existing60) {
+          const days60 = Math.ceil(msUntil / 86_400_000);
+          await db.insert(systemAlerts).values({
+            type: "cert_redemption_60d",
+            alertType: "cert_redemption_60d",
+            organizationId: row.organizationId,
+            severity: "warning",
+            title: `Redemption window closes within 60 days (${days60} day(s))`,
+            message: marker60,
+            relatedEntityType: "tax_certificate",
+            metadata: {
+              certificateId: row.id,
+              state: row.state,
+              redemptionDeadline: recomputed,
+              daysRemaining: days60,
+              summary: `Redemption window closes in ${days60} day(s) — decide posture: extend (if allowed), accept redemption-in-progress, or prepare the foreclosure filing.`,
+            },
+          });
+          emitCertRedemptionApproaching(
+            jobRowToCertEventRow(row, saleIso, recomputed),
+          );
+          result.alertsEmitted += 1;
+        }
+      }
+
+      // Foreclosure-eligible lane. cert.foreclosure_eligible, once the
+      // redemption deadline has lapsed with the cert still unredeemed.
+      if (msUntil < 0) {
+        const markerFc = `cert_foreclosure_eligible_event:${row.id}:${recomputed}`;
+        const [existingFc] = await db
+          .select({ id: systemAlerts.id })
+          .from(systemAlerts)
+          .where(
+            and(
+              eq(systemAlerts.organizationId, row.organizationId),
+              sql`${systemAlerts.message} = ${markerFc}`,
+            ),
+          )
+          .limit(1);
+        if (!existingFc) {
+          const daysOver = Math.ceil(-msUntil / 86_400_000);
+          await db.insert(systemAlerts).values({
+            type: "cert_foreclosure_eligible",
+            alertType: "cert_foreclosure_eligible",
+            organizationId: row.organizationId,
+            severity: "critical",
+            title: `Redemption window lapsed — foreclosure-eligible`,
+            message: markerFc,
+            relatedEntityType: "tax_certificate",
+            metadata: {
+              certificateId: row.id,
+              state: row.state,
+              redemptionDeadline: recomputed,
+              daysSinceDeadline: daysOver,
+              summary: `Redemption window closed ${daysOver} day(s) ago with no redemption — file foreclosure, sell the certificate, or write it off.`,
+            },
+          });
+          emitCertForeclosureEligible(
+            jobRowToCertEventRow(row, saleIso, recomputed),
+          );
+          result.alertsEmitted += 1;
+        }
+      }
+
       const crossesThreshold = msUntil >= 0 && msUntil <= thresholdMs;
       if (!crossesThreshold) continue;
 

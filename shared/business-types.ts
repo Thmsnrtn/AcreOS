@@ -401,7 +401,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "tax_lien_deed",
     label: "Tax lien / deed",
     shortDescription: "Acquire properties through tax auctions.",
-    maturity: "beta",
+    maturity: "core",
     // 2026-07-29 truth pass: the tax-delinquent build was real but
     // undeclared here. Tax-delinquent sidebar module (businessTypeOnly
     // tax_lien_deed): /redemption-clock, /auction-worksheet, /state-rules,
@@ -409,6 +409,15 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // workflow-engine.ts.
     // Wave V3 added the redeemed-payoff packet and the live-emitted
     // parcel tax-status watchlist trigger (parcelDeltaDetector).
+    // 2026-08 audit Wave 1: beta → core. All FOUR cert templates now have
+    // LIVE emitters wired on genuine state transitions —
+    // certificateEvents.ts → emitCertEvent fires cert.acquired on certificate
+    // create (routes-tax-certificates POST + the won-bid handoff in
+    // routes-tax-researcher), cert.redeemed on a genuine active→redeemed PATCH,
+    // and cert.redemption_period_60d / cert.foreclosure_eligible from the
+    // nightly redemption-clock job's 60-day and lapsed-deadline branches.
+    // Registered in shared/workflow-live-triggers.ts; workflowActionHonesty
+    // pins the call-site ↔ list relationship. Passes the honesty bar for core.
     workflowTemplateIds: [
       "tpl_tax_cert_acquired_kickoff",
       "tpl_tax_cert_redemption_approaching",

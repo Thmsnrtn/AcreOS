@@ -1457,17 +1457,15 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       "On certificate acquisition, send a cure-path letter to the delinquent owner offering a payment plan, and create the redemption-countdown task. Closes Rae's persona gap: most operators auto-skip to foreclosure; this surface gives the operator a cure-first option on day one.",
     category: "deals",
     trigger: { event: "cert.acquired" },
+    // audit Wave 1 (beta→core): the original kickoff opened with a
+    // send_email cure letter to {{delinquentOwnerEmail}} — but NO tax-cert
+    // column supplies a delinquent-owner email address, so that recipient
+    // would render as a literal "{{delinquentOwnerEmail}}" placeholder (a
+    // fabricated recipient). Refuse-not-fabricate: the send_email action was
+    // removed. Cure outreach can't invent a recipient the record doesn't
+    // hold; the create_task + send_notification actions below carry only real
+    // fields the certificateEvents.ts emitter actually sends.
     actions: [
-      {
-        id: "action_owner_cure_letter",
-        type: "send_email",
-        config: {
-          to: "{{delinquentOwnerEmail}}",
-          subject: "Tax-delinquency cure options — {{propertyAddress}}",
-          body:
-            "Hi {{ownerName}},\n\nWe've acquired the tax certificate for {{propertyAddress}} ({{stateCounty}}). The redemption window is {{stateRedemptionPeriodMonths}} months from the sale date, with statutory interest accruing at {{stateStatutoryRatePct}}.\n\nIf you'd like to discuss a payment plan to cure the delinquency, please reply or call — we'd rather work this out than foreclose. We can spread the obligation, including interest, into manageable monthly payments.\n\n{{orgName}}",
-        },
-      },
       {
         id: "action_redemption_countdown_task",
         type: "create_task",
@@ -1768,7 +1766,7 @@ export type WorkflowEventData = {
   event: WorkflowTriggerEvent;
   organizationId: number;
   entityId: number;
-  entityType: "lead" | "property" | "deal" | "payment" | "parcel" | "rehab";
+  entityType: "lead" | "property" | "deal" | "payment" | "parcel" | "rehab" | "cert";
   data: Record<string, any>;
   previousData?: Record<string, any>;
 };
@@ -2724,6 +2722,28 @@ export function emitRehabEvent(
     organizationId,
     entityId: propertyId,
     entityType: "rehab",
+    data,
+  });
+}
+
+// emitCertEvent — the tax-lien / tax-deed certificate lifecycle emitter (audit
+// Wave 1, beta→core). Mirrors emitRehabEvent. A certificate's id is a varchar
+// UUID but WorkflowEventData.entityId is numeric, so the cert's own propertyId
+// (nullable — set only when a parcel is attached) is the numeric entity handle,
+// falling back to 0 when absent; the cert id + template fields ride in `data`.
+// Until this shipped, the four cert templates (tpl_tax_cert_acquired_kickoff /
+// tpl_tax_cert_redemption_approaching / tpl_tax_cert_foreclosure_eligible /
+// tpl_tax_cert_redeemed_payoff) had ZERO emitters and sat idle forever. Register
+// all four events in shared/workflow-live-triggers.ts in the SAME change
+// (workflowActionHonesty test pins that relationship). The event union MUST stay
+// on one physical line — the honesty ratchet's derivation regex stops at the
+// first newline after `event:`.
+export function emitCertEvent(event: "cert.acquired" | "cert.redemption_period_60d" | "cert.foreclosure_eligible" | "cert.redeemed", organizationId: number, entityId: number, data: Record<string, any>): void {
+  workflowEngine.emit({
+    event,
+    organizationId,
+    entityId,
+    entityType: "cert",
     data,
   });
 }
