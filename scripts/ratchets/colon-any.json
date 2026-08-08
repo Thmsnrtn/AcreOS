@@ -4,6 +4,6 @@
   "pattern": ":\\s*any\\b",
   "globs": ["server/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/*.spec.ts"],
-  "baselineCount": 3020,
+  "baselineCount": 3019,
   "direction": "down"
 }

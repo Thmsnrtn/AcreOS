@@ -651,17 +651,29 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "agent_investor",
     label: "Agent-investor",
     shortDescription: "Licensed agents who also invest.",
-    // 2026-07-29 (founder ruling #11, wave V3): stays roadmap — the honesty
-    // bar for beta is not met. What EXISTS today, DELIBERATELY: the full
+    // 2026-08 (Wave 2 pass C, founder promote decision): roadmap → BETA on the
+    // honest-partial bar. The land base is unchanged and DELIBERATE: the full
     // land_investor surface (persona-mapping.ts maps agent_investor →
-    // land_investor on purpose — an agent who invests in land runs the
-    // same map → owner → offer sourcing loop), with nothing hidden on the
-    // businessType axis (sidebar-hidden-routes.ts) and a /today cluster
-    // confirming the land default is a choice, not a fallback. What's
-    // MISSING for beta: everything agent-specific — commission tracking,
-    // client-deals vs. own-book separation, MLS integration, dual-agency
-    // disclosure workflows.
-    maturity: "roadmap",
+    // land_investor on purpose — an agent who invests in land runs the same
+    // map → owner → offer sourcing loop), nothing hidden on the businessType
+    // axis (sidebar-hidden-routes.ts), and a /today cluster confirming the land
+    // default is a choice, not a fallback.
+    //
+    // What newly EXISTS for beta — the commission-tracking wedge: a real
+    // customer-facing commission surface behind the Finance door
+    // (/finance/commissions, agent_investor-gated) reading the org's own
+    // records + YTD summaries from commissionService, PLUS auto-recording the
+    // closing agent's commission on deal close (routes-deals.ts close seam,
+    // gated on an explicit saved tier config — honest empty/zero states, never
+    // a fabricated commission when nothing is configured).
+    //
+    // What stays ROADMAP-for-core, and WHY (each is a standing hard-stop, not a
+    // backlog item): MLS integration (residential-comps hard-stop — this is a
+    // LAND persona; MLS comps are residential comps); client-deals vs. own-book
+    // separation (needs a deals-schema field + migration, out of this wedge);
+    // dual-agency disclosure workflows (legal-signing is founder-only). These
+    // remain disclosed in the persona voice, not fabricated.
+    maturity: "beta",
     // The generic land-loop templates genuinely apply (lead intake, deal
     // close). Dunning is excluded — it assumes a serviced-note book this
     // operator doesn't necessarily carry.

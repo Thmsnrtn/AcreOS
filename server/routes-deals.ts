@@ -824,6 +824,38 @@ export function registerDealRoutes(app: Express): void {
           });
         } catch { /* non-fatal */ }
 
+        // Wave 2 pass C — auto-record the closing agent's commission
+        // (agent_investor commission wedge). Fire-and-forget, consistent with
+        // the other close-seam side effects: it must NEVER fail the close.
+        // HONESTY GATE: record ONLY when (a) the deal has an assigned agent and
+        // (b) the org has EXPLICITLY saved a commission tier config. When no
+        // config exists we skip silently — recording against DEFAULT_CONFIG
+        // would fabricate a commission the operator never set up. Correct
+        // signature: recordDealCommission(orgId, teamMemberId, dealId,
+        // salePriceCents) — teamMemberId is the deal's assigned agent.
+        if (deal.assignedTo != null) {
+          const saleAmount = deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : 0;
+          if (Number.isFinite(saleAmount) && saleAmount > 0) {
+            void (async () => {
+              try {
+                const { hasCommissionConfig, recordDealCommission } = await import("./services/commissionService");
+                if (!(await hasCommissionConfig(org.id))) return; // no config → skip, never fabricate
+                await recordDealCommission(
+                  org.id,
+                  deal.assignedTo!,
+                  deal.id,
+                  Math.round(saleAmount * 100),
+                );
+              } catch (err) {
+                logger.warn("[deal-close] commission auto-record failed", {
+                  dealId: deal.id,
+                  err: err instanceof Error ? err.message : String(err),
+                });
+              }
+            })();
+          }
+        }
+
         try {
           // Get the property to find associated lead
           const property = await storage.getProperty(org.id, deal.propertyId);

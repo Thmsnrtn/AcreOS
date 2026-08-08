@@ -581,13 +581,14 @@ const SEEDS: PersonaSeed[] = [
   //    test that a vertical with a limited or shared surface degrades
   //    gracefully, never crashes. The set is no longer uniformly roadmap:
   //    the 2026-08 audits promoted developer, multifamily and mobile_home
-  //    (Wave 2) and commercial (Wave 2 pass B) roadmap → beta on the honest
-  //    tier definition (their surfaces are real and their gaps disclosed), so
-  //    their display-name tags below read "(beta)". short_term_rental and
-  //    agent_investor stay roadmap ("(waitlist)") until their beta bars are
-  //    met. The display-name tags are pinned to registry maturity by
-  //    tests/unit/customerPersonas.test.ts. The landlord family here reaches
-  //    the shared Rentals module and developer reaches the Subdivision module.
+  //    (Wave 2), commercial (Wave 2 pass B) and agent_investor (Wave 2 pass C,
+  //    the commission-tracking wedge) roadmap → beta on the honest tier
+  //    definition (their surfaces are real and their gaps disclosed), so their
+  //    display-name tags below read "(beta)". short_term_rental stays roadmap
+  //    ("(waitlist)") until its beta bar is met. The display-name tags are
+  //    pinned to registry maturity by tests/unit/customerPersonas.test.ts. The
+  //    landlord family here reaches the shared Rentals module and developer
+  //    reaches the Subdivision module.
   {
     slug: "str-operator",
     displayName: "Sky — short-term rental operator (waitlist)",
@@ -675,13 +676,13 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "agent-investor",
-    displayName: "Aggie — licensed agent who also invests (waitlist)",
+    displayName: "Aggie — licensed agent who also invests (beta)",
     experience: "skeptic",
     device: "desktop-chrome",
     tier: "starter",
     businessType: "agent_investor",
-    narrative: "Roadmap → land_investor; a skeptic agent checking the product is honest about what's shipped.",
-    goals: ["Confirm land_investor base surface", "Honest roadmap messaging", "Nothing oversold"],
+    narrative: "Beta → land_investor base with the commission-tracking wedge live behind the Finance door; a skeptic agent checking the product is honest — commissions real, MLS/client-vs-own-book/dual-agency disclosed as roadmap, nothing oversold.",
+    goals: ["Confirm land_investor base surface", "Reach commissions behind Finance", "Honest roadmap messaging on the gaps", "Nothing oversold"],
     expect: {
       financeHero: null,
       modulesVisible: ["/deals", "/money"],

@@ -98,7 +98,9 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-contract-chain.ts", mountPath: null, kind: "register", export: "registerContractChainRoutes" },
   { file: "routes-cohort-retention.ts", mountPath: null, kind: "register", export: "registerCohortRetentionRoutes" },
   { file: "routes-comments.ts", mountPath: "/api/comments", kind: "router", export: "default" },
-  { file: "routes-commissions.ts", mountPath: "/api/commissions", kind: "router", export: "default" },
+  // routes-commissions.ts removed 2026-08 (Wave 2 pass C): it was a duplicate
+  // /api/commissions mount (buggy, un-called paths). Commission routes now live
+  // solely in routes-organization.ts (registerOrganizationRoutes).
   { file: "routes-communications.ts", mountPath: null, kind: "register", export: "registerCommunicationRoutes" },
   { file: "routes-compliance.ts", mountPath: "/api/compliance", kind: "router", export: "default" },
   { file: "routes-construction-draws.ts", mountPath: null, kind: "register", export: "registerConstructionDrawRoutes" },
