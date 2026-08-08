@@ -220,30 +220,34 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         type: "send_notification",
         config: {
           notificationType: "warning",
+          // payment.missed is emitted from three paths (notePaymentDueDetector,
+          // acquiredNoteAging, routes-notes nsf-reversal); the all-paths
+          // intersection is { source, noteId, daysLate }. Only noteId/daysLate
+          // are safe to interpolate — borrowerName/amount are sent by only SOME
+          // paths, so they were dropped (they would render as literal
+          // {{placeholders}} on the paths that omit them).
           message:
-            "Payment missed on Note #{{noteId}} — {{borrowerName}}. Amount: ${{amount}}. Follow up immediately.",
+            "Payment missed on Note #{{noteId}} — {{daysLate}} days late. Follow up immediately.",
         },
       },
       {
         id: "action_dunning_task",
         type: "create_task",
         config: {
-          title: "Missed payment — Note #{{noteId}} ({{borrowerName}})",
+          title: "Missed payment — Note #{{noteId}} ({{daysLate}} days late)",
           description:
-            "Contact borrower to collect overdue payment of ${{amount}}. Grace period may apply. Check note terms.",
+            "Contact the borrower to collect the overdue payment. Open the note's servicing page for the borrower, the amount owed, and the note terms — a grace period may apply.",
           priority: "high",
           dueInDays: 1,
         },
       },
-      {
-        id: "action_borrower_email",
-        type: "send_email",
-        config: {
-          to: "{{borrowerEmail}}",
-          subject: "Payment Reminder — Your Land Payment is Past Due",
-          body: "Hi {{borrowerName}},\n\nWe noticed your payment of ${{amount}} due on {{dueDate}} has not been received. Please contact us at your earliest convenience to avoid any late fees.\n\nThank you,\n{{orgName}}",
-        },
-      },
+      // The borrower-email send_email (formerly action_borrower_email, targeting
+      // {{borrowerEmail}}) was REMOVED: no payment.missed emit path supplies a
+      // borrower email or org name, so the recipient and signature would render
+      // as literal {{placeholders}} and nothing could be sent honestly. Mirrors
+      // the tax-lien cure-letter send_email removal (5f35dbf). Future enrichment:
+      // add a borrower-email field to the payment.missed payload on ALL three
+      // emit paths, then a create-driven dunning email can be reinstated.
     ],
   },
   {
@@ -262,26 +266,24 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         type: "send_notification",
         config: {
           notificationType: "success",
-          message:
-            "Deal closed! {{propertyAddress}} — ${{salePrice}}. Great work.",
+          // deal.stage_changed carries no property address; sale price is the
+          // deal's accepted amount (dealEvents.ts's deal-event payload builder). {{salePrice}}
+          // / {{propertyAddress}} were fabricated keys — dropped/rebound.
+          message: "Deal closed — ${{acceptedAmount}}. Great work.",
         },
       },
-      {
-        id: "action_referral_email",
-        type: "send_email",
-        config: {
-          to: "{{buyerEmail}}",
-          subject: "Congratulations on your land purchase!",
-          body: "Hi {{buyerName}},\n\nCongratulations on your purchase of {{propertyAddress}}! We hope you love it.\n\nIf you know anyone else looking for land, we'd love a referral. Just reply to this email!\n\nThank you,\n{{orgName}}",
-        },
-      },
+      // The buyer-referral send_email (formerly action_referral_email, targeting
+      // {{buyerEmail}}) was REMOVED: deal.stage_changed carries no buyer contact
+      // fields, so the recipient/name/signature would render as literal
+      // {{placeholders}} and nothing could be sent honestly. Mirrors the
+      // tax-lien cure-letter send_email removal (5f35dbf).
       {
         id: "action_note_setup_task",
         type: "create_task",
         config: {
-          title: "Set up seller-financed note for {{propertyAddress}}",
+          title: "Set up seller-financed note (if owner-financed)",
           description:
-            "If seller financing was agreed, create the note in AcreOS Finance and generate the amortization schedule. Down payment: ${{downPayment}}, Financed: ${{financedAmount}}.",
+            "If seller financing was agreed, create the note in AcreOS Finance and generate the amortization schedule. Confirm the down payment and financed amount against the signed closing terms.",
           priority: "high",
           dueInDays: 3,
         },
@@ -515,11 +517,15 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       conditions: [{ field: "newStage", operator: "equals", value: "due_diligence" }],
     },
     actions: [
+      // deal.stage_changed carries no {{dealAddress}} / {{dealName}} — only real
+      // deal columns (dealEvents.ts's deal-event payload builder). Those fabricated keys were
+      // dropped; the tasks reference the deal generically and the notification
+      // binds the real {{dealType}}.
       {
         id: "action_dd_title_task",
         type: "create_task",
         config: {
-          title: "Complete title search for {{dealAddress}}",
+          title: "Complete title search for this deal's property",
           priority: "high",
           dueInDays: 7,
         },
@@ -528,7 +534,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         id: "action_dd_survey_task",
         type: "create_task",
         config: {
-          title: "Review survey and legal description for {{dealAddress}}",
+          title: "Review survey and legal description for this deal's property",
           priority: "medium",
           dueInDays: 5,
         },
@@ -537,7 +543,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         id: "action_dd_zoning_task",
         type: "create_task",
         config: {
-          title: "Confirm zoning and permitted uses for {{dealAddress}}",
+          title: "Confirm zoning and permitted uses for this deal's property",
           priority: "medium",
           dueInDays: 3,
         },
@@ -547,7 +553,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         type: "send_notification",
         config: {
           notificationType: "info",
-          message: "Deal {{dealName}} advanced to due diligence — 3 DD tasks created",
+          message: "Deal advanced to due diligence ({{dealType}}) — 3 DD tasks created",
         },
       },
     ],
@@ -654,11 +660,15 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       conditions: [{ field: "newStage", operator: "equals", value: "closed_won" }],
     },
     actions: [
+      // deal.stage_changed carries no {{dealAddress}} / {{dealName}} /
+      // {{dealValue}} — only real deal columns (dealEvents.ts's deal-event payload builder).
+      // Those fabricated keys were dropped; the notification binds the real
+      // {{acceptedAmount}}.
       {
         id: "action_acquisition_docs_task",
         type: "create_task",
         config: {
-          title: "Update property records and upload closing docs for {{dealAddress}}",
+          title: "Update property records and upload closing docs for the acquired property",
           priority: "high",
           dueInDays: 3,
         },
@@ -667,7 +677,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         id: "action_acquisition_insurance_task",
         type: "create_task",
         config: {
-          title: "Set up property taxes and insurance for {{dealAddress}}",
+          title: "Set up property taxes and insurance for the acquired property",
           priority: "medium",
           dueInDays: 7,
         },
@@ -676,7 +686,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         id: "action_acquisition_disposition_task",
         type: "create_task",
         config: {
-          title: "List {{dealAddress}} for disposition or begin owner financing setup",
+          title: "List the acquired property for disposition or begin owner financing setup",
           priority: "medium",
           dueInDays: 14,
         },
@@ -686,7 +696,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         type: "send_notification",
         config: {
           notificationType: "success",
-          message: "Deal CLOSED: {{dealName}} at {{dealValue}}. 3 post-close tasks created.",
+          message: "Deal CLOSED at ${{acceptedAmount}}. 3 post-close tasks created.",
         },
       },
     ],
@@ -807,12 +817,17 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         { field: "dealType", operator: "equals", value: "owner_finance" },
       ],
     },
+    // The note does not exist yet at deal.stage_changed, and the event carries
+    // no buyer name / monthly payment / property address / deal name — only real
+    // deal columns (dealEvents.ts's deal-event payload builder). Those fabricated keys were
+    // dropped; the tasks prompt the operator to pull terms from the signed note,
+    // and the notification binds the real {{acceptedAmount}}.
     actions: [
       {
         id: "action_note_setup_draft_task",
         type: "create_task",
         config: {
-          title: "Draft promissory note and deed of trust for {{buyerName}}",
+          title: "Draft the promissory note and deed of trust for this owner-finance deal",
           priority: "high",
           dueInDays: 5,
         },
@@ -821,7 +836,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         id: "action_note_setup_schedule_task",
         type: "create_task",
         config: {
-          title: "Set up payment schedule in AcreOS for {{buyerName}} — {{monthlyPayment}}/mo",
+          title: "Set up the payment schedule in AcreOS — enter the monthly P&I from the signed note terms",
           priority: "high",
           dueInDays: 7,
         },
@@ -830,7 +845,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         id: "action_note_setup_deed_task",
         type: "create_task",
         config: {
-          title: "File deed and record mortgage for {{propertyAddress}}",
+          title: "File the deed and record the mortgage for the financed property",
           priority: "high",
           dueInDays: 14,
         },
@@ -840,7 +855,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         type: "send_notification",
         config: {
           notificationType: "success",
-          message: "Owner finance deal closed: {{dealName}}. Note setup tasks created.",
+          message: "Owner-finance deal closed (${{acceptedAmount}}). Note setup tasks created.",
         },
       },
     ],
@@ -887,14 +902,22 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       "When a fix-and-flip deal closes, kick off the rehab tracker: budget review, contractor scheduling, ARV-vs-AVM check, and a 12-week timeline reminder.",
     category: "deals",
     trigger: { event: "deal.stage_changed" },
+    // deal.stage_changed carries no property address, repair-cost, AVM, or ARV
+    // fields — only real deal columns (dealEvents.ts's deal-event payload builder). The old
+    // {{propertyAddress}} / {{estimatedRepairCost}} / {{estimatedValue}} /
+    // {{afterRepairValue}} keys never arrive, so they rendered as literal
+    // {{placeholders}}. They are dropped; the tasks bind real deal fields
+    // (acquisition price, deal type, closing date) and PROMPT the operator to
+    // confirm the rehab budget and ARV on the property's rehab tab (where those
+    // figures actually live) rather than interpolating fabricated numbers.
     actions: [
       {
         id: "action_rehab_budget_task",
         type: "create_task",
         config: {
-          title: "Confirm rehab budget for {{propertyAddress}} (est. ${{estimatedRepairCost}})",
+          title: "Confirm rehab budget for this flip (acquired at ${{acceptedAmount}})",
           description:
-            "Walk the property, finalize the scope, and lock the rehab budget. Compare against contractor bids before issuing first draw.",
+            "Walk the property, finalize the scope, and lock the rehab budget on the property's rehab tab. Compare against contractor bids before issuing the first draw.",
           priority: "high",
           dueInDays: 3,
         },
@@ -903,7 +926,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         id: "action_contractor_schedule",
         type: "create_task",
         config: {
-          title: "Schedule contractor for {{propertyAddress}} — week 1 demo + framing",
+          title: "Schedule contractor — week 1 demo + framing",
           description:
             "Confirm GC + sub trades. Demo / framing / rough-ins drive the critical path; the rest follows.",
           priority: "high",
@@ -914,9 +937,9 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         id: "action_arv_sanity_check",
         type: "create_task",
         config: {
-          title: "ARV sanity check — {{propertyAddress}}",
+          title: "ARV sanity check for this {{dealType}} flip",
           description:
-            "Pull 3 comps to defend your ARV. Reminder: the system's AVM ({{estimatedValue}}) is *as-is*. Your ARV is the post-rehab number — don't conflate them on the lender pro forma.",
+            "Pull 3 comps to defend your ARV and confirm it on the property's rehab tab. Reminder: the system's AVM is *as-is* — your ARV is the post-rehab number; don't conflate them on the lender pro forma.",
           priority: "medium",
           dueInDays: 2,
         },
@@ -927,7 +950,7 @@ export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         config: {
           notificationType: "info",
           message:
-            "Rehab kicked off: {{propertyAddress}}. Budget ${{estimatedRepairCost}}, target ARV ${{afterRepairValue}}. 12-week timeline starts now.",
+            "Rehab kicked off (deal acquired at ${{acceptedAmount}}, closing {{closingDate}}). Confirm the rehab budget and target ARV on the property's rehab tab. 12-week timeline starts now.",
         },
       },
     ],

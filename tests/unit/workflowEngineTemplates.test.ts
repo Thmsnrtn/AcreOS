@@ -35,6 +35,7 @@ import fs from "fs";
 import path from "path";
 import { WORKFLOW_TRIGGER_EVENTS, WORKFLOW_ACTION_TYPES } from "@shared/schema";
 import { LAND_INVESTING_WORKFLOW_TEMPLATES } from "../../server/services/workflow-engine";
+import { buildDealEventData } from "../../server/services/dealEvents";
 
 const ENGINE_SOURCE = fs.readFileSync(
   path.join(__dirname, "../../server/services/workflow-engine.ts"),
@@ -659,5 +660,170 @@ describe("balloon templates interpolate only real emitted payload fields", () =>
       "../../shared/workflow-live-triggers"
     );
     expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("note.balloon_approaching");
+  });
+});
+
+describe("deal.stage_changed + payment.missed templates interpolate only real emitted payload fields", () => {
+  // The engine builds interpolation variables as `{ ...triggerData.data }`
+  // (workflow-engine.ts executeWorkflow) — the emit payload VERBATIM, with NO
+  // entity hydration. A {{placeholder}} whose key the emit payload never sends
+  // keeps its LITERAL "{{...}}" in the customer-facing task/email/notification
+  // (interpolateTemplate returns the match unchanged for an undefined variable),
+  // which is fabricated-looking output. Refuse-not-fabricate applies to template
+  // plumbing too. This block closes the same blind spot the parcel / subdivision /
+  // wholesaler / landlord / balloon blocks above already close, for the two event
+  // lanes that were still leaking (audit close-out 2026-08-08).
+
+  // deal.stage_changed has exactly ONE emit path — dealEvents.emitDealStageChanged,
+  // whose payload is dealEvents.buildDealEventData (real deal columns only; no
+  // property address, no buyer/borrower fields, no valuation/ARV fields). The
+  // allowed set is derived from the REAL builder below, not hand-copied.
+  const DEAL_STAGE_CHANGED_PAYLOAD_FIELDS = new Set(
+    Object.keys(buildDealEventData({ id: 1 })),
+  );
+
+  // payment.missed is emitted from THREE paths; a key is honest ONLY if EVERY
+  // path sends it (the intersection):
+  //   notePaymentDueDetector.emitPaymentMissedForFinding
+  //     → { source, noteId, dueDate, daysLate, daysUntilDue, classification, dedupeKey }
+  //   acquiredNoteAging.emitAgingTransitionEvent
+  //     → { source, noteId, noteNumber, dueDate, daysLate, delinquencyStatus, previousStatus, noteStatus }
+  //   routes-notes.buildNotePaymentEventData (nsf_reversal path)
+  //     → { source, noteId, noteNumber, paymentId, borrowerName, amount(+Cents…), paymentType, daysLate, noteStatus, … }
+  // Intersection = { source, noteId, daysLate }. dueDate / noteNumber / noteStatus /
+  // borrowerName / amount are sent by only SOME paths; borrowerEmail / orgName by NONE.
+  const PAYMENT_MISSED_PAYLOAD_FIELDS = new Set(["source", "noteId", "daysLate"]);
+
+  const LANE: Record<string, Set<string>> = {
+    "deal.stage_changed": DEAL_STAGE_CHANGED_PAYLOAD_FIELDS,
+    "payment.missed": PAYMENT_MISSED_PAYLOAD_FIELDS,
+  };
+
+  // Auto-discovered so any future template added to either lane is covered too.
+  const laneTemplates = LAND_INVESTING_WORKFLOW_TEMPLATES.filter((t) =>
+    Object.prototype.hasOwnProperty.call(LANE, t.trigger.event),
+  );
+
+  it("the derivation found both lanes (guards against a silently empty filter)", () => {
+    expect(DEAL_STAGE_CHANGED_PAYLOAD_FIELDS.size).toBeGreaterThanOrEqual(9);
+    const dealCount = laneTemplates.filter(
+      (t) => t.trigger.event === "deal.stage_changed",
+    ).length;
+    const missedCount = laneTemplates.filter(
+      (t) => t.trigger.event === "payment.missed",
+    ).length;
+    expect(dealCount).toBeGreaterThanOrEqual(5); // deal_closed, stage_advanced, acquisition_closed, note_setup, fix_flip
+    expect(missedCount).toBeGreaterThanOrEqual(1); // payment_missed_dunning
+  });
+
+  it.each(laneTemplates.map((t) => t.id))(
+    "%s uses only fields its trigger event's emit payload actually sends",
+    (id) => {
+      const t = templateById.get(id)!;
+      const allowed = LANE[t.trigger.event];
+      const used = new Set<string>();
+      for (const action of t.actions) extractPlaceholders(action.config, used);
+      expect(used.size).toBeGreaterThan(0);
+      for (const field of used) {
+        expect(
+          allowed.has(field),
+          `${id} interpolates {{${field}}}, which the ${t.trigger.event} emit ` +
+            `payload never sends — it would render as a literal {{placeholder}} ` +
+            `in customer-facing copy`,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("the corrected deal.stage_changed fabrications stay gone", () => {
+    const usedIn = (id: string) => {
+      const used = new Set<string>();
+      for (const a of templateById.get(id)!.actions) extractPlaceholders(a.config, used);
+      return used;
+    };
+
+    // No address / repair-cost / AVM / ARV field exists on a deal event.
+    const flip = usedIn("tpl_fix_flip_rehab_kickoff");
+    for (const gone of ["propertyAddress", "estimatedRepairCost", "estimatedValue", "afterRepairValue"]) {
+      expect(flip.has(gone), `tpl_fix_flip_rehab_kickoff must not reintroduce {{${gone}}}`).toBe(false);
+    }
+    expect(flip.has("acceptedAmount"), "the real acquisition price stays").toBe(true);
+
+    // Sale price is the accepted amount; there is no buyer contact / finance split.
+    const closed = usedIn("tpl_deal_closed");
+    for (const gone of ["salePrice", "buyerEmail", "buyerName", "downPayment", "financedAmount", "propertyAddress", "orgName"]) {
+      expect(closed.has(gone), `tpl_deal_closed must not reintroduce {{${gone}}}`).toBe(false);
+    }
+    expect(closed.has("acceptedAmount"), "salePrice → acceptedAmount").toBe(true);
+
+    // The note does not exist yet at deal.stage_changed.
+    const noteSetup = usedIn("tpl_note_setup");
+    for (const gone of ["buyerName", "monthlyPayment", "propertyAddress", "dealName"]) {
+      expect(noteSetup.has(gone), `tpl_note_setup must not reintroduce {{${gone}}}`).toBe(false);
+    }
+
+    // dealAddress / dealName / dealValue are not columns the event emits.
+    for (const id of ["tpl_deal_stage_advanced", "tpl_acquisition_closed"]) {
+      const used = usedIn(id);
+      for (const gone of ["dealAddress", "dealName", "dealValue"]) {
+        expect(used.has(gone), `${id} must not reintroduce {{${gone}}}`).toBe(false);
+      }
+    }
+  });
+
+  it("the payment.missed dunning template keeps only all-paths-intersection fields", () => {
+    const t = templateById.get("tpl_payment_missed_dunning")!;
+    const used = new Set<string>();
+    for (const a of t.actions) extractPlaceholders(a.config, used);
+    // borrowerEmail / orgName are sent by NO path; borrowerName / amount / dueDate by only SOME.
+    for (const gone of ["borrowerEmail", "orgName", "borrowerName", "amount", "dueDate"]) {
+      expect(used.has(gone), `tpl_payment_missed_dunning must not interpolate {{${gone}}} (not in the all-paths intersection)`).toBe(false);
+    }
+    expect(used.has("noteId")).toBe(true);
+    expect(used.has("daysLate")).toBe(true);
+    // The send_email to {{borrowerEmail}} was removed — no path supplies a
+    // borrower email, so nothing could be sent honestly (future enrichment).
+    expect(
+      t.actions.some((a) => a.type === "send_email"),
+      "the borrower-email send_email must stay removed until payment.missed carries a borrower email on all paths",
+    ).toBe(false);
+  });
+
+  it("tpl_deal_closed's buyer-referral send_email stays removed (no buyer contact on deal.stage_changed)", () => {
+    expect(
+      templateById.get("tpl_deal_closed")!.actions.some((a) => a.type === "send_email"),
+    ).toBe(false);
+  });
+
+  it("the payment.missed intersection pin matches all three real emit sites (source pin)", () => {
+    // Every intersection field must appear as an emitted `field:` in EVERY path.
+    // A future 4th emit path that drops one of these, or a template that reaches
+    // for a field only some paths send, is what this guards.
+    const detector = fs.readFileSync(
+      path.join(__dirname, "../../server/services/notePaymentDueDetector.ts"),
+      "utf-8",
+    );
+    const aging = fs.readFileSync(
+      path.join(__dirname, "../../server/jobs/acquiredNoteAging.ts"),
+      "utf-8",
+    );
+    const notesRoutes = fs.readFileSync(
+      path.join(__dirname, "../../server/routes-notes.ts"),
+      "utf-8",
+    );
+    for (const field of PAYMENT_MISSED_PAYLOAD_FIELDS) {
+      expect(
+        detector.includes(`${field}:`),
+        `notePaymentDueDetector.emitPaymentMissedForFinding must emit "${field}"`,
+      ).toBe(true);
+      expect(
+        aging.includes(`${field}:`),
+        `acquiredNoteAging.emitAgingTransitionEvent must emit "${field}"`,
+      ).toBe(true);
+      expect(
+        notesRoutes.includes(`${field}:`),
+        `routes-notes.buildNotePaymentEventData must emit "${field}"`,
+      ).toBe(true);
+    }
   });
 });

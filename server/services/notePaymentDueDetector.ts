@@ -314,8 +314,10 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
 
     // Ledger dedupe: the mesh event IS the durable record of what already
     // emitted, so a note that fired once for this maturityDate is old news on
-    // every later run.
-    let alreadyBallooned = new Set<string>();
+    // every later run. No initializer: the try assigns from the ledger read and
+    // the catch fails closed, so the value is always assigned before it is read
+    // in the loop below (the dead initial Set was flagged by CodeQL).
+    let alreadyBallooned: Set<string>;
     try {
       const keys = balloonRows.map(balloonKey);
       const existing = await db
