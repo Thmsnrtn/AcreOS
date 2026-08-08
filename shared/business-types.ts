@@ -411,10 +411,36 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   },
   developer: {
     id: "developer",
-    label: "Developer / builder",
-    shortDescription: "New construction projects.",
-    maturity: "roadmap",
-    workflowTemplateIds: [],
+    label: "Developer / entitlements",
+    shortDescription: "Entitle land: permits, county timelines, lot pricing, plats.",
+    // 2026-08 (audit Wave 2, roadmap → beta): "developer" is really the
+    // subdivider / entitlement workspace under a mislabeled name.
+    // persona-mapping.ts collapses developer → subdivider, and the Subdivision
+    // sidebar module already gates businessTypeOnly ["subdivider","developer"],
+    // so the lots / permits / plats / county-timeline model is this vertical's
+    // REAL surface — it was always live for these signups, just described
+    // wrong. The over-promise was the framing, not the build: the "New
+    // construction projects." shortDescription (and the onboarding "and new
+    // construction" clause) advertised a ground-up construction product that
+    // does not exist; both were removed in this change. The three subdivision
+    // templates below are ALREADY LIVE for subdivider —
+    // tpl_subdivision_plat_submitted / _vendor_milestone / _phase_recorded fire
+    // on genuine entity transitions via subdivisionEvents.ts (plat.submitted,
+    // subdivision.vendor_milestone, subdivision.phase_recorded are all in
+    // shared/workflow-live-triggers.ts, pinned by workflowActionHonesty) — so
+    // adopting them here is ZERO emitter work and honestly live for developer
+    // too (same collapsed persona/surface). With the real entitlement surface,
+    // three live templates, and the construction promise removed, the vertical
+    // passes the honesty bar for beta. 2026-08 founder decision to promote.
+    maturity: "beta",
+    // The three subdivision templates, adopted verbatim from subdivider — the
+    // same LIVE emitters serve both (developer collapses to the subdivider
+    // persona/surface, so no re-wiring is required).
+    workflowTemplateIds: [
+      "tpl_subdivision_plat_submitted",
+      "tpl_subdivision_vendor_milestone",
+      "tpl_subdivision_phase_recorded",
+    ],
     // 2026-07-29 truth pass: developer signups DO get a real surface —
     // the Subdivision sidebar module gates businessTypeOnly
     // ["subdivider", "developer"] (persona-mapping collapses developer →
@@ -525,8 +551,24 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     //     and it cannot be built honestly until the expense axis above exists
     //     — a T-12 without expenses is just a rent report.
     //
-    // Two of three is not beta.
-    maturity: "roadmap",
+    // Two of three is not beta — the standard used through 2026-07.
+    //
+    // 2026-08 (audit Wave 2, roadmap → beta): the founder promoted multifamily
+    // to beta on the HONEST tier definition, not by closing those two gaps.
+    // What makes beta defensible: all five templates FIRE (the four landlord
+    // templates + tpl_multifamily_unit_turn — rent.received, lease
+    // renewal/expiry, maintenance all live per shared/workflow-live-triggers.ts,
+    // pinned by workflowActionHonesty), and the one number that rests on an
+    // assumption — the 40%-of-collected op-ex behind per-building NOI / cap rate
+    // — is DISCLOSED as an estimate everywhere it surfaces (opExBasis
+    // "assumed_ratio" at the server, "(est.)" on the client analytics tiles, and
+    // named in the Pax multifamily voice), so nothing presents an assumption as
+    // a measurement. The two gaps above do NOT vanish: the real
+    // property-expense axis and the T-12 / underwriting workspace remain the
+    // CORE goal (this stays roadmap-FOR-CORE until that expense model ships).
+    // Beta is scoped to the unit-scale rental operations the shipped stack
+    // genuinely runs today.
+    maturity: "beta",
     // All four landlord templates genuinely apply — multifamily IS
     // long-term rental operations at unit scale (term leases that renew,
     // a rent ledger, maintenance dispatch). Wave V3 added the dedicated
@@ -567,10 +609,19 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // A park's pads are therefore an inventory an operator has, and occupancy
     // over them is computable.
     //
-    // What's STILL MISSING for beta — and the reason this stays roadmap: no
+    // 2026-08 (audit Wave 2, roadmap → beta): the founder promoted mobile_home
+    // to a LOT-LEASE-ONLY beta. What makes it defensible: the lot-lease
+    // operations are honest and live — pad inventory is REAL (three write paths
+    // set rental_units.kind='pad', occupancy is computed over the pads) and all
+    // five templates FIRE (the four landlord templates + the
+    // tpl_mobile_home_lot_rent_receipt on the real rent.received trigger, per
+    // shared/workflow-live-triggers.ts + workflowActionHonesty). The home side
+    // is NOT in beta scope, and it is DISCLOSED, never fabricated: no
     // home-as-chattel handling (titles, home-vs-lot rent split), no utilities
-    // pass-through billing. The persona voice must keep saying both.
-    maturity: "roadmap",
+    // pass-through billing. Those are the CORE build — until they ship the
+    // persona voice must keep saying both, and beta stays scoped to the lot
+    // lease the shipped stack genuinely runs.
+    maturity: "beta",
     // All four landlord templates genuinely apply to lot-lease operations
     // (lot leases renew, lot rent hits the ledger, park infrastructure
     // needs maintenance dispatch). Wave V3 added the lot-rent receipt on

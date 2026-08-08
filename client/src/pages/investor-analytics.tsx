@@ -135,7 +135,7 @@ export default function InvestorAnalyticsPage() {
               </div>
             </Card>
             <Card className="p-3">
-              <div className="text-xs text-muted-foreground">Portfolio cap rate</div>
+              <div className="text-xs text-muted-foreground">Portfolio cap rate (est.)</div>
               <div className="text-2xl font-semibold tabular-nums">
                 {portfolio.data.portfolio.portfolioCapRatePct !== null
                   ? `${portfolio.data.portfolio.portfolioCapRatePct.toFixed(1)}%`
