@@ -40,6 +40,11 @@ const SCANNED_FILES = [
   // process/start pair for the same reason — runScheduledJobs.ts is under a
   // strictly-DOWN line-count ratchet, so a new sweep must not grow it.
   "../../server/jobs/acquiredNoteAging.ts",
+  // Audit Wave 1 (2026-08, buy_and_hold beta→core): the note-payment-due and
+  // lease-expiry daily detectors were extracted here out of runScheduledJobs.ts
+  // (same strictly-DOWN line ratchet), so their withJobLock literals
+  // (note_payment_due_scan + lease_expiry_scan) now live in this module.
+  "../../server/jobs/expiryDetectorJobs.ts",
   "../../server/jobs/atlasPendingConfirmationNudger.ts",
   "../../server/jobs/autonomousTaskProcessor.ts",
   "../../server/services/founderDigest.ts",

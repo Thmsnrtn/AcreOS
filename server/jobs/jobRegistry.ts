@@ -205,6 +205,11 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // counts-only outward senses. Non-critical: a dark scan delays perception
   // by a day; the deadman still surfaces the absence.
   { name: "note_payment_due_scan", intervalMs: DAY, critical: false, cron: "0 11 * * *" },
+  // Audit Wave 1 (buy_and_hold beta→core) — daily lease-expiry scan turning
+  // active leases ~60 days from their end into mesh events + the two lease
+  // workflow events (renewal countdown + expiring). Non-critical: a dark scan
+  // delays the renewal nudge by a day; the deadman still surfaces the absence.
+  { name: "lease_expiry_scan", intervalMs: DAY, critical: false, cron: "0 10 * * *" },
   // Wave C "Money moves" — borrower ACH autopay cycle: hourly submit of due
   // debits (one per note+period, guarded by a unique claim) + reconciliation
   // of every in-flight debit into settlement or return. CRITICAL: this is the
