@@ -560,8 +560,16 @@ describe("the mobile_home registry entry states the pad gap as CLOSED", () => {
     expect(flat).toMatch(/no utilities pass-through billing/i);
   });
 
-  it("maturity STAYS roadmap — two of three park gaps still stand", () => {
-    expect(BUSINESS_TYPES.mobile_home.maturity).toBe("roadmap");
+  it("maturity is now beta (2026-08 audit Wave 2) — a lot-lease-only beta; the home-side gaps are DISCLOSED, not fabricated", () => {
+    // Rewritten to the new truth, not deleted: the founder promoted mobile_home
+    // roadmap → beta on the honest tier definition. Pad inventory is real
+    // (three write paths set rental_units.kind='pad', asserted above) and all
+    // five templates fire, so lot-lease operations are honest and live. The
+    // home side — chattel titles, home-vs-lot rent split, utilities pass-through
+    // — is out of beta scope and stays DISCLOSED in the persona voice (the two
+    // "keeps the two gaps" / persona assertions in this file still hold), so
+    // beta presents no stub as live. Those gaps are the CORE build.
+    expect(BUSINESS_TYPES.mobile_home.maturity).toBe("beta");
   });
 });
 

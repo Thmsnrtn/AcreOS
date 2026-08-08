@@ -577,13 +577,18 @@ const SEEDS: PersonaSeed[] = [
     },
   },
 
-  // ── ROADMAP verticals (UI suppressed → collapse to a base persona). These
-  //    test that a waitlist vertical degrades gracefully, never crashes.
-  //    Per ruling #11 the remaining waitlist set (short_term_rental,
-  //    commercial, developer, multifamily, mobile_home, agent_investor —
-  //    plus the demoted fix_and_flip) stays gated with its gap stated until
-  //    each build passes the honesty bar. The landlord family among them
-  //    already reaches the shared Rentals module (wave V1 reachability).
+  // ── GATED / early verticals (collapse to a base persona's surface). These
+  //    test that a vertical with a limited or shared surface degrades
+  //    gracefully, never crashes. The set is no longer uniformly roadmap:
+  //    the 2026-08 audits promoted developer, multifamily and mobile_home
+  //    (Wave 2), commercial (Wave 2 pass B) and agent_investor (Wave 2 pass C,
+  //    the commission-tracking wedge) roadmap → beta on the honest tier
+  //    definition (their surfaces are real and their gaps disclosed), so their
+  //    display-name tags below read "(beta)". short_term_rental stays roadmap
+  //    ("(waitlist)") until its beta bar is met. The display-name tags are
+  //    pinned to registry maturity by tests/unit/customerPersonas.test.ts. The
+  //    landlord family here reaches the shared Rentals module and developer
+  //    reaches the Subdivision module.
   {
     slug: "str-operator",
     displayName: "Sky — short-term rental operator (waitlist)",
@@ -603,12 +608,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "commercial-investor",
-    displayName: "Cora — commercial RE (waitlist)",
+    displayName: "Cora — commercial RE (beta)",
     experience: "intermediate",
     device: "desktop-ultrawide",
     tier: "pro",
     businessType: "commercial",
-    narrative: "Roadmap vertical → land_investor base; the broadest desktop with a suppressed vertical.",
+    narrative: "Beta base-rent term-lease operator on the broadest desktop; commercial runs the shared Rentals stack (leases, base-rent ledger, maintenance) and can now enter company/entity tenants. The residential statutory late-fee surface is correctly hidden — commercial late fees are contractual, not statutory.",
     goals: ["Land on the land_investor surface", "Confirm Finance loads", "No blank pages"],
     expect: {
       financeHero: null,
@@ -620,12 +625,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "developer-builder",
-    displayName: "Dev — new construction (waitlist)",
+    displayName: "Dev — developer / entitlements (beta)",
     experience: "power_user",
     device: "desktop-1280",
     tier: "scale",
     businessType: "developer",
-    narrative: "Roadmap → subdivider persona; his own vertical is waitlisted but the Subdivision module (permits, county timelines, lot pricing, CC&Rs) serves developers too.",
+    narrative: "Beta → subdivider surface; developer collapses to the subdivider persona, so the Subdivision module (permits, county timelines, lot pricing, CC&Rs) and its three live subdivision templates are this vertical's real workspace. The old 'new construction' framing was removed — no ground-up construction product exists.",
     goals: ["Confirm subdivider surfacing", "Open the Subdivision module", "Finance + deals usable"],
     expect: {
       financeHero: "lotEconomics",
@@ -637,12 +642,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "multifamily-investor",
-    displayName: "Mona — small multifamily (waitlist)",
+    displayName: "Mona — small multifamily (beta)",
     experience: "intermediate",
     device: "galaxy-s9",
     tier: "starter",
     businessType: "multifamily",
-    narrative: "Roadmap → landlord persona on mobile; her vertical is waitlisted but the shared Rentals module serves the landlord family.",
+    narrative: "Beta → landlord surface on mobile; multifamily runs the shared Rentals stack (rent roll, unit inventory, renewals, maintenance). Per-building NOI / cap rate carry an honest '(est.)' op-ex label — the real expense axis and T-12 workspace are the core build still ahead.",
     goals: ["Reach all doors on mobile", "Finance loads", "No dead modules"],
     expect: {
       financeHero: "projectPnl",
@@ -654,12 +659,12 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "mobilehome-operator",
-    displayName: "Milo — mobile-home park operator (waitlist)",
+    displayName: "Milo — mobile-home park operator (beta)",
     experience: "brand_new",
     device: "iphone-se",
     tier: "free",
     businessType: "mobile_home",
-    narrative: "Roadmap → landlord; smallest iPhone with a waitlisted vertical — since wave V1 he reaches the shared Rentals module instead of a dead end.",
+    narrative: "Beta → landlord; smallest iPhone — a lot-lease-only beta on the shared Rentals stack with real pad inventory. The home-as-chattel (titles, home-vs-lot rent) and utilities pass-through gaps stay disclosed, not fabricated.",
     goals: ["Land somewhere usable", "No crash", "Understand it's early"],
     expect: {
       financeHero: "projectPnl",
@@ -671,13 +676,13 @@ const SEEDS: PersonaSeed[] = [
   },
   {
     slug: "agent-investor",
-    displayName: "Aggie — licensed agent who also invests (waitlist)",
+    displayName: "Aggie — licensed agent who also invests (beta)",
     experience: "skeptic",
     device: "desktop-chrome",
     tier: "starter",
     businessType: "agent_investor",
-    narrative: "Roadmap → land_investor; a skeptic agent checking the product is honest about what's shipped.",
-    goals: ["Confirm land_investor base surface", "Honest roadmap messaging", "Nothing oversold"],
+    narrative: "Beta → land_investor base with the commission-tracking wedge live behind the Finance door; a skeptic agent checking the product is honest — commissions real, MLS/client-vs-own-book/dual-agency disclosed as roadmap, nothing oversold.",
+    goals: ["Confirm land_investor base surface", "Reach commissions behind Finance", "Honest roadmap messaging on the gaps", "Nothing oversold"],
     expect: {
       financeHero: null,
       modulesVisible: ["/deals", "/money"],

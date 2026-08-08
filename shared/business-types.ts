@@ -304,22 +304,33 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "commercial",
     label: "Commercial real estate",
     shortDescription: "Retail, office, industrial assets.",
-    // 2026-07-29 (founder ruling #11, wave V3): stays roadmap — the honesty
-    // bar for beta is not met. What EXISTS today: a schema audit of
-    // shared/schema/rental.ts found the core loop lease-generic (term
-    // leases, base-rent charges/payments, maintenance→contractor dispatch,
-    // security deposits; Section 8 / FCRA / lead-paint fields optional and
-    // default off), so the Rentals sidebar module gate now includes
-    // commercial, the dashboard routes commercial to the real landlord
-    // dashboard (wave V2, type-specific-widgets.tsx), and /today gets a
-    // commercial cluster (rentals stack + /deals + /properties). What's
-    // MISSING for beta: entity tenants (the tenants table is person-shaped
-    // — required first/last name, no company field), CAM / NNN
+    // 2026-08 (Wave 2 pass B, roadmap → beta): the founder promoted commercial
+    // to a BASE-RENT TERM-LEASE beta on the honest tier definition. What makes
+    // it defensible, verified against the tree:
+    //   - the core loop is lease-generic and real — term leases, base-rent
+    //     charges/payments, maintenance→contractor dispatch, security deposits
+    //     (Section 8 / FCRA / lead-paint fields optional and default off), the
+    //     Rentals sidebar module gate includes commercial, the dashboard routes
+    //     commercial to the real landlord dashboard (type-specific-widgets.tsx),
+    //     and /today gets a commercial cluster (rentals stack + /deals +
+    //     /properties);
+    //   - ENTITY / COMPANY TENANTS now exist — the tenants table gained
+    //     `is_entity` + `company_name` (migration 0220), the create/update path
+    //     requires a company name for an entity and person names for a person,
+    //     and the workflow name resolvers prefer the company name honestly. A
+    //     commercial operator can finally enter a tenant that is an LLC, which
+    //     was the concrete beta blocker.
+    //   - the residential-statute FABRICATION is FIXED, not shipped: the state
+    //     late-fee surface (residential statutory caps + citations) is now gated
+    //     OUT for commercial orgs, front and back (rent-roll.tsx +
+    //     routes-rent-ledger.ts refuse it), because a commercial late fee is
+    //     CONTRACTUAL, set by the lease, not by statute.
+    // What is explicitly NOT included and STAYS roadmap-for-core: CAM / NNN
     // pass-through reconciliation, percentage rent, escalation schedules,
-    // per-square-foot metrics, and the state late-fee rules table encodes
-    // RESIDENTIAL statutes (operator-initiated; wrong-domain for a
-    // commercial lease — a commercial operator should skip that endpoint).
-    maturity: "roadmap",
+    // per-square-foot metrics, and residential-statute late fees. Beta is scoped
+    // to the base-rent term-lease operations the shipped stack genuinely runs.
+    // 2026-08 founder promote decision.
+    maturity: "beta",
     // Landlord templates whose mechanics genuinely apply to commercial
     // base-rent operations: maintenance triage, rent-received receipt, and
     // the plain lease-expiring renewal task. tpl_landlord_lease_renewal_
@@ -411,10 +422,36 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
   },
   developer: {
     id: "developer",
-    label: "Developer / builder",
-    shortDescription: "New construction projects.",
-    maturity: "roadmap",
-    workflowTemplateIds: [],
+    label: "Developer / entitlements",
+    shortDescription: "Entitle land: permits, county timelines, lot pricing, plats.",
+    // 2026-08 (audit Wave 2, roadmap → beta): "developer" is really the
+    // subdivider / entitlement workspace under a mislabeled name.
+    // persona-mapping.ts collapses developer → subdivider, and the Subdivision
+    // sidebar module already gates businessTypeOnly ["subdivider","developer"],
+    // so the lots / permits / plats / county-timeline model is this vertical's
+    // REAL surface — it was always live for these signups, just described
+    // wrong. The over-promise was the framing, not the build: the "New
+    // construction projects." shortDescription (and the onboarding "and new
+    // construction" clause) advertised a ground-up construction product that
+    // does not exist; both were removed in this change. The three subdivision
+    // templates below are ALREADY LIVE for subdivider —
+    // tpl_subdivision_plat_submitted / _vendor_milestone / _phase_recorded fire
+    // on genuine entity transitions via subdivisionEvents.ts (plat.submitted,
+    // subdivision.vendor_milestone, subdivision.phase_recorded are all in
+    // shared/workflow-live-triggers.ts, pinned by workflowActionHonesty) — so
+    // adopting them here is ZERO emitter work and honestly live for developer
+    // too (same collapsed persona/surface). With the real entitlement surface,
+    // three live templates, and the construction promise removed, the vertical
+    // passes the honesty bar for beta. 2026-08 founder decision to promote.
+    maturity: "beta",
+    // The three subdivision templates, adopted verbatim from subdivider — the
+    // same LIVE emitters serve both (developer collapses to the subdivider
+    // persona/surface, so no re-wiring is required).
+    workflowTemplateIds: [
+      "tpl_subdivision_plat_submitted",
+      "tpl_subdivision_vendor_milestone",
+      "tpl_subdivision_phase_recorded",
+    ],
     // 2026-07-29 truth pass: developer signups DO get a real surface —
     // the Subdivision sidebar module gates businessTypeOnly
     // ["subdivider", "developer"] (persona-mapping collapses developer →
@@ -525,8 +562,24 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     //     and it cannot be built honestly until the expense axis above exists
     //     — a T-12 without expenses is just a rent report.
     //
-    // Two of three is not beta.
-    maturity: "roadmap",
+    // Two of three is not beta — the standard used through 2026-07.
+    //
+    // 2026-08 (audit Wave 2, roadmap → beta): the founder promoted multifamily
+    // to beta on the HONEST tier definition, not by closing those two gaps.
+    // What makes beta defensible: all five templates FIRE (the four landlord
+    // templates + tpl_multifamily_unit_turn — rent.received, lease
+    // renewal/expiry, maintenance all live per shared/workflow-live-triggers.ts,
+    // pinned by workflowActionHonesty), and the one number that rests on an
+    // assumption — the 40%-of-collected op-ex behind per-building NOI / cap rate
+    // — is DISCLOSED as an estimate everywhere it surfaces (opExBasis
+    // "assumed_ratio" at the server, "(est.)" on the client analytics tiles, and
+    // named in the Pax multifamily voice), so nothing presents an assumption as
+    // a measurement. The two gaps above do NOT vanish: the real
+    // property-expense axis and the T-12 / underwriting workspace remain the
+    // CORE goal (this stays roadmap-FOR-CORE until that expense model ships).
+    // Beta is scoped to the unit-scale rental operations the shipped stack
+    // genuinely runs today.
+    maturity: "beta",
     // All four landlord templates genuinely apply — multifamily IS
     // long-term rental operations at unit scale (term leases that renew,
     // a rent ledger, maintenance dispatch). Wave V3 added the dedicated
@@ -567,10 +620,19 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // A park's pads are therefore an inventory an operator has, and occupancy
     // over them is computable.
     //
-    // What's STILL MISSING for beta — and the reason this stays roadmap: no
+    // 2026-08 (audit Wave 2, roadmap → beta): the founder promoted mobile_home
+    // to a LOT-LEASE-ONLY beta. What makes it defensible: the lot-lease
+    // operations are honest and live — pad inventory is REAL (three write paths
+    // set rental_units.kind='pad', occupancy is computed over the pads) and all
+    // five templates FIRE (the four landlord templates + the
+    // tpl_mobile_home_lot_rent_receipt on the real rent.received trigger, per
+    // shared/workflow-live-triggers.ts + workflowActionHonesty). The home side
+    // is NOT in beta scope, and it is DISCLOSED, never fabricated: no
     // home-as-chattel handling (titles, home-vs-lot rent split), no utilities
-    // pass-through billing. The persona voice must keep saying both.
-    maturity: "roadmap",
+    // pass-through billing. Those are the CORE build — until they ship the
+    // persona voice must keep saying both, and beta stays scoped to the lot
+    // lease the shipped stack genuinely runs.
+    maturity: "beta",
     // All four landlord templates genuinely apply to lot-lease operations
     // (lot leases renew, lot rent hits the ledger, park infrastructure
     // needs maintenance dispatch). Wave V3 added the lot-rent receipt on
@@ -589,17 +651,29 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "agent_investor",
     label: "Agent-investor",
     shortDescription: "Licensed agents who also invest.",
-    // 2026-07-29 (founder ruling #11, wave V3): stays roadmap — the honesty
-    // bar for beta is not met. What EXISTS today, DELIBERATELY: the full
+    // 2026-08 (Wave 2 pass C, founder promote decision): roadmap → BETA on the
+    // honest-partial bar. The land base is unchanged and DELIBERATE: the full
     // land_investor surface (persona-mapping.ts maps agent_investor →
-    // land_investor on purpose — an agent who invests in land runs the
-    // same map → owner → offer sourcing loop), with nothing hidden on the
-    // businessType axis (sidebar-hidden-routes.ts) and a /today cluster
-    // confirming the land default is a choice, not a fallback. What's
-    // MISSING for beta: everything agent-specific — commission tracking,
-    // client-deals vs. own-book separation, MLS integration, dual-agency
-    // disclosure workflows.
-    maturity: "roadmap",
+    // land_investor on purpose — an agent who invests in land runs the same
+    // map → owner → offer sourcing loop), nothing hidden on the businessType
+    // axis (sidebar-hidden-routes.ts), and a /today cluster confirming the land
+    // default is a choice, not a fallback.
+    //
+    // What newly EXISTS for beta — the commission-tracking wedge: a real
+    // customer-facing commission surface behind the Finance door
+    // (/finance/commissions, agent_investor-gated) reading the org's own
+    // records + YTD summaries from commissionService, PLUS auto-recording the
+    // closing agent's commission on deal close (routes-deals.ts close seam,
+    // gated on an explicit saved tier config — honest empty/zero states, never
+    // a fabricated commission when nothing is configured).
+    //
+    // What stays ROADMAP-for-core, and WHY (each is a standing hard-stop, not a
+    // backlog item): MLS integration (residential-comps hard-stop — this is a
+    // LAND persona; MLS comps are residential comps); client-deals vs. own-book
+    // separation (needs a deals-schema field + migration, out of this wedge);
+    // dual-agency disclosure workflows (legal-signing is founder-only). These
+    // remain disclosed in the persona voice, not fabricated.
+    maturity: "beta",
     // The generic land-loop templates genuinely apply (lead intake, deal
     // close). Dunning is excluded — it assumes a serviced-note book this
     // operator doesn't necessarily carry.

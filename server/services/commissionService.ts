@@ -107,6 +107,32 @@ export async function getCommissionConfig(
   return creds.config ?? DEFAULT_CONFIG;
 }
 
+/**
+ * Whether the org has EXPLICITLY configured commission tiers (i.e. an
+ * organizationIntegrations row with provider='commission_config' exists).
+ *
+ * `getCommissionConfig` intentionally falls back to DEFAULT_CONFIG so read
+ * surfaces always render, but the deal-close auto-record path must NOT act on
+ * that default — recording a commission when the org never opted in would
+ * fabricate a number. This is the honest gate: only true once a real config
+ * has been saved.
+ */
+export async function hasCommissionConfig(
+  organizationId: number
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: organizationIntegrations.id })
+    .from(organizationIntegrations)
+    .where(
+      and(
+        eq(organizationIntegrations.organizationId, organizationId),
+        eq(organizationIntegrations.provider, "commission_config")
+      )
+    )
+    .limit(1);
+  return !!row;
+}
+
 export async function saveCommissionConfig(
   organizationId: number,
   config: CommissionConfig

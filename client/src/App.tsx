@@ -250,6 +250,9 @@ const SyndicationPage = React.lazy(() => import("@/pages/syndication"));
 // TeamDashboardPage archived 2026-06-01 — no sidebar entry, no callers.
 const TeamInboxPage = React.lazy(() => import("@/pages/team-inbox"));
 const CommissionsPage = React.lazy(() => import("@/pages/commissions"));
+// Customer-facing commission surface behind the Finance door, agent_investor-
+// gated (Wave 2 pass C). Distinct from the founder-gated /commissions above.
+const FinanceCommissionsPage = React.lazy(() => import("@/pages/finance-commissions"));
 // TeamLeaderboardPage archived 2026-06-01 — no sidebar entry, no callers.
 // Phase 5 §5 — team-readiness pages.
 const TeamManagerDashboardPage = React.lazy(() => import("@/pages/team-manager-dashboard"));
@@ -1676,6 +1679,14 @@ function Router() {
             founder-business surface; per-user commissions land in
             /settings → Payouts and /money for customers. */}
         {() => <FounderProtectedRoute component={CommissionsPage} />}
+      </Route>
+      {/* Customer commission surface behind the Finance door — agent_investor
+          only (Wave 2 pass C). The page itself gates to agent_investor and
+          renders NotFound for every other persona; the API stays org-scoped +
+          admin (routes-organization.ts), so this exposes an org its OWN
+          commissions without widening the founder-only /commissions surface. */}
+      <Route path="/finance/commissions">
+        {() => <ProtectedRoute component={FinanceCommissionsPage} />}
       </Route>
       <Route path="/team-leaderboard">
         {/* 2026-06-01 cut — TeamLeaderboardPage archived; no callers. */}

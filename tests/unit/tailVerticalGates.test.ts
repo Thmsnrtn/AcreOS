@@ -1,10 +1,22 @@
 /**
  * Roadmap-tail honest experience (wave V3, founder ruling #11).
  *
- * The five tail verticals — commercial, agent_investor, short_term_rental,
- * multifamily, mobile_home — STAY roadmap (the honesty bar for beta is not
- * met), but a signup choosing them must land in a coherent, truthful app
- * built from surfaces that already shipped, not a land-shaped default.
+ * These five verticals share one coherence contract: a signup choosing any of
+ * them must land in a truthful app built from surfaces that already shipped,
+ * not a land-shaped default. Their MATURITY, however, is no longer uniform.
+ * short_term_rental STAYS roadmap (the honesty bar for beta is not met — STR
+ * needs a nightly-booking model). multifamily and mobile_home were promoted
+ * roadmap → beta in the 2026-08 audit (Wave 2), commercial was promoted
+ * roadmap → beta in Wave 2 pass B once entity/company tenants shipped and the
+ * residential-statute late-fee fabrication was gated out for commercial orgs,
+ * and agent_investor was promoted roadmap → beta in Wave 2 pass C once a real
+ * commission-tracking wedge shipped (customer surface behind the Finance door +
+ * auto-record on deal close; MLS / client-vs-own-book / dual-agency stay
+ * roadmap-for-core and disclosed). All four betas' templates fire and their
+ * gaps are disclosed rather than fabricated (see business-types.ts +
+ * investorAnalyticsUnitAware / padInventory). The coherence assertions below
+ * hold for beta just as they did for roadmap; only the maturity expectation
+ * moved, to a per-vertical map.
  *
  * What this suite pins:
  *   1. commercial — the rentals-stack verdict: the Rentals nav module gate
@@ -16,8 +28,9 @@
  *   2. agent_investor — the land default is DELIBERATE: /today cluster of
  *      real land sourcing surfaces, and the businessType axis hides
  *      nothing (full land surface, like land_flipper).
- *   3. registry truth for all five entries — maturity stays roadmap, every
- *      workflowTemplateId names a template that exists in
+ *   3. registry truth for all five entries — maturity matches each entry's
+ *      honest tier (two roadmap, commercial + multifamily + mobile_home beta),
+ *      every workflowTemplateId names a template that exists in
  *      workflow-engine.ts RIGHT NOW, and every spotlightModules slug
  *      resolves to a real routed surface.
  *
@@ -38,7 +51,11 @@ import {
   BUSINESS_TYPE_TO_PERSONA,
   BUSINESS_TYPE_TO_INVESTOR_TYPE,
 } from "../../shared/models/persona-mapping";
-import { getBusinessType, type BusinessTypeId } from "../../shared/business-types";
+import {
+  getBusinessType,
+  type BusinessTypeId,
+  type VerticalMaturity,
+} from "../../shared/business-types";
 
 // workflow-engine imports server/storage (→ db) at module top; mock the heavy
 // edges exactly like creativeFinanceGates.test.ts so the template list loads pure.
@@ -213,18 +230,47 @@ describe("/today clusters do not leak to other businessTypes", () => {
 });
 
 describe("registry truth (shared/business-types.ts) — the five tail entries", () => {
-  it("all five stay roadmap — the honest gap statement, not activation on hope", () => {
-    // Still true after migration 0219, but multifamily's REASON shrank and the
-    // registry comment moved with it: 0219 gave the platform a real
-    // `rental_units` inventory (per-unit beds/baths/sqft, asking rent, status)
-    // and occupancy is now computed over it, so "no first-class unit model" is
-    // no longer one of the three gaps. Two genuinely stand — building-level
-    // occupancy/NOI roll-ups (the occupancy snapshot is org-wide) and the
-    // T-12/underwriting workspace — so `maturity` does not move.
-    // mobile_home is unchanged: `rental_units.kind` enumerates 'pad' but
-    // nothing in the product writes one, so all three park-specific gaps hold.
+  it("each entry sits at its honest tier — one roadmap (STR), agent_investor + commercial + multifamily + mobile_home beta (2026-08 audits Wave 2 + passes B/C)", () => {
+    // 2026-08 audits promoted four of the five roadmap → beta on the honest
+    // tier definition (templates all fire, gaps disclosed not fabricated), so
+    // the old blanket "all five stay roadmap" assertion is a per-vertical map:
+    //   - multifamily → beta (Wave 2): 0219's real `rental_units` inventory
+    //     closed the unit-model gap and occupancy is computed over it; the two
+    //     remaining gaps (building-level roll-ups, the T-12 workspace) are
+    //     DISCLOSED and the assumed 40% op-ex is labelled an estimate everywhere
+    //     it surfaces, so beta is honest and core still waits on the real
+    //     expense axis.
+    //   - mobile_home → beta (Wave 2): three write paths now populate
+    //     `rental_units.kind='pad'`, so pad inventory is real and lot-lease
+    //     operations are honest; the home side (chattel titles, home-vs-lot
+    //     rent split, utilities pass-through) is out of beta scope and stays
+    //     DISCLOSED in the persona voice — a lot-lease-only beta.
+    //   - commercial → beta (Wave 2 pass B): entity/company tenants shipped
+    //     (is_entity + company_name, migration 0220) and the residential-statute
+    //     late-fee FABRICATION was gated out for commercial orgs (front + back),
+    //     so base-rent term-lease operations pass the honest bar; CAM/NNN,
+    //     percentage rent, escalations and per-sqft metrics stay
+    //     roadmap-for-core.
+    //   - agent_investor → beta (Wave 2 pass C): a real commission-tracking
+    //     wedge shipped — a customer commission surface behind the Finance door
+    //     (agent_investor-gated) reading the org's own records + YTD summaries,
+    //     plus auto-recording the closing agent's commission on deal close
+    //     (gated on an explicit saved tier config — honest empty/zero states,
+    //     never a fabricated number). MLS (residential-comps hard-stop),
+    //     client-vs-own-book (needs a schema field + migration) and dual-agency
+    //     disclosures (legal-signing is founder-only) stay roadmap-for-core and
+    //     DISCLOSED in the persona voice.
+    //   - short_term_rental → still roadmap: its beta bar (a real
+    //     nightly-booking model) is genuinely unmet.
+    const EXPECTED_MATURITY: Partial<Record<BusinessTypeId, VerticalMaturity>> = {
+      commercial: "beta",
+      agent_investor: "beta",
+      short_term_rental: "roadmap",
+      multifamily: "beta",
+      mobile_home: "beta",
+    };
     for (const bt of TAIL_VERTICALS) {
-      expect(getBusinessType(bt)?.maturity, bt).toBe("roadmap");
+      expect(getBusinessType(bt)?.maturity, bt).toBe(EXPECTED_MATURITY[bt]);
     }
   });
 

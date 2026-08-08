@@ -144,9 +144,18 @@ describe("the gap prose matches the code", () => {
     expect(flat(personas)).toMatch(/never quote that NOI as though the expenses behind it were measured/);
   });
 
-  it("both verticals are still roadmap — this closes no gap on its own", () => {
+  it("multifamily is now beta (2026-08 audit Wave 2) — because the assumption is DISCLOSED, not because it was measured", () => {
+    // The op-ex fix in this file does not, on its own, move the maturity — a
+    // labelled assumption is still an assumption. What the 2026-08 audit ruled
+    // is that an HONEST beta only requires the number to be presented as an
+    // estimate (opExBasis "assumed_ratio" server-side, "(est.)" on the client
+    // tiles, and the Pax voice naming it), which the assertions above pin. The
+    // real property-expense axis and the T-12 workspace remain the CORE goal —
+    // core is still roadmap-for-core until that expense model ships. This
+    // assertion is rewritten (not deleted) to the new truth: the registry entry
+    // reads beta, and its op-ex is still labelled an assumption downstream.
     const registry = read("shared/business-types.ts");
     const mf = registry.slice(registry.indexOf("multifamily: {"));
-    expect(mf.slice(0, mf.indexOf("workflowTemplateIds"))).toContain('maturity: "roadmap"');
+    expect(mf.slice(0, mf.indexOf("workflowTemplateIds"))).toContain('maturity: "beta"');
   });
 });

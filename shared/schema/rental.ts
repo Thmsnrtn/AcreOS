@@ -181,8 +181,21 @@ export const tenants = pgTable(
     organizationId: integer("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
 
     // Identity
-    firstName: text("first_name").notNull(),
-    lastName: text("last_name").notNull(),
+    // Person names are nullable as of the commercial beta (Wave 2 pass B): a
+    // commercial operator's tenant is frequently a COMPANY, not a person, so an
+    // entity tenant (isEntity=true) carries `companyName` and leaves first/last
+    // name null. They stay REQUIRED for a person tenant via a zod refinement in
+    // server/routes-rentals.ts — the DB just no longer forces a name that would
+    // otherwise have to be a fabricated placeholder for a company. Existing
+    // person tenants are unaffected (they already carry both names).
+    firstName: text("first_name"),
+    lastName: text("last_name"),
+    // Entity / company tenant support (commercial beta). `isEntity` discriminates
+    // a company tenancy from a person; `companyName` is the display + workflow
+    // name when it is set. Backward-compatible: isEntity defaults false, so every
+    // existing tenant is a person exactly as before.
+    isEntity: boolean("is_entity").notNull().default(false),
+    companyName: text("company_name"),
     email: text("email"),
     phone: text("phone"),
     // SMS/TCPA consent — Imelda §3 inbox: "TCPA exposure on landlord SMS

@@ -76,8 +76,9 @@ import {
   DispositionLetterBlockedError,
 } from "./services/rental/depositDisposition";
 import { computeDepositDeadline, depositDeadlineCountdown } from "@shared/regulatory/depositReturnRules";
+import { tenantDisplayName } from "@shared/rental/tenantName";
 import type { AuthenticatedRequest } from "./types/request";
-import { getOrganizationId, getUserId } from "./types/request";
+import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors, sendError } from "./utils/errors";
@@ -603,10 +604,42 @@ async function proposalForCharge(args: {
 // Routes
 // ----------------------------------------------------------------------------
 
+/**
+ * The residential late-fee surface — state STATUTORY caps, grace periods and
+ * citations (the `late_fee_rules` table) — is WRONG-DOMAIN for a commercial
+ * lease. Commercial late fees are CONTRACTUAL: they are set by the lease itself,
+ * not by a residential-tenancy statute. Presenting a residential statutory cap
+ * as the binding rule for a commercial org is a fabrication (assumed /
+ * wrong-domain data shown as real), so every residential late-fee endpoint
+ * REFUSES a commercial org with an honest 409 rather than returning a rule that
+ * does not bind them. Returns true (and has already responded) when the org is
+ * commercial; the handler must then stop. (Wave 2 pass B, 2026-08.)
+ */
+function refuseResidentialLateFeeForCommercial(req: AuthenticatedRequest, res: Response): boolean {
+  // businessType is stored on organizations.onboardingData.businessType (the
+  // same read the sidebar / contextProfile use), not a top-level column.
+  const businessType = getOrganization(req).onboardingData?.businessType;
+  if (businessType === "commercial") {
+    sendError(
+      res,
+      409,
+      "LATE_FEE_NOT_APPLICABLE_COMMERCIAL",
+      "State statutory late-fee rules are residential and do not bind a commercial lease — a " +
+        "commercial late fee is set by the lease, not by statute. Enter it as a manual charge " +
+        "instead of proposing one from the residential statute surface.",
+    );
+    return true;
+  }
+  return false;
+}
+
 export function registerRentLedgerRoutes(app: Express): void {
-  // List late-fee rules (read-only).
-  app.get("/api/late-fee-rules", isAuthenticated, async (_req: AuthenticatedRequest, res: Response) => {
+  // List late-fee rules (read-only). getOrCreateOrg is required so the
+  // commercial guard can read the org's businessType — the residential statute
+  // table must not surface to a commercial org (see the guard's note).
+  app.get("/api/late-fee-rules", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (refuseResidentialLateFeeForCommercial(req, res)) return;
       const rules = await db.select().from(lateFeeRules).orderBy(asc(lateFeeRules.state));
       return res.json({ rules });
     } catch (err) {
@@ -900,6 +933,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   // Propose a late fee for ONE overdue charge. Read-only: nothing is charged.
   app.get("/api/rent-charges/:id/late-fee-proposal", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (refuseResidentialLateFeeForCommercial(req, res)) return;
       const orgId = getOrganizationId(req);
       const [charge] = await db.select().from(rentCharges)
         .where(and(eq(rentCharges.id, req.params.id), eq(rentCharges.organizationId, orgId)));
@@ -943,6 +977,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   // Nothing is charged; this is the operator's review queue.
   app.get("/api/rent/late-fee-proposals", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (refuseResidentialLateFeeForCommercial(req, res)) return;
       const orgId = getOrganizationId(req);
       const asOf = new Date();
 
@@ -1021,6 +1056,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   // the one shared, statute-capped proposer — never from the client.
   app.post("/api/rent-charges/:id/apply-late-fee", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (refuseResidentialLateFeeForCommercial(req, res)) return;
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
       const parsed = applyLateFeeSchema.safeParse(req.body ?? {});
@@ -1398,7 +1434,13 @@ export function registerRentLedgerRoutes(app: Express): void {
         .where(and(eq(properties.id, lease.propertyId), eq(properties.organizationId, orgId)));
 
       const tenantRows = await db
-        .select({ firstName: tenants.firstName, lastName: tenants.lastName, isPrimary: leaseTenants.isPrimary })
+        .select({
+          firstName: tenants.firstName,
+          lastName: tenants.lastName,
+          companyName: tenants.companyName,
+          isEntity: tenants.isEntity,
+          isPrimary: leaseTenants.isPrimary,
+        })
         .from(leaseTenants)
         .innerJoin(tenants, eq(leaseTenants.tenantId, tenants.id))
         .where(and(
@@ -1426,7 +1468,12 @@ export function registerRentLedgerRoutes(app: Express): void {
           landlordContact: null,
           propertyAddress: addressParts.length > 0 ? addressParts.join(", ") : null,
           unitLabel: lease.unitLabel,
-          tenantNames: tenantRows.map((t) => `${t.firstName} ${t.lastName}`.trim()),
+          // Entity-aware + honest: a company tenant renders its companyName, and
+          // a row that resolves to no name is DROPPED rather than emitted as a
+          // blank / "null null" on a legal disposition letter.
+          tenantNames: tenantRows
+            .map((t) => tenantDisplayName(t))
+            .filter((n): n is string => n !== null && n.trim() !== ""),
           forwardingAddress: parsed.data.forwardingAddress ?? null,
           heldCents: deposit.heldCents,
           deductions,

@@ -143,11 +143,15 @@ const SECONDARY_CHOICES: { value: BusinessType; label: string; description: stri
   // data today. Same pattern as subdivider (roadmap-maturity yet selectable).
   { value: "fix_and_flip", label: "Fix & Flip (waitlist)", icon: Hammer, description: "Renovate-and-resell tools are waitlisted — comps and valuations currently use land data, not residential." },
   { value: "buy_and_hold", label: "Buy & Hold", icon: Key, description: "Build a long-term rental portfolio for passive income." },
-  { value: "short_term_rental", label: "Short-Term Rental", icon: Palmtree, description: "Acquire and manage Airbnb, VRBO, and vacation rentals." },
+  // STR stays roadmap: AcreOS models monthly term leases today — nightly
+  // booking / channel sync (Airbnb, VRBO) isn't built. The copy is honest
+  // about that gap (matching onboarding-verticals.ts), the same "(roadmap)"-
+  // style qualifier the fix_and_flip card carries above.
+  { value: "short_term_rental", label: "Short-Term Rental (roadmap)", icon: Palmtree, description: "Nightly-booking and channel sync (Airbnb, VRBO) aren't built yet — on the roadmap; AcreOS models monthly term leases today." },
   { value: "multifamily", label: "Multifamily", icon: Building2, description: "Invest in apartment buildings and 5+ unit properties." },
   { value: "commercial", label: "Commercial", icon: Landmark, description: "Office, retail, industrial, and mixed-use investments." },
   { value: "creative_finance", label: "Creative Finance", icon: Lightbulb, description: "Subject-to, seller financing, wraps, and lease options." },
-  { value: "developer", label: "Developer / Entitlements", icon: Warehouse, description: "Land development, entitlements, and new construction." },
+  { value: "developer", label: "Developer / Entitlements", icon: Warehouse, description: "Land development and entitlements." },
   // W2.5: the Subdivision module (sidebar, businessTypeOnly:["subdivider"])
   // was orphaned — gated on a businessType no onboarding path could set.
   { value: "subdivider", label: "Subdivider", icon: Scissors, description: "Buy acreage, split it into parcels, and sell the pieces." },

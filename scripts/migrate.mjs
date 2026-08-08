@@ -8496,6 +8496,26 @@ const STATEMENTS = [
    END
    $backfill_0219$`,
 
+  // ── 0220 entity / company tenants (commercial beta, 2026-08) ──────────────
+  // `tenants` was person-shaped: first_name + last_name were both NOT NULL, so
+  // a COMMERCIAL operator whose tenant is a company (an LLC, a franchise) had
+  // nowhere to put the company name and would have had to store a fabricated
+  // placeholder in a NOT NULL column. This makes entity tenants first-class,
+  // additively and backward-compatibly:
+  //   - is_entity   boolean NOT NULL DEFAULT false — the discriminator; every
+  //     existing row backfills to false (a person) with no table rewrite.
+  //   - company_name text (nullable) — set when is_entity = true; null for people.
+  //   - first_name / last_name — NOT NULL dropped so an entity tenant may omit
+  //     the person names. Existing rows already carry both, and a person tenant
+  //     still supplies both (enforced by the route's zod refinement,
+  //     server/routes-rentals.ts). Nothing previously valid becomes invalid.
+  // Additive + widening only. Mirrors migrations/0220_tenant_entity.sql +
+  // shared/schema/rental.ts. Idempotent — safe to re-run every deploy.
+  `ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "is_entity" boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "company_name" text`,
+  `ALTER TABLE "tenants" ALTER COLUMN "first_name" DROP NOT NULL`,
+  `ALTER TABLE "tenants" ALTER COLUMN "last_name" DROP NOT NULL`,
+
   // ── 0099's CHECK constraints — the ATR hard gate, missing from THIS file ──
   //
   // Found by an independent audit on 2026-08-01. This file mirrored 0099's

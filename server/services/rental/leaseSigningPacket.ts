@@ -45,6 +45,7 @@ import {
 } from "@shared/schema";
 import { storage } from "../../storage";
 import { makeSigningToken } from "../signingTokens";
+import { tenantDisplayName } from "@shared/rental/tenantName";
 import { logger } from "../../utils/logger";
 
 export const LEASE_PACKET_TEMPLATE_VERSION = "2026-07-30-v1";
@@ -53,8 +54,14 @@ const PACKET_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface PacketTenant {
   id: string;
-  firstName: string;
-  lastName: string;
+  // Nullable now that a tenant can be a company (commercial beta): an entity
+  // tenant carries companyName + isEntity and may leave the person names null.
+  // Rendered via the shared tenantDisplayName helper so a company never shows as
+  // "null null" on the document.
+  firstName: string | null;
+  lastName: string | null;
+  companyName: string | null;
+  isEntity: boolean;
   email: string | null;
 }
 
@@ -137,7 +144,8 @@ export function buildLeasePacket(args: {
   if (tenantsWithoutEmail.length > 0) {
     blocking.push(
       `No email address on record for ${tenantsWithoutEmail
-        .map((t) => `${t.firstName} ${t.lastName}`.trim())
+        .map((t) => tenantDisplayName(t))
+        .filter((n): n is string => n !== null && n.trim() !== "")
         .join(", ")}. A signing link is addressed to a specific signer, so every signer needs an email.`,
     );
   }
@@ -175,7 +183,10 @@ export function buildLeasePacket(args: {
   args.tenants.forEach((t, idx) => {
     signers.push({
       id: `${args.signerIdSeed}-tenant-${t.id}`,
-      name: `${t.firstName} ${t.lastName}`.trim(),
+      // Company name for an entity tenant, "First Last" otherwise; never "null
+      // null". "" only if the tenant genuinely has no name at all (the email is
+      // the real signer key).
+      name: tenantDisplayName(t) ?? "",
       email: (t.email ?? "").trim(),
       role: "tenant",
       order: idx + 1,
@@ -195,7 +206,12 @@ export function buildLeasePacket(args: {
   lines.push(`**Premises:** ${premises}`);
   lines.push(`**Landlord:** ${args.landlordName}`);
   lines.push(
-    `**Tenant(s):** ${args.tenants.map((t) => `${t.firstName} ${t.lastName}`.trim()).join(", ") || "(none attached)"}`,
+    `**Tenant(s):** ${
+      args.tenants
+        .map((t) => tenantDisplayName(t))
+        .filter((n): n is string => n !== null && n.trim() !== "")
+        .join(", ") || "(none attached)"
+    }`,
   );
   lines.push(`**Governing state:** ${lease.state}`);
   if (lease.versionNumber > 1) lines.push(`**Lease version:** ${lease.versionNumber} (renewal of a prior tenancy)`);

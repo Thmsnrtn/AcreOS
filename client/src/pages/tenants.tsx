@@ -26,11 +26,14 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { tenantDisplayName } from "@shared/rental/tenantName";
 
 interface Tenant {
   id: string;
-  firstName: string;
-  lastName: string;
+  firstName: string | null;
+  lastName: string | null;
+  isEntity: boolean;
+  companyName: string | null;
   email: string | null;
   phone: string | null;
   status: string;
@@ -60,12 +63,19 @@ export default function TenantsPage() {
   useDocumentTitle("Tenants — AcreOS");
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
+  const [isEntity, setIsEntity] = useState(false);
+  const [company, setCompany] = useState("");
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [smsConsent, setSmsConsent] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  // An entity (company) tenant is complete with a company name; a person needs
+  // first + last. Mirrors the server's zod refinement so the button gates the
+  // same way the API validates.
+  const canSubmit = isEntity ? company.trim() !== "" : first.trim() !== "" && last.trim() !== "";
 
   const list = useQuery<{ tenants: Tenant[] }>({
     queryKey: ["/api/tenants", statusFilter],
@@ -79,9 +89,15 @@ export default function TenantsPage() {
 
   const create = useMutation({
     mutationFn: async () => {
+      // For an entity tenant send companyName + isEntity and OMIT the person
+      // names; for a person send first/last. Never send an empty person name as
+      // a placeholder — the server rejects a blank required field.
+      const body = isEntity
+        ? { isEntity: true, companyName: company, email, phone, smsConsent }
+        : { firstName: first, lastName: last, email, phone, smsConsent };
       const res = await fetch("/api/tenants", {
         method: "POST", credentials: "include", headers: csrf(),
-        body: JSON.stringify({ firstName: first, lastName: last, email, phone, smsConsent }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`Failed (${res.status})`);
       return res.json();
@@ -90,6 +106,7 @@ export default function TenantsPage() {
       toast({ title: "Tenant added" });
       queryClient.invalidateQueries({ queryKey: ["/api/tenants"] });
       setShowCreate(false);
+      setIsEntity(false); setCompany("");
       setFirst(""); setLast(""); setEmail(""); setPhone(""); setSmsConsent(false);
     },
     onError: (error) => {
@@ -134,8 +151,31 @@ export default function TenantsPage() {
             <CardDescription>SMS consent is required before sending text reminders (TCPA).</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <div><Label className="text-xs">First name *</Label><Input value={first} onChange={(e) => setFirst(e.target.value)} className="h-9" /></div>
-            <div><Label className="text-xs">Last name *</Label><Input value={last} onChange={(e) => setLast(e.target.value)} className="h-9" /></div>
+            {/* Organization / entity tenant toggle. When on, the tenant is a
+                company (common for commercial leases) and is entered under a
+                company name instead of a person's first/last. */}
+            <div className="col-span-full">
+              <label className="text-xs flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={isEntity}
+                  onChange={(e) => setIsEntity(e.target.checked)}
+                  data-testid="tenant-is-entity"
+                />
+                Organization / entity tenant (a company, not a person)
+              </label>
+            </div>
+            {isEntity ? (
+              <div className="col-span-full md:col-span-2">
+                <Label className="text-xs">Company name *</Label>
+                <Input value={company} onChange={(e) => setCompany(e.target.value)} className="h-9" data-testid="tenant-company-name" />
+              </div>
+            ) : (
+              <>
+                <div><Label className="text-xs">First name *</Label><Input value={first} onChange={(e) => setFirst(e.target.value)} className="h-9" /></div>
+                <div><Label className="text-xs">Last name *</Label><Input value={last} onChange={(e) => setLast(e.target.value)} className="h-9" /></div>
+              </>
+            )}
             <div><Label className="text-xs">Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-9" /></div>
             <div><Label className="text-xs">Phone</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} className="h-9" /></div>
             <div className="flex items-end">
@@ -145,7 +185,7 @@ export default function TenantsPage() {
               </label>
             </div>
             <div className="col-span-full">
-              <Button disabled={!first || !last || create.isPending} onClick={() => create.mutate()}>Add tenant</Button>
+              <Button disabled={!canSubmit || create.isPending} onClick={() => create.mutate()}>Add tenant</Button>
             </div>
           </CardContent>
         </Card>
@@ -170,7 +210,10 @@ export default function TenantsPage() {
               <tbody>
                 {list.data.tenants.map((t) => (
                   <tr key={t.id} className="border-b border-border/40">
-                    <td className="px-3 py-2 font-medium">{t.firstName} {t.lastName}</td>
+                    <td className="px-3 py-2 font-medium">
+                      {tenantDisplayName(t) ?? "—"}
+                      {t.isEntity && <Badge variant="outline" className="text-micro ml-2">entity</Badge>}
+                    </td>
                     <td className="px-3 py-2 text-muted-foreground">{t.email ?? "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground">{t.phone ?? "—"}</td>
                     <td className="px-3 py-2"><Badge variant={statusTone(t.status)} className="text-xs">{t.status}</Badge></td>

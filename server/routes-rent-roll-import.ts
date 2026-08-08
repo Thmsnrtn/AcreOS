@@ -330,8 +330,10 @@ export function registerRentRollImportRoutes(app: Express): void {
 
           const [tenant] = await tx.insert(tenants).values({
             organizationId: orgId,
-            firstName: u.tenantFirst ?? "(unknown)",
-            lastName: u.tenantLast ?? "(unknown)",
+            // Honest: names are nullable (Wave 2 entity-tenant migration), so a
+            // missing name part is stored as null — never a fabricated "(unknown)".
+            firstName: u.tenantFirst ?? null,
+            lastName: u.tenantLast ?? null,
             email: u.email || null,
             phone: u.phone ?? null,
             status: "active",

@@ -356,6 +356,12 @@ interface NavChild {
   // "Legacy" badge next to the label. Used for surfaces being extracted /
   // deprecated but still reachable while the migration is in flight.
   legacy?: boolean;
+  // Persona-gated child — hide unless the org's businessType matches one of
+  // these values. The child-level analogue of NavModule.businessTypeOnly, so a
+  // persona-specific surface can live BEHIND an existing door (never as a new
+  // top-level nav entry) and still only appear for the operator it's for.
+  // First user: the agent_investor commission surface under the Finance door.
+  businessTypeOnly?: string[];
 }
 
 interface NavModule {
@@ -655,6 +661,12 @@ const NAV_MODULES: NavModule[] = [
       // the Marketplace entry above. Restore when note securitization is a
       // real revenue line (H4).
       { label: "Analytics", icon: Brain, href: "/analytics", description: "Insights and reporting" },
+      // Commission tracking wedge (Wave 2 pass C) — lives BEHIND the Finance
+      // door, gated to agent_investor orgs (businessTypeOnly). NOT a new
+      // top-level nav entry: the five customer doors are unchanged. Reads the
+      // org's own commission records + YTD summaries; honest empty state when
+      // nothing is configured.
+      { label: "Commissions", icon: Receipt, href: "/finance/commissions", description: "Agent commission tracking — tiers, YTD, statements", businessTypeOnly: ["agent_investor"] },
     ],
   },
 
@@ -780,6 +792,18 @@ const NAV_MODULES: NavModule[] = [
   },
 ];
 
+// A persona-gated child (NavChild.businessTypeOnly) is visible only when the
+// org's businessType is in its list. Ungated children (the common case) always
+// pass. Keeps persona-specific surfaces behind an existing door instead of a
+// new top-level nav entry.
+function childBusinessTypeAllows(
+  child: NavChild,
+  businessType: string | undefined,
+): boolean {
+  if (!child.businessTypeOnly || child.businessTypeOnly.length === 0) return true;
+  return !!businessType && child.businessTypeOnly.includes(businessType);
+}
+
 // Default expanded modules (open by default).
 // 2026-05-29 — IDs aligned to the five-door customer surface.
 const DEFAULT_EXPANDED = new Set<string>(["map", "deals", "founder-business"]);
@@ -891,10 +915,16 @@ export function Sidebar() {
     : NAV_MODULES.map((module) => ({
         ...module,
         children: module.children?.filter(
-          (child) => isRouteEnabled(child.href) && !hiddenForType.includes(child.href)
+          (child) =>
+            isRouteEnabled(child.href) &&
+            !hiddenForType.includes(child.href) &&
+            childBusinessTypeAllows(child, businessType)
         ),
         overflow: module.overflow?.filter(
-          (child) => isRouteEnabled(child.href) && !hiddenForType.includes(child.href)
+          (child) =>
+            isRouteEnabled(child.href) &&
+            !hiddenForType.includes(child.href) &&
+            childBusinessTypeAllows(child, businessType)
         ),
       })).filter((module) => {
         // Hide founder-only modules for non-founders

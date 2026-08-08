@@ -56,6 +56,7 @@ import {
   rentPayments,
 } from "@shared/schema";
 import { emitRentalEvent } from "./workflow-engine";
+import { tenantDisplayName } from "@shared/rental/tenantName";
 import { logger } from "../utils/logger";
 
 // ── Small pure helpers ──────────────────────────────────────────────────────
@@ -85,15 +86,28 @@ function rentPeriodLabelFor(chargedForMonth: string | null | undefined): string 
 
 // ── Resolvers (the real joins the payloads are built from) ───────────────────
 
+/**
+ * A tenant row's display name, HONEST across person + entity tenants
+ * (commercial beta, Wave 2 pass B). Delegates to the ONE shared helper
+ * (@shared/rental/tenantName) so this decision cannot drift between the
+ * workflow payloads, the deposit disposition letter, the lease signing packet
+ * and the tenants page: an entity/company tenant shows its companyName, a
+ * person shows "First Last", and a row with neither resolves to null (the
+ * payload field is suppressed, never a "null null" placeholder).
+ */
+const resolveTenantDisplayName = tenantDisplayName;
+
 /** The lease's primary tenant (leaseTenants.isPrimary), or null when unlinked. */
 async function resolvePrimaryTenant(
   organizationId: number,
   leaseId: string,
-): Promise<{ name: string; email: string | null } | null> {
+): Promise<{ name: string | null; email: string | null } | null> {
   const [row] = await db
     .select({
       firstName: tenants.firstName,
       lastName: tenants.lastName,
+      companyName: tenants.companyName,
+      isEntity: tenants.isEntity,
       email: tenants.email,
     })
     .from(leaseTenants)
@@ -102,21 +116,27 @@ async function resolvePrimaryTenant(
     .orderBy(desc(leaseTenants.isPrimary))
     .limit(1);
   if (!row) return null;
-  return { name: `${row.firstName} ${row.lastName}`.trim(), email: row.email ?? null };
+  return { name: resolveTenantDisplayName(row), email: row.email ?? null };
 }
 
 /** A specific tenant (the ticket submitter), or null when none / not found. */
 async function resolveTenantById(
   organizationId: number,
   tenantId: string,
-): Promise<{ name: string; email: string | null } | null> {
+): Promise<{ name: string | null; email: string | null } | null> {
   const [row] = await db
-    .select({ firstName: tenants.firstName, lastName: tenants.lastName, email: tenants.email })
+    .select({
+      firstName: tenants.firstName,
+      lastName: tenants.lastName,
+      companyName: tenants.companyName,
+      isEntity: tenants.isEntity,
+      email: tenants.email,
+    })
     .from(tenants)
     .where(and(eq(tenants.id, tenantId), eq(tenants.organizationId, organizationId)))
     .limit(1);
   if (!row) return null;
-  return { name: `${row.firstName} ${row.lastName}`.trim(), email: row.email ?? null };
+  return { name: resolveTenantDisplayName(row), email: row.email ?? null };
 }
 
 /** properties.address (genuinely nullable) or null. Never a fabricated street. */
@@ -209,7 +229,7 @@ export interface ResolvedRentReceived {
   amountCents: number;
   /** rent_charges.charged_for_month of the oldest charge touched, or null. */
   rentPeriodMonth: string | null;
-  tenant: { name: string; email: string | null } | null;
+  tenant: { name: string | null; email: string | null } | null;
   propertyAddress: string | null;
   orgName: string | null;
   ytdPaidCents: number;
@@ -252,7 +272,7 @@ export interface MaintenanceTicketRow {
 }
 
 export interface ResolvedMaintenanceContext {
-  tenant: { name: string; email: string | null } | null;
+  tenant: { name: string | null; email: string | null } | null;
   propertyAddress: string | null;
   orgName: string | null;
 }
@@ -290,7 +310,7 @@ export interface ResolvedLeaseContext {
   endDate: string | null;
   monthlyRentCents: number;
   state: string;
-  tenant: { name: string; email: string | null } | null;
+  tenant: { name: string | null; email: string | null } | null;
   propertyAddress: string | null;
   orgName: string | null;
 }

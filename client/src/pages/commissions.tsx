@@ -296,7 +296,7 @@ function PaymentDialog({
   );
 }
 
-export default function CommissionsPage() {
+export default function CommissionsPage({ intro }: { intro?: ReactNode } = {}) {
   useDocumentTitle("Commissions");
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -369,6 +369,7 @@ export default function CommissionsPage() {
   return (
     <PageShell label="Commissions">
       <div className="space-y-6">
+        {intro}
         {/* Year selector */}
         <div className="flex items-center justify-between gap-3">
           <div>

@@ -355,10 +355,15 @@ their own attorney — never give legal advice (immutable #12).
 //   - pillar-P research (Hari · small-multi operator; Marek · 100-unit).
 // HONEST GAPS stated in the voice (business-types.ts multifamily entry).
 // 0219 CLOSED the unit-inventory gap, so the voice no longer claims it — but
-// the other two stand and the voice must keep stating them just as plainly:
-// the occupancy snapshot is ORG-WIDE with NO per-building breakdown and there
-// is NO NOI-per-building surface, and there is NO T-12 / underwriting
-// workspace. The voice must never promise those.
+// two gaps stand and the voice must keep stating them just as plainly: the
+// occupancy snapshot is ORG-WIDE with NO per-building breakdown, and the
+// per-building NOI surface that DOES exist (GET /api/properties/:id/analytics)
+// rests on an ASSUMED 40% expense ratio — AcreOS holds no real
+// property-expense records — so it must be quoted as an estimate, never as
+// though the expenses were measured; and there is still NO T-12 / underwriting
+// workspace. The voice must never promise those. (Correction: an earlier draft
+// of this comment claimed there was "NO NOI-per-building surface" at all —
+// there is one, on an assumed ratio, exactly as the appendix voice below says.)
 
 const MULTI_FAMILY: VerticalPersona = {
   vertical: "multi_family",

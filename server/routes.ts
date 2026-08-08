@@ -49,7 +49,14 @@ import dispositionRouter from "./routes-disposition";
 import sellerIntentRouter from "./routes-seller-intent";
 import portfolioSentinelRouter from "./routes-portfolio-sentinel";
 import portfolioPnlRouter from "./routes-portfolio-pnl";
-import commissionsRouter from "./routes-commissions";
+// Commission routes are the direct, zod-validated, admin-scoped, client-bound
+// handlers in routes-organization.ts (GET/PUT /config, GET /summaries, GET /,
+// POST /, POST /:id/pay, GET /statement/:teamMemberId — the exact paths
+// client/src/pages/commissions.tsx calls). The former standalone
+// routes-commissions.ts router was a duplicate mount at the same base with a
+// swapped-argument recordDealCommission bug and un-called paths (/agents,
+// /deal, /:id/payment); removed 2026-08 (Wave 2 pass C) so there is a single
+// source of truth.
 import certificationRouter from "./routes-certification";
 import buyerQualificationRouter from "./routes-buyer-qualification";
 import dueDiligenceRouter from "./routes-due-diligence";
@@ -1406,7 +1413,10 @@ export async function registerRoutes(
   app.use('/api/seller-intent', isAuthenticated, getOrCreateOrg, sellerIntentRouter);
   app.use('/api/portfolio-sentinel', isAuthenticated, getOrCreateOrg, portfolioSentinelRouter);
   app.use('/api/portfolio-pnl', isAuthenticated, getOrCreateOrg, portfolioPnlRouter);
-  app.use('/api/commissions', isAuthenticated, getOrCreateOrg, commissionsRouter);
+  // /api/commissions is served by the direct routes in routes-organization.ts
+  // (registerOrganizationRoutes) — the single, validated, admin-scoped source
+  // of truth. The duplicate standalone commissionsRouter mount was removed
+  // 2026-08 (Wave 2 pass C).
   app.use('/api/certification', isAuthenticated, featureGate("feature_academy"), certificationRouter);
   app.use('/api/buyer-qualification', isAuthenticated, getOrCreateOrg, buyerQualificationRouter);
   app.use('/api/due-diligence', isAuthenticated, getOrCreateOrg, dueDiligenceRouter);
