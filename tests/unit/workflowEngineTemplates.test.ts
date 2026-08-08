@@ -35,6 +35,7 @@ import fs from "fs";
 import path from "path";
 import { WORKFLOW_TRIGGER_EVENTS, WORKFLOW_ACTION_TYPES } from "@shared/schema";
 import { LAND_INVESTING_WORKFLOW_TEMPLATES } from "../../server/services/workflow-engine";
+import { buildDealEventData } from "../../server/services/dealEvents";
 
 const ENGINE_SOURCE = fs.readFileSync(
   path.join(__dirname, "../../server/services/workflow-engine.ts"),
@@ -111,7 +112,14 @@ const WAVE_V3_IDS = [
 // surface). Grandfathered, pinned: this set may only shrink. Anything NEW
 // outside the shared union fails the ratchet below.
 const LEGACY_EXTENDED_TRIGGER_TEMPLATE_IDS = new Set([
-  "tpl_buyer_match_found", // buyer.match_created
+  // tpl_buyer_match_found (buyer.match_created) GRADUATED out of the escape hatch
+  // in audit Wave 1 (wholesaler beta→core): buyer.match_created is now a declared
+  // member of the shared WORKFLOW_TRIGGER_EVENTS union with a real emitter
+  // (buyerEvents.ts → emitBuyerEvent). The set may only shrink — this is a shrink.
+  // tpl_lease_expiring (lease.expiring_60d) GRADUATED out in audit Wave 1
+  // (buy_and_hold beta→core): lease.expiring_60d is now a declared member of the
+  // shared union with a real emitter (rentalEvents.ts → emitRentalEvent, fired by
+  // the daily leaseExpiryDetector). The set may only shrink — this is a shrink.
   "tpl_payment_received", // payment.confirmed
   "tpl_delinquency_escalation", // note.delinquent_60d
   "tpl_property_listed", // property.listed
@@ -119,7 +127,6 @@ const LEGACY_EXTENDED_TRIGGER_TEMPLATE_IDS = new Set([
   "tpl_referral_milestone", // org.milestone_reached
   "tpl_lead_score_high", // lead.scored
   "tpl_offer_batch_sent", // offers.batch_sent
-  "tpl_lease_expiring", // lease.expiring_60d
   "tpl_support_ticket", // support.ticket_created
   "tpl_weekly_pipeline_review", // schedule.weekly_monday
 ]);
@@ -341,6 +348,481 @@ describe("parcel templates interpolate only real emitted payload fields", () => 
       expect(
         detectorSource.includes(`${field}: delta.${field}`),
         `parcelDeltaDetector must emit "${field}" (payload contract drifted — update PARCEL_EVENT_PAYLOAD_FIELDS)`,
+      ).toBe(true);
+    }
+  });
+});
+
+describe("subdivision templates interpolate only real emitted payload fields", () => {
+  // Audit Wave 1 (beta→core): the three subdivider templates are now LIVE —
+  // subdivisionEvents.ts → emitSubdivisionEvent fires them on genuine operator
+  // transitions (permit gate → approved; plan → county_submitted / recorded).
+  // Each template may only interpolate fields its emitter actually sends — a
+  // reintroduced {{nextCountyCheckinDays}} (dropped) or {{phaseNumber}}
+  // (replaced by the real {{planName}}) would render as a literal placeholder,
+  // i.e. fabricated-looking output. Refuse-not-fabricate applies to template
+  // plumbing too. These sets are the payloads in server/services/subdivisionEvents.ts.
+  const SUBDIVISION_PAYLOAD_FIELDS: Record<string, Set<string>> = {
+    // emitPlanStatusChange → plat.submitted
+    tpl_subdivision_plat_submitted: new Set([
+      "platId",
+      "propertyAddress",
+      "countyName",
+      "state",
+      "numLots",
+      "submittedDate",
+    ]),
+    // emitPermitGateApproved → subdivision.vendor_milestone
+    tpl_subdivision_vendor_milestone: new Set([
+      "milestoneName",
+      "milestoneDate",
+      "propertyAddress",
+      "nextStage",
+      "nextVendor",
+      "nextStageDays",
+    ]),
+    // emitPlanStatusChange → subdivision.phase_recorded
+    tpl_subdivision_phase_recorded: new Set([
+      "propertyAddress",
+      "lotCount",
+      "planName",
+      "recordedDate",
+    ]),
+  };
+
+  it.each(Object.keys(SUBDIVISION_PAYLOAD_FIELDS))(
+    "%s uses only fields the emitter sends",
+    (id) => {
+      const t = templateById.get(id)!;
+      const used = new Set<string>();
+      for (const action of t.actions) extractPlaceholders(action.config, used);
+      expect(used.size).toBeGreaterThan(0);
+      const allowed = SUBDIVISION_PAYLOAD_FIELDS[id];
+      for (const field of used) {
+        expect(
+          allowed.has(field),
+          `${id} interpolates {{${field}}}, which emitSubdivisionEvent never sends for its event`,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("the corrected fabrications stay gone (nextCountyCheckinDays / phaseNumber)", () => {
+    const platUsed = new Set<string>();
+    for (const a of templateById.get("tpl_subdivision_plat_submitted")!.actions) {
+      extractPlaceholders(a.config, platUsed);
+    }
+    expect(platUsed.has("nextCountyCheckinDays")).toBe(false);
+
+    const phaseUsed = new Set<string>();
+    for (const a of templateById.get("tpl_subdivision_phase_recorded")!.actions) {
+      extractPlaceholders(a.config, phaseUsed);
+    }
+    expect(phaseUsed.has("phaseNumber")).toBe(false);
+    expect(phaseUsed.has("planName")).toBe(true); // the real replacement is present
+  });
+});
+
+describe("wholesaler templates interpolate only real emitted payload fields", () => {
+  // Audit Wave 1 (residential_wholesaler beta→core): two of the wholesaler
+  // templates are now LIVE — wholesaleEvents.ts → emitWholesaleDealEvent fires
+  // them on genuine operator transitions (deal → in_escrow; contract_assignments
+  // → sent_for_signature). Each template may only interpolate fields its emitter
+  // actually sends — a reintroduced {{compArv}}/{{askingPrice}} (dropped: no
+  // comps plane) or {{buyerEntity}}/{{buyerPrice}} (dropped: no such column)
+  // would render as a literal placeholder, i.e. fabricated-looking output.
+  // Refuse-not-fabricate applies to template plumbing too. These sets are the
+  // payloads in server/services/wholesaleEvents.ts.
+  const WHOLESALER_PAYLOAD_FIELDS: Record<string, Set<string>> = {
+    // emitContractSigned → deal.contract_signed
+    tpl_wholesaler_contract_signed_buyer_broadcast: new Set([
+      "dealId",
+      "propertyAddress",
+      "contractPrice",
+      "closingDate",
+      "contractDate",
+    ]),
+    // emitAssignmentPending → deal.assignment_pending
+    tpl_wholesaler_assignment_pending: new Set([
+      "assignmentId",
+      "dealId",
+      "propertyAddress",
+      "state",
+      "assignmentFee",
+      "buyerName",
+      "originalContractDate",
+    ]),
+  };
+
+  it.each(Object.keys(WHOLESALER_PAYLOAD_FIELDS))(
+    "%s uses only fields the emitter sends",
+    (id) => {
+      const t = templateById.get(id)!;
+      const used = new Set<string>();
+      for (const action of t.actions) extractPlaceholders(action.config, used);
+      expect(used.size).toBeGreaterThan(0);
+      const allowed = WHOLESALER_PAYLOAD_FIELDS[id];
+      for (const field of used) {
+        expect(
+          allowed.has(field),
+          `${id} interpolates {{${field}}}, which emitWholesaleDealEvent never sends for its event`,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("the corrected fabrications stay gone (compArv/askingPrice; buyerEntity/buyerPrice)", () => {
+    const broadcastUsed = new Set<string>();
+    for (const a of templateById.get("tpl_wholesaler_contract_signed_buyer_broadcast")!.actions) {
+      extractPlaceholders(a.config, broadcastUsed);
+    }
+    expect(broadcastUsed.has("compArv")).toBe(false);
+    expect(broadcastUsed.has("askingPrice")).toBe(false);
+    expect(broadcastUsed.has("assignmentFee")).toBe(false); // no assignment fee at contract-signing
+    expect(broadcastUsed.has("contractPrice")).toBe(true); // the real replacement is present
+
+    const assignmentUsed = new Set<string>();
+    for (const a of templateById.get("tpl_wholesaler_assignment_pending")!.actions) {
+      extractPlaceholders(a.config, assignmentUsed);
+    }
+    expect(assignmentUsed.has("buyerEntity")).toBe(false);
+    expect(assignmentUsed.has("buyerPrice")).toBe(false);
+    expect(assignmentUsed.has("buyerName")).toBe(true); // real end_buyer_name
+    expect(assignmentUsed.has("assignmentFee")).toBe(true); // real assignment_fee_cents
+  });
+
+  it("tpl_wholesaler_occupied_cash_for_keys stays installable but its event (deal.occupied) is NOT live", async () => {
+    // The occupied template is pinned by PRE_EXISTING_IDS so it stays in the
+    // engine array (still installable), but deal.occupied has ZERO schema
+    // backing, so it must NOT be wired live. Guard both facts here.
+    expect(templateById.has("tpl_wholesaler_occupied_cash_for_keys")).toBe(true);
+    const { LIVE_WORKFLOW_TRIGGER_EVENTS } = await import(
+      "../../shared/workflow-live-triggers"
+    );
+    expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).not.toContain("deal.occupied");
+    // …while the two wired wholesaler events ARE live.
+    expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("deal.contract_signed");
+    expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("deal.assignment_pending");
+    expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("buyer.match_created");
+  });
+});
+
+describe("landlord + cross-vertical templates interpolate only real emitted payload fields", () => {
+  // Audit Wave 1 (buy_and_hold beta→core): the four landlord templates are now
+  // LIVE — rentalEvents.ts → emitRentalEvent fires them on the rent-ledger POST
+  // seam (rent.received), the maintenance POST seam (maintenance.request_received)
+  // and the daily leaseExpiryDetector (lease.renewal_countdown_60d +
+  // lease.expiring_60d). Making those events live ALSO activated two other
+  // verticals' templates that ride the same events: tpl_mobile_home_lot_rent_receipt
+  // (rent.received) and tpl_multifamily_unit_turn (lease.renewal_countdown_60d).
+  // Each template may only interpolate fields its emitter actually sends — a
+  // reintroduced {{marketRent}}/{{suggestedRenewalRent}} (dropped: residential-
+  // comps hard-stop) or {{urgencyRationale}}/{{suggestedVendor}}/{{estimatedCost}}/
+  // {{responseTimeSla}} (dropped: no such column/engine) would render as a literal
+  // {{placeholder}}, i.e. fabricated-looking output. These sets are the payloads
+  // buildRentReceivedPayload / buildMaintenanceRequestPayload / buildLeasePayload
+  // send in server/services/rentalEvents.ts.
+  const RENT_RECEIVED_FIELDS = new Set([
+    "leaseId", "paymentId", "rentAmount", "rentPeriodLabel", "tenantName",
+    "tenantEmail", "propertyAddress", "ytdPaid", "nextDueDate", "lateFeeApplied",
+    "orgName",
+  ]);
+  const MAINTENANCE_FIELDS = new Set([
+    "ticketId", "propertyAddress", "requestCategory", "urgencyLevel",
+    "requestDescription", "tenantName", "tenantEmail", "orgName",
+  ]);
+  const LEASE_FIELDS = new Set([
+    "leaseId", "propertyAddress", "tenantName", "tenantEmail", "leaseEndDate",
+    "currentRent", "state", "orgName",
+  ]);
+  const RENTAL_PAYLOAD_FIELDS: Record<string, Set<string>> = {
+    // rent.received
+    tpl_landlord_rent_received_receipt: RENT_RECEIVED_FIELDS,
+    tpl_mobile_home_lot_rent_receipt: RENT_RECEIVED_FIELDS, // cross-vertical, same event
+    // maintenance.request_received
+    tpl_landlord_maintenance_request_triage: MAINTENANCE_FIELDS,
+    // lease.renewal_countdown_60d / lease.expiring_60d
+    tpl_landlord_lease_renewal_countdown: LEASE_FIELDS,
+    tpl_multifamily_unit_turn: LEASE_FIELDS, // cross-vertical, same renewal event
+    tpl_lease_expiring: LEASE_FIELDS,
+  };
+
+  it.each(Object.keys(RENTAL_PAYLOAD_FIELDS))(
+    "%s uses only fields the emitter sends",
+    (id) => {
+      const t = templateById.get(id)!;
+      const used = new Set<string>();
+      for (const action of t.actions) extractPlaceholders(action.config, used);
+      expect(used.size).toBeGreaterThan(0);
+      const allowed = RENTAL_PAYLOAD_FIELDS[id];
+      for (const field of used) {
+        expect(
+          allowed.has(field),
+          `${id} interpolates {{${field}}}, which emitRentalEvent never sends for its event`,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("the corrected fabrications stay gone (market/suggested rent; urgency rationale/vendor/cost/SLA)", () => {
+    const usedIn = (id: string) => {
+      const used = new Set<string>();
+      for (const a of templateById.get(id)!.actions) extractPlaceholders(a.config, used);
+      return used;
+    };
+
+    for (const id of ["tpl_landlord_lease_renewal_countdown", "tpl_multifamily_unit_turn"]) {
+      const used = usedIn(id);
+      expect(used.has("marketRent"), `${id} must not fabricate market rent`).toBe(false);
+      expect(used.has("suggestedRenewalRent")).toBe(false);
+      expect(used.has("rentChangePct")).toBe(false);
+      expect(used.has("currentRent"), `${id} keeps the real current rent`).toBe(true);
+    }
+
+    const maint = usedIn("tpl_landlord_maintenance_request_triage");
+    expect(maint.has("urgencyRationale")).toBe(false);
+    expect(maint.has("suggestedVendor")).toBe(false);
+    expect(maint.has("estimatedCost")).toBe(false);
+    expect(maint.has("responseTimeSla")).toBe(false);
+    expect(maint.has("urgencyLevel"), "the real severity enum stays").toBe(true);
+  });
+
+  it("all four landlord events are live (rentalEvents.ts + leaseExpiryDetector.ts)", async () => {
+    const { LIVE_WORKFLOW_TRIGGER_EVENTS } = await import(
+      "../../shared/workflow-live-triggers"
+    );
+    const live = [...LIVE_WORKFLOW_TRIGGER_EVENTS];
+    expect(live).toContain("rent.received");
+    expect(live).toContain("maintenance.request_received");
+    expect(live).toContain("lease.renewal_countdown_60d");
+    expect(live).toContain("lease.expiring_60d");
+  });
+});
+
+describe("balloon templates interpolate only real emitted payload fields", () => {
+  // Audit Wave 1 (creative_finance beta→core): note.balloon_approaching is now
+  // LIVE — noteEvents.ts → emitNoteEvent fires it from the daily
+  // notePaymentDueDetector scan (the balloon scan folded into
+  // runNotePaymentDueScan, no new job) for an ACTIVE note ~90 days from maturity
+  // with a positive balance. BOTH templates on the event
+  // (tpl_balloon_approaching / tpl_note_balloon_approaching_extended) may only
+  // interpolate fields the emitter actually sends. The critical correction: the
+  // fabricated {{balloonAmount}} (a precise balloon payoff no row holds — it
+  // lives in the amortization schedule) was replaced by {{outstandingBalance}}
+  // (notes.currentBalance), honest ONLY as the approximate outstanding figure. A
+  // reintroduced {{balloonAmount}} would render as a literal {{placeholder}},
+  // i.e. fabricated-looking output. This set is the payload buildBalloonPayload
+  // sends in server/services/noteEvents.ts.
+  const BALLOON_FIELDS = new Set([
+    "noteId", "borrowerName", "borrowerFirstName", "borrowerEmail",
+    "balloonDate", "daysToBalloon", "outstandingBalance", "orgName",
+  ]);
+  const BALLOON_TEMPLATE_IDS = [
+    "tpl_balloon_approaching",
+    "tpl_note_balloon_approaching_extended",
+  ];
+
+  it.each(BALLOON_TEMPLATE_IDS)(
+    "%s uses only fields emitNoteEvent sends for note.balloon_approaching",
+    (id) => {
+      const t = templateById.get(id)!;
+      const used = new Set<string>();
+      for (const action of t.actions) extractPlaceholders(action.config, used);
+      expect(used.size).toBeGreaterThan(0);
+      for (const field of used) {
+        expect(
+          BALLOON_FIELDS.has(field),
+          `${id} interpolates {{${field}}}, which noteEvents.ts never sends for note.balloon_approaching`,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("the fabricated precise balloon amount stays gone (outstanding balance only)", () => {
+    for (const id of BALLOON_TEMPLATE_IDS) {
+      const used = new Set<string>();
+      for (const a of templateById.get(id)!.actions) extractPlaceholders(a.config, used);
+      // The invented precise payoff must never come back.
+      expect(used.has("balloonAmount"), `${id} must not fabricate a precise balloon amount`).toBe(false);
+      // The honest, approximate outstanding figure is what both templates carry.
+      expect(used.has("outstandingBalance"), `${id} keeps the real outstanding balance`).toBe(true);
+    }
+  });
+
+  it("both balloon templates trigger on note.balloon_approaching", () => {
+    for (const id of BALLOON_TEMPLATE_IDS) {
+      expect(templateById.get(id)!.trigger.event).toBe("note.balloon_approaching");
+    }
+  });
+
+  it("note.balloon_approaching is live (noteEvents.ts + notePaymentDueDetector fold-in)", async () => {
+    const { LIVE_WORKFLOW_TRIGGER_EVENTS } = await import(
+      "../../shared/workflow-live-triggers"
+    );
+    expect([...LIVE_WORKFLOW_TRIGGER_EVENTS]).toContain("note.balloon_approaching");
+  });
+});
+
+describe("deal.stage_changed + payment.missed templates interpolate only real emitted payload fields", () => {
+  // The engine builds interpolation variables as `{ ...triggerData.data }`
+  // (workflow-engine.ts executeWorkflow) — the emit payload VERBATIM, with NO
+  // entity hydration. A {{placeholder}} whose key the emit payload never sends
+  // keeps its LITERAL "{{...}}" in the customer-facing task/email/notification
+  // (interpolateTemplate returns the match unchanged for an undefined variable),
+  // which is fabricated-looking output. Refuse-not-fabricate applies to template
+  // plumbing too. This block closes the same blind spot the parcel / subdivision /
+  // wholesaler / landlord / balloon blocks above already close, for the two event
+  // lanes that were still leaking (audit close-out 2026-08-08).
+
+  // deal.stage_changed has exactly ONE emit path — dealEvents.emitDealStageChanged,
+  // whose payload is dealEvents.buildDealEventData (real deal columns only; no
+  // property address, no buyer/borrower fields, no valuation/ARV fields). The
+  // allowed set is derived from the REAL builder below, not hand-copied.
+  const DEAL_STAGE_CHANGED_PAYLOAD_FIELDS = new Set(
+    Object.keys(buildDealEventData({ id: 1 })),
+  );
+
+  // payment.missed is emitted from THREE paths; a key is honest ONLY if EVERY
+  // path sends it (the intersection):
+  //   notePaymentDueDetector.emitPaymentMissedForFinding
+  //     → { source, noteId, dueDate, daysLate, daysUntilDue, classification, dedupeKey }
+  //   acquiredNoteAging.emitAgingTransitionEvent
+  //     → { source, noteId, noteNumber, dueDate, daysLate, delinquencyStatus, previousStatus, noteStatus }
+  //   routes-notes.buildNotePaymentEventData (nsf_reversal path)
+  //     → { source, noteId, noteNumber, paymentId, borrowerName, amount(+Cents…), paymentType, daysLate, noteStatus, … }
+  // Intersection = { source, noteId, daysLate }. dueDate / noteNumber / noteStatus /
+  // borrowerName / amount are sent by only SOME paths; borrowerEmail / orgName by NONE.
+  const PAYMENT_MISSED_PAYLOAD_FIELDS = new Set(["source", "noteId", "daysLate"]);
+
+  const LANE: Record<string, Set<string>> = {
+    "deal.stage_changed": DEAL_STAGE_CHANGED_PAYLOAD_FIELDS,
+    "payment.missed": PAYMENT_MISSED_PAYLOAD_FIELDS,
+  };
+
+  // Auto-discovered so any future template added to either lane is covered too.
+  const laneTemplates = LAND_INVESTING_WORKFLOW_TEMPLATES.filter((t) =>
+    Object.prototype.hasOwnProperty.call(LANE, t.trigger.event),
+  );
+
+  it("the derivation found both lanes (guards against a silently empty filter)", () => {
+    expect(DEAL_STAGE_CHANGED_PAYLOAD_FIELDS.size).toBeGreaterThanOrEqual(9);
+    const dealCount = laneTemplates.filter(
+      (t) => t.trigger.event === "deal.stage_changed",
+    ).length;
+    const missedCount = laneTemplates.filter(
+      (t) => t.trigger.event === "payment.missed",
+    ).length;
+    expect(dealCount).toBeGreaterThanOrEqual(5); // deal_closed, stage_advanced, acquisition_closed, note_setup, fix_flip
+    expect(missedCount).toBeGreaterThanOrEqual(1); // payment_missed_dunning
+  });
+
+  it.each(laneTemplates.map((t) => t.id))(
+    "%s uses only fields its trigger event's emit payload actually sends",
+    (id) => {
+      const t = templateById.get(id)!;
+      const allowed = LANE[t.trigger.event];
+      const used = new Set<string>();
+      for (const action of t.actions) extractPlaceholders(action.config, used);
+      expect(used.size).toBeGreaterThan(0);
+      for (const field of used) {
+        expect(
+          allowed.has(field),
+          `${id} interpolates {{${field}}}, which the ${t.trigger.event} emit ` +
+            `payload never sends — it would render as a literal {{placeholder}} ` +
+            `in customer-facing copy`,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it("the corrected deal.stage_changed fabrications stay gone", () => {
+    const usedIn = (id: string) => {
+      const used = new Set<string>();
+      for (const a of templateById.get(id)!.actions) extractPlaceholders(a.config, used);
+      return used;
+    };
+
+    // No address / repair-cost / AVM / ARV field exists on a deal event.
+    const flip = usedIn("tpl_fix_flip_rehab_kickoff");
+    for (const gone of ["propertyAddress", "estimatedRepairCost", "estimatedValue", "afterRepairValue"]) {
+      expect(flip.has(gone), `tpl_fix_flip_rehab_kickoff must not reintroduce {{${gone}}}`).toBe(false);
+    }
+    expect(flip.has("acceptedAmount"), "the real acquisition price stays").toBe(true);
+
+    // Sale price is the accepted amount; there is no buyer contact / finance split.
+    const closed = usedIn("tpl_deal_closed");
+    for (const gone of ["salePrice", "buyerEmail", "buyerName", "downPayment", "financedAmount", "propertyAddress", "orgName"]) {
+      expect(closed.has(gone), `tpl_deal_closed must not reintroduce {{${gone}}}`).toBe(false);
+    }
+    expect(closed.has("acceptedAmount"), "salePrice → acceptedAmount").toBe(true);
+
+    // The note does not exist yet at deal.stage_changed.
+    const noteSetup = usedIn("tpl_note_setup");
+    for (const gone of ["buyerName", "monthlyPayment", "propertyAddress", "dealName"]) {
+      expect(noteSetup.has(gone), `tpl_note_setup must not reintroduce {{${gone}}}`).toBe(false);
+    }
+
+    // dealAddress / dealName / dealValue are not columns the event emits.
+    for (const id of ["tpl_deal_stage_advanced", "tpl_acquisition_closed"]) {
+      const used = usedIn(id);
+      for (const gone of ["dealAddress", "dealName", "dealValue"]) {
+        expect(used.has(gone), `${id} must not reintroduce {{${gone}}}`).toBe(false);
+      }
+    }
+  });
+
+  it("the payment.missed dunning template keeps only all-paths-intersection fields", () => {
+    const t = templateById.get("tpl_payment_missed_dunning")!;
+    const used = new Set<string>();
+    for (const a of t.actions) extractPlaceholders(a.config, used);
+    // borrowerEmail / orgName are sent by NO path; borrowerName / amount / dueDate by only SOME.
+    for (const gone of ["borrowerEmail", "orgName", "borrowerName", "amount", "dueDate"]) {
+      expect(used.has(gone), `tpl_payment_missed_dunning must not interpolate {{${gone}}} (not in the all-paths intersection)`).toBe(false);
+    }
+    expect(used.has("noteId")).toBe(true);
+    expect(used.has("daysLate")).toBe(true);
+    // The send_email to {{borrowerEmail}} was removed — no path supplies a
+    // borrower email, so nothing could be sent honestly (future enrichment).
+    expect(
+      t.actions.some((a) => a.type === "send_email"),
+      "the borrower-email send_email must stay removed until payment.missed carries a borrower email on all paths",
+    ).toBe(false);
+  });
+
+  it("tpl_deal_closed's buyer-referral send_email stays removed (no buyer contact on deal.stage_changed)", () => {
+    expect(
+      templateById.get("tpl_deal_closed")!.actions.some((a) => a.type === "send_email"),
+    ).toBe(false);
+  });
+
+  it("the payment.missed intersection pin matches all three real emit sites (source pin)", () => {
+    // Every intersection field must appear as an emitted `field:` in EVERY path.
+    // A future 4th emit path that drops one of these, or a template that reaches
+    // for a field only some paths send, is what this guards.
+    const detector = fs.readFileSync(
+      path.join(__dirname, "../../server/services/notePaymentDueDetector.ts"),
+      "utf-8",
+    );
+    const aging = fs.readFileSync(
+      path.join(__dirname, "../../server/jobs/acquiredNoteAging.ts"),
+      "utf-8",
+    );
+    const notesRoutes = fs.readFileSync(
+      path.join(__dirname, "../../server/routes-notes.ts"),
+      "utf-8",
+    );
+    for (const field of PAYMENT_MISSED_PAYLOAD_FIELDS) {
+      expect(
+        detector.includes(`${field}:`),
+        `notePaymentDueDetector.emitPaymentMissedForFinding must emit "${field}"`,
+      ).toBe(true);
+      expect(
+        aging.includes(`${field}:`),
+        `acquiredNoteAging.emitAgingTransitionEvent must emit "${field}"`,
+      ).toBe(true);
+      expect(
+        notesRoutes.includes(`${field}:`),
+        `routes-notes.buildNotePaymentEventData must emit "${field}"`,
       ).toBe(true);
     }
   });

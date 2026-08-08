@@ -25,7 +25,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, isNull, sql, lte, asc } from "drizzle-orm";
+import { and, eq, sql, lte, asc, gt } from "drizzle-orm";
 import { db } from "./db";
 import {
   permitChecklists,
@@ -39,6 +39,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { emitPermitGateApproved } from "./services/subdivisionEvents";
 
 // ----------------------------------------------------------------------------
 // Templates — permit gate sequences per (state, county) Brigid actually works.
@@ -338,20 +339,30 @@ export function registerPermitTrackerRoutes(app: Express): void {
           if (parsed.data[k] !== undefined) updates[k] = parsed.data[k] === "" ? null : parsed.data[k];
         }
 
+        // Capture the pre-image gate BEFORE the update — its status is the
+        // pre-image for the subdivision.vendor_milestone transition below, and
+        // its gateKey/checklistId/sequence drive both the submitted-branch
+        // expected-return calc and the next-gate lookup for the emit.
+        const [beforeGate] = await db
+          .select({
+            status: permitGates.status,
+            checklistId: permitGates.checklistId,
+            sequence: permitGates.sequence,
+            gateKey: permitGates.gateKey,
+          })
+          .from(permitGates)
+          .where(and(eq(permitGates.id, gateId), eq(permitGates.organizationId, orgId)));
+
         // If status flipped to "submitted" and an expectedDays was set on the
         // template gate, auto-populate expected_return_at = submittedAt + Δ.
         if (parsed.data.status === "submitted" && parsed.data.submittedAt && !parsed.data.expectedReturnAt) {
-          const [existing] = await db
-            .select({ gateKey: permitGates.gateKey, checklistId: permitGates.checklistId })
-            .from(permitGates)
-            .where(and(eq(permitGates.id, gateId), eq(permitGates.organizationId, orgId)));
-          if (existing) {
+          if (beforeGate) {
             const [cl] = await db
               .select({ templateKey: permitChecklists.templateKey })
               .from(permitChecklists)
-              .where(eq(permitChecklists.id, existing.checklistId));
+              .where(eq(permitChecklists.id, beforeGate.checklistId));
             const tpl = cl?.templateKey ? TEMPLATE_BY_KEY.get(cl.templateKey) : null;
-            const tplGate = tpl?.gates.find((g) => g.gateKey === existing.gateKey);
+            const tplGate = tpl?.gates.find((g) => g.gateKey === beforeGate.gateKey);
             if (tplGate?.expectedDays) {
               const submitted = new Date(parsed.data.submittedAt);
               const expected = new Date(submitted.getTime() + tplGate.expectedDays * 86_400_000);
@@ -366,6 +377,70 @@ export function registerPermitTrackerRoutes(app: Express): void {
           .where(and(eq(permitGates.id, gateId), eq(permitGates.organizationId, orgId)))
           .returning();
         if (!updated) return Errors.notFound(res, "Permit gate");
+
+        // SD-3 audit Wave 1 (beta→core): a gate genuinely reaching "approved" is
+        // a real vendor/county milestone. Resolve the parent parcel + the NEXT
+        // gate in sequence (its label = next stage, contactName = next vendor,
+        // template expectedDays = next-stage duration), then fire
+        // subdivision.vendor_milestone. Fire-and-forget: this whole block is
+        // wrapped so a resolution failure never fails the gate write that just
+        // committed. The plat_recorded/assessor_split gates are deliberately NOT
+        // special-cased here — recording emits from the plan→recorded path only.
+        if (beforeGate && beforeGate.status !== "approved" && parsed.data.status === "approved") {
+          try {
+            const [parcel] = await db
+              .select({
+                parentParcelId: properties.id,
+                address: properties.address,
+                county: properties.county,
+                state: properties.state,
+                templateKey: permitChecklists.templateKey,
+              })
+              .from(permitChecklists)
+              .innerJoin(properties, eq(properties.id, permitChecklists.parentParcelId))
+              .where(and(
+                eq(permitChecklists.id, beforeGate.checklistId),
+                eq(permitChecklists.organizationId, orgId),
+              ));
+
+            const [nextGate] = await db
+              .select({
+                label: permitGates.label,
+                contactName: permitGates.contactName,
+                gateKey: permitGates.gateKey,
+              })
+              .from(permitGates)
+              .where(and(
+                eq(permitGates.organizationId, orgId),
+                eq(permitGates.checklistId, beforeGate.checklistId),
+                gt(permitGates.sequence, beforeGate.sequence),
+              ))
+              .orderBy(asc(permitGates.sequence))
+              .limit(1);
+
+            const tpl = parcel?.templateKey ? TEMPLATE_BY_KEY.get(parcel.templateKey) : null;
+            const nextStageDays =
+              nextGate && tpl
+                ? tpl.gates.find((g) => g.gateKey === nextGate.gateKey)?.expectedDays ?? null
+                : null;
+
+            if (parcel) {
+              emitPermitGateApproved(beforeGate.status, updated, {
+                propertyAddress: parcel.address ?? `${parcel.county}, ${parcel.state}`,
+                parentParcelId: parcel.parentParcelId,
+                nextStage: nextGate?.label ?? null,
+                nextVendor: nextGate?.contactName ?? null,
+                nextStageDays,
+              });
+            }
+          } catch (err) {
+            logger.warn("[SD-3] subdivision.vendor_milestone emit resolution failed", {
+              gateId,
+              orgId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
 
         return res.json({ gate: updated });
       } catch (err) {

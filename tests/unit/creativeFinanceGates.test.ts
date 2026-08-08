@@ -169,8 +169,17 @@ describe("/today creative-finance surfaces cluster", () => {
 describe("registry entry (shared/business-types.ts)", () => {
   const meta = getBusinessType("creative_finance")!;
 
-  it("is beta — the wave-V2 flip, backed by the surfaces pinned above", () => {
-    expect(meta.maturity).toBe("beta");
+  it("is core — the audit-Wave-1 flip (balloon lane now live), still backed by the surfaces pinned above", () => {
+    // 2026-07-29 wave V2 flipped roadmap → beta on the assembled seller-finance
+    // surface. 2026-08 audit Wave 1 flips beta → core: the vertical's ONLY
+    // genuinely-dead template lane (note.balloon_approaching, driving
+    // tpl_balloon_approaching + tpl_note_balloon_approaching_extended) is now
+    // emitted from the daily notePaymentDueDetector scan (noteEvents.ts →
+    // emitNoteEvent, folded in — no new job), with the fabricated {{balloonAmount}}
+    // corrected to the honest, approximate {{outstandingBalance}}. The deal→note
+    // bridge and payment.missed dunning already fired, so the vertical now clears
+    // the honesty bar for core. A silent re-demotion should fail loudly here.
+    expect(meta.maturity).toBe("core");
   });
 
   it("every workflowTemplateId names a template that actually exists in workflow-engine.ts", async () => {

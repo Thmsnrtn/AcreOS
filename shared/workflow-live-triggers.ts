@@ -31,6 +31,70 @@
 //       server/routes-notes.ts, server/routes-rent-ledger.ts,
 //       server/routes-borrower.ts and
 //       server/services/notePaymentDueDetector.ts → emitPaymentEvent.
+//   rehab.milestone / rehab.punch_list_complete (audit Wave 1, fix-and-flip)
+//       server/services/rehabEvents.ts → emitRehabStatusChange → emitRehabEvent,
+//       called from server/routes-rehabs.ts (PATCH status transition). Fires
+//       rehab.milestone when demo completes and rehab.punch_list_complete when
+//       the rehab reaches "listed".
+//   cert.acquired / cert.redemption_period_60d / cert.foreclosure_eligible /
+//   cert.redeemed (audit Wave 1, tax-lien / deed)
+//       server/services/certificateEvents.ts → emitCertEvent, called from
+//       server/routes-tax-certificates.ts (cert.acquired on create; cert.redeemed
+//       on a genuine active→redeemed PATCH), server/routes-tax-researcher.ts
+//       (cert.acquired on the won-bid→certificate handoff), and
+//       server/jobs/redemptionClockRefresh.ts (the nightly clock fires
+//       cert.redemption_period_60d in the 60-day window and
+//       cert.foreclosure_eligible once the deadline has lapsed).
+//   plat.submitted / subdivision.vendor_milestone / subdivision.phase_recorded
+//   (audit Wave 1, subdivider)
+//       server/services/subdivisionEvents.ts → emitSubdivisionEvent, called
+//       from server/routes-permit-tracker.ts (PATCH /api/permit-gates/:gateId
+//       fires subdivision.vendor_milestone on a genuine gate→"approved"
+//       transition) and server/routes-subdivision-plans.ts (PATCH
+//       /api/plans/:planId fires plat.submitted on plan→"county_submitted" and
+//       subdivision.phase_recorded on plan→"recorded"). entityType "property"
+//       (entityId = parent parcel's properties.id).
+//   deal.contract_signed / deal.assignment_pending (audit Wave 1, residential
+//   wholesaler)
+//       server/services/wholesaleEvents.ts → emitWholesaleDealEvent, called from
+//       server/routes-deals.ts. emitContractSigned fires deal.contract_signed on
+//       a genuine deal→"in_escrow" transition (PUT /api/deals/:id — a signed
+//       purchase agreement IS the deal entering escrow); emitAssignmentPending
+//       fires deal.assignment_pending on a genuine contract_assignments row →
+//       "sent_for_signature" transition (PATCH /api/deals/:dealId/assignments/:id).
+//       entityType "deal". deal.occupied (the third wholesaler template's event)
+//       is deliberately ABSENT — no occupancy schema exists, so it cannot be made
+//       honest and stays badged "not live".
+//   buyer.match_created (audit Wave 1, residential wholesaler)
+//       server/services/buyerEvents.ts → emitBuyerEvent, called from
+//       server/services/buyerMatchingAI.ts on the FRESH-INSERT branch of both
+//       matchPropertyToBuyers and matchBuyerToProperties (never the
+//       update-existing branch, so a re-run never re-fires). entityType "buyer"
+//       (entityId = buyer_profiles.id).
+//   rent.received / maintenance.request_received /
+//   lease.renewal_countdown_60d / lease.expiring_60d (audit Wave 1, buy_and_hold)
+//       server/services/rentalEvents.ts → emitRentalEvent. rent.received on the
+//       rent-ledger POST seam (server/routes-rent-ledger.ts POST
+//       /api/leases/:id/payments, a SECOND emit alongside payment.received — one
+//       payment, two events, on purpose); maintenance.request_received on the
+//       maintenance POST seam (server/routes-maintenance-tickets.ts POST
+//       /api/maintenance-tickets); and BOTH lease.renewal_countdown_60d and
+//       lease.expiring_60d from the daily server/services/leaseExpiryDetector.ts
+//       (a lease ~60 days from its end date, deduped per (lease, endDate) against
+//       the mesh ledger). entityType "property" (entityId = the lease/ticket's
+//       properties.id). rent.received also drives the mobile_home lot-rent
+//       receipt and lease.renewal_countdown_60d the multifamily unit-turn.
+//   note.balloon_approaching (audit Wave 1, creative_finance)
+//       server/services/noteEvents.ts → emitNoteEvent, called from the EXISTING
+//       daily server/services/notePaymentDueDetector.ts (the balloon scan folded
+//       into runNotePaymentDueScan — no new job): an ACTIVE note whose
+//       maturityDate is within ~90 days with a positive currentBalance, deduped
+//       per (noteId, maturityDate) on the note:balloons mesh channel. entityType
+//       "note" (entityId = the note's propertyId, else its own numeric id). Drives
+//       BOTH tpl_balloon_approaching and tpl_note_balloon_approaching_extended,
+//       whose fabricated {{balloonAmount}} was corrected to {{outstandingBalance}}
+//       (an approximate outstanding figure — the exact balloon lives in the
+//       amortization schedule) in the same change.
 //
 // `property.updated` and `deal.updated` are deliberately ABSENT: their emit
 // helpers declare them, but no call site ever passes them, so a workflow on
@@ -61,6 +125,23 @@ export const LIVE_WORKFLOW_TRIGGER_EVENTS = [
   "deal.stage_changed",
   "payment.received",
   "payment.missed",
+  "rehab.milestone",
+  "rehab.punch_list_complete",
+  "cert.acquired",
+  "cert.redemption_period_60d",
+  "cert.foreclosure_eligible",
+  "cert.redeemed",
+  "plat.submitted",
+  "subdivision.vendor_milestone",
+  "subdivision.phase_recorded",
+  "deal.contract_signed",
+  "deal.assignment_pending",
+  "buyer.match_created",
+  "rent.received",
+  "maintenance.request_received",
+  "lease.renewal_countdown_60d",
+  "lease.expiring_60d",
+  "note.balloon_approaching",
 ] as const;
 
 export type LiveWorkflowTriggerEvent =

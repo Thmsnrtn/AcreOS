@@ -355,7 +355,7 @@ const SEEDS: PersonaSeed[] = [
     },
   },
 
-  // ── RESIDENTIAL WHOLESALER (beta) × 3
+  // ── RESIDENTIAL WHOLESALER (core, audit Wave 1) × 3
   {
     slug: "wholesaler-operator",
     displayName: "Wanda — assigns contracts, runs buyer blasts",
@@ -484,7 +484,7 @@ const SEEDS: PersonaSeed[] = [
     },
   },
 
-  // ── SUBDIVIDER (beta) × 2
+  // ── SUBDIVIDER (core, audit Wave 1) × 2
   {
     slug: "subdivider-power",
     displayName: "Sasha — splits parent parcels into lots",
@@ -520,7 +520,7 @@ const SEEDS: PersonaSeed[] = [
     },
   },
 
-  // ── TAX LIEN / DEED (beta) × 2
+  // ── TAX LIEN / DEED (core, audit Wave 1) × 2
   {
     slug: "tax-lien-operator",
     displayName: "Tara — tax auctions + redemption clock",
@@ -561,7 +561,7 @@ const SEEDS: PersonaSeed[] = [
   //    leases, maintenance, investor analytics) × 1
   {
     slug: "rental-landlord",
-    displayName: "Lena — buy-and-hold rentals (beta)",
+    displayName: "Lena — buy-and-hold rentals",
     experience: "returning_beginner",
     device: "iphone-14",
     tier: "sprout",

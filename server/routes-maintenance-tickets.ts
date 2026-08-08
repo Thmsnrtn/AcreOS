@@ -36,6 +36,10 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+// Audit Wave 1 (buy_and_hold beta→core): the maintenance-triage template never
+// ran because nothing emitted maintenance.request_received. This POST is the one
+// create path, so it is the emit seam. Fire-and-forget — see rentalEvents.ts.
+import { emitMaintenanceRequestReceived } from "./services/rentalEvents";
 
 const ticketSchema = z.object({
   propertyId: z.coerce.number().int().positive(),
@@ -124,6 +128,15 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
       }).returning();
 
       logger.info("[BH-6] maintenance ticket created", { orgId, userId, ticketId: created.id, severity: parsed.data.severity });
+
+      // Audit Wave 1 (buy_and_hold beta→core) — maintenance.request_received. The
+      // ticket row is committed; fire the triage template's event. Fire-and-forget:
+      // rentalEvents resolves property/tenant/org off the request path and a
+      // workflow fault never fails the create. A landlord-logged ticket (no
+      // submittedByTenantId) resolves a null tenant, which honestly suppresses the
+      // tenant-acknowledgment email rather than fabricating a recipient.
+      emitMaintenanceRequestReceived(created);
+
       return res.status(201).json({ ticket: created });
     } catch (err) {
       return Errors.internal(res, err);

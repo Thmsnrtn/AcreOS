@@ -154,7 +154,17 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     //     unavailable state naming the fix path, never land-as-house data
     //     (pinned by residentialComps / residentialNoLandFallback /
     //     residentialConsumerFork tests).
-    maturity: "beta",
+    //
+    // 2026-08 (audit Wave 1, beta→core): the renovate half of the loop is now
+    // LIVE, not just declared — rehab.milestone + rehab.punch_list_complete are
+    // emitted from the rehab status machine (server/services/rehabEvents.ts,
+    // registered in shared/workflow-live-triggers.ts, pinned by
+    // tests/unit/rehabEvents.test.ts + workflowActionHonesty). The two flip
+    // milestone templates were corrected to bind only real rehab fields and
+    // prompt the operator to pull comps rather than interpolate an invented
+    // comp number. With the ATTOM data seam already wired, the loop now fires
+    // end-to-end — so this passes the honesty bar for core.
+    maturity: "core",
     // 2026-07-29 truth pass: all three flip templates ship in
     // workflow-engine.ts; the Flip sidebar module (businessTypeOnly
     // fix_and_flip) surfaces /rehabs + /contractors, which existing
@@ -165,22 +175,37 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_flip_listing_ready",
     ],
     spotlightModules: ["rehabs", "contractors", "properties", "deals"],
-    integrations: ["stripe"],
+    // ATTOM is the vertical-defining data integration (residential comps +
+    // valuation, pay-per-call via the residentialComps seam / provider
+    // registry) — named here honestly, not just Stripe (audit Wave 1).
+    integrations: ["stripe", "attom"],
   },
   residential_wholesaler: {
     id: "residential_wholesaler",
     label: "Residential wholesaler",
     shortDescription: "Assign contracts to investor buyers.",
-    maturity: "beta",
+    // 2026-08 audit Wave 1: beta → core. Three of the four wholesaler templates
+    // are now LIVE — deal.contract_signed + deal.assignment_pending fire from the
+    // deal/assignment write-paths (wholesaleEvents.ts) and buyer.match_created
+    // fires from the AI matcher's fresh-insert branch (buyerEvents.ts); all three
+    // are registered in shared/workflow-live-triggers.ts and pinned by
+    // workflowActionHonesty. The vertical passes the honesty bar for core.
+    maturity: "core",
     // 2026-07-29 truth pass: the wholesaler build was real but undeclared
     // here. Wholesale sidebar module (businessTypeOnly
     // residential_wholesaler): buyer blasts, /buyer-analytics,
-    // /earnest-money, /double-close, /wholesaler-state-rules. All four
-    // template ids exist in workflow-engine.ts.
+    // /earnest-money, /double-close, /wholesaler-state-rules.
+    //
+    // 2026-08 audit Wave 1: tpl_wholesaler_occupied_cash_for_keys was REMOVED
+    // from this advertised list. Its event (deal.occupied) has ZERO schema
+    // backing — no occupancy/occupant/cash-for-keys column or table exists on the
+    // deal/property path, so it cannot be made honest. The template object stays
+    // in workflow-engine.ts (pinned by PRE_EXISTING_IDS, still installable) but
+    // honestly badged "not live" — it is no longer advertised as part of the core
+    // wholesaler pack. The remaining three are the live ones.
     workflowTemplateIds: [
       "tpl_wholesaler_contract_signed_buyer_broadcast",
       "tpl_wholesaler_assignment_pending",
-      "tpl_wholesaler_occupied_cash_for_keys",
       "tpl_buyer_match_found",
     ],
     spotlightModules: [
@@ -192,7 +217,13 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "double-close",
       "wholesaler-state-rules",
     ],
-    integrations: ["stripe"],
+    // 2026-08 audit Wave 1: corrected ["stripe"] → []. No wholesaler surface uses
+    // Stripe — earnest-money and double-close are pure record tables, and the
+    // money-custody hard-stop (founder ruling 2026-07-29) FORBIDS customer EMD /
+    // assignment funds transiting AcreOS's own account, so there is no platform
+    // payment rail here to name. Subscription payments TO AcreOS are billing, not
+    // a vertical integration.
+    integrations: [],
   },
   buy_and_hold: {
     id: "buy_and_hold",
@@ -213,8 +244,19 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // Rent operations do NOT touch the residential-comps data plane, so
     // the "no residential comps before its revenue trigger" hard-stop is
     // unaffected (fix_and_flip stays roadmap for exactly that reason).
-    maturity: "beta",
-    // All four exist in workflow-engine.ts (landlord moments + lease expiry).
+    // 2026-08 audit Wave 1: beta → core. All four landlord templates are now
+    // LIVE — rent.received fires on the rent-ledger payment POST seam,
+    // maintenance.request_received on the maintenance-ticket POST seam, and the
+    // two lease events (renewal countdown + expiring) from the new daily
+    // leaseExpiryDetector job (server/services/rentalEvents.ts → emitRentalEvent).
+    // The templates were de-fabricated in the same change — the market/suggested
+    // rent placeholders were dropped rather than touch the residential-comps data
+    // plane (that hard-stop is upheld: the templates now PROMPT the operator to
+    // pull market rent on their own surface). The vertical passes the honesty bar
+    // for core.
+    maturity: "core",
+    // All four exist in workflow-engine.ts (landlord moments + lease expiry) and
+    // are now wired live (see rentalEvents.ts + leaseExpiryDetector.ts).
     workflowTemplateIds: [
       "tpl_landlord_lease_renewal_countdown",
       "tpl_landlord_maintenance_request_triage",
@@ -222,10 +264,12 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_lease_expiring",
     ],
     spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
-    // Honest: no dedicated integration is wired yet — the rent ledger is
-    // manual-entry (Stripe ACH explicitly out of scope per
-    // routes-rent-ledger.ts) and no screening-bureau provider exists in
-    // the provider registry.
+    // Honest, and UNCHANGED by the beta→core flip: no dedicated integration is
+    // wired yet — the rent ledger is manual-entry (Stripe ACH explicitly out of
+    // scope per routes-rent-ledger.ts) and no screening-bureau provider exists in
+    // the provider registry. The rent-receipt / renewal / acknowledgment emails
+    // ride the org's OWN connected identity (the BYO counterparty email lane),
+    // not a provider-registry integration, so there is nothing to declare here.
     integrations: [],
   },
   short_term_rental: {
@@ -337,7 +381,19 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // note rails and does NOT touch the residential-comps data plane, so the
     // "no residential comps before its revenue trigger" hard-stop is
     // unaffected (fix_and_flip stays roadmap for exactly that reason).
-    maturity: "beta",
+    // 2026-08 audit Wave 1: beta → core. The balloon lane is now LIVE —
+    // note.balloon_approaching is emitted from the daily notePaymentDueDetector
+    // scan (server/services/noteEvents.ts → emitNoteEvent; the balloon scan
+    // folded into runNotePaymentDueScan, no new job), deduped per (note,
+    // maturityDate) on the mesh ledger, and its two templates were de-fabricated
+    // in the same change (the invented {{balloonAmount}} → the honest,
+    // approximate {{outstandingBalance}} = notes.currentBalance; the exact
+    // balloon lives in the amortization schedule, never claimed). This was
+    // creative_finance's ONLY genuinely-dead template lane — the deal→note bridge
+    // (tpl_deal_closed / tpl_note_setup) and payment.missed dunning already fire —
+    // so the vertical now passes the honesty bar for core. rentalEvents.ts +
+    // noteEvents.ts + workflowActionHonesty pin the live-trigger relationship.
+    maturity: "core",
     // All four exist in workflow-engine.ts: deal close (with the
     // seller-financed note-setup task), owner-finance note setup, missed-
     // payment dunning, and the balloon 90-day countdown (balloons being a
@@ -370,12 +426,22 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "subdivider",
     label: "Subdivider",
     shortDescription: "Buy parent parcels, split into lots.",
-    maturity: "beta",
+    maturity: "core",
     // 2026-07-29 truth pass: all three subdivision templates exist in
     // workflow-engine.ts. "subdivision-editor" was a dangling name — there
     // is no such route; subdivision editing lives on the parcel-detail
     // Subdivision tab, and the Subdivision sidebar module surfaces
     // /permits, /county-timelines, /lot-pricing, /ccr-templates.
+    // 2026-08 audit Wave 1: beta → core. All THREE subdivision templates now
+    // have LIVE emitters on genuine operator transitions — subdivisionEvents.ts
+    // → emitSubdivisionEvent fires subdivision.vendor_milestone when a permit
+    // gate reaches "approved" (routes-permit-tracker PATCH), plat.submitted when
+    // a plan reaches "county_submitted", and subdivision.phase_recorded when a
+    // plan reaches "recorded" (routes-subdivision-plans PATCH). The two
+    // fabricated placeholders were corrected in the same change
+    // ({{nextCountyCheckinDays}} dropped, {{phaseNumber}} → {{planName}}).
+    // Registered in shared/workflow-live-triggers.ts; workflowActionHonesty pins
+    // the call-site ↔ list relationship. Passes the honesty bar for core.
     workflowTemplateIds: [
       "tpl_subdivision_plat_submitted",
       "tpl_subdivision_vendor_milestone",
@@ -388,7 +454,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     id: "tax_lien_deed",
     label: "Tax lien / deed",
     shortDescription: "Acquire properties through tax auctions.",
-    maturity: "beta",
+    maturity: "core",
     // 2026-07-29 truth pass: the tax-delinquent build was real but
     // undeclared here. Tax-delinquent sidebar module (businessTypeOnly
     // tax_lien_deed): /redemption-clock, /auction-worksheet, /state-rules,
@@ -396,6 +462,15 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // workflow-engine.ts.
     // Wave V3 added the redeemed-payoff packet and the live-emitted
     // parcel tax-status watchlist trigger (parcelDeltaDetector).
+    // 2026-08 audit Wave 1: beta → core. All FOUR cert templates now have
+    // LIVE emitters wired on genuine state transitions —
+    // certificateEvents.ts → emitCertEvent fires cert.acquired on certificate
+    // create (routes-tax-certificates POST + the won-bid handoff in
+    // routes-tax-researcher), cert.redeemed on a genuine active→redeemed PATCH,
+    // and cert.redemption_period_60d / cert.foreclosure_eligible from the
+    // nightly redemption-clock job's 60-day and lapsed-deadline branches.
+    // Registered in shared/workflow-live-triggers.ts; workflowActionHonesty
+    // pins the call-site ↔ list relationship. Passes the honesty bar for core.
     workflowTemplateIds: [
       "tpl_tax_cert_acquired_kickoff",
       "tpl_tax_cert_redemption_approaching",

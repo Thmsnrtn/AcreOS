@@ -34,6 +34,32 @@ import {
   computeRedemptionAmount,
   STATE_REDEMPTION_RULES,
 } from "./services/redemptionClock";
+import {
+  emitCertAcquired,
+  emitCertRedeemed,
+  type CertEventRow,
+} from "./services/certificateEvents";
+
+// Build the CertEventRow slice the workflow emitters need from a full
+// tax_certificates row. Real columns only — the `date` columns come back as
+// ISO strings.
+function certEventRowFrom(row: typeof taxCertificates.$inferSelect): CertEventRow {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    propertyId: row.propertyId ?? null,
+    state: row.state,
+    county: row.county,
+    apn: row.apn,
+    saleType: row.saleType,
+    saleDate: row.saleDate as unknown as string,
+    bidDownRateBps: row.bidDownRateBps ?? null,
+    redemptionDeadline: row.redemptionDeadline as unknown as string,
+    status: row.status,
+    redeemedAt: (row.redeemedAt as unknown as string | null) ?? null,
+    redeemedAmountCents: row.redeemedAmountCents ?? null,
+  };
+}
 
 const addressSchema = z
   .object({
@@ -249,6 +275,9 @@ export function registerTaxCertificateRoutes(app: Express): void {
           })
           .returning();
         if (!row) return Errors.internal(res, new Error("Insert returned no row"));
+        // A certificate create IS the genuine cert.acquired event — fire the
+        // acquired-kickoff workflow lane. Fire-and-forget; never blocks the 201.
+        emitCertAcquired(certEventRowFrom(row));
         return res.status(201).json({ certificate: row });
       } catch (err) {
         if (err instanceof Error && /unique/i.test(err.message)) {
@@ -276,6 +305,17 @@ export function registerTaxCertificateRoutes(app: Express): void {
           ...parsed.data,
           updatedAt: new Date(),
         };
+
+        // Unconditional pre-image status capture, read BEFORE the update so a
+        // genuine transition INTO "redeemed" can be detected for the redeemed-
+        // payoff workflow lane (a status edit that was already "redeemed" is a
+        // no-op in the emitter).
+        const [preImage] = await db
+          .select({ status: taxCertificates.status })
+          .from(taxCertificates)
+          .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
+          .limit(1);
+        const beforeStatus = preImage?.status ?? null;
 
         // If marking redeemed and amount not specified, snapshot the live
         // computed amount as of the redeemedAt date so the running total
@@ -309,6 +349,9 @@ export function registerTaxCertificateRoutes(app: Express): void {
           .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Certificate");
+        // Fire the redeemed-payoff workflow lane ONLY on a genuine
+        // active→redeemed transition. Fire-and-forget; never blocks the response.
+        emitCertRedeemed(beforeStatus, certEventRowFrom(row));
         return res.json({ certificate: row });
       } catch (err) {
         logger.error("taxCertificates.patch failed", err instanceof Error ? err : undefined);

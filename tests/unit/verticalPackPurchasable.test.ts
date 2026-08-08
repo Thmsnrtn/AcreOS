@@ -51,7 +51,7 @@ describe("vertical pack purchasability", () => {
     }
   });
 
-  it("sells the fix_and_flipper pack now that fix_and_flip is beta (ruling #11, wave V3)", () => {
+  it("sells the fix_and_flipper pack now that fix_and_flip is core (audit Wave 1, beta→core)", () => {
     // 2026-07-29 wave V3: fix_and_flip flipped roadmap → beta because the
     // 2026-07-11 demotion's ROOT CAUSE is fixed — residential verticals'
     // comps/valuation route through the residentialComps seam (provider
@@ -62,33 +62,73 @@ describe("vertical pack purchasability", () => {
     // residentialComps / residentialNoLandFallback / residentialConsumerFork
     // tests; pinned here so a silent re-demotion (or a silent unsellable
     // pack) fails loudly.
-    expect(getBusinessType("fix_and_flip")?.maturity).toBe("beta");
+    //
+    // 2026-08 audit Wave 1: beta → core — the renovate half of the flip loop
+    // is now LIVE (rehab.milestone + rehab.punch_list_complete emitted from the
+    // rehab status machine; rehabEvents.ts + workflowActionHonesty pin it), so
+    // the vertical passes the honesty bar for core. Purchasability is unchanged
+    // (core, like beta, is production-ready) — this assertion now tracks core.
+    expect(getBusinessType("fix_and_flip")?.maturity).toBe("core");
     expect(isVerticalPackPurchasable("fix_and_flipper")).toBe(true);
     expect(purchasableVerticalPacks().map((p) => p.key)).toContain("fix_and_flipper");
   });
 
-  it("sells the property-management pack now that buy_and_hold is beta (ruling #11, wave V1)", () => {
+  it("sells the property-management pack now that buy_and_hold is core (audit Wave 1, beta→core)", () => {
     // 2026-07-29 truth pass: buy_and_hold flipped roadmap → beta because
     // the build justifies it (rental schema + routes + pages + Rentals nav
     // module). isVerticalPackPurchasable derives from that maturity, so the
     // pack becoming sellable is the ruling working as designed — pinned
     // here so a silent demotion would fail loudly.
-    expect(getBusinessType("buy_and_hold")?.maturity).toBe("beta");
+    //
+    // 2026-08 audit Wave 1: beta → core — all four landlord templates are now
+    // LIVE (rent.received on the rent-ledger POST seam,
+    // maintenance.request_received on the maintenance POST seam, and
+    // lease.renewal_countdown_60d + lease.expiring_60d from the daily
+    // leaseExpiryDetector; rentalEvents.ts + workflowActionHonesty pin it). The
+    // templates were de-fabricated in the same change WITHOUT touching the
+    // residential-comps data plane (that hard-stop stands — the renewal template
+    // prompts the operator to pull market rent on their own surface), so the
+    // vertical passes the honesty bar for core. Purchasability is unchanged
+    // (core, like beta, is production-ready) — this assertion now tracks core.
+    expect(getBusinessType("buy_and_hold")?.maturity).toBe("core");
     expect(isVerticalPackPurchasable("buy_and_hold")).toBe(true);
     expect(purchasableVerticalPacks().map((p) => p.key)).toContain("buy_and_hold");
   });
 
-  it("creative_finance is beta (ruling #11, wave V2) yet still has no pack — nothing to sell", () => {
+  it("creative_finance is core (audit Wave 1) yet still has no pack — nothing to sell", () => {
     // 2026-07-29 wave V2: creative_finance flipped roadmap → beta because a
     // real surface now exists (Creative finance sidebar module + /today
     // cluster + the Close & Carry deal→note bridge + Dodd-Frank/Reg-Z
-    // compliance stack — see the registry entry's evidence comment). There
-    // is still deliberately NO vertical pack for it: adding one is a
-    // pricing decision (founder hard-stop), not a maturity side effect —
-    // pinned here so a pack can't appear silently.
-    expect(getBusinessType("creative_finance")?.maturity).toBe("beta");
+    // compliance stack — see the registry entry's evidence comment).
+    //
+    // 2026-08 audit Wave 1: beta → core — the vertical's ONLY genuinely-dead
+    // template lane went live (note.balloon_approaching emitted from the daily
+    // notePaymentDueDetector scan; noteEvents.ts + workflowActionHonesty pin it),
+    // and the two balloon templates were de-fabricated ({{balloonAmount}} →
+    // approximate {{outstandingBalance}}). There is still deliberately NO vertical
+    // pack for it: adding one is a pricing decision (founder hard-stop), not a
+    // maturity side effect — pinned here so a pack can't appear silently, and so a
+    // silent re-demotion of the vertical fails loudly.
+    expect(getBusinessType("creative_finance")?.maturity).toBe("core");
     const packVerticalIds = Object.values(VERTICAL_PACKS).map((p) => p.businessTypeId);
     expect(packVerticalIds).not.toContain("creative_finance");
+  });
+
+  it("residential_wholesaler is core and no longer claims a Stripe integration (audit Wave 1)", () => {
+    // 2026-08 audit Wave 1: residential_wholesaler beta→core once three of its
+    // four templates went live (deal.contract_signed + deal.assignment_pending
+    // via wholesaleEvents.ts; buyer.match_created via buyerEvents.ts). The
+    // registry's integrations were corrected ["stripe"]→[]: no wholesaler surface
+    // uses Stripe, and the money-custody hard-stop forbids EMD/assignment funds
+    // transiting AcreOS. Pinned so a silent re-introduction fails loudly.
+    const wholesaler = getBusinessType("residential_wholesaler");
+    expect(wholesaler?.maturity).toBe("core");
+    expect(wholesaler?.integrations ?? []).not.toContain("stripe");
+    // The occupied cash-for-keys template is no longer advertised (no occupancy
+    // schema — cannot be made honest).
+    expect(wholesaler?.workflowTemplateIds).not.toContain(
+      "tpl_wholesaler_occupied_cash_for_keys",
+    );
   });
 
   it("unknown pack key is not purchasable", () => {
