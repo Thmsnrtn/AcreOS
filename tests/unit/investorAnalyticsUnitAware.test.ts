@@ -115,9 +115,26 @@ describe("the assumed expense ratio is labelled as one", () => {
     expect(CODE).toMatch(/opExBps \?\? 4000/);
   });
 
-  it("every number downstream of it carries a basis the caller can read", () => {
+  it("basis is operator_supplied when measured OR overridden; assumed_ratio only when neither", () => {
+    // REWRITTEN (Wave 3 stage 3, not deleted): the op-ex is no longer always the
+    // assumed ratio. The new precedence is measured stored expenses > opExBps
+    // override > assumed 40%, so opExBasis is "operator_supplied" when EITHER a
+    // measured ledger exists OR an explicit ratio was supplied, and "assumed_ratio"
+    // survives only when NEITHER holds. The old assertion pinned
+    // `opExBps === undefined ? "assumed_ratio" : "operator_supplied"`, which is
+    // now the wrong truth — a measured property with no override must still read
+    // operator_supplied.
     expect(SRC).toContain("opExBasis");
-    expect(SRC).toMatch(/opExBps === undefined \? "assumed_ratio" : "operator_supplied"/);
+    expect(CODE).toMatch(
+      /\(hasMeasured \|\| opExBps !== undefined\) \?\s*"operator_supplied" : "assumed_ratio"/,
+    );
+    // And the FINER provenance the client labels from: measured drops "(est.)";
+    // an override is operator_supplied but NOT measured; the flat default is the
+    // only assumed_ratio.
+    expect(SRC).toContain("opExSource");
+    expect(CODE).toMatch(
+      /hasMeasured\s*\?\s*"measured_expenses" : \(opExBps !== undefined \? "ratio_override" : "assumed_ratio"\)/,
+    );
   });
 
   it("the comment names the consequence rather than just the constant", () => {

@@ -383,6 +383,20 @@ function readFirstRow(result: unknown): Record<string, unknown> | undefined {
   return first && typeof first === "object" ? (first as Record<string, unknown>) : undefined;
 }
 
+/**
+ * The same driver-envelope narrowing as readFirstRow, but for EVERY row — the
+ * per-property occupancy read returns one row per building, and an untyped hop
+ * over the whole set is exactly where a miscounted building would hide.
+ */
+function readAllRows(result: unknown): Record<string, unknown>[] {
+  const rows = Array.isArray(result)
+    ? result
+    : (result as { rows?: unknown[] } | null)?.rows;
+  return Array.isArray(rows)
+    ? rows.filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
+    : [];
+}
+
 /** SQL COUNT/SUM comes back as number or string depending on width. */
 function toCount(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value ?? 0);
@@ -1802,6 +1816,40 @@ export function registerRentalRoutes(app: Express): void {
         WHERE organization_id = ${orgId}
       `);
 
+      // Per-BUILDING occupancy — the same semi-join, GROUPED BY property. The
+      // org-wide aggregate above averages every building into one ratio, which
+      // hides the specific failure this vertical exists to surface: a building
+      // with no rentable stock is `measurable:false` on ITS OWN, rather than
+      // being diluted away inside a portfolio-wide percentage. Each group runs
+      // through the SAME computeOccupancySnapshot with propertyCount = 1, so a
+      // per-building answer is honest by exactly the same rules as the whole.
+      const byPropertyRows = await db.execute(sql`
+        SELECT
+          u.property_id AS property_id,
+          COUNT(*) FILTER (WHERE u.status = 'active')::int AS rentable_units,
+          COUNT(*) FILTER (WHERE u.status = 'active' AND l.leased IS NOT NULL)::int AS occupied_units,
+          COUNT(*) FILTER (WHERE u.status = 'offline')::int AS offline_units,
+          COUNT(*) FILTER (WHERE u.status = 'retired')::int AS retired_units,
+          COUNT(*) FILTER (
+            WHERE u.status = 'active' AND l.leased IS NULL AND u.market_rent_cents IS NOT NULL
+          )::int AS vacant_units_with_market_rent,
+          COALESCE(SUM(u.market_rent_cents) FILTER (
+            WHERE u.status = 'active' AND l.leased IS NULL AND u.market_rent_cents IS NOT NULL
+          ), 0)::bigint AS vacant_market_rent_cents
+        FROM rental_units u
+        LEFT JOIN LATERAL (
+          SELECT 1 AS leased
+          FROM rental_leases rl
+          WHERE rl.unit_id = u.id
+            AND rl.organization_id = ${orgId}
+            AND rl.status = 'active'
+          LIMIT 1
+        ) l ON TRUE
+        WHERE u.organization_id = ${orgId}
+        GROUP BY u.property_id
+        ORDER BY u.property_id
+      `);
+
       // drizzle's execute() result shape is driver-dependent; read defensively
       // and coerce at this boundary rather than letting an untyped hop carry a
       // count into the arithmetic (same standard as `knownUnitCountFloor`).
@@ -1818,17 +1866,40 @@ export function registerRentalRoutes(app: Express): void {
         propertyCount: toCount(propRow?.c),
       });
 
-      return res.json(snapshot);
+      const byProperty = readAllRows(byPropertyRows).map((r) => ({
+        propertyId: toCount(r.property_id),
+        ...computeOccupancySnapshot({
+          rentableUnits: toCount(r.rentable_units),
+          occupiedUnits: toCount(r.occupied_units),
+          offlineUnits: toCount(r.offline_units),
+          retiredUnits: toCount(r.retired_units),
+          vacantUnitsWithMarketRent: toCount(r.vacant_units_with_market_rent),
+          vacantMarketRentMonthlyCents: toCount(r.vacant_market_rent_cents),
+          propertyCount: 1,
+        }),
+      }));
+
+      // Spread the org-wide snapshot at the top level (backward compatible —
+      // every existing field is exactly where it was) and ADD byProperty.
+      return res.json({ ...snapshot, byProperty });
     } catch (err) {
       return Errors.internal(res, err);
     }
   });
 
   // Portfolio-wide landlord stats for the mobile Portfolio tab. One round-
-  // trip: MTD rent, YTD expenses (maintenance invoices only — Portfolio P&L
-  // has the richer answer but requires a deals/properties join), active
-  // tickets, Section 8 share. Depreciation YTD is intentionally null — the
-  // UI links to /depreciation-calculator for the authoritative number.
+  // trip: MTD rent, YTD MAINTENANCE-INVOICE spend, active tickets, Section 8
+  // share. Depreciation YTD is intentionally null — the UI links to
+  // /depreciation-calculator for the authoritative number.
+  //
+  // The YTD figure is deliberately named `ytdMaintenanceInvoiceCents`, NOT a
+  // generic "expenses": it sums maintenance_tickets.invoiceCents ONLY, which is
+  // one narrow slice of operating cost. NOI's operating expense (investor
+  // analytics) is the DISTINCT property_expenses OPERATING sum — a different,
+  // broader number over a different window. Naming this field for its true
+  // scope keeps the two from being read as the same "expenses" number, and
+  // stops a maintenance invoice from looking double-counted when it is also
+  // rolled into the property_expenses ledger that NOI reads.
   app.get("/api/portfolio/landlord-stats", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
@@ -1851,7 +1922,7 @@ export function registerRentalRoutes(app: Express): void {
           AND status = 'completed'
           AND completed_at >= ${yearStart}::date
       `);
-      const ytdExpensesCents = Number(((ytdMaintRow as any).rows?.[0]?.total) ?? 0);
+      const ytdMaintenanceInvoiceCents = Number(((ytdMaintRow as any).rows?.[0]?.total) ?? 0);
 
       const activeTicketsRow = await db.execute(sql`
         SELECT COUNT(*)::int AS c FROM maintenance_tickets
@@ -1874,7 +1945,11 @@ export function registerRentalRoutes(app: Express): void {
 
       return res.json({
         mtdRentCollectedCents,
-        ytdExpensesCents,
+        // Maintenance-invoice spend YTD — one slice of operating cost, NOT the
+        // NOI operating-expense total (that is the property_expenses OPERATING
+        // sum in investor analytics). Named for its scope so the two numbers are
+        // never conflated.
+        ytdMaintenanceInvoiceCents,
         ytdDepreciationCents: null,
         activeMaintenanceCount,
         section8: {
